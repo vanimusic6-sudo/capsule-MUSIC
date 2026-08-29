@@ -1,5 +1,5 @@
-/*
- * Velune - by Nikhil
+
+/* * Velune - by Nikhil
  * Nikhil
  * Licensed Under GPL-3.0
  */
@@ -73,7 +73,9 @@ import androidx.media3.exoplayer.audio.SilenceSkippingAudioProcessor
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.exoplayer.source.ShuffleOrder.DefaultShuffleOrder
 import androidx.media3.extractor.ExtractorsFactory
+import androidx.media3.extractor.flac.FlacExtractor
 import androidx.media3.extractor.mkv.MatroskaExtractor
+import androidx.media3.extractor.mp3.Mp3Extractor
 import androidx.media3.extractor.mp4.FragmentedMp4Extractor
 import androidx.media3.extractor.mp4.Mp4Extractor
 import androidx.media3.session.CommandButton
@@ -171,6 +173,7 @@ import com.nikhil.yt.playback.queues.Queue
 import com.nikhil.yt.playback.queues.YouTubeQueue
 import com.nikhil.yt.playback.queues.filterExplicit
 import com.nikhil.yt.playback.queues.filterVideo
+import com.nikhil.yt.playback.source.AudioSourceManager
 import com.nikhil.yt.ui.screens.settings.DiscordPresenceManager
 import com.nikhil.yt.ui.screens.settings.ListenBrainzManager
 import com.nikhil.yt.utils.CoilBitmapLoader
@@ -3907,6 +3910,19 @@ class MusicService :
         val currentMediaId = player.currentMediaItem?.mediaId
         val httpStatusCode = error.httpStatusCodeOrNull()
 
+        // Alternative sources are best-effort only. A Deezer failure must never
+        // disable the known-good YouTube path: mark it and re-prepare the same
+        // YouTube media item, preserving queue/index/position.
+        if (currentMediaId != null && AudioSourceManager.isAlternativeActive(currentMediaId)) {
+            AudioSourceManager.markPlaybackFailure(
+                mediaId = currentMediaId,
+                reason = error.message ?: error.cause?.message,
+            )
+            player.prepare()
+            player.playWhenReady = true
+            return
+        }
+
         if (currentMediaId != null && YTPlayerUtils.isBotDetectionException(error)) {
             if (markAndCheckRecoveryAllowance(currentMediaId)) {
                 Timber.tag("MusicService").w(
@@ -3997,7 +4013,6 @@ class MusicService :
 
             return
         }
-
         if (dataStore.get(AutoSkipNextOnErrorKey, false)) {
             skipOnError()
         } else {
@@ -4065,6 +4080,43 @@ class MusicService :
     private fun createDataSourceFactory(): DataSource.Factory {
         return ResolvingDataSource.Factory(createCacheDataSource()) { dataSpec ->
             val mediaId = dataSpec.key ?: error("No media id")
+
+            // Capsule source layer is playback-only. The original mediaId stays the
+            // YouTube ID, and DownloadUtil never calls this alternative resolver.
+            val currentMetadata = player.mediaItems
+                .firstOrNull { item ->
+                    item.mediaId == mediaId || item.metadata?.id == mediaId
+                }
+                ?.metadata
+            val alternativeStream = runBlocking(Dispatchers.IO) {
+                AudioSourceManager.resolveForPlayback(
+                    context = this@MusicService,
+                    mediaId = mediaId,
+                    song = database.song(mediaId).first(),
+                    metadata = currentMetadata,
+                )
+            }
+            if (alternativeStream != null) {
+                val remainingLength =
+                    alternativeStream.contentLength
+                        ?.minus(dataSpec.position)
+                        ?.takeIf { it > 0L }
+
+                val resolved =
+                    dataSpec.buildUpon()
+                        .setKey(alternativeStream.cacheKey)
+                        .setUri(alternativeStream.mediaUri.toUri())
+                        .build()
+
+                return@Factory if (remainingLength != null) {
+                    resolved.subrange(
+                        dataSpec.uriPositionOffset,
+                        minOf(remainingLength, CHUNK_LENGTH),
+                    )
+                } else {
+                    resolved
+                }
+            }
 
             val requiredCachedLength =
                 if (dataSpec.length >= 0) {
@@ -4181,6 +4233,24 @@ class MusicService :
         }
     }
 
+    fun refreshCurrentAudioSource() {
+        val mediaId = player.currentMediaItem?.mediaId ?: return
+
+        // Keep the queue and the canonical YouTube media id untouched. Only force
+        // Media3 to resolve the current stream again through the selected provider.
+        val position = player.currentPosition.coerceAtLeast(0L)
+        val wasPlaying = player.playWhenReady
+        clearStreamRefreshGuards(mediaId)
+        playbackUrlCache.remove(mediaId)
+        AudioSourceManager.invalidate(mediaId)
+
+        player.prepare()
+        if (position > 0L) {
+            player.seekTo(position)
+        }
+        player.playWhenReady = wasPlaying
+    }
+
     fun retryCurrentFromFreshStream() {
         val mediaId = player.currentMediaItem?.mediaId ?: return
         clearStreamRefreshGuards(mediaId)
@@ -4242,7 +4312,13 @@ class MusicService :
         DefaultMediaSourceFactory(
             createDataSourceFactory(),
             ExtractorsFactory {
-                arrayOf(Mp4Extractor(), FragmentedMp4Extractor(), MatroskaExtractor())
+                arrayOf(
+                    Mp4Extractor(),
+                    FragmentedMp4Extractor(),
+                    MatroskaExtractor(),
+                    Mp3Extractor(),
+                    FlacExtractor(),
+                )
             },
         )
 
