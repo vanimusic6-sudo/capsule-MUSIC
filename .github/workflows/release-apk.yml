@@ -4,11 +4,11 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   release:
-    name: Build signed Universal APK
+    name: Build signed Capsule APK
     runs-on: ubuntu-latest
     timeout-minutes: 60
 
@@ -64,6 +64,16 @@ jobs:
           unqualifiedResLocale=en-US
           EOF
 
+      - name: Resolve release version
+        id: release_meta
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION_NAME="$(sed -n 's/.*versionName = "\([^"]*\)".*/\1/p' app/build.gradle.kts | head -n 1 | xargs)"
+          test -n "$VERSION_NAME"
+          echo "version=$VERSION_NAME" >> "$GITHUB_OUTPUT"
+          echo "tag=v$VERSION_NAME" >> "$GITHUB_OUTPUT"
+
       - name: Build Universal Release APK
         run: |
           gradle :app:assembleUniversalRelease \
@@ -110,13 +120,41 @@ jobs:
             --print-certs \
             "${{ steps.apk.outputs.path }}"
 
-      - name: Upload Release APK
+      - name: Prepare Capsule release asset
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp "${{ steps.apk.outputs.path }}" Capsule.apk
+          test -s Capsule.apk
+
+      - name: Upload workflow artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Capsule-MUSIC-Universal-Release
-          path: ${{ steps.apk.outputs.path }}
+          name: Capsule-Universal-Release
+          path: Capsule.apk
           if-no-files-found: error
           retention-days: 30
+
+      - name: Publish GitHub Release
+        if: github.ref == 'refs/heads/main'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.release_meta.outputs.tag }}
+          VERSION: ${{ steps.release_meta.outputs.version }}
+        run: |
+          set -euo pipefail
+
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$TAG" Capsule.apk \
+              --repo "$GITHUB_REPOSITORY" \
+              --clobber
+          else
+            gh release create "$TAG" Capsule.apk \
+              --repo "$GITHUB_REPOSITORY" \
+              --title "Capsule $VERSION" \
+              --generate-notes
+          fi
 
       - name: Remove keystore
         if: always()

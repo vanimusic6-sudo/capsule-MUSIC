@@ -4,12 +4,9 @@
  * Licensed Under GPL-3.0
  */
 
-
-
 package com.nikhil.yt.utils
 
 import androidx.datastore.preferences.core.edit
-import com.nikhil.yt.BuildConfig
 import com.nikhil.yt.App
 import com.nikhil.yt.constants.GitHubReleasesEtagKey
 import com.nikhil.yt.constants.GitHubReleasesFingerprintKey
@@ -22,14 +19,13 @@ import io.ktor.client.statement.HttpResponse
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.HttpStatusCode
 import org.json.JSONArray
-import org.json.JSONObject
 
 data class GitCommit(
     val sha: String,
     val message: String,
     val author: String,
     val date: String,
-    val url: String
+    val url: String,
 )
 
 data class ReleaseInfo(
@@ -37,7 +33,7 @@ data class ReleaseInfo(
     val name: String,
     val body: String?,
     val publishedAt: String,
-    val htmlUrl: String
+    val htmlUrl: String,
 )
 
 private data class ReleasesNetworkResult(
@@ -47,14 +43,19 @@ private data class ReleasesNetworkResult(
 )
 
 object Updater {
+    private const val RepositoryOwner = "vanimusic6-sudo"
+    private const val RepositoryName = "capsule-MUSIC"
+    private const val RepositoryApi = "https://api.github.com/repos/$RepositoryOwner/$RepositoryName"
+    private const val RepositoryWeb = "https://github.com/$RepositoryOwner/$RepositoryName"
+    private const val ReleaseAssetName = "Capsule.apk"
+
     private val client = HttpClient()
     private const val ReleaseCacheCheckIntervalMs: Long = 6 * 60 * 60 * 1000L
+
     var lastCheckTime = -1L
         private set
 
-    private fun parseReleasesJson(
-        json: String,
-    ): List<ReleaseInfo> {
+    private fun parseReleasesJson(json: String): List<ReleaseInfo> {
         val jsonArray = JSONArray(json)
         val releases = ArrayList<ReleaseInfo>(jsonArray.length())
         for (i in 0 until jsonArray.length()) {
@@ -65,8 +66,8 @@ object Updater {
                     name = item.optString("name", ""),
                     body = if (item.has("body")) item.optString("body") else null,
                     publishedAt = item.optString("published_at", ""),
-                    htmlUrl = item.optString("html_url", "")
-                )
+                    htmlUrl = item.optString("html_url", ""),
+                ),
             )
         }
         return releases
@@ -88,10 +89,10 @@ object Updater {
         cachedEtag: String?,
     ): ReleasesNetworkResult {
         val response: HttpResponse =
-            client.get("https://api.github.com/repos/nikhilvishwakarma00/Velune/releases?per_page=$perPage") {
+            client.get("$RepositoryApi/releases?per_page=$perPage") {
                 headers {
                     append("Accept", "application/vnd.github+json")
-                    append("User-Agent", "Velune")
+                    append("User-Agent", "Capsule")
                     if (!cachedEtag.isNullOrBlank()) {
                         append("If-None-Match", cachedEtag)
                     }
@@ -135,15 +136,18 @@ object Updater {
         runCatching {
             val releases = getAllReleases().getOrThrow()
             val latest = releases.firstOrNull()
-                ?: throw IllegalStateException("No releases found")
+                ?: throw IllegalStateException("No Capsule releases found")
             lastCheckTime = System.currentTimeMillis()
             latest
         }
 
-    suspend fun getCommitHistory(count: Int = 20, branch: String = "dev"): Result<List<GitCommit>> =
+    suspend fun getCommitHistory(
+        count: Int = 20,
+        branch: String = "main",
+    ): Result<List<GitCommit>> =
         runCatching {
             val response =
-                client.get("https://api.github.com/repos/nikhilvishwakarma00/Velune/commits?sha=$branch&per_page=$count")
+                client.get("$RepositoryApi/commits?sha=$branch&per_page=$count")
                     .bodyAsText()
             val jsonArray = JSONArray(response)
             val commits = mutableListOf<GitCommit>()
@@ -157,22 +161,15 @@ object Updater {
                         message = commit.optString("message", "").lines().firstOrNull() ?: "",
                         author = authorObj?.optString("name", "Unknown") ?: "Unknown",
                         date = authorObj?.optString("date", "") ?: "",
-                        url = commitObj.optString("html_url", "")
-                    )
+                        url = commitObj.optString("html_url", ""),
+                    ),
                 )
             }
             commits
         }
 
-    fun getLatestDownloadUrl(): String {
-        val baseUrl = "https://github.com/nikhilvishwakarma00/Velune/releases/latest/download/"
-        val architecture = BuildConfig.ARCHITECTURE
-        return if (architecture == "universal") {
-            baseUrl + "Velune.apk"
-        } else {
-            baseUrl + "app-${architecture}-release.apk"
-        }
-    }
+    fun getLatestDownloadUrl(): String =
+        "$RepositoryWeb/releases/latest/download/$ReleaseAssetName"
 
     suspend fun getAllReleases(
         perPage: Int = 30,
@@ -191,7 +188,8 @@ object Updater {
                     ?.let { runCatching { parseReleasesJson(it) }.getOrNull() }
 
             val shouldCheckNetwork =
-                forceRefresh || cachedJson.isNullOrBlank() || (now - lastCheckedAt) >= ReleaseCacheCheckIntervalMs
+                forceRefresh || cachedJson.isNullOrBlank() ||
+                    (now - lastCheckedAt) >= ReleaseCacheCheckIntervalMs
 
             if (!shouldCheckNetwork) {
                 lastCheckTime = now
@@ -211,7 +209,7 @@ object Updater {
                     lastCheckTime = now
                     return@runCatching fallback
                 }
-                throw IllegalStateException("Failed to fetch releases")
+                throw IllegalStateException("Failed to fetch Capsule releases")
             }
 
             when {
@@ -253,7 +251,9 @@ object Updater {
                         lastCheckTime = now
                         fallback
                     } else {
-                        throw IllegalStateException("Failed to fetch releases: HTTP ${networkResult.status.value}")
+                        throw IllegalStateException(
+                            "Failed to fetch Capsule releases: HTTP ${networkResult.status.value}",
+                        )
                     }
                 }
             }
