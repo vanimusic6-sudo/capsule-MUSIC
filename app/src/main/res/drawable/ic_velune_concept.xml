@@ -9,16 +9,31 @@
         android:pivotX="54"
         android:pivotY="54"
         android:rotation="-35">
+
         <path
-            android:pathData="M86,54 C86,45.716 71.673,39 54,39 C36.327,39 22,45.716 22,54 C22,62.284 36.327,69 54,69 C71.673,69 86,62.284 86,54 Z"
+            android:pathData="M102,54 C102,42.402 80.510,33 54,33 C27.490,33 6,42.402 6,54 C6,65.598 27.490,75 54,75 C80.510,75 102,65.598 102,54 Z"
             android:fillColor="#00000000"
-            android:strokeColor="#F7F7F7"
-            android:strokeWidth="2.6"
+            android:strokeColor="#FFFFFF"
+            android:strokeAlpha="0.10"
+            android:strokeWidth="5.2"
+            android:strokeLineCap="round"
+            android:strokeLineJoin="round" />
+
+        <path
+            android:pathData="M102,54 C102,42.402 80.510,33 54,33 C27.490,33 6,42.402 6,54 C6,65.598 27.490,75 54,75 C80.510,75 102,65.598 102,54 Z"
+            android:fillColor="#00000000"
+            android:strokeColor="#F6F6F6"
+            android:strokeWidth="2.35"
             android:strokeLineCap="round"
             android:strokeLineJoin="round" />
     </group>
 
     <path
-        android:pathData="M60.5,54 C60.5,57.59 57.59,60.5 54,60.5 C50.41,60.5 47.5,57.59 47.5,54 C47.5,50.41 50.41,47.5 54,47.5 C57.59,47.5 60.5,50.41 60.5,54 Z"
+        android:pathData="M62.2,54 C62.2,58.529 58.529,62.2 54,62.2 C49.471,62.2 45.8,58.529 45.8,54 C45.8,49.471 49.471,45.8 54,45.8 C58.529,45.8 62.2,49.471 62.2,54 Z"
+        android:fillColor="#FFFFFF"
+        android:fillAlpha="0.075" />
+
+    <path
+        android:pathData="M61.0,54 C61.0,57.866 57.866,61 54,61 C50.134,61 47,57.866 47,54 C47,50.134 50.134,47 54,47 C57.866,47 61,50.134 61,54 Z"
         android:fillColor="#F7F7F7" />
 </vector>
