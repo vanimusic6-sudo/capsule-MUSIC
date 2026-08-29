@@ -1,5 +1,5 @@
-/**
- * Velune / Capsule MUSIC
+
+/* * Velune / Capsule MUSIC
  * Capsule Lyrics visual layer
  * Licensed under GPL-3.0
  */
@@ -343,7 +343,7 @@ fun CapsuleLyricsContent(
                 CapsuleLyricsText,
             inactiveColor =
                 CapsuleLyricsText.copy(
-                    alpha = 0.18f,
+                    alpha = 0.22f,
                 ),
             onValueChange = {
                 onSeekPreview(
@@ -353,13 +353,13 @@ fun CapsuleLyricsContent(
             onValueChangeFinished =
                 onSeekFinished,
             trackHeight =
-                3.5.dp,
+                5.5.dp,
             thumbRadius =
-                3.5.dp,
+                4.dp,
             modifier =
                 Modifier
                     .fillMaxWidth()
-                    .height(24.dp),
+                    .height(28.dp),
         )
 
         Row(
@@ -546,11 +546,11 @@ fun CapsuleLyricsContent(
                         true,
                     activeColor =
                         CapsuleLyricsText.copy(
-                            alpha = 0.92f,
+                            alpha = 0.70f,
                         ),
                     inactiveColor =
                         CapsuleLyricsText.copy(
-                            alpha = 0.16f,
+                            alpha = 0.11f,
                         ),
                     onValueChange = {
                         playerConnection
@@ -561,13 +561,13 @@ fun CapsuleLyricsContent(
                     },
                     onValueChangeFinished = {},
                     trackHeight =
-                        3.dp,
+                        2.5.dp,
                     thumbRadius =
-                        3.25.dp,
+                        3.dp,
                     modifier =
                         Modifier
                             .weight(1f)
-                            .height(22.dp)
+                            .height(20.dp)
                             .padding(
                                 horizontal = 12.dp,
                             ),
