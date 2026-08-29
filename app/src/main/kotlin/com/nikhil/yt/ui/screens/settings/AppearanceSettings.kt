@@ -43,10 +43,10 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarScrollBehavior
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -59,6 +59,7 @@ import androidx.navigation.NavController
 import com.nikhil.yt.LocalPlayerAwareWindowInsets
 import com.nikhil.yt.R
 import com.nikhil.yt.constants.ChipSortTypeKey
+import com.nikhil.yt.constants.CropThumbnailToSquareKey
 import com.nikhil.yt.constants.DarkModeKey
 import com.nikhil.yt.constants.DefaultOpenTabKey
 import com.nikhil.yt.constants.DisableBlurKey
@@ -95,7 +96,6 @@ import com.nikhil.yt.constants.SwipeSensitivityKey
 import com.nikhil.yt.constants.SwipeThumbnailKey
 import com.nikhil.yt.constants.SwipeToSongKey
 import com.nikhil.yt.constants.ThumbnailCornerRadiusKey
-import com.nikhil.yt.constants.CropThumbnailToSquareKey
 import com.nikhil.yt.constants.UseLyricsV2Key
 import com.nikhil.yt.constants.UseNewMiniPlayerDesignKey
 import com.nikhil.yt.constants.UseSystemFontKey
@@ -109,6 +109,10 @@ import com.nikhil.yt.ui.component.PreferenceGroupTitle
 import com.nikhil.yt.ui.component.SwitchPreference
 import com.nikhil.yt.ui.component.ThumbnailCornerRadiusSelectorButton
 import com.nikhil.yt.ui.player.StyledPlaybackSlider
+import com.nikhil.yt.ui.theme.CapsuleBottomBarEnabledKey
+import com.nikhil.yt.ui.theme.CapsuleLyricsEnabledKey
+import com.nikhil.yt.ui.theme.CapsuleMiniPlayerEnabledKey
+import com.nikhil.yt.ui.theme.CapsulePlayerEnabledKey
 import com.nikhil.yt.ui.theme.CapsuleThemeEnabledKey
 import com.nikhil.yt.ui.utils.backToMain
 import com.nikhil.yt.utils.rememberEnumPreference
@@ -122,6 +126,12 @@ fun AppearanceSettings(
     navController: NavController,
     scrollBehavior: TopAppBarScrollBehavior,
 ) {
+    /*
+     * =========================
+     * Capsule
+     * =========================
+     */
+
     val (
         capsuleThemeEnabled,
         onCapsuleThemeEnabledChange,
@@ -131,7 +141,80 @@ fun AppearanceSettings(
             defaultValue = false,
         )
 
-    val (dynamicTheme, onDynamicThemeChange) =
+    val (
+        capsuleBottomBarEnabled,
+        onCapsuleBottomBarEnabledChange,
+    ) =
+        rememberPreference(
+            CapsuleBottomBarEnabledKey,
+            defaultValue = false,
+        )
+
+    val (
+        capsuleMiniPlayerEnabled,
+        onCapsuleMiniPlayerEnabledChange,
+    ) =
+        rememberPreference(
+            CapsuleMiniPlayerEnabledKey,
+            defaultValue = false,
+        )
+
+    val (
+        capsulePlayerEnabled,
+        onCapsulePlayerEnabledChange,
+    ) =
+        rememberPreference(
+            CapsulePlayerEnabledKey,
+            defaultValue = false,
+        )
+
+    val (
+        capsuleLyricsEnabled,
+        onCapsuleLyricsEnabledChange,
+    ) =
+        rememberPreference(
+            CapsuleLyricsEnabledKey,
+            defaultValue = false,
+        )
+
+    /*
+     * Full Immersion is derived from the real states.
+     *
+     * There is deliberately no second hidden master preference.
+     * This prevents the master switch from becoming out of sync
+     * with the individual Capsule modules.
+     */
+    val capsuleFullImmersionEnabled =
+        capsuleThemeEnabled &&
+            capsuleBottomBarEnabled &&
+            capsuleMiniPlayerEnabled &&
+            capsulePlayerEnabled &&
+            capsuleLyricsEnabled
+
+    val onCapsuleFullImmersionChange:
+        (Boolean) -> Unit = { enabled ->
+
+        onCapsuleThemeEnabledChange(enabled)
+
+        onCapsuleBottomBarEnabledChange(enabled)
+
+        onCapsuleMiniPlayerEnabledChange(enabled)
+
+        onCapsulePlayerEnabledChange(enabled)
+
+        onCapsuleLyricsEnabledChange(enabled)
+    }
+
+    /*
+     * =========================
+     * Existing Velune settings
+     * =========================
+     */
+
+    val (
+        dynamicTheme,
+        onDynamicThemeChange,
+    ) =
         rememberPreference(
             DynamicThemeKey,
             defaultValue = true,
@@ -146,7 +229,10 @@ fun AppearanceSettings(
             defaultValue = false,
         )
 
-    val (darkMode, onDarkModeChange) =
+    val (
+        darkMode,
+        onDarkModeChange,
+    ) =
         rememberEnumPreference(
             DarkModeKey,
             defaultValue = DarkMode.ON,
@@ -227,19 +313,28 @@ fun AppearanceSettings(
                 PlayerBackgroundStyle.COLORING,
         )
 
-    val (pureBlack, onPureBlackChange) =
+    val (
+        pureBlack,
+        onPureBlackChange,
+    ) =
         rememberPreference(
             PureBlackKey,
             defaultValue = true,
         )
 
-    val (disableBlur, onDisableBlurChange) =
+    val (
+        disableBlur,
+        onDisableBlurChange,
+    ) =
         rememberPreference(
             DisableBlurKey,
             defaultValue = true,
         )
 
-    val (useSystemFont, onUseSystemFontChange) =
+    val (
+        useSystemFont,
+        onUseSystemFontChange,
+    ) =
         rememberPreference(
             UseSystemFontKey,
             defaultValue = false,
@@ -283,19 +378,28 @@ fun AppearanceSettings(
                 LyricsAnimationStyle.APPLE,
         )
 
-    val (lyricsClick, onLyricsClickChange) =
+    val (
+        lyricsClick,
+        onLyricsClickChange,
+    ) =
         rememberPreference(
             LyricsClickKey,
             defaultValue = true,
         )
 
-    val (lyricsScroll, onLyricsScrollChange) =
+    val (
+        lyricsScroll,
+        onLyricsScrollChange,
+    ) =
         rememberPreference(
             LyricsScrollKey,
             defaultValue = true,
         )
 
-    val (lyricsTextSize, onLyricsTextSizeChange) =
+    val (
+        lyricsTextSize,
+        onLyricsTextSizeChange,
+    ) =
         rememberPreference(
             LyricsTextSizeKey,
             defaultValue = 26f,
@@ -310,13 +414,19 @@ fun AppearanceSettings(
             defaultValue = 1.3f,
         )
 
-    val (useLyricsV2, onUseLyricsV2Change) =
+    val (
+        useLyricsV2,
+        onUseLyricsV2Change,
+    ) =
         rememberPreference(
             UseLyricsV2Key,
             defaultValue = false,
         )
 
-    val (sliderStyle, onSliderStyleChange) =
+    val (
+        sliderStyle,
+        onSliderStyleChange,
+    ) =
         rememberEnumPreference(
             SliderStyleKey,
             defaultValue = SliderStyle.Circular,
@@ -340,19 +450,28 @@ fun AppearanceSettings(
             defaultValue = 0.73f,
         )
 
-    val (gridItemSize, onGridItemSizeChange) =
+    val (
+        gridItemSize,
+        onGridItemSizeChange,
+    ) =
         rememberEnumPreference(
             GridItemsSizeKey,
             defaultValue = GridItemSize.SMALL,
         )
 
-    val (slimNav, onSlimNavChange) =
+    val (
+        slimNav,
+        onSlimNavChange,
+    ) =
         rememberPreference(
             SlimNavBarKey,
             defaultValue = false,
         )
 
-    val (swipeToSong, onSwipeToSongChange) =
+    val (
+        swipeToSong,
+        onSwipeToSongChange,
+    ) =
         rememberPreference(
             SwipeToSongKey,
             defaultValue = false,
@@ -533,6 +652,137 @@ fun AppearanceSettings(
                 rememberScrollState(),
             ),
     ) {
+        /*
+         * =========================
+         * Capsule
+         * =========================
+         */
+
+        PreferenceGroupTitle(
+            title = "Capsule",
+        )
+
+        SwitchPreference(
+            title = {
+                Text(
+                    "Full Immersion",
+                )
+            },
+            description =
+                "Enable or disable the complete Capsule interface.",
+            icon = {
+                Icon(
+                    painter =
+                        painterResource(
+                            R.drawable.contrast,
+                        ),
+                    contentDescription = null,
+                )
+            },
+            checked =
+                capsuleFullImmersionEnabled,
+            onCheckedChange =
+                onCapsuleFullImmersionChange,
+        )
+
+        SwitchPreference(
+            title = {
+                Text(
+                    "Capsule Bottom Bar",
+                )
+            },
+            description =
+                "Use the Capsule navigation dock.",
+            icon = {
+                Icon(
+                    painter =
+                        painterResource(
+                            R.drawable.nav_bar,
+                        ),
+                    contentDescription = null,
+                )
+            },
+            checked =
+                capsuleBottomBarEnabled,
+            onCheckedChange =
+                onCapsuleBottomBarEnabledChange,
+        )
+
+        SwitchPreference(
+            title = {
+                Text(
+                    "Capsule Mini Player",
+                )
+            },
+            description =
+                "Use the Capsule mini player while preserving Velune swipe controls.",
+            icon = {
+                Icon(
+                    painter =
+                        painterResource(
+                            R.drawable.play,
+                        ),
+                    contentDescription = null,
+                )
+            },
+            checked =
+                capsuleMiniPlayerEnabled,
+            onCheckedChange =
+                onCapsuleMiniPlayerEnabledChange,
+        )
+
+        SwitchPreference(
+            title = {
+                Text(
+                    "Capsule Player",
+                )
+            },
+            description =
+                "Use the Capsule full player independently from the Velune player style.",
+            icon = {
+                Icon(
+                    painter =
+                        painterResource(
+                            R.drawable.play,
+                        ),
+                    contentDescription = null,
+                )
+            },
+            checked =
+                capsulePlayerEnabled,
+            onCheckedChange =
+                onCapsulePlayerEnabledChange,
+        )
+
+        SwitchPreference(
+            title = {
+                Text(
+                    "Capsule Lyrics",
+                )
+            },
+            description =
+                "Use the Capsule lyrics interface while preserving Velune lyrics providers.",
+            icon = {
+                Icon(
+                    painter =
+                        painterResource(
+                            R.drawable.lyrics,
+                        ),
+                    contentDescription = null,
+                )
+            },
+            checked =
+                capsuleLyricsEnabled,
+            onCheckedChange =
+                onCapsuleLyricsEnabledChange,
+        )
+
+        /*
+         * =========================
+         * Theme
+         * =========================
+         */
+
         PreferenceGroupTitle(
             title =
                 stringResource(
@@ -540,13 +790,11 @@ fun AppearanceSettings(
                 ),
         )
 
-        /*
-         * Capsule is deliberately independent from the normal Velune
-         * dynamic/palette configuration.
-         */
         SwitchPreference(
             title = {
-                Text("Capsule Theme")
+                Text(
+                    "Capsule Theme",
+                )
             },
             description =
                 "Dark monochrome Capsule visual style. " +
@@ -559,7 +807,8 @@ fun AppearanceSettings(
                     null,
                 )
             },
-            checked = capsuleThemeEnabled,
+            checked =
+                capsuleThemeEnabled,
             onCheckedChange =
                 onCapsuleThemeEnabledChange,
         )
@@ -581,7 +830,8 @@ fun AppearanceSettings(
                 )
             },
             checked = dynamicTheme,
-            onCheckedChange = onDynamicThemeChange,
+            onCheckedChange =
+                onDynamicThemeChange,
         )
 
         AnimatedVisibility(
@@ -610,7 +860,8 @@ fun AppearanceSettings(
                         null,
                     )
                 },
-                checked = randomThemeOnStartup,
+                checked =
+                    randomThemeOnStartup,
                 onCheckedChange =
                     onRandomThemeOnStartupChange,
             )
@@ -667,7 +918,8 @@ fun AppearanceSettings(
                 )
             },
             selectedValue = darkMode,
-            onValueSelected = onDarkModeChange,
+            onValueSelected =
+                onDarkModeChange,
             valueText = {
                 when (it) {
                     DarkMode.ON ->
@@ -688,10 +940,6 @@ fun AppearanceSettings(
             },
         )
 
-        /*
-         * Pure Black is also available while Capsule is enabled,
-         * even if the saved Velune Dark Mode happens to be OFF.
-         */
         AnimatedVisibility(
             visible =
                 useDarkTheme ||
@@ -714,7 +962,8 @@ fun AppearanceSettings(
                     )
                 },
                 checked = pureBlack,
-                onCheckedChange = onPureBlackChange,
+                onCheckedChange =
+                    onPureBlackChange,
             )
         }
 
@@ -739,7 +988,8 @@ fun AppearanceSettings(
                 )
             },
             checked = disableBlur,
-            onCheckedChange = onDisableBlurChange,
+            onCheckedChange =
+                onDisableBlurChange,
         )
 
         SwitchPreference(
@@ -763,8 +1013,15 @@ fun AppearanceSettings(
                 )
             },
             checked = useSystemFont,
-            onCheckedChange = onUseSystemFontChange,
+            onCheckedChange =
+                onUseSystemFontChange,
         )
+
+        /*
+         * =========================
+         * Player
+         * =========================
+         */
 
         PreferenceGroupTitle(
             title =
@@ -789,7 +1046,8 @@ fun AppearanceSettings(
                     null,
                 )
             },
-            selectedValue = playerDesignStyle,
+            selectedValue =
+                playerDesignStyle,
             onValueSelected =
                 onPlayerDesignStyleChange,
             valueText = {
@@ -838,7 +1096,8 @@ fun AppearanceSettings(
                     null,
                 )
             },
-            checked = useNewMiniPlayerDesign,
+            checked =
+                useNewMiniPlayerDesign,
             onCheckedChange =
                 onUseNewMiniPlayerDesignChange,
         )
@@ -863,7 +1122,8 @@ fun AppearanceSettings(
                     null,
                 )
             },
-            checked = useNewLibraryDesign,
+            checked =
+                useNewLibraryDesign,
             onCheckedChange =
                 onUseNewLibraryDesignChange,
         )
@@ -884,7 +1144,8 @@ fun AppearanceSettings(
                     null,
                 )
             },
-            selectedValue = playerBackground,
+            selectedValue =
+                playerBackground,
             onValueSelected =
                 onPlayerBackgroundChange,
             valueText = {
@@ -978,7 +1239,8 @@ fun AppearanceSettings(
                     null,
                 )
             },
-            checked = hidePlayerThumbnail,
+            checked =
+                hidePlayerThumbnail,
             onCheckedChange =
                 onHidePlayerThumbnailChange,
         )
@@ -1003,7 +1265,8 @@ fun AppearanceSettings(
                     null,
                 )
             },
-            checked = veluneCanvasEnabled,
+            checked =
+                veluneCanvasEnabled,
             onCheckedChange =
                 onVeluneCanvasEnabledChange,
         )
@@ -1040,7 +1303,8 @@ fun AppearanceSettings(
                     null,
                 )
             },
-            checked = cropThumbnailToSquare,
+            checked =
+                cropThumbnailToSquare,
             onCheckedChange =
                 onCropThumbnailToSquareChange,
         )
@@ -1061,7 +1325,8 @@ fun AppearanceSettings(
                     null,
                 )
             },
-            selectedValue = playerButtonsStyle,
+            selectedValue =
+                playerButtonsStyle,
             onValueSelected =
                 onPlayerButtonsStyleChange,
             valueText = {
@@ -1279,6 +1544,12 @@ fun AppearanceSettings(
             )
         }
 
+        /*
+         * =========================
+         * Lyrics
+         * =========================
+         */
+
         PreferenceGroupTitle(
             title =
                 stringResource(
@@ -1323,7 +1594,8 @@ fun AppearanceSettings(
                     null,
                 )
             },
-            selectedValue = lyricsPosition,
+            selectedValue =
+                lyricsPosition,
             onValueSelected =
                 onLyricsPositionChange,
             valueText = {
@@ -1362,7 +1634,8 @@ fun AppearanceSettings(
                     null,
                 )
             },
-            selectedValue = lyricsAnimation,
+            selectedValue =
+                lyricsAnimation,
             onValueSelected =
                 onLyricsAnimationChange,
             valueText = {
@@ -1736,6 +2009,12 @@ fun AppearanceSettings(
             },
         )
 
+        /*
+         * =========================
+         * Misc
+         * =========================
+         */
+
         PreferenceGroupTitle(
             title =
                 stringResource(
@@ -1759,7 +2038,8 @@ fun AppearanceSettings(
                     null,
                 )
             },
-            selectedValue = defaultOpenTab,
+            selectedValue =
+                defaultOpenTab,
             onValueSelected =
                 onDefaultOpenTabChange,
             valueText = {
@@ -1859,7 +2139,8 @@ fun AppearanceSettings(
                     null,
                 )
             },
-            checked = showHomeCategoryChips,
+            checked =
+                showHomeCategoryChips,
             onCheckedChange =
                 onShowHomeCategoryChipsChange,
         )
@@ -1884,7 +2165,8 @@ fun AppearanceSettings(
                     null,
                 )
             },
-            checked = showTagsInLibrary,
+            checked =
+                showTagsInLibrary,
             onCheckedChange =
                 onShowTagsInLibraryChange,
         )
@@ -1965,6 +2247,12 @@ fun AppearanceSettings(
             },
         )
 
+        /*
+         * =========================
+         * Auto playlists
+         * =========================
+         */
+
         PreferenceGroupTitle(
             title =
                 stringResource(
@@ -1988,7 +2276,8 @@ fun AppearanceSettings(
                     null,
                 )
             },
-            checked = showLikedPlaylist,
+            checked =
+                showLikedPlaylist,
             onCheckedChange =
                 onShowLikedPlaylistChange,
         )
@@ -2009,7 +2298,8 @@ fun AppearanceSettings(
                     null,
                 )
             },
-            checked = showDownloadedPlaylist,
+            checked =
+                showDownloadedPlaylist,
             onCheckedChange =
                 onShowDownloadedPlaylistChange,
         )
@@ -2030,7 +2320,8 @@ fun AppearanceSettings(
                     null,
                 )
             },
-            checked = showTopPlaylist,
+            checked =
+                showTopPlaylist,
             onCheckedChange =
                 onShowTopPlaylistChange,
         )
@@ -2051,7 +2342,8 @@ fun AppearanceSettings(
                     null,
                 )
             },
-            checked = showCachedPlaylist,
+            checked =
+                showCachedPlaylist,
             onCheckedChange =
                 onShowCachedPlaylistChange,
         )
