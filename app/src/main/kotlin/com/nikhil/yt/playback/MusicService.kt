@@ -1,5 +1,5 @@
-
-/* * Velune - by Nikhil
+/*
+ * Velune - by Nikhil
  * Nikhil
  * Licensed Under GPL-3.0
  */
@@ -173,7 +173,6 @@ import com.nikhil.yt.playback.queues.Queue
 import com.nikhil.yt.playback.queues.YouTubeQueue
 import com.nikhil.yt.playback.queues.filterExplicit
 import com.nikhil.yt.playback.queues.filterVideo
-import com.nikhil.yt.playback.source.AudioSourceManager
 import com.nikhil.yt.ui.screens.settings.DiscordPresenceManager
 import com.nikhil.yt.ui.screens.settings.ListenBrainzManager
 import com.nikhil.yt.utils.CoilBitmapLoader
@@ -3910,19 +3909,6 @@ class MusicService :
         val currentMediaId = player.currentMediaItem?.mediaId
         val httpStatusCode = error.httpStatusCodeOrNull()
 
-        // Alternative sources are best-effort only. A Deezer failure must never
-        // disable the known-good YouTube path: mark it and re-prepare the same
-        // YouTube media item, preserving queue/index/position.
-        if (currentMediaId != null && AudioSourceManager.isAlternativeActive(currentMediaId)) {
-            AudioSourceManager.markPlaybackFailure(
-                mediaId = currentMediaId,
-                reason = error.message ?: error.cause?.message,
-            )
-            player.prepare()
-            player.playWhenReady = true
-            return
-        }
-
         if (currentMediaId != null && YTPlayerUtils.isBotDetectionException(error)) {
             if (markAndCheckRecoveryAllowance(currentMediaId)) {
                 Timber.tag("MusicService").w(
@@ -4081,43 +4067,6 @@ class MusicService :
         return ResolvingDataSource.Factory(createCacheDataSource()) { dataSpec ->
             val mediaId = dataSpec.key ?: error("No media id")
 
-            // Capsule source layer is playback-only. The original mediaId stays the
-            // YouTube ID, and DownloadUtil never calls this alternative resolver.
-            val currentMetadata = player.mediaItems
-                .firstOrNull { item ->
-                    item.mediaId == mediaId || item.metadata?.id == mediaId
-                }
-                ?.metadata
-            val alternativeStream = runBlocking(Dispatchers.IO) {
-                AudioSourceManager.resolveForPlayback(
-                    context = this@MusicService,
-                    mediaId = mediaId,
-                    song = database.song(mediaId).first(),
-                    metadata = currentMetadata,
-                )
-            }
-            if (alternativeStream != null) {
-                val remainingLength =
-                    alternativeStream.contentLength
-                        ?.minus(dataSpec.position)
-                        ?.takeIf { it > 0L }
-
-                val resolved =
-                    dataSpec.buildUpon()
-                        .setKey(alternativeStream.cacheKey)
-                        .setUri(alternativeStream.mediaUri.toUri())
-                        .build()
-
-                return@Factory if (remainingLength != null) {
-                    resolved.subrange(
-                        dataSpec.uriPositionOffset,
-                        minOf(remainingLength, CHUNK_LENGTH),
-                    )
-                } else {
-                    resolved
-                }
-            }
-
             val requiredCachedLength =
                 if (dataSpec.length >= 0) {
                     dataSpec.length
@@ -4233,16 +4182,22 @@ class MusicService :
         }
     }
 
+    /**
+     * Compatibility hook used by the experimental source UI.
+     *
+     * IMPORTANT: playback resolution remains 100% on Capsule's original YouTube
+     * pipeline. This method only asks that pipeline for a fresh YouTube stream.
+     * It does not call Deezer/Amazon providers and does not change mediaId.
+     */
     fun refreshCurrentAudioSource() {
         val mediaId = player.currentMediaItem?.mediaId ?: return
-
-        // Keep the queue and the canonical YouTube media id untouched. Only force
-        // Media3 to resolve the current stream again through the selected provider.
         val position = player.currentPosition.coerceAtLeast(0L)
         val wasPlaying = player.playWhenReady
+
         clearStreamRefreshGuards(mediaId)
+        YTPlayerUtils.invalidateCachedStreamUrls(mediaId)
         playbackUrlCache.remove(mediaId)
-        AudioSourceManager.invalidate(mediaId)
+        pendingStreamRefreshValidationMediaId = mediaId
 
         player.prepare()
         if (position > 0L) {
