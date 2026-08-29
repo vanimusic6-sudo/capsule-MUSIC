@@ -4,8 +4,6 @@
  * Licensed Under GPL-3.0
  */
 
-
-
 package com.nikhil.yt.utils
 
 import android.app.NotificationChannel
@@ -23,20 +21,18 @@ import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.NetworkType
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.launch
 import com.nikhil.yt.BuildConfig
 import com.nikhil.yt.MainActivity
 import com.nikhil.yt.R
 import com.nikhil.yt.constants.EnableUpdateNotificationKey
 import com.nikhil.yt.constants.LastNotifiedVersionKey
 import com.nikhil.yt.constants.LastUpdateCheckKey
-import com.nikhil.yt.constants.UpdateChannel
-import com.nikhil.yt.constants.UpdateChannelKey
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.launch
 import java.util.concurrent.TimeUnit
 
 object UpdateNotificationManager {
@@ -47,16 +43,24 @@ object UpdateNotificationManager {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
+    private fun normalizeVersion(value: String): String =
+        value
+            .removePrefix("Capsule ")
+            .removePrefix("capsule ")
+            .removePrefix("v")
+            .trim()
+
     fun createNotificationChannel(context: Context) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val name = context.getString(R.string.update_notification_channel_name)
-            val descriptionText = context.getString(R.string.update_notification_channel_desc)
-            val importance = NotificationManager.IMPORTANCE_DEFAULT
-            val channel = NotificationChannel(CHANNEL_ID, name, importance).apply {
-                description = descriptionText
+            val channel = NotificationChannel(
+                CHANNEL_ID,
+                "Capsule updates",
+                NotificationManager.IMPORTANCE_DEFAULT,
+            ).apply {
+                description = "Notifications for new Capsule releases"
             }
-            val notificationManager = context.getSystemService(NotificationManager::class.java)
-            notificationManager?.createNotificationChannel(channel)
+            context.getSystemService(NotificationManager::class.java)
+                ?.createNotificationChannel(channel)
         }
     }
 
@@ -66,8 +70,10 @@ object UpdateNotificationManager {
             .build()
 
         val updateCheckRequest = PeriodicWorkRequestBuilder<UpdateCheckWorker>(
-            6, TimeUnit.HOURS,
-            30, TimeUnit.MINUTES
+            6,
+            TimeUnit.HOURS,
+            30,
+            TimeUnit.MINUTES,
         )
             .setConstraints(constraints)
             .build()
@@ -75,7 +81,7 @@ object UpdateNotificationManager {
         WorkManager.getInstance(context).enqueueUniquePeriodicWork(
             WORK_NAME,
             ExistingPeriodicWorkPolicy.KEEP,
-            updateCheckRequest
+            updateCheckRequest,
         )
     }
 
@@ -88,7 +94,10 @@ object UpdateNotificationManager {
             try {
                 val dataStore = context.dataStore
 
-                val isEnabled = dataStore.data.map { it[EnableUpdateNotificationKey] ?: false }.first()
+                val isEnabled = dataStore.data
+                    .map { it[EnableUpdateNotificationKey] ?: false }
+                    .first()
+
                 if (!isEnabled) {
                     cancelPeriodicUpdateCheck(context)
                     return@launch
@@ -96,15 +105,9 @@ object UpdateNotificationManager {
 
                 schedulePeriodicUpdateCheck(context)
 
-                val updateChannel = dataStore.data.map { 
-                    it[UpdateChannelKey]?.let { value -> 
-                        try { UpdateChannel.valueOf(value) } catch (e: Exception) { UpdateChannel.STABLE }
-                    } ?: UpdateChannel.STABLE
-                }.first()
-
-                if (updateChannel == UpdateChannel.NIGHTLY) return@launch
-
-                val lastCheck = dataStore.data.map { it[LastUpdateCheckKey] ?: 0L }.first()
+                val lastCheck = dataStore.data
+                    .map { it[LastUpdateCheckKey] ?: 0L }
+                    .first()
                 val now = System.currentTimeMillis()
 
                 if (now - lastCheck < CHECK_INTERVAL_MS) return@launch
@@ -112,12 +115,12 @@ object UpdateNotificationManager {
                 dataStore.edit { it[LastUpdateCheckKey] = now }
 
                 Updater.getLatestVersionName().onSuccess { latestVersion ->
-                    if (latestVersion != BuildConfig.VERSION_NAME) {
+                    if (normalizeVersion(latestVersion) != normalizeVersion(BuildConfig.VERSION_NAME)) {
                         notifyIfNewVersion(context, latestVersion)
                     }
                 }
-            } catch (e: Exception) {
-                // Silently fail
+            } catch (_: Exception) {
+                // Update checks must never affect playback or app startup.
             }
         }
     }
@@ -125,14 +128,22 @@ object UpdateNotificationManager {
     suspend fun notifyIfNewVersion(context: Context, latestVersion: String) {
         try {
             val dataStore = context.dataStore
-            val lastNotified = dataStore.data.map { it[LastNotifiedVersionKey] ?: "" }.first()
+            val normalizedLatest = normalizeVersion(latestVersion)
+            val normalizedCurrent = normalizeVersion(BuildConfig.VERSION_NAME)
+            val normalizedLastNotified = normalizeVersion(
+                dataStore.data.map { it[LastNotifiedVersionKey] ?: "" }.first(),
+            )
 
-            if (latestVersion != lastNotified && latestVersion != BuildConfig.VERSION_NAME) {
-                showUpdateNotification(context, latestVersion)
-                dataStore.edit { it[LastNotifiedVersionKey] = latestVersion }
+            if (
+                normalizedLatest.isNotBlank() &&
+                normalizedLatest != normalizedCurrent &&
+                normalizedLatest != normalizedLastNotified
+            ) {
+                showUpdateNotification(context, normalizedLatest)
+                dataStore.edit { it[LastNotifiedVersionKey] = normalizedLatest }
             }
-        } catch (e: Exception) {
-            // Silently fail
+        } catch (_: Exception) {
+            // Silently fail: notifications are optional.
         }
     }
 
@@ -147,7 +158,7 @@ object UpdateNotificationManager {
             context,
             0,
             openAppIntent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
 
         val downloadIntent = Intent(Intent.ACTION_VIEW, Uri.parse(Updater.getLatestDownloadUrl()))
@@ -155,27 +166,27 @@ object UpdateNotificationManager {
             context,
             1,
             downloadIntent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
 
         val notification = NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_velune_concept)
-            .setContentTitle(context.getString(R.string.update_notification_title))
-            .setContentText(context.getString(R.string.update_notification_text, newVersion))
+            .setContentTitle("Capsule update available")
+            .setContentText("Capsule $newVersion is now available")
             .setPriority(NotificationCompat.PRIORITY_DEFAULT)
             .setContentIntent(openAppPendingIntent)
             .setAutoCancel(true)
             .addAction(
                 R.drawable.download,
-                context.getString(R.string.download),
-                downloadPendingIntent
+                "Download",
+                downloadPendingIntent,
             )
             .build()
 
         try {
             NotificationManagerCompat.from(context).notify(NOTIFICATION_ID, notification)
-        } catch (e: SecurityException) {
-            // Missing POST_NOTIFICATIONS permission
+        } catch (_: SecurityException) {
+            // Missing POST_NOTIFICATIONS permission.
         }
     }
 
