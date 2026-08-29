@@ -1,7 +1,11 @@
-
-/* * capsule fork
- * Alternative playback source coordinator.
- * YouTube remains Capsule's canonical playback fallback and download source.
+/*
+ * capsule fork
+ * Isolated alternative-source coordinator.
+ *
+ * YouTube is never resolved through this object. Capsule's original YouTube
+ * pipeline remains the default player path and keeps playing while an
+ * alternative source is checked in the background.
+ *
  * Licensed under GPL-3.0.
  */
 
@@ -25,8 +29,9 @@ import java.util.concurrent.TimeUnit
 import java.util.concurrent.TimeoutException
 
 object AudioSourceManager {
-    private const val DEEZER_RESOLVE_BUDGET_MS = 3_200L
-    private const val TRACK_FAILURE_BACKOFF_MS = 2 * 60 * 1000L
+    private const val DEEZER_BACKGROUND_BUDGET_MS = 4_500L
+    private const val TRACK_FAILURE_BACKOFF_MS = 60_000L
+    const val DIRECT_CACHE_KEY_PREFIX = "capsule:source:"
 
     data class DirectPlayback(
         val mediaUri: String,
@@ -50,6 +55,7 @@ object AudioSourceManager {
         val bitrate: Int? = null,
         val sampleRate: Int? = null,
         val mimeType: String? = null,
+        val resolving: Boolean = false,
     )
 
     data class EndpointHealth(
@@ -62,6 +68,7 @@ object AudioSourceManager {
     data class HealthReport(
         val youtube: EndpointHealth,
         val deezerApi: EndpointHealth,
+        val deezerPreview: EndpointHealth,
         val deezerResolver: EndpointHealth,
         val deezerFullStream: DeezerAudioProvider.FullStreamState,
         val amazonWeb: EndpointHealth,
@@ -80,7 +87,7 @@ object AudioSourceManager {
 
     private val resolverExecutor =
         Executors.newCachedThreadPool { runnable ->
-            Thread(runnable, "CapsuleDeezerResolver").apply { isDaemon = true }
+            Thread(runnable, "CapsuleDeezerBackground").apply { isDaemon = true }
         }
 
     private val healthClient =
@@ -95,26 +102,31 @@ object AudioSourceManager {
     suspend fun preferredSource(context: Context): AudioSource =
         AudioSource.fromPreference(context.dataStore.data.first()[AudioSourceKey])
 
+    /**
+     * Resolves Deezer in the background while the original YouTube stream keeps
+     * playing. A null result means "keep YouTube exactly as it is".
+     */
     suspend fun resolveForPlayback(
         context: Context,
         mediaId: String,
         song: Song?,
         metadata: MediaMetadata? = null,
+        force: Boolean = false,
     ): DirectPlayback? = withContext(Dispatchers.IO) {
         val prefs = context.dataStore.data.first()
         val preferred = AudioSource.fromPreference(prefs[AudioSourceKey])
 
         when (preferred) {
             AudioSource.YOUTUBE -> {
-                setYouTubeState(mediaId, preferred, "YouTube selected")
+                markYouTubeApplied(mediaId, preferred, "YouTube selected")
                 return@withContext null
             }
 
             AudioSource.AMAZON_MUSIC -> {
-                setYouTubeState(
-                    mediaId = mediaId,
-                    preferred = preferred,
-                    detail = "Amazon Music playback backend is not enabled yet; using YouTube",
+                markYouTubeApplied(
+                    mediaId,
+                    preferred,
+                    "Amazon Music playback backend is not enabled; YouTube continues",
                 )
                 return@withContext null
             }
@@ -124,8 +136,8 @@ object AudioSourceManager {
 
         val now = System.currentTimeMillis()
         failureBackoff[mediaId]?.let { failure ->
-            if (failure.untilMs > now) {
-                setYouTubeState(mediaId, preferred, failure.reason)
+            if (!force && failure.untilMs > now) {
+                markYouTubeApplied(mediaId, preferred, failure.reason)
                 return@withContext null
             }
             failureBackoff.remove(mediaId)
@@ -143,9 +155,19 @@ object AudioSourceManager {
             return@withContext fallback(
                 mediaId,
                 preferred,
-                "Track metadata is unavailable for Deezer matching",
+                "Deezer matching metadata is incomplete; YouTube continues",
             )
         }
+
+        _playbackState.value =
+            PlaybackSourceState(
+                mediaId = mediaId,
+                preferred = preferred,
+                actual = AudioSource.YOUTUBE,
+                label = "YouTube",
+                detail = "Checking Deezer in background…",
+                resolving = true,
+            )
 
         val resolverUrl =
             prefs[DeezerResolverUrlKey]
@@ -171,22 +193,23 @@ object AudioSourceManager {
             resolverExecutor.submit<DeezerAudioProvider.Resolution> {
                 DeezerAudioProvider.resolve(query)
             }
+
         val result =
             try {
-                future.get(DEEZER_RESOLVE_BUDGET_MS, TimeUnit.MILLISECONDS)
+                future.get(DEEZER_BACKGROUND_BUDGET_MS, TimeUnit.MILLISECONDS)
             } catch (_: TimeoutException) {
                 future.cancel(true)
                 return@withContext fallback(
                     mediaId,
                     preferred,
-                    "Deezer exceeded ${DEEZER_RESOLVE_BUDGET_MS} ms; using YouTube",
+                    "Deezer check exceeded ${DEEZER_BACKGROUND_BUDGET_MS} ms; YouTube continues",
                 )
             } catch (error: Throwable) {
                 future.cancel(true)
                 return@withContext fallback(
                     mediaId,
                     preferred,
-                    "Deezer resolver failed: ${error.cause?.message ?: error.message ?: error.javaClass.simpleName}; using YouTube",
+                    "Deezer check failed: ${error.cause?.message ?: error.message ?: error.javaClass.simpleName}; YouTube continues",
                 )
             }
 
@@ -197,12 +220,13 @@ object AudioSourceManager {
                     PlaybackSourceState(
                         mediaId = mediaId,
                         preferred = preferred,
-                        actual = AudioSource.DEEZER,
-                        label = stream.label,
-                        detail = "Direct Deezer stream",
+                        actual = AudioSource.YOUTUBE,
+                        label = "YouTube",
+                        detail = "Deezer stream ready · switching…",
                         bitrate = stream.bitrate,
                         sampleRate = stream.sampleRate,
                         mimeType = stream.mimeType,
+                        resolving = false,
                     )
                 DirectPlayback(
                     mediaUri = stream.mediaUri,
@@ -214,7 +238,7 @@ object AudioSourceManager {
                     sampleRate = stream.sampleRate,
                     contentLength = stream.contentLength,
                     expiresAtMs = stream.expiresAtMs,
-                    cacheKey = "capsule:deezer:$mediaId",
+                    cacheKey = "${DIRECT_CACHE_KEY_PREFIX}deezer:$mediaId",
                 )
             }
 
@@ -222,12 +246,44 @@ object AudioSourceManager {
                 fallback(
                     mediaId,
                     preferred,
-                    "Deezer full stream is protected (${result.cipher}); using YouTube",
+                    "Deezer matched, but full stream uses ${result.cipher}; YouTube continues",
                 )
 
             is DeezerAudioProvider.Resolution.Unavailable ->
-                fallback(mediaId, preferred, "${result.reason}; using YouTube")
+                fallback(mediaId, preferred, "${result.reason}; YouTube continues")
         }
+    }
+
+    fun markAlternativeApplied(mediaId: String, playback: DirectPlayback) {
+        _playbackState.value =
+            PlaybackSourceState(
+                mediaId = mediaId,
+                preferred = playback.source,
+                actual = playback.source,
+                label = playback.label,
+                detail = "Playing from ${playback.source.title}",
+                bitrate = playback.bitrate,
+                sampleRate = playback.sampleRate,
+                mimeType = playback.mimeType,
+                resolving = false,
+            )
+        failureBackoff.remove(mediaId)
+    }
+
+    fun markYouTubeApplied(
+        mediaId: String,
+        preferred: AudioSource = _playbackState.value.preferred,
+        detail: String = "Playing from YouTube",
+    ) {
+        _playbackState.value =
+            PlaybackSourceState(
+                mediaId = mediaId,
+                preferred = preferred,
+                actual = AudioSource.YOUTUBE,
+                label = "YouTube",
+                detail = detail,
+                resolving = false,
+            )
     }
 
     fun isAlternativeActive(mediaId: String?): Boolean {
@@ -241,27 +297,15 @@ object AudioSourceManager {
         failureBackoff[mediaId] =
             FailureBackoff(
                 untilMs = System.currentTimeMillis() + TRACK_FAILURE_BACKOFF_MS,
-                reason = "$detail; using YouTube",
+                reason = "$detail; YouTube fallback active",
             )
         DeezerAudioProvider.invalidate(mediaId)
-        val preferred = _playbackState.value.preferred
-        setYouTubeState(mediaId, preferred, "$detail; using YouTube")
+        markYouTubeApplied(mediaId, _playbackState.value.preferred, "$detail; YouTube fallback active")
     }
 
     fun invalidate(mediaId: String) {
         failureBackoff.remove(mediaId)
         DeezerAudioProvider.invalidate(mediaId)
-        if (_playbackState.value.mediaId == mediaId) {
-            _playbackState.value =
-                _playbackState.value.copy(
-                    actual = AudioSource.YOUTUBE,
-                    label = "YouTube",
-                    detail = "Source will be resolved again",
-                    bitrate = null,
-                    sampleRate = null,
-                    mimeType = null,
-                )
-        }
     }
 
     fun onPreferredSourceChanged(source: AudioSource) {
@@ -272,7 +316,13 @@ object AudioSourceManager {
                 preferred = source,
                 actual = AudioSource.YOUTUBE,
                 label = "YouTube",
-                detail = "Waiting for source resolution",
+                detail =
+                    if (source == AudioSource.YOUTUBE) {
+                        "YouTube selected"
+                    } else {
+                        "Waiting for ${source.title} check"
+                    },
+                resolving = false,
             )
     }
 
@@ -291,26 +341,40 @@ object AudioSourceManager {
             youtube = youtube,
             deezerApi =
                 EndpointHealth(
-                    name = "Deezer API",
+                    name = "Deezer search",
                     available = deezer.apiReachable,
                     latencyMs = deezer.apiLatencyMs,
-                    detail = if (deezer.apiReachable) "Search/matching API is reachable" else deezer.detail,
+                    detail = if (deezer.apiReachable) "Track matching API reachable" else deezer.detail,
+                ),
+            deezerPreview =
+                EndpointHealth(
+                    name = "Deezer media edge",
+                    available = deezer.previewReachable,
+                    latencyMs = deezer.previewLatencyMs,
+                    detail =
+                        if (deezer.previewReachable) {
+                            "Preview media bytes reachable — network path to Deezer works"
+                        } else {
+                            "Preview media path unavailable"
+                        },
                 ),
             deezerResolver =
                 EndpointHealth(
-                    name = "Deezer resolver",
+                    name = "Deezer full resolver",
                     available = deezer.resolverReachable,
                     latencyMs = deezer.resolverLatencyMs,
                     detail = deezer.detail,
                 ),
             deezerFullStream = deezer.fullStreamState,
-            amazonWeb = amazon.copy(
-                detail = if (amazon.available) {
-                    "Web endpoint reachable · playback backend not enabled"
-                } else {
-                    amazon.detail
-                },
-            ),
+            amazonWeb =
+                amazon.copy(
+                    detail =
+                        if (amazon.available) {
+                            "Web endpoint reachable · playback backend not enabled"
+                        } else {
+                            amazon.detail
+                        },
+                ),
         )
     }
 
@@ -354,22 +418,7 @@ object AudioSourceManager {
                 untilMs = System.currentTimeMillis() + TRACK_FAILURE_BACKOFF_MS,
                 reason = reason,
             )
-        setYouTubeState(mediaId, preferred, reason)
+        markYouTubeApplied(mediaId, preferred, reason)
         return null
-    }
-
-    private fun setYouTubeState(
-        mediaId: String,
-        preferred: AudioSource,
-        detail: String,
-    ) {
-        _playbackState.value =
-            PlaybackSourceState(
-                mediaId = mediaId,
-                preferred = preferred,
-                actual = AudioSource.YOUTUBE,
-                label = "YouTube",
-                detail = detail,
-            )
     }
 }
