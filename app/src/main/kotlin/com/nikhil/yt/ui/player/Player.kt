@@ -584,15 +584,22 @@ fun BottomSheetPlayer(
             )
         }
 
+        /*
+         * Soft Capsule Player <-> Lyrics transition.
+         *
+         * Keep movement almost imperceptible: the screen should feel as if
+         * the next surface gently replaces the current one rather than
+         * navigating to another page.
+         */
         val capsuleSurfaceEasing =
             remember {
-                CubicBezierEasing(0.35f, 0f, 0.20f, 1f)
+                CubicBezierEasing(0.22f, 0.0f, 0.16f, 1.0f)
             }
-        val capsuleEnterDuration = 330
-        val capsuleExitDuration = 300
-        val capsuleIncomingDivisor = 28
-        val capsuleOutgoingDivisor = 36
-        val capsuleTransitionScale = 0.994f
+        val capsuleEnterDuration = 440
+        val capsuleExitDuration = 380
+        val capsuleIncomingDivisor = 84
+        val capsuleOutgoingDivisor = 104
+        val capsuleTransitionScale = 0.9985f
 
         val capsuleContent: @Composable (MediaMetadata) -> Unit = { metadata ->
             AnimatedContent(
