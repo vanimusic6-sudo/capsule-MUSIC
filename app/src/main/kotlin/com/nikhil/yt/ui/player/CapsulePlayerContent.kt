@@ -1,4 +1,4 @@
- /** Capsule MUSIC
+/** Capsule MUSIC
  *
  * Capsule full-player skin ported from the original Capsule repository.
  * Visual structure, dimensions and gestures are kept from the donor.
@@ -872,7 +872,19 @@ fun CapsulePlayerContent(
 
             Spacer(
                 Modifier.height(
-                    16.dp,
+                    6.dp,
+                ),
+            )
+
+            AudioSourceButton(
+                playerConnection = playerConnection,
+                textColor = textColor,
+                modifier = Modifier.fillMaxWidth(),
+            )
+
+            Spacer(
+                Modifier.height(
+                    10.dp,
                 ),
             )
 
