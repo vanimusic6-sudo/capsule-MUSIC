@@ -28,7 +28,6 @@ import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBars
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -88,6 +87,9 @@ private val CapsuleLyricsPanel =
 private val CapsuleLyricsPanelShape =
     RoundedCornerShape(24.dp)
 
+private val CapsuleVolumeShape =
+    RoundedCornerShape(18.dp)
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun CapsuleLyricsContent(
@@ -104,6 +106,9 @@ fun CapsuleLyricsContent(
 ) {
     val playerConnection =
         LocalPlayerConnection.current ?: return
+
+    val player =
+        playerConnection.player
 
     val playbackState by
         playerConnection.playbackState.collectAsState()
@@ -128,21 +133,48 @@ fun CapsuleLyricsContent(
             Player.STATE_BUFFERING ||
             sliderPosition != null
 
+    /*
+     * LyricsScreen is created only when the transition begins. Its own
+     * position/duration state used to start at 0 / TIME_UNSET for one frame,
+     * which made the progress line flash. Use the live ExoPlayer values as
+     * the first-frame fallback so the line appears at the correct position
+     * immediately.
+     */
+    val liveDuration =
+        player.duration
+
+    val durationInputValid =
+        durationMs > 0L &&
+            durationMs != C.TIME_UNSET
+
     val safeDuration =
-        durationMs
-            .takeIf {
-                it > 0L &&
-                    it != C.TIME_UNSET
-            }
-            ?: 0L
+        when {
+            durationInputValid ->
+                durationMs
+
+            liveDuration > 0L &&
+                liveDuration != C.TIME_UNSET ->
+                liveDuration
+
+            else ->
+                0L
+        }
 
     val displayPosition =
-        (sliderPosition ?: positionMs)
-            .coerceAtLeast(0L)
+        (
+            sliderPosition
+                ?: if (durationInputValid) {
+                    positionMs
+                } else {
+                    player.currentPosition
+                }
+        ).coerceAtLeast(0L)
 
     val remaining =
-        (safeDuration - displayPosition)
-            .coerceAtLeast(0L)
+        (
+            safeDuration -
+                displayPosition
+        ).coerceAtLeast(0L)
 
     Column(
         modifier =
@@ -163,9 +195,6 @@ fun CapsuleLyricsContent(
                     vertical = 8.dp,
                 ),
     ) {
-        /*
-         * Capsule header.
-         */
         Box(
             modifier =
                 Modifier
@@ -273,12 +302,6 @@ fun CapsuleLyricsContent(
             }
         }
 
-        /*
-         * IMPORTANT:
-         *
-         * We use Velune's own Lyrics / LyricsV2 composables.
-         * The backend remains in LyricsScreen and PlayerConnection.
-         */
         Box(
             modifier =
                 Modifier
@@ -304,9 +327,6 @@ fun CapsuleLyricsContent(
             }
         }
 
-        /*
-         * Minimal Capsule progress line.
-         */
         Slider(
             value =
                 displayPosition
@@ -400,9 +420,6 @@ fun CapsuleLyricsContent(
             Modifier.height(12.dp),
         )
 
-        /*
-         * Capsule playback panel.
-         */
         Column(
             modifier =
                 Modifier
@@ -499,77 +516,152 @@ fun CapsuleLyricsContent(
             )
 
             /*
-             * Volume.
+             * Compact Capsule volume control.
+             * The old large Material slider is replaced by a smaller
+             * low-profile capsule with a 12dp thumb.
              */
-            Row(
+            Box(
                 modifier =
                     Modifier
                         .fillMaxWidth()
-                        .height(56.dp)
+                        .height(58.dp)
                         .padding(
-                            horizontal = 14.dp,
-                        ),
-                verticalAlignment =
-                    Alignment.CenterVertically,
-            ) {
-                Icon(
-                    painter =
-                        painterResource(
-                            R.drawable.volume_off,
-                        ),
-                    contentDescription = null,
-                    tint =
-                        CapsuleLyricsSecondary,
-                    modifier =
-                        Modifier.size(20.dp),
-                )
-
-                Slider(
-                    value =
-                        volumeState.value
-                            .coerceIn(
-                                0f,
-                                1f,
+                            horizontal = 12.dp,
+                            vertical = 7.dp,
+                        )
+                        .clip(
+                            CapsuleVolumeShape,
+                        )
+                        .border(
+                            1.dp,
+                            CapsuleLyricsOutline.copy(
+                                alpha = 0.72f,
                             ),
-                    onValueChange = {
-                        playerConnection
-                            .service
-                            .playerVolume
-                            .value =
-                            it
-                    },
-                    valueRange =
-                        0f..1f,
-                    colors =
-                        SliderDefaults.colors(
-                            thumbColor =
-                                CapsuleLyricsText,
-                            activeTrackColor =
-                                CapsuleLyricsText,
-                            inactiveTrackColor =
-                                CapsuleLyricsText.copy(
-                                    alpha = 0.18f,
-                                ),
+                            CapsuleVolumeShape,
+                        )
+                        .background(
+                            Color.Black.copy(
+                                alpha = 0.10f,
+                            ),
                         ),
+            ) {
+                Row(
                     modifier =
                         Modifier
-                            .weight(1f)
+                            .fillMaxSize()
                             .padding(
                                 horizontal = 10.dp,
                             ),
-                )
+                    verticalAlignment =
+                        Alignment.CenterVertically,
+                ) {
+                    Box(
+                        modifier =
+                            Modifier
+                                .size(30.dp)
+                                .clip(CircleShape)
+                                .clickable {
+                                    playerConnection
+                                        .service
+                                        .playerVolume
+                                        .value =
+                                        0f
+                                },
+                        contentAlignment =
+                            Alignment.Center,
+                    ) {
+                        Icon(
+                            painter =
+                                painterResource(
+                                    R.drawable.volume_off,
+                                ),
+                            contentDescription = null,
+                            tint =
+                                CapsuleLyricsSecondary,
+                            modifier =
+                                Modifier.size(18.dp),
+                        )
+                    }
 
-                Icon(
-                    painter =
-                        painterResource(
-                            R.drawable.volume_up,
-                        ),
-                    contentDescription = null,
-                    tint =
-                        CapsuleLyricsSecondary,
-                    modifier =
-                        Modifier.size(20.dp),
-                )
+                    Slider(
+                        value =
+                            volumeState.value
+                                .coerceIn(
+                                    0f,
+                                    1f,
+                                ),
+                        onValueChange = {
+                            playerConnection
+                                .service
+                                .playerVolume
+                                .value =
+                                it
+                        },
+                        valueRange =
+                            0f..1f,
+                        thumb = {
+                            Box(
+                                modifier =
+                                    Modifier
+                                        .size(12.dp)
+                                        .clip(
+                                            CircleShape,
+                                        )
+                                        .background(
+                                            CapsuleLyricsText,
+                                        )
+                                        .border(
+                                            1.dp,
+                                            CapsuleLyricsBackground,
+                                            CircleShape,
+                                        ),
+                            )
+                        },
+                        colors =
+                            SliderDefaults.colors(
+                                activeTrackColor =
+                                    CapsuleLyricsText,
+                                inactiveTrackColor =
+                                    CapsuleLyricsText.copy(
+                                        alpha = 0.16f,
+                                    ),
+                            ),
+                        modifier =
+                            Modifier
+                                .weight(1f)
+                                .padding(
+                                    horizontal = 6.dp,
+                                ),
+                    )
+
+                    Box(
+                        modifier =
+                            Modifier
+                                .size(30.dp)
+                                .clip(CircleShape)
+                                .clickable {
+                                    playerConnection
+                                        .service
+                                        .playerVolume
+                                        .value =
+                                        1f
+                                },
+                        contentAlignment =
+                            Alignment.Center,
+                    ) {
+                        Icon(
+                            painter =
+                                painterResource(
+                                    R.drawable.volume_up,
+                                ),
+                            contentDescription = null,
+                            tint =
+                                CapsuleLyricsSecondary,
+                            modifier =
+                                Modifier.size(18.dp),
+                        )
+                    }
+                }
             }
         }
 
