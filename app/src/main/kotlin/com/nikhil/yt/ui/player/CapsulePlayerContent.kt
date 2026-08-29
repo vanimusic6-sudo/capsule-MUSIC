@@ -113,6 +113,7 @@ fun CapsulePlayerContent(
     onToggleLike: () -> Unit,
     onExpandQueue: () -> Unit,
     onArtworkClick: () -> Unit,
+    onArtistSelected: (MediaMetadata.Artist) -> Unit,
     onMenuClick: () -> Unit,
     context: Context,
     bottomPadding: Dp,
@@ -212,6 +213,30 @@ fun CapsulePlayerContent(
             )
         }
 
+    val navigableArtists =
+        remember(mediaMetadata.artists) {
+            mediaMetadata.artists
+                .filter {
+                    !it.id.isNullOrBlank()
+                }
+                .distinctBy {
+                    it.id
+                }
+        }
+
+    var showArtistPicker by
+        remember {
+            mutableStateOf(false)
+        }
+
+    fun handleArtistClick() {
+        when (navigableArtists.size) {
+            0 -> Unit
+            1 -> onArtistSelected(navigableArtists.first())
+            else -> showArtistPicker = true
+        }
+    }
+
     var showSleepTimerDialog by
         remember {
             mutableStateOf(false)
@@ -235,6 +260,63 @@ fun CapsulePlayerContent(
                 .sleepTimer
                 .isActive
         }
+
+    if (showArtistPicker) {
+        AlertDialog(
+            onDismissRequest = {
+                showArtistPicker = false
+            },
+            title = {
+                Text(
+                    text = "Choose artist",
+                    color = textColor,
+                )
+            },
+            text = {
+                Column(
+                    verticalArrangement =
+                        Arrangement.spacedBy(4.dp),
+                ) {
+                    navigableArtists.forEach { artist ->
+                        Box(
+                            modifier =
+                                Modifier
+                                    .fillMaxWidth()
+                                    .clip(
+                                        RoundedCornerShape(14.dp),
+                                    )
+                                    .clickable {
+                                        showArtistPicker = false
+                                        onArtistSelected(artist)
+                                    }
+                                    .padding(
+                                        horizontal = 14.dp,
+                                        vertical = 12.dp,
+                                    ),
+                        ) {
+                            Text(
+                                text = artist.name,
+                                color = textColor,
+                                fontSize = 16.sp,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
+                    }
+                }
+            },
+            confirmButton = {},
+            dismissButton = {
+                TextButton(
+                    onClick = {
+                        showArtistPicker = false
+                    },
+                ) {
+                    Text("Cancel")
+                }
+            },
+        )
+    }
 
     if (showSleepTimerDialog) {
         AlertDialog(
@@ -462,6 +544,14 @@ fun CapsulePlayerContent(
                     Modifier
                         .fillMaxWidth()
                         .aspectRatio(1f)
+                        /*
+                         * Lift only the artwork. NOW PLAYING / duration and the
+                         * metadata/buttons stay fixed, creating clean breathing
+                         * room above Share/Favorite and the artist line.
+                         */
+                        .offset(
+                            y = (-10).dp,
+                        )
                         .clip(
                             CapsuleArtworkShape,
                         )
@@ -628,10 +718,23 @@ fun CapsulePlayerContent(
                             overflow =
                                 TextOverflow.Ellipsis,
                             modifier =
-                                Modifier.weight(
-                                    1f,
-                                    fill = false,
-                                ),
+                                Modifier
+                                    .weight(
+                                        1f,
+                                        fill = false,
+                                    )
+                                    .clip(
+                                        RoundedCornerShape(8.dp),
+                                    )
+                                    .clickable(
+                                        enabled =
+                                            navigableArtists.isNotEmpty(),
+                                    ) {
+                                        handleArtistClick()
+                                    }
+                                    .padding(
+                                        vertical = 2.dp,
+                                    ),
                         )
                     }
                 }
