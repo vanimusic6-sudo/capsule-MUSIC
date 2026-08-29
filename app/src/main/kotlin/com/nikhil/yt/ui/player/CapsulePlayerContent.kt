@@ -1,5 +1,5 @@
-/**
- * Capsule MUSIC
+
+ /** Capsule MUSIC
  *
  * Capsule full-player skin ported from the original Capsule repository.
  * Visual structure, dimensions and gestures are kept from the donor.
@@ -87,6 +87,7 @@ import com.nikhil.yt.constants.CropThumbnailToSquareKey
 import com.nikhil.yt.constants.HidePlayerThumbnailKey
 import com.nikhil.yt.extensions.togglePlayPause
 import com.nikhil.yt.extensions.toggleRepeatMode
+import com.nikhil.yt.innertube.toHighResThumbnail
 import com.nikhil.yt.models.MediaMetadata
 import com.nikhil.yt.playback.PlayerConnection
 import com.nikhil.yt.together.TogetherRole
@@ -600,7 +601,8 @@ fun CapsulePlayerContent(
                     AsyncImage(
                         model =
                             mediaMetadata
-                                .thumbnailUrl,
+                                .thumbnailUrl
+                                ?.toHighResThumbnail(),
                         contentDescription =
                             mediaMetadata.title,
                         contentScale =
