@@ -15,6 +15,8 @@ import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
@@ -583,107 +585,176 @@ fun BottomSheetPlayer(
         }
 
         /*
-         * Soft Capsule Player <-> Lyrics transition.
+         * Original Capsule Player <-> Lyrics transition profile.
          *
-         * Keep movement almost imperceptible: the screen should feel as if
-         * the next surface gently replaces the current one rather than
-         * navigating to another page.
-         */
-        /*
-         * Capsule Player <-> Lyrics: sequential soft swap.
-         *
-         * The old screen fully leaves first. The incoming screen starts only
-         * after that exit phase finishes, so Player and Lyrics are never
-         * visibly stacked on top of one another.
+         * Copied from the donor Capsule implementation:
+         * 330 ms enter / 300 ms exit,
+         * CubicBezierEasing(0.35, 0.0, 0.20, 1.0),
+         * very small 0.994 scale and short opposing vertical movement.
          */
         val capsuleSurfaceEasing =
             remember {
-                CubicBezierEasing(0.20f, 0.0f, 0.14f, 1.0f)
+                CubicBezierEasing(0.35f, 0f, 0.20f, 1f)
             }
-        val capsuleExitPhase = 170
-        val capsuleEnterPhase = 340
-        val capsuleEnterDelay = capsuleExitPhase
-        val capsuleSlideDivisor = 150
+        val capsuleEnterDuration = 330
+        val capsuleExitDuration = 300
+        val capsuleIncomingDivisor = 28
+        val capsuleOutgoingDivisor = 36
+        val capsuleTransitionScale = 0.994f
 
         val capsuleContent: @Composable (MediaMetadata) -> Unit = { metadata ->
             AnimatedContent(
                 targetState = showInlineLyrics,
                 transitionSpec = {
-                    val movingToLyrics =
-                        targetState
-
-                    val enterDirection =
-                        if (movingToLyrics) {
-                            1
-                        } else {
-                            -1
-                        }
-
-                    val exitDirection =
-                        -enterDirection
-
-                    (
-                        fadeIn(
-                            animationSpec =
-                                tween(
-                                    durationMillis =
-                                        capsuleEnterPhase,
-                                    delayMillis =
-                                        capsuleEnterDelay,
-                                    easing =
-                                        capsuleSurfaceEasing,
-                                ),
-                        ) +
-                            slideInVertically(
+                    if (targetState) {
+                        (
+                            fadeIn(
                                 animationSpec =
                                     tween(
                                         durationMillis =
-                                            capsuleEnterPhase,
-                                        delayMillis =
-                                            capsuleEnterDelay,
+                                            capsuleEnterDuration,
                                         easing =
                                             capsuleSurfaceEasing,
                                     ),
-                                initialOffsetY = {
+                            ) +
+                                slideInVertically(
+                                    animationSpec =
+                                        tween(
+                                            durationMillis =
+                                                capsuleEnterDuration,
+                                            easing =
+                                                capsuleSurfaceEasing,
+                                        ),
+                                    initialOffsetY = {
                                         fullHeight,
                                     ->
-                                    (
                                         fullHeight /
-                                            capsuleSlideDivisor
-                                    ) * enterDirection
-                                },
-                            )
-                    ).togetherWith(
-                        fadeOut(
-                            animationSpec =
-                                tween(
-                                    durationMillis =
-                                        capsuleExitPhase,
-                                    easing =
-                                        capsuleSurfaceEasing,
-                                ),
-                        ) +
-                            slideOutVertically(
+                                            capsuleIncomingDivisor
+                                    },
+                                ) +
+                                scaleIn(
+                                    animationSpec =
+                                        tween(
+                                            durationMillis =
+                                                capsuleEnterDuration,
+                                            easing =
+                                                capsuleSurfaceEasing,
+                                        ),
+                                    initialScale =
+                                        capsuleTransitionScale,
+                                )
+                        ).togetherWith(
+                            fadeOut(
                                 animationSpec =
                                     tween(
                                         durationMillis =
-                                            capsuleExitPhase,
+                                            capsuleExitDuration,
                                         easing =
                                             capsuleSurfaceEasing,
                                     ),
-                                targetOffsetY = {
+                            ) +
+                                slideOutVertically(
+                                    animationSpec =
+                                        tween(
+                                            durationMillis =
+                                                capsuleExitDuration,
+                                            easing =
+                                                capsuleSurfaceEasing,
+                                        ),
+                                    targetOffsetY = {
                                         fullHeight,
                                     ->
-                                    (
+                                        -fullHeight /
+                                            capsuleOutgoingDivisor
+                                    },
+                                ) +
+                                scaleOut(
+                                    animationSpec =
+                                        tween(
+                                            durationMillis =
+                                                capsuleExitDuration,
+                                            easing =
+                                                capsuleSurfaceEasing,
+                                        ),
+                                    targetScale =
+                                        capsuleTransitionScale,
+                                ),
+                        )
+                    } else {
+                        (
+                            fadeIn(
+                                animationSpec =
+                                    tween(
+                                        durationMillis =
+                                            capsuleEnterDuration,
+                                        easing =
+                                            capsuleSurfaceEasing,
+                                    ),
+                            ) +
+                                slideInVertically(
+                                    animationSpec =
+                                        tween(
+                                            durationMillis =
+                                                capsuleEnterDuration,
+                                            easing =
+                                                capsuleSurfaceEasing,
+                                        ),
+                                    initialOffsetY = {
+                                        fullHeight,
+                                    ->
+                                        -fullHeight /
+                                            capsuleOutgoingDivisor
+                                    },
+                                ) +
+                                scaleIn(
+                                    animationSpec =
+                                        tween(
+                                            durationMillis =
+                                                capsuleEnterDuration,
+                                            easing =
+                                                capsuleSurfaceEasing,
+                                        ),
+                                    initialScale =
+                                        capsuleTransitionScale,
+                                )
+                        ).togetherWith(
+                            fadeOut(
+                                animationSpec =
+                                    tween(
+                                        durationMillis =
+                                            capsuleExitDuration,
+                                        easing =
+                                            capsuleSurfaceEasing,
+                                    ),
+                            ) +
+                                slideOutVertically(
+                                    animationSpec =
+                                        tween(
+                                            durationMillis =
+                                                capsuleExitDuration,
+                                            easing =
+                                                capsuleSurfaceEasing,
+                                        ),
+                                    targetOffsetY = {
+                                        fullHeight,
+                                    ->
                                         fullHeight /
-                                            (
-                                                capsuleSlideDivisor *
-                                                    2
-                                            )
-                                    ) * exitDirection
-                                },
-                            ),
-                    )
+                                            capsuleIncomingDivisor
+                                    },
+                                ) +
+                                scaleOut(
+                                    animationSpec =
+                                        tween(
+                                            durationMillis =
+                                                capsuleExitDuration,
+                                            easing =
+                                                capsuleSurfaceEasing,
+                                        ),
+                                    targetScale =
+                                        capsuleTransitionScale,
+                                ),
+                        )
+                    }
                 },
                 label = "CapsulePlayerLyricsTransition",
             ) { showLyrics ->
