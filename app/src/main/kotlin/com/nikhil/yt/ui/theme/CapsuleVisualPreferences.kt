@@ -9,26 +9,25 @@ package com.nikhil.yt.ui.theme
 import androidx.datastore.preferences.core.booleanPreferencesKey
 
 /**
- * Enables the standalone Capsule full-player skin.
+ * Capsule Mini Player visual skin.
  *
- * Playback implementation is not changed by this setting.
+ * Swipe/navigation/playback behaviour remains Velune-owned.
+ */
+val CapsuleMiniPlayerEnabledKey =
+    booleanPreferencesKey("capsuleMiniPlayerEnabled")
+
+/**
+ * Capsule full-player visual skin.
+ *
+ * PlayerConnection and playback service remain Velune-owned.
  */
 val CapsulePlayerEnabledKey =
     booleanPreferencesKey("capsulePlayerEnabled")
 
 /**
- * Enables the Capsule visual shell around lyrics.
+ * Capsule lyrics visual shell.
  *
- * Lyrics providers, fetching and synchronization remain Velune-owned.
+ * Lyrics fetching, providers, database and sync remain Velune-owned.
  */
 val CapsuleLyricsEnabledKey =
     booleanPreferencesKey("capsuleLyricsEnabled")
-
-/**
- * Convenience preference for enabling the complete Capsule visual language.
- *
- * This is only a UI preference. It must never be used by playback,
- * networking, Innertube or cache code.
- */
-val CapsuleFullImmersionEnabledKey =
-    booleanPreferencesKey("capsuleFullImmersionEnabled")
