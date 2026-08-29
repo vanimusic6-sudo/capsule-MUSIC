@@ -112,6 +112,7 @@ fun CapsulePlayerContent(
     playerConnection: PlayerConnection,
     onToggleLike: () -> Unit,
     onExpandQueue: () -> Unit,
+    onArtworkClick: () -> Unit,
     onMenuClick: () -> Unit,
     context: Context,
     bottomPadding: Dp,
@@ -390,7 +391,7 @@ fun CapsulePlayerContent(
                         start = 18.dp,
                         end = 18.dp,
                         top = 10.dp,
-                        bottom = 10.dp,
+                        bottom = 14.dp,
                     ),
             horizontalArrangement =
                 Arrangement.SpaceBetween,
@@ -451,9 +452,6 @@ fun CapsulePlayerContent(
                     Modifier
                         .fillMaxWidth()
                         .aspectRatio(1f)
-                        .offset(
-                            y = (-8).dp,
-                        )
                         .clip(
                             CapsuleArtworkShape,
                         )
@@ -467,6 +465,10 @@ fun CapsulePlayerContent(
                                 alpha =
                                     0.045f,
                             ),
+                        )
+                        .clickable(
+                            onClick =
+                                onArtworkClick,
                         ),
                 contentAlignment =
                     Alignment.Center,
