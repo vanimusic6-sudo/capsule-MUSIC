@@ -71,6 +71,15 @@ jobs:
             -alias "$KEY_ALIAS" >/dev/null
           echo "Release keystore and alias are valid"
 
+      - name: Prepare AGP locale metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ ! -f app/src/main/res/resources.properties ]; then
+            printf '%s\n' 'unqualifiedResLocale=en-US' > app/src/main/res/resources.properties
+          fi
+          cat app/src/main/res/resources.properties
+
       - name: Show build tool versions
         run: |
           java -version
@@ -124,7 +133,9 @@ jobs:
           if-no-files-found: ignore
           retention-days: 14
 
-      - name: Remove restored keystore
+      - name: Remove restored secrets and CI-only locale metadata
         if: always()
         shell: bash
-        run: rm -f app/keystore/release.keystore
+        run: |
+          rm -f app/keystore/release.keystore
+          git checkout -- app/src/main/res/resources.properties 2>/dev/null || rm -f app/src/main/res/resources.properties
