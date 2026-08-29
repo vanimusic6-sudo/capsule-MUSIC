@@ -1,5 +1,5 @@
-/**
- * Velune / Capsule MUSIC
+
+/* * Velune / Capsule MUSIC
  * Capsule Lyrics visual layer
  * Licensed under GPL-3.0
  */
@@ -14,6 +14,7 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -34,8 +35,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
-import androidx.compose.material3.Slider
-import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -48,12 +47,16 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotate
+import androidx.compose.ui.input.pointer.awaitFirstDown
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.media3.common.C
@@ -87,8 +90,6 @@ private val CapsuleLyricsPanel =
 private val CapsuleLyricsPanelShape =
     RoundedCornerShape(24.dp)
 
-private val CapsuleVolumeShape =
-    RoundedCornerShape(18.dp)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -327,21 +328,23 @@ fun CapsuleLyricsContent(
             }
         }
 
-        Slider(
+        CapsuleThinSlider(
             value =
                 displayPosition
-                    .toFloat()
-                    .coerceIn(
-                        0f,
-                        safeDuration
-                            .coerceAtLeast(1L)
-                            .toFloat(),
-                    ),
+                    .toFloat(),
             valueRange =
                 0f..
                     safeDuration
                         .coerceAtLeast(1L)
                         .toFloat(),
+            enabled =
+                safeDuration > 0L,
+            activeColor =
+                CapsuleLyricsText,
+            inactiveColor =
+                CapsuleLyricsText.copy(
+                    alpha = 0.18f,
+                ),
             onValueChange = {
                 onSeekPreview(
                     it.toLong(),
@@ -349,34 +352,14 @@ fun CapsuleLyricsContent(
             },
             onValueChangeFinished =
                 onSeekFinished,
-            enabled =
-                safeDuration > 0L,
-            thumb = {
-                Spacer(
-                    Modifier.size(0.dp),
-                )
-            },
-            colors =
-                SliderDefaults.colors(
-                    activeTrackColor =
-                        CapsuleLyricsText,
-                    inactiveTrackColor =
-                        CapsuleLyricsText.copy(
-                            alpha = 0.20f,
-                        ),
-                    disabledActiveTrackColor =
-                        CapsuleLyricsText.copy(
-                            alpha = 0.32f,
-                        ),
-                    disabledInactiveTrackColor =
-                        CapsuleLyricsText.copy(
-                            alpha = 0.10f,
-                        ),
-                ),
+            trackHeight =
+                3.5.dp,
+            thumbRadius =
+                3.5.dp,
             modifier =
                 Modifier
                     .fillMaxWidth()
-                    .height(28.dp),
+                    .height(24.dp),
         )
 
         Row(
@@ -516,157 +499,309 @@ fun CapsuleLyricsContent(
             )
 
             /*
-             * Compact Capsule volume control.
-             * The old large Material slider is replaced by a smaller
-             * low-profile capsule with a 12dp thumb.
+             * Simple volume row: no nested card, no extra border.
+             * Just two quiet icons and a thin Capsule line.
              */
-            Box(
+            Row(
                 modifier =
                     Modifier
                         .fillMaxWidth()
-                        .height(58.dp)
+                        .height(54.dp)
                         .padding(
-                            horizontal = 12.dp,
-                            vertical = 7.dp,
-                        )
-                        .clip(
-                            CapsuleVolumeShape,
-                        )
-                        .border(
-                            1.dp,
-                            CapsuleLyricsOutline.copy(
-                                alpha = 0.72f,
-                            ),
-                            CapsuleVolumeShape,
-                        )
-                        .background(
-                            Color.Black.copy(
-                                alpha = 0.10f,
-                            ),
+                            horizontal = 14.dp,
                         ),
+                verticalAlignment =
+                    Alignment.CenterVertically,
             ) {
-                Row(
+                Icon(
+                    painter =
+                        painterResource(
+                            R.drawable.volume_off,
+                        ),
+                    contentDescription = null,
+                    tint =
+                        CapsuleLyricsSecondary,
                     modifier =
                         Modifier
-                            .fillMaxSize()
+                            .size(18.dp)
+                            .clickable {
+                                playerConnection
+                                    .service
+                                    .playerVolume
+                                    .value =
+                                    0f
+                            },
+                )
+
+                CapsuleThinSlider(
+                    value =
+                        volumeState.value
+                            .coerceIn(
+                                0f,
+                                1f,
+                            ),
+                    valueRange =
+                        0f..1f,
+                    enabled =
+                        true,
+                    activeColor =
+                        CapsuleLyricsText.copy(
+                            alpha = 0.92f,
+                        ),
+                    inactiveColor =
+                        CapsuleLyricsText.copy(
+                            alpha = 0.16f,
+                        ),
+                    onValueChange = {
+                        playerConnection
+                            .service
+                            .playerVolume
+                            .value =
+                            it
+                    },
+                    onValueChangeFinished = {},
+                    trackHeight =
+                        3.dp,
+                    thumbRadius =
+                        3.25.dp,
+                    modifier =
+                        Modifier
+                            .weight(1f)
+                            .height(22.dp)
                             .padding(
-                                horizontal = 10.dp,
+                                horizontal = 12.dp,
                             ),
-                    verticalAlignment =
-                        Alignment.CenterVertically,
-                ) {
-                    Box(
-                        modifier =
-                            Modifier
-                                .size(30.dp)
-                                .clip(CircleShape)
-                                .clickable {
-                                    playerConnection
-                                        .service
-                                        .playerVolume
-                                        .value =
-                                        0f
-                                },
-                        contentAlignment =
-                            Alignment.Center,
-                    ) {
-                        Icon(
-                            painter =
-                                painterResource(
-                                    R.drawable.volume_off,
-                                ),
-                            contentDescription = null,
-                            tint =
-                                CapsuleLyricsSecondary,
-                            modifier =
-                                Modifier.size(18.dp),
-                        )
-                    }
+                )
 
-                    Slider(
-                        value =
-                            volumeState.value
-                                .coerceIn(
-                                    0f,
-                                    1f,
-                                ),
-                        onValueChange = {
-                            playerConnection
-                                .service
-                                .playerVolume
-                                .value =
-                                it
-                        },
-                        valueRange =
-                            0f..1f,
-                        thumb = {
-                            Box(
-                                modifier =
-                                    Modifier
-                                        .size(12.dp)
-                                        .clip(
-                                            CircleShape,
-                                        )
-                                        .background(
-                                            CapsuleLyricsText,
-                                        )
-                                        .border(
-                                            1.dp,
-                                            CapsuleLyricsBackground,
-                                            CircleShape,
-                                        ),
-                            )
-                        },
-                        colors =
-                            SliderDefaults.colors(
-                                activeTrackColor =
-                                    CapsuleLyricsText,
-                                inactiveTrackColor =
-                                    CapsuleLyricsText.copy(
-                                        alpha = 0.16f,
-                                    ),
-                            ),
-                        modifier =
-                            Modifier
-                                .weight(1f)
-                                .padding(
-                                    horizontal = 6.dp,
-                                ),
-                    )
-
-                    Box(
-                        modifier =
-                            Modifier
-                                .size(30.dp)
-                                .clip(CircleShape)
-                                .clickable {
-                                    playerConnection
-                                        .service
-                                        .playerVolume
-                                        .value =
-                                        1f
-                                },
-                        contentAlignment =
-                            Alignment.Center,
-                    ) {
-                        Icon(
-                            painter =
-                                painterResource(
-                                    R.drawable.volume_up,
-                                ),
-                            contentDescription = null,
-                            tint =
-                                CapsuleLyricsSecondary,
-                            modifier =
-                                Modifier.size(18.dp),
-                        )
-                    }
-                }
+                Icon(
+                    painter =
+                        painterResource(
+                            R.drawable.volume_up,
+                        ),
+                    contentDescription = null,
+                    tint =
+                        CapsuleLyricsSecondary,
+                    modifier =
+                        Modifier
+                            .size(18.dp)
+                            .clickable {
+                                playerConnection
+                                    .service
+                                    .playerVolume
+                                    .value =
+                                    1f
+                            },
+                )
             }
         }
 
         Spacer(
             Modifier.height(10.dp),
+        )
+    }
+}
+
+
+@Composable
+private fun CapsuleThinSlider(
+    value: Float,
+    valueRange: ClosedFloatingPointRange<Float>,
+    enabled: Boolean,
+    activeColor: Color,
+    inactiveColor: Color,
+    onValueChange: (Float) -> Unit,
+    onValueChangeFinished: () -> Unit,
+    modifier: Modifier = Modifier,
+    trackHeight: Dp = 4.dp,
+    thumbRadius: Dp = 4.dp,
+) {
+    val rangeSize =
+        (
+            valueRange.endInclusive -
+                valueRange.start
+        ).coerceAtLeast(0.0001f)
+
+    val fraction =
+        (
+            (value - valueRange.start) /
+                rangeSize
+        ).coerceIn(0f, 1f)
+
+    Canvas(
+        modifier =
+            modifier
+                .pointerInput(
+                    enabled,
+                    valueRange.start,
+                    valueRange.endInclusive,
+                ) {
+                    if (!enabled) {
+                        return@pointerInput
+                    }
+
+                    val widthPx =
+                        size.width
+                            .toFloat()
+                            .coerceAtLeast(1f)
+
+                    val insetPx =
+                        thumbRadius.toPx()
+
+                    val usableWidth =
+                        (
+                            widthPx -
+                                insetPx * 2f
+                        ).coerceAtLeast(1f)
+
+                    fun updateFromX(
+                        x: Float,
+                    ) {
+                        val newFraction =
+                            (
+                                (x - insetPx) /
+                                    usableWidth
+                            ).coerceIn(0f, 1f)
+
+                        onValueChange(
+                            valueRange.start +
+                                rangeSize *
+                                newFraction,
+                        )
+                    }
+
+                    awaitEachGesture {
+                        val down =
+                            awaitFirstDown(
+                                requireUnconsumed =
+                                    false,
+                            )
+
+                        updateFromX(
+                            down.position.x,
+                        )
+
+                        down.consume()
+
+                        while (true) {
+                            val event =
+                                awaitPointerEvent()
+
+                            val change =
+                                event.changes
+                                    .firstOrNull {
+                                        it.id ==
+                                            down.id
+                                    }
+                                    ?: break
+
+                            if (!change.pressed) {
+                                onValueChangeFinished()
+                                break
+                            }
+
+                            updateFromX(
+                                change.position.x,
+                            )
+
+                            change.consume()
+                        }
+                    }
+                },
+    ) {
+        val centerY =
+            size.height / 2f
+
+        val radiusPx =
+            thumbRadius.toPx()
+
+        val startX =
+            radiusPx
+
+        val endX =
+            (
+                size.width -
+                    radiusPx
+            ).coerceAtLeast(startX)
+
+        val activeEnd =
+            startX +
+                (
+                    endX -
+                        startX
+                ) * fraction
+
+        val resolvedActive =
+            if (enabled) {
+                activeColor
+            } else {
+                activeColor.copy(
+                    alpha =
+                        activeColor.alpha *
+                            0.38f,
+                )
+            }
+
+        val resolvedInactive =
+            if (enabled) {
+                inactiveColor
+            } else {
+                inactiveColor.copy(
+                    alpha =
+                        inactiveColor.alpha *
+                            0.45f,
+                )
+            }
+
+        drawLine(
+            color =
+                resolvedInactive,
+            start =
+                Offset(
+                    startX,
+                    centerY,
+                ),
+            end =
+                Offset(
+                    endX,
+                    centerY,
+                ),
+            strokeWidth =
+                trackHeight.toPx(),
+            cap =
+                StrokeCap.Round,
+        )
+
+        if (activeEnd > startX) {
+            drawLine(
+                color =
+                    resolvedActive,
+                start =
+                    Offset(
+                        startX,
+                        centerY,
+                    ),
+                end =
+                    Offset(
+                        activeEnd,
+                        centerY,
+                    ),
+                strokeWidth =
+                    trackHeight.toPx(),
+                cap =
+                    StrokeCap.Round,
+            )
+        }
+
+        drawCircle(
+            color =
+                resolvedActive,
+            radius =
+                radiusPx,
+            center =
+                Offset(
+                    activeEnd,
+                    centerY,
+                ),
         )
     }
 }
