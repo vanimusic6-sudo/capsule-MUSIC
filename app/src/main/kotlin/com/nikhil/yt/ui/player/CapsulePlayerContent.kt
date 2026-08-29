@@ -52,10 +52,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontFamily
@@ -76,6 +74,7 @@ import com.nikhil.yt.playback.PlayerConnection
 import com.nikhil.yt.utils.makeTimeString
 import kotlinx.coroutines.isActive
 import kotlin.math.cos
+import kotlin.math.min
 import kotlin.math.sin
 
 private val CapsuleArtworkShape =
@@ -961,4 +960,97 @@ private fun CapsuleOrbitButton(
                     size.height
 
                 val cx =
-                    width /
+                    width / 2f
+
+                val cy =
+                    height / 2f
+
+                val radius =
+                    (min(width, height) / 2f) -
+                        3.dp.toPx()
+
+                /*
+                 * Orbit ring.
+                 */
+                drawCircle(
+                    color =
+                        color.copy(
+                            alpha = 0.16f * alpha,
+                        ),
+                    radius = radius,
+                    center =
+                        Offset(cx, cy),
+                    style =
+                        Stroke(
+                            width = 1.dp.toPx(),
+                        ),
+                )
+
+                /*
+                 * Comet head plus fading trail.
+                 */
+                val trailCount = 8
+
+                repeat(trailCount) { index ->
+                    val angleRad =
+                        Math.toRadians(
+                            (
+                                rotation.value -
+                                    index * 6f
+                            ).toDouble(),
+                        )
+
+                    val fade =
+                        1f -
+                            index /
+                            trailCount.toFloat()
+
+                    drawCircle(
+                        color =
+                            color.copy(
+                                alpha =
+                                    alpha * fade * 0.9f,
+                            ),
+                        radius =
+                            (3.5f * fade)
+                                .dp
+                                .toPx()
+                                .coerceAtLeast(1f),
+                        center =
+                            Offset(
+                                x =
+                                    cx +
+                                        radius *
+                                        cos(angleRad)
+                                            .toFloat(),
+                                y =
+                                    cy +
+                                        radius *
+                                        sin(angleRad)
+                                            .toFloat(),
+                            ),
+                    )
+                }
+            }
+
+            Icon(
+                painter =
+                    painterResource(
+                        if (isPlaying) {
+                            R.drawable.pause
+                        } else {
+                            R.drawable.play
+                        },
+                    ),
+                contentDescription =
+                    null,
+                tint =
+                    color.copy(
+                        alpha = alpha,
+                    ),
+                modifier =
+                    Modifier.size(30.dp),
+            )
+        }
+    }
+}
