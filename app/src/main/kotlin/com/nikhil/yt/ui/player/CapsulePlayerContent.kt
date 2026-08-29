@@ -558,7 +558,7 @@ fun CapsulePlayerContent(
                          * room above Share/Favorite and the artist line.
                          */
                         .offset(
-                            y = (-14).dp,
+                            y = (-9).dp,
                         )
                         .clip(
                             CapsuleArtworkShape,
@@ -790,11 +790,11 @@ fun CapsulePlayerContent(
                         0L,
                 activeColor =
                     textColor.copy(
-                        alpha = 0.94f,
+                        alpha = 0.96f,
                     ),
                 inactiveColor =
                     textColor.copy(
-                        alpha = 0.20f,
+                        alpha = 0.24f,
                     ),
                 onValueChange = {
                     localSliderPosition =
@@ -812,13 +812,13 @@ fun CapsulePlayerContent(
                         null
                 },
                 trackHeight =
-                    4.dp,
+                    6.dp,
                 thumbRadius =
-                    3.5.dp,
+                    4.dp,
                 modifier =
                     Modifier
                         .fillMaxWidth()
-                        .height(24.dp),
+                        .height(28.dp),
             )
 
             Row(
