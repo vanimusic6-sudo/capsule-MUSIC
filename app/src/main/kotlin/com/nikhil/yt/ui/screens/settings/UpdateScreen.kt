@@ -4,19 +4,13 @@
  * Licensed Under GPL-3.0
  */
 
-
-
 package com.nikhil.yt.ui.screens.settings
 
-import com.nikhil.yt.ui.component.VeluneLoader
 import android.Manifest
 import android.content.pm.PackageManager
 import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.animateContentSize
-import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -37,7 +31,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -47,7 +40,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarScrollBehavior
 import androidx.compose.runtime.Composable
@@ -60,37 +52,34 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.navigation.NavController
-import kotlinx.coroutines.launch
 import com.nikhil.yt.BuildConfig
 import com.nikhil.yt.LocalPlayerAwareWindowInsets
 import com.nikhil.yt.R
 import com.nikhil.yt.constants.EnableUpdateNotificationKey
-import com.nikhil.yt.constants.UpdateChannel
-import com.nikhil.yt.constants.UpdateChannelKey
-import com.nikhil.yt.ui.component.EnumListPreference
 import com.nikhil.yt.ui.component.IconButton
-import com.nikhil.yt.ui.component.PreferenceGroupTitle
 import com.nikhil.yt.ui.component.SwitchPreference
 import com.nikhil.yt.ui.utils.backToMain
 import com.nikhil.yt.utils.GitCommit
 import com.nikhil.yt.utils.UpdateNotificationManager
 import com.nikhil.yt.utils.Updater
-import com.nikhil.yt.utils.rememberEnumPreference
 import com.nikhil.yt.utils.rememberPreference
-import java.text.SimpleDateFormat
-import java.util.Locale
-import java.util.TimeZone
+import kotlinx.coroutines.launch
+
+private fun normalizeCapsuleVersion(value: String): String =
+    value
+        .removePrefix("Capsule ")
+        .removePrefix("capsule ")
+        .removePrefix("v")
+        .trim()
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -101,38 +90,29 @@ fun UpdateScreen(
     val context = LocalContext.current
     val uriHandler = LocalUriHandler.current
     val coroutineScope = rememberCoroutineScope()
-    val nightlyInstallUrl = "https://github.com/nikhilvishwakarma00/Velune/releases/latest"
 
     val (enableUpdateNotification, onEnableUpdateNotificationChange) = rememberPreference(
         EnableUpdateNotificationKey,
-        defaultValue = false
-    )
-    val (updateChannel, onUpdateChannelChange) = rememberEnumPreference(
-        UpdateChannelKey,
-        defaultValue = UpdateChannel.STABLE
+        defaultValue = false,
     )
 
-    var commits by remember { mutableStateOf<List<GitCommit>>(emptyList()) }
-    var isLoadingCommits by remember { mutableStateOf(true) }
     var latestVersion by remember { mutableStateOf<String?>(null) }
-    var isExpanded by remember { mutableStateOf(true) }
-    var showNightlyChannelConfirmDialog by remember { mutableStateOf(false) }
-    var showEnableUpdateNotificationConfirmDialog by remember { mutableStateOf(false) }
+    var commits by remember { mutableStateOf<List<GitCommit>>(emptyList()) }
+    var isLoading by remember { mutableStateOf(true) }
+    var errorMessage by remember { mutableStateOf<String?>(null) }
+
     var hasNotificationPermission by remember {
         mutableStateOf(
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
                 ContextCompat.checkSelfPermission(
                     context,
-                    Manifest.permission.POST_NOTIFICATIONS
-                ) == PackageManager.PERMISSION_GRANTED
-            } else {
-                true
-            }
+                    Manifest.permission.POST_NOTIFICATIONS,
+                ) == PackageManager.PERMISSION_GRANTED,
         )
     }
 
     val permissionLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.RequestPermission()
+        contract = ActivityResultContracts.RequestPermission(),
     ) { isGranted ->
         hasNotificationPermission = isGranted
         if (isGranted) {
@@ -141,208 +121,58 @@ fun UpdateScreen(
         }
     }
 
-    if (showEnableUpdateNotificationConfirmDialog) {
-        AlertDialog(
-            onDismissRequest = { showEnableUpdateNotificationConfirmDialog = false },
-            title = { Text(stringResource(R.string.enable_update_notification)) },
-            text = {
-                Column(
-                    verticalArrangement = Arrangement.spacedBy(12.dp),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text(
-                        text = "⚠️ By using Velune's in-app updater, you are getting updates straight from the developer. These updates are not checked by whatever app store you might have installed Velune from.",
-                        style = MaterialTheme.typography.bodyMedium,
-                        fontWeight = FontWeight.SemiBold
-                    )
-
-                    Text(
-                        text = "Velune provides two download channels for builds:",
-                        style = MaterialTheme.typography.bodyMedium
-                    )
-
-                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                        Text(
-                            text = "• Stable builds",
-                            style = MaterialTheme.typography.bodyMedium,
-                            fontWeight = FontWeight.SemiBold
-                        )
-                        Text(
-                            text = "Distributed via official GitHub Releases.",
-                            style = MaterialTheme.typography.bodySmall
-                        )
-                        Text(
-                            text = "These versions are tested and recommended for most users.",
-                            style = MaterialTheme.typography.bodySmall
-                        )
-                    }
-
-                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                        Text(
-                            text = "• Nightly builds",
-                            style = MaterialTheme.typography.bodyMedium,
-                            fontWeight = FontWeight.SemiBold
-                        )
-                        Text(
-                            text = "Automatically generated development builds hosted via nightly.link.",
-                            style = MaterialTheme.typography.bodySmall
-                        )
-                        Text(
-                            text = "Nightly builds may include experimental features, unfinished changes, or temporary regressions.",
-                            style = MaterialTheme.typography.bodySmall
-                        )
-                    }
-
-                    Text(
-                        text = "Nightly builds are provided for testing and early access only.\nStability, compatibility, and functionality are not guaranteed.",
-                        style = MaterialTheme.typography.bodySmall
-                    )
-                    Text(
-                        text = "By continuing, you acknowledge that nightly builds may be unstable and use them at your own risk.",
-                        style = MaterialTheme.typography.bodySmall
-                    )
-                }
-            },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        showEnableUpdateNotificationConfirmDialog = false
-                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && !hasNotificationPermission) {
-                            permissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
-                        } else {
-                            onEnableUpdateNotificationChange(true)
-                            UpdateNotificationManager.schedulePeriodicUpdateCheck(context)
-                        }
-                    }
-                ) {
-                    Text(stringResource(android.R.string.ok))
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showEnableUpdateNotificationConfirmDialog = false }) {
-                    Text(stringResource(android.R.string.cancel))
-                }
-            }
-        )
-    }
-
-    if (showNightlyChannelConfirmDialog) {
-        AlertDialog(
-            onDismissRequest = { showNightlyChannelConfirmDialog = false },
-            title = { Text(stringResource(R.string.channel_nightly)) },
-            text = {
-                Column(
-                    verticalArrangement = Arrangement.spacedBy(12.dp),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text(
-                        text = "⚠️ By using Velune's in-app updater, you are getting updates straight from the developer. These updates are not checked by whatever app store you might have installed Velune from.",
-                        style = MaterialTheme.typography.bodyMedium,
-                        fontWeight = FontWeight.SemiBold
-                    )
-
-                    Text(
-                        text = "Velune provides two download channels for builds:",
-                        style = MaterialTheme.typography.bodyMedium
-                    )
-
-                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                        Text(
-                            text = "• Stable builds",
-                            style = MaterialTheme.typography.bodyMedium,
-                            fontWeight = FontWeight.SemiBold
-                        )
-                        Text(
-                            text = "Distributed via official GitHub Releases.",
-                            style = MaterialTheme.typography.bodySmall
-                        )
-                        Text(
-                            text = "These versions are tested and recommended for most users.",
-                            style = MaterialTheme.typography.bodySmall
-                        )
-                    }
-
-                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                        Text(
-                            text = "• Nightly builds",
-                            style = MaterialTheme.typography.bodyMedium,
-                            fontWeight = FontWeight.SemiBold
-                        )
-                        Text(
-                            text = "Automatically generated development builds hosted via nightly.link.",
-                            style = MaterialTheme.typography.bodySmall
-                        )
-                        Text(
-                            text = "Nightly builds may include experimental features, unfinished changes, or temporary regressions.",
-                            style = MaterialTheme.typography.bodySmall
-                        )
-                    }
-
-                    Text(
-                        text = "Nightly builds are provided for testing and early access only.\nStability, compatibility, and functionality are not guaranteed.",
-                        style = MaterialTheme.typography.bodySmall
-                    )
-                    Text(
-                        text = "By continuing, you acknowledge that nightly builds may be unstable and use them at your own risk.",
-                        style = MaterialTheme.typography.bodySmall
-                    )
-                }
-            },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        showNightlyChannelConfirmDialog = false
-                        onUpdateChannelChange(UpdateChannel.NIGHTLY)
-                    }
-                ) {
-                    Text(stringResource(android.R.string.ok))
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showNightlyChannelConfirmDialog = false }) {
-                    Text(stringResource(android.R.string.cancel))
-                }
-            }
-        )
-    }
-
-    LaunchedEffect(Unit) {
+    fun refresh(force: Boolean) {
         coroutineScope.launch {
-            Updater.getLatestVersionName().onSuccess {
-                latestVersion = it
-            }
-            Updater.getCommitHistory(30).onSuccess {
-                commits = it
-            }.onFailure {
-                commits = emptyList()
-            }
-            isLoadingCommits = false
+            isLoading = true
+            errorMessage = null
+
+            Updater.getAllReleases(forceRefresh = force)
+                .onSuccess { releases ->
+                    latestVersion = releases.firstOrNull()?.let { release ->
+                        release.name.ifBlank { release.tagName }
+                    }
+                    if (releases.isEmpty()) {
+                        errorMessage = "No Capsule releases have been published yet."
+                    }
+                }
+                .onFailure { error ->
+                    errorMessage = error.message ?: "Failed to check Capsule releases."
+                }
+
+            Updater.getCommitHistory(20)
+                .onSuccess { commits = it }
+                .onFailure { commits = emptyList() }
+
+            isLoading = false
         }
     }
 
-    val rotationAngle by animateFloatAsState(
-        targetValue = if (isExpanded) 180f else 0f,
-        label = "rotation"
-    )
+    LaunchedEffect(Unit) {
+        refresh(force = false)
+    }
+
+    val currentVersion = normalizeCapsuleVersion(BuildConfig.VERSION_NAME)
+    val normalizedLatest = latestVersion?.let(::normalizeCapsuleVersion)
+    val hasUpdate = normalizedLatest != null && normalizedLatest.isNotBlank() && normalizedLatest != currentVersion
 
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(stringResource(R.string.updates)) },
+                title = { Text("Capsule Updates") },
                 navigationIcon = {
                     IconButton(
                         onClick = navController::navigateUp,
-                        onLongClick = navController::backToMain
+                        onLongClick = navController::backToMain,
                     ) {
                         Icon(
-                            painterResource(R.drawable.arrow_back),
-                            contentDescription = null
+                            painter = painterResource(R.drawable.arrow_back),
+                            contentDescription = "Back",
                         )
                     }
                 },
-                scrollBehavior = scrollBehavior
+                scrollBehavior = scrollBehavior,
             )
-        }
+        },
     ) { paddingValues ->
         LazyColumn(
             modifier = Modifier
@@ -350,357 +180,230 @@ fun UpdateScreen(
                 .padding(paddingValues)
                 .windowInsetsPadding(
                     LocalPlayerAwareWindowInsets.current.only(
-                        WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom
-                    )
+                        WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom,
+                    ),
                 )
-                .padding(horizontal = 16.dp)
+                .padding(horizontal = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             item {
-                Spacer(modifier = Modifier.height(8.dp))
+                Spacer(Modifier.height(4.dp))
 
                 Card(
                     modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(16.dp),
+                    shape = RoundedCornerShape(18.dp),
                     colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f)
-                    )
+                        containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.28f),
+                    ),
                 ) {
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(16.dp),
-                        verticalAlignment = Alignment.CenterVertically
+                            .padding(18.dp),
+                        verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Box(
                             modifier = Modifier
                                 .size(48.dp)
                                 .clip(CircleShape)
-                                .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.1f)),
-                            contentAlignment = Alignment.Center
+                                .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)),
+                            contentAlignment = Alignment.Center,
                         ) {
                             Icon(
                                 painter = painterResource(R.drawable.update),
                                 contentDescription = null,
                                 tint = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.size(24.dp)
+                                modifier = Modifier.size(24.dp),
                             )
                         }
 
-                        Spacer(modifier = Modifier.width(16.dp))
+                        Spacer(Modifier.width(16.dp))
 
                         Column(modifier = Modifier.weight(1f)) {
                             Text(
-                                text = stringResource(R.string.current_version),
+                                text = "Current version",
                                 style = MaterialTheme.typography.labelMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                             Text(
-                                text = BuildConfig.VERSION_NAME,
+                                text = currentVersion,
                                 style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.Bold
+                                fontWeight = FontWeight.Bold,
                             )
-                            latestVersion?.let { latest ->
-                                if (latest != BuildConfig.VERSION_NAME) {
-                                    Spacer(modifier = Modifier.height(4.dp))
-                                    Text(
-                                        text = stringResource(R.string.latest_version_format, latest),
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.primary
-                                    )
-                                }
-                            }
-                        }
-                    }
-                }
 
-                Spacer(modifier = Modifier.height(16.dp))
-            }
+                            Spacer(Modifier.height(4.dp))
 
-            item {
-                PreferenceGroupTitle(title = stringResource(R.string.notification_settings))
-            }
-
-            item {
-                SwitchPreference(
-                    title = { Text(stringResource(R.string.enable_update_notification)) },
-                    description = stringResource(R.string.enable_update_notification_desc),
-                    icon = { Icon(painterResource(R.drawable.new_release), null) },
-                    checked = enableUpdateNotification,
-                    onCheckedChange = { enabled ->
-                        if (enabled) {
-                            showEnableUpdateNotificationConfirmDialog = true
-                        } else {
-                            onEnableUpdateNotificationChange(false)
-                            UpdateNotificationManager.cancelPeriodicUpdateCheck(context)
-                        }
-                    }
-                )
-            }
-
-            item {
-                EnumListPreference(
-                    title = { Text(stringResource(R.string.update_channel)) },
-                    icon = { Icon(painterResource(R.drawable.tune), null) },
-                    selectedValue = updateChannel,
-                    valueText = { channel ->
-                        when (channel) {
-                            UpdateChannel.STABLE -> stringResource(R.string.channel_stable)
-                            UpdateChannel.NIGHTLY -> stringResource(R.string.channel_nightly)
-                        }
-                    },
-                    onValueSelected = { selectedChannel ->
-                        if (selectedChannel == UpdateChannel.NIGHTLY && updateChannel != UpdateChannel.NIGHTLY) {
-                            showNightlyChannelConfirmDialog = true
-                        } else {
-                            onUpdateChannelChange(selectedChannel)
-                        }
-                    }
-                )
-            }
-
-            item {
-                Spacer(modifier = Modifier.height(8.dp))
-                Button(
-                    onClick = { navController.navigate("settings/changelog") },
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Icon(
-                        painter = painterResource(R.drawable.update),
-                        contentDescription = null,
-                        modifier = Modifier.size(18.dp)
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(stringResource(R.string.view_changelog))
-                }
-            }
-
-            item {
-                AnimatedVisibility(visible = updateChannel == UpdateChannel.NIGHTLY) {
-                    val latestCommitHash = commits.firstOrNull()?.sha ?: "—"
-                    Card(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(top = 12.dp),
-                        shape = RoundedCornerShape(16.dp),
-                        colors = CardDefaults.cardColors(
-                            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
-                        )
-                    ) {
-                        Column(modifier = Modifier.padding(16.dp)) {
                             Text(
-                                text = "Nightly Builds",
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.Bold
-                            )
-                            Spacer(modifier = Modifier.height(6.dp))
-                            Text(
-                                text = "Latest features and fixes from the development branch. May contain experimental features and occasional bugs",
+                                text = when {
+                                    isLoading -> "Checking your repository…"
+                                    normalizedLatest == null -> "No release found"
+                                    hasUpdate -> "Latest: $normalizedLatest"
+                                    else -> "You are up to date"
+                                },
                                 style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                color = if (hasUpdate) {
+                                    MaterialTheme.colorScheme.primary
+                                } else {
+                                    MaterialTheme.colorScheme.onSurfaceVariant
+                                },
                             )
-                            Spacer(modifier = Modifier.height(10.dp))
-                            Text(
-                                text = latestCommitHash,
-                                style = MaterialTheme.typography.labelMedium,
-                                fontFamily = FontFamily.Monospace,
-                                color = MaterialTheme.colorScheme.primary
-                            )
-                            Spacer(modifier = Modifier.height(14.dp))
-                            Button(
-                                onClick = { uriHandler.openUri(nightlyInstallUrl) },
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                Text("Install")
-                            }
                         }
                     }
                 }
             }
 
+            errorMessage?.let { message ->
+                item {
+                    Text(
+                        text = message,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(horizontal = 4.dp),
+                    )
+                }
+            }
+
             item {
-                Spacer(modifier = Modifier.height(16.dp))
-                PreferenceGroupTitle(title = stringResource(R.string.commit_history))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    Button(
+                        onClick = { refresh(force = true) },
+                        modifier = Modifier.weight(1f),
+                        enabled = !isLoading,
+                    ) {
+                        Icon(
+                            painter = painterResource(R.drawable.update),
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp),
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Text("Check now")
+                    }
+
+                    Button(
+                        onClick = { uriHandler.openUri(Updater.getLatestDownloadUrl()) },
+                        modifier = Modifier.weight(1f),
+                        enabled = normalizedLatest != null,
+                    ) {
+                        Icon(
+                            painter = painterResource(R.drawable.download),
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp),
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Text(if (hasUpdate) "Download" else "Release APK")
+                    }
+                }
             }
 
             item {
                 Card(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .animateContentSize(),
+                    modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(16.dp),
                     colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
-                    )
+                        containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+                    ),
                 ) {
-                    Column {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable { isExpanded = !isExpanded }
-                                .padding(16.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(
-                                    painter = painterResource(R.drawable.history),
-                                    contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.primary,
-                                    modifier = Modifier.size(20.dp)
-                                )
-                                Spacer(modifier = Modifier.width(12.dp))
-                                Text(
-                                    text = stringResource(R.string.recent_commits),
-                                    style = MaterialTheme.typography.titleSmall,
-                                    fontWeight = FontWeight.Medium
-                                )
-                            }
-                            Icon(
-                                painter = painterResource(R.drawable.expand_more),
-                                contentDescription = null,
-                                modifier = Modifier.rotate(rotationAngle)
-                            )
-                        }
-
-                        AnimatedVisibility(visible = isExpanded) {
-                            Column {
-                                HorizontalDivider(
-                                    modifier = Modifier.padding(horizontal = 16.dp),
-                                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
-                                )
-
-                                if (isLoadingCommits) {
-                                    Box(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .padding(32.dp),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        VeluneLoader(size = 24.dp)
-                                    }
+                    Column(modifier = Modifier.padding(4.dp)) {
+                        SwitchPreference(
+                            title = { Text("Update notifications") },
+                            description = "Check stable Capsule releases from your GitHub repository every 6 hours",
+                            icon = { Icon(painterResource(R.drawable.new_release), null) },
+                            checked = enableUpdateNotification,
+                            onCheckedChange = { enabled ->
+                                if (!enabled) {
+                                    onEnableUpdateNotificationChange(false)
+                                    UpdateNotificationManager.cancelPeriodicUpdateCheck(context)
+                                } else if (
+                                    Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+                                    !hasNotificationPermission
+                                ) {
+                                    permissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                                } else {
+                                    onEnableUpdateNotificationChange(true)
+                                    UpdateNotificationManager.schedulePeriodicUpdateCheck(context)
+                                    UpdateNotificationManager.checkForUpdates(context)
                                 }
-                            }
-                        }
+                            },
+                        )
                     }
-                }
-            }
-
-            if (isExpanded && !isLoadingCommits) {
-                items(commits) { commit ->
-                    CommitItem(
-                        commit = commit,
-                        onClick = { uriHandler.openUri(commit.url) }
-                    )
                 }
             }
 
             item {
-                Spacer(modifier = Modifier.height(16.dp))
-            }
-        }
-    }
-}
-
-@Composable
-private fun CommitItem(
-    commit: GitCommit,
-    onClick: () -> Unit
-) {
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 4.dp),
-        shape = RoundedCornerShape(12.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surface
-        ),
-        onClick = onClick
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(12.dp),
-            verticalAlignment = Alignment.Top
-        ) {
-            Box(
-                modifier = Modifier
-                    .padding(top = 4.dp)
-                    .size(8.dp)
-                    .clip(CircleShape)
-                    .background(MaterialTheme.colorScheme.primary)
-            )
-
-            Spacer(modifier = Modifier.width(12.dp))
-
-            Column(modifier = Modifier.weight(1f)) {
+                Spacer(Modifier.height(4.dp))
                 Text(
-                    text = commit.message,
-                    style = MaterialTheme.typography.bodyMedium,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis
+                    text = "Recent commits",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.padding(horizontal = 4.dp),
                 )
+                Text(
+                    text = "main • vanimusic6-sudo/capsule-MUSIC",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(horizontal = 4.dp),
+                )
+            }
 
-                Spacer(modifier = Modifier.height(4.dp))
-
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
+            if (commits.isEmpty() && !isLoading) {
+                item {
                     Text(
-                        text = commit.sha,
-                        style = MaterialTheme.typography.labelSmall,
-                        fontFamily = FontFamily.Monospace,
-                        color = MaterialTheme.colorScheme.primary
+                        text = "Commit history is unavailable right now.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(4.dp),
                     )
-
-                    Text(
-                        text = "•",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-
-                    Text(
-                        text = commit.author,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-
-                    if (commit.date.isNotEmpty()) {
+                }
+            } else {
+                items(
+                    items = commits,
+                    key = { "${it.sha}-${it.date}" },
+                ) { commit ->
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable(enabled = commit.url.isNotBlank()) {
+                                uriHandler.openUri(commit.url)
+                            }
+                            .padding(horizontal = 4.dp, vertical = 8.dp),
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(
+                                text = commit.sha,
+                                style = MaterialTheme.typography.labelMedium,
+                                fontFamily = FontFamily.Monospace,
+                                color = MaterialTheme.colorScheme.primary,
+                            )
+                            Spacer(Modifier.width(10.dp))
+                            Text(
+                                text = commit.author,
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
+                        Spacer(Modifier.height(4.dp))
                         Text(
-                            text = "•",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-
-                        Text(
-                            text = formatCommitDate(commit.date),
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                            text = commit.message,
+                            style = MaterialTheme.typography.bodyMedium,
+                            maxLines = 3,
+                            overflow = TextOverflow.Ellipsis,
                         )
                     }
+                    HorizontalDivider()
                 }
             }
 
-            Icon(
-                painter = painterResource(R.drawable.arrow_forward),
-                contentDescription = null,
-                modifier = Modifier
-                    .padding(start = 8.dp)
-                    .size(16.dp),
-                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
-            )
+            item {
+                Spacer(Modifier.height(24.dp))
+            }
         }
-    }
-}
-
-private fun formatCommitDate(isoDate: String): String {
-    return try {
-        val inputFormat = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.US)
-        inputFormat.timeZone = TimeZone.getTimeZone("UTC")
-        val date = inputFormat.parse(isoDate)
-        val outputFormat = SimpleDateFormat("MMM d", Locale.getDefault())
-        outputFormat.format(date!!)
-    } catch (e: Exception) {
-        isoDate.take(10)
     }
 }
