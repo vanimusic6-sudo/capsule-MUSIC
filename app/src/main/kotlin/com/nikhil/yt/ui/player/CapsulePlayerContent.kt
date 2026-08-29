@@ -20,6 +20,7 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -64,8 +65,10 @@ import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotate
+import androidx.compose.ui.input.pointer.awaitFirstDown
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalDensity
@@ -398,8 +401,13 @@ fun CapsulePlayerContent(
                     ),
                 )
                 .padding(
+                    /*
+                     * Keep the real system-navigation inset, but use a smaller
+                     * extra cushion. This lets everything below the fixed
+                     * NOW PLAYING header settle a few dp lower.
+                     */
                     bottom =
-                        bottomPadding + 8.dp,
+                        bottomPadding + 4.dp,
                 )
                 /*
                  * Original Capsule gesture:
@@ -532,9 +540,9 @@ fun CapsulePlayerContent(
                     .fillMaxWidth()
                     .padding(
                         horizontal =
-                            18.dp,
+                            22.dp,
                         vertical =
-                            6.dp,
+                            8.dp,
                     ),
             contentAlignment =
                 Alignment.Center,
@@ -550,7 +558,7 @@ fun CapsulePlayerContent(
                          * room above Share/Favorite and the artist line.
                          */
                         .offset(
-                            y = (-10).dp,
+                            y = (-14).dp,
                         )
                         .clip(
                             CapsuleArtworkShape,
@@ -763,21 +771,12 @@ fun CapsulePlayerContent(
                 ),
             )
 
-            Slider(
+            CapsuleThinSlider(
                 value =
                     (
                         localSliderPosition
                             ?: displayPosition
-                    )
-                        .toFloat()
-                        .coerceIn(
-                            0f,
-                            safeDuration
-                                .coerceAtLeast(
-                                    1L,
-                                )
-                                .toFloat(),
-                        ),
+                    ).toFloat(),
                 valueRange =
                     0f..
                         safeDuration
@@ -785,6 +784,18 @@ fun CapsulePlayerContent(
                                 1L,
                             )
                             .toFloat(),
+                enabled =
+                    canSeek &&
+                        safeDuration >
+                        0L,
+                activeColor =
+                    textColor.copy(
+                        alpha = 0.94f,
+                    ),
+                inactiveColor =
+                    textColor.copy(
+                        alpha = 0.20f,
+                    ),
                 onValueChange = {
                     localSliderPosition =
                         it.toLong()
@@ -800,44 +811,14 @@ fun CapsulePlayerContent(
                     localSliderPosition =
                         null
                 },
-                enabled =
-                    canSeek &&
-                        safeDuration >
-                        0L,
-                thumb = {
-                    Spacer(
-                        Modifier.size(
-                            0.dp,
-                        ),
-                    )
-                },
-                colors =
-                    SliderDefaults.colors(
-                        activeTrackColor =
-                            textColor.copy(
-                                alpha =
-                                    0.92f,
-                            ),
-                        inactiveTrackColor =
-                            textColor.copy(
-                                alpha =
-                                    0.22f,
-                            ),
-                        disabledActiveTrackColor =
-                            textColor.copy(
-                                alpha =
-                                    0.36f,
-                            ),
-                        disabledInactiveTrackColor =
-                            textColor.copy(
-                                alpha =
-                                    0.12f,
-                            ),
-                    ),
+                trackHeight =
+                    4.dp,
+                thumbRadius =
+                    3.5.dp,
                 modifier =
                     Modifier
                         .fillMaxWidth()
-                        .height(30.dp),
+                        .height(24.dp),
             )
 
             Row(
@@ -1131,6 +1112,211 @@ fun CapsulePlayerContent(
                 ),
             )
         }
+    }
+}
+
+
+@Composable
+private fun CapsuleThinSlider(
+    value: Float,
+    valueRange: ClosedFloatingPointRange<Float>,
+    enabled: Boolean,
+    activeColor: Color,
+    inactiveColor: Color,
+    onValueChange: (Float) -> Unit,
+    onValueChangeFinished: () -> Unit,
+    modifier: Modifier = Modifier,
+    trackHeight: Dp = 4.dp,
+    thumbRadius: Dp = 4.dp,
+) {
+    val rangeSize =
+        (
+            valueRange.endInclusive -
+                valueRange.start
+        ).coerceAtLeast(0.0001f)
+
+    val fraction =
+        (
+            (value - valueRange.start) /
+                rangeSize
+        ).coerceIn(0f, 1f)
+
+    Canvas(
+        modifier =
+            modifier
+                .pointerInput(
+                    enabled,
+                    valueRange.start,
+                    valueRange.endInclusive,
+                ) {
+                    if (!enabled) {
+                        return@pointerInput
+                    }
+
+                    val widthPx =
+                        size.width
+                            .toFloat()
+                            .coerceAtLeast(1f)
+
+                    val insetPx =
+                        thumbRadius.toPx()
+
+                    val usableWidth =
+                        (
+                            widthPx -
+                                insetPx * 2f
+                        ).coerceAtLeast(1f)
+
+                    fun updateFromX(
+                        x: Float,
+                    ) {
+                        val newFraction =
+                            (
+                                (x - insetPx) /
+                                    usableWidth
+                            ).coerceIn(0f, 1f)
+
+                        onValueChange(
+                            valueRange.start +
+                                rangeSize *
+                                newFraction,
+                        )
+                    }
+
+                    awaitEachGesture {
+                        val down =
+                            awaitFirstDown(
+                                requireUnconsumed =
+                                    false,
+                            )
+
+                        updateFromX(
+                            down.position.x,
+                        )
+
+                        down.consume()
+
+                        while (true) {
+                            val event =
+                                awaitPointerEvent()
+
+                            val change =
+                                event.changes
+                                    .firstOrNull {
+                                        it.id ==
+                                            down.id
+                                    }
+                                    ?: break
+
+                            if (!change.pressed) {
+                                onValueChangeFinished()
+                                break
+                            }
+
+                            updateFromX(
+                                change.position.x,
+                            )
+
+                            change.consume()
+                        }
+                    }
+                },
+    ) {
+        val centerY =
+            size.height / 2f
+
+        val radiusPx =
+            thumbRadius.toPx()
+
+        val startX =
+            radiusPx
+
+        val endX =
+            (
+                size.width -
+                    radiusPx
+            ).coerceAtLeast(startX)
+
+        val activeEnd =
+            startX +
+                (
+                    endX -
+                        startX
+                ) * fraction
+
+        val resolvedActive =
+            if (enabled) {
+                activeColor
+            } else {
+                activeColor.copy(
+                    alpha =
+                        activeColor.alpha *
+                            0.38f,
+                )
+            }
+
+        val resolvedInactive =
+            if (enabled) {
+                inactiveColor
+            } else {
+                inactiveColor.copy(
+                    alpha =
+                        inactiveColor.alpha *
+                            0.45f,
+                )
+            }
+
+        drawLine(
+            color =
+                resolvedInactive,
+            start =
+                Offset(
+                    startX,
+                    centerY,
+                ),
+            end =
+                Offset(
+                    endX,
+                    centerY,
+                ),
+            strokeWidth =
+                trackHeight.toPx(),
+            cap =
+                StrokeCap.Round,
+        )
+
+        if (activeEnd > startX) {
+            drawLine(
+                color =
+                    resolvedActive,
+                start =
+                    Offset(
+                        startX,
+                        centerY,
+                    ),
+                end =
+                    Offset(
+                        activeEnd,
+                        centerY,
+                    ),
+                strokeWidth =
+                    trackHeight.toPx(),
+                cap =
+                    StrokeCap.Round,
+            )
+        }
+
+        drawCircle(
+            color =
+                resolvedActive,
+            radius =
+                radiusPx,
+            center =
+                Offset(
+                    activeEnd,
+                    centerY,
+                ),
+        )
     }
 }
 
