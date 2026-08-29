@@ -86,16 +86,23 @@ jobs:
           gradle --version
 
       - name: Unit tests
+        id: unit_tests
+        continue-on-error: true
         run: gradle :app:testUniversalDebugUnitTest --stacktrace --no-daemon
 
       - name: Android lint
+        id: android_lint
+        continue-on-error: true
         run: gradle :app:lintUniversalDebug --stacktrace --no-daemon
 
       - name: Build signed Universal Release
+        id: release_build
+        continue-on-error: true
         run: gradle :app:assembleUniversalRelease --stacktrace --no-daemon
 
       - name: Locate release APK
         id: apk
+        if: steps.release_build.outcome == 'success'
         shell: bash
         run: |
           set -euo pipefail
@@ -107,6 +114,9 @@ jobs:
           sha256sum "$APK"
 
       - name: Verify APK signature
+        id: signature
+        if: steps.release_build.outcome == 'success' && steps.apk.outcome == 'success'
+        continue-on-error: true
         shell: bash
         run: |
           set -euo pipefail
@@ -115,6 +125,7 @@ jobs:
           "$APKSIGNER" verify --verbose --print-certs "${{ steps.apk.outputs.path }}"
 
       - name: Upload baseline APK
+        if: steps.release_build.outcome == 'success' && steps.apk.outcome == 'success'
         uses: actions/upload-artifact@v4
         with:
           name: capsule-music-baseline-universal-release
@@ -122,16 +133,65 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
-      - name: Upload lint report
+      - name: Upload diagnostic reports
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: capsule-music-baseline-lint
+          name: capsule-music-baseline-reports
           path: |
-            app/build/reports/lint-results-universalDebug.html
-            app/build/reports/lint-results-universalDebug.xml
+            app/build/reports/tests/
+            app/build/reports/lint-results-*
           if-no-files-found: ignore
           retention-days: 14
+
+      - name: Baseline summary and gate
+        if: always()
+        shell: bash
+        env:
+          UNIT_TESTS: ${{ steps.unit_tests.outcome }}
+          ANDROID_LINT: ${{ steps.android_lint.outcome }}
+          RELEASE_BUILD: ${{ steps.release_build.outcome }}
+          APK_LOCATE: ${{ steps.apk.outcome }}
+          SIGNATURE: ${{ steps.signature.outcome }}
+        run: |
+          set -euo pipefail
+          FAILED=0
+
+          echo "## Capsule MUSIC baseline" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Stage | Result |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|---|---|" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Unit tests | $UNIT_TESTS |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Android lint | $ANDROID_LINT |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Universal Release build | $RELEASE_BUILD |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Locate APK | $APK_LOCATE |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| APK signature | $SIGNATURE |" >> "$GITHUB_STEP_SUMMARY"
+
+          check_required() {
+            local label="$1"
+            local result="$2"
+            if [ "$result" = "success" ]; then
+              echo "OK: $label"
+            else
+              echo "::error::$label: $result"
+              FAILED=1
+            fi
+          }
+
+          check_required "Unit tests" "$UNIT_TESTS"
+          check_required "Android lint" "$ANDROID_LINT"
+          check_required "Universal Release build" "$RELEASE_BUILD"
+
+          if [ "$RELEASE_BUILD" = "success" ]; then
+            check_required "Locate APK" "$APK_LOCATE"
+            check_required "APK signature" "$SIGNATURE"
+          fi
+
+          if [ "$FAILED" -ne 0 ]; then
+            echo "Baseline diagnostics found one or more failures."
+            exit 1
+          fi
+
+          echo "All baseline checks passed."
 
       - name: Remove restored secrets and CI-only locale metadata
         if: always()
