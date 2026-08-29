@@ -1,5 +1,5 @@
-/*
- * Velune - by Nikhil
+
+/* * Velune - by Nikhil
  * Nikhil
  * Licensed Under GPL-3.0
  */
@@ -173,6 +173,8 @@ import com.nikhil.yt.playback.queues.Queue
 import com.nikhil.yt.playback.queues.YouTubeQueue
 import com.nikhil.yt.playback.queues.filterExplicit
 import com.nikhil.yt.playback.queues.filterVideo
+import com.nikhil.yt.playback.source.AudioSource
+import com.nikhil.yt.playback.source.AudioSourceManager
 import com.nikhil.yt.ui.screens.settings.DiscordPresenceManager
 import com.nikhil.yt.ui.screens.settings.ListenBrainzManager
 import com.nikhil.yt.utils.CoilBitmapLoader
@@ -276,6 +278,10 @@ class MusicService :
         PlayerStreamClient.IOS
     )
     private val playbackUrlCache = ConcurrentHashMap<String, Pair<String, Long>>()
+    @Volatile
+    private var sourceResolveToken = 0L
+    @Volatile
+    private var activeAlternativeMediaId: String? = null
     private val streamRecoveryState = ConcurrentHashMap<String, Pair<Int, Long>>()
     @Volatile
     private var pendingStreamRefreshValidationMediaId: String? = null
@@ -1922,6 +1928,8 @@ class MusicService :
 
     fun stopAndClearPlayback() {
         suppressAutoPlayback = true
+        activeAlternativeMediaId = null
+        sourceResolveToken++
         clearAutomix()
         currentQueue = EmptyQueue
         queueTitle = null
@@ -3361,6 +3369,11 @@ class MusicService :
     override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
     super.onMediaItemTransition(mediaItem, reason)
 
+    val transitionedMediaId = mediaItem?.mediaId ?: player.currentMediaItem?.mediaId
+    if (activeAlternativeMediaId != null && activeAlternativeMediaId != transitionedMediaId) {
+        activeAlternativeMediaId = null
+    }
+
     clearStreamRefreshGuards(
         mediaItem?.mediaId
             ?.trim()
@@ -3499,6 +3512,17 @@ class MusicService :
             saveQueueToDisk()
         }
     }
+
+    val sourceCandidateId = player.currentMediaItem?.mediaId
+    if (!sourceCandidateId.isNullOrBlank() && !isCurrentAlternativeItem()) {
+        scope.launch(SilentHandler) {
+            delay(180)
+            if (player.currentMediaItem?.mediaId == sourceCandidateId && !isCurrentAlternativeItem()) {
+                applyPreferredAudioSource(force = false)
+            }
+        }
+    }
+
     ensurePresenceManager()
 }
 
@@ -3909,6 +3933,23 @@ class MusicService :
         val currentMediaId = player.currentMediaItem?.mediaId
         val httpStatusCode = error.httpStatusCodeOrNull()
 
+        if (currentMediaId != null && (isCurrentAlternativeItem() || AudioSourceManager.isAlternativeActive(currentMediaId))) {
+            val preferred = AudioSourceManager.playbackState.value.preferred
+            AudioSourceManager.markPlaybackFailure(
+                currentMediaId,
+                "code=${error.errorCode}: ${error.message ?: "alternative stream error"}",
+            )
+            sourceResolveToken++
+            scope.launch(SilentHandler) {
+                switchCurrentToYouTube(
+                    mediaId = currentMediaId,
+                    preferred = preferred,
+                    detail = "Alternative stream failed; YouTube fallback active",
+                )
+            }
+            return
+        }
+
         if (currentMediaId != null && YTPlayerUtils.isBotDetectionException(error)) {
             if (markAndCheckRecoveryAllowance(currentMediaId)) {
                 Timber.tag("MusicService").w(
@@ -4065,7 +4106,19 @@ class MusicService :
 
     private fun createDataSourceFactory(): DataSource.Factory {
         return ResolvingDataSource.Factory(createCacheDataSource()) { dataSpec ->
-            val mediaId = dataSpec.key ?: error("No media id")
+            val requestKey = dataSpec.key ?: error("No media id")
+
+            /*
+             * Explicit alternative streams use a namespaced cache key and an
+             * already-resolved HTTP(S) URI. Only those requests bypass the
+             * YouTube resolver. Every ordinary Capsule item continues below
+             * through the original YouTube code unchanged.
+             */
+            if (requestKey.startsWith(AudioSourceManager.DIRECT_CACHE_KEY_PREFIX)) {
+                return@Factory dataSpec
+            }
+
+            val mediaId = requestKey
 
             val requiredCachedLength =
                 if (dataSpec.length >= 0) {
@@ -4183,14 +4236,171 @@ class MusicService :
     }
 
     /**
-     * Compatibility hook used by the experimental source UI.
-     *
-     * IMPORTANT: playback resolution remains 100% on Capsule's original YouTube
-     * pipeline. This method only asks that pipeline for a fresh YouTube stream.
-     * It does not call Deezer/Amazon providers and does not change mediaId.
+     * Applies the preferred alternative source without putting it in front of
+     * Capsule's YouTube resolver. YouTube keeps playing while Deezer is checked.
+     * Only an already-resolved, clear direct stream can replace the current
+     * media item. If that check fails, the current YouTube item is left intact.
+     */
+    fun applyPreferredAudioSource(force: Boolean = false) {
+        val mediaId = player.currentMediaItem?.mediaId ?: return
+        val token = ++sourceResolveToken
+
+        scope.launch(SilentHandler) {
+            val preferred =
+                withContext(Dispatchers.IO) {
+                    AudioSourceManager.preferredSource(this@MusicService)
+                }
+
+            if (token != sourceResolveToken || player.currentMediaItem?.mediaId != mediaId) {
+                return@launch
+            }
+
+            when (preferred) {
+                AudioSource.YOUTUBE -> {
+                    switchCurrentToYouTube(
+                        mediaId = mediaId,
+                        preferred = preferred,
+                        detail = "YouTube selected",
+                    )
+                    return@launch
+                }
+
+                AudioSource.AMAZON_MUSIC -> {
+                    switchCurrentToYouTube(
+                        mediaId = mediaId,
+                        preferred = preferred,
+                        detail = "Amazon Music backend is not enabled; YouTube continues",
+                    )
+                    return@launch
+                }
+
+                AudioSource.DEEZER -> Unit
+            }
+
+            if (!force && AudioSourceManager.isAlternativeActive(mediaId)) {
+                return@launch
+            }
+
+            val metadataSnapshot = player.currentMetadata ?: currentMediaMetadata.value
+            val songSnapshot =
+                withContext(Dispatchers.IO) {
+                    database.song(mediaId).first()
+                }
+
+            val direct =
+                withContext(Dispatchers.IO) {
+                    AudioSourceManager.resolveForPlayback(
+                        context = this@MusicService,
+                        mediaId = mediaId,
+                        song = songSnapshot,
+                        metadata = metadataSnapshot,
+                        force = force,
+                    )
+                }
+
+            if (token != sourceResolveToken || player.currentMediaItem?.mediaId != mediaId) {
+                return@launch
+            }
+
+            if (direct != null) {
+                applyDirectAlternative(mediaId, direct)
+            } else if (isCurrentAlternativeItem()) {
+                switchCurrentToYouTube(
+                    mediaId = mediaId,
+                    preferred = preferred,
+                    detail = AudioSourceManager.playbackState.value.detail ?: "YouTube fallback active",
+                )
+            }
+        }
+    }
+
+    private fun applyDirectAlternative(
+        mediaId: String,
+        direct: AudioSourceManager.DirectPlayback,
+    ) {
+        if (player.currentMediaItem?.mediaId != mediaId) return
+
+        val metadata = player.currentMetadata ?: currentMediaMetadata.value ?: return
+        val index = player.currentMediaItemIndex
+        if (index < 0 || index >= player.mediaItemCount) return
+
+        val position = player.currentPosition.coerceAtLeast(0L)
+        val wasPlaying = player.playWhenReady
+
+        val alternativeItem =
+            metadata
+                .toMediaItem()
+                .buildUpon()
+                .setUri(direct.mediaUri)
+                .setCustomCacheKey(direct.cacheKey)
+                .build()
+
+        runCatching {
+            activeAlternativeMediaId = mediaId
+            player.replaceMediaItem(index, alternativeItem)
+            player.seekTo(index, position)
+            player.prepare()
+            player.playWhenReady = wasPlaying
+            AudioSourceManager.markAlternativeApplied(mediaId, direct)
+            Timber.tag("CapsuleSources").i(
+                "Switched $mediaId to ${direct.source.title} without changing canonical mediaId",
+            )
+        }.onFailure { error ->
+            AudioSourceManager.markPlaybackFailure(mediaId, error.message)
+            switchCurrentToYouTube(
+                mediaId = mediaId,
+                preferred = direct.source,
+                detail = "Alternative switch failed; YouTube fallback active",
+            )
+        }
+    }
+
+    private fun isCurrentAlternativeItem(): Boolean {
+        val currentId = player.currentMediaItem?.mediaId ?: return false
+        return activeAlternativeMediaId == currentId
+    }
+
+    private fun switchCurrentToYouTube(
+        mediaId: String,
+        preferred: AudioSource,
+        detail: String,
+    ) {
+        if (player.currentMediaItem?.mediaId != mediaId) return
+
+        if (!isCurrentAlternativeItem()) {
+            activeAlternativeMediaId = null
+            AudioSourceManager.markYouTubeApplied(mediaId, preferred, detail)
+            return
+        }
+
+        val metadata = player.currentMetadata ?: currentMediaMetadata.value ?: return
+        val index = player.currentMediaItemIndex
+        if (index < 0 || index >= player.mediaItemCount) return
+
+        val position = player.currentPosition.coerceAtLeast(0L)
+        val wasPlaying = player.playWhenReady
+        val youtubeItem = metadata.toMediaItem()
+
+        activeAlternativeMediaId = null
+        player.replaceMediaItem(index, youtubeItem)
+        player.seekTo(index, position)
+        player.prepare()
+        player.playWhenReady = wasPlaying
+        AudioSourceManager.markYouTubeApplied(mediaId, preferred, detail)
+    }
+
+    /**
+     * Freshens only Capsule's original YouTube stream. This remains isolated
+     * from Deezer and is used by the YouTube quality controls.
      */
     fun refreshCurrentAudioSource() {
         val mediaId = player.currentMediaItem?.mediaId ?: return
+
+        if (isCurrentAlternativeItem()) {
+            applyPreferredAudioSource(force = true)
+            return
+        }
+
         val position = player.currentPosition.coerceAtLeast(0L)
         val wasPlaying = player.playWhenReady
 
