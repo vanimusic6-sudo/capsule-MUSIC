@@ -1,11 +1,18 @@
-/*
- * capsule fork
- * Source + bitrate selector for Capsule Player.
+
+ /** capsule fork
+ * Animated source + bitrate control for Capsule Player.
  * Licensed under GPL-3.0.
  */
 
 package com.nikhil.yt.ui.player
 
+import androidx.compose.animation.Crossfade
+import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -38,6 +45,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -99,77 +107,106 @@ fun AudioSourceButton(
 
     val stateForCurrent = sourceState.takeIf { it.mediaId == mediaMetadata?.id }
     val actual = stateForCurrent?.actual ?: AudioSource.YOUTUBE
-
-    val providerBadge =
-        when {
-            preferred == AudioSource.DEEZER && actual == AudioSource.YOUTUBE -> "DZ→YT"
-            preferred == AudioSource.AMAZON_MUSIC && actual == AudioSource.YOUTUBE -> "AMZ→YT"
-            actual == AudioSource.DEEZER -> "DEEZER"
-            actual == AudioSource.AMAZON_MUSIC -> "AMAZON"
-            else -> "YOUTUBE"
-        }
+    val resolving = stateForCurrent?.resolving == true
 
     val actualBitrate =
         when (actual) {
-            AudioSource.DEEZER -> stateForCurrent?.bitrate
             AudioSource.YOUTUBE -> currentFormat?.bitrate
-            AudioSource.AMAZON_MUSIC -> stateForCurrent?.bitrate
+            AudioSource.DEEZER, AudioSource.AMAZON_MUSIC -> stateForCurrent?.bitrate
         }
 
-    val targetBadge =
+    val targetQuality =
         when (preferred) {
             AudioSource.YOUTUBE -> youtubeQuality.badgeLabel()
             AudioSource.DEEZER -> deezerQuality.badge
             AudioSource.AMAZON_MUSIC -> "—"
         }
 
-    val bitrateBadge = actualBitrate?.toKbpsLabel() ?: targetBadge
-    val shape = RoundedCornerShape(11.dp)
+    val bitrateBadge = actualBitrate?.toKbpsLabel() ?: targetQuality
+    val displayText =
+        if (resolving) {
+            "CHECKING DEEZER"
+        } else {
+            "${actual.shortDisplay()} · $bitrateBadge"
+        }
+
+    val infinite = rememberInfiniteTransition(label = "sourcePulse")
+    val pulse by
+        infinite.animateFloat(
+            initialValue = 0.72f,
+            targetValue = 1f,
+            animationSpec =
+                infiniteRepeatable(
+                    animation = tween(760),
+                    repeatMode = RepeatMode.Reverse,
+                ),
+            label = "sourcePulseAlpha",
+        )
+
+    val pillShape = RoundedCornerShape(18.dp)
 
     Box(
-        modifier = modifier.widthIn(min = 118.dp, max = 150.dp),
+        modifier = modifier.fillMaxWidth(),
         contentAlignment = Alignment.Center,
     ) {
         Row(
             modifier =
                 Modifier
-                    .clip(shape)
-                    .background(textColor.copy(alpha = 0.055f))
-                    .border(1.dp, textColor.copy(alpha = 0.14f), shape)
+                    .widthIn(min = 154.dp, max = 228.dp)
+                    .height(38.dp)
+                    .clip(pillShape)
+                    .background(textColor.copy(alpha = 0.045f))
+                    .border(1.dp, textColor.copy(alpha = if (expanded) 0.30f else 0.14f), pillShape)
                     .clickable { expanded = true }
-                    .padding(horizontal = 10.dp, vertical = 6.dp),
+                    .animateContentSize()
+                    .padding(horizontal = 12.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.Center,
         ) {
             Box(
                 modifier =
                     Modifier
-                        .size(5.dp)
+                        .size(if (resolving) 7.dp else 6.dp)
+                        .graphicsLayer {
+                            val animated = if (resolving) pulse else 1f
+                            scaleX = animated
+                            scaleY = animated
+                            alpha = animated
+                        }
                         .background(
                             color =
-                                if (actual == preferred) {
-                                    textColor.copy(alpha = 0.9f)
-                                } else {
-                                    textColor.copy(alpha = 0.38f)
+                                when {
+                                    resolving -> textColor.copy(alpha = 0.92f)
+                                    actual == preferred -> textColor.copy(alpha = 0.90f)
+                                    preferred != AudioSource.YOUTUBE -> textColor.copy(alpha = 0.42f)
+                                    else -> textColor.copy(alpha = 0.72f)
                                 },
                             shape = CircleShape,
                         ),
             )
+            Spacer(Modifier.width(8.dp))
+
+            Crossfade(
+                targetState = displayText,
+                animationSpec = tween(180),
+                label = "sourceText",
+            ) { label ->
+                Text(
+                    text = label,
+                    color = textColor.copy(alpha = 0.88f),
+                    fontFamily = FontFamily.Monospace,
+                    fontSize = 10.5.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Clip,
+                )
+            }
+
             Spacer(Modifier.width(7.dp))
             Text(
-                text = "$providerBadge · $bitrateBadge",
-                color = textColor.copy(alpha = 0.88f),
-                fontFamily = FontFamily.Monospace,
-                fontSize = 10.5.sp,
-                fontWeight = FontWeight.SemiBold,
-                maxLines = 1,
-                overflow = TextOverflow.Clip,
-            )
-            Spacer(Modifier.width(5.dp))
-            Text(
-                text = "▾",
-                color = textColor.copy(alpha = 0.5f),
-                fontSize = 9.sp,
+                text = "⌄",
+                color = textColor.copy(alpha = 0.50f),
+                fontSize = 12.sp,
                 maxLines = 1,
             )
         }
@@ -179,140 +216,98 @@ fun AudioSourceButton(
             onDismissRequest = { expanded = false },
             modifier =
                 Modifier
-                    .width(286.dp)
+                    .width(306.dp)
                     .background(
                         MaterialTheme.colorScheme.surfaceContainerHigh,
-                        RoundedCornerShape(18.dp),
+                        RoundedCornerShape(22.dp),
                     ),
         ) {
-            Column(
-                modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp),
-            ) {
+            Column(Modifier.padding(horizontal = 14.dp, vertical = 9.dp)) {
                 Text(
-                    text = "AUDIO SOURCE",
+                    text = "PLAYBACK SOURCE",
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     fontFamily = FontFamily.Monospace,
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Bold,
+                )
+                Spacer(Modifier.height(3.dp))
+                Text(
+                    text =
+                        when {
+                            resolving -> "YouTube keeps playing while Deezer is checked"
+                            preferred != actual -> "Preferred ${preferred.title} · actual ${actual.title}"
+                            else -> "Playing from ${actual.title}"
+                        },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
 
             ProviderMenuItem(
                 title = "YouTube",
-                subtitle = "Stable · Capsule core",
+                subtitle = "Stable · original Capsule pipeline",
                 selected = preferred == AudioSource.YOUTUBE,
+                actual = actual == AudioSource.YOUTUBE,
                 enabled = true,
                 onClick = {
                     scope.launch {
-                        context.dataStore.edit { prefs ->
-                            prefs[AudioSourceKey] = AudioSource.YOUTUBE.name
-                        }
+                        context.dataStore.edit { it[AudioSourceKey] = AudioSource.YOUTUBE.name }
                         AudioSourceManager.onPreferredSourceChanged(AudioSource.YOUTUBE)
-                        playerConnection.service.refreshCurrentAudioSource()
+                        expanded = false
+                        playerConnection.service.applyPreferredAudioSource(force = true)
                     }
                 },
             )
+
             ProviderMenuItem(
                 title = "Deezer",
-                subtitle = "Fast · YouTube fallback",
+                subtitle = "Experimental · background check · instant YouTube fallback",
                 selected = preferred == AudioSource.DEEZER,
+                actual = actual == AudioSource.DEEZER,
                 enabled = true,
                 onClick = {
                     scope.launch {
-                        context.dataStore.edit { prefs ->
-                            prefs[AudioSourceKey] = AudioSource.DEEZER.name
-                        }
+                        context.dataStore.edit { it[AudioSourceKey] = AudioSource.DEEZER.name }
                         AudioSourceManager.onPreferredSourceChanged(AudioSource.DEEZER)
-                        playerConnection.service.refreshCurrentAudioSource()
+                        expanded = false
+                        playerConnection.service.applyPreferredAudioSource(force = true)
                     }
                 },
             )
+
             ProviderMenuItem(
                 title = "Amazon Music",
                 subtitle = "Backend not enabled yet",
                 selected = preferred == AudioSource.AMAZON_MUSIC,
+                actual = actual == AudioSource.AMAZON_MUSIC,
                 enabled = false,
                 onClick = {},
             )
 
             HorizontalDivider(
-                modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp),
-                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f),
+                modifier = Modifier.padding(horizontal = 14.dp, vertical = 7.dp),
+                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f),
             )
 
             Text(
                 text = "QUALITY / BITRATE",
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 fontFamily = FontFamily.Monospace,
-                fontSize = 11.sp,
-                fontWeight = FontWeight.SemiBold,
-                modifier = Modifier.padding(horizontal = 18.dp, vertical = 5.dp),
+                fontSize = 10.sp,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.padding(horizontal = 18.dp, vertical = 4.dp),
             )
 
             when (preferred) {
                 AudioSource.YOUTUBE -> {
-                    YoutubeQualityItem(
-                        title = "Auto",
-                        subtitle = "Automatic format selection",
-                        selected = youtubeQuality == AudioQuality.AUTO,
-                        onSelect = {
-                            scope.launch {
-                                context.dataStore.edit { it[AudioQualityKey] = AudioQuality.AUTO.name }
-                                expanded = false
-                                playerConnection.service.refreshCurrentAudioSource()
-                            }
-                        },
-                    )
-                    YoutubeQualityItem(
-                        title = "Low",
-                        subtitle = "Lower data usage",
-                        selected = youtubeQuality == AudioQuality.LOW,
-                        onSelect = {
-                            scope.launch {
-                                context.dataStore.edit { it[AudioQualityKey] = AudioQuality.LOW.name }
-                                expanded = false
-                                playerConnection.service.refreshCurrentAudioSource()
-                            }
-                        },
-                    )
-                    YoutubeQualityItem(
-                        title = "High",
-                        subtitle = "High quality",
-                        selected = youtubeQuality == AudioQuality.HIGH,
-                        onSelect = {
-                            scope.launch {
-                                context.dataStore.edit { it[AudioQualityKey] = AudioQuality.HIGH.name }
-                                expanded = false
-                                playerConnection.service.refreshCurrentAudioSource()
-                            }
-                        },
-                    )
-                    YoutubeQualityItem(
-                        title = "Highest",
-                        subtitle = "Best available YouTube format",
-                        selected = youtubeQuality == AudioQuality.HIGHEST,
-                        onSelect = {
-                            scope.launch {
-                                context.dataStore.edit { it[AudioQualityKey] = AudioQuality.HIGHEST.name }
-                                expanded = false
-                                playerConnection.service.refreshCurrentAudioSource()
-                            }
-                        },
-                    )
-                }
-
-                AudioSource.DEEZER -> {
-                    DeezerAudioQuality.values().forEach { quality ->
+                    AudioQuality.values().forEach { quality ->
                         QualityMenuItem(
-                            title = quality.title,
-                            selected = deezerQuality == quality,
-                            enabled = true,
+                            title = quality.menuTitle(),
+                            subtitle = quality.menuSubtitle(),
+                            selected = youtubeQuality == quality,
                             onClick = {
                                 scope.launch {
-                                    context.dataStore.edit { prefs ->
-                                        prefs[DeezerAudioQualityKey] = quality.name
-                                    }
+                                    context.dataStore.edit { it[AudioQualityKey] = quality.name }
                                     expanded = false
                                     playerConnection.service.refreshCurrentAudioSource()
                                 }
@@ -321,27 +316,42 @@ fun AudioSourceButton(
                     }
                 }
 
-                AudioSource.AMAZON_MUSIC -> {
-                    Text(
-                        text = "Amazon Music quality becomes available when its playback backend is connected.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(horizontal = 18.dp, vertical = 10.dp),
-                    )
+                AudioSource.DEEZER -> {
+                    DeezerAudioQuality.values().forEach { quality ->
+                        QualityMenuItem(
+                            title = quality.title,
+                            subtitle =
+                                when (quality) {
+                                    DeezerAudioQuality.MP3_128 -> "Fastest resolver target"
+                                    DeezerAudioQuality.MP3_320 -> "Recommended target"
+                                    DeezerAudioQuality.FLAC -> "Lossless target when a direct route exists"
+                                },
+                            selected = deezerQuality == quality,
+                            onClick = {
+                                scope.launch {
+                                    context.dataStore.edit { it[DeezerAudioQualityKey] = quality.name }
+                                    expanded = false
+                                    playerConnection.service.applyPreferredAudioSource(force = true)
+                                }
+                            },
+                        )
+                    }
                 }
+
+                AudioSource.AMAZON_MUSIC -> Unit
             }
 
             val detail = stateForCurrent?.detail
             if (!detail.isNullOrBlank()) {
                 HorizontalDivider(
-                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp),
-                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f),
+                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 7.dp),
+                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.36f),
                 )
                 Text(
                     text = detail,
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(horizontal = 18.dp, vertical = 7.dp),
+                    modifier = Modifier.padding(horizontal = 18.dp, vertical = 6.dp),
                 )
             }
             Spacer(Modifier.height(4.dp))
@@ -354,28 +364,40 @@ private fun ProviderMenuItem(
     title: String,
     subtitle: String,
     selected: Boolean,
+    actual: Boolean,
     enabled: Boolean,
     onClick: () -> Unit,
 ) {
     DropdownMenuItem(
         text = {
             Row(
-                verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
             ) {
                 Box(
                     modifier =
                         Modifier
-                            .size(8.dp)
+                            .size(30.dp)
+                            .clip(RoundedCornerShape(10.dp))
                             .background(
                                 if (selected) {
-                                    MaterialTheme.colorScheme.primary
+                                    MaterialTheme.colorScheme.primary.copy(alpha = 0.13f)
                                 } else {
-                                    MaterialTheme.colorScheme.onSurface.copy(alpha = 0.14f)
+                                    MaterialTheme.colorScheme.onSurface.copy(alpha = 0.055f)
                                 },
-                                CircleShape,
                             ),
-                )
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(
+                        text = title.take(1).uppercase(),
+                        fontFamily = FontFamily.Monospace,
+                        fontWeight = FontWeight.Black,
+                        fontSize = 12.sp,
+                        color =
+                            if (enabled) MaterialTheme.colorScheme.onSurface
+                            else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.35f),
+                    )
+                }
                 Spacer(Modifier.width(11.dp))
                 Column(Modifier.weight(1f)) {
                     Text(
@@ -383,94 +405,88 @@ private fun ProviderMenuItem(
                         fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
                         color =
                             if (enabled) MaterialTheme.colorScheme.onSurface
-                            else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f),
+                            else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.35f),
                     )
                     Text(
                         text = subtitle,
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant.copy(
-                            alpha = if (enabled) 1f else 0.48f,
+                            alpha = if (enabled) 1f else 0.45f,
                         ),
                     )
                 }
-                if (selected) {
+                if (actual) {
                     Text(
-                        text = "ON",
+                        text = "LIVE",
                         fontFamily = FontFamily.Monospace,
-                        fontSize = 10.sp,
+                        fontSize = 9.sp,
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.primary,
+                    )
+                } else if (selected) {
+                    Text(
+                        text = "PRIORITY",
+                        fontFamily = FontFamily.Monospace,
+                        fontSize = 8.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
             }
         },
         onClick = onClick,
         enabled = enabled,
-    )
-}
-
-@Composable
-private fun YoutubeQualityItem(
-    title: String,
-    subtitle: String,
-    selected: Boolean,
-    onSelect: () -> Unit,
-) {
-    QualityMenuItem(
-        title = title,
-        subtitle = subtitle,
-        selected = selected,
-        enabled = true,
-        onClick = onSelect,
     )
 }
 
 @Composable
 private fun QualityMenuItem(
     title: String,
+    subtitle: String,
     selected: Boolean,
-    enabled: Boolean,
     onClick: () -> Unit,
-    subtitle: String? = null,
 ) {
     DropdownMenuItem(
         text = {
             Row(
-                verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
                     text = if (selected) "●" else "○",
                     color =
                         if (selected) MaterialTheme.colorScheme.primary
                         else MaterialTheme.colorScheme.onSurfaceVariant,
-                    fontSize = 11.sp,
+                    fontSize = 10.sp,
                 )
                 Spacer(Modifier.width(10.dp))
                 Column(Modifier.weight(1f)) {
+                    Text(title, color = MaterialTheme.colorScheme.onSurface)
                     Text(
-                        text = title,
-                        color =
-                            if (enabled) MaterialTheme.colorScheme.onSurface
-                            else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f),
+                        subtitle,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
-                    if (!subtitle.isNullOrBlank()) {
-                        Text(
-                            text = subtitle,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
                 }
             }
         },
         onClick = onClick,
-        enabled = enabled,
     )
 }
 
 private fun Int.toKbpsLabel(): String =
-    if (this > 0) "${(this / 1000f).toInt()}K" else "—"
+    if (this > 0) {
+        if (this >= 1_000_000) "${this / 1000}K" else "${(this / 1000f).toInt()}K"
+    } else {
+        "—"
+    }
+
+private fun AudioSource.shortDisplay(): String =
+    when (this) {
+        AudioSource.YOUTUBE -> "YOUTUBE"
+        AudioSource.DEEZER -> "DEEZER"
+        AudioSource.AMAZON_MUSIC -> "AMAZON"
+    }
 
 private fun AudioQuality.badgeLabel(): String =
     when (this) {
@@ -478,4 +494,20 @@ private fun AudioQuality.badgeLabel(): String =
         AudioQuality.LOW -> "LOW"
         AudioQuality.HIGH -> "HIGH"
         AudioQuality.HIGHEST -> "MAX"
+    }
+
+private fun AudioQuality.menuTitle(): String =
+    when (this) {
+        AudioQuality.AUTO -> "Auto"
+        AudioQuality.LOW -> "Low"
+        AudioQuality.HIGH -> "High"
+        AudioQuality.HIGHEST -> "Highest"
+    }
+
+private fun AudioQuality.menuSubtitle(): String =
+    when (this) {
+        AudioQuality.AUTO -> "Automatic format selection"
+        AudioQuality.LOW -> "Lower data usage"
+        AudioQuality.HIGH -> "High quality YouTube format"
+        AudioQuality.HIGHEST -> "Best available YouTube format"
     }
