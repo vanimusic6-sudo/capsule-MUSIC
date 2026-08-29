@@ -1,24 +1,19 @@
 /*
- * Velune - by Nikhil
- * Nikhil
+ * capsule fork
+ * Based on Velune by Nikhil
  * Licensed Under GPL-3.0
  */
 
 package com.nikhil.yt.utils
 
-import androidx.datastore.preferences.core.edit
-import com.nikhil.yt.App
-import com.nikhil.yt.constants.GitHubReleasesEtagKey
-import com.nikhil.yt.constants.GitHubReleasesFingerprintKey
-import com.nikhil.yt.constants.GitHubReleasesJsonKey
-import com.nikhil.yt.constants.GitHubReleasesLastCheckedAtKey
+import android.util.Xml
 import io.ktor.client.HttpClient
 import io.ktor.client.request.get
 import io.ktor.client.request.headers
 import io.ktor.client.statement.HttpResponse
 import io.ktor.client.statement.bodyAsText
-import io.ktor.http.HttpStatusCode
-import org.json.JSONArray
+import java.io.StringReader
+import org.xmlpull.v1.XmlPullParser
 
 data class GitCommit(
     val sha: String,
@@ -36,93 +31,187 @@ data class ReleaseInfo(
     val htmlUrl: String,
 )
 
-private data class ReleasesNetworkResult(
-    val status: HttpStatusCode,
-    val body: String?,
-    val etag: String?,
+private data class AtomEntry(
+    val id: String,
+    val title: String,
+    val updated: String,
+    val link: String,
+    val content: String,
+    val author: String,
 )
 
 object Updater {
     private const val RepositoryOwner = "vanimusic6-sudo"
     private const val RepositoryName = "capsule-MUSIC"
-    private const val RepositoryApi = "https://api.github.com/repos/$RepositoryOwner/$RepositoryName"
     private const val RepositoryWeb = "https://github.com/$RepositoryOwner/$RepositoryName"
-    private const val ReleaseAssetName = "Capsule.apk"
+    private const val ReleasesFeed = "$RepositoryWeb/releases.atom"
+    private const val ReleaseCacheIntervalMs = 15 * 60 * 1000L
 
+    /*
+     * Important: this updater deliberately does NOT use api.github.com.
+     * Unauthenticated GitHub REST requests have a small rate limit and can
+     * return HTTP 403. Public Atom feeds are enough for release/commit checks
+     * and do not consume that REST API quota.
+     */
     private val client = HttpClient()
-    private const val ReleaseCacheCheckIntervalMs: Long = 6 * 60 * 60 * 1000L
+
+    @Volatile
+    private var cachedReleases: List<ReleaseInfo> = emptyList()
+
+    @Volatile
+    private var lastReleaseFetchAt: Long = 0L
 
     var lastCheckTime = -1L
         private set
 
-    private fun parseReleasesJson(json: String): List<ReleaseInfo> {
-        val jsonArray = JSONArray(json)
-        val releases = ArrayList<ReleaseInfo>(jsonArray.length())
-        for (i in 0 until jsonArray.length()) {
-            val item = jsonArray.getJSONObject(i)
-            releases.add(
-                ReleaseInfo(
-                    tagName = item.optString("tag_name", ""),
-                    name = item.optString("name", ""),
-                    body = if (item.has("body")) item.optString("body") else null,
-                    publishedAt = item.optString("published_at", ""),
-                    htmlUrl = item.optString("html_url", ""),
-                ),
-            )
+    private fun parseAtomFeed(xml: String): List<AtomEntry> {
+        if (xml.isBlank()) return emptyList()
+
+        val parser = Xml.newPullParser().apply {
+            setFeature(XmlPullParser.FEATURE_PROCESS_NAMESPACES, false)
+            setInput(StringReader(xml))
         }
-        return releases
-    }
 
-    private fun getTopReleaseFingerprint(releases: List<ReleaseInfo>): String {
-        val latest = releases.firstOrNull() ?: return ""
-        return listOf(
-            latest.tagName,
-            latest.name,
-            latest.publishedAt,
-            latest.body.orEmpty(),
-            latest.htmlUrl,
-        ).joinToString("||")
-    }
+        val entries = mutableListOf<AtomEntry>()
+        var insideEntry = false
+        var insideAuthor = false
 
-    private suspend fun fetchReleasesNetwork(
-        perPage: Int,
-        cachedEtag: String?,
-    ): ReleasesNetworkResult {
-        val response: HttpResponse =
-            client.get("$RepositoryApi/releases?per_page=$perPage") {
-                headers {
-                    append("Accept", "application/vnd.github+json")
-                    append("User-Agent", "capsule")
-                    if (!cachedEtag.isNullOrBlank()) {
-                        append("If-None-Match", cachedEtag)
+        var id = ""
+        var title = ""
+        var updated = ""
+        var link = ""
+        var content = ""
+        var author = ""
+
+        var event = parser.eventType
+        while (event != XmlPullParser.END_DOCUMENT) {
+            when (event) {
+                XmlPullParser.START_TAG -> {
+                    when (parser.name) {
+                        "entry" -> {
+                            insideEntry = true
+                            insideAuthor = false
+                            id = ""
+                            title = ""
+                            updated = ""
+                            link = ""
+                            content = ""
+                            author = ""
+                        }
+
+                        "author" -> if (insideEntry) {
+                            insideAuthor = true
+                        }
+
+                        "id" -> if (insideEntry) {
+                            id = parser.nextText().trim()
+                        }
+
+                        "title" -> if (insideEntry) {
+                            title = parser.nextText().trim()
+                        }
+
+                        "updated" -> if (insideEntry) {
+                            updated = parser.nextText().trim()
+                        }
+
+                        "content" -> if (insideEntry) {
+                            content = parser.nextText().trim()
+                        }
+
+                        "name" -> if (insideEntry && insideAuthor) {
+                            author = parser.nextText().trim()
+                        }
+
+                        "link" -> if (insideEntry) {
+                            val href = parser.getAttributeValue(null, "href").orEmpty()
+                            val rel = parser.getAttributeValue(null, "rel").orEmpty()
+                            if (href.isNotBlank() && (link.isBlank() || rel == "alternate")) {
+                                link = href
+                            }
+                        }
+                    }
+                }
+
+                XmlPullParser.END_TAG -> {
+                    when (parser.name) {
+                        "author" -> insideAuthor = false
+
+                        "entry" -> {
+                            entries += AtomEntry(
+                                id = id,
+                                title = title,
+                                updated = updated,
+                                link = link,
+                                content = content,
+                                author = author,
+                            )
+                            insideEntry = false
+                            insideAuthor = false
+                        }
                     }
                 }
             }
-        val etag = response.headers["ETag"]
-        return when (response.status) {
-            HttpStatusCode.NotModified ->
-                ReleasesNetworkResult(
-                    status = response.status,
-                    body = null,
-                    etag = cachedEtag ?: etag,
-                )
-
-            else ->
-                ReleasesNetworkResult(
-                    status = response.status,
-                    body = response.bodyAsText(),
-                    etag = etag,
-                )
+            event = parser.next()
         }
+
+        return entries
     }
 
-    suspend fun getCachedReleases(): List<ReleaseInfo> {
-        val cachedJson = App.instance.dataStore.getAsync(GitHubReleasesJsonKey)
-        return cachedJson
-            ?.takeIf { it.isNotBlank() }
-            ?.let { runCatching { parseReleasesJson(it) }.getOrNull() }
-            ?: emptyList()
+    private suspend fun getFeed(url: String): HttpResponse =
+        client.get(url) {
+            headers {
+                append("Accept", "application/atom+xml, application/xml;q=0.9, text/xml;q=0.8, */*;q=0.5")
+                append("User-Agent", "capsule-android")
+                append("Cache-Control", "no-cache")
+            }
+        }
+
+    private fun releaseFromAtom(entry: AtomEntry): ReleaseInfo {
+        val tagFromUrl = entry.link
+            .substringAfter("/releases/tag/", "")
+            .substringBefore('?')
+            .substringBefore('#')
+            .trim('/')
+
+        val tag = tagFromUrl.ifBlank {
+            entry.title
+                .removePrefix("capsule ")
+                .removePrefix("Capsule ")
+                .trim()
+        }
+
+        return ReleaseInfo(
+            tagName = tag,
+            name = entry.title.ifBlank { tag },
+            body = entry.content.takeIf { it.isNotBlank() },
+            publishedAt = entry.updated,
+            htmlUrl = entry.link.ifBlank {
+                if (tag.isBlank()) "$RepositoryWeb/releases" else "$RepositoryWeb/releases/tag/$tag"
+            },
+        )
     }
+
+    private fun commitFromAtom(entry: AtomEntry): GitCommit {
+        val shaFromUrl = entry.link
+            .substringAfter("/commit/", "")
+            .substringBefore('/')
+            .substringBefore('?')
+            .substringBefore('#')
+
+        val shaFromId = entry.id.substringAfterLast('/').substringAfterLast(':')
+        val sha = shaFromUrl.ifBlank { shaFromId }.take(7).ifBlank { "commit" }
+
+        return GitCommit(
+            sha = sha,
+            message = entry.title.lines().firstOrNull().orEmpty(),
+            author = entry.author.ifBlank { "Unknown" },
+            date = entry.updated,
+            url = entry.link,
+        )
+    }
+
+    suspend fun getCachedReleases(): List<ReleaseInfo> = cachedReleases
 
     suspend fun getLatestVersionName(): Result<String> =
         getLatestReleaseInfo().map { latest ->
@@ -134,42 +223,11 @@ object Updater {
 
     suspend fun getLatestReleaseInfo(): Result<ReleaseInfo> =
         runCatching {
-            val releases = getAllReleases().getOrThrow()
-            val latest = releases.firstOrNull()
+            val latest = getAllReleases().getOrThrow().firstOrNull()
                 ?: throw IllegalStateException("No capsule releases found")
             lastCheckTime = System.currentTimeMillis()
             latest
         }
-
-    suspend fun getCommitHistory(
-        count: Int = 20,
-        branch: String = "main",
-    ): Result<List<GitCommit>> =
-        runCatching {
-            val response =
-                client.get("$RepositoryApi/commits?sha=$branch&per_page=$count")
-                    .bodyAsText()
-            val jsonArray = JSONArray(response)
-            val commits = mutableListOf<GitCommit>()
-            for (i in 0 until jsonArray.length()) {
-                val commitObj = jsonArray.getJSONObject(i)
-                val commit = commitObj.getJSONObject("commit")
-                val authorObj = commit.optJSONObject("author")
-                commits.add(
-                    GitCommit(
-                        sha = commitObj.optString("sha", "").take(7),
-                        message = commit.optString("message", "").lines().firstOrNull() ?: "",
-                        author = authorObj?.optString("name", "Unknown") ?: "Unknown",
-                        date = authorObj?.optString("date", "") ?: "",
-                        url = commitObj.optString("html_url", ""),
-                    ),
-                )
-            }
-            commits
-        }
-
-    fun getLatestDownloadUrl(): String =
-        "$RepositoryWeb/releases/latest/download/$ReleaseAssetName"
 
     suspend fun getAllReleases(
         perPage: Int = 30,
@@ -177,85 +235,70 @@ object Updater {
     ): Result<List<ReleaseInfo>> =
         runCatching {
             val now = System.currentTimeMillis()
-            val cachedJson = App.instance.dataStore.getAsync(GitHubReleasesJsonKey)
-            val cachedEtag = App.instance.dataStore.getAsync(GitHubReleasesEtagKey)
-            val lastCheckedAt = App.instance.dataStore.getAsync(GitHubReleasesLastCheckedAtKey, 0L)
-            val cachedFingerprint = App.instance.dataStore.getAsync(GitHubReleasesFingerprintKey)
+            val limit = perPage.coerceAtLeast(1)
 
-            val cachedReleases =
-                cachedJson
-                    ?.takeIf { it.isNotBlank() }
-                    ?.let { runCatching { parseReleasesJson(it) }.getOrNull() }
-
-            val shouldCheckNetwork =
-                forceRefresh || cachedJson.isNullOrBlank() ||
-                    (now - lastCheckedAt) >= ReleaseCacheCheckIntervalMs
-
-            if (!shouldCheckNetwork) {
+            if (
+                !forceRefresh &&
+                lastReleaseFetchAt > 0L &&
+                now - lastReleaseFetchAt < ReleaseCacheIntervalMs
+            ) {
                 lastCheckTime = now
-                return@runCatching cachedReleases ?: emptyList()
+                return@runCatching cachedReleases.take(limit)
             }
 
-            val networkResult = runCatching {
-                fetchReleasesNetwork(
-                    perPage = perPage,
-                    cachedEtag = cachedEtag,
+            val response = getFeed(ReleasesFeed)
+            val status = response.status.value
+
+            if (status == 404) {
+                cachedReleases = emptyList()
+                lastReleaseFetchAt = now
+                lastCheckTime = now
+                return@runCatching emptyList()
+            }
+
+            if (status !in 200..299) {
+                if (cachedReleases.isNotEmpty()) {
+                    lastCheckTime = now
+                    return@runCatching cachedReleases.take(limit)
+                }
+
+                // Do not leak GitHub REST-style HTTP 403 messages into the UI.
+                throw IllegalStateException(
+                    "Could not reach capsule releases. Please try again later.",
                 )
-            }.getOrNull()
-
-            if (networkResult == null) {
-                val fallback = cachedReleases
-                if (fallback != null) {
-                    lastCheckTime = now
-                    return@runCatching fallback
-                }
-                throw IllegalStateException("Failed to fetch capsule releases")
             }
 
-            when {
-                networkResult.status == HttpStatusCode.NotModified -> {
-                    App.instance.dataStore.edit { settings ->
-                        settings[GitHubReleasesLastCheckedAtKey] = now
-                        networkResult.etag?.let { settings[GitHubReleasesEtagKey] = it }
-                    }
-                    val fallback = cachedReleases
-                    if (fallback != null) {
-                        lastCheckTime = now
-                        return@runCatching fallback
-                    }
-                    throw IllegalStateException("Release cache is empty")
-                }
+            val parsed = parseAtomFeed(response.bodyAsText())
+                .map(::releaseFromAtom)
+                .filter { it.tagName.isNotBlank() || it.name.isNotBlank() }
 
-                networkResult.status.value in 200..299 && !networkResult.body.isNullOrBlank() -> {
-                    val networkBody = networkResult.body
-                    val releases = parseReleasesJson(networkBody)
-                    val newFingerprint = getTopReleaseFingerprint(releases)
-                    val hasPayloadChanged = cachedJson != networkBody
-                    val hasTopReleaseChanged = cachedFingerprint != newFingerprint
-
-                    App.instance.dataStore.edit { settings ->
-                        settings[GitHubReleasesLastCheckedAtKey] = now
-                        networkResult.etag?.let { settings[GitHubReleasesEtagKey] = it }
-                        if (hasPayloadChanged || hasTopReleaseChanged || cachedJson.isNullOrBlank()) {
-                            settings[GitHubReleasesJsonKey] = networkBody
-                            settings[GitHubReleasesFingerprintKey] = newFingerprint
-                        }
-                    }
-                    lastCheckTime = now
-                    releases
-                }
-
-                else -> {
-                    val fallback = cachedReleases
-                    if (fallback != null) {
-                        lastCheckTime = now
-                        fallback
-                    } else {
-                        throw IllegalStateException(
-                            "Failed to fetch capsule releases: HTTP ${networkResult.status.value}",
-                        )
-                    }
-                }
-            }
+            cachedReleases = parsed
+            lastReleaseFetchAt = now
+            lastCheckTime = now
+            parsed.take(limit)
         }
+
+    suspend fun getCommitHistory(
+        count: Int = 20,
+        branch: String = "main",
+    ): Result<List<GitCommit>> =
+        runCatching {
+            val safeBranch = branch.trim().ifBlank { "main" }
+            val response = getFeed("$RepositoryWeb/commits/$safeBranch.atom")
+            val status = response.status.value
+
+            if (status !in 200..299) {
+                throw IllegalStateException("Commit history is temporarily unavailable")
+            }
+
+            parseAtomFeed(response.bodyAsText())
+                .map(::commitFromAtom)
+                .take(count.coerceAtLeast(1))
+        }
+
+    /*
+     * Open the latest release page instead of assuming a fixed APK filename.
+     * This keeps updates working even if the workflow changes the asset name.
+     */
+    fun getLatestDownloadUrl(): String = "$RepositoryWeb/releases/latest"
 }
