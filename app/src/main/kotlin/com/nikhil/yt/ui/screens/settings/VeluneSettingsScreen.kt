@@ -1,5 +1,6 @@
-/*
- * Velune - by Nikhil
+
+ * capsule fork
+ * Based on Velune by Nikhil
  * Licensed Under GPL-3.0
  */
 
@@ -17,7 +18,6 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
@@ -60,7 +60,6 @@ fun VeluneSettingsScreen(
                         )
                     }
                 },
-
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.background
                 )
@@ -74,7 +73,6 @@ fun VeluneSettingsScreen(
                 .padding(paddingValues)
                 .padding(horizontal = 16.dp)
         ) {
-
             item {
                 Row(
                     modifier = Modifier
@@ -91,7 +89,7 @@ fun VeluneSettingsScreen(
                     ) {
                         Image(
                             painter = painterResource(id = R.drawable.ic_velune_concept),
-                            contentDescription = "Velune Logo",
+                            contentDescription = "capsule Logo",
                             modifier = Modifier
                                 .fillMaxSize()
                                 .padding(12.dp)
@@ -100,13 +98,13 @@ fun VeluneSettingsScreen(
                     Spacer(Modifier.width(16.dp))
                     Column {
                         Text(
-                            text = "Velune",
+                            text = "capsule",
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Normal
                         )
                         Spacer(Modifier.height(4.dp))
                         Text(
-                            text = "v${BuildConfig.VERSION_NAME}",
+                            text = "v${BuildConfig.VERSION_NAME.trim()}",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -126,7 +124,7 @@ fun VeluneSettingsScreen(
                 if (isLoggedIn) {
                     SettingsItemAccountStyle(
                         model = accountImageUrl,
-                        fallbackText = accountName?.firstOrNull()?.uppercase()?:"",
+                        fallbackText = accountName?.firstOrNull()?.uppercase() ?: "",
                         title = "Account",
                         onClick = { navController.navigate("settings/account") }
                     )
