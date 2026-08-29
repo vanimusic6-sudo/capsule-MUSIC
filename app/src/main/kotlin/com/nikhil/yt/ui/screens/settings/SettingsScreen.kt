@@ -543,7 +543,7 @@ fun SettingsScreen(
                         PremiumSettingsItem(
                             icon = painterResource(R.drawable.info),
                             title = stringResource(R.string.about),
-                            subtitle = "Velune",
+                            subtitle = "capsule",
                             accentColor = MaterialTheme.colorScheme.onSurfaceVariant,
                             keywords = listOf(
                                 "about",
@@ -1092,7 +1092,7 @@ private fun SettingsHeroHeader(modifier: Modifier = Modifier) {
                 painter = painterResource(R.drawable.ic_velune_concept),
                 contentDescription = null,
                 tint = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.size(26.dp),
+                modifier = Modifier.size(34.dp),
             )
         }
         Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
