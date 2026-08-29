@@ -1,4 +1,3 @@
-
  /** Capsule MUSIC
  *
  * Capsule full-player skin ported from the original Capsule repository.
@@ -484,7 +483,7 @@ fun CapsulePlayerContent(
         horizontalAlignment =
             Alignment.CenterHorizontally,
     ) {
-        Row(
+        Box(
             modifier =
                 Modifier
                     .fillMaxWidth()
@@ -494,10 +493,6 @@ fun CapsulePlayerContent(
                         top = 10.dp,
                         bottom = 14.dp,
                     ),
-            horizontalArrangement =
-                Arrangement.SpaceBetween,
-            verticalAlignment =
-                Alignment.CenterVertically,
         ) {
             Text(
                 text = "NOW PLAYING",
@@ -508,6 +503,13 @@ fun CapsulePlayerContent(
                 fontSize = 17.sp,
                 fontWeight =
                     FontWeight.SemiBold,
+                modifier = Modifier.align(Alignment.CenterStart),
+            )
+
+            AudioSourceButton(
+                playerConnection = playerConnection,
+                textColor = secondaryText,
+                modifier = Modifier.align(Alignment.Center),
             )
 
             Text(
@@ -527,6 +529,7 @@ fun CapsulePlayerContent(
                 fontFamily =
                     FontFamily.Monospace,
                 fontSize = 17.sp,
+                modifier = Modifier.align(Alignment.CenterEnd),
             )
         }
 
