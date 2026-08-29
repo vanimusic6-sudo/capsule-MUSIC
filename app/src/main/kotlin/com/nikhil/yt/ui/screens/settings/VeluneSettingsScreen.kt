@@ -1,5 +1,5 @@
 
-/* * Based on Velune by Nikhil
+ * Based on Velune by Nikhil
  * Licensed Under GPL-3.0
  */
 
@@ -141,14 +141,6 @@ fun VeluneSettingsScreen(
                     icon = painterResource(R.drawable.multi_user),
                     title = "Listen Together",
                     onClick = { navController.navigate("settings/music_together") }
-                )
-            }
-
-            item {
-                SettingsItemScreenshotStyle(
-                    icon = painterResource(R.drawable.play),
-                    title = "Sources",
-                    onClick = { navController.navigate("settings/sources") }
                 )
             }
 
