@@ -103,8 +103,12 @@ fun SourcesSettings(navController: NavController) {
     var testing by remember { mutableStateOf(false) }
     var report by remember { mutableStateOf<AudioSourceManager.HealthReport?>(null) }
 
-    fun refreshCurrent() {
+    fun refreshYoutube() {
         playerConnection?.service?.refreshCurrentAudioSource()
+    }
+
+    fun applyPreferredSource() {
+        playerConnection?.service?.applyPreferredAudioSource(force = true)
     }
 
     Scaffold(
@@ -144,7 +148,7 @@ fun SourcesSettings(navController: NavController) {
                     fontWeight = FontWeight.SemiBold,
                 )
                 Text(
-                    text = "Player source can change, but downloads always keep the original YouTube ID and YouTube download resolver.",
+                    text = "YouTube stays the live fallback while Deezer is checked in the background. Downloads always keep the original YouTube ID.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(top = 4.dp, bottom = 6.dp),
@@ -161,7 +165,7 @@ fun SourcesSettings(navController: NavController) {
                         scope.launch {
                             context.dataStore.edit { it[AudioSourceKey] = AudioSource.YOUTUBE.name }
                             AudioSourceManager.onPreferredSourceChanged(AudioSource.YOUTUBE)
-                            refreshCurrent()
+                            applyPreferredSource()
                         }
                     },
                 )
@@ -171,13 +175,13 @@ fun SourcesSettings(navController: NavController) {
                 SourceOption(
                     title = "Deezer",
                     selected = selectedSource == AudioSource.DEEZER,
-                    subtitle = "Fast matching · automatic YouTube fallback",
+                    subtitle = "Experimental · background check · YouTube never waits",
                     enabled = true,
                     onClick = {
                         scope.launch {
                             context.dataStore.edit { it[AudioSourceKey] = AudioSource.DEEZER.name }
                             AudioSourceManager.onPreferredSourceChanged(AudioSource.DEEZER)
-                            refreshCurrent()
+                            applyPreferredSource()
                         }
                     },
                 )
@@ -211,7 +215,7 @@ fun SourcesSettings(navController: NavController) {
                     ) {
                         scope.launch {
                             context.dataStore.edit { it[AudioQualityKey] = AudioQuality.AUTO.name }
-                            refreshCurrent()
+                            refreshYoutube()
                         }
                     }
                 }
@@ -223,7 +227,7 @@ fun SourcesSettings(navController: NavController) {
                     ) {
                         scope.launch {
                             context.dataStore.edit { it[AudioQualityKey] = AudioQuality.LOW.name }
-                            refreshCurrent()
+                            refreshYoutube()
                         }
                     }
                 }
@@ -235,7 +239,7 @@ fun SourcesSettings(navController: NavController) {
                     ) {
                         scope.launch {
                             context.dataStore.edit { it[AudioQualityKey] = AudioQuality.HIGH.name }
-                            refreshCurrent()
+                            refreshYoutube()
                         }
                     }
                 }
@@ -247,7 +251,7 @@ fun SourcesSettings(navController: NavController) {
                     ) {
                         scope.launch {
                             context.dataStore.edit { it[AudioQualityKey] = AudioQuality.HIGHEST.name }
-                            refreshCurrent()
+                            refreshYoutube()
                         }
                     }
                 }
@@ -266,7 +270,7 @@ fun SourcesSettings(navController: NavController) {
                         ) {
                             scope.launch {
                                 context.dataStore.edit { it[DeezerAudioQualityKey] = quality.name }
-                                refreshCurrent()
+                                applyPreferredSource()
                             }
                         }
                     }
@@ -296,7 +300,7 @@ fun SourcesSettings(navController: NavController) {
                                 .clickable {
                                     scope.launch {
                                         context.dataStore.edit { it[DeezerFastModeKey] = !deezerFastMode }
-                                        if (selectedSource == AudioSource.DEEZER) refreshCurrent()
+                                        if (selectedSource == AudioSource.DEEZER) applyPreferredSource()
                                     }
                                 }.padding(horizontal = 16.dp, vertical = 14.dp),
                         verticalAlignment = Alignment.CenterVertically,
@@ -314,7 +318,7 @@ fun SourcesSettings(navController: NavController) {
                             onCheckedChange = { enabled ->
                                 scope.launch {
                                     context.dataStore.edit { it[DeezerFastModeKey] = enabled }
-                                    if (selectedSource == AudioSource.DEEZER) refreshCurrent()
+                                    if (selectedSource == AudioSource.DEEZER) applyPreferredSource()
                                 }
                             },
                         )
@@ -360,6 +364,7 @@ fun SourcesSettings(navController: NavController) {
                 }
                 item { HealthCard(result.youtube) }
                 item { HealthCard(result.deezerApi) }
+                item { HealthCard(result.deezerPreview) }
                 item { HealthCard(result.deezerResolver) }
                 item { HealthCard(result.amazonWeb) }
                 item {
@@ -368,11 +373,11 @@ fun SourcesSettings(navController: NavController) {
                         body =
                             when (result.deezerFullStream) {
                                 DeezerAudioProvider.FullStreamState.DIRECT ->
-                                    "Direct full stream available — Capsule can use the Deezer route."
+                                    "Direct full stream available — Capsule can switch to Deezer without touching the YouTube resolver."
                                 DeezerAudioProvider.FullStreamState.PROTECTED ->
-                                    "Resolver is reachable, but the full stream is protected — Capsule falls back to YouTube."
+                                    "Resolver is reachable, but the full stream is protected. Capsule keeps the already-playing YouTube stream instead of stalling."
                                 DeezerAudioProvider.FullStreamState.UNAVAILABLE ->
-                                    "No usable full stream was returned — Capsule falls back to YouTube."
+                                    "No usable full stream was returned. YouTube keeps playing normally."
                             },
                     )
                 }
