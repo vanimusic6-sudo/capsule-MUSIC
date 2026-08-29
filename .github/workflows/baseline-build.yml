@@ -4,6 +4,9 @@ on:
   push:
     branches:
       - ci/baseline-build
+  pull_request:
+    branches:
+      - main
   workflow_dispatch:
 
 permissions:
