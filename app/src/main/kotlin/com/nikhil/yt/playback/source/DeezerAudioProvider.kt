@@ -1,11 +1,13 @@
-/*
- * capsule fork
- * Deezer matching and resolver routing adapted from MetroFuse / Metrolist (GPL-3.0).
+
+/* * capsule fork
+ * Deezer matching + diagnostics adapted from MetroFuse / Metrolist (GPL-3.0).
  *
- * This file intentionally does NOT contain protected-stream decryption.
- * A Deezer stream is accepted for playback only when the resolver explicitly
- * returns a clear/direct media URL. Protected media is reported to the caller,
- * which immediately falls back to Capsule's existing YouTube playback path.
+ * IMPORTANT:
+ * - This provider never modifies Capsule's YouTube media id.
+ * - It only returns a Deezer stream when the resolver explicitly reports a
+ *   clear/direct HTTP(S) media URL.
+ * - Protected full streams are reported as PROTECTED and the caller keeps the
+ *   already-playing YouTube stream.
  */
 
 package com.nikhil.yt.playback.source
@@ -18,26 +20,26 @@ import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONArray
 import org.json.JSONObject
-import timber.log.Timber
 import java.text.Normalizer
 import java.util.Locale
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
 import kotlin.math.abs
-import kotlin.math.roundToInt
 
 object DeezerAudioProvider {
     const val DEFAULT_RESOLVER_URL =
+        "https://dzmedia-metrofuse.onrender.com/get_url"
+
+    private const val FALLBACK_RESOLVER_URL =
         "https://yesitworkssomehow-funny-deeza-api-and-yeah.hf.space/get_url"
 
     private const val SEARCH_API_URL = "https://api.deezer.com/search/track"
     private const val BROWSER_USER_AGENT =
         "Mozilla/5.0 (Linux; Android 14; Pixel 8 Pro) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Mobile Safari/537.36"
     private const val MIN_MATCH_SCORE = 80
-    private const val REJECT_SCORE = -1_000_000
-    private const val SEARCH_LIMIT = 4
+    private const val SEARCH_LIMIT = 5
     private const val STREAM_CACHE_MS = 20 * 60 * 1000L
-    private const val FAILURE_CACHE_MS = 2 * 60 * 1000L
+    private const val FAILURE_CACHE_MS = 60 * 1000L
     private val JSON = "application/json; charset=utf-8".toMediaType()
 
     data class Query(
@@ -69,20 +71,22 @@ object DeezerAudioProvider {
         data class Unavailable(val reason: String) : Resolution
     }
 
-    data class AccessTest(
-        val apiReachable: Boolean,
-        val apiLatencyMs: Long?,
-        val resolverReachable: Boolean,
-        val resolverLatencyMs: Long?,
-        val fullStreamState: FullStreamState,
-        val detail: String,
-    )
-
     enum class FullStreamState {
         DIRECT,
         PROTECTED,
         UNAVAILABLE,
     }
+
+    data class AccessTest(
+        val apiReachable: Boolean,
+        val apiLatencyMs: Long?,
+        val previewReachable: Boolean,
+        val previewLatencyMs: Long?,
+        val resolverReachable: Boolean,
+        val resolverLatencyMs: Long?,
+        val fullStreamState: FullStreamState,
+        val detail: String,
+    )
 
     private data class MatchedTrack(
         val trackId: String,
@@ -100,9 +104,9 @@ object DeezerAudioProvider {
 
     private val client =
         OkHttpClient.Builder()
-            .connectTimeout(2, TimeUnit.SECONDS)
-            .readTimeout(3, TimeUnit.SECONDS)
-            .callTimeout(3, TimeUnit.SECONDS)
+            .connectTimeout(3, TimeUnit.SECONDS)
+            .readTimeout(4, TimeUnit.SECONDS)
+            .callTimeout(5, TimeUnit.SECONDS)
             .followRedirects(true)
             .followSslRedirects(true)
             .build()
@@ -117,107 +121,151 @@ object DeezerAudioProvider {
     }
 
     fun resolve(query: Query): Resolution {
-        val resolver = normalizeResolverUrl(query.resolverUrl)
-            ?: return Resolution.Unavailable("Invalid Deezer resolver URL")
-        val cacheKey = "${query.mediaId}::${resolver}::${query.fastMode}::${query.quality.name}"
-        val now = System.currentTimeMillis()
-        streamCache[cacheKey]
-            ?.takeIf { it.expiresAtMs > now }
-            ?.let { return it.resolution }
+        val resolvers =
+            buildList {
+                normalizeResolverUrl(query.resolverUrl)?.let(::add)
+                normalizeResolverUrl(DEFAULT_RESOLVER_URL)?.let(::add)
+                normalizeResolverUrl(FALLBACK_RESOLVER_URL)?.let(::add)
+            }.distinct()
 
-        val track = trackCache[query.mediaId]
-            ?: findBestTrack(query)?.also { trackCache[query.mediaId] = it }
-            ?: return cacheFailure(cacheKey, "Deezer match not found for ${query.title}")
-
-        val result = requestFullStream(
-            resolverUrl = resolver,
-            track = track,
-            query = query,
-        )
-
-        val ttl = when (result) {
-            is Resolution.Direct ->
-                (result.stream.expiresAtMs - now).coerceAtLeast(60_000L)
-            is Resolution.Protected -> FAILURE_CACHE_MS
-            is Resolution.Unavailable -> FAILURE_CACHE_MS
+        if (resolvers.isEmpty()) {
+            return Resolution.Unavailable("Invalid Deezer resolver URL")
         }
-        streamCache[cacheKey] = CachedResolution(result, now + ttl)
-        return result
+
+        val track =
+            trackCache[query.mediaId]
+                ?: findBestTrack(query)?.also { trackCache[query.mediaId] = it }
+                ?: return Resolution.Unavailable("Deezer match not found for ${query.title}")
+
+        var lastUnavailable: Resolution.Unavailable? = null
+        var protected: Resolution.Protected? = null
+
+        for (resolver in resolvers.take(if (query.fastMode) 2 else resolvers.size)) {
+            val cacheKey = "${query.mediaId}::$resolver::${query.fastMode}::${query.quality.name}"
+            val now = System.currentTimeMillis()
+            streamCache[cacheKey]
+                ?.takeIf { it.expiresAtMs > now }
+                ?.let { cached ->
+                    when (val result = cached.resolution) {
+                        is Resolution.Direct -> return result
+                        is Resolution.Protected -> protected = protected ?: result
+                        is Resolution.Unavailable -> lastUnavailable = result
+                    }
+                }
+
+            val result = requestFullStream(resolver, track, query)
+            val ttl =
+                when (result) {
+                    is Resolution.Direct ->
+                        (result.stream.expiresAtMs - now).coerceAtLeast(60_000L)
+                    is Resolution.Protected -> FAILURE_CACHE_MS
+                    is Resolution.Unavailable -> FAILURE_CACHE_MS
+                }
+            streamCache[cacheKey] = CachedResolution(result, now + ttl)
+
+            when (result) {
+                is Resolution.Direct -> return result
+                is Resolution.Protected -> protected = protected ?: result
+                is Resolution.Unavailable -> lastUnavailable = result
+            }
+        }
+
+        return protected
+            ?: lastUnavailable
+            ?: Resolution.Unavailable("Deezer resolver did not return a playable stream")
     }
 
     fun testAccess(resolverUrl: String = DEFAULT_RESOLVER_URL): AccessTest {
-        val testQuery = Query(
-            mediaId = "capsule-source-test",
-            title = "One More Time",
-            artists = listOf("Daft Punk"),
-            album = null,
-            durationMs = null,
-            resolverUrl = resolverUrl,
-            fastMode = true,
-            quality = DeezerAudioQuality.MP3_320,
-        )
+        val query =
+            Query(
+                mediaId = "capsule-source-test",
+                title = "One More Time",
+                artists = listOf("Daft Punk"),
+                album = null,
+                durationMs = null,
+                resolverUrl = resolverUrl,
+                fastMode = true,
+                quality = DeezerAudioQuality.MP3_320,
+            )
 
-        val apiStart = System.currentTimeMillis()
-        val match = findBestTrack(testQuery)
-        val apiLatency = System.currentTimeMillis() - apiStart
+        val apiStarted = System.currentTimeMillis()
+        val match = findBestTrack(query)
+        val apiLatency = System.currentTimeMillis() - apiStarted
+
         if (match == null) {
             return AccessTest(
                 apiReachable = false,
                 apiLatencyMs = apiLatency,
+                previewReachable = false,
+                previewLatencyMs = null,
                 resolverReachable = false,
                 resolverLatencyMs = null,
                 fullStreamState = FullStreamState.UNAVAILABLE,
-                detail = "Deezer public search did not return a usable track",
+                detail = "Deezer search did not return a usable track",
             )
         }
 
-        val resolver = normalizeResolverUrl(resolverUrl)
-            ?: return AccessTest(
-                apiReachable = true,
-                apiLatencyMs = apiLatency,
-                resolverReachable = false,
-                resolverLatencyMs = null,
-                fullStreamState = FullStreamState.UNAVAILABLE,
-                detail = "Invalid resolver URL",
-            )
+        val (previewOk, previewLatency) = probePreview(match.previewUrl)
 
-        val resolverStart = System.currentTimeMillis()
-        val result = requestFullStream(resolver, match, testQuery)
-        val resolverLatency = System.currentTimeMillis() - resolverStart
+        val resolverStarted = System.currentTimeMillis()
+        val result = resolve(query)
+        val resolverLatency = System.currentTimeMillis() - resolverStarted
 
         return when (result) {
-            is Resolution.Direct -> AccessTest(
-                apiReachable = true,
-                apiLatencyMs = apiLatency,
-                resolverReachable = true,
-                resolverLatencyMs = resolverLatency,
-                fullStreamState = FullStreamState.DIRECT,
-                detail = "Direct full stream available (${result.stream.label})",
-            )
-            is Resolution.Protected -> AccessTest(
-                apiReachable = true,
-                apiLatencyMs = apiLatency,
-                resolverReachable = true,
-                resolverLatencyMs = resolverLatency,
-                fullStreamState = FullStreamState.PROTECTED,
-                detail = "Resolver works, but full media is protected (${result.cipher}); playback will use YouTube fallback",
-            )
-            is Resolution.Unavailable -> AccessTest(
-                apiReachable = true,
-                apiLatencyMs = apiLatency,
-                resolverReachable = false,
-                resolverLatencyMs = resolverLatency,
-                fullStreamState = FullStreamState.UNAVAILABLE,
-                detail = result.reason,
-            )
+            is Resolution.Direct ->
+                AccessTest(
+                    apiReachable = true,
+                    apiLatencyMs = apiLatency,
+                    previewReachable = previewOk,
+                    previewLatencyMs = previewLatency,
+                    resolverReachable = true,
+                    resolverLatencyMs = resolverLatency,
+                    fullStreamState = FullStreamState.DIRECT,
+                    detail = "Direct full Deezer stream available (${result.stream.label})",
+                )
+
+            is Resolution.Protected ->
+                AccessTest(
+                    apiReachable = true,
+                    apiLatencyMs = apiLatency,
+                    previewReachable = previewOk,
+                    previewLatencyMs = previewLatency,
+                    resolverReachable = true,
+                    resolverLatencyMs = resolverLatency,
+                    fullStreamState = FullStreamState.PROTECTED,
+                    detail = "Search and resolver work; full media uses ${result.cipher}",
+                )
+
+            is Resolution.Unavailable ->
+                AccessTest(
+                    apiReachable = true,
+                    apiLatencyMs = apiLatency,
+                    previewReachable = previewOk,
+                    previewLatencyMs = previewLatency,
+                    resolverReachable = false,
+                    resolverLatencyMs = resolverLatency,
+                    fullStreamState = FullStreamState.UNAVAILABLE,
+                    detail = result.reason,
+                )
         }
     }
 
-    private fun cacheFailure(cacheKey: String, reason: String): Resolution.Unavailable {
-        val result = Resolution.Unavailable(reason)
-        streamCache[cacheKey] =
-            CachedResolution(result, System.currentTimeMillis() + FAILURE_CACHE_MS)
-        return result
+    private fun probePreview(url: String?): Pair<Boolean, Long?> {
+        if (url.isNullOrBlank()) return false to null
+        val started = System.currentTimeMillis()
+        val request =
+            Request.Builder()
+                .url(url)
+                .get()
+                .header("Range", "bytes=0-2047")
+                .header("User-Agent", BROWSER_USER_AGENT)
+                .build()
+        return runCatching {
+            client.newCall(request).execute().use { response ->
+                val ok = response.isSuccessful || response.code == 206
+                ok to (System.currentTimeMillis() - started)
+            }
+        }.getOrElse { false to (System.currentTimeMillis() - started) }
     }
 
     private fun normalizeResolverUrl(value: String): String? {
@@ -242,27 +290,27 @@ object DeezerAudioProvider {
     }
 
     private fun searchTracks(term: String): JSONArray? {
-        val url = SEARCH_API_URL
-            .toHttpUrl()
-            .newBuilder()
-            .addQueryParameter("q", term)
-            .addQueryParameter("limit", SEARCH_LIMIT.toString())
-            .build()
-        val request = Request.Builder()
-            .url(url)
-            .get()
-            .header("Accept", "application/json")
-            .header("User-Agent", BROWSER_USER_AGENT)
-            .build()
+        val url =
+            SEARCH_API_URL
+                .toHttpUrl()
+                .newBuilder()
+                .addQueryParameter("q", term)
+                .addQueryParameter("limit", SEARCH_LIMIT.toString())
+                .build()
+        val request =
+            Request.Builder()
+                .url(url)
+                .get()
+                .header("Accept", "application/json")
+                .header("User-Agent", BROWSER_USER_AGENT)
+                .build()
 
         return runCatching {
             client.newCall(request).execute().use { response ->
                 if (!response.isSuccessful) return@use null
-                val payload = response.body.string().takeIf { it.isNotBlank() } ?: return@use null
-                JSONObject(payload).optJSONArray("data")
+                val body = response.body.string()
+                JSONObject(body).optJSONArray("data")
             }
-        }.onFailure {
-            Timber.tag("CapsuleDeezer").d(it, "Deezer search failed for $term")
         }.getOrNull()
     }
 
@@ -271,73 +319,74 @@ object DeezerAudioProvider {
         val wantedArtists = query.artists.map { it.normalized() }.filter { it.isNotBlank() }
         val wantedAlbum = query.album.normalized()
         val wantedDurationMs = query.durationMs
-        val wantedTitleTokens = significantTokens(wantedTitle)
 
         data class Candidate(val track: MatchedTrack, val score: Int)
 
         val candidates = mutableListOf<Candidate>()
-        for (index in 0 until results.length()) {
-            val obj = results.optJSONObject(index) ?: continue
-            val trackId = obj.optString("id").takeIf { it.isNotBlank() } ?: continue
-            val candidateTitleRaw = obj.optString("title")
-            val candidateTitle = candidateTitleRaw.titleMatchNormalized()
-            val candidateArtists = collectArtistNames(obj).map { it.normalized() }.filter { it.isNotBlank() }
-            val candidateAlbum = obj.optJSONObject("album")?.optString("title").normalized()
-            val candidateDurationMs = obj.optLong("duration", -1L).takeIf { it > 0L }?.times(1000L)
-            val exactTitleMatch = wantedTitle.isNotBlank() && candidateTitle == wantedTitle
+        for (i in 0 until results.length()) {
+            val obj = results.optJSONObject(i) ?: continue
+            val id = obj.optString("id").takeIf { it.isNotBlank() } ?: continue
+            val titleRaw = obj.optString("title")
+            val title = titleRaw.titleMatchNormalized()
+            val artists = collectArtistNames(obj).map { it.normalized() }
+            val album = obj.optJSONObject("album")?.optString("title").normalized()
+            val durationMs = obj.optLong("duration", -1L).takeIf { it > 0L }?.times(1000L)
 
             var score = 0
-            score += when {
-                exactTitleMatch -> 120
-                candidateTitle.contains(wantedTitle) || wantedTitle.contains(candidateTitle) -> 70
-                else -> (tokenOverlap(wantedTitleTokens, significantTokens(candidateTitle)) * 70).roundToInt()
-            }
-
-            if (wantedArtists.isNotEmpty()) {
-                val artistOverlap = wantedArtists.any { wanted ->
-                    candidateArtists.any { candidate ->
-                        candidate == wanted || candidate.contains(wanted) || wanted.contains(candidate)
-                    }
-                }
-                score += if (artistOverlap) 80 else -70
-            }
-
-            if (wantedAlbum.isNotBlank() && candidateAlbum.isNotBlank()) {
-                score += when {
-                    candidateAlbum == wantedAlbum -> 35
-                    candidateAlbum.contains(wantedAlbum) || wantedAlbum.contains(candidateAlbum) -> 18
+            score +=
+                when {
+                    title == wantedTitle && wantedTitle.isNotBlank() -> 120
+                    title.contains(wantedTitle) || wantedTitle.contains(title) -> 70
                     else -> 0
                 }
+
+            if (wantedArtists.isNotEmpty()) {
+                val artistMatch =
+                    wantedArtists.any { wanted ->
+                        artists.any { candidate ->
+                            candidate == wanted || candidate.contains(wanted) || wanted.contains(candidate)
+                        }
+                    }
+                score += if (artistMatch) 80 else -70
             }
 
-            if (wantedDurationMs != null && candidateDurationMs != null) {
-                val diff = abs(wantedDurationMs - candidateDurationMs)
-                score += when {
-                    diff <= 5_000L -> 45
-                    diff <= 20_000L -> 20
-                    diff <= 45_000L -> 4
-                    else -> -90
-                }
+            if (wantedAlbum.isNotBlank() && album.isNotBlank()) {
+                score +=
+                    when {
+                        album == wantedAlbum -> 35
+                        album.contains(wantedAlbum) || wantedAlbum.contains(album) -> 18
+                        else -> 0
+                    }
             }
 
-            val versionMismatch = hasVersionMismatch(wantedTitle, candidateTitle)
-            if (versionMismatch) score -= 80
-            if (candidateTitle.isBlank()) score = REJECT_SCORE
+            if (wantedDurationMs != null && durationMs != null) {
+                val diff = abs(wantedDurationMs - durationMs)
+                score +=
+                    when {
+                        diff <= 5_000L -> 45
+                        diff <= 20_000L -> 20
+                        diff <= 45_000L -> 4
+                        else -> -90
+                    }
+            }
 
             if (score >= MIN_MATCH_SCORE) {
-                candidates += Candidate(
-                    track = MatchedTrack(
-                        trackId = trackId,
-                        title = candidateTitleRaw,
-                        artistNames = collectArtistNames(obj),
-                        album = obj.optJSONObject("album")?.optString("title"),
-                        durationMs = candidateDurationMs,
-                        previewUrl = obj.optString("preview").takeIf { it.isNotBlank() },
-                    ),
-                    score = score,
-                )
+                candidates +=
+                    Candidate(
+                        track =
+                            MatchedTrack(
+                                trackId = id,
+                                title = titleRaw,
+                                artistNames = collectArtistNames(obj),
+                                album = obj.optJSONObject("album")?.optString("title"),
+                                durationMs = durationMs,
+                                previewUrl = obj.optString("preview").takeIf { it.isNotBlank() },
+                            ),
+                        score = score,
+                    )
             }
         }
+
         return candidates.maxByOrNull { it.score }?.track
     }
 
@@ -346,54 +395,58 @@ object DeezerAudioProvider {
         track: MatchedTrack,
         query: Query,
     ): Resolution {
-        val targetUrl = resolverUrl.toHttpUrlOrNull()
-            ?.newBuilder()
-            ?.apply {
-                if (query.fastMode) addQueryParameter("mode", "fast")
-            }
-            ?.build()
-            ?: return Resolution.Unavailable("Invalid Deezer resolver URL")
-
-        val formats = JSONArray().also { array ->
-            when (query.quality) {
-                DeezerAudioQuality.FLAC -> {
-                    array.put("FLAC")
-                    array.put("MP3_320")
-                    array.put("MP3_128")
+        val targetUrl =
+            resolverUrl.toHttpUrlOrNull()
+                ?.newBuilder()
+                ?.apply {
+                    if (query.fastMode) addQueryParameter("mode", "fast")
                 }
-                DeezerAudioQuality.MP3_320 -> {
-                    array.put("MP3_320")
-                    array.put("MP3_128")
+                ?.build()
+                ?: return Resolution.Unavailable("Invalid Deezer resolver URL")
+
+        val formats =
+            JSONArray().also { array ->
+                when (query.quality) {
+                    DeezerAudioQuality.FLAC -> {
+                        array.put("FLAC")
+                        array.put("MP3_320")
+                        array.put("MP3_128")
+                    }
+                    DeezerAudioQuality.MP3_320 -> {
+                        array.put("MP3_320")
+                        array.put("MP3_128")
+                    }
+                    DeezerAudioQuality.MP3_128 -> array.put("MP3_128")
                 }
-                DeezerAudioQuality.MP3_128 -> array.put("MP3_128")
             }
-        }
 
-        val body = JSONObject()
-            .put("formats", formats)
-            .put("ids", JSONArray().put(track.trackId.toLongOrNull() ?: track.trackId))
-            .put("fast", query.fastMode)
+        val body =
+            JSONObject()
+                .put("formats", formats)
+                .put("ids", JSONArray().put(track.trackId.toLongOrNull() ?: track.trackId))
+                .put("fast", query.fastMode)
 
-        val request = Request.Builder()
-            .url(targetUrl)
-            .post(body.toString().toRequestBody(JSON))
-            .header("Accept", "application/json")
-            .header("User-Agent", BROWSER_USER_AGENT)
-            .build()
+        val request =
+            Request.Builder()
+                .url(targetUrl)
+                .post(body.toString().toRequestBody(JSON))
+                .header("Accept", "application/json")
+                .header("User-Agent", BROWSER_USER_AGENT)
+                .build()
 
         return runCatching {
             client.newCall(request).execute().use { response ->
                 val payload = response.body.string()
                 if (!response.isSuccessful) {
                     return@use Resolution.Unavailable(
-                        "Deezer resolver HTTP ${response.code}: ${payload.take(120)}"
+                        "Deezer resolver HTTP ${response.code}: ${payload.take(120)}",
                     )
                 }
                 parseMediaEnvelope(payload, track, query)
             }
         }.getOrElse { error ->
             Resolution.Unavailable(
-                "Deezer resolver failed: ${error.message ?: error.javaClass.simpleName}"
+                "Deezer resolver failed: ${error.message ?: error.javaClass.simpleName}",
             )
         }
     }
@@ -403,40 +456,39 @@ object DeezerAudioProvider {
         track: MatchedTrack,
         query: Query,
     ): Resolution {
-        val root = runCatching { JSONObject(payload) }.getOrNull()
-            ?: return Resolution.Unavailable("Deezer resolver returned invalid JSON")
-        val mediaArray = root.optJSONArray("data")
-            ?.optJSONObject(0)
-            ?.optJSONArray("media")
-            ?: return Resolution.Unavailable("Deezer resolver returned no media")
+        val root =
+            runCatching { JSONObject(payload) }.getOrNull()
+                ?: return Resolution.Unavailable("Deezer resolver returned invalid JSON")
+        val mediaArray =
+            root.optJSONArray("data")
+                ?.optJSONObject(0)
+                ?.optJSONArray("media")
+                ?: return Resolution.Unavailable("Deezer resolver returned no media")
 
-        val preferredFormats =
+        val wantedFormats =
             when (query.quality) {
                 DeezerAudioQuality.FLAC -> listOf("FLAC", "MP3_320", "MP3_128")
                 DeezerAudioQuality.MP3_320 -> listOf("MP3_320", "MP3_128")
                 DeezerAudioQuality.MP3_128 -> listOf("MP3_128")
             }
 
-        val mediaCandidates = buildList {
-            for (i in 0 until mediaArray.length()) {
-                val candidate = mediaArray.optJSONObject(i) ?: continue
-                if (candidate.optJSONArray("sources")?.length()?.let { it > 0 } == true) {
-                    add(candidate)
+        val candidates =
+            buildList {
+                for (i in 0 until mediaArray.length()) {
+                    val candidate = mediaArray.optJSONObject(i) ?: continue
+                    if ((candidate.optJSONArray("sources")?.length() ?: 0) > 0) add(candidate)
                 }
             }
-        }
 
-        var selectedMedia: JSONObject? = null
-        for (wanted in preferredFormats) {
-            selectedMedia = mediaCandidates.firstOrNull { candidate ->
-                candidate.optString("format").equals(wanted, ignoreCase = true)
-            }
-            if (selectedMedia != null) break
-        }
-        val resolvedMedia = selectedMedia ?: mediaCandidates.firstOrNull()
-            ?: return Resolution.Unavailable("Deezer resolver returned no source")
-        val cipher = resolvedMedia.optJSONObject("cipher")?.optString("type").orEmpty().trim()
-        if (cipher.isNotBlank() &&
+        val selected =
+            wantedFormats.firstNotNullOfOrNull { wanted ->
+                candidates.firstOrNull { it.optString("format").equals(wanted, ignoreCase = true) }
+            } ?: candidates.firstOrNull()
+                ?: return Resolution.Unavailable("Deezer resolver returned no source")
+
+        val cipher = selected.optJSONObject("cipher")?.optString("type").orEmpty().trim()
+        if (
+            cipher.isNotBlank() &&
             !cipher.equals("none", ignoreCase = true) &&
             !cipher.equals("clear", ignoreCase = true) &&
             !cipher.equals("plain", ignoreCase = true)
@@ -444,41 +496,48 @@ object DeezerAudioProvider {
             return Resolution.Protected(track.trackId, cipher)
         }
 
-        val sources = resolvedMedia.optJSONArray("sources")
+        val sources = selected.optJSONArray("sources")
             ?: return Resolution.Unavailable("Deezer resolver returned no source")
         val source = sources.optJSONObject(1) ?: sources.optJSONObject(0)
             ?: return Resolution.Unavailable("Deezer resolver returned no source")
         val streamUrl = source.optString("url").takeIf { it.startsWith("http") }
             ?: return Resolution.Unavailable("Deezer resolver returned an empty stream URL")
 
-        val format = resolvedMedia.optString("format").uppercase(Locale.US)
+        val format = selected.optString("format").uppercase(Locale.US)
         val isFlac = format.contains("FLAC")
         val is320 = format.contains("320")
-        val bitrate = when {
-            isFlac -> 1_411_000
-            is320 -> 320_000
-            else -> 128_000
-        }
-        val contentLength = resolvedMedia.optLong("filesize", -1L).takeIf { it > 0L }
-        val expiresAt = resolvedMedia.optLong("exp", -1L)
-            .takeIf { it > 0L }
-            ?.times(1000L)
-            ?.minus(30_000L)
-            ?.coerceAtLeast(System.currentTimeMillis() + 60_000L)
-            ?: (System.currentTimeMillis() + STREAM_CACHE_MS)
+        val bitrate =
+            when {
+                isFlac -> 1_411_000
+                is320 -> 320_000
+                else -> 128_000
+            }
+        val contentLength = selected.optLong("filesize", -1L).takeIf { it > 0L }
+        val expiresAt =
+            selected.optLong("exp", -1L)
+                .takeIf { it > 0L }
+                ?.times(1000L)
+                ?.minus(30_000L)
+                ?.coerceAtLeast(System.currentTimeMillis() + 60_000L)
+                ?: (System.currentTimeMillis() + STREAM_CACHE_MS)
 
         return Resolution.Direct(
             Resolved(
                 mediaUri = streamUrl,
                 trackId = track.trackId,
-                label = if (isFlac) "Deezer FLAC" else if (is320) "Deezer MP3 320" else "Deezer MP3 128",
+                label =
+                    when {
+                        isFlac -> "Deezer FLAC"
+                        is320 -> "Deezer MP3 320"
+                        else -> "Deezer MP3 128"
+                    },
                 mimeType = if (isFlac) "audio/flac" else "audio/mpeg",
                 codecs = if (isFlac) "flac" else "mp3",
                 bitrate = bitrate,
                 sampleRate = 44_100,
                 contentLength = contentLength,
                 expiresAtMs = expiresAt,
-            )
+            ),
         )
     }
 
@@ -525,29 +584,4 @@ object DeezerAudioProvider {
     private fun String.searchQueryArtist(): String =
         replace(Regex("(?i)\\s*[-–—]?\\s*(topic|official|vevo)$"), "")
             .trim()
-
-    private fun significantTokens(value: String): Set<String> =
-        value.split(' ')
-            .asSequence()
-            .map { it.trim() }
-            .filter { it.length >= 2 }
-            .toSet()
-
-    private fun tokenOverlap(a: Set<String>, b: Set<String>): Double {
-        if (a.isEmpty() || b.isEmpty()) return 0.0
-        val common = a.intersect(b).size.toDouble()
-        return common / maxOf(a.size, b.size).toDouble()
-    }
-
-    private fun hasVersionMismatch(wanted: String, candidate: String): Boolean {
-        val markers = listOf(
-            "live", "remix", "sped up", "slowed", "nightcore", "acoustic",
-            "instrumental", "karaoke", "cover", "radio edit", "extended"
-        )
-        return markers.any { marker ->
-            val wantedHas = wanted.contains(marker)
-            val candidateHas = candidate.contains(marker)
-            wantedHas != candidateHas
-        }
-    }
 }
