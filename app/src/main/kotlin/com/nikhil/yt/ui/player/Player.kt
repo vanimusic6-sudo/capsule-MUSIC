@@ -763,7 +763,10 @@ fun BottomSheetPlayer(
             Configuration.ORIENTATION_LANDSCAPE -> {
                 when {
                     capsulePlayerEnabled -> {
-                        enrichedMetadata?.let(capsuleContent)
+                        val capsuleMetadata = enrichedMetadata
+                        if (capsuleMetadata != null) {
+                            capsuleContent(capsuleMetadata)
+                        }
                     }
                     playerDesignStyle == PlayerDesignStyle.V5 -> {
                         enrichedMetadata?.let { metadata ->
@@ -844,7 +847,10 @@ fun BottomSheetPlayer(
             else -> {
                 when {
                     capsulePlayerEnabled -> {
-                        enrichedMetadata?.let(capsuleContent)
+                        val capsuleMetadata = enrichedMetadata
+                        if (capsuleMetadata != null) {
+                            capsuleContent(capsuleMetadata)
+                        }
                     }
                     playerDesignStyle == PlayerDesignStyle.V5 -> {
                         enrichedMetadata?.let { metadata ->
