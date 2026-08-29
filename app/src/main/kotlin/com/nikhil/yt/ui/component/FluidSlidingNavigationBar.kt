@@ -41,7 +41,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.nikhil.yt.ui.screens.Screens
 import com.nikhil.yt.ui.theme.CapsuleBottomBarEnabledKey
-import com.nikhil.yt.ui.theme.CapsuleThemeEnabledKey
 import com.nikhil.yt.utils.rememberPreference
 
 /**
@@ -58,25 +57,12 @@ fun FluidSlidingNavigationBar(
     pureBlack: Boolean,
     onTabSelected: (Screens) -> Unit,
 ) {
-    val capsuleThemeEnabled by rememberPreference(
-        CapsuleThemeEnabledKey,
-        defaultValue = false,
-    )
-
     val capsuleBottomBarEnabled by rememberPreference(
         CapsuleBottomBarEnabledKey,
         defaultValue = false,
     )
 
-    /*
-     * For now Capsule Theme automatically enables Capsule Dock.
-     * CapsuleBottomBarEnabledKey remains available for the later
-     * independent Bottom Bar / Full Immersion controls.
-     */
-    val useCapsuleDock =
-        capsuleThemeEnabled || capsuleBottomBarEnabled
-
-    if (useCapsuleDock) {
+    if (capsuleBottomBarEnabled) {
         CapsuleNavigationBar(
             modifier = modifier,
             items = items,
@@ -161,10 +147,6 @@ private fun CapsuleNavigationBar(
                 label = "CapsuleDockIndicator",
             )
 
-        /*
-         * Single white capsule that smoothly moves
-         * between navigation items.
-         */
         Box(
             modifier =
                 Modifier
@@ -292,7 +274,7 @@ private fun CapsuleNavigationBar(
 /**
  * Original Velune navigation.
  *
- * Kept so disabling Capsule restores the normal Velune appearance.
+ * Disabling Capsule Bottom Bar restores the normal Velune appearance.
  */
 @Composable
 private fun OriginalVeluneNavigationBar(
