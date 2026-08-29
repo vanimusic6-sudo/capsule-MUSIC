@@ -1,7 +1,11 @@
 /**
- * Velune / Capsule MUSIC
- * Capsule full-player visual layer
- * Licensed under GPL-3.0
+ * Capsule MUSIC
+ *
+ * Capsule full-player skin ported from the original Capsule repository.
+ * Visual structure, dimensions and gestures are kept from the donor.
+ * Playback is still entirely owned by Velune PlayerConnection.
+ *
+ * GPL-3.0
  */
 
 package com.nikhil.yt.ui.player
@@ -14,9 +18,9 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
-import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -25,10 +29,10 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.aspectRatio
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -37,24 +41,34 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.rotate
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -66,15 +80,18 @@ import androidx.media3.common.C
 import androidx.media3.common.Player
 import coil3.compose.AsyncImage
 import com.nikhil.yt.R
+import com.nikhil.yt.constants.CropThumbnailToSquareKey
+import com.nikhil.yt.constants.HidePlayerThumbnailKey
 import com.nikhil.yt.extensions.togglePlayPause
 import com.nikhil.yt.extensions.toggleRepeatMode
-import com.nikhil.yt.innertube.toHighResThumbnail
 import com.nikhil.yt.models.MediaMetadata
 import com.nikhil.yt.playback.PlayerConnection
+import com.nikhil.yt.together.TogetherRole
+import com.nikhil.yt.together.TogetherSessionState
 import com.nikhil.yt.utils.makeTimeString
+import com.nikhil.yt.utils.rememberPreference
 import kotlinx.coroutines.isActive
 import kotlin.math.cos
-import kotlin.math.min
 import kotlin.math.sin
 
 private val CapsuleArtworkShape =
@@ -83,13 +100,6 @@ private val CapsuleArtworkShape =
 private val CapsuleControlsShape =
     RoundedCornerShape(24.dp)
 
-/**
- * Capsule full player adapted for Velune.
- *
- * PlayerConnection remains completely owned by Velune.
- * No MusicService, Innertube, stream resolver, cache or queue
- * implementation is replaced here.
- */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun CapsulePlayerContent(
@@ -121,17 +131,50 @@ fun CapsulePlayerContent(
     val repeatMode by
         playerConnection.repeatMode.collectAsState()
 
+    val togetherState by
+        playerConnection.service.togetherSessionState.collectAsState()
+
+    val isListenTogetherGuest =
+        (togetherState as? TogetherSessionState.Joined)
+            ?.role is TogetherRole.Guest
+
+    val hideArtwork by
+        rememberPreference(
+            HidePlayerThumbnailKey,
+            defaultValue = false,
+        )
+
+    val cropAlbumArt by
+        rememberPreference(
+            CropThumbnailToSquareKey,
+            defaultValue = false,
+        )
+
     val isLoading =
-        playbackState == Player.STATE_BUFFERING
+        playbackState ==
+            Player.STATE_BUFFERING
+
+    val canSeek =
+        !isListenTogetherGuest &&
+            playerConnection.player
+                .isCommandAvailable(
+                    Player.COMMAND_SEEK_IN_CURRENT_MEDIA_ITEM,
+                )
 
     val secondaryText =
-        textColor.copy(alpha = 0.55f)
+        textColor.copy(
+            alpha = 0.55f,
+        )
 
     val outline =
-        textColor.copy(alpha = 0.16f)
+        textColor.copy(
+            alpha = 0.16f,
+        )
 
     val panel =
-        textColor.copy(alpha = 0.025f)
+        textColor.copy(
+            alpha = 0.025f,
+        )
 
     val displayPosition =
         (sliderPosition ?: positionMs)
@@ -146,8 +189,110 @@ fun CapsulePlayerContent(
             ?: 0L
 
     val remaining =
-        (safeDuration - displayPosition)
-            .coerceAtLeast(0L)
+        (
+            safeDuration -
+                displayPosition
+        ).coerceAtLeast(0L)
+
+    val density =
+        LocalDensity.current
+
+    val swipeThresholdPx =
+        with(density) {
+            64.dp.toPx()
+        }
+
+    var localSliderPosition by
+        remember(
+            sliderPosition,
+        ) {
+            mutableStateOf<Long?>(
+                sliderPosition,
+            )
+        }
+
+    var showSleepTimerDialog by
+        remember {
+            mutableStateOf(false)
+        }
+
+    var sleepTimerValue by
+        remember {
+            mutableFloatStateOf(30f)
+        }
+
+    val sleepTimerEnabled =
+        remember(
+            playerConnection.service
+                .sleepTimer
+                .triggerTime,
+            playerConnection.service
+                .sleepTimer
+                .pauseWhenSongEnd,
+        ) {
+            playerConnection.service
+                .sleepTimer
+                .isActive
+        }
+
+    if (showSleepTimerDialog) {
+        AlertDialog(
+            onDismissRequest = {
+                showSleepTimerDialog =
+                    false
+            },
+            title = {
+                Text("Sleep timer")
+            },
+            text = {
+                Column {
+                    Text(
+                        "${sleepTimerValue.toInt()} min",
+                    )
+
+                    Slider(
+                        value =
+                            sleepTimerValue,
+                        onValueChange = {
+                            sleepTimerValue =
+                                it
+                        },
+                        valueRange =
+                            5f..120f,
+                        steps = 22,
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        playerConnection
+                            .service
+                            .sleepTimer
+                            .start(
+                                sleepTimerValue
+                                    .toInt(),
+                            )
+
+                        showSleepTimerDialog =
+                            false
+                    },
+                ) {
+                    Text("OK")
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = {
+                        showSleepTimerDialog =
+                            false
+                    },
+                ) {
+                    Text("Cancel")
+                }
+            },
+        )
+    }
 
     Column(
         modifier =
@@ -160,14 +305,83 @@ fun CapsulePlayerContent(
                     ),
                 )
                 .padding(
-                    bottom = bottomPadding,
-                ),
+                    bottom =
+                        bottomPadding,
+                )
+                /*
+                 * Original Capsule gesture:
+                 * swipe DOWN by 64 dp anywhere on the player to open Queue.
+                 */
+                .pointerInput(
+                    onExpandQueue,
+                    swipeThresholdPx,
+                ) {
+                    var accumulated =
+                        0f
+
+                    var opened =
+                        false
+
+                    detectVerticalDragGestures(
+                        onDragStart = {
+                            accumulated =
+                                0f
+
+                            opened =
+                                false
+                        },
+                        onVerticalDrag = {
+                                change,
+                                dragAmount,
+                            ->
+                            if (
+                                dragAmount >
+                                0f
+                            ) {
+                                accumulated +=
+                                    dragAmount
+                            } else {
+                                accumulated =
+                                    (
+                                        accumulated +
+                                            dragAmount
+                                    ).coerceAtLeast(
+                                        0f,
+                                    )
+                            }
+
+                            if (
+                                !opened &&
+                                accumulated >=
+                                swipeThresholdPx
+                            ) {
+                                change.consume()
+
+                                opened =
+                                    true
+
+                                onExpandQueue()
+                            }
+                        },
+                        onDragEnd = {
+                            accumulated =
+                                0f
+
+                            opened =
+                                false
+                        },
+                        onDragCancel = {
+                            accumulated =
+                                0f
+
+                            opened =
+                                false
+                        },
+                    )
+                },
         horizontalAlignment =
             Alignment.CenterHorizontally,
     ) {
-        /*
-         * Header.
-         */
         Row(
             modifier =
                 Modifier
@@ -185,32 +399,38 @@ fun CapsulePlayerContent(
         ) {
             Text(
                 text = "NOW PLAYING",
-                color = secondaryText,
+                color =
+                    secondaryText,
                 fontFamily =
                     FontFamily.Monospace,
-                fontSize = 16.sp,
+                fontSize = 17.sp,
                 fontWeight =
                     FontWeight.SemiBold,
             )
 
             Text(
                 text =
-                    if (safeDuration > 0L) {
+                    if (
+                        safeDuration >
+                        0L
+                    ) {
                         makeTimeString(
                             safeDuration,
                         )
                     } else {
                         ""
                     },
-                color = secondaryText,
+                color =
+                    secondaryText,
                 fontFamily =
                     FontFamily.Monospace,
-                fontSize = 15.sp,
+                fontSize = 17.sp,
             )
         }
 
         /*
-         * Artwork.
+         * Exact donor geometry:
+         * same cover size, only visually lifted by -8 dp.
          */
         Box(
             modifier =
@@ -218,8 +438,10 @@ fun CapsulePlayerContent(
                     .weight(1f)
                     .fillMaxWidth()
                     .padding(
-                        horizontal = 18.dp,
-                        vertical = 6.dp,
+                        horizontal =
+                            18.dp,
+                        vertical =
+                            6.dp,
                     ),
             contentAlignment =
                 Alignment.Center,
@@ -229,35 +451,58 @@ fun CapsulePlayerContent(
                     Modifier
                         .fillMaxWidth()
                         .aspectRatio(1f)
+                        .offset(
+                            y = (-8).dp,
+                        )
                         .clip(
                             CapsuleArtworkShape,
                         )
                         .border(
-                            width = 1.dp,
-                            color = outline,
-                            shape =
-                                CapsuleArtworkShape,
+                            1.dp,
+                            outline,
+                            CapsuleArtworkShape,
                         )
                         .background(
                             textColor.copy(
-                                alpha = 0.045f,
+                                alpha =
+                                    0.045f,
                             ),
                         ),
                 contentAlignment =
                     Alignment.Center,
             ) {
-                AsyncImage(
-                    model =
-                        mediaMetadata
-                            .thumbnailUrl
-                            ?.toHighResThumbnail(),
-                    contentDescription =
-                        mediaMetadata.title,
-                    contentScale =
-                        ContentScale.Crop,
-                    modifier =
-                        Modifier.fillMaxSize(),
-                )
+                if (hideArtwork) {
+                    Icon(
+                        painter =
+                            painterResource(
+                                R.drawable.album,
+                            ),
+                        contentDescription =
+                            mediaMetadata.title,
+                        tint =
+                            secondaryText,
+                        modifier =
+                            Modifier.size(
+                                72.dp,
+                            ),
+                    )
+                } else {
+                    AsyncImage(
+                        model =
+                            mediaMetadata
+                                .thumbnailUrl,
+                        contentDescription =
+                            mediaMetadata.title,
+                        contentScale =
+                            if (cropAlbumArt) {
+                                ContentScale.Crop
+                            } else {
+                                ContentScale.Fit
+                            },
+                        modifier =
+                            Modifier.fillMaxSize(),
+                    )
+                }
             }
         }
 
@@ -266,12 +511,10 @@ fun CapsulePlayerContent(
                 Modifier
                     .fillMaxWidth()
                     .padding(
-                        horizontal = 18.dp,
+                        horizontal =
+                            18.dp,
                     ),
         ) {
-            /*
-             * Song metadata + connected Share/Like capsule.
-             */
             Row(
                 modifier =
                     Modifier.fillMaxWidth(),
@@ -282,114 +525,198 @@ fun CapsulePlayerContent(
                     modifier =
                         Modifier
                             .weight(1f)
+                            .clipToBounds()
                             .padding(
                                 end = 10.dp,
                             ),
                 ) {
                     Text(
                         text =
-                            mediaMetadata.title
-                                ?: "Unknown",
-                        color = textColor,
-                        fontSize = 27.sp,
-                        lineHeight = 31.sp,
+                            mediaMetadata.title,
+                        color =
+                            textColor,
+                        fontSize =
+                            28.sp,
+                        lineHeight =
+                            31.sp,
                         fontWeight =
                             FontWeight.Bold,
                         maxLines = 1,
                         overflow =
                             TextOverflow.Ellipsis,
                         modifier =
-                            Modifier
-                                .fillMaxWidth()
-                                .basicMarquee(),
+                            Modifier.fillMaxWidth(),
                     )
 
-                    Text(
-                        text =
-                            mediaMetadata
-                                .artists
-                                .joinToString {
-                                    it.name
-                                },
-                        color = secondaryText,
-                        fontSize = 16.sp,
-                        lineHeight = 21.sp,
-                        maxLines = 1,
-                        overflow =
-                            TextOverflow.Ellipsis,
-                        modifier =
-                            Modifier.basicMarquee(),
-                    )
+                    Row(
+                        verticalAlignment =
+                            Alignment.CenterVertically,
+                    ) {
+                        if (
+                            mediaMetadata.explicit
+                        ) {
+                            Box(
+                                modifier =
+                                    Modifier
+                                        .size(
+                                            width =
+                                                15.dp,
+                                            height =
+                                                15.dp,
+                                        )
+                                        .clip(
+                                            RoundedCornerShape(
+                                                2.dp,
+                                            ),
+                                        )
+                                        .border(
+                                            1.dp,
+                                            secondaryText,
+                                            RoundedCornerShape(
+                                                2.dp,
+                                            ),
+                                        ),
+                                contentAlignment =
+                                    Alignment.Center,
+                            ) {
+                                Text(
+                                    text = "E",
+                                    color =
+                                        secondaryText,
+                                    fontSize =
+                                        9.sp,
+                                    lineHeight =
+                                        9.sp,
+                                    fontWeight =
+                                        FontWeight.Bold,
+                                )
+                            }
+
+                            Spacer(
+                                Modifier.width(
+                                    5.dp,
+                                ),
+                            )
+                        }
+
+                        Text(
+                            text =
+                                mediaMetadata
+                                    .artists
+                                    .joinToString {
+                                        it.name
+                                    },
+                            color =
+                                secondaryText,
+                            fontSize =
+                                17.sp,
+                            lineHeight =
+                                21.sp,
+                            maxLines = 1,
+                            overflow =
+                                TextOverflow.Ellipsis,
+                            modifier =
+                                Modifier.weight(
+                                    1f,
+                                    fill = false,
+                                ),
+                        )
+                    }
                 }
 
-                CapsuleShareLikeButtons(
-                    textColor = textColor,
-                    outline = outline,
-                    panel = panel,
-                    liked = liked,
+                CapsuleShareFavoriteButtons(
+                    textColor =
+                        textColor,
+                    outlineColor =
+                        outline,
+                    panelColor =
+                        panel,
+                    liked =
+                        liked,
                     mediaId =
                         mediaMetadata.id,
                     onToggleLike =
                         onToggleLike,
-                    context = context,
+                    context =
+                        context,
                 )
             }
 
             Spacer(
-                Modifier.height(14.dp),
+                Modifier.height(
+                    14.dp,
+                ),
             )
 
-            /*
-             * Capsule progress bar.
-             */
             Slider(
                 value =
-                    displayPosition
+                    (
+                        localSliderPosition
+                            ?: displayPosition
+                    )
                         .toFloat()
                         .coerceIn(
                             0f,
                             safeDuration
-                                .coerceAtLeast(1L)
+                                .coerceAtLeast(
+                                    1L,
+                                )
                                 .toFloat(),
                         ),
                 valueRange =
                     0f..
                         safeDuration
-                            .coerceAtLeast(1L)
-                            .toFloat(),
-                onValueChange = { value ->
-                    if (safeDuration > 0L) {
-                        playerConnection
-                            .player
-                            .seekTo(
-                                value.toLong(),
+                            .coerceAtLeast(
+                                1L,
                             )
-                    }
+                            .toFloat(),
+                onValueChange = {
+                    localSliderPosition =
+                        it.toLong()
+                },
+                onValueChangeFinished = {
+                    localSliderPosition
+                        ?.let {
+                            playerConnection
+                                .player
+                                .seekTo(it)
+                        }
+
+                    localSliderPosition =
+                        null
                 },
                 enabled =
-                    safeDuration > 0L,
+                    canSeek &&
+                        safeDuration >
+                        0L,
                 thumb = {
                     Spacer(
-                        Modifier.size(0.dp),
+                        Modifier.size(
+                            0.dp,
+                        ),
                     )
                 },
                 colors =
                     SliderDefaults.colors(
                         activeTrackColor =
                             textColor.copy(
-                                alpha = 0.92f,
+                                alpha =
+                                    0.92f,
                             ),
                         inactiveTrackColor =
                             textColor.copy(
-                                alpha = 0.22f,
+                                alpha =
+                                    0.22f,
                             ),
                         disabledActiveTrackColor =
                             textColor.copy(
-                                alpha = 0.36f,
+                                alpha =
+                                    0.36f,
                             ),
                         disabledInactiveTrackColor =
                             textColor.copy(
-                                alpha = 0.12f,
+                                alpha =
+                                    0.12f,
                             ),
                     ),
                 modifier =
@@ -403,7 +730,8 @@ fun CapsulePlayerContent(
                     Modifier
                         .fillMaxWidth()
                         .padding(
-                            horizontal = 2.dp,
+                            horizontal =
+                                2.dp,
                         ),
                 horizontalArrangement =
                     Arrangement.SpaceBetween,
@@ -411,17 +739,23 @@ fun CapsulePlayerContent(
                 Text(
                     text =
                         makeTimeString(
-                            displayPosition,
+                            localSliderPosition
+                                ?: displayPosition,
                         ),
-                    color = secondaryText,
+                    color =
+                        secondaryText,
                     fontFamily =
                         FontFamily.Monospace,
-                    fontSize = 13.sp,
+                    fontSize =
+                        13.sp,
                 )
 
                 Text(
                     text =
-                        if (safeDuration > 0L) {
+                        if (
+                            safeDuration >
+                            0L
+                        ) {
                             "-${
                                 makeTimeString(
                                     remaining,
@@ -430,20 +764,21 @@ fun CapsulePlayerContent(
                         } else {
                             ""
                         },
-                    color = secondaryText,
+                    color =
+                        secondaryText,
                     fontFamily =
                         FontFamily.Monospace,
-                    fontSize = 13.sp,
+                    fontSize =
+                        13.sp,
                 )
             }
 
             Spacer(
-                Modifier.height(16.dp),
+                Modifier.height(
+                    16.dp,
+                ),
             )
 
-            /*
-             * Capsule control surface.
-             */
             Column(
                 modifier =
                     Modifier
@@ -452,26 +787,30 @@ fun CapsulePlayerContent(
                             CapsuleControlsShape,
                         )
                         .border(
-                            width = 1.dp,
-                            color = outline,
-                            shape =
-                                CapsuleControlsShape,
+                            1.dp,
+                            outline,
+                            CapsuleControlsShape,
                         )
-                        .background(panel),
+                        .background(
+                            panel,
+                        ),
             ) {
                 Row(
                     modifier =
                         Modifier
                             .fillMaxWidth()
-                            .height(92.dp),
+                            .height(
+                                92.dp,
+                            ),
                     verticalAlignment =
                         Alignment.CenterVertically,
                 ) {
-                    CapsuleSideButton(
+                    CapsuleTransportSideButton(
                         iconRes =
                             R.drawable.skip_previous,
                         enabled =
-                            canSkipPrevious,
+                            canSkipPrevious &&
+                                !isListenTogetherGuest,
                         textColor =
                             textColor,
                         onClick =
@@ -496,35 +835,38 @@ fun CapsulePlayerContent(
                             color =
                                 textColor,
                             onClick = {
-                                if (
-                                    playbackState ==
-                                    Player.STATE_ENDED
-                                ) {
-                                    playerConnection
-                                        .player
-                                        .seekTo(
-                                            0,
-                                            0,
-                                        )
+                                if (!isListenTogetherGuest) {
+                                    if (
+                                        playbackState ==
+                                        Player.STATE_ENDED
+                                    ) {
+                                        playerConnection
+                                            .player
+                                            .seekTo(
+                                                0,
+                                                0,
+                                            )
 
-                                    playerConnection
-                                        .player
-                                        .playWhenReady =
-                                        true
-                                } else {
-                                    playerConnection
-                                        .player
-                                        .togglePlayPause()
+                                        playerConnection
+                                            .player
+                                            .playWhenReady =
+                                            true
+                                    } else {
+                                        playerConnection
+                                            .player
+                                            .togglePlayPause()
+                                    }
                                 }
                             },
                         )
                     }
 
-                    CapsuleSideButton(
+                    CapsuleTransportSideButton(
                         iconRes =
                             R.drawable.skip_next,
                         enabled =
-                            canSkipNext,
+                            canSkipNext &&
+                                !isListenTogetherGuest,
                         textColor =
                             textColor,
                         onClick =
@@ -538,7 +880,9 @@ fun CapsulePlayerContent(
                     modifier =
                         Modifier
                             .fillMaxWidth()
-                            .height(1.dp)
+                            .height(
+                                1.dp,
+                            )
                             .background(
                                 outline,
                             ),
@@ -548,13 +892,41 @@ fun CapsulePlayerContent(
                     modifier =
                         Modifier
                             .fillMaxWidth()
-                            .height(66.dp),
+                            .height(
+                                66.dp,
+                            ),
                     verticalAlignment =
                         Alignment.CenterVertically,
                 ) {
                     CapsuleAuxButton(
                         iconRes =
-                            when (repeatMode) {
+                            R.drawable.bedtime,
+                        tint =
+                            if (
+                                sleepTimerEnabled
+                            ) {
+                                textColor
+                            } else {
+                                textColor.copy(
+                                    alpha =
+                                        0.82f,
+                                )
+                            },
+                        enabled =
+                            !isListenTogetherGuest,
+                        onClick = {
+                            showSleepTimerDialog =
+                                true
+                        },
+                        modifier =
+                            Modifier.weight(1f),
+                    )
+
+                    CapsuleAuxButton(
+                        iconRes =
+                            when (
+                                repeatMode
+                            ) {
                                 Player.REPEAT_MODE_ONE ->
                                     R.drawable.repeat_one
 
@@ -564,19 +936,23 @@ fun CapsulePlayerContent(
                         tint =
                             if (
                                 repeatMode ==
-                                Player.REPEAT_MODE_OFF
+                                Player.REPEAT_MODE_OFF ||
+                                isListenTogetherGuest
                             ) {
                                 textColor.copy(
-                                    alpha = 0.46f,
+                                    alpha =
+                                        0.46f,
                                 )
                             } else {
                                 textColor.copy(
-                                    alpha = 0.90f,
+                                    alpha =
+                                        0.88f,
                                 )
                             },
+                        enabled =
+                            !isListenTogetherGuest,
                         onClick = {
-                            playerConnection
-                                .player
+                            playerConnection.player
                                 .toggleRepeatMode()
                         },
                         modifier =
@@ -588,8 +964,11 @@ fun CapsulePlayerContent(
                             R.drawable.more_horiz,
                         tint =
                             textColor.copy(
-                                alpha = 0.88f,
+                                alpha =
+                                    0.88f,
                             ),
+                        enabled =
+                            true,
                         onClick =
                             onMenuClick,
                         modifier =
@@ -598,11 +977,10 @@ fun CapsulePlayerContent(
                 }
             }
 
-            /*
-             * Queue handle.
-             */
             Spacer(
-                Modifier.height(14.dp),
+                Modifier.height(
+                    14.dp,
+                ),
             )
 
             Box(
@@ -611,14 +989,19 @@ fun CapsulePlayerContent(
                         .align(
                             Alignment.CenterHorizontally,
                         )
-                        .width(44.dp)
-                        .height(4.dp)
+                        .width(
+                            44.dp,
+                        )
+                        .height(
+                            4.dp,
+                        )
                         .clip(
                             CircleShape,
                         )
                         .background(
                             textColor.copy(
-                                alpha = 0.22f,
+                                alpha =
+                                    0.22f,
                             ),
                         )
                         .clickable(
@@ -628,17 +1011,19 @@ fun CapsulePlayerContent(
             )
 
             Spacer(
-                Modifier.height(12.dp),
+                Modifier.height(
+                    12.dp,
+                ),
             )
         }
     }
 }
 
 @Composable
-private fun CapsuleShareLikeButtons(
+private fun CapsuleShareFavoriteButtons(
     textColor: Color,
-    outline: Color,
-    panel: Color,
+    outlineColor: Color,
+    panelColor: Color,
     liked: Boolean,
     mediaId: String,
     onToggleLike: () -> Unit,
@@ -662,25 +1047,26 @@ private fun CapsuleShareLikeButtons(
 
     Row(
         horizontalArrangement =
-            Arrangement.spacedBy(3.dp),
+            Arrangement.spacedBy(
+                3.dp,
+            ),
     ) {
-        /*
-         * Share.
-         */
         Box(
             modifier =
                 Modifier
-                    .size(52.dp)
+                    .size(
+                        52.dp,
+                    )
                     .clip(
                         shareShape,
                     )
                     .border(
-                        width = 1.dp,
-                        color = outline,
-                        shape = shareShape,
+                        1.dp,
+                        outlineColor,
+                        shareShape,
                     )
                     .background(
-                        panel,
+                        panelColor,
                     )
                     .clickable {
                         val intent =
@@ -716,27 +1102,28 @@ private fun CapsuleShareLikeButtons(
                 tint =
                     textColor,
                 modifier =
-                    Modifier.size(24.dp),
+                    Modifier.size(
+                        24.dp,
+                    ),
             )
         }
 
-        /*
-         * Favorite.
-         */
         Box(
             modifier =
                 Modifier
-                    .size(52.dp)
+                    .size(
+                        52.dp,
+                    )
                     .clip(
                         favoriteShape,
                     )
                     .border(
-                        width = 1.dp,
-                        color = outline,
-                        shape = favoriteShape,
+                        1.dp,
+                        outlineColor,
+                        favoriteShape,
                     )
                     .background(
-                        panel,
+                        panelColor,
                     )
                     .clickable(
                         onClick =
@@ -759,14 +1146,16 @@ private fun CapsuleShareLikeButtons(
                 tint =
                     textColor,
                 modifier =
-                    Modifier.size(25.dp),
+                    Modifier.size(
+                        25.dp,
+                    ),
             )
         }
     }
 }
 
 @Composable
-private fun CapsuleSideButton(
+private fun CapsuleTransportSideButton(
     iconRes: Int,
     enabled: Boolean,
     textColor: Color,
@@ -776,7 +1165,9 @@ private fun CapsuleSideButton(
     Box(
         modifier =
             modifier
-                .fillMaxHeight()
+                .height(
+                    92.dp,
+                )
                 .clickable(
                     enabled =
                         enabled,
@@ -803,7 +1194,9 @@ private fun CapsuleSideButton(
                         },
                 ),
             modifier =
-                Modifier.size(35.dp),
+                Modifier.size(
+                    35.dp,
+                ),
         )
     }
 }
@@ -812,14 +1205,19 @@ private fun CapsuleSideButton(
 private fun CapsuleAuxButton(
     iconRes: Int,
     tint: Color,
+    enabled: Boolean,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Box(
         modifier =
             modifier
-                .fillMaxHeight()
+                .height(
+                    66.dp,
+                )
                 .clickable(
+                    enabled =
+                        enabled,
                     onClick =
                         onClick,
                 ),
@@ -834,23 +1232,28 @@ private fun CapsuleAuxButton(
             contentDescription =
                 null,
             tint =
-                tint,
+                if (enabled) {
+                    tint
+                } else {
+                    tint.copy(
+                        alpha =
+                            0.38f,
+                    )
+                },
             modifier =
-                Modifier.size(25.dp),
+                Modifier.size(
+                    25.dp,
+                ),
         )
     }
 }
 
 /**
- * Capsule orbit/comet Play/Pause button.
+ * Donor Capsule comet button.
  *
- * Animatable survives Play/Pause state changes.
- *
- * When playback pauses, LaunchedEffect is cancelled and Animatable
- * retains its exact current angle.
- *
- * When playback resumes, the animation continues from that angle
- * instead of jumping back to zero.
+ * Animatable deliberately survives Play/Pause changes.
+ * Pause freezes the dot at the exact current angle;
+ * Resume continues from the same angle.
  */
 @Composable
 private fun CapsuleOrbitButton(
@@ -886,12 +1289,9 @@ private fun CapsuleOrbitButton(
                         ),
                 )
 
-                /*
-                 * Keep the numeric value small without
-                 * resetting the visible orbit position.
-                 */
                 rotation.snapTo(
-                    rotation.value % 360f,
+                    rotation.value %
+                        360f,
                 )
             }
         }
@@ -917,7 +1317,9 @@ private fun CapsuleOrbitButton(
     Box(
         modifier =
             Modifier
-                .size(82.dp)
+                .size(
+                    82.dp,
+                )
                 .clip(
                     CircleShape,
                 )
@@ -926,7 +1328,8 @@ private fun CapsuleOrbitButton(
                         Color.Transparent
                     } else {
                         Color.Gray.copy(
-                            alpha = 0.055f,
+                            alpha =
+                                0.055f,
                         )
                     },
                 )
@@ -941,116 +1344,154 @@ private fun CapsuleOrbitButton(
             CircularProgressIndicator(
                 color =
                     color.copy(
-                        alpha = 0.82f,
+                        alpha =
+                            0.82f,
                     ),
                 strokeWidth =
                     2.dp,
                 modifier =
-                    Modifier.size(32.dp),
+                    Modifier.size(
+                        32.dp,
+                    ),
             )
         } else {
             Canvas(
-                modifier =
-                    Modifier.size(68.dp),
+                Modifier.size(
+                    68.dp,
+                ),
             ) {
-                val width =
+                val w =
                     size.width
 
-                val height =
+                val h =
                     size.height
 
                 val cx =
-                    width / 2f
+                    w / 2f
 
                 val cy =
-                    height / 2f
+                    h / 2f
 
-                val radius =
-                    (min(width, height) / 2f) -
-                        3.dp.toPx()
+                val rx =
+                    w * 0.47f
 
-                /*
-                 * Orbit ring.
-                 */
-                drawCircle(
-                    color =
-                        color.copy(
-                            alpha = 0.16f * alpha,
-                        ),
-                    radius = radius,
-                    center =
-                        Offset(cx, cy),
-                    style =
-                        Stroke(
-                            width = 1.dp.toPx(),
-                        ),
-                )
+                val ry =
+                    h * 0.19f
 
-                /*
-                 * Comet head plus fading trail.
-                 */
-                val trailCount = 8
+                val orbitColor =
+                    color.copy(
+                        alpha =
+                            alpha,
+                    )
 
-                repeat(trailCount) { index ->
-                    val angleRad =
+                rotate(
+                    -25f,
+                ) {
+                    drawOval(
+                        color =
+                            orbitColor,
+                        topLeft =
+                            Offset(
+                                cx - rx,
+                                cy - ry,
+                            ),
+                        size =
+                            Size(
+                                rx * 2f,
+                                ry * 2f,
+                            ),
+                        style =
+                            Stroke(
+                                width =
+                                    w *
+                                        0.045f,
+                            ),
+                    )
+
+                    val angle =
+                        Math.toRadians(
+                            rotation.value
+                                .toDouble(),
+                        )
+
+                    val previousAngle =
                         Math.toRadians(
                             (
                                 rotation.value -
-                                    index * 6f
+                                    15f
                             ).toDouble(),
                         )
 
-                    val fade =
-                        1f -
-                            index /
-                            trailCount.toFloat()
+                    val point =
+                        Offset(
+                            x =
+                                cx +
+                                    rx *
+                                    cos(angle)
+                                        .toFloat(),
+                            y =
+                                cy +
+                                    ry *
+                                    sin(angle)
+                                        .toFloat(),
+                        )
+
+                    val tail =
+                        Offset(
+                            x =
+                                cx +
+                                    rx *
+                                    cos(
+                                        previousAngle,
+                                    ).toFloat(),
+                            y =
+                                cy +
+                                    ry *
+                                    sin(
+                                        previousAngle,
+                                    ).toFloat(),
+                        )
+
+                    drawLine(
+                        color =
+                            orbitColor.copy(
+                                alpha =
+                                    alpha *
+                                        0.35f,
+                            ),
+                        start =
+                            tail,
+                        end =
+                            point,
+                        strokeWidth =
+                            w *
+                                0.035f,
+                    )
 
                     drawCircle(
                         color =
-                            color.copy(
-                                alpha =
-                                    alpha * fade * 0.9f,
-                            ),
+                            orbitColor,
                         radius =
-                            (3.5f * fade)
-                                .dp
-                                .toPx()
-                                .coerceAtLeast(1f),
+                            w *
+                                0.052f,
                         center =
-                            Offset(
-                                x =
-                                    cx +
-                                        radius *
-                                        cos(angleRad)
-                                            .toFloat(),
-                                y =
-                                    cy +
-                                        radius *
-                                        sin(angleRad)
-                                            .toFloat(),
-                            ),
+                            point,
                     )
                 }
-            }
 
-            Icon(
-                painter =
-                    painterResource(
-                        if (isPlaying) {
-                            R.drawable.pause
-                        } else {
-                            R.drawable.play
-                        },
-                    ),
-                contentDescription =
-                    null,
-                tint =
-                    color.copy(
-                        alpha = alpha,
-                    ),
-                modifier =
-                    Modifier.size(30.dp),
-            )
+                drawCircle(
+                    color =
+                        orbitColor,
+                    radius =
+                        w *
+                            0.115f,
+                    center =
+                        Offset(
+                            cx,
+                            cy,
+                        ),
+                )
+            }
         }
     }
 }
