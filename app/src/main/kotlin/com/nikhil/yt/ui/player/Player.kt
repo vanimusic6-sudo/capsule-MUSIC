@@ -591,15 +591,21 @@ fun BottomSheetPlayer(
          * the next surface gently replaces the current one rather than
          * navigating to another page.
          */
+        /*
+         * Extra-soft Capsule Player <-> Lyrics transition.
+         *
+         * Very small motion + long easing makes the two surfaces feel like
+         * they gently dissolve into each other instead of changing screens.
+         */
         val capsuleSurfaceEasing =
             remember {
-                CubicBezierEasing(0.22f, 0.0f, 0.16f, 1.0f)
+                CubicBezierEasing(0.18f, 0.0f, 0.12f, 1.0f)
             }
-        val capsuleEnterDuration = 440
-        val capsuleExitDuration = 380
-        val capsuleIncomingDivisor = 84
-        val capsuleOutgoingDivisor = 104
-        val capsuleTransitionScale = 0.9985f
+        val capsuleEnterDuration = 620
+        val capsuleExitDuration = 540
+        val capsuleIncomingDivisor = 180
+        val capsuleOutgoingDivisor = 220
+        val capsuleTransitionScale = 0.9994f
 
         val capsuleContent: @Composable (MediaMetadata) -> Unit = { metadata ->
             AnimatedContent(
@@ -740,6 +746,13 @@ fun BottomSheetPlayer(
                         onExpandQueue = queueSheetState::expandSoft,
                         onArtworkClick = {
                             showInlineLyrics = true
+                        },
+                        onArtistSelected = { artist ->
+                            artist.id?.let { artistId ->
+                                showInlineLyrics = false
+                                navController.navigate("artist/$artistId")
+                                state.collapseSoft()
+                            }
                         },
                         onMenuClick = {
                             menuState.show {
