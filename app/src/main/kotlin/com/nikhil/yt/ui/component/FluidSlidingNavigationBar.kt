@@ -47,8 +47,8 @@ import com.nikhil.yt.utils.rememberPreference
 /**
  * Velune navigation bar with optional Capsule Dock visual layer.
  *
- * Navigation behavior and callbacks remain completely owned by Velune.
- * Capsule only replaces presentation.
+ * Navigation itself remains owned by Velune.
+ * Capsule only changes presentation.
  */
 @Composable
 fun FluidSlidingNavigationBar(
@@ -69,9 +69,9 @@ fun FluidSlidingNavigationBar(
     )
 
     /*
-     * For the first integration Capsule Theme also activates the dock.
-     * CapsuleBottomBarEnabledKey is still kept separately for the
-     * independent switch/full-immersion settings we'll connect next.
+     * For now Capsule Theme automatically enables Capsule Dock.
+     * CapsuleBottomBarEnabledKey remains available for the later
+     * independent Bottom Bar / Full Immersion controls.
      */
     val useCapsuleDock =
         capsuleThemeEnabled || capsuleBottomBarEnabled
@@ -96,9 +96,10 @@ fun FluidSlidingNavigationBar(
 }
 
 /**
- * Capsule Dock adapted from the original Capsule/Metrolist implementation.
+ * Capsule Dock.
  *
- * No navigation logic is replaced.
+ * Only the visual layer is replaced.
+ * Tab selection still uses Velune's existing callback.
  */
 @Composable
 private fun CapsuleNavigationBar(
@@ -153,7 +154,7 @@ private fun CapsuleNavigationBar(
                 animationSpec =
                     spring(
                         dampingRatio =
-                            Spring.DampingRatio.NoBouncy,
+                            Spring.DampingRatioNoBouncy,
                         stiffness =
                             Spring.StiffnessMediumLow,
                     ),
@@ -161,8 +162,8 @@ private fun CapsuleNavigationBar(
             )
 
         /*
-         * One real indicator moves between the tabs.
-         * This is the same visual principle used by the old Capsule Dock.
+         * Single white capsule that smoothly moves
+         * between navigation items.
          */
         Box(
             modifier =
@@ -200,7 +201,7 @@ private fun CapsuleNavigationBar(
                         animationSpec =
                             spring(
                                 dampingRatio =
-                                    Spring.DampingRatio.NoBouncy,
+                                    Spring.DampingRatioNoBouncy,
                                 stiffness =
                                     Spring.StiffnessMediumLow,
                             ),
@@ -289,10 +290,9 @@ private fun CapsuleNavigationBar(
 }
 
 /**
- * Original Velune implementation.
+ * Original Velune navigation.
  *
- * Kept here unchanged in behavior so disabling Capsule immediately restores
- * the previous navigation appearance.
+ * Kept so disabling Capsule restores the normal Velune appearance.
  */
 @Composable
 private fun OriginalVeluneNavigationBar(
@@ -344,7 +344,7 @@ private fun OriginalVeluneNavigationBar(
                 animationSpec =
                     spring(
                         dampingRatio =
-                            Spring.DampingRatio.NoBouncy,
+                            Spring.DampingRatioNoBouncy,
                         stiffness =
                             Spring.StiffnessLow,
                     ),
