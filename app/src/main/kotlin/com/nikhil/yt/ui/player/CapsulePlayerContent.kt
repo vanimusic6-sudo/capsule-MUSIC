@@ -299,15 +299,25 @@ fun CapsulePlayerContent(
         modifier =
             Modifier
                 .fillMaxSize()
+                /*
+                 * Keep NOW PLAYING / duration at their current top position,
+                 * but reserve the real bottom system-navigation inset.
+                 *
+                 * Because the header is fixed-height at the beginning of this
+                 * Column, this reduces only the space available below it:
+                 * artwork, metadata, progress, controls and queue handle move
+                 * upward while the header itself stays where it is.
+                 */
                 .windowInsetsPadding(
                     WindowInsets.systemBars.only(
                         WindowInsetsSides.Top +
-                            WindowInsetsSides.Horizontal,
+                            WindowInsetsSides.Horizontal +
+                            WindowInsetsSides.Bottom,
                     ),
                 )
                 .padding(
                     bottom =
-                        bottomPadding,
+                        bottomPadding + 8.dp,
                 )
                 /*
                  * Original Capsule gesture:
