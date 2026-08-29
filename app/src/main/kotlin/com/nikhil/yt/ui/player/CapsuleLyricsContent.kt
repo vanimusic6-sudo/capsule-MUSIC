@@ -1,0 +1,828 @@
+/**
+ * Velune / Capsule MUSIC
+ * Capsule Lyrics visual layer
+ * Licensed under GPL-3.0
+ */
+
+package com.nikhil.yt.ui.player
+
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.only
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.systemBars
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.Slider
+import androidx.compose.material3.SliderDefaults
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.rotate
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.media3.common.C
+import androidx.media3.common.Player
+import com.nikhil.yt.LocalPlayerConnection
+import com.nikhil.yt.R
+import com.nikhil.yt.extensions.togglePlayPause
+import com.nikhil.yt.models.MediaMetadata
+import com.nikhil.yt.ui.component.Lyrics
+import com.nikhil.yt.ui.component.LyricsV2
+import com.nikhil.yt.utils.makeTimeString
+import kotlinx.coroutines.isActive
+import kotlin.math.cos
+import kotlin.math.sin
+
+private val CapsuleLyricsBackground =
+    Color(0xFF101010)
+
+private val CapsuleLyricsText =
+    Color(0xFFF0F0F0)
+
+private val CapsuleLyricsSecondary =
+    Color(0xFF858585)
+
+private val CapsuleLyricsOutline =
+    Color(0xFF343434)
+
+private val CapsuleLyricsPanel =
+    Color(0xFF171717)
+
+private val CapsuleLyricsPanelShape =
+    RoundedCornerShape(24.dp)
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun CapsuleLyricsContent(
+    mediaMetadata: MediaMetadata,
+    sliderPosition: Long?,
+    positionMs: Long,
+    durationMs: Long,
+    useLyricsV2: Boolean,
+    onClose: () -> Unit,
+    onMenuClick: () -> Unit,
+    onSeekPreview: (Long) -> Unit,
+    onSeekFinished: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val playerConnection =
+        LocalPlayerConnection.current ?: return
+
+    val playbackState by
+        playerConnection.playbackState.collectAsState()
+
+    val isPlaying by
+        playerConnection.isPlaying.collectAsState()
+
+    val canSkipPrevious by
+        playerConnection.canSkipPrevious.collectAsState()
+
+    val canSkipNext by
+        playerConnection.canSkipNext.collectAsState()
+
+    val volumeState =
+        playerConnection
+            .service
+            .playerVolume
+            .collectAsState()
+
+    val isLoading =
+        playbackState ==
+            Player.STATE_BUFFERING ||
+            sliderPosition != null
+
+    val safeDuration =
+        durationMs
+            .takeIf {
+                it > 0L &&
+                    it != C.TIME_UNSET
+            }
+            ?: 0L
+
+    val displayPosition =
+        (sliderPosition ?: positionMs)
+            .coerceAtLeast(0L)
+
+    val remaining =
+        (safeDuration - displayPosition)
+            .coerceAtLeast(0L)
+
+    Column(
+        modifier =
+            modifier
+                .fillMaxSize()
+                .background(
+                    CapsuleLyricsBackground,
+                )
+                .windowInsetsPadding(
+                    WindowInsets.systemBars.only(
+                        WindowInsetsSides.Top +
+                            WindowInsetsSides.Horizontal +
+                            WindowInsetsSides.Bottom,
+                    ),
+                )
+                .padding(
+                    horizontal = 18.dp,
+                    vertical = 8.dp,
+                ),
+    ) {
+        /*
+         * Capsule header.
+         */
+        Box(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .height(64.dp),
+        ) {
+            Box(
+                modifier =
+                    Modifier
+                        .align(
+                            Alignment.CenterStart,
+                        )
+                        .size(48.dp)
+                        .clip(CircleShape)
+                        .clickable(
+                            onClick = onClose,
+                        ),
+                contentAlignment =
+                    Alignment.Center,
+            ) {
+                Icon(
+                    painter =
+                        painterResource(
+                            R.drawable.expand_more,
+                        ),
+                    contentDescription = null,
+                    tint =
+                        CapsuleLyricsText,
+                    modifier =
+                        Modifier.size(30.dp),
+                )
+            }
+
+            Column(
+                modifier =
+                    Modifier
+                        .align(
+                            Alignment.Center,
+                        )
+                        .padding(
+                            horizontal = 60.dp,
+                        ),
+                horizontalAlignment =
+                    Alignment.CenterHorizontally,
+            ) {
+                Text(
+                    text =
+                        mediaMetadata.title,
+                    color =
+                        CapsuleLyricsText,
+                    fontSize = 19.sp,
+                    lineHeight = 22.sp,
+                    fontWeight =
+                        FontWeight.SemiBold,
+                    maxLines = 1,
+                    overflow =
+                        TextOverflow.Ellipsis,
+                )
+
+                Text(
+                    text =
+                        mediaMetadata
+                            .artists
+                            .joinToString {
+                                it.name
+                            },
+                    color =
+                        CapsuleLyricsSecondary,
+                    fontSize = 13.sp,
+                    lineHeight = 17.sp,
+                    fontFamily =
+                        FontFamily.Monospace,
+                    maxLines = 1,
+                    overflow =
+                        TextOverflow.Ellipsis,
+                )
+            }
+
+            Box(
+                modifier =
+                    Modifier
+                        .align(
+                            Alignment.CenterEnd,
+                        )
+                        .size(48.dp)
+                        .clip(CircleShape)
+                        .clickable(
+                            onClick =
+                                onMenuClick,
+                        ),
+                contentAlignment =
+                    Alignment.Center,
+            ) {
+                Icon(
+                    painter =
+                        painterResource(
+                            R.drawable.more_horiz,
+                        ),
+                    contentDescription = null,
+                    tint =
+                        CapsuleLyricsText,
+                    modifier =
+                        Modifier.size(28.dp),
+                )
+            }
+        }
+
+        /*
+         * IMPORTANT:
+         *
+         * We use Velune's own Lyrics / LyricsV2 composables.
+         * The backend remains in LyricsScreen and PlayerConnection.
+         */
+        Box(
+            modifier =
+                Modifier
+                    .weight(1f)
+                    .fillMaxWidth()
+                    .padding(
+                        top = 6.dp,
+                        bottom = 8.dp,
+                    ),
+        ) {
+            if (useLyricsV2) {
+                LyricsV2(
+                    sliderPositionProvider = {
+                        sliderPosition
+                    },
+                )
+            } else {
+                Lyrics(
+                    sliderPositionProvider = {
+                        sliderPosition
+                    },
+                )
+            }
+        }
+
+        /*
+         * Minimal Capsule progress line.
+         */
+        Slider(
+            value =
+                displayPosition
+                    .toFloat()
+                    .coerceIn(
+                        0f,
+                        safeDuration
+                            .coerceAtLeast(1L)
+                            .toFloat(),
+                    ),
+            valueRange =
+                0f..
+                    safeDuration
+                        .coerceAtLeast(1L)
+                        .toFloat(),
+            onValueChange = {
+                onSeekPreview(
+                    it.toLong(),
+                )
+            },
+            onValueChangeFinished =
+                onSeekFinished,
+            enabled =
+                safeDuration > 0L,
+            thumb = {
+                Spacer(
+                    Modifier.size(0.dp),
+                )
+            },
+            colors =
+                SliderDefaults.colors(
+                    activeTrackColor =
+                        CapsuleLyricsText,
+                    inactiveTrackColor =
+                        CapsuleLyricsText.copy(
+                            alpha = 0.20f,
+                        ),
+                    disabledActiveTrackColor =
+                        CapsuleLyricsText.copy(
+                            alpha = 0.32f,
+                        ),
+                    disabledInactiveTrackColor =
+                        CapsuleLyricsText.copy(
+                            alpha = 0.10f,
+                        ),
+                ),
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .height(28.dp),
+        )
+
+        Row(
+            modifier =
+                Modifier.fillMaxWidth(),
+            horizontalArrangement =
+                Arrangement.SpaceBetween,
+        ) {
+            Text(
+                text =
+                    makeTimeString(
+                        displayPosition,
+                    ),
+                color =
+                    CapsuleLyricsSecondary,
+                fontFamily =
+                    FontFamily.Monospace,
+                fontSize = 13.sp,
+            )
+
+            Text(
+                text =
+                    if (safeDuration > 0L) {
+                        "-${
+                            makeTimeString(
+                                remaining,
+                            )
+                        }"
+                    } else {
+                        ""
+                    },
+                color =
+                    CapsuleLyricsSecondary,
+                fontFamily =
+                    FontFamily.Monospace,
+                fontSize = 13.sp,
+            )
+        }
+
+        Spacer(
+            Modifier.height(12.dp),
+        )
+
+        /*
+         * Capsule playback panel.
+         */
+        Column(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .clip(
+                        CapsuleLyricsPanelShape,
+                    )
+                    .border(
+                        width = 1.dp,
+                        color =
+                            CapsuleLyricsOutline,
+                        shape =
+                            CapsuleLyricsPanelShape,
+                    )
+                    .background(
+                        CapsuleLyricsPanel,
+                    ),
+        ) {
+            Row(
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .height(86.dp),
+                verticalAlignment =
+                    Alignment.CenterVertically,
+            ) {
+                CapsuleLyricsSideButton(
+                    iconRes =
+                        R.drawable.skip_previous,
+                    enabled =
+                        canSkipPrevious,
+                    onClick =
+                        playerConnection::seekToPrevious,
+                    modifier =
+                        Modifier.weight(1f),
+                )
+
+                Box(
+                    modifier =
+                        Modifier.weight(1.2f),
+                    contentAlignment =
+                        Alignment.Center,
+                ) {
+                    CapsuleLyricsOrbitButton(
+                        isPlaying =
+                            isPlaying,
+                        isLoading =
+                            isLoading,
+                        onClick = {
+                            if (
+                                playbackState ==
+                                Player.STATE_ENDED
+                            ) {
+                                playerConnection
+                                    .player
+                                    .seekTo(
+                                        0,
+                                        0,
+                                    )
+
+                                playerConnection
+                                    .player
+                                    .playWhenReady =
+                                    true
+                            } else {
+                                playerConnection
+                                    .player
+                                    .togglePlayPause()
+                            }
+                        },
+                    )
+                }
+
+                CapsuleLyricsSideButton(
+                    iconRes =
+                        R.drawable.skip_next,
+                    enabled =
+                        canSkipNext,
+                    onClick =
+                        playerConnection::seekToNext,
+                    modifier =
+                        Modifier.weight(1f),
+                )
+            }
+
+            Box(
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .height(1.dp)
+                        .background(
+                            CapsuleLyricsOutline,
+                        ),
+            )
+
+            /*
+             * Volume.
+             */
+            Row(
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .height(56.dp)
+                        .padding(
+                            horizontal = 14.dp,
+                        ),
+                verticalAlignment =
+                    Alignment.CenterVertically,
+            ) {
+                Icon(
+                    painter =
+                        painterResource(
+                            R.drawable.volume_off,
+                        ),
+                    contentDescription = null,
+                    tint =
+                        CapsuleLyricsSecondary,
+                    modifier =
+                        Modifier.size(20.dp),
+                )
+
+                Slider(
+                    value =
+                        volumeState.value
+                            .coerceIn(
+                                0f,
+                                1f,
+                            ),
+                    onValueChange = {
+                        playerConnection
+                            .service
+                            .playerVolume
+                            .value =
+                            it
+                    },
+                    valueRange =
+                        0f..1f,
+                    colors =
+                        SliderDefaults.colors(
+                            thumbColor =
+                                CapsuleLyricsText,
+                            activeTrackColor =
+                                CapsuleLyricsText,
+                            inactiveTrackColor =
+                                CapsuleLyricsText.copy(
+                                    alpha = 0.18f,
+                                ),
+                        ),
+                    modifier =
+                        Modifier
+                            .weight(1f)
+                            .padding(
+                                horizontal = 10.dp,
+                            ),
+                )
+
+                Icon(
+                    painter =
+                        painterResource(
+                            R.drawable.volume_up,
+                        ),
+                    contentDescription = null,
+                    tint =
+                        CapsuleLyricsSecondary,
+                    modifier =
+                        Modifier.size(20.dp),
+                )
+            }
+        }
+
+        Spacer(
+            Modifier.height(10.dp),
+        )
+    }
+}
+
+@Composable
+private fun CapsuleLyricsSideButton(
+    iconRes: Int,
+    enabled: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Box(
+        modifier =
+            modifier
+                .height(86.dp)
+                .clickable(
+                    enabled = enabled,
+                    onClick = onClick,
+                ),
+        contentAlignment =
+            Alignment.Center,
+    ) {
+        Icon(
+            painter =
+                painterResource(iconRes),
+            contentDescription = null,
+            tint =
+                CapsuleLyricsText.copy(
+                    alpha =
+                        if (enabled) {
+                            0.92f
+                        } else {
+                            0.25f
+                        },
+                ),
+            modifier =
+                Modifier.size(32.dp),
+        )
+    }
+}
+
+@Composable
+private fun CapsuleLyricsOrbitButton(
+    isPlaying: Boolean,
+    isLoading: Boolean,
+    onClick: () -> Unit,
+) {
+    val rotation =
+        remember {
+            Animatable(0f)
+        }
+
+    LaunchedEffect(
+        isPlaying,
+        isLoading,
+    ) {
+        if (
+            isPlaying &&
+            !isLoading
+        ) {
+            while (isActive) {
+                rotation.animateTo(
+                    targetValue =
+                        rotation.value +
+                            360f,
+                    animationSpec =
+                        tween(
+                            durationMillis =
+                                8_000,
+                            easing =
+                                LinearEasing,
+                        ),
+                )
+
+                rotation.snapTo(
+                    rotation.value %
+                        360f,
+                )
+            }
+        }
+    }
+
+    val alpha by
+        animateFloatAsState(
+            targetValue =
+                if (isPlaying) {
+                    1f
+                } else {
+                    0.46f
+                },
+            animationSpec =
+                tween(
+                    durationMillis =
+                        300,
+                ),
+            label =
+                "CapsuleLyricsOrbitAlpha",
+        )
+
+    Box(
+        modifier =
+            Modifier
+                .size(76.dp)
+                .clip(CircleShape)
+                .clickable(
+                    onClick = onClick,
+                ),
+        contentAlignment =
+            Alignment.Center,
+    ) {
+        if (isLoading) {
+            CircularProgressIndicator(
+                color =
+                    CapsuleLyricsText,
+                strokeWidth =
+                    2.dp,
+                modifier =
+                    Modifier.size(30.dp),
+            )
+        } else {
+            Canvas(
+                modifier =
+                    Modifier.size(62.dp),
+            ) {
+                val cx =
+                    size.width / 2f
+
+                val cy =
+                    size.height / 2f
+
+                val rx =
+                    size.width *
+                        0.47f
+
+                val ry =
+                    size.height *
+                        0.19f
+
+                val orbitColor =
+                    CapsuleLyricsText.copy(
+                        alpha = alpha,
+                    )
+
+                rotate(-25f) {
+                    drawOval(
+                        color =
+                            orbitColor,
+                        topLeft =
+                            Offset(
+                                cx - rx,
+                                cy - ry,
+                            ),
+                        size =
+                            Size(
+                                rx * 2f,
+                                ry * 2f,
+                            ),
+                        style =
+                            Stroke(
+                                width =
+                                    size.width *
+                                        0.045f,
+                            ),
+                    )
+
+                    val angle =
+                        Math.toRadians(
+                            rotation
+                                .value
+                                .toDouble(),
+                        )
+
+                    val previousAngle =
+                        Math.toRadians(
+                            (
+                                rotation.value -
+                                    15f
+                            ).toDouble(),
+                        )
+
+                    val point =
+                        Offset(
+                            x =
+                                cx +
+                                    rx *
+                                    cos(angle)
+                                        .toFloat(),
+                            y =
+                                cy +
+                                    ry *
+                                    sin(angle)
+                                        .toFloat(),
+                        )
+
+                    val tail =
+                        Offset(
+                            x =
+                                cx +
+                                    rx *
+                                    cos(
+                                        previousAngle,
+                                    ).toFloat(),
+                            y =
+                                cy +
+                                    ry *
+                                    sin(
+                                        previousAngle,
+                                    ).toFloat(),
+                        )
+
+                    drawLine(
+                        color =
+                            orbitColor.copy(
+                                alpha =
+                                    alpha *
+                                        0.35f,
+                            ),
+                        start = tail,
+                        end = point,
+                        strokeWidth =
+                            size.width *
+                                0.035f,
+                    )
+
+                    drawCircle(
+                        color =
+                            orbitColor,
+                        radius =
+                            size.width *
+                                0.052f,
+                        center =
+                            point,
+                    )
+                }
+
+                drawCircle(
+                    color =
+                        orbitColor,
+                    radius =
+                        size.width *
+                            0.115f,
+                    center =
+                        Offset(
+                            cx,
+                            cy,
+                        ),
+                )
+            }
+        }
+    }
+}
