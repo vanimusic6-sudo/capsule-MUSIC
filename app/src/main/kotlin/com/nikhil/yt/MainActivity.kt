@@ -200,6 +200,7 @@ import com.nikhil.yt.ui.component.rememberBottomSheetState
 import com.nikhil.yt.ui.component.shimmer.ShimmerTheme
 import com.nikhil.yt.ui.menu.YouTubeSongMenu
 import com.nikhil.yt.ui.player.BottomSheetPlayer
+import com.nikhil.yt.ui.player.LocalCapsuleDockVisible
 import com.nikhil.yt.ui.screens.Screens
 import com.nikhil.yt.ui.screens.navigationBuilder
 import com.nikhil.yt.ui.screens.search.LocalSearchScreen
@@ -208,6 +209,8 @@ import com.nikhil.yt.ui.screens.settings.DarkMode
 import com.nikhil.yt.ui.screens.settings.DiscordPresenceManager
 import com.nikhil.yt.ui.screens.settings.NavigationTab
 import com.nikhil.yt.ui.theme.VeluneTheme
+import com.nikhil.yt.ui.theme.CapsuleBottomBarEnabledKey
+import com.nikhil.yt.ui.theme.CapsuleMiniPlayerEnabledKey
 import com.nikhil.yt.ui.theme.ColorSaver
 import com.nikhil.yt.ui.theme.DefaultThemeColor
 import com.nikhil.yt.ui.theme.extractThemeColor
@@ -628,6 +631,16 @@ class MainActivity : ComponentActivity() {
                     val navigationItems = remember { Screens.MainScreens }
                     val (slimNav) = rememberPreference(SlimNavBarKey, defaultValue = false)
                     val (useNewMiniPlayerDesign) = rememberPreference(UseNewMiniPlayerDesignKey, defaultValue = true)
+                    val capsuleBottomBarEnabled by
+                        rememberPreference(
+                            CapsuleBottomBarEnabledKey,
+                            defaultValue = false,
+                        )
+                    val capsuleMiniPlayerEnabled by
+                        rememberPreference(
+                            CapsuleMiniPlayerEnabledKey,
+                            defaultValue = false,
+                        )
                     val defaultOpenTab by rememberEnumPreference(DefaultOpenTabKey, NavigationTab.HOME)
                     val pauseSearchHistory by rememberPreference(PauseSearchHistoryKey, defaultValue = false)
                     val tabOpenedFromShortcut =
@@ -702,32 +715,80 @@ class MainActivity : ComponentActivity() {
 
                     fun getBottomNavPadding(): Dp {
                         return if (shouldShowNavigationBar && !useRail) {
-                            if (slimNav) SlimNavBarHeight else NavigationBarHeight
+                            when {
+                                capsuleBottomBarEnabled -> NavigationBarHeight
+                                slimNav -> SlimNavBarHeight
+                                else -> NavigationBarHeight
+                            }
                         } else {
                             0.dp
                         }
                     }
 
-                    val floatingBarsBottomPadding = 8.dp
-                    val navVisibleHeight = if (slimNav) SlimNavBarHeight else NavigationBarHeight
+                    /*
+                     * Original Capsule joins the floating Mini Player and Dock
+                     * into one surface. Velune normally adds an 8 dp floating
+                     * gap; Capsule mode intentionally removes it.
+                     */
+                    val floatingBarsBottomPadding =
+                        if (capsuleBottomBarEnabled) 0.dp else 8.dp
+
+                    val navVisibleHeight =
+                        when {
+                            capsuleBottomBarEnabled -> NavigationBarHeight
+                            slimNav -> SlimNavBarHeight
+                            else -> NavigationBarHeight
+                        }
 
                     val bottomNavigationBarHeight by animateDpAsState(
-                        targetValue = if (shouldShowNavigationBar && !useRail) navVisibleHeight else 0.dp,
+                        targetValue =
+                            if (shouldShowNavigationBar && !useRail) {
+                                navVisibleHeight
+                            } else {
+                                0.dp
+                            },
                         animationSpec = NavigationBarAnimationSpec,
                         label = "",
                     )
+
+                    val usesFloatingMiniPlayer =
+                        useNewMiniPlayerDesign || capsuleMiniPlayerEnabled
+
+                    val capsuleConnected =
+                        capsuleBottomBarEnabled &&
+                                capsuleMiniPlayerEnabled &&
+                                shouldShowNavigationBar &&
+                                !useRail
 
                     val playerBottomSheetState =
                         rememberBottomSheetState(
                             dismissedBound = 0.dp,
                             collapsedBound =
                                 bottomInset +
-                                        (if (shouldShowNavigationBar && !useRail) floatingBarsBottomPadding else 0.dp) +
+                                        (if (shouldShowNavigationBar && !useRail) {
+                                            floatingBarsBottomPadding
+                                        } else {
+                                            0.dp
+                                        }) +
                                         getBottomNavPadding() +
-                                        (if (useNewMiniPlayerDesign) MiniPlayerBottomSpacing else 0.dp) +
+                                        (if (usesFloatingMiniPlayer && !capsuleConnected) {
+                                            MiniPlayerBottomSpacing
+                                        } else {
+                                            0.dp
+                                        }) +
                                         MiniPlayerHeight,
                             expandedBound = maxHeight,
                         )
+
+                    val capsuleDockActuallyVisible =
+                        capsuleBottomBarEnabled &&
+                                shouldShowNavigationBar &&
+                                !useRail
+
+                    val capsuleMiniPlayerActuallyVisible =
+                        capsuleMiniPlayerEnabled &&
+                                playerConnection != null &&
+                                !playerBottomSheetState.isDismissed
 
                     var yearInMusicSavedPlayerAnchor by rememberSaveable { mutableIntStateOf(-1) }
 
@@ -1024,6 +1085,7 @@ class MainActivity : ComponentActivity() {
                         LocalSyncUtils provides syncUtils,
                         LocalBottomSheetPageState provides bottomSheetPageState,
                         LocalMenuState provides menuState,
+                        LocalCapsuleDockVisible provides capsuleDockActuallyVisible,
                     ) {
                         Row {
                             AnimatedVisibility(useRail && shouldShowNavigationBar) {
@@ -1393,24 +1455,35 @@ class MainActivity : ComponentActivity() {
                                             else MaterialTheme.colorScheme.surfaceContainer
 
                                             FluidSlidingNavigationBar(
-                                                modifier = Modifier
-                                                    .align(Alignment.BottomCenter)
-                                                    .padding(
-                                                        start = 12.dp,
-                                                        end = 12.dp,
-                                                        bottom = bottomInset + floatingBarsBottomPadding,
-                                                    )
-                                                    .border(
-                                                        width = 1.dp,
-                                                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.15f),
-                                                        shape = RoundedCornerShape(24.dp)
-                                                    )
-                                                    .clip(RoundedCornerShape(24.dp))
-                                                    .fillMaxWidth()
-                                                    .height(navVisibleHeight),
+                                                modifier =
+                                                    if (capsuleBottomBarEnabled) {
+                                                        Modifier
+                                                            .align(Alignment.BottomCenter)
+                                                            .fillMaxWidth()
+                                                            .height(
+                                                                bottomInset + navVisibleHeight,
+                                                            )
+                                                    } else {
+                                                        Modifier
+                                                            .align(Alignment.BottomCenter)
+                                                            .padding(
+                                                                start = 12.dp,
+                                                                end = 12.dp,
+                                                                bottom = bottomInset + floatingBarsBottomPadding,
+                                                            )
+                                                            .border(
+                                                                width = 1.dp,
+                                                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.15f),
+                                                                shape = RoundedCornerShape(24.dp)
+                                                            )
+                                                            .clip(RoundedCornerShape(24.dp))
+                                                            .fillMaxWidth()
+                                                            .height(navVisibleHeight)
+                                                    },
                                                 items = navigationItems,
                                                 currentRoute = navBackStackEntry?.destination?.route ?: "",
                                                 pureBlack = pureBlack,
+                                                capsuleMiniPlayerVisible = capsuleMiniPlayerActuallyVisible,
                                                 onTabSelected = { screen ->
                                                     val isSelected = navBackStackEntry?.destination?.hierarchy?.any { it.route == screen.route } == true
 
