@@ -38,8 +38,8 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
@@ -87,12 +87,11 @@ private val CapsuleControlsShape =
 /**
  * Capsule full player adapted for Velune.
  *
- * Important:
- * - PlayerConnection remains Velune's existing connection.
- * - No queue implementation is replaced.
- * - No stream or Innertube code is touched.
- * - No cache behavior is changed.
+ * PlayerConnection remains completely owned by Velune.
+ * No MusicService, Innertube, stream resolver, cache or queue
+ * implementation is replaced here.
  */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun CapsulePlayerContent(
     mediaMetadata: MediaMetadata,
@@ -124,8 +123,7 @@ fun CapsulePlayerContent(
         playerConnection.repeatMode.collectAsState()
 
     val isLoading =
-        playbackState ==
-            Player.STATE_BUFFERING
+        playbackState == Player.STATE_BUFFERING
 
     val secondaryText =
         textColor.copy(alpha = 0.55f)
@@ -169,7 +167,7 @@ fun CapsulePlayerContent(
             Alignment.CenterHorizontally,
     ) {
         /*
-         * Capsule header.
+         * Header.
          */
         Row(
             modifier =
@@ -343,7 +341,7 @@ fun CapsulePlayerContent(
             )
 
             /*
-             * Minimal Capsule progress line.
+             * Capsule progress bar.
              */
             Slider(
                 value =
@@ -445,7 +443,7 @@ fun CapsulePlayerContent(
             )
 
             /*
-             * Main Capsule control surface.
+             * Capsule control surface.
              */
             Column(
                 modifier =
@@ -472,14 +470,13 @@ fun CapsulePlayerContent(
                 ) {
                     CapsuleSideButton(
                         iconRes =
-                            R.drawable
-                                .skip_previous,
+                            R.drawable.skip_previous,
                         enabled =
                             canSkipPrevious,
-                        textColor = textColor,
+                        textColor =
+                            textColor,
                         onClick =
-                            playerConnection::
-                                seekToPrevious,
+                            playerConnection::seekToPrevious,
                         modifier =
                             Modifier.weight(1f),
                     )
@@ -497,7 +494,8 @@ fun CapsulePlayerContent(
                                 isPlaying,
                             isLoading =
                                 isLoading,
-                            color = textColor,
+                            color =
+                                textColor,
                             onClick = {
                                 if (
                                     playbackState ==
@@ -525,14 +523,13 @@ fun CapsulePlayerContent(
 
                     CapsuleSideButton(
                         iconRes =
-                            R.drawable
-                                .skip_next,
+                            R.drawable.skip_next,
                         enabled =
                             canSkipNext,
-                        textColor = textColor,
+                        textColor =
+                            textColor,
                         onClick =
-                            playerConnection::
-                                seekToNext,
+                            playerConnection::seekToNext,
                         modifier =
                             Modifier.weight(1f),
                     )
@@ -543,7 +540,9 @@ fun CapsulePlayerContent(
                         Modifier
                             .fillMaxWidth()
                             .height(1.dp)
-                            .background(outline),
+                            .background(
+                                outline,
+                            ),
                 )
 
                 Row(
@@ -558,12 +557,10 @@ fun CapsulePlayerContent(
                         iconRes =
                             when (repeatMode) {
                                 Player.REPEAT_MODE_ONE ->
-                                    R.drawable
-                                        .repeat_one
+                                    R.drawable.repeat_one
 
                                 else ->
-                                    R.drawable
-                                        .repeat
+                                    R.drawable.repeat
                             },
                         tint =
                             if (
@@ -575,7 +572,7 @@ fun CapsulePlayerContent(
                                 )
                             } else {
                                 textColor.copy(
-                                    alpha = 0.9f,
+                                    alpha = 0.90f,
                                 )
                             },
                         onClick = {
@@ -589,13 +586,13 @@ fun CapsulePlayerContent(
 
                     CapsuleAuxButton(
                         iconRes =
-                            R.drawable
-                                .more_horiz,
+                            R.drawable.more_horiz,
                         tint =
                             textColor.copy(
                                 alpha = 0.88f,
                             ),
-                        onClick = onMenuClick,
+                        onClick =
+                            onMenuClick,
                         modifier =
                             Modifier.weight(1f),
                     )
@@ -617,7 +614,9 @@ fun CapsulePlayerContent(
                         )
                         .width(44.dp)
                         .height(4.dp)
-                        .clip(CircleShape)
+                        .clip(
+                            CircleShape,
+                        )
                         .background(
                             textColor.copy(
                                 alpha = 0.22f,
@@ -666,17 +665,24 @@ private fun CapsuleShareLikeButtons(
         horizontalArrangement =
             Arrangement.spacedBy(3.dp),
     ) {
+        /*
+         * Share.
+         */
         Box(
             modifier =
                 Modifier
                     .size(52.dp)
-                    .clip(shareShape)
-                    .border(
-                        1.dp,
-                        outline,
+                    .clip(
                         shareShape,
                     )
-                    .background(panel)
+                    .border(
+                        width = 1.dp,
+                        color = outline,
+                        shape = shareShape,
+                    )
+                    .background(
+                        panel,
+                    )
                     .clickable {
                         val intent =
                             Intent(
@@ -706,24 +712,33 @@ private fun CapsuleShareLikeButtons(
                     painterResource(
                         R.drawable.share,
                     ),
-                contentDescription = null,
-                tint = textColor,
+                contentDescription =
+                    null,
+                tint =
+                    textColor,
                 modifier =
                     Modifier.size(24.dp),
             )
         }
 
+        /*
+         * Favorite.
+         */
         Box(
             modifier =
                 Modifier
                     .size(52.dp)
-                    .clip(favoriteShape)
-                    .border(
-                        1.dp,
-                        outline,
+                    .clip(
                         favoriteShape,
                     )
-                    .background(panel)
+                    .border(
+                        width = 1.dp,
+                        color = outline,
+                        shape = favoriteShape,
+                    )
+                    .background(
+                        panel,
+                    )
                     .clickable(
                         onClick =
                             onToggleLike,
@@ -737,12 +752,13 @@ private fun CapsuleShareLikeButtons(
                         if (liked) {
                             R.drawable.favorite
                         } else {
-                            R.drawable
-                                .favorite_border
+                            R.drawable.favorite_border
                         },
                     ),
-                contentDescription = null,
-                tint = textColor,
+                contentDescription =
+                    null,
+                tint =
+                    textColor,
                 modifier =
                     Modifier.size(25.dp),
             )
@@ -763,8 +779,10 @@ private fun CapsuleSideButton(
             modifier
                 .fillMaxHeight()
                 .clickable(
-                    enabled = enabled,
-                    onClick = onClick,
+                    enabled =
+                        enabled,
+                    onClick =
+                        onClick,
                 ),
         contentAlignment =
             Alignment.Center,
@@ -774,7 +792,8 @@ private fun CapsuleSideButton(
                 painterResource(
                     iconRes,
                 ),
-            contentDescription = null,
+            contentDescription =
+                null,
             tint =
                 textColor.copy(
                     alpha =
@@ -802,7 +821,8 @@ private fun CapsuleAuxButton(
             modifier
                 .fillMaxHeight()
                 .clickable(
-                    onClick = onClick,
+                    onClick =
+                        onClick,
                 ),
         contentAlignment =
             Alignment.Center,
@@ -812,8 +832,10 @@ private fun CapsuleAuxButton(
                 painterResource(
                     iconRes,
                 ),
-            contentDescription = null,
-            tint = tint,
+            contentDescription =
+                null,
+            tint =
+                tint,
             modifier =
                 Modifier.size(25.dp),
         )
@@ -821,12 +843,15 @@ private fun CapsuleAuxButton(
 }
 
 /**
- * Capsule orbit/comet play button.
+ * Capsule orbit/comet Play/Pause button.
  *
- * The Animatable instance survives Play/Pause changes.
+ * Animatable survives Play/Pause state changes.
  *
- * When playback is paused LaunchedEffect stops, but the current
- * rotation value is retained. Resume continues from that exact point.
+ * When playback pauses, LaunchedEffect is cancelled and Animatable
+ * retains its exact current angle.
+ *
+ * When playback resumes, the animation continues from that angle
+ * instead of jumping back to zero.
  */
 @Composable
 private fun CapsuleOrbitButton(
@@ -862,9 +887,12 @@ private fun CapsuleOrbitButton(
                         ),
                 )
 
+                /*
+                 * Keep the numeric value small without
+                 * resetting the visible orbit position.
+                 */
                 rotation.snapTo(
-                    rotation.value %
-                        360f,
+                    rotation.value % 360f,
                 )
             }
         }
@@ -880,7 +908,8 @@ private fun CapsuleOrbitButton(
                 },
             animationSpec =
                 tween(
-                    durationMillis = 300,
+                    durationMillis =
+                        300,
                 ),
             label =
                 "CapsuleOrbitPauseAlpha",
@@ -890,7 +919,9 @@ private fun CapsuleOrbitButton(
         modifier =
             Modifier
                 .size(82.dp)
-                .clip(CircleShape)
+                .clip(
+                    CircleShape,
+                )
                 .background(
                     if (isPlaying) {
                         Color.Transparent
@@ -901,7 +932,8 @@ private fun CapsuleOrbitButton(
                     },
                 )
                 .clickable(
-                    onClick = onClick,
+                    onClick =
+                        onClick,
                 ),
         contentAlignment =
             Alignment.Center,
@@ -912,135 +944,21 @@ private fun CapsuleOrbitButton(
                     color.copy(
                         alpha = 0.82f,
                     ),
-                strokeWidth = 2.dp,
+                strokeWidth =
+                    2.dp,
                 modifier =
                     Modifier.size(32.dp),
             )
         } else {
             Canvas(
-                Modifier.size(68.dp),
+                modifier =
+                    Modifier.size(68.dp),
             ) {
-                val width = size.width
-                val height = size.height
+                val width =
+                    size.width
+
+                val height =
+                    size.height
 
                 val cx =
-                    width / 2f
-
-                val cy =
-                    height / 2f
-
-                val rx =
-                    width * 0.47f
-
-                val ry =
-                    height * 0.19f
-
-                val orbitColor =
-                    color.copy(
-                        alpha = alpha,
-                    )
-
-                rotate(-25f) {
-                    drawOval(
-                        color = orbitColor,
-                        topLeft =
-                            Offset(
-                                cx - rx,
-                                cy - ry,
-                            ),
-                        size =
-                            Size(
-                                rx * 2f,
-                                ry * 2f,
-                            ),
-                        style =
-                            Stroke(
-                                width =
-                                    width *
-                                        0.045f,
-                            ),
-                    )
-
-                    val angle =
-                        Math.toRadians(
-                            rotation
-                                .value
-                                .toDouble(),
-                        )
-
-                    val previousAngle =
-                        Math.toRadians(
-                            (
-                                rotation.value -
-                                    15f
-                            ).toDouble(),
-                        )
-
-                    val point =
-                        Offset(
-                            x =
-                                cx +
-                                    rx *
-                                    cos(angle)
-                                        .toFloat(),
-                            y =
-                                cy +
-                                    ry *
-                                    sin(angle)
-                                        .toFloat(),
-                        )
-
-                    val tail =
-                        Offset(
-                            x =
-                                cx +
-                                    rx *
-                                    cos(
-                                        previousAngle,
-                                    ).toFloat(),
-                            y =
-                                cy +
-                                    ry *
-                                    sin(
-                                        previousAngle,
-                                    ).toFloat(),
-                        )
-
-                    drawLine(
-                        color =
-                            orbitColor.copy(
-                                alpha =
-                                    alpha *
-                                        0.35f,
-                            ),
-                        start = tail,
-                        end = point,
-                        strokeWidth =
-                            width *
-                                0.035f,
-                    )
-
-                    drawCircle(
-                        color = orbitColor,
-                        radius =
-                            width *
-                                0.052f,
-                        center = point,
-                    )
-                }
-
-                drawCircle(
-                    color = orbitColor,
-                    radius =
-                        width *
-                            0.115f,
-                    center =
-                        Offset(
-                            cx,
-                            cy,
-                        ),
-                )
-            }
-        }
-    }
-}
+                    width /
