@@ -13,6 +13,7 @@ package com.nikhil.yt.playback
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
+import android.app.KeyguardManager
 import android.app.PendingIntent
 import android.bluetooth.BluetoothClass
 import android.bluetooth.BluetoothDevice
@@ -35,6 +36,7 @@ import android.media.audiofx.Virtualizer
 import android.net.ConnectivityManager
 import android.os.Binder
 import android.os.Build
+import android.os.PowerManager
 import android.widget.Toast
 import androidx.core.app.NotificationCompat
 import androidx.core.content.getSystemService
@@ -304,6 +306,43 @@ class MusicService :
     private var videoOriginalMediaItem: MediaItem? = null
     private var videoOriginalMediaId: String? = null
     private var videoResolveJob: Job? = null
+
+    /*
+     * VIDEO power/request protection.
+     *
+     * - Screen off: VIDEO immediately falls back to normal AUDIO and no new
+     *   video-search requests are made while the display is off/locked.
+     * - Screen unlocked again: the current track may resume VIDEO once.
+     * - Detectable 403/429/bot responses open a short VIDEO-only circuit breaker.
+     *   Normal YouTube AUDIO is never disabled by this breaker.
+     */
+    private var screenInteractive = true
+    private var videoSuspendedForScreenOff = false
+    private var screenStateReceiverRegistered = false
+    private var videoRequestBackoffUntilMs = 0L
+
+    private val screenStateReceiver =
+        object : BroadcastReceiver() {
+            override fun onReceive(context: Context?, intent: Intent?) {
+                when (intent?.action) {
+                    Intent.ACTION_SCREEN_OFF -> {
+                        screenInteractive = false
+                        suspendCapsuleVideoForScreenOff()
+                    }
+
+                    Intent.ACTION_SCREEN_ON -> {
+                        screenInteractive = true
+                        resumeCapsuleVideoAfterUnlockIfAllowed()
+                    }
+
+                    Intent.ACTION_USER_PRESENT -> {
+                        screenInteractive = true
+                        resumeCapsuleVideoAfterUnlockIfAllowed()
+                    }
+                }
+            }
+        }
+
     private val streamRecoveryState = ConcurrentHashMap<String, Pair<Int, Long>>()
     @Volatile
     private var pendingStreamRefreshValidationMediaId: String? = null
@@ -584,6 +623,12 @@ class MusicService :
                     addAnalyticsListener(PlaybackStatsListener(false, this@MusicService))
                     setOffloadEnabled(false)
                 }
+
+        screenInteractive =
+            (getSystemService(Context.POWER_SERVICE) as? PowerManager)
+                ?.isInteractive
+                ?: true
+        registerCapsuleScreenStateReceiver()
 
         audioManager = getSystemService(Context.AUDIO_SERVICE) as AudioManager
         setupAudioFocusRequest()
@@ -3414,6 +3459,10 @@ class MusicService :
             videoOriginalMediaItem = null
             videoOriginalMediaId = null
 
+            val videoAllowedNow =
+                keepVideoPreference &&
+                    canAttemptCapsuleVideoNow()
+
             videoPlaybackState.value =
                 CapsuleVideoPlaybackState(
                     preferredMode =
@@ -3424,15 +3473,22 @@ class MusicService :
                         },
                     mode = CapsulePlaybackMode.AUDIO,
                     phase =
-                        if (keepVideoPreference) {
-                            CapsuleVideoPhase.RESOLVING
-                        } else {
-                            CapsuleVideoPhase.IDLE
+                        when {
+                            !keepVideoPreference -> CapsuleVideoPhase.IDLE
+                            isVideoRequestBackoffActive() -> CapsuleVideoPhase.REQUEST_ERROR
+                            videoAllowedNow -> CapsuleVideoPhase.RESOLVING
+                            else -> CapsuleVideoPhase.IDLE
                         },
                     mediaId = transitionedMediaId,
+                    message =
+                        if (keepVideoPreference && isVideoRequestBackoffActive()) {
+                            "Video requests temporarily paused"
+                        } else {
+                            null
+                        },
                 )
 
-            if (keepVideoPreference) {
+            if (keepVideoPreference && videoAllowedNow) {
                 /*
                  * Let the normal audio item start immediately. VIDEO resolution
                  * happens in the background and replaces only this current item
@@ -3443,11 +3499,14 @@ class MusicService :
                     if (
                         videoPlaybackState.value.preferredMode == CapsulePlaybackMode.VIDEO &&
                         player.currentMediaItem?.mediaId == transitionedMediaId &&
-                        !isCurrentCapsuleVideoItem()
+                        !isCurrentCapsuleVideoItem() &&
+                        canAttemptCapsuleVideoNow()
                     ) {
                         enterCapsuleVideoMode()
                     }
                 }
+            } else if (keepVideoPreference && !screenInteractive) {
+                videoSuspendedForScreenOff = true
             }
         }
 
@@ -4210,13 +4269,14 @@ class MusicService :
                     runBlocking(Dispatchers.IO) {
                         YouTubeVideoResolver.resolveMuxed(videoId, capsuleVideoQuality)
                     }.getOrElse { throwable ->
+                        maybeOpenVideoCircuitBreaker(throwable)
                         videoPlaybackState.value =
                             videoPlaybackState.value.copy(
                                 preferredMode = CapsulePlaybackMode.VIDEO,
                                 mode = CapsulePlaybackMode.AUDIO,
-                                phase = CapsuleVideoPhase.UNAVAILABLE,
+                                phase = CapsuleVideoPhase.REQUEST_ERROR,
                                 videoId = videoId,
-                                message = throwable.message ?: "Video stream unavailable",
+                                message = throwable.message ?: "Video request failed",
                             )
                         throw PlaybackException(
                             throwable.message ?: "Video stream unavailable",
@@ -4377,6 +4437,32 @@ class MusicService :
     }
 
     private fun enterCapsuleVideoMode() {
+        if (!canUseCapsuleVideoForScreen()) {
+            videoSuspendedForScreenOff = true
+            val currentId = player.currentMediaItem?.mediaId
+            videoPlaybackState.value =
+                videoPlaybackState.value.copy(
+                    preferredMode = CapsulePlaybackMode.VIDEO,
+                    mode = CapsulePlaybackMode.AUDIO,
+                    phase = CapsuleVideoPhase.IDLE,
+                    mediaId = currentId,
+                    message = null,
+                )
+            return
+        }
+
+        if (isVideoRequestBackoffActive()) {
+            videoPlaybackState.value =
+                videoPlaybackState.value.copy(
+                    preferredMode = CapsulePlaybackMode.VIDEO,
+                    mode = CapsulePlaybackMode.AUDIO,
+                    phase = CapsuleVideoPhase.REQUEST_ERROR,
+                    mediaId = player.currentMediaItem?.mediaId,
+                    message = "Video requests temporarily paused",
+                )
+            return
+        }
+
         val currentItem = player.currentMediaItem ?: return
         if (isCurrentCapsuleVideoItem()) return
 
@@ -4448,9 +4534,20 @@ class MusicService :
                 resolved.onFailure { throwable ->
                     videoResolveJob = null
 
+                    val noMatchingVideo =
+                        isDefiniteNoVideoMatch(throwable)
+
+                    if (!noMatchingVideo) {
+                        maybeOpenVideoCircuitBreaker(throwable)
+                    }
+
                     Timber.tag("CapsuleVideo").w(
                         throwable,
-                        "No trustworthy YouTube Music video available for $canonicalMediaId",
+                        if (noMatchingVideo) {
+                            "No trustworthy YouTube Music video available for $canonicalMediaId"
+                        } else {
+                            "YouTube VIDEO request failed for $canonicalMediaId"
+                        },
                     )
 
                     videoOriginalMediaItem = null
@@ -4459,15 +4556,25 @@ class MusicService :
                         CapsuleVideoPlaybackState(
                             preferredMode = CapsulePlaybackMode.VIDEO,
                             mode = CapsulePlaybackMode.AUDIO,
-                            phase = CapsuleVideoPhase.UNAVAILABLE,
+                            phase =
+                                if (noMatchingVideo) {
+                                    CapsuleVideoPhase.UNAVAILABLE
+                                } else {
+                                    CapsuleVideoPhase.REQUEST_ERROR
+                                },
                             mediaId = canonicalMediaId,
                             videoId = null,
                             message =
                                 throwable.message
-                                    ?: "Official YouTube Music video unavailable",
+                                    ?: if (noMatchingVideo) {
+                                        "Official YouTube Music video unavailable"
+                                    } else {
+                                        "Video request failed"
+                                    },
                         )
                 }.onSuccess { video ->
                     videoResolveJob = null
+                    videoSuspendedForScreenOff = false
 
                     val position = player.currentPosition.coerceAtLeast(0L)
                     val wasPlaying = player.playWhenReady
@@ -4541,15 +4648,22 @@ class MusicService :
     }
 
     private fun restoreAudioFromVideoFailure(message: String) {
+        maybeOpenVideoCircuitBreaker(
+            IllegalStateException(message),
+        )
         restoreOriginalAudioItem(
             failureMessage = message,
             preferredModeAfter = CapsulePlaybackMode.VIDEO,
+            failurePhase = CapsuleVideoPhase.REQUEST_ERROR,
+            invalidateFailedVideo = true,
         )
     }
 
     private fun restoreOriginalAudioItem(
         failureMessage: String?,
         preferredModeAfter: CapsulePlaybackMode,
+        failurePhase: CapsuleVideoPhase = CapsuleVideoPhase.UNAVAILABLE,
+        invalidateFailedVideo: Boolean = failureMessage != null,
     ) {
         videoResolveJob?.cancel()
         videoResolveJob = null
@@ -4578,7 +4692,7 @@ class MusicService :
                     .build()
 
         val failedVideoId = videoPlaybackState.value.videoId
-        if (!failedVideoId.isNullOrBlank()) {
+        if (invalidateFailedVideo && !failedVideoId.isNullOrBlank()) {
             YouTubeVideoResolver.invalidate(failedVideoId)
             scope.launch(Dispatchers.IO) {
                 runCatching {
@@ -4603,7 +4717,7 @@ class MusicService :
                     if (failureMessage == null) {
                         CapsuleVideoPhase.IDLE
                     } else {
-                        CapsuleVideoPhase.UNAVAILABLE
+                        failurePhase
                     },
                 mediaId = canonicalMediaId,
                 videoId = failedVideoId,
@@ -4614,6 +4728,195 @@ class MusicService :
         player.seekTo(currentIndex, position)
         player.prepare()
         player.playWhenReady = wasPlaying
+    }
+
+    private fun registerCapsuleScreenStateReceiver() {
+        if (screenStateReceiverRegistered) return
+
+        val filter =
+            IntentFilter().apply {
+                addAction(Intent.ACTION_SCREEN_OFF)
+                addAction(Intent.ACTION_SCREEN_ON)
+                addAction(Intent.ACTION_USER_PRESENT)
+            }
+
+        runCatching {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                registerReceiver(
+                    screenStateReceiver,
+                    filter,
+                    Context.RECEIVER_NOT_EXPORTED,
+                )
+            } else {
+                registerReceiver(
+                    screenStateReceiver,
+                    filter,
+                )
+            }
+            screenStateReceiverRegistered = true
+        }.onFailure {
+            Timber.tag("CapsuleVideo").w(it, "Could not register screen-state receiver")
+        }
+    }
+
+    private fun unregisterCapsuleScreenStateReceiver() {
+        if (!screenStateReceiverRegistered) return
+
+        runCatching {
+            unregisterReceiver(screenStateReceiver)
+        }
+        screenStateReceiverRegistered = false
+    }
+
+    private fun canUseCapsuleVideoForScreen(): Boolean {
+        if (!screenInteractive) return false
+
+        val keyguardManager =
+            getSystemService(Context.KEYGUARD_SERVICE) as? KeyguardManager
+
+        return keyguardManager?.isKeyguardLocked != true
+    }
+
+    private fun canAttemptCapsuleVideoNow(): Boolean =
+        canUseCapsuleVideoForScreen() &&
+            !isVideoRequestBackoffActive()
+
+    private fun isVideoRequestBackoffActive(): Boolean {
+        val until = videoRequestBackoffUntilMs
+        if (until <= 0L) return false
+
+        if (until <= System.currentTimeMillis()) {
+            videoRequestBackoffUntilMs = 0L
+            return false
+        }
+
+        return true
+    }
+
+    private fun maybeOpenVideoCircuitBreaker(throwable: Throwable) {
+        val message =
+            generateSequence(throwable) { it.cause }
+                .mapNotNull { it?.message }
+                .joinToString(" ")
+                .lowercase()
+
+        val looksRateLimitedOrBotBlocked =
+            "429" in message ||
+                "403" in message ||
+                "too many requests" in message ||
+                "not a bot" in message ||
+                "bot detection" in message ||
+                "confirm you're not a bot" in message ||
+                "confirm you’re not a bot" in message
+
+        if (looksRateLimitedOrBotBlocked) {
+            videoRequestBackoffUntilMs =
+                System.currentTimeMillis() + 10 * 60 * 1000L
+
+            Timber.tag("CapsuleVideo").w(
+                "VIDEO request circuit breaker opened for 10 minutes",
+            )
+        }
+    }
+
+    private fun isDefiniteNoVideoMatch(throwable: Throwable): Boolean {
+        val message =
+            generateSequence(throwable) { it.cause }
+                .mapNotNull { it?.message }
+                .joinToString(" ")
+                .lowercase()
+
+        return message.contains(
+            "official music video is unavailable for this song",
+        ) ||
+            message.contains(
+                "youtube music did not find a trustworthy official clip",
+            ) ||
+            message.contains(
+                "did not find a matching official video",
+            )
+    }
+
+    private fun suspendCapsuleVideoForScreenOff() {
+        val state = videoPlaybackState.value
+        if (state.preferredMode != CapsulePlaybackMode.VIDEO) return
+
+        videoSuspendedForScreenOff = true
+        videoResolveJob?.cancel()
+        videoResolveJob = null
+
+        if (isCurrentCapsuleVideoItem()) {
+            /*
+             * Restore the original audio item but keep VIDEO as the user's
+             * preference. Do not invalidate the already-resolved clip/cache:
+             * after unlock it can often resume without another search.
+             */
+            restoreOriginalAudioItem(
+                failureMessage = null,
+                preferredModeAfter = CapsulePlaybackMode.VIDEO,
+                invalidateFailedVideo = false,
+            )
+        } else {
+            videoOriginalMediaItem = null
+            videoOriginalMediaId = null
+            videoPlaybackState.value =
+                state.copy(
+                    preferredMode = CapsulePlaybackMode.VIDEO,
+                    mode = CapsulePlaybackMode.AUDIO,
+                    phase = CapsuleVideoPhase.IDLE,
+                    videoId = null,
+                    qualityLabel = null,
+                    width = null,
+                    height = null,
+                    message = null,
+                )
+        }
+    }
+
+    private fun resumeCapsuleVideoAfterUnlockIfAllowed() {
+        if (!videoSuspendedForScreenOff) return
+        if (!canUseCapsuleVideoForScreen()) return
+
+        if (videoPlaybackState.value.preferredMode != CapsulePlaybackMode.VIDEO) {
+            videoSuspendedForScreenOff = false
+            return
+        }
+
+        if (isVideoRequestBackoffActive()) {
+            videoSuspendedForScreenOff = false
+            videoPlaybackState.value =
+                videoPlaybackState.value.copy(
+                    mode = CapsulePlaybackMode.AUDIO,
+                    phase = CapsuleVideoPhase.REQUEST_ERROR,
+                    message = "Video requests temporarily paused",
+                )
+            return
+        }
+
+        videoSuspendedForScreenOff = false
+
+        val expectedMediaId =
+            player.currentMediaItem?.mediaId
+                ?.trim()
+                ?.takeIf { it.isNotBlank() }
+                ?: return
+
+        scope.launch {
+            /*
+             * Small delay lets Android finish the unlock transition. This is a
+             * single resume attempt, not a polling loop.
+             */
+            delay(250)
+
+            if (
+                canAttemptCapsuleVideoNow() &&
+                videoPlaybackState.value.preferredMode == CapsulePlaybackMode.VIDEO &&
+                player.currentMediaItem?.mediaId == expectedMediaId &&
+                !isCurrentCapsuleVideoItem()
+            ) {
+                enterCapsuleVideoMode()
+            }
+        }
     }
 
     private fun isCurrentCapsuleVideoItem(): Boolean =
@@ -5052,6 +5355,7 @@ class MusicService :
 
     override fun onDestroy() {
         super.onDestroy()
+        unregisterCapsuleScreenStateReceiver()
         unregisterBluetoothReceiver()
         try {
             scope.launch { stopTogetherInternal() }
