@@ -1,5 +1,5 @@
-
- /** Capsule MUSIC
+/**
+ * Capsule MUSIC
  *
  * YouTube Music official-video matcher.
  *
@@ -111,10 +111,18 @@ object YouTubeMusicVideoLinkResolver {
                     }
                     .sortedByDescending { it.score }
 
-            candidates.firstOrNull()
-                ?: throw IllegalStateException(
-                    "YouTube Music did not find a matching official video",
-                )
+            val best =
+                candidates.firstOrNull()
+                    ?: throw IllegalStateException(
+                        "YouTube Music did not find a matching official video",
+                    )
+
+            YouTubeMusicVideoLink(
+                videoId = best.videoId,
+                musicVideoType = MUSIC_VIDEO_TYPE_OMV,
+                title = best.title,
+                score = best.score,
+            )
         }
     }
 
