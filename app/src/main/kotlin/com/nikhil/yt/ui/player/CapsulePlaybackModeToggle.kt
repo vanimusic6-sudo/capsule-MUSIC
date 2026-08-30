@@ -51,6 +51,9 @@ fun CapsuleAudioVideoToggle(
     val videoUnavailable =
         state.preferredMode == CapsulePlaybackMode.VIDEO &&
             state.phase == CapsuleVideoPhase.UNAVAILABLE
+    val videoRequestError =
+        state.preferredMode == CapsulePlaybackMode.VIDEO &&
+            state.phase == CapsuleVideoPhase.REQUEST_ERROR
     val videoSelected =
         state.mode == CapsulePlaybackMode.VIDEO || videoResolving
     val audioSelected = !videoSelected
@@ -71,6 +74,7 @@ fun CapsuleAudioVideoToggle(
             selected = audioSelected,
             loading = false,
             unavailable = false,
+            requestError = false,
             enabled = enabled,
             textColor = textColor,
             onClick = onAudioClick,
@@ -85,10 +89,16 @@ fun CapsuleAudioVideoToggle(
         )
 
         CapsuleModeSegment(
-            text = if (videoUnavailable) "VIDEO N/A" else "VIDEO",
+            text =
+                when {
+                    videoRequestError -> "VIDEO ERROR"
+                    videoUnavailable -> "VIDEO N/A"
+                    else -> "VIDEO"
+                },
             selected = videoSelected,
             loading = videoResolving,
             unavailable = videoUnavailable,
+            requestError = videoRequestError,
             enabled = enabled && !videoUnavailable,
             textColor = textColor,
             onClick = onVideoClick,
@@ -103,6 +113,7 @@ private fun CapsuleModeSegment(
     selected: Boolean,
     loading: Boolean,
     unavailable: Boolean,
+    requestError: Boolean,
     enabled: Boolean,
     textColor: Color,
     onClick: () -> Unit,
@@ -140,13 +151,14 @@ private fun CapsuleModeSegment(
                         alpha =
                             when {
                                 unavailable -> 0.24f
+                                requestError -> 0.56f
                                 !enabled -> 0.28f
                                 selected -> 0.94f
                                 else -> 0.46f
                             },
                     ),
                 fontFamily = FontFamily.Monospace,
-                fontSize = if (unavailable) 9.sp else 11.sp,
+                fontSize = if (unavailable || requestError) 9.sp else 11.sp,
                 fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
                 letterSpacing = 0.35.sp,
                 maxLines = 1,
