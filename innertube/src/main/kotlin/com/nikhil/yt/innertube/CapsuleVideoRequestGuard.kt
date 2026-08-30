@@ -352,6 +352,18 @@ object CapsuleVideoRequestGuard {
         return FailureKind.NONE
     }
 
+    /** Classifies without touching state, so callers can decide when to trip. */
+    fun classify(throwable: Throwable): FailureKind = classify(flatten(throwable))
+
+    /**
+     * Opens the breaker explicitly, after the caller has exhausted its own
+     * fallbacks. Use this instead of tripping on the first suspicious response
+     * when a retry on another client is still plausible.
+     */
+    fun noteBlockedAfterAllAttempts(reason: String) {
+        trip(reason)
+    }
+
     private fun flatten(throwable: Throwable): String =
         generateSequence(throwable as Throwable?) { it?.cause }
             .take(8)
