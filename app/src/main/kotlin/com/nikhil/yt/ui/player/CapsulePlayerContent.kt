@@ -495,55 +495,12 @@ fun CapsulePlayerContent(
         horizontalAlignment =
             Alignment.CenterHorizontally,
     ) {
-        Row(
-            modifier =
-                Modifier
-                    .fillMaxWidth()
-                    .padding(
-                        start = 18.dp,
-                        end = 18.dp,
-                        top = 10.dp,
-                        bottom = 14.dp,
-                    ),
-            horizontalArrangement =
-                Arrangement.SpaceBetween,
-            verticalAlignment =
-                Alignment.CenterVertically,
-        ) {
-            Text(
-                text = "NOW PLAYING",
-                color =
-                    secondaryText,
-                fontFamily =
-                    FontFamily.Monospace,
-                fontSize = 17.sp,
-                fontWeight =
-                    FontWeight.SemiBold,
-            )
-
-            Text(
-                text =
-                    if (
-                        safeDuration >
-                        0L
-                    ) {
-                        makeTimeString(
-                            safeDuration,
-                        )
-                    } else {
-                        ""
-                    },
-                color =
-                    secondaryText,
-                fontFamily =
-                    FontFamily.Monospace,
-                fontSize = 17.sp,
-            )
-        }
+        Spacer(Modifier.height(10.dp))
 
         /*
-         * Exact donor geometry:
-         * same cover size, only visually lifted by -8 dp.
+         * AUDIO keeps the original square artwork. VIDEO uses a centered 16:9
+         * stage inside the same vertical reservation, so title/progress/controls
+         * do not jump when the playback mode changes.
          */
         Box(
             modifier =
@@ -551,47 +508,43 @@ fun CapsulePlayerContent(
                     .weight(1f)
                     .fillMaxWidth()
                     .padding(
-                        horizontal =
-                            22.dp,
-                        vertical =
-                            8.dp,
+                        horizontal = 22.dp,
+                        vertical = 8.dp,
                     ),
-            contentAlignment =
-                Alignment.Center,
+            contentAlignment = Alignment.Center,
         ) {
+            val mediaShape =
+                if (isCapsuleVideoPlaying) {
+                    RoundedCornerShape(28.dp)
+                } else {
+                    CapsuleArtworkShape
+                }
+
             Box(
                 modifier =
                     Modifier
                         .fillMaxWidth()
-                        .aspectRatio(1f)
-                        /*
-                         * Lift only the artwork. NOW PLAYING / duration and the
-                         * metadata/buttons stay fixed, creating clean breathing
-                         * room above Share/Favorite and the artist line.
-                         */
-                        .offset(
-                            y = (-9).dp,
+                        .aspectRatio(
+                            if (isCapsuleVideoPlaying) 16f / 9f else 1f,
                         )
-                        .clip(
-                            CapsuleArtworkShape,
-                        )
+                        .clip(mediaShape)
                         .border(
                             1.dp,
                             outline,
-                            CapsuleArtworkShape,
+                            mediaShape,
                         )
                         .background(
-                            textColor.copy(
-                                alpha =
-                                    0.045f,
-                            ),
+                            if (isCapsuleVideoPlaying) {
+                                Color.Black
+                            } else {
+                                textColor.copy(alpha = 0.045f)
+                            },
                         )
                         .clickable(
-                            onClick =
-                                onArtworkClick,
+                            enabled = !isCapsuleVideoPlaying,
+                            onClick = onArtworkClick,
                         ),
-                contentAlignment =
-                    Alignment.Center,
+                contentAlignment = Alignment.Center,
             ) {
                 if (isCapsuleVideoPlaying) {
                     AndroidView(
@@ -614,35 +567,22 @@ fun CapsulePlayerContent(
                     )
                 } else if (hideArtwork) {
                     Icon(
-                        painter =
-                            painterResource(
-                                R.drawable.album,
-                            ),
-                        contentDescription =
-                            mediaMetadata.title,
-                        tint =
-                            secondaryText,
-                        modifier =
-                            Modifier.size(
-                                72.dp,
-                            ),
+                        painter = painterResource(R.drawable.album),
+                        contentDescription = mediaMetadata.title,
+                        tint = secondaryText,
+                        modifier = Modifier.size(72.dp),
                     )
                 } else {
                     AsyncImage(
-                        model =
-                            mediaMetadata
-                                .thumbnailUrl
-                                ?.toHighResThumbnail(),
-                        contentDescription =
-                            mediaMetadata.title,
+                        model = mediaMetadata.thumbnailUrl?.toHighResThumbnail(),
+                        contentDescription = mediaMetadata.title,
                         contentScale =
                             if (cropAlbumArt) {
                                 ContentScale.Crop
                             } else {
                                 ContentScale.Fit
                             },
-                        modifier =
-                            Modifier.fillMaxSize(),
+                        modifier = Modifier.fillMaxSize(),
                     )
                 }
             }
