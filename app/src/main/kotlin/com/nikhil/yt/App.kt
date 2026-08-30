@@ -4,8 +4,6 @@
  * Licensed Under GPL-3.0
  */
 
-
-
 package com.nikhil.yt
 
 import android.app.Application
@@ -75,15 +73,29 @@ class App : Application(), SingletonImageLoader.Factory {
                 ?.processName
         }
     }
-    
+
     @OptIn(DelicateCoroutinesApi::class)
     override fun onCreate() {
         super.onCreate()
         instance = this
-        if (currentProcessName()?.endsWith(":crash") == true) {
+
+        val processName = currentProcessName()
+        if (processName?.endsWith(":crash") == true) {
             Timber.plant(Timber.DebugTree())
             return
         }
+
+        /*
+         * The VIDEO extractor is intentionally a minimal process. Do not start
+         * account DataStore observers, YouTube auth, Last.fm, image cache,
+         * presence or any other normal-app subsystem here. NewPipe gets only a
+         * credential-free downloader from CapsuleVideoExtractorProvider.
+         */
+        if (processName?.endsWith(":capsule_video") == true) {
+            Timber.plant(Timber.DebugTree())
+            return
+        }
+
         PreferenceStore.start(this)
         Timber.plant(Timber.DebugTree())
         try {
@@ -118,14 +130,14 @@ class App : Application(), SingletonImageLoader.Factory {
         applicationScope.launch(Dispatchers.IO) {
             try {
                 val prefs = dataStore.data.first()
-                
+
                 prefs[ContentCountryKey]?.takeIf { it != SYSTEM_DEFAULT }?.let { country ->
                     YouTube.locale = YouTube.locale.copy(gl = country)
                 }
                 prefs[ContentLanguageKey]?.takeIf { it != SYSTEM_DEFAULT }?.let { lang ->
                     YouTube.locale = YouTube.locale.copy(hl = lang)
                 }
-                
+
                 LastFM.sessionKey = prefs[LastFMSessionKey]
 
                 if (prefs[ProxyEnabledKey] == true) {
@@ -146,8 +158,7 @@ class App : Application(), SingletonImageLoader.Factory {
                 if (prefs[UseLoginForBrowse] != false) {
                     YouTube.useLoginForBrowse = true
                 }
-                
-                // Apply random theme on startup if enabled
+
                 if (prefs[RandomThemeOnStartupKey] == true) {
                     val randomPalette = ThemePalettes.generateRandomPalette()
                     val seedPalette = ThemeSeedPalette(
@@ -161,7 +172,7 @@ class App : Application(), SingletonImageLoader.Factory {
                         settings[CustomThemeColorKey] = encodedPalette
                     }
                 }
-                
+
                 isInitialized = true
             } catch (e: Exception) {
                 Timber.e(e, "Error during deferred initialization")
