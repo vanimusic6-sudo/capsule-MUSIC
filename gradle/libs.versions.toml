@@ -69,7 +69,6 @@ coil = { module = "io.coil-kt.coil3:coil-compose", version.ref = "coil" }
 coil-network-okhttp = { module = "io.coil-kt.coil3:coil-network-okhttp", version.ref = "coil" }
 
 shimmer = { module = "com.valentinilk.shimmer:compose-shimmer", version.ref = "shimmer" }
-
 palette = { module = "androidx.palette:palette-ktx", version.ref = "palette" }
 backdrop = { module = "io.github.kyant0:backdrop", version.ref = "backdrop" }
 
@@ -100,25 +99,19 @@ ktor-server-content-negotiation = { module = "io.ktor:ktor-server-content-negoti
 
 jsoup = { module = "org.jsoup:jsoup", version.ref = "jsoup" }
 re2j = { module = "com.google.re2j:re2j", version.ref = "re2j" }
-
 json = { module = "org.json:json", version.ref = "json" }
-
 brotli = { module = "org.brotli:dec", version.ref = "brotli" }
 rhino = { module = "org.mozilla:rhino", version.ref = "rhino" }
-
 desugaring = { module = "com.android.tools:desugar_jdk_libs", version.ref = "desugaring" }
-
 junit = { module = "junit:junit", version.ref = "junit" }
-
 timber = { module = "com.jakewharton.timber:timber", version.ref = "timber" }
 
-#newpipe-extractor = { module = "com.github.teamnewpipe:NewPipeExtractor", version = "v0.25.0" }
-#newpie-extractor = { module = "com.github.libre-tube:NewPipeExtractor", version = "70be3a4" }
-newpipe-extractor = { module = "com.github.TeamNewPipe:NewPipeExtractor", version = "master-SNAPSHOT" }
-#newpipe-extractor = { module = "com.github.mostafaalagamy:MetrolistExtractor", version.ref = "extractor" }
+# VIDEO extraction is deliberately pinned to a stable NewPipeExtractor release.
+# Do not use master-SNAPSHOT in production: it makes identical Capsule source
+# resolve to different upstream code across builds.
+newpipe-extractor = { module = "com.github.TeamNewPipe:NewPipeExtractor", version = "v0.26.5" }
 
 kuromoji-ipadic = { module = "com.atilika.kuromoji:kuromoji-ipadic", version.ref = "kuromojiIpadic" }
-
 multiplatform-markdown = { module = "com.mikepenz:multiplatform-markdown-renderer-m3", version.ref = "multiplatformMarkdown" }
 
 [plugins]
