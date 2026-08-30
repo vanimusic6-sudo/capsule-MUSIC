@@ -4288,6 +4288,32 @@ class MusicService :
         val currentIndex = player.currentMediaItemIndex
         if (currentIndex < 0) return
 
+        val sourceMetadata =
+            currentItem.metadata
+                ?: player.currentMetadata
+        val sourceTitle =
+            sourceMetadata?.title
+                ?.trim()
+                ?.takeIf { it.isNotBlank() }
+                ?: currentItem.mediaMetadata.title
+                    ?.toString()
+                    ?.trim()
+                    .orEmpty()
+        val sourceArtists =
+            sourceMetadata
+                ?.artists
+                ?.map { it.name.trim() }
+                ?.filter { it.isNotBlank() }
+                .orEmpty()
+        val sourceDurationSeconds =
+            sourceMetadata
+                ?.duration
+                ?.takeIf { it > 0 }
+                ?: player.duration
+                    .takeIf { it > 0L && it != C.TIME_UNSET }
+                    ?.div(1000L)
+                    ?.toInt()
+
         /*
          * Do NOT replace the working audio item while YouTube Music is still
          * resolving the linked video. Audio continues uninterrupted until a
@@ -4310,7 +4336,12 @@ class MusicService :
             scope.launch {
                 val resolved =
                     withContext(Dispatchers.IO) {
-                        YouTubeVideoResolver.resolveForSong(canonicalMediaId)
+                        YouTubeVideoResolver.resolveForSong(
+                            sourceMediaId = canonicalMediaId,
+                            title = sourceTitle,
+                            artists = sourceArtists,
+                            durationSeconds = sourceDurationSeconds,
+                        )
                     }
 
                 /*
