@@ -1,5 +1,5 @@
 
- /** Capsule MUSIC
+ * Capsule MUSIC
  * Dedicated YouTube Music video resolver.
  *
  * The normal Capsule audio pipeline is not modified here.
@@ -15,9 +15,23 @@ import com.nikhil.yt.innertube.YouTube
 import com.nikhil.yt.innertube.YouTubeMusicVideoLinkResolver
 import com.nikhil.yt.innertube.models.WatchEndpoint.WatchEndpointMusicSupportedConfigs.WatchEndpointMusicConfig.Companion.MUSIC_VIDEO_TYPE_OMV
 import com.nikhil.yt.innertube.models.YouTubeClient
+import com.nikhil.yt.innertube.models.YouTubeClient.Companion.ANDROID_CREATOR
+import com.nikhil.yt.innertube.models.YouTubeClient.Companion.ANDROID_MUSIC
+import com.nikhil.yt.innertube.models.YouTubeClient.Companion.ANDROID_TESTSUITE
+import com.nikhil.yt.innertube.models.YouTubeClient.Companion.ANDROID_UNPLUGGED
+import com.nikhil.yt.innertube.models.YouTubeClient.Companion.ANDROID_VR_1_43_32
+import com.nikhil.yt.innertube.models.YouTubeClient.Companion.ANDROID_VR_1_61_48
+import com.nikhil.yt.innertube.models.YouTubeClient.Companion.ANDROID_VR_NO_AUTH
+import com.nikhil.yt.innertube.models.YouTubeClient.Companion.IPADOS
 import com.nikhil.yt.innertube.models.YouTubeClient.Companion.IOS
+import com.nikhil.yt.innertube.models.YouTubeClient.Companion.IOS_MUSIC
+import com.nikhil.yt.innertube.models.YouTubeClient.Companion.MOBILE
+import com.nikhil.yt.innertube.models.YouTubeClient.Companion.TVHTML5
 import com.nikhil.yt.innertube.models.YouTubeClient.Companion.TVHTML5_SIMPLY_EMBEDDED_PLAYER
+import com.nikhil.yt.innertube.models.YouTubeClient.Companion.VISIONOS
 import com.nikhil.yt.innertube.models.YouTubeClient.Companion.WEB
+import com.nikhil.yt.innertube.models.YouTubeClient.Companion.WEB_CREATOR
+import com.nikhil.yt.innertube.models.YouTubeClient.Companion.WEB_REMIX
 import com.nikhil.yt.innertube.models.response.PlayerResponse
 import com.nikhil.yt.innertube.pages.NewPipeUtils
 import com.nikhil.yt.utils.StreamClientUtils
@@ -66,8 +80,22 @@ object YouTubeVideoResolver {
     private val videoClients: List<YouTubeClient> =
         listOf(
             WEB,
-            TVHTML5_SIMPLY_EMBEDDED_PLAYER,
+            MOBILE,
+            ANDROID_MUSIC,
+            ANDROID_VR_NO_AUTH,
             IOS,
+            IOS_MUSIC,
+            TVHTML5_SIMPLY_EMBEDDED_PLAYER,
+            ANDROID_VR_1_61_48,
+            ANDROID_VR_1_43_32,
+            ANDROID_CREATOR,
+            ANDROID_TESTSUITE,
+            ANDROID_UNPLUGGED,
+            IPADOS,
+            VISIONOS,
+            TVHTML5,
+            WEB_CREATOR,
+            WEB_REMIX,
         ).distinct()
 
     fun invalidate(videoId: String) {
@@ -76,17 +104,27 @@ object YouTubeVideoResolver {
 
     /**
      * YouTube Music-style resolution:
-     * canonical song id -> currentVideoEndpoint -> official OMV -> stream.
+     * canonical song metadata -> YouTube Music VIDEO search -> official OMV -> stream.
      *
-     * There is intentionally no text/title search and setVideoId is not used.
+     * Normal YouTube search and setVideoId are intentionally not used.
      */
-    suspend fun resolveForSong(sourceMediaId: String): Result<ResolvedVideo> = runCatching {
+    suspend fun resolveForSong(
+        sourceMediaId: String,
+        title: String,
+        artists: List<String>,
+        durationSeconds: Int?,
+    ): Result<ResolvedVideo> = runCatching {
         val canonicalId = sourceMediaId.trim()
         require(canonicalId.isNotBlank()) { "Missing YouTube Music track id" }
 
         val link =
             YouTubeMusicVideoLinkResolver
-                .resolve(canonicalId)
+                .resolve(
+                    sourceMediaId = canonicalId,
+                    title = title,
+                    artists = artists,
+                    durationSeconds = durationSeconds,
+                )
                 .getOrThrow()
 
         val stream =
@@ -133,7 +171,13 @@ object YouTubeVideoResolver {
 
         var lastError: Throwable? = null
 
+        val isLoggedIn = YouTube.cookie != null
+
         for (client in videoClients) {
+            if (client.loginRequired && !isLoggedIn) {
+                continue
+            }
+
             val response =
                 runCatching {
                     YouTube.player(
