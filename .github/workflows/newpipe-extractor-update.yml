@@ -45,21 +45,32 @@ jobs:
             curl --fail --silent --show-error \
               --retry 3 \
               -H 'Accept: application/vnd.github+json' \
+              -H "Authorization: Bearer ${{ github.token }}" \
               https://api.github.com/repos/TeamNewPipe/NewPipeExtractor/releases/latest \
               | jq -r '.tag_name'
           )"
 
-          current="$(
-            sed -n 's/.*newpipe-extractor.*version = "\([^"]*\)".*/\1/p' \
-              gradle/libs.versions.toml \
-              | head -n 1
-          )"
+          # Anchored to the start of the line. libs.versions.toml keeps several
+          # commented-out alternatives for this dependency, and an unanchored
+          # pattern matches the first COMMENTED line instead of the active one.
+          mapfile -t matches < <(
+            sed -n 's/^newpipe-extractor[[:space:]]*=.*version = "\([^"]*\)".*/\1/p' \
+              gradle/libs.versions.toml
+          )
+
+          if [[ "${#matches[@]}" -ne 1 ]]; then
+            echo "::error::Expected exactly one active newpipe-extractor line, found ${#matches[@]}"
+            exit 1
+          fi
+
+          current="${matches[0]}"
 
           test -n "$latest"
-          test -n "$current"
+          test "$latest" != "null"
 
           echo "latest=$latest" >> "$GITHUB_OUTPUT"
           echo "current=$current" >> "$GITHUB_OUTPUT"
+          echo "Current: $current | Latest release: $latest"
 
           if [[ "$latest" == "$current" ]]; then
             echo "changed=false" >> "$GITHUB_OUTPUT"
@@ -82,16 +93,44 @@ jobs:
           path = Path("gradle/libs.versions.toml")
           text = path.read_text()
           latest = os.environ["LATEST"]
+
+          # (?m) plus ^ so commented-out variants of the same key are skipped.
           new, count = re.subn(
-              r'(newpipe-extractor\s*=\s*\{[^\n]*version\s*=\s*")[^"]+("[^\n]*\})',
+              r'(?m)^(newpipe-extractor\s*=\s*\{[^\n]*version\s*=\s*")[^"]+("[^\n]*\})',
               rf'\g<1>{latest}\2',
               text,
               count=1,
           )
           if count != 1:
               raise SystemExit("Could not update NewPipeExtractor version")
+
           path.write_text(new)
           PY
+
+      - name: Verify the active line actually changed
+        if: steps.version.outputs.changed == 'true'
+        shell: bash
+        env:
+          LATEST: ${{ steps.version.outputs.latest }}
+        run: |
+          set -euo pipefail
+
+          applied="$(
+            sed -n 's/^newpipe-extractor[[:space:]]*=.*version = "\([^"]*\)".*/\1/p' \
+              gradle/libs.versions.toml
+          )"
+
+          if [[ "$applied" != "$LATEST" ]]; then
+            echo "::error::Active dependency is '$applied', expected '$LATEST'"
+            exit 1
+          fi
+
+          if git diff --quiet -- gradle/libs.versions.toml; then
+            echo "::error::No change was written to gradle/libs.versions.toml"
+            exit 1
+          fi
+
+          git --no-pager diff -- gradle/libs.versions.toml
 
       - name: Compile-test candidate
         if: steps.version.outputs.changed == 'true'
@@ -106,6 +145,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           LATEST: ${{ steps.version.outputs.latest }}
+          CURRENT: ${{ steps.version.outputs.current }}
         run: |
           set -euo pipefail
 
@@ -123,7 +163,14 @@ jobs:
               --base main \
               --head "$branch" \
               --title "Update NewPipeExtractor to $LATEST" \
-              --body $'Automated pinned NewPipeExtractor update.\n\nThe candidate passed `:innertube:test` and `:app:assembleUniversalDebug` before this PR was created. Runtime VIDEO smoke testing is still recommended before merge.'
+              --body "$(printf '%s\n' \
+                "Automated pinned NewPipeExtractor update: \`$CURRENT\` -> \`$LATEST\`." \
+                "" \
+                "The candidate passed \`:innertube:test\` and \`:app:assembleUniversalDebug\`." \
+                "" \
+                "Compilation says nothing about extraction still working. Before merging," \
+                "resolve one track in VIDEO mode on a device and confirm a stream URL comes" \
+                "back from CapsuleStreamSource.")"
           else
             echo "PR #$existing refreshed"
           fi
