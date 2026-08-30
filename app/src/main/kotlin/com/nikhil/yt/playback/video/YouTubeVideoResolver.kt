@@ -541,43 +541,87 @@ object YouTubeVideoResolver {
         expectedArtists: List<String>,
         expectedDurationSeconds: Int?,
     ): Boolean {
-        details ?: return false
+        /*
+         * YouTube Music's Videos shelf is the primary matcher. This second pass
+         * is deliberately a sanity check, not another exact matcher.
+         *
+         * Official channels may be called "ArtistVEVO", a label name, or a
+         * localized channel name, so author mismatch alone must not reject a
+         * valid OMV.
+         */
+        details ?: return true
 
         val expectedTitleNorm = normalizeTitleForCheck(expectedTitle)
         val actualTitleNorm = normalizeTitleForCheck(details.title)
-        val artistNorms =
-            expectedArtists
-                .map(::normalizeForCheck)
-                .filter { it.isNotBlank() }
 
-        val titleMatches =
-            actualTitleNorm == expectedTitleNorm ||
-                artistNorms.any { artist ->
-                    actualTitleNorm == "$artist $expectedTitleNorm" ||
-                        actualTitleNorm == "$expectedTitleNorm $artist"
-                }
-        if (!titleMatches) return false
+        if (expectedTitleNorm.isNotBlank() && actualTitleNorm.isNotBlank()) {
+            val overlap = titleTokenOverlapForCheck(expectedTitleNorm, actualTitleNorm)
+            val titleLooksRelated =
+                actualTitleNorm == expectedTitleNorm ||
+                    actualTitleNorm.contains(expectedTitleNorm) ||
+                    expectedTitleNorm.contains(actualTitleNorm) ||
+                    overlap >= 0.50
 
-        if (artistNorms.isNotEmpty()) {
-            val author =
-                normalizeForCheck(details.author)
-                    .removeSuffix(" vevo")
-                    .removeSuffix("vevo")
-                    .trim()
-            val artistMatches =
-                artistNorms.any { artist ->
-                    author.contains(artist) || artist.contains(author)
-                }
-            if (!artistMatches) return false
+            if (!titleLooksRelated) return false
+        }
+
+        val actualRaw = " ${normalizeForCheck(details.title)} "
+        val expectedRaw = " ${normalizeForCheck(expectedTitle)} "
+        val rejectTokens =
+            listOf(
+                " live ",
+                " concert ",
+                " performance ",
+                " acoustic ",
+                " cover ",
+                " karaoke ",
+                " lyric ",
+                " lyrics ",
+                " visualizer ",
+                " slowed ",
+                " reverb ",
+                " remix ",
+                " fanmade ",
+                " fan made ",
+                " amv ",
+                " reaction ",
+                " interview ",
+                " behind the scenes ",
+                " shorts ",
+            )
+
+        if (
+            rejectTokens.any { token ->
+                actualRaw.contains(token) &&
+                    !expectedRaw.contains(token)
+            }
+        ) {
+            return false
         }
 
         val expectedDuration = expectedDurationSeconds?.takeIf { it > 0 }
         val actualDuration = details.lengthSeconds.toIntOrNull()?.takeIf { it > 0 }
         if (expectedDuration != null && actualDuration != null) {
-            if (kotlin.math.abs(expectedDuration - actualDuration) > 65) return false
+            /*
+             * Music videos can contain intros/outros, so allow a larger window
+             * here. The shelf matcher already applied the tighter duration score.
+             */
+            if (kotlin.math.abs(expectedDuration - actualDuration) > 110) return false
         }
 
         return true
+    }
+
+    private fun titleTokenOverlapForCheck(
+        left: String,
+        right: String,
+    ): Double {
+        val a = left.split(' ').filter { it.length > 1 }.toSet()
+        val b = right.split(' ').filter { it.length > 1 }.toSet()
+        if (a.isEmpty() || b.isEmpty()) return 0.0
+
+        return a.intersect(b).size.toDouble() /
+            a.union(b).size.toDouble()
     }
 
     private fun normalizeTitleForCheck(value: String): String =
