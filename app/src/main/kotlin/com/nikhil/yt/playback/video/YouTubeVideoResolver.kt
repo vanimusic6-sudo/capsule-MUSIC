@@ -13,25 +13,15 @@ package com.nikhil.yt.playback.video
 
 import com.nikhil.yt.constants.CapsuleVideoQuality
 import com.nikhil.yt.innertube.YouTube
+import com.nikhil.yt.innertube.CapsuleVideoRequestGuard
 import com.nikhil.yt.innertube.YouTubeMusicVideoLinkResolver
 import com.nikhil.yt.innertube.models.WatchEndpoint.WatchEndpointMusicSupportedConfigs.WatchEndpointMusicConfig.Companion.MUSIC_VIDEO_TYPE_OMV
 import com.nikhil.yt.innertube.models.YouTubeClient
-import com.nikhil.yt.innertube.models.YouTubeClient.Companion.ANDROID_CREATOR
 import com.nikhil.yt.innertube.models.YouTubeClient.Companion.ANDROID_MUSIC
-import com.nikhil.yt.innertube.models.YouTubeClient.Companion.ANDROID_TESTSUITE
-import com.nikhil.yt.innertube.models.YouTubeClient.Companion.ANDROID_UNPLUGGED
-import com.nikhil.yt.innertube.models.YouTubeClient.Companion.ANDROID_VR_1_43_32
-import com.nikhil.yt.innertube.models.YouTubeClient.Companion.ANDROID_VR_1_61_48
-import com.nikhil.yt.innertube.models.YouTubeClient.Companion.ANDROID_VR_NO_AUTH
-import com.nikhil.yt.innertube.models.YouTubeClient.Companion.IPADOS
 import com.nikhil.yt.innertube.models.YouTubeClient.Companion.IOS
-import com.nikhil.yt.innertube.models.YouTubeClient.Companion.IOS_MUSIC
 import com.nikhil.yt.innertube.models.YouTubeClient.Companion.MOBILE
-import com.nikhil.yt.innertube.models.YouTubeClient.Companion.TVHTML5
 import com.nikhil.yt.innertube.models.YouTubeClient.Companion.TVHTML5_SIMPLY_EMBEDDED_PLAYER
-import com.nikhil.yt.innertube.models.YouTubeClient.Companion.VISIONOS
 import com.nikhil.yt.innertube.models.YouTubeClient.Companion.WEB
-import com.nikhil.yt.innertube.models.YouTubeClient.Companion.WEB_CREATOR
 import com.nikhil.yt.innertube.models.YouTubeClient.Companion.WEB_REMIX
 import com.nikhil.yt.innertube.models.response.PlayerResponse
 import com.nikhil.yt.innertube.pages.NewPipeUtils
@@ -100,9 +90,13 @@ object YouTubeVideoResolver {
     private var clientPair: Pair<java.net.Proxy?, OkHttpClient>? = null
 
     /*
-     * Keep VIDEO isolated from the audio client preference. WEB is first because
-     * it usually exposes the widest set of ordinary VOD formats. The rest are
-     * fallbacks only; the loop stops on the first validated result.
+     * Safety-first VIDEO clients.
+     *
+     * Do not walk a long list of experimental/creator/test clients after a
+     * failure. These six cover the useful compatibility spread without turning
+     * one VIDEO switch into a burst of many player requests.
+     *
+     * A 403/429/bot response stops the VIDEO path immediately; AUDIO is separate.
      */
     private val videoClients: List<YouTubeClient> =
         listOf(
@@ -111,18 +105,7 @@ object YouTubeVideoResolver {
             ANDROID_MUSIC,
             MOBILE,
             TVHTML5_SIMPLY_EMBEDDED_PLAYER,
-            ANDROID_VR_NO_AUTH,
-            IOS_MUSIC,
-            TVHTML5,
             WEB_REMIX,
-            ANDROID_VR_1_61_48,
-            ANDROID_VR_1_43_32,
-            ANDROID_CREATOR,
-            ANDROID_TESTSUITE,
-            ANDROID_UNPLUGGED,
-            IPADOS,
-            VISIONOS,
-            WEB_CREATOR,
         ).distinct()
 
     fun invalidate(videoId: String) {
@@ -234,28 +217,50 @@ object YouTubeVideoResolver {
         for (client in videoClients) {
             if (client.loginRequired && !isLoggedIn) continue
 
+            CapsuleVideoRequestGuard.beforeMetadataRequest()
+
             val response =
-                runCatching {
+                try {
                     YouTube.player(
                         videoId = videoId,
                         playlistId = null,
                         client = client,
                         signatureTimestamp = signatureTimestamp,
                     ).getOrThrow()
-                }.onFailure {
-                    lastError = it
+                } catch (throwable: Throwable) {
+                    lastError = throwable
+
                     Timber.tag(TAG).d(
-                        it,
+                        throwable,
                         "Video player response failed for ${client.clientName}",
                     )
-                }.getOrNull() ?: continue
+
+                    if (CapsuleVideoRequestGuard.noteFailure(throwable)) {
+                        throw CapsuleVideoRequestGuard.RequestBlockedException(
+                            "YouTube VIDEO player request stopped after a 403/429/bot response",
+                            throwable,
+                        )
+                    }
+
+                    continue
+                }
 
             if (response.playabilityStatus.status != "OK") {
-                lastError =
+                val playabilityError =
                     IllegalStateException(
                         response.playabilityStatus.reason
                             ?: "YouTube video is not playable",
                     )
+
+                lastError = playabilityError
+
+                if (CapsuleVideoRequestGuard.noteFailure(playabilityError)) {
+                    throw CapsuleVideoRequestGuard.RequestBlockedException(
+                        "YouTube VIDEO playability was blocked by anti-bot/rate limiting",
+                        playabilityError,
+                    )
+                }
+
                 continue
             }
 
@@ -356,14 +361,14 @@ object YouTubeVideoResolver {
         if (videoFormats.isEmpty() || audioFormats.isEmpty()) return null
 
         var audioChoice: Pair<PlayerResponse.StreamingData.Format, String>? = null
-        for (audioFormat in audioFormats.take(4)) {
+        for (audioFormat in audioFormats.take(2)) {
             val url = resolveAndValidate(audioFormat, videoId, client) ?: continue
             audioChoice = audioFormat to url
             break
         }
         val (audioFormat, audioUrl) = audioChoice ?: return null
 
-        for (videoFormat in videoFormats.take(6)) {
+        for (videoFormat in videoFormats.take(3)) {
             val videoUrl = resolveAndValidate(videoFormat, videoId, client) ?: continue
             val expiresAtMs = expiry(response)
             return Cached(
@@ -387,7 +392,7 @@ object YouTubeVideoResolver {
         client: YouTubeClient,
         quality: CapsuleVideoQuality,
     ): Cached? {
-        for (format in selectMuxedFormats(response, quality).take(8)) {
+        for (format in selectMuxedFormats(response, quality).take(3)) {
             val url = resolveAndValidate(format, videoId, client) ?: continue
             return Cached(
                 sourceMediaId = sourceMediaId,
@@ -654,8 +659,8 @@ object YouTubeVideoResolver {
     private fun validate(
         url: String,
         fallbackUserAgent: String,
-    ): Boolean =
-        runCatching {
+    ): Boolean {
+        return try {
             val clientParam =
                 url.toHttpUrlOrNull()
                     ?.queryParameter("c")
@@ -685,9 +690,24 @@ object YouTubeVideoResolver {
                 .newCall(request)
                 .execute()
                 .use { response ->
+                    if (CapsuleVideoRequestGuard.noteHttpStatus(response.code)) {
+                        throw CapsuleVideoRequestGuard.RequestBlockedException(
+                            "YouTube VIDEO stream validation returned HTTP ${response.code}",
+                        )
+                    }
+
                     response.code in 200..399 || response.code == 416
                 }
-        }.getOrDefault(false)
+        } catch (blocked: CapsuleVideoRequestGuard.RequestBlockedException) {
+            throw blocked
+        } catch (throwable: Throwable) {
+            Timber.tag(TAG).d(
+                throwable,
+                "Video stream probe failed",
+            )
+            false
+        }
+    }
 
     private fun currentClient(): OkHttpClient {
         val proxy = YouTube.streamProxy
