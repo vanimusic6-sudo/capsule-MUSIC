@@ -4,27 +4,14 @@
  *
  * Normal Capsule audio playback is intentionally not changed here.
  * VIDEO resolves an official YouTube Music clip first, then chooses either
- * a stable muxed stream or a higher-quality adaptive video + audio pair.
- *
- * v2 changes:
- *  - At most MAX_CLIENT_ATTEMPTS clients are tried per resolve, and the client
- *    that last worked is tried first. v1 walked six clients for the same video
- *    id within seconds, which is the single most scraper-looking pattern in the
- *    old code.
- *  - Stream probes now go through the request guard and share a per-resolve
- *    budget. v1 could fire ~70 ungated requests for one VIDEO switch.
- *  - The duplicated muxed pass at P360 is gone.
- *  - playabilityStatus is classified: a permanently unavailable video aborts
- *    the whole resolve instead of being retried on every client.
- *  - Blocking OkHttp work moved off the calling dispatcher.
- *
- * Licensed under GPL-3.0.
+ * a stable muxed stream or a higher-quality adaptive video + audio pair..
  */
 
 package com.nikhil.yt.playback.video
 
 import com.nikhil.yt.constants.CapsuleVideoQuality
 import com.nikhil.yt.innertube.YouTube
+import com.nikhil.yt.innertube.CapsuleAnonymousSession
 import com.nikhil.yt.innertube.CapsuleVideoRequestGuard
 import com.nikhil.yt.innertube.YouTubeMusicVideoLinkResolver
 import com.nikhil.yt.innertube.models.WatchEndpoint.WatchEndpointMusicSupportedConfigs.WatchEndpointMusicConfig.Companion.MUSIC_VIDEO_TYPE_OMV
@@ -154,12 +141,34 @@ object YouTubeVideoResolver {
             WEB_REMIX,
         ).distinct()
 
-    private fun orderedClients(): List<YouTubeClient> {
-        val preferred = preferredClient ?: return videoClients
+    /*
+     * Anonymous ordering.
+     *
+     * PlaybackAuthState.needsServiceIntegrity() is true for WEB, WEB_REMIX and
+     * the TVHTML5 clients: without a real poToken they answer an anonymous
+     * session with "Sign in to confirm that you're not a bot". Only a cold
+     * start token can be produced here, which is not one.
+     *
+     * IOS and the Android clients need no integrity token, so they go first
+     * and WEB stays as a last resort.
+     */
+    private val anonymousVideoClients: List<YouTubeClient> =
+        listOf(
+            IOS,
+            ANDROID_MUSIC,
+            MOBILE,
+            WEB,
+        ).distinct()
+
+    private fun orderedClients(anonymous: Boolean): List<YouTubeClient> {
+        val base = if (anonymous) anonymousVideoClients else videoClients
+        val preferred = preferredClient?.takeIf { candidate ->
+            base.any { it.clientName == candidate.clientName }
+        } ?: return base
 
         return buildList {
             add(preferred)
-            addAll(videoClients.filterNot { it.clientName == preferred.clientName })
+            addAll(base.filterNot { it.clientName == preferred.clientName })
         }
     }
 
@@ -274,13 +283,19 @@ object YouTubeVideoResolver {
             NewPipeUtils.getSignatureTimestamp(videoId)
                 .getOrNull()
 
-        val isLoggedIn = YouTube.cookie != null
+        /*
+         * In anonymous mode there is no session to satisfy a login-gated
+         * client, so those are skipped outright rather than attempted.
+         */
+        val anonymous = CapsuleAnonymousSession.enabled
+        val isLoggedIn = !anonymous && YouTube.cookie != null
         val budget = ProbeBudget(MAX_PROBES_PER_RESOLVE)
 
         var attempts = 0
+        var botChecked = false
         var lastError: Throwable? = null
 
-        for (client in orderedClients()) {
+        for (client in orderedClients(anonymous)) {
             if (attempts >= MAX_CLIENT_ATTEMPTS) break
             if (client.loginRequired && !isLoggedIn) continue
 
@@ -290,12 +305,20 @@ object YouTubeVideoResolver {
 
             val response =
                 try {
-                    YouTube.player(
-                        videoId = videoId,
-                        playlistId = null,
-                        client = client,
-                        signatureTimestamp = signatureTimestamp,
-                    ).getOrThrow()
+                    if (anonymous) {
+                        CapsuleAnonymousSession.player(
+                            videoId = videoId,
+                            client = client,
+                            signatureTimestamp = signatureTimestamp,
+                        ).getOrThrow()
+                    } else {
+                        YouTube.player(
+                            videoId = videoId,
+                            playlistId = null,
+                            client = client,
+                            signatureTimestamp = signatureTimestamp,
+                        ).getOrThrow()
+                    }
                 } catch (blocked: CapsuleVideoRequestGuard.RequestBlockedException) {
                     throw blocked
                 } catch (throwable: Throwable) {
@@ -306,18 +329,30 @@ object YouTubeVideoResolver {
                         "Video player response failed for ${client.clientName}",
                     )
 
-                    val kind = CapsuleVideoRequestGuard.noteApiFailure(throwable)
+                    val kind = CapsuleVideoRequestGuard.classify(throwable)
 
                     when (kind) {
+                        /*
+                         * An integrity-gated client refusing an anonymous
+                         * session is expected, not evidence of abuse. Try the
+                         * next client; the breaker is opened below only if
+                         * every attempt ends this way.
+                         */
+                        CapsuleVideoRequestGuard.FailureKind.BOT_CHECK -> {
+                            botChecked = true
+                            continue
+                        }
+
                         CapsuleVideoRequestGuard.FailureKind.RATE_LIMITED,
-                        CapsuleVideoRequestGuard.FailureKind.BOT_CHECK,
                         CapsuleVideoRequestGuard.FailureKind.FORBIDDEN,
-                        ->
+                        -> {
+                            CapsuleVideoRequestGuard.noteApiFailure(throwable)
                             throw CapsuleVideoRequestGuard.RequestBlockedException(
                                 "YouTube VIDEO player request stopped after a " +
                                     "${kind.name.lowercase()} response",
                                 throwable,
                             )
+                        }
 
                         CapsuleVideoRequestGuard.FailureKind.PERMANENT -> throw throwable
 
@@ -335,12 +370,15 @@ object YouTubeVideoResolver {
                 lastError = playabilityError
 
                 when (CapsuleVideoRequestGuard.classify("$status $reason")) {
-                    CapsuleVideoRequestGuard.FailureKind.RATE_LIMITED,
-                    CapsuleVideoRequestGuard.FailureKind.BOT_CHECK,
-                    -> {
+                    CapsuleVideoRequestGuard.FailureKind.BOT_CHECK -> {
+                        botChecked = true
+                        continue
+                    }
+
+                    CapsuleVideoRequestGuard.FailureKind.RATE_LIMITED -> {
                         CapsuleVideoRequestGuard.noteApiFailure(playabilityError)
                         throw CapsuleVideoRequestGuard.RequestBlockedException(
-                            "YouTube VIDEO playability was blocked by anti-bot/rate limiting",
+                            "YouTube VIDEO playability was rate limited",
                             playabilityError,
                         )
                     }
@@ -362,13 +400,16 @@ object YouTubeVideoResolver {
                 playerMusicVideoType != MUSIC_VIDEO_TYPE_OMV
             ) {
                 /*
-                 * The matcher already decided this id is an OMV. If the player
-                 * disagrees, the id itself is wrong: retrying other clients
-                 * cannot change that.
+                 * Clients disagree about musicVideoType for the same clip: WEB
+                 * often reports something other than OMV where ANDROID_MUSIC
+                 * reports OMV. Treating this as fatal broke every resolve, so
+                 * it falls through to the next client instead.
                  */
-                throw IllegalStateException(
-                    "Matched item is not an official YouTube Music video",
-                )
+                lastError =
+                    IllegalStateException(
+                        "Matched item is not an official YouTube Music video",
+                    )
+                continue
             }
 
             if (
@@ -380,9 +421,11 @@ object YouTubeVideoResolver {
                     expectedDurationSeconds = expectedDurationSeconds,
                 )
             ) {
-                throw IllegalStateException(
-                    "YouTube player metadata did not match the current song",
-                )
+                lastError =
+                    IllegalStateException(
+                        "YouTube player metadata did not match the current song",
+                    )
+                continue
             }
 
             val preferMuxedFirst = quality == CapsuleVideoQuality.P360
@@ -445,6 +488,18 @@ object YouTubeVideoResolver {
                     ?: IllegalStateException(
                         "No compatible stream from ${client.clientName}",
                     )
+        }
+
+        /*
+         * Every client we were willing to try answered with an anti-bot
+         * interstitial. Now it is worth backing off.
+         */
+        if (botChecked) {
+            CapsuleVideoRequestGuard.noteBlockedAfterAllAttempts("bot check on every client")
+            throw CapsuleVideoRequestGuard.RequestBlockedException(
+                "YouTube asked to sign in to confirm you are not a bot on every client",
+                lastError,
+            )
         }
 
         throw lastError
@@ -637,6 +692,16 @@ object YouTubeVideoResolver {
                 url,
                 client.clientVersion,
             )
+
+        /*
+         * NewPipeUtils.getStreamUrl() finishes with YouTube.appendGvsPoToken(),
+         * which reads the global *authenticated* state. Left alone, an
+         * anonymous player response would still hand googlevideo the signed-in
+         * user's token.
+         */
+        if (CapsuleAnonymousSession.enabled) {
+            url = CapsuleAnonymousSession.stripAccountPoToken(url, client)
+        }
 
         /*
          * Out of probe budget: hand the URL over unverified. One playback error
