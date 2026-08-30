@@ -22,8 +22,6 @@
         </intent>
     </queries>
 
-
-
     <application
         android:name=".App"
         android:allowBackup="true"
@@ -73,7 +71,6 @@
                     android:scheme="velune" />
             </intent-filter>
 
-            <!-- Youtube filter -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
                 <action android:name="android.media.action.MEDIA_PLAY_FROM_SEARCH" />
@@ -88,19 +85,14 @@
                 <data android:host="m.youtube.com" />
                 <data android:host="www.youtube.com" />
                 <data android:host="music.youtube.com" />
-                <!-- video prefix -->
                 <data android:pathPrefix="/v/" />
                 <data android:pathPrefix="/embed/" />
                 <data android:pathPrefix="/watch" />
-                <!-- channel prefix -->
                 <data android:pathPrefix="/channel/" />
                 <data android:pathPrefix="/user/" />
                 <data android:pathPrefix="/c/" />
-                <!-- playlist prefix -->
                 <data android:pathPrefix="/playlist" />
-                <!-- browse prefix -->
                 <data android:pathPrefix="/browse/" />
-                <!-- search prefix -->
                 <data android:pathPrefix="/search" />
             </intent-filter>
 
@@ -129,12 +121,9 @@
                 <data android:scheme="vnd.youtube.launch" />
             </intent-filter>
 
-            <!-- Share filter -->
             <intent-filter>
                 <action android:name="android.intent.action.SEND" />
-
                 <category android:name="android.intent.category.DEFAULT" />
-
                 <data android:mimeType="text/plain" />
             </intent-filter>
 
@@ -152,6 +141,20 @@
                 android:name="android.support.FILE_PROVIDER_PATHS"
                 android:resource="@xml/provider_paths" />
         </provider>
+
+        <!--
+            NewPipeExtractor is deliberately hosted outside the music process.
+            It is not exported and receives no account credentials. A fatal
+            extractor/parser failure can kill :capsule_video without killing
+            MusicService or the AUDIO queue.
+        -->
+        <provider
+            android:name=".playback.video.CapsuleVideoExtractorProvider"
+            android:authorities="${applicationId}.capsule.video.extractor"
+            android:exported="false"
+            android:grantUriPermissions="false"
+            android:multiprocess="false"
+            android:process=":capsule_video" />
 
         <service
             android:name=".playback.MusicService"
@@ -182,7 +185,7 @@
             <intent-filter>
                 <action android:name="android.intent.action.MEDIA_BUTTON" />
             </intent-filter>
-        </receiver>        
+        </receiver>
 
         <meta-data
             android:name="com.google.android.gms.car.application"
@@ -204,7 +207,6 @@
                 android:name="android.appwidget.provider"
                 android:resource="@xml/velune_widget_info" />
         </receiver>
-
 
         <activity
             android:name=".ui.screens.settings.PoTokenExtractionActivity"
