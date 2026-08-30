@@ -1,17 +1,13 @@
-
- /** Capsule MUSIC
- * Styled AUDIO / VIDEO switch for Capsule Player.
+/*
+ * Capsule MUSIC
+ * YouTube Music-inspired AUDIO / VIDEO switch.
  * Licensed under GPL-3.0.
  */
 
 package com.nikhil.yt.ui.player
 
 import androidx.compose.animation.Crossfade
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -24,8 +20,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
@@ -50,22 +47,27 @@ fun CapsuleAudioVideoToggle(
     onVideoClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val shape = RoundedCornerShape(18.dp)
-    val resolving =
+    val resolvingVideo =
         state.mode == CapsulePlaybackMode.VIDEO &&
             state.phase == CapsuleVideoPhase.RESOLVING
-    val failed = state.phase == CapsuleVideoPhase.UNAVAILABLE
+
+    val shape = RoundedCornerShape(19.dp)
 
     Row(
         modifier =
             modifier
-                .widthIn(min = 176.dp, max = 210.dp)
-                .height(40.dp)
+                .widthIn(
+                    min = 170.dp,
+                    max = 190.dp,
+                )
+                .height(38.dp)
                 .clip(shape)
-                .background(textColor.copy(alpha = 0.038f))
+                .background(
+                    textColor.copy(alpha = 0.035f),
+                )
                 .border(
                     width = 1.dp,
-                    color = textColor.copy(alpha = 0.15f),
+                    color = textColor.copy(alpha = 0.14f),
                     shape = shape,
                 )
                 .padding(3.dp),
@@ -75,20 +77,20 @@ fun CapsuleAudioVideoToggle(
             title = "AUDIO",
             selected = state.mode == CapsulePlaybackMode.AUDIO,
             loading = false,
-            failed = false,
             enabled = enabled,
             textColor = textColor,
             onClick = onAudioClick,
             modifier = Modifier.weight(1f),
         )
 
-        Spacer(Modifier.width(3.dp))
+        Spacer(
+            Modifier.width(3.dp),
+        )
 
         CapsuleModeSegment(
             title = "VIDEO",
             selected = state.mode == CapsulePlaybackMode.VIDEO,
-            loading = resolving,
-            failed = failed,
+            loading = resolvingVideo,
             enabled = enabled,
             textColor = textColor,
             onClick = onVideoClick,
@@ -102,49 +104,40 @@ private fun CapsuleModeSegment(
     title: String,
     selected: Boolean,
     loading: Boolean,
-    failed: Boolean,
     enabled: Boolean,
     textColor: Color,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val selectedScale by
+    val selectedAmount by
+        animateFloatAsState(
+            targetValue = if (selected) 1f else 0f,
+            animationSpec = tween(190),
+            label = "capsuleModeSelected",
+        )
+
+    val scale by
         animateFloatAsState(
             targetValue = if (selected) 1f else 0.985f,
-            animationSpec = tween(180),
+            animationSpec = tween(190),
             label = "capsuleModeScale",
         )
 
-    val pulseTransition = rememberInfiniteTransition(label = "capsuleVideoPulse")
-    val pulse by
-        pulseTransition.animateFloat(
-            initialValue = 0.46f,
-            targetValue = 1f,
-            animationSpec =
-                infiniteRepeatable(
-                    animation = tween(680),
-                    repeatMode = RepeatMode.Reverse,
-                ),
-            label = "capsuleVideoPulseAlpha",
-        )
-
-    val segmentShape = RoundedCornerShape(15.dp)
+    val shape = RoundedCornerShape(16.dp)
 
     Box(
         modifier =
             modifier
-                .height(34.dp)
+                .height(32.dp)
                 .graphicsLayer {
-                    scaleX = selectedScale
-                    scaleY = selectedScale
+                    scaleX = scale
+                    scaleY = scale
                 }
-                .clip(segmentShape)
+                .clip(shape)
                 .background(
-                    if (selected) {
-                        textColor.copy(alpha = 0.115f)
-                    } else {
-                        Color.Transparent
-                    },
+                    textColor.copy(
+                        alpha = 0.12f * selectedAmount,
+                    ),
                 )
                 .clickable(
                     enabled = enabled,
@@ -155,35 +148,32 @@ private fun CapsuleModeSegment(
         Row(
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            if (selected || loading || failed) {
-                Box(
+            if (loading) {
+                CircularProgressIndicator(
                     modifier =
-                        Modifier
-                            .size(5.dp)
-                            .graphicsLayer {
-                                alpha = if (loading) pulse else if (failed) 0.5f else 0.88f
-                                scaleX = if (loading) 0.82f + (pulse * 0.18f) else 1f
-                                scaleY = if (loading) 0.82f + (pulse * 0.18f) else 1f
-                            }
-                            .background(
-                                textColor,
-                                CircleShape,
-                            ),
+                        Modifier.size(11.dp),
+                    color =
+                        textColor.copy(alpha = 0.88f),
+                    strokeWidth =
+                        1.5.dp,
                 )
-                Spacer(Modifier.width(7.dp))
+
+                Spacer(
+                    Modifier.width(7.dp),
+                )
             }
 
             Crossfade(
                 targetState =
-                    when {
-                        loading -> "VIDEO…"
-                        failed && !selected -> "VIDEO"
-                        else -> title
+                    if (loading) {
+                        "VIDEO"
+                    } else {
+                        title
                     },
-                animationSpec = tween(160),
+                animationSpec = tween(150),
                 label = "capsuleModeText",
             ) { label ->
-                androidx.compose.material3.Text(
+                Text(
                     text = label,
                     color =
                         textColor.copy(
@@ -191,13 +181,18 @@ private fun CapsuleModeSegment(
                                 when {
                                     !enabled -> 0.30f
                                     selected -> 0.94f
-                                    else -> 0.58f
+                                    else -> 0.56f
                                 },
                         ),
                     fontFamily = FontFamily.Monospace,
                     fontSize = 10.5.sp,
-                    fontWeight = if (selected) FontWeight.Bold else FontWeight.SemiBold,
-                    letterSpacing = 0.6.sp,
+                    fontWeight =
+                        if (selected) {
+                            FontWeight.Bold
+                        } else {
+                            FontWeight.SemiBold
+                        },
+                    letterSpacing = 0.65.sp,
                     maxLines = 1,
                 )
             }
