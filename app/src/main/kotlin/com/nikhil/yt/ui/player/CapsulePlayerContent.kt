@@ -699,8 +699,8 @@ fun CapsulePlayerContent(
                 Modifier
                     .fillMaxWidth()
                     .padding(
-                        horizontal =
-                            18.dp,
+                        start = 18.dp,
+                        end = 18.dp,
                         top =
                             if (isVideoMode) 22.dp else 4.dp,
                     ),
