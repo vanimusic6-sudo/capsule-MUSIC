@@ -18,6 +18,11 @@
  *    instead of forcing a cold re-search of the whole library.
  *  - Scoring, normalisation and rejection lists are unchanged.
  *
+ * v3 change:
+ *  - The matching search runs through [CapsuleAnonymousSession] by default, so
+ *    no account cookie is attached to VIDEO lookups. The authenticated
+ *    instance is kept only as an explicit fallback.
+ *
  * GPL-3.0
  */
 
@@ -118,8 +123,6 @@ object YouTubeMusicVideoLinkResolver {
             if (isNegativeCached(sourceId)) {
                 throw IllegalStateException("Official music video is unavailable for this song")
             }
-
-            syncSession()
 
             val sourceTitleNorm = normalizeTitle(sourceTitle)
             val sourceArtistNorms =
@@ -226,13 +229,23 @@ object YouTubeMusicVideoLinkResolver {
 
         val response =
             try {
-                innerTube
-                    .search(
-                        client = WEB_REMIX,
+                if (CapsuleAnonymousSession.enabled) {
+                    CapsuleAnonymousSession.search(
                         query = query,
                         params = VIDEO_FILTER,
+                        client = WEB_REMIX,
                     )
-                    .body<SearchResponse>()
+                } else {
+                    syncSession()
+
+                    innerTube
+                        .search(
+                            client = WEB_REMIX,
+                            query = query,
+                            params = VIDEO_FILTER,
+                        )
+                        .body<SearchResponse>()
+                }
             } catch (blocked: CapsuleVideoRequestGuard.RequestBlockedException) {
                 throw blocked
             } catch (throwable: Throwable) {
@@ -650,6 +663,10 @@ object YouTubeMusicVideoLinkResolver {
         return entry.link == null
     }
 
+    /**
+     * Only used when [CapsuleAnonymousSession.enabled] is false. This is the
+     * path that attaches the signed-in account to VIDEO lookups.
+     */
     private fun syncSession() {
         innerTube.locale = YouTube.locale
         innerTube.authState = YouTube.authState
