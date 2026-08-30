@@ -32,7 +32,7 @@ data class YouTubeMusicVideoLink(
 object YouTubeMusicVideoLinkResolver {
     private const val VIDEO_FILTER = "EgWKAQIQAWoKEAkQChAFEAMQBA%3D%3D"
     private const val POSITIVE_CACHE_MS = 12 * 60 * 60 * 1000L
-    private const val NEGATIVE_CACHE_MS = 20 * 60 * 1000L
+    private const val NEGATIVE_CACHE_MS = 2 * 60 * 1000L
 
     private data class CacheEntry(
         val link: YouTubeMusicVideoLink?,
@@ -240,36 +240,64 @@ object YouTubeMusicVideoLinkResolver {
 
         val secondaryNorm = normalizeText(allSecondaryText)
 
-        val exactTitle = candidateTitleNorm == sourceTitleNorm
-        val artistPrefixedTitle =
-            sourceArtistNorms.any { artist ->
-                candidateTitleNorm == "$artist $sourceTitleNorm" ||
-                    candidateTitleNorm == "$sourceTitleNorm $artist"
-            }
+        val overlap =
+            titleTokenOverlap(
+                sourceTitleNorm,
+                candidateTitleNorm,
+            )
+
+        var score = 0
 
         /*
-         * This is intentionally strict. Similar titles are where most of the
-         * "random artist video" false positives came from in the first version.
+         * Real official clips are frequently titled as:
+         *   Artist - Song (Official Video)
+         *   Song | Official Music Video
+         *   Song (feat. ...)
+         * so exact equality is preferred but no longer mandatory.
          */
-        if (!exactTitle && !artistPrefixedTitle) return null
+        score +=
+            when {
+                candidateTitleNorm == sourceTitleNorm -> 150
+                candidateTitleNorm.contains(sourceTitleNorm) ||
+                    sourceTitleNorm.contains(candidateTitleNorm) -> 105
+                overlap >= 0.78 -> 88
+                overlap >= 0.62 -> 67
+                overlap >= 0.50 -> 48
+                else -> return null
+            }
 
         if (sourceArtistNorms.isNotEmpty()) {
             val artistMatched =
                 sourceArtistNorms.any { artist ->
-                    artist.length >= 2 && containsWholePhrase(secondaryNorm, artist)
+                    artist.length >= 2 &&
+                        (
+                            containsWholePhrase(secondaryNorm, artist) ||
+                                containsWholePhrase(candidateTitleNorm, artist) ||
+                                secondaryNorm.contains(artist)
+                        )
                 }
-            if (!artistMatched) return null
+
+            /*
+             * Artist metadata in the Videos shelf is not always normalized the
+             * same way as the audio item. A strong title + OMV candidate may
+             * still pass, but missing artist evidence receives a heavy penalty.
+             */
+            if (artistMatched) {
+                score += 65
+            } else {
+                score -= 55
+            }
         }
 
-        var score = if (exactTitle) 230 else 205
-        score += 90 // MUSIC_VIDEO_TYPE_OMV + artist match
+        // MUSIC_VIDEO_TYPE_OMV itself is strong evidence.
+        score += 55
 
         val rawTitleNorm = normalizeText(candidateTitle)
         if (
             rawTitleNorm.contains("official music video") ||
             rawTitleNorm.contains("official video")
         ) {
-            score += 45
+            score += 28
         }
 
         val candidateDuration = extractDurationSeconds(allSecondaryText)
@@ -279,16 +307,20 @@ object YouTubeMusicVideoLinkResolver {
             val delta = abs(sourceDuration - candidateDuration)
             score +=
                 when {
-                    delta <= 5 -> 45
-                    delta <= 12 -> 35
+                    delta <= 5 -> 42
+                    delta <= 12 -> 34
                     delta <= 25 -> 22
                     delta <= 45 -> 10
-                    delta <= 65 && exactTitle -> 2
+                    delta <= 75 -> -8
                     else -> return null
                 }
         }
 
-        if (score < 300) return null
+        /*
+         * This threshold rejects weak same-artist matches, while retaining the
+         * normal official clips that v3 found successfully.
+         */
+        if (score < 115) return null
 
         return Candidate(
             videoId = videoId,
@@ -376,6 +408,25 @@ object YouTubeMusicVideoLinkResolver {
             .replace(Regex("[^\\p{L}\\p{N}]+"), " ")
             .replace(Regex("\\s+"), " ")
             .trim()
+
+    private fun titleTokenOverlap(
+        left: String,
+        right: String,
+    ): Double {
+        val a =
+            left.split(' ')
+                .filter { it.length > 1 }
+                .toSet()
+        val b =
+            right.split(' ')
+                .filter { it.length > 1 }
+                .toSet()
+
+        if (a.isEmpty() || b.isEmpty()) return 0.0
+
+        return a.intersect(b).size.toDouble() /
+            a.union(b).size.toDouble()
+    }
 
     private fun containsWholePhrase(
         haystack: String,
