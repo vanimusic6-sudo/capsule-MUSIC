@@ -18,7 +18,13 @@ enum class CapsuleVideoPhase {
     UNAVAILABLE,
 }
 
+/**
+ * [preferredMode] is what the user chose and is sticky across queue transitions.
+ * [mode] is what is actually playing right now. If a song has no matching clip,
+ * preferredMode remains VIDEO while mode falls back to AUDIO and phase is UNAVAILABLE.
+ */
 data class CapsuleVideoPlaybackState(
+    val preferredMode: CapsulePlaybackMode = CapsulePlaybackMode.AUDIO,
     val mode: CapsulePlaybackMode = CapsulePlaybackMode.AUDIO,
     val phase: CapsuleVideoPhase = CapsuleVideoPhase.IDLE,
     val mediaId: String? = null,
@@ -31,3 +37,4 @@ data class CapsuleVideoPlaybackState(
 
 const val CAPSULE_VIDEO_SCHEME = "capsule-video"
 const val CAPSULE_VIDEO_CACHE_PREFIX = "capsule:video:"
+const val CAPSULE_VIDEO_STREAM_CACHE_PREFIX = "capsule:video-stream:"
