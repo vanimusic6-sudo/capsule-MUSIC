@@ -33,6 +33,7 @@ object YouTubeMusicVideoLinkResolver {
     private const val VIDEO_FILTER = "EgWKAQIQAWoKEAkQChAFEAMQBA%3D%3D"
     private const val POSITIVE_CACHE_MS = 12 * 60 * 60 * 1000L
     private const val NEGATIVE_CACHE_MS = 2 * 60 * 1000L
+    private const val STRONG_MATCH_SCORE = 225
 
     private data class CacheEntry(
         val link: YouTubeMusicVideoLink?,
@@ -87,12 +88,19 @@ object YouTubeMusicVideoLinkResolver {
             val queries =
                 buildList {
                     val mainArtist = cleanArtists.firstOrNull()
+
+                    /*
+                     * The YouTube Music "Videos" filter already narrows the
+                     * surface. Start with the natural song query; only perform
+                     * the second, more explicit query if the first result set
+                     * does not contain a high-confidence OMV.
+                     */
                     if (mainArtist != null) {
-                        add("$mainArtist $sourceTitle official music video")
                         add("$mainArtist $sourceTitle")
+                        add("$mainArtist $sourceTitle official music video")
                     } else {
-                        add("$sourceTitle official music video")
                         add(sourceTitle)
+                        add("$sourceTitle official music video")
                     }
                 }.distinct()
 
@@ -100,6 +108,7 @@ object YouTubeMusicVideoLinkResolver {
 
             for (query in queries) {
                 val renderers = searchVideoRenderers(query)
+
                 for (renderer in renderers) {
                     val candidate =
                         candidateFromRenderer(
@@ -115,6 +124,14 @@ object YouTubeMusicVideoLinkResolver {
                     if (previous == null || candidate.score > previous.score) {
                         candidatesById[candidate.videoId] = candidate
                     }
+                }
+
+                if (
+                    candidatesById.values
+                        .maxOfOrNull { it.score }
+                        ?.let { it >= STRONG_MATCH_SCORE } == true
+                ) {
+                    break
                 }
             }
 
@@ -149,14 +166,26 @@ object YouTubeMusicVideoLinkResolver {
     private suspend fun searchVideoRenderers(
         query: String,
     ): List<MusicResponsiveListItemRenderer> {
+        CapsuleVideoRequestGuard.beforeMetadataRequest()
+
         val response =
-            innerTube
-                .search(
-                    client = WEB_REMIX,
-                    query = query,
-                    params = VIDEO_FILTER,
-                )
-                .body<SearchResponse>()
+            try {
+                innerTube
+                    .search(
+                        client = WEB_REMIX,
+                        query = query,
+                        params = VIDEO_FILTER,
+                    )
+                    .body<SearchResponse>()
+            } catch (throwable: Throwable) {
+                if (CapsuleVideoRequestGuard.noteFailure(throwable)) {
+                    throw CapsuleVideoRequestGuard.RequestBlockedException(
+                        "YouTube VIDEO search stopped after a 403/429/bot response",
+                        throwable,
+                    )
+                }
+                throw throwable
+            }
 
         return response.contents
             ?.tabbedSearchResultsRenderer
