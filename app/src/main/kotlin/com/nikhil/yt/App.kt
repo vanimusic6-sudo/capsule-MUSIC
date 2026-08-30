@@ -4,8 +4,6 @@
  * Licensed Under GPL-3.0
  */
 
-
-
 package com.nikhil.yt
 
 import android.app.Application
@@ -64,283 +62,144 @@ class App : Application(), SingletonImageLoader.Factory {
     @Volatile private var isInitialized = false
     private val didRunImageCacheTrim = AtomicBoolean(false)
 
-    private fun currentProcessName(): String? {
-        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-            Application.getProcessName()
-        } else {
+    private fun currentProcessName(): String? =
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) Application.getProcessName()
+        else {
             val pid = android.os.Process.myPid()
             val activityManager = getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager
-            activityManager?.runningAppProcesses
-                ?.firstOrNull { it.pid == pid }
-                ?.processName
+            activityManager?.runningAppProcesses?.firstOrNull { it.pid == pid }?.processName
         }
-    }
-    
+
     @OptIn(DelicateCoroutinesApi::class)
     override fun onCreate() {
         super.onCreate()
         instance = this
-        if (currentProcessName()?.endsWith(":crash") == true) {
+        val processName = currentProcessName()
+        if (processName?.endsWith(":crash") == true) { Timber.plant(Timber.DebugTree()); return }
+        if (processName?.endsWith(":capsule_video") == true) {
+            // VIDEO process must never start account/auth/history/presence initialization.
             Timber.plant(Timber.DebugTree())
             return
         }
         PreferenceStore.start(this)
         Timber.plant(Timber.DebugTree())
-        try {
-            Timber.plant(com.nikhil.yt.utils.GlobalLogTree())
-        } catch (_: Exception) {}
-
+        try { Timber.plant(com.nikhil.yt.utils.GlobalLogTree()) } catch (_: Exception) {}
         initializeCriticalSync()
         initializeDeferredAsync()
     }
 
     private fun initializeCriticalSync() {
         CanvasArtworkPlaybackCache.init(this)
-
         val locale = Locale.getDefault()
         val languageTag = locale.toLanguageTag().replace("-Hant", "")
         YouTube.locale = YouTubeLocale(
             gl = locale.country.takeIf { it in CountryCodeToName } ?: "US",
-            hl = locale.language.takeIf { it in LanguageCodeToName }
-                ?: languageTag.takeIf { it in LanguageCodeToName }
-                ?: "en"
+            hl = locale.language.takeIf { it in LanguageCodeToName } ?: languageTag.takeIf { it in LanguageCodeToName } ?: "en"
         )
-        if (languageTag == "zh-TW") {
-            KuGou.useTraditionalChinese = true
-        }
-        LastFM.initialize(
-            apiKey = BuildConfig.LASTFM_API_KEY,
-            secret = BuildConfig.LASTFM_SECRET
-        )
+        if (languageTag == "zh-TW") KuGou.useTraditionalChinese = true
+        LastFM.initialize(apiKey = BuildConfig.LASTFM_API_KEY, secret = BuildConfig.LASTFM_SECRET)
     }
 
     private fun initializeDeferredAsync() {
         applicationScope.launch(Dispatchers.IO) {
             try {
                 val prefs = dataStore.data.first()
-                
-                prefs[ContentCountryKey]?.takeIf { it != SYSTEM_DEFAULT }?.let { country ->
-                    YouTube.locale = YouTube.locale.copy(gl = country)
-                }
-                prefs[ContentLanguageKey]?.takeIf { it != SYSTEM_DEFAULT }?.let { lang ->
-                    YouTube.locale = YouTube.locale.copy(hl = lang)
-                }
-                
+                prefs[ContentCountryKey]?.takeIf { it != SYSTEM_DEFAULT }?.let { YouTube.locale = YouTube.locale.copy(gl = it) }
+                prefs[ContentLanguageKey]?.takeIf { it != SYSTEM_DEFAULT }?.let { YouTube.locale = YouTube.locale.copy(hl = it) }
                 LastFM.sessionKey = prefs[LastFMSessionKey]
-
                 if (prefs[ProxyEnabledKey] == true) {
                     try {
-                        YouTube.proxy = Proxy(
-                            prefs[ProxyTypeKey].toEnum(defaultValue = Proxy.Type.HTTP),
-                            prefs[ProxyUrlKey]!!.toInetSocketAddress()
-                        )
+                        YouTube.proxy = Proxy(prefs[ProxyTypeKey].toEnum(defaultValue = Proxy.Type.HTTP), prefs[ProxyUrlKey]!!.toInetSocketAddress())
                     } catch (e: Exception) {
-                        withContext(Dispatchers.Main) {
-                            Toast.makeText(this@App, "Failed to parse proxy url.", LENGTH_SHORT).show()
-                        }
+                        withContext(Dispatchers.Main) { Toast.makeText(this@App, "Failed to parse proxy url.", LENGTH_SHORT).show() }
                         reportException(e)
                     }
                     YouTube.streamBypassProxy = prefs[StreamBypassProxyKey] == true
                 }
-
-                if (prefs[UseLoginForBrowse] != false) {
-                    YouTube.useLoginForBrowse = true
-                }
-                
-                // Apply random theme on startup if enabled
+                if (prefs[UseLoginForBrowse] != false) YouTube.useLoginForBrowse = true
                 if (prefs[RandomThemeOnStartupKey] == true) {
                     val randomPalette = ThemePalettes.generateRandomPalette()
-                    val seedPalette = ThemeSeedPalette(
-                        primary = randomPalette.primary,
-                        secondary = randomPalette.secondary,
-                        tertiary = randomPalette.tertiary,
-                        neutral = randomPalette.neutral
-                    )
+                    val seedPalette = ThemeSeedPalette(randomPalette.primary, randomPalette.secondary, randomPalette.tertiary, randomPalette.neutral)
                     val encodedPalette = ThemeSeedPaletteCodec.encodeForPreference(seedPalette, "Random")
-                    dataStore.edit { settings ->
-                        settings[CustomThemeColorKey] = encodedPalette
-                    }
+                    dataStore.edit { it[CustomThemeColorKey] = encodedPalette }
                 }
-                
                 isInitialized = true
-            } catch (e: Exception) {
-                Timber.e(e, "Error during deferred initialization")
-                reportException(e)
+            } catch (e: Exception) { Timber.e(e, "Error during deferred initialization"); reportException(e) }
+        }
+        applicationScope.launch(Dispatchers.IO) {
+            dataStore.data.map { it[VisitorDataKey] }.distinctUntilChanged().collect { visitorData ->
+                YouTube.visitorData = visitorData?.takeIf { it != "null" } ?: YouTube.visitorData().onFailure { reportException(it) }.getOrNull()?.also { newVisitorData ->
+                    dataStore.edit { it[VisitorDataKey] = newVisitorData }
+                }
             }
         }
-
-        applicationScope.launch(Dispatchers.IO) {
-            dataStore.data
-                .map { it[VisitorDataKey] }
-                .distinctUntilChanged()
-                .collect { visitorData ->
-                    YouTube.visitorData = visitorData
-                        ?.takeIf { it != "null" }
-                        ?: YouTube.visitorData().onFailure {
-                            reportException(it)
-                        }.getOrNull()?.also { newVisitorData ->
-                            dataStore.edit { settings ->
-                                settings[VisitorDataKey] = newVisitorData
-                            }
-                        }
-                }
-        }
-
         try {
-            Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
+            Thread.setDefaultUncaughtExceptionHandler { _, throwable ->
                 try {
-                    val sw = StringWriter()
-                    val pw = PrintWriter(sw)
-                    throwable.printStackTrace(pw)
-                    val stack = sw.toString()
-
+                    val sw = StringWriter(); val pw = PrintWriter(sw); throwable.printStackTrace(pw)
                     val intent = Intent(this@App, DebugActivity::class.java).apply {
-                        putExtra(DebugActivity.EXTRA_STACK_TRACE, stack)
+                        putExtra(DebugActivity.EXTRA_STACK_TRACE, sw.toString())
                         addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
                     }
-                    startActivity(intent)
-                    try { Thread.sleep(100) } catch (_: InterruptedException) {}
-                } catch (e: Exception) {
-                    reportException(e)
-                } finally {
-                    android.os.Process.killProcess(android.os.Process.myPid())
-                    exitProcess(2)
-                }
+                    startActivity(intent); try { Thread.sleep(100) } catch (_: InterruptedException) {}
+                } catch (e: Exception) { reportException(e) }
+                finally { android.os.Process.killProcess(android.os.Process.myPid()); exitProcess(2) }
             }
-        } catch (e: Exception) {
-            reportException(e)
+        } catch (e: Exception) { reportException(e) }
+        applicationScope.launch(Dispatchers.IO) {
+            dataStore.data.map { it[DataSyncIdKey] }.distinctUntilChanged().collect { dataSyncId ->
+                YouTube.dataSyncId = dataSyncId?.let { it.takeIf { !it.contains("||") } ?: it.takeIf { it.endsWith("||") }?.substringBefore("||") ?: it.substringAfter("||") }
+            }
         }
         applicationScope.launch(Dispatchers.IO) {
-            dataStore.data
-                .map { it[DataSyncIdKey] }
-                .distinctUntilChanged()
-                .collect { dataSyncId ->
-                    YouTube.dataSyncId = dataSyncId?.let {
-                        it.takeIf { !it.contains("||") }
-                            ?: it.takeIf { it.endsWith("||") }?.substringBefore("||")
-                            ?: it.substringAfter("||")
-                    }
-                }
+            dataStore.data.map { it[InnerTubeCookieKey] }.distinctUntilChanged().collect { cookie ->
+                try { YouTube.cookie = cookie } catch (e: Exception) { Timber.e("Could not parse cookie. Clearing existing cookie. %s", e.message); forgetAccount(this@App) }
+            }
         }
-        applicationScope.launch(Dispatchers.IO) {
-            dataStore.data
-                .map { it[InnerTubeCookieKey] }
-                .distinctUntilChanged()
-                .collect { cookie ->
-                    try {
-                        YouTube.cookie = cookie
-                    } catch (e: Exception) {
-                        Timber.e("Could not parse cookie. Clearing existing cookie. %s", e.message)
-                        forgetAccount(this@App)
-                    }
-                }
-        }
-        applicationScope.launch(Dispatchers.IO) {
-            dataStore.data
-                .map { it[PoTokenKey] }
-                .distinctUntilChanged()
-                .collect { token ->
-                    YouTube.poToken = token?.takeIf { it.isNotBlank() }
-                }
-        }
-        applicationScope.launch(Dispatchers.IO) {
-            dataStore.data
-                .map { it[PoTokenGvsKey] }
-                .distinctUntilChanged()
-                .collect { token ->
-                    YouTube.poTokenGvs = token?.takeIf { it.isNotBlank() }
-                }
-        }
-        applicationScope.launch(Dispatchers.IO) {
-            dataStore.data
-                .map { it[PoTokenPlayerKey] }
-                .distinctUntilChanged()
-                .collect { token ->
-                    YouTube.poTokenPlayer = token?.takeIf { it.isNotBlank() }
-                }
-        }
-        applicationScope.launch(Dispatchers.IO) {
-            dataStore.data
-                .map { it[LastFMSessionKey] }
-                .distinctUntilChanged()
-                .collect { sessionKey ->
-                    LastFM.sessionKey = sessionKey
-                }
-        }
+        applicationScope.launch(Dispatchers.IO) { dataStore.data.map { it[PoTokenKey] }.distinctUntilChanged().collect { YouTube.poToken = it?.takeIf { v -> v.isNotBlank() } } }
+        applicationScope.launch(Dispatchers.IO) { dataStore.data.map { it[PoTokenGvsKey] }.distinctUntilChanged().collect { YouTube.poTokenGvs = it?.takeIf { v -> v.isNotBlank() } } }
+        applicationScope.launch(Dispatchers.IO) { dataStore.data.map { it[PoTokenPlayerKey] }.distinctUntilChanged().collect { YouTube.poTokenPlayer = it?.takeIf { v -> v.isNotBlank() } } }
+        applicationScope.launch(Dispatchers.IO) { dataStore.data.map { it[LastFMSessionKey] }.distinctUntilChanged().collect { LastFM.sessionKey = it } }
     }
 
     override fun newImageLoader(context: PlatformContext): ImageLoader {
         val smartTrimmer = dataStore[SmartTrimmerKey] ?: false
         val imageCacheConfig = resolveImageDiskCacheConfig(dataStore[MaxImageCacheSizeKey])
-
-        val diskCache = DiskCache.Builder()
-            .directory(cacheDir.resolve("coil"))
-            .maxSizeBytes(imageCacheConfig.maxSizeBytes)
-            .build()
-
-        if (smartTrimmer && imageCacheConfig.policy == CachePolicy.ENABLED && didRunImageCacheTrim.compareAndSet(false, true)) {
-            applicationScope.launch(Dispatchers.IO) { trimImageDiskCache(diskCache) }
-        }
-
-        return ImageLoader.Builder(this)
-            .crossfade(true)
-            .allowHardware(Build.VERSION.SDK_INT >= Build.VERSION_CODES.P)
-            .diskCache(diskCache)
-            .diskCachePolicy(imageCacheConfig.policy)
-            .build()
+        val diskCache = DiskCache.Builder().directory(cacheDir.resolve("coil")).maxSizeBytes(imageCacheConfig.maxSizeBytes).build()
+        if (smartTrimmer && imageCacheConfig.policy == CachePolicy.ENABLED && didRunImageCacheTrim.compareAndSet(false, true)) applicationScope.launch(Dispatchers.IO) { trimImageDiskCache(diskCache) }
+        return ImageLoader.Builder(this).crossfade(true).allowHardware(Build.VERSION.SDK_INT >= Build.VERSION_CODES.P).diskCache(diskCache).diskCachePolicy(imageCacheConfig.policy).build()
     }
 
     private fun trimImageDiskCache(diskCache: DiskCache) {
         try {
-            val limitBytes = diskCache.maxSize
-            if (limitBytes <= 0L || limitBytes == Long.MAX_VALUE) return
-
-            val dir = java.io.File(diskCache.directory.toString())
-            if (!dir.exists()) return
-
+            val limitBytes = diskCache.maxSize; if (limitBytes <= 0L || limitBytes == Long.MAX_VALUE) return
+            val dir = java.io.File(diskCache.directory.toString()); if (!dir.exists()) return
             val files = dir.walkTopDown().filter { it.isFile }.sortedBy { it.lastModified() }.toList()
-            var currentSize = files.sumOf { it.length() }
-            if (currentSize <= limitBytes) return
-
-            for (file in files) {
-                if (currentSize <= limitBytes) break
-                val size = file.length()
-                if (runCatching { file.delete() }.getOrDefault(false)) currentSize -= size
-            }
-        } catch (_: Exception) {
-        }
+            var currentSize = files.sumOf { it.length() }; if (currentSize <= limitBytes) return
+            for (file in files) { if (currentSize <= limitBytes) break; val size = file.length(); if (runCatching { file.delete() }.getOrDefault(false)) currentSize -= size }
+        } catch (_: Exception) {}
     }
 
     companion object {
         lateinit var instance: App
             private set
-
         fun forgetAccount(context: Context) {
             CoroutineScope(Dispatchers.IO).launch {
                 context.dataStore.edit { settings ->
-                    settings.remove(InnerTubeCookieKey)
-                    settings.remove(PoTokenKey)
-                    settings.remove(VisitorDataKey)
-                    settings.remove(DataSyncIdKey)
-                    settings.remove(AccountNameKey)
-                    settings.remove(AccountEmailKey)
-                    settings.remove(AccountChannelHandleKey)
+                    settings.remove(InnerTubeCookieKey); settings.remove(PoTokenKey); settings.remove(VisitorDataKey); settings.remove(DataSyncIdKey)
+                    settings.remove(AccountNameKey); settings.remove(AccountEmailKey); settings.remove(AccountChannelHandleKey)
                 }
             }
         }
     }
 }
 
-internal data class ImageDiskCacheConfig(
-    val policy: CachePolicy,
-    val maxSizeBytes: Long,
-)
-
+internal data class ImageDiskCacheConfig(val policy: CachePolicy, val maxSizeBytes: Long)
 internal fun resolveImageDiskCacheConfig(maxImageCacheSizeMb: Int?): ImageDiskCacheConfig {
     val sizeMb = maxImageCacheSizeMb ?: 512
-    if (sizeMb == 0) return ImageDiskCacheConfig(policy = CachePolicy.DISABLED, maxSizeBytes = 1L)
-    if (sizeMb < 0) return ImageDiskCacheConfig(policy = CachePolicy.ENABLED, maxSizeBytes = Long.MAX_VALUE)
+    if (sizeMb == 0) return ImageDiskCacheConfig(CachePolicy.DISABLED, 1L)
+    if (sizeMb < 0) return ImageDiskCacheConfig(CachePolicy.ENABLED, Long.MAX_VALUE)
     val bytesPerMb = 1024L * 1024L
     val safeSizeMb = sizeMb.toLong().coerceAtMost(Long.MAX_VALUE / bytesPerMb)
-    return ImageDiskCacheConfig(policy = CachePolicy.ENABLED, maxSizeBytes = safeSizeMb * bytesPerMb)
+    return ImageDiskCacheConfig(CachePolicy.ENABLED, safeSizeMb * bytesPerMb)
 }
