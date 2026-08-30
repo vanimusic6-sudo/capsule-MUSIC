@@ -1,7 +1,6 @@
-
- /*** Capsule MUSIC
- * Minimal AUDIO / VIDEO switch.
- * Keeps the original Capsule player layout untouched except for this control.
+/**
+ * Capsule MUSIC
+ * AUDIO / VIDEO switch for the Capsule full player.
  * GPL-3.0
  */
 
@@ -12,6 +11,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.height
@@ -44,36 +44,52 @@ fun CapsuleAudioVideoToggle(
     onVideoClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val shape = RoundedCornerShape(18.dp)
+    val shape = RoundedCornerShape(10.dp)
+    val videoResolving =
+        state.preferredMode == CapsulePlaybackMode.VIDEO &&
+            state.phase == CapsuleVideoPhase.RESOLVING
+    val videoUnavailable =
+        state.preferredMode == CapsulePlaybackMode.VIDEO &&
+            state.phase == CapsuleVideoPhase.UNAVAILABLE
+    val videoSelected =
+        state.mode == CapsulePlaybackMode.VIDEO || videoResolving
+    val audioSelected = !videoSelected
 
     Row(
         modifier =
             modifier
-                .width(174.dp)
-                .height(34.dp)
+                .width(190.dp)
+                .height(36.dp)
                 .clip(shape)
-                .background(textColor.copy(alpha = 0.025f))
-                .border(1.dp, textColor.copy(alpha = 0.16f), shape)
-                .padding(3.dp),
+                .background(textColor.copy(alpha = 0.018f))
+                .border(1.dp, textColor.copy(alpha = 0.18f), shape)
+                .padding(horizontal = 3.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         CapsuleModeSegment(
             text = "AUDIO",
-            selected = state.mode == CapsulePlaybackMode.AUDIO,
+            selected = audioSelected,
             loading = false,
+            unavailable = false,
             enabled = enabled,
             textColor = textColor,
             onClick = onAudioClick,
             modifier = Modifier.weight(1f),
         )
 
+        Box(
+            Modifier
+                .width(1.dp)
+                .height(18.dp)
+                .background(textColor.copy(alpha = 0.16f)),
+        )
+
         CapsuleModeSegment(
-            text = "VIDEO",
-            selected = state.mode == CapsulePlaybackMode.VIDEO,
-            loading =
-                state.mode == CapsulePlaybackMode.VIDEO &&
-                    state.phase == CapsuleVideoPhase.RESOLVING,
-            enabled = enabled,
+            text = if (videoUnavailable) "VIDEO N/A" else "VIDEO",
+            selected = videoSelected,
+            loading = videoResolving,
+            unavailable = videoUnavailable,
+            enabled = enabled && !videoUnavailable,
             textColor = textColor,
             onClick = onVideoClick,
             modifier = Modifier.weight(1f),
@@ -86,6 +102,7 @@ private fun CapsuleModeSegment(
     text: String,
     selected: Boolean,
     loading: Boolean,
+    unavailable: Boolean,
     enabled: Boolean,
     textColor: Color,
     onClick: () -> Unit,
@@ -94,57 +111,67 @@ private fun CapsuleModeSegment(
     val scale by
         animateFloatAsState(
             targetValue = if (selected) 1f else 0.985f,
-            animationSpec = tween(150),
+            animationSpec = tween(160),
             label = "capsuleModeScale",
         )
-
-    val shape = RoundedCornerShape(15.dp)
 
     Box(
         modifier =
             modifier
-                .height(28.dp)
+                .height(34.dp)
                 .graphicsLayer {
                     scaleX = scale
                     scaleY = scale
                 }
-                .clip(shape)
-                .background(
-                    if (selected) {
-                        textColor.copy(alpha = 0.13f)
-                    } else {
-                        Color.Transparent
-                    },
-                )
                 .clickable(
                     enabled = enabled && !loading,
                     onClick = onClick,
                 ),
         contentAlignment = Alignment.Center,
     ) {
-        if (loading) {
-            CircularProgressIndicator(
-                modifier = Modifier.width(13.dp).height(13.dp),
-                strokeWidth = 1.5.dp,
-                color = textColor.copy(alpha = 0.8f),
-            )
-        } else {
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
             Text(
                 text = text,
                 color =
                     textColor.copy(
                         alpha =
                             when {
-                                !enabled -> 0.3f
-                                selected -> 0.95f
-                                else -> 0.52f
+                                unavailable -> 0.24f
+                                !enabled -> 0.28f
+                                selected -> 0.94f
+                                else -> 0.46f
                             },
                     ),
                 fontFamily = FontFamily.Monospace,
-                fontSize = 10.sp,
+                fontSize = if (unavailable) 9.sp else 11.sp,
                 fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
-                letterSpacing = 0.5.sp,
+                letterSpacing = 0.35.sp,
                 maxLines = 1,
+            )
+
+            if (loading) {
+                CircularProgressIndicator(
+                    modifier = Modifier.width(11.dp).height(11.dp),
+                    strokeWidth = 1.3.dp,
+                    color = textColor.copy(alpha = 0.72f),
+                )
+            }
+        }
+
+        if (selected) {
+            Box(
+                modifier =
+                    Modifier
+                        .align(Alignment.BottomCenter)
+                        .width(56.dp)
+                        .height(2.dp)
+                        .background(
+                            textColor.copy(alpha = 0.86f),
+                            RoundedCornerShape(2.dp),
+                        ),
             )
         }
     }
