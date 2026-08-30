@@ -15,7 +15,12 @@ enum class CapsuleVideoPhase {
     IDLE,
     RESOLVING,
     PLAYING,
+
+    /** No trustworthy official clip was found for this song. */
     UNAVAILABLE,
+
+    /** A network / YouTube / stream request failed. The clip may still exist. */
+    REQUEST_ERROR,
 }
 
 /**
