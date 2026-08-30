@@ -1,0 +1,135 @@
+name: NewPipeExtractor master drift
+
+# Optional companion to newpipe-extractor-update.yml.
+#
+# The pinned release keeps builds reproducible, but YouTube fixes land on the
+# extractor's master branch first and only reach a release later. This job
+# builds against master daily WITHOUT changing the pin, so a fix that already
+# exists upstream is visible instead of silently waiting for a release.
+#
+# It never modifies the repository. It only opens or updates one issue.
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "41 5 * * *"
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: newpipe-extractor-drift
+  cancel-in-progress: true
+
+jobs:
+  drift:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Set up Gradle 9.3.1
+        uses: gradle/actions/setup-gradle@v6
+        with:
+          gradle-version: "9.3.1"
+
+      - name: Compare pin against master
+        id: compare
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          pinned="$(
+            sed -n 's/^newpipe-extractor[[:space:]]*=.*version = "\([^"]*\)".*/\1/p' \
+              gradle/libs.versions.toml
+          )"
+
+          head_sha="$(
+            curl --fail --silent --show-error --retry 3 \
+              -H 'Accept: application/vnd.github+json' \
+              -H "Authorization: Bearer ${{ github.token }}" \
+              https://api.github.com/repos/TeamNewPipe/NewPipeExtractor/commits/master \
+              | jq -r '.sha' | cut -c1-7
+          )"
+
+          behind="$(
+            curl --fail --silent --show-error --retry 3 \
+              -H 'Accept: application/vnd.github+json' \
+              -H "Authorization: Bearer ${{ github.token }}" \
+              "https://api.github.com/repos/TeamNewPipe/NewPipeExtractor/compare/$pinned...master" \
+              | jq -r '.ahead_by // 0'
+          )"
+
+          echo "pinned=$pinned" >> "$GITHUB_OUTPUT"
+          echo "head_sha=$head_sha" >> "$GITHUB_OUTPUT"
+          echo "behind=$behind" >> "$GITHUB_OUTPUT"
+          echo "Pinned $pinned is $behind commits behind master ($head_sha)"
+
+      - name: Build against master
+        id: build
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          python3 - <<'PY'
+          import re
+          from pathlib import Path
+
+          path = Path("gradle/libs.versions.toml")
+          text = path.read_text()
+          new, count = re.subn(
+              r'(?m)^(newpipe-extractor\s*=\s*\{[^\n]*version\s*=\s*")[^"]+("[^\n]*\})',
+              r'\g<1>master-SNAPSHOT\2',
+              text,
+              count=1,
+          )
+          if count != 1:
+              raise SystemExit("Could not switch NewPipeExtractor to master")
+
+          path.write_text(new)
+          PY
+
+          gradle :innertube:test :app:assembleUniversalDebug --no-daemon
+
+      - name: Report drift
+        if: steps.compare.outputs.behind != '0'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PINNED: ${{ steps.compare.outputs.pinned }}
+          BEHIND: ${{ steps.compare.outputs.behind }}
+          HEAD_SHA: ${{ steps.compare.outputs.head_sha }}
+          BUILD: ${{ steps.build.outcome }}
+        run: |
+          set -euo pipefail
+
+          title="NewPipeExtractor: pin is $BEHIND commits behind master"
+          body="$(printf '%s\n' \
+            "Pinned: \`$PINNED\`" \
+            "Master head: \`$HEAD_SHA\` ($BEHIND commits ahead)" \
+            "Build against master: **$BUILD**" \
+            "" \
+            "A failing master build means an upcoming release will need work here." \
+            "A passing one with a large gap may mean a YouTube fix is already" \
+            "upstream and waiting on a release tag." \
+            "" \
+            "This is informational. The pin was not changed.")"
+
+          existing="$(gh issue list --state open --search "NewPipeExtractor: pin is in:title" --json number --jq '.[0].number // empty')"
+
+          if [[ -z "$existing" ]]; then
+            gh issue create --title "$title" --body "$body" --label dependencies || \
+              gh issue create --title "$title" --body "$body"
+          else
+            gh issue edit "$existing" --title "$title" --body "$body"
+          fi
