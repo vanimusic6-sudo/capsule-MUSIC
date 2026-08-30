@@ -527,6 +527,9 @@ fun CapsulePlayerContent(
                         .aspectRatio(
                             if (isCapsuleVideoPlaying) 16f / 9f else 1f,
                         )
+                        .offset(
+                            y = if (isCapsuleVideoPlaying) 0.dp else (-5).dp,
+                        )
                         .clip(mediaShape)
                         .border(
                             1.dp,
@@ -552,8 +555,25 @@ fun CapsulePlayerContent(
                             PlayerView(viewContext).apply {
                                 player = playerConnection.player
                                 useController = false
-                                resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
-                                setShowBuffering(PlayerView.SHOW_BUFFERING_WHEN_PLAYING)
+
+                                /*
+                                 * Capsule already shows its own VIDEO loading
+                                 * state in the player controls, so Media3's
+                                 * built-in buffering spinner is deliberately
+                                 * disabled to avoid a second indicator over
+                                 * the video surface.
+                                 */
+                                setShowBuffering(PlayerView.SHOW_BUFFERING_NEVER)
+
+                                /*
+                                 * Fill the entire Capsule video frame while
+                                 * preserving the source aspect ratio.
+                                 * ZOOM crops only the overflowing edges instead
+                                 * of stretching the image or leaving letterbox
+                                 * gaps above/below.
+                                 */
+                                resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM
+
                                 setShutterBackgroundColor(android.graphics.Color.BLACK)
                                 keepScreenOn = true
                             }
