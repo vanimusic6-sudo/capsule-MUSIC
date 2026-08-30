@@ -1,5 +1,5 @@
 
- * Capsule MUSIC
+ /** Capsule MUSIC
  * Dedicated YouTube Music video resolver.
  *
  * The normal Capsule audio pipeline is not modified here.
