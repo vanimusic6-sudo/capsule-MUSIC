@@ -1,11 +1,11 @@
 /**
  * Capsule MUSIC
  *
- * YouTube Music official-video matcher.
+ * Strict YouTube Music official-video matcher.
  *
- * This deliberately searches YouTube Music's VIDEO result surface, not normal
- * YouTube. Only MUSIC_VIDEO_TYPE_OMV candidates are accepted. UGC, ATV,
- * lyrics, live performances and unrelated variants are rejected.
+ * Only the YouTube Music Videos surface and MUSIC_VIDEO_TYPE_OMV are accepted.
+ * The matcher deliberately prefers "no video" over a wrong live/fan/visualizer
+ * result. Positive and negative results are cached to avoid repeated searches.
  *
  * GPL-3.0
  */
@@ -13,13 +13,13 @@
 package com.nikhil.yt.innertube
 
 import com.nikhil.yt.innertube.models.MusicResponsiveListItemRenderer
-import com.nikhil.yt.innertube.models.WatchEndpoint
 import com.nikhil.yt.innertube.models.WatchEndpoint.WatchEndpointMusicSupportedConfigs.WatchEndpointMusicConfig.Companion.MUSIC_VIDEO_TYPE_OMV
 import com.nikhil.yt.innertube.models.YouTubeClient.Companion.WEB_REMIX
 import com.nikhil.yt.innertube.models.response.SearchResponse
 import io.ktor.client.call.body
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import java.util.concurrent.ConcurrentHashMap
 import kotlin.math.abs
 
 data class YouTubeMusicVideoLink(
@@ -30,15 +30,24 @@ data class YouTubeMusicVideoLink(
 )
 
 object YouTubeMusicVideoLinkResolver {
-    /*
-     * YouTube Music "Videos" filter. This is the same WEB_REMIX search surface
-     * used by YouTube Music itself; results carry musicVideoType on the watch
-     * endpoint so we can reject UGC/ATV before playback.
-     */
     private const val VIDEO_FILTER = "EgWKAQIQAWoKEAkQChAFEAMQBA%3D%3D"
+    private const val POSITIVE_CACHE_MS = 12 * 60 * 60 * 1000L
+    private const val NEGATIVE_CACHE_MS = 20 * 60 * 1000L
+
+    private data class CacheEntry(
+        val link: YouTubeMusicVideoLink?,
+        val expiresAtMs: Long,
+    )
+
+    private data class Candidate(
+        val videoId: String,
+        val title: String,
+        val score: Int,
+    )
 
     private val mutex = Mutex()
     private val innerTube = InnerTube()
+    private val matchCache = ConcurrentHashMap<String, CacheEntry>()
 
     suspend fun resolve(
         sourceMediaId: String,
@@ -53,53 +62,46 @@ object YouTubeMusicVideoLinkResolver {
         require(sourceId.isNotBlank()) { "Missing YouTube Music track id" }
         require(sourceTitle.isNotBlank()) { "Missing song title" }
 
+        cachedOrNull(sourceId)?.let { cached ->
+            return@runCatching cached
+        }
+        if (isNegativeCached(sourceId)) {
+            throw IllegalStateException("Official music video is unavailable for this song")
+        }
+
         mutex.withLock {
+            cachedOrNull(sourceId)?.let { return@withLock it }
+            if (isNegativeCached(sourceId)) {
+                throw IllegalStateException("Official music video is unavailable for this song")
+            }
+
             syncSession()
-
-            val query =
-                buildString {
-                    append(sourceTitle)
-                    cleanArtists.firstOrNull()?.let {
-                        append(' ')
-                        append(it)
-                    }
-                }
-
-            val response =
-                innerTube
-                    .search(
-                        client = WEB_REMIX,
-                        query = query,
-                        params = VIDEO_FILTER,
-                    )
-                    .body<SearchResponse>()
-
-            val renderers =
-                response.contents
-                    ?.tabbedSearchResultsRenderer
-                    ?.tabs
-                    ?.firstOrNull()
-                    ?.tabRenderer
-                    ?.content
-                    ?.sectionListRenderer
-                    ?.contents
-                    .orEmpty()
-                    .flatMap { section ->
-                        section.musicShelfRenderer
-                            ?.contents
-                            .orEmpty()
-                            .mapNotNull { it.musicResponsiveListItemRenderer }
-                    }
 
             val sourceTitleNorm = normalizeTitle(sourceTitle)
             val sourceArtistNorms =
                 cleanArtists
                     .map(::normalizeText)
                     .filter(String::isNotBlank)
+                    .distinct()
 
-            val candidates =
-                renderers
-                    .mapNotNull { renderer ->
+            val queries =
+                buildList {
+                    val mainArtist = cleanArtists.firstOrNull()
+                    if (mainArtist != null) {
+                        add("$mainArtist $sourceTitle official music video")
+                        add("$mainArtist $sourceTitle")
+                    } else {
+                        add("$sourceTitle official music video")
+                        add(sourceTitle)
+                    }
+                }.distinct()
+
+            val candidatesById = linkedMapOf<String, Candidate>()
+
+            for (query in queries) {
+                val renderers = searchVideoRenderers(query)
+                for (renderer in renderers) {
+                    val candidate =
                         candidateFromRenderer(
                             renderer = renderer,
                             sourceMediaId = sourceId,
@@ -107,30 +109,71 @@ object YouTubeMusicVideoLinkResolver {
                             sourceTitleNorm = sourceTitleNorm,
                             sourceArtistNorms = sourceArtistNorms,
                             sourceDurationSeconds = durationSeconds,
-                        )
+                        ) ?: continue
+
+                    val previous = candidatesById[candidate.videoId]
+                    if (previous == null || candidate.score > previous.score) {
+                        candidatesById[candidate.videoId] = candidate
                     }
-                    .sortedByDescending { it.score }
+                }
+            }
 
-            val best =
-                candidates.firstOrNull()
-                    ?: throw IllegalStateException(
-                        "YouTube Music did not find a matching official video",
+            val best = candidatesById.values.maxByOrNull { it.score }
+            if (best == null) {
+                matchCache[sourceId] =
+                    CacheEntry(
+                        link = null,
+                        expiresAtMs = System.currentTimeMillis() + NEGATIVE_CACHE_MS,
                     )
+                throw IllegalStateException("YouTube Music did not find a trustworthy official clip")
+            }
 
-            YouTubeMusicVideoLink(
-                videoId = best.videoId,
-                musicVideoType = MUSIC_VIDEO_TYPE_OMV,
-                title = best.title,
-                score = best.score,
-            )
+            val link =
+                YouTubeMusicVideoLink(
+                    videoId = best.videoId,
+                    musicVideoType = MUSIC_VIDEO_TYPE_OMV,
+                    title = best.title,
+                    score = best.score,
+                )
+
+            matchCache[sourceId] =
+                CacheEntry(
+                    link = link,
+                    expiresAtMs = System.currentTimeMillis() + POSITIVE_CACHE_MS,
+                )
+
+            link
         }
     }
 
-    private data class Candidate(
-        val videoId: String,
-        val title: String,
-        val score: Int,
-    )
+    private suspend fun searchVideoRenderers(
+        query: String,
+    ): List<MusicResponsiveListItemRenderer> {
+        val response =
+            innerTube
+                .search(
+                    client = WEB_REMIX,
+                    query = query,
+                    params = VIDEO_FILTER,
+                )
+                .body<SearchResponse>()
+
+        return response.contents
+            ?.tabbedSearchResultsRenderer
+            ?.tabs
+            ?.firstOrNull()
+            ?.tabRenderer
+            ?.content
+            ?.sectionListRenderer
+            ?.contents
+            .orEmpty()
+            .flatMap { section ->
+                section.musicShelfRenderer
+                    ?.contents
+                    .orEmpty()
+                    .mapNotNull { it.musicResponsiveListItemRenderer }
+            }
+    }
 
     private fun candidateFromRenderer(
         renderer: MusicResponsiveListItemRenderer,
@@ -165,11 +208,6 @@ object YouTubeMusicVideoLinkResolver {
                 ?: renderer.playlistItemData?.videoId?.trim()?.takeIf { it.isNotBlank() }
                 ?: return null
 
-        /*
-         * An ATV id can sometimes also appear in a mixed renderer. Requiring a
-         * different id prevents the button from "switching" to the same audio
-         * upload while pretending video mode succeeded.
-         */
         if (videoId == sourceMediaId) return null
 
         val candidateTitle =
@@ -187,7 +225,7 @@ object YouTubeMusicVideoLinkResolver {
         if (isRejectedVariant(sourceTitle, candidateTitle)) return null
 
         val candidateTitleNorm = normalizeTitle(candidateTitle)
-        if (candidateTitleNorm.isBlank()) return null
+        if (candidateTitleNorm.isBlank() || sourceTitleNorm.isBlank()) return null
 
         val allSecondaryText =
             renderer.flexColumns
@@ -202,50 +240,55 @@ object YouTubeMusicVideoLinkResolver {
 
         val secondaryNorm = normalizeText(allSecondaryText)
 
-        var score = 0
-
-        score +=
-            when {
-                candidateTitleNorm == sourceTitleNorm -> 120
-                candidateTitleNorm.contains(sourceTitleNorm) ||
-                    sourceTitleNorm.contains(candidateTitleNorm) -> 82
-                titleTokenOverlap(sourceTitleNorm, candidateTitleNorm) >= 0.75 -> 65
-                titleTokenOverlap(sourceTitleNorm, candidateTitleNorm) >= 0.55 -> 42
-                else -> return null
+        val exactTitle = candidateTitleNorm == sourceTitleNorm
+        val artistPrefixedTitle =
+            sourceArtistNorms.any { artist ->
+                candidateTitleNorm == "$artist $sourceTitleNorm" ||
+                    candidateTitleNorm == "$sourceTitleNorm $artist"
             }
+
+        /*
+         * This is intentionally strict. Similar titles are where most of the
+         * "random artist video" false positives came from in the first version.
+         */
+        if (!exactTitle && !artistPrefixedTitle) return null
 
         if (sourceArtistNorms.isNotEmpty()) {
             val artistMatched =
                 sourceArtistNorms.any { artist ->
-                    artist.length >= 2 && secondaryNorm.contains(artist)
+                    artist.length >= 2 && containsWholePhrase(secondaryNorm, artist)
                 }
-
             if (!artistMatched) return null
-            score += 55
+        }
+
+        var score = if (exactTitle) 230 else 205
+        score += 90 // MUSIC_VIDEO_TYPE_OMV + artist match
+
+        val rawTitleNorm = normalizeText(candidateTitle)
+        if (
+            rawTitleNorm.contains("official music video") ||
+            rawTitleNorm.contains("official video")
+        ) {
+            score += 45
         }
 
         val candidateDuration = extractDurationSeconds(allSecondaryText)
-        val sourceDuration =
-            sourceDurationSeconds
-                ?.takeIf { it > 0 }
+        val sourceDuration = sourceDurationSeconds?.takeIf { it > 0 }
 
         if (sourceDuration != null && candidateDuration != null) {
             val delta = abs(sourceDuration - candidateDuration)
             score +=
                 when {
-                    delta <= 5 -> 36
-                    delta <= 12 -> 28
-                    delta <= 25 -> 15
-                    delta <= 45 -> 4
+                    delta <= 5 -> 45
+                    delta <= 12 -> 35
+                    delta <= 25 -> 22
+                    delta <= 45 -> 10
+                    delta <= 65 && exactTitle -> 2
                     else -> return null
                 }
         }
 
-        /*
-         * OMV is already authoritative, but a meaningful threshold protects
-         * against a same-artist video with a weakly similar title.
-         */
-        if (score < 120) return null
+        if (score < 300) return null
 
         return Candidate(
             videoId = videoId,
@@ -258,66 +301,87 @@ object YouTubeMusicVideoLinkResolver {
         sourceTitle: String,
         candidateTitle: String,
     ): Boolean {
-        val source = normalizeText(sourceTitle)
-        val candidate = normalizeText(candidateTitle)
+        val source = " ${normalizeText(sourceTitle)} "
+        val candidate = " ${normalizeText(candidateTitle)} "
 
-        val rejectTokens =
+        val contextualRejects =
             listOf(
                 " live ",
                 " concert ",
                 " performance ",
+                " session ",
                 " acoustic ",
                 " cover ",
                 " karaoke ",
                 " lyric ",
                 " lyrics ",
                 " visualizer ",
+                " animated video ",
+                " dance video ",
+                " dance practice ",
                 " slowed ",
                 " reverb ",
                 " sped up ",
                 " nightcore ",
                 " remix ",
+                " edit ",
+                " fanmade ",
+                " fan made ",
+                " amv ",
+                " reaction ",
+                " interview ",
+                " behind the scenes ",
+                " making of ",
+                " teaser ",
+                " trailer ",
+                " vertical video ",
+                " shorts ",
+                " challenge ",
             )
 
-        val sourcePadded = " $source "
-        val candidatePadded = " $candidate "
-
-        return rejectTokens.any { token ->
-            candidatePadded.contains(token) &&
-                !sourcePadded.contains(token)
+        if (
+            contextualRejects.any { token ->
+                candidate.contains(token) && !source.contains(token)
+            }
+        ) {
+            return true
         }
+
+        val alwaysReject =
+            listOf(
+                " official audio ",
+                " audio only ",
+                " topic audio ",
+            )
+
+        return alwaysReject.any { token -> candidate.contains(token) }
     }
 
-    private fun normalizeTitle(value: String): String {
-        return normalizeText(value)
+    private fun normalizeTitle(value: String): String =
+        normalizeText(value)
             .replace(Regex("\\bofficial\\s+music\\s+video\\b"), " ")
             .replace(Regex("\\bofficial\\s+video\\b"), " ")
             .replace(Regex("\\bmusic\\s+video\\b"), " ")
             .replace(Regex("\\bofficial\\b"), " ")
+            .replace(Regex("\\bremaster(?:ed)?(?:\\s+\\d{4})?\\b"), " ")
+            .replace(Regex("\\balbum\\s+version\\b"), " ")
+            .replace(Regex("\\bsingle\\s+version\\b"), " ")
             .replace(Regex("\\s+"), " ")
             .trim()
-    }
 
-    private fun normalizeText(value: String): String {
-        return value
+    private fun normalizeText(value: String): String =
+        value
             .lowercase()
             .replace('&', ' ')
             .replace(Regex("[^\\p{L}\\p{N}]+"), " ")
             .replace(Regex("\\s+"), " ")
             .trim()
-    }
 
-    private fun titleTokenOverlap(
-        left: String,
-        right: String,
-    ): Double {
-        val a = left.split(' ').filter { it.length > 1 }.toSet()
-        val b = right.split(' ').filter { it.length > 1 }.toSet()
-        if (a.isEmpty() || b.isEmpty()) return 0.0
-
-        return a.intersect(b).size.toDouble() /
-            a.union(b).size.toDouble()
-    }
+    private fun containsWholePhrase(
+        haystack: String,
+        needle: String,
+    ): Boolean =
+        " $haystack ".contains(" $needle ") || haystack == needle
 
     private fun extractDurationSeconds(text: String): Int? {
         val match =
@@ -334,6 +398,24 @@ object YouTubeMusicVideoLinkResolver {
         } else {
             first * 3600 + second * 60 + third
         }
+    }
+
+    private fun cachedOrNull(sourceId: String): YouTubeMusicVideoLink? {
+        val entry = matchCache[sourceId] ?: return null
+        if (entry.expiresAtMs <= System.currentTimeMillis()) {
+            matchCache.remove(sourceId)
+            return null
+        }
+        return entry.link
+    }
+
+    private fun isNegativeCached(sourceId: String): Boolean {
+        val entry = matchCache[sourceId] ?: return false
+        if (entry.expiresAtMs <= System.currentTimeMillis()) {
+            matchCache.remove(sourceId)
+            return false
+        }
+        return entry.link == null
     }
 
     private fun syncSession() {
