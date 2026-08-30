@@ -1,4 +1,4 @@
-/**
+/*
  * Capsule MUSIC
  *
  * Strict YouTube Music official-video matcher.
@@ -6,6 +6,17 @@
  * Only the YouTube Music Videos surface and MUSIC_VIDEO_TYPE_OMV are accepted.
  * The matcher deliberately prefers "no video" over a wrong live/fan/visualizer
  * result. Positive and negative results are cached to avoid repeated searches.
+ *
+ * v2 changes:
+ *  - The second, more explicit query only runs when the first one produced no
+ *    usable candidate at all. Previously it ran whenever the best score was
+ *    below STRONG_MATCH_SCORE, which doubled search traffic on most tracks.
+ *  - Negative cache raised from 2 minutes to 12 hours. A track that has no
+ *    official clip today will not have one in two minutes either, and the old
+ *    value meant a browsing session re-searched the same misses constantly.
+ *  - The cache is bounded and can be exported/imported, so it survives restarts
+ *    instead of forcing a cold re-search of the whole library.
+ *  - Scoring, normalisation and rejection lists are unchanged.
  *
  * GPL-3.0
  */
@@ -31,9 +42,14 @@ data class YouTubeMusicVideoLink(
 
 object YouTubeMusicVideoLinkResolver {
     private const val VIDEO_FILTER = "EgWKAQIQAWoKEAkQChAFEAMQBA%3D%3D"
-    private const val POSITIVE_CACHE_MS = 12 * 60 * 60 * 1000L
-    private const val NEGATIVE_CACHE_MS = 2 * 60 * 1000L
+
+    private const val POSITIVE_CACHE_MS = 24 * 60 * 60 * 1000L
+    private const val NEGATIVE_CACHE_MS = 12 * 60 * 60 * 1000L
+
     private const val STRONG_MATCH_SCORE = 225
+
+    /** Hard ceiling on in-memory entries; oldest expiring entries are dropped. */
+    private const val MAX_CACHE_ENTRIES = 600
 
     private data class CacheEntry(
         val link: YouTubeMusicVideoLink?,
@@ -46,9 +62,28 @@ object YouTubeMusicVideoLinkResolver {
         val score: Int,
     )
 
+    /**
+     * Flat row used for persistence. Store these in Room/DataStore and feed
+     * them back through [importCache] on startup.
+     */
+    data class CacheRow(
+        val sourceMediaId: String,
+        val videoId: String?,
+        val title: String?,
+        val score: Int,
+        val expiresAtMs: Long,
+    )
+
     private val mutex = Mutex()
     private val innerTube = InnerTube()
     private val matchCache = ConcurrentHashMap<String, CacheEntry>()
+
+    /**
+     * Called whenever an entry is added, so the app can persist it without this
+     * object knowing about Android storage. Must not block.
+     */
+    @Volatile
+    var onCacheEntry: ((CacheRow) -> Unit)? = null
 
     suspend fun resolve(
         sourceMediaId: String,
@@ -68,6 +103,14 @@ object YouTubeMusicVideoLinkResolver {
         }
         if (isNegativeCached(sourceId)) {
             throw IllegalStateException("Official music video is unavailable for this song")
+        }
+
+        // Fail fast instead of queueing behind the mutex while the breaker is open.
+        if (CapsuleVideoRequestGuard.isBlocked()) {
+            throw CapsuleVideoRequestGuard.RequestBlockedException(
+                "YouTube VIDEO search paused for " +
+                    "${CapsuleVideoRequestGuard.remainingBackoffMs() / 1000L}s",
+            )
         }
 
         mutex.withLock {
@@ -91,9 +134,9 @@ object YouTubeMusicVideoLinkResolver {
 
                     /*
                      * The YouTube Music "Videos" filter already narrows the
-                     * surface. Start with the natural song query; only perform
-                     * the second, more explicit query if the first result set
-                     * does not contain a high-confidence OMV.
+                     * surface. Start with the natural song query; the second,
+                     * more explicit query is a last resort and only runs when
+                     * the first returned nothing usable at all.
                      */
                     if (mainArtist != null) {
                         add("$mainArtist $sourceTitle")
@@ -106,7 +149,14 @@ object YouTubeMusicVideoLinkResolver {
 
             val candidatesById = linkedMapOf<String, Candidate>()
 
-            for (query in queries) {
+            for ((index, query) in queries.withIndex()) {
+                /*
+                 * Only escalate to the fallback query when the first pass found
+                 * no candidate whatsoever. A weak-but-valid match is still a
+                 * match, and it is not worth a second search request.
+                 */
+                if (index > 0 && candidatesById.isNotEmpty()) break
+
                 val renderers = searchVideoRenderers(query)
 
                 for (renderer in renderers) {
@@ -137,11 +187,14 @@ object YouTubeMusicVideoLinkResolver {
 
             val best = candidatesById.values.maxByOrNull { it.score }
             if (best == null) {
-                matchCache[sourceId] =
-                    CacheEntry(
-                        link = null,
-                        expiresAtMs = System.currentTimeMillis() + NEGATIVE_CACHE_MS,
-                    )
+                store(
+                    sourceId = sourceId,
+                    entry =
+                        CacheEntry(
+                            link = null,
+                            expiresAtMs = System.currentTimeMillis() + NEGATIVE_CACHE_MS,
+                        ),
+                )
                 throw IllegalStateException("YouTube Music did not find a trustworthy official clip")
             }
 
@@ -153,11 +206,14 @@ object YouTubeMusicVideoLinkResolver {
                     score = best.score,
                 )
 
-            matchCache[sourceId] =
-                CacheEntry(
-                    link = link,
-                    expiresAtMs = System.currentTimeMillis() + POSITIVE_CACHE_MS,
-                )
+            store(
+                sourceId = sourceId,
+                entry =
+                    CacheEntry(
+                        link = link,
+                        expiresAtMs = System.currentTimeMillis() + POSITIVE_CACHE_MS,
+                    ),
+            )
 
             link
         }
@@ -177,13 +233,22 @@ object YouTubeMusicVideoLinkResolver {
                         params = VIDEO_FILTER,
                     )
                     .body<SearchResponse>()
+            } catch (blocked: CapsuleVideoRequestGuard.RequestBlockedException) {
+                throw blocked
             } catch (throwable: Throwable) {
-                if (CapsuleVideoRequestGuard.noteFailure(throwable)) {
+                val kind = CapsuleVideoRequestGuard.noteApiFailure(throwable)
+
+                if (
+                    kind == CapsuleVideoRequestGuard.FailureKind.RATE_LIMITED ||
+                    kind == CapsuleVideoRequestGuard.FailureKind.BOT_CHECK ||
+                    kind == CapsuleVideoRequestGuard.FailureKind.FORBIDDEN
+                ) {
                     throw CapsuleVideoRequestGuard.RequestBlockedException(
-                        "YouTube VIDEO search stopped after a 403/429/bot response",
+                        "YouTube VIDEO search stopped after a ${kind.name.lowercase()} response",
                         throwable,
                     )
                 }
+
                 throw throwable
             }
 
@@ -478,6 +543,93 @@ object YouTubeMusicVideoLinkResolver {
         } else {
             first * 3600 + second * 60 + third
         }
+    }
+
+    // ---------------------------------------------------------------------
+    // Cache
+    // ---------------------------------------------------------------------
+
+    private fun store(
+        sourceId: String,
+        entry: CacheEntry,
+    ) {
+        matchCache[sourceId] = entry
+        pruneIfNeeded()
+
+        onCacheEntry?.invoke(
+            CacheRow(
+                sourceMediaId = sourceId,
+                videoId = entry.link?.videoId,
+                title = entry.link?.title,
+                score = entry.link?.score ?: 0,
+                expiresAtMs = entry.expiresAtMs,
+            ),
+        )
+    }
+
+    private fun pruneIfNeeded() {
+        if (matchCache.size <= MAX_CACHE_ENTRIES) return
+
+        val now = System.currentTimeMillis()
+        matchCache.entries.removeIf { it.value.expiresAtMs <= now }
+
+        if (matchCache.size <= MAX_CACHE_ENTRIES) return
+
+        matchCache.entries
+            .sortedBy { it.value.expiresAtMs }
+            .take(matchCache.size - MAX_CACHE_ENTRIES)
+            .forEach { matchCache.remove(it.key) }
+    }
+
+    /** Restores previously persisted rows. Expired rows are ignored. */
+    fun importCache(rows: Collection<CacheRow>) {
+        val now = System.currentTimeMillis()
+
+        for (row in rows) {
+            if (row.expiresAtMs <= now) continue
+
+            val link =
+                row.videoId
+                    ?.takeIf { it.isNotBlank() }
+                    ?.let {
+                        YouTubeMusicVideoLink(
+                            videoId = it,
+                            musicVideoType = MUSIC_VIDEO_TYPE_OMV,
+                            title = row.title.orEmpty(),
+                            score = row.score,
+                        )
+                    }
+
+            matchCache[row.sourceMediaId] =
+                CacheEntry(link = link, expiresAtMs = row.expiresAtMs)
+        }
+
+        pruneIfNeeded()
+    }
+
+    fun exportCache(): List<CacheRow> {
+        val now = System.currentTimeMillis()
+
+        return matchCache
+            .filterValues { it.expiresAtMs > now }
+            .map { (id, entry) ->
+                CacheRow(
+                    sourceMediaId = id,
+                    videoId = entry.link?.videoId,
+                    title = entry.link?.title,
+                    score = entry.link?.score ?: 0,
+                    expiresAtMs = entry.expiresAtMs,
+                )
+            }
+    }
+
+    /** Drops a single track's verdict, e.g. after a user "wrong video" report. */
+    fun forget(sourceMediaId: String) {
+        matchCache.remove(sourceMediaId.trim())
+    }
+
+    fun clearCache() {
+        matchCache.clear()
     }
 
     private fun cachedOrNull(sourceId: String): YouTubeMusicVideoLink? {
