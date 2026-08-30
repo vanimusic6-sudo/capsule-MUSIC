@@ -147,15 +147,8 @@ fun CapsulePlayerContent(
     val videoPlaybackState by
         playerConnection.service.videoPlaybackState.collectAsState()
 
-    val isVideoMode =
-        videoPlaybackState.mode == CapsulePlaybackMode.VIDEO
-
-    val isVideoResolving =
-        isVideoMode &&
-            videoPlaybackState.phase == CapsuleVideoPhase.RESOLVING
-
-    val isVideoPlaying =
-        isVideoMode &&
+    val isCapsuleVideoPlaying =
+        videoPlaybackState.mode == CapsulePlaybackMode.VIDEO &&
             videoPlaybackState.phase == CapsuleVideoPhase.PLAYING
 
     val isListenTogetherGuest =
@@ -549,87 +542,66 @@ fun CapsulePlayerContent(
         }
 
         /*
-         * Media stage.
-         *
-         * AUDIO and VIDEO now have their own fixed stage position instead of
-         * living inside a weighted box. This prevents the artwork from growing
-         * upward into NOW PLAYING on tall/narrow phones.
-         *
-         * While YouTube Music is resolving VIDEO, keep the current artwork on
-         * screen and let audio continue. The real PlayerView only appears after
-         * the official linked video is already ready to play.
-         */
-        Spacer(
-            Modifier.height(
-                18.dp,
-            ),
-        )
-
-        val mediaShape =
-            if (isVideoPlaying) {
-                RoundedCornerShape(20.dp)
-            } else {
-                CapsuleArtworkShape
-            }
-
-        /*
-         * Reserve the same square media region in AUDIO and VIDEO.
-         * The video itself is 16:9 inside that region, so switching modes no
-         * longer drags title/progress/controls upward and down.
+         * Exact donor geometry:
+         * same cover size, only visually lifted by -8 dp.
          */
         Box(
             modifier =
                 Modifier
+                    .weight(1f)
                     .fillMaxWidth()
                     .padding(
-                        horizontal = 22.dp,
-                    )
-                    .aspectRatio(1f),
+                        horizontal =
+                            22.dp,
+                        vertical =
+                            8.dp,
+                    ),
             contentAlignment =
                 Alignment.Center,
         ) {
             Box(
                 modifier =
-                    (
-                        if (isVideoPlaying) {
-                            Modifier
-                                .fillMaxWidth()
-                                .aspectRatio(16f / 9f)
-                        } else {
-                            Modifier.fillMaxSize()
-                        }
-                    )
-                        .clip(mediaShape)
+                    Modifier
+                        .fillMaxWidth()
+                        .aspectRatio(1f)
+                        /*
+                         * Lift only the artwork. NOW PLAYING / duration and the
+                         * metadata/buttons stay fixed, creating clean breathing
+                         * room above Share/Favorite and the artist line.
+                         */
+                        .offset(
+                            y = (-9).dp,
+                        )
+                        .clip(
+                            CapsuleArtworkShape,
+                        )
                         .border(
                             1.dp,
                             outline,
-                            mediaShape,
+                            CapsuleArtworkShape,
                         )
                         .background(
                             textColor.copy(
                                 alpha =
-                                    if (isVideoPlaying) 0.018f else 0.045f,
+                                    0.045f,
                             ),
                         )
-                        .then(
-                            if (isVideoPlaying) {
-                                Modifier
-                            } else {
-                                Modifier.clickable(onClick = onArtworkClick)
-                            },
+                        .clickable(
+                            onClick =
+                                onArtworkClick,
                         ),
                 contentAlignment =
                     Alignment.Center,
             ) {
-                if (isVideoPlaying) {
+                if (isCapsuleVideoPlaying) {
                     AndroidView(
                         factory = { viewContext ->
                             PlayerView(viewContext).apply {
                                 player = playerConnection.player
                                 useController = false
                                 resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
-                                setShowBuffering(PlayerView.SHOW_BUFFERING_NEVER)
-                                setShutterBackgroundColor(android.graphics.Color.TRANSPARENT)
+                                setShowBuffering(PlayerView.SHOW_BUFFERING_WHEN_PLAYING)
+                                setShutterBackgroundColor(android.graphics.Color.BLACK)
                                 keepScreenOn = true
                             }
                         },
@@ -638,8 +610,7 @@ fun CapsulePlayerContent(
                                 playerView.player = playerConnection.player
                             }
                         },
-                        modifier =
-                            Modifier.fillMaxSize(),
+                        modifier = Modifier.fillMaxSize(),
                     )
                 } else if (hideArtwork) {
                     Icon(
@@ -674,71 +645,16 @@ fun CapsulePlayerContent(
                             Modifier.fillMaxSize(),
                     )
                 }
-
-                if (isVideoResolving) {
-                    Box(
-                        modifier =
-                            Modifier
-                                .fillMaxSize()
-                                .background(
-                                    Color.Black.copy(alpha = 0.08f),
-                                ),
-                        contentAlignment =
-                            Alignment.Center,
-                    ) {
-                        Column(
-                            horizontalAlignment =
-                                Alignment.CenterHorizontally,
-                        ) {
-                            CircularProgressIndicator(
-                                modifier =
-                                    Modifier.size(26.dp),
-                                color =
-                                    textColor.copy(alpha = 0.92f),
-                                strokeWidth =
-                                    2.dp,
-                            )
-
-                            Spacer(
-                                Modifier.height(10.dp),
-                            )
-
-                            Text(
-                                text = "FINDING OFFICIAL VIDEO",
-                                color =
-                                    textColor.copy(alpha = 0.76f),
-                                fontFamily =
-                                    FontFamily.Monospace,
-                                fontSize =
-                                    10.sp,
-                                fontWeight =
-                                    FontWeight.SemiBold,
-                                letterSpacing =
-                                    0.7.sp,
-                            )
-                        }
-                    }
-                }
             }
         }
-
-        /*
-         * Artwork/video stage and metadata are positioned independently.
-         * This spacer is intentionally separate from progress spacing below.
-         */
-        Spacer(
-            Modifier.height(
-                16.dp,
-            ),
-        )
 
         Column(
             modifier =
                 Modifier
                     .fillMaxWidth()
                     .padding(
-                        start = 18.dp,
-                        end = 18.dp,
+                        horizontal =
+                            18.dp,
                     ),
         ) {
             Row(
@@ -881,13 +797,9 @@ fun CapsulePlayerContent(
                 )
             }
 
-            /*
-             * Progress has its own vertical position. Keep it clearly below
-             * metadata instead of letting artwork sizing pull it upward.
-             */
             Spacer(
                 Modifier.height(
-                    26.dp,
+                    14.dp,
                 ),
             )
 
@@ -989,41 +901,29 @@ fun CapsulePlayerContent(
                 )
             }
 
-            Spacer(
-                Modifier.height(
-                    9.dp,
-                ),
+            CapsuleAudioVideoToggle(
+                state = videoPlaybackState,
+                textColor = textColor,
+                enabled = !isListenTogetherGuest,
+                onAudioClick = {
+                    playerConnection.service.setCapsulePlaybackMode(
+                        CapsulePlaybackMode.AUDIO,
+                    )
+                },
+                onVideoClick = {
+                    playerConnection.service.setCapsulePlaybackMode(
+                        CapsulePlaybackMode.VIDEO,
+                    )
+                },
+                modifier =
+                    Modifier
+                        .align(Alignment.CenterHorizontally)
+                        .padding(top = 6.dp),
             )
 
-            Box(
-                modifier =
-                    Modifier.fillMaxWidth(),
-                contentAlignment =
-                    Alignment.Center,
-            ) {
-                CapsuleAudioVideoToggle(
-                    state =
-                        videoPlaybackState,
-                    textColor =
-                        textColor,
-                    enabled =
-                        !isListenTogetherGuest,
-                    onAudioClick = {
-                        playerConnection.service.setCapsulePlaybackMode(
-                            CapsulePlaybackMode.AUDIO,
-                        )
-                    },
-                    onVideoClick = {
-                        playerConnection.service.setCapsulePlaybackMode(
-                            CapsulePlaybackMode.VIDEO,
-                        )
-                    },
-                )
-            }
-
             Spacer(
                 Modifier.height(
-                    12.dp,
+                    16.dp,
                 ),
             )
 
