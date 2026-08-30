@@ -1,0 +1,129 @@
+name: NewPipeExtractor update guard
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "17 6 * * 1"
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: newpipe-extractor-update
+  cancel-in-progress: true
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Set up Gradle 9.3.1
+        uses: gradle/actions/setup-gradle@v6
+        with:
+          gradle-version: "9.3.1"
+
+      - name: Discover latest stable NewPipeExtractor
+        id: version
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          latest="$(
+            curl --fail --silent --show-error \
+              --retry 3 \
+              -H 'Accept: application/vnd.github+json' \
+              https://api.github.com/repos/TeamNewPipe/NewPipeExtractor/releases/latest \
+              | jq -r '.tag_name'
+          )"
+
+          current="$(
+            sed -n 's/.*newpipe-extractor.*version = "\([^"]*\)".*/\1/p' \
+              gradle/libs.versions.toml \
+              | head -n 1
+          )"
+
+          test -n "$latest"
+          test -n "$current"
+
+          echo "latest=$latest" >> "$GITHUB_OUTPUT"
+          echo "current=$current" >> "$GITHUB_OUTPUT"
+
+          if [[ "$latest" == "$current" ]]; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Update pinned version
+        if: steps.version.outputs.changed == 'true'
+        shell: bash
+        env:
+          LATEST: ${{ steps.version.outputs.latest }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import os
+          import re
+          from pathlib import Path
+
+          path = Path("gradle/libs.versions.toml")
+          text = path.read_text()
+          latest = os.environ["LATEST"]
+          new, count = re.subn(
+              r'(newpipe-extractor\s*=\s*\{[^\n]*version\s*=\s*")[^"]+("[^\n]*\})',
+              rf'\g<1>{latest}\2',
+              text,
+              count=1,
+          )
+          if count != 1:
+              raise SystemExit("Could not update NewPipeExtractor version")
+          path.write_text(new)
+          PY
+
+      - name: Compile-test candidate
+        if: steps.version.outputs.changed == 'true'
+        run: |
+          gradle :innertube:test :app:assembleUniversalDebug \
+            --stacktrace \
+            --no-daemon
+
+      - name: Create or refresh update PR
+        if: steps.version.outputs.changed == 'true'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          LATEST: ${{ steps.version.outputs.latest }}
+        run: |
+          set -euo pipefail
+
+          branch="deps/newpipe-extractor"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -B "$branch"
+          git add gradle/libs.versions.toml
+          git commit -m "Update NewPipeExtractor to $LATEST"
+          git push --force-with-lease origin "$branch"
+
+          existing="$(gh pr list --head "$branch" --state open --json number --jq '.[0].number // empty')"
+          if [[ -z "$existing" ]]; then
+            gh pr create \
+              --base main \
+              --head "$branch" \
+              --title "Update NewPipeExtractor to $LATEST" \
+              --body $'Automated pinned NewPipeExtractor update.\n\nThe candidate passed `:innertube:test` and `:app:assembleUniversalDebug` before this PR was created. Runtime VIDEO smoke testing is still recommended before merge.'
+          else
+            echo "PR #$existing refreshed"
+          fi
