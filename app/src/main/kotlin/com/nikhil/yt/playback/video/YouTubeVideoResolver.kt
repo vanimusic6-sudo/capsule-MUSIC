@@ -1,16 +1,17 @@
-
- /** Capsule MUSIC
+/*
+ * Capsule MUSIC
  * Dedicated YouTube Music video resolver.
  *
- * The normal Capsule audio pipeline is not modified here.
- * VIDEO first asks YouTube Music for the linked official music video,
- * then resolves a muxed progressive stream for that exact video id.
+ * Normal Capsule audio playback is intentionally not changed here.
+ * VIDEO resolves an official YouTube Music clip first, then chooses either
+ * a stable muxed stream or a higher-quality adaptive video + audio pair.
  *
  * Licensed under GPL-3.0.
  */
 
 package com.nikhil.yt.playback.video
 
+import com.nikhil.yt.constants.CapsuleVideoQuality
 import com.nikhil.yt.innertube.YouTube
 import com.nikhil.yt.innertube.YouTubeMusicVideoLinkResolver
 import com.nikhil.yt.innertube.models.WatchEndpoint.WatchEndpointMusicSupportedConfigs.WatchEndpointMusicConfig.Companion.MUSIC_VIDEO_TYPE_OMV
@@ -49,43 +50,71 @@ object YouTubeVideoResolver {
     data class ResolvedVideo(
         val sourceMediaId: String,
         val videoId: String,
-        val streamUrl: String,
-        val format: PlayerResponse.StreamingData.Format,
+        val videoStreamUrl: String,
+        val videoFormat: PlayerResponse.StreamingData.Format,
+        val audioStreamUrl: String? = null,
+        val audioFormat: PlayerResponse.StreamingData.Format? = null,
         val expiresAtMs: Long,
     ) {
+        val streamUrl: String
+            get() = videoStreamUrl
+
+        val format: PlayerResponse.StreamingData.Format
+            get() = videoFormat
+
+        val isAdaptive: Boolean
+            get() = !audioStreamUrl.isNullOrBlank() && audioFormat != null
+
         val qualityLabel: String
             get() =
-                format.qualityLabel
-                    ?: format.height?.let { "${it}p" }
-                    ?: format.quality.ifBlank { "VIDEO" }
+                videoFormat.qualityLabel
+                    ?: videoFormat.height?.let { "${it}p" }
+                    ?: videoFormat.quality.ifBlank { "VIDEO" }
     }
 
     private data class Cached(
+        val sourceMediaId: String,
         val videoId: String,
-        val streamUrl: String,
-        val format: PlayerResponse.StreamingData.Format,
+        val videoStreamUrl: String,
+        val videoFormat: PlayerResponse.StreamingData.Format,
+        val audioStreamUrl: String?,
+        val audioFormat: PlayerResponse.StreamingData.Format?,
         val expiresAtMs: Long,
-    )
+    ) {
+        fun asResolved(): ResolvedVideo =
+            ResolvedVideo(
+                sourceMediaId = sourceMediaId,
+                videoId = videoId,
+                videoStreamUrl = videoStreamUrl,
+                videoFormat = videoFormat,
+                audioStreamUrl = audioStreamUrl,
+                audioFormat = audioFormat,
+                expiresAtMs = expiresAtMs,
+            )
+    }
 
     private val cache = ConcurrentHashMap<String, Cached>()
+    private val latestCacheKeyByVideoId = ConcurrentHashMap<String, String>()
 
     @Volatile
     private var clientPair: Pair<java.net.Proxy?, OkHttpClient>? = null
 
     /*
-     * WEB is intentionally first: for ordinary VODs it is the most useful
-     * client for legacy muxed audio+video formats (for example itag 18).
-     * VIDEO is isolated, so changing this order cannot affect Capsule audio.
+     * Keep VIDEO isolated from the audio client preference. WEB is first because
+     * it usually exposes the widest set of ordinary VOD formats. The rest are
+     * fallbacks only; the loop stops on the first validated result.
      */
     private val videoClients: List<YouTubeClient> =
         listOf(
             WEB,
-            MOBILE,
-            ANDROID_MUSIC,
-            ANDROID_VR_NO_AUTH,
             IOS,
-            IOS_MUSIC,
+            ANDROID_MUSIC,
+            MOBILE,
             TVHTML5_SIMPLY_EMBEDDED_PLAYER,
+            ANDROID_VR_NO_AUTH,
+            IOS_MUSIC,
+            TVHTML5,
+            WEB_REMIX,
             ANDROID_VR_1_61_48,
             ANDROID_VR_1_43_32,
             ANDROID_CREATOR,
@@ -93,26 +122,35 @@ object YouTubeVideoResolver {
             ANDROID_UNPLUGGED,
             IPADOS,
             VISIONOS,
-            TVHTML5,
             WEB_CREATOR,
-            WEB_REMIX,
         ).distinct()
 
     fun invalidate(videoId: String) {
-        cache.remove(videoId)
+        val prefix = "${videoId.trim()}:"
+        cache.keys.removeIf { it.startsWith(prefix) }
+        latestCacheKeyByVideoId.remove(videoId.trim())
     }
 
     /**
-     * YouTube Music-style resolution:
-     * canonical song metadata -> YouTube Music VIDEO search -> official OMV -> stream.
-     *
-     * Normal YouTube search and setVideoId are intentionally not used.
+     * Synchronous cache lookup used by MusicService's MediaSource.Factory.
+     * resolveForSong() always warms this cache before the queue item is replaced.
      */
+    fun peekResolved(videoId: String): ResolvedVideo? {
+        val id = videoId.trim()
+        val key = latestCacheKeyByVideoId[id] ?: return null
+        val now = System.currentTimeMillis()
+        val cached = cache[key]
+            ?.takeIf { it.expiresAtMs > now + CACHE_SAFETY_MS }
+            ?: return null
+        return cached.asResolved()
+    }
+
     suspend fun resolveForSong(
         sourceMediaId: String,
         title: String,
         artists: List<String>,
         durationSeconds: Int?,
+        quality: CapsuleVideoQuality,
     ): Result<ResolvedVideo> = runCatching {
         val canonicalId = sourceMediaId.trim()
         require(canonicalId.isNotBlank()) { "Missing YouTube Music track id" }
@@ -127,41 +165,62 @@ object YouTubeVideoResolver {
                 )
                 .getOrThrow()
 
-        val stream =
-            resolveLinkedVideo(link.videoId)
-                .getOrThrow()
+        val cached =
+            resolveLinkedVideo(
+                sourceMediaId = canonicalId,
+                videoId = link.videoId,
+                quality = quality,
+                adaptiveAllowed = true,
+                expectedTitle = title,
+                expectedArtists = artists,
+                expectedDurationSeconds = durationSeconds,
+            ).getOrThrow()
 
-        ResolvedVideo(
-            sourceMediaId = canonicalId,
-            videoId = link.videoId,
-            streamUrl = stream.streamUrl,
-            format = stream.format,
-            expiresAtMs = stream.expiresAtMs,
-        )
+        latestCacheKeyByVideoId[link.videoId] = preferredCacheKey(link.videoId, quality)
+        cached.asResolved()
     }
 
     /**
-     * Used by the playback DataSource after resolveForSong has already warmed
-     * the cache. It can still resolve again if the cached URL expired.
+     * Safe single-stream fallback for the old capsule-video ResolvingDataSource.
+     * Higher-quality adaptive playback is created by MusicService's MediaSource
+     * factory from [peekResolved].
      */
-    suspend fun resolve(videoId: String): Result<ResolvedVideo> = runCatching {
-        val linkedId = videoId.trim()
-        require(linkedId.isNotBlank()) { "Missing linked YouTube video id" }
+    suspend fun resolveMuxed(
+        videoId: String,
+        quality: CapsuleVideoQuality,
+    ): Result<ResolvedVideo> = runCatching {
+        val id = videoId.trim()
+        require(id.isNotBlank()) { "Missing linked YouTube video id" }
 
-        val stream = resolveLinkedVideo(linkedId).getOrThrow()
-        ResolvedVideo(
-            sourceMediaId = linkedId,
-            videoId = linkedId,
-            streamUrl = stream.streamUrl,
-            format = stream.format,
-            expiresAtMs = stream.expiresAtMs,
-        )
+        resolveLinkedVideo(
+            sourceMediaId = id,
+            videoId = id,
+            quality = quality,
+            adaptiveAllowed = false,
+            expectedTitle = null,
+            expectedArtists = emptyList(),
+            expectedDurationSeconds = null,
+        ).getOrThrow().asResolved()
     }
 
-    private suspend fun resolveLinkedVideo(videoId: String): Result<Cached> = runCatching {
-        val now = System.currentTimeMillis()
+    private suspend fun resolveLinkedVideo(
+        sourceMediaId: String,
+        videoId: String,
+        quality: CapsuleVideoQuality,
+        adaptiveAllowed: Boolean,
+        expectedTitle: String?,
+        expectedArtists: List<String>,
+        expectedDurationSeconds: Int?,
+    ): Result<Cached> = runCatching {
+        val key =
+            if (adaptiveAllowed) {
+                preferredCacheKey(videoId, quality)
+            } else {
+                muxedCacheKey(videoId, quality)
+            }
 
-        cache[videoId]
+        val now = System.currentTimeMillis()
+        cache[key]
             ?.takeIf { it.expiresAtMs > now + CACHE_SAFETY_MS }
             ?.let { return@runCatching it }
 
@@ -169,14 +228,11 @@ object YouTubeVideoResolver {
             NewPipeUtils.getSignatureTimestamp(videoId)
                 .getOrNull()
 
+        val isLoggedIn = YouTube.cookie != null
         var lastError: Throwable? = null
 
-        val isLoggedIn = YouTube.cookie != null
-
         for (client in videoClients) {
-            if (client.loginRequired && !isLoggedIn) {
-                continue
-            }
+            if (client.loginRequired && !isLoggedIn) continue
 
             val response =
                 runCatching {
@@ -203,11 +259,6 @@ object YouTubeVideoResolver {
                 continue
             }
 
-            /*
-             * currentVideoEndpoint already gave us OMV, but the player response
-             * can independently confirm it. If the field is absent we do not
-             * reject the stream; if it explicitly says something else we do.
-             */
             val playerMusicVideoType = response.videoDetails?.musicVideoType
             if (
                 playerMusicVideoType != null &&
@@ -215,61 +266,74 @@ object YouTubeVideoResolver {
             ) {
                 lastError =
                     IllegalStateException(
-                        "Linked item is not an official YouTube Music video",
+                        "Matched item is not an official YouTube Music video",
                     )
                 continue
             }
 
-            val formats = selectMuxedFormats(response)
-            if (formats.isEmpty()) {
+            if (
+                expectedTitle != null &&
+                !matchesExpectedVideoDetails(
+                    details = response.videoDetails,
+                    expectedTitle = expectedTitle,
+                    expectedArtists = expectedArtists,
+                    expectedDurationSeconds = expectedDurationSeconds,
+                )
+            ) {
                 lastError =
                     IllegalStateException(
-                        "No compatible audio+video stream returned by ${client.clientName}",
+                        "YouTube player metadata did not match the current song",
                     )
                 continue
             }
 
-            for (format in formats.take(8)) {
-                var url =
-                    NewPipeUtils.getStreamUrl(
-                        format = format,
-                        videoId = videoId,
-                        client = client,
-                    ).getOrNull() ?: continue
+            val preferMuxedFirst = quality == CapsuleVideoQuality.P360
 
-                url =
-                    StreamClientUtils.patchClientVersion(
-                        url,
-                        client.clientVersion,
-                    )
-
-                if (!validate(url, client.userAgent)) {
-                    continue
+            if (preferMuxedFirst) {
+                tryMuxed(
+                    sourceMediaId = sourceMediaId,
+                    videoId = videoId,
+                    response = response,
+                    client = client,
+                    quality = quality,
+                )?.let { cached ->
+                    cache[key] = cached
+                    if (adaptiveAllowed) latestCacheKeyByVideoId[videoId] = key
+                    return@runCatching cached
                 }
+            }
 
-                val expiresSeconds =
-                    response.streamingData?.expiresInSeconds ?: 300
-
-                val expiresAtMs =
-                    System.currentTimeMillis() +
-                        expiresSeconds.coerceAtLeast(60) * 1000L
-
-                val cached =
-                    Cached(
-                        videoId = videoId,
-                        streamUrl = url,
-                        format = format,
-                        expiresAtMs = expiresAtMs,
+            if (adaptiveAllowed) {
+                tryAdaptive(
+                    sourceMediaId = sourceMediaId,
+                    videoId = videoId,
+                    response = response,
+                    client = client,
+                    quality = quality,
+                )?.let { cached ->
+                    cache[key] = cached
+                    latestCacheKeyByVideoId[videoId] = key
+                    Timber.tag(TAG).i(
+                        "Resolved $videoId as adaptive ${cached.videoFormat.height ?: 0}p " +
+                            "via ${client.clientName}",
                     )
+                    return@runCatching cached
+                }
+            }
 
-                cache[videoId] = cached
-
+            tryMuxed(
+                sourceMediaId = sourceMediaId,
+                videoId = videoId,
+                response = response,
+                client = client,
+                quality = quality,
+            )?.let { cached ->
+                cache[key] = cached
+                if (adaptiveAllowed) latestCacheKeyByVideoId[videoId] = key
                 Timber.tag(TAG).i(
-                    "Resolved official video $videoId as ${
-                        format.qualityLabel ?: format.height?.let { "${it}p" } ?: format.quality
-                    } via ${client.clientName}",
+                    "Resolved $videoId as muxed ${cached.videoFormat.height ?: 0}p " +
+                        "via ${client.clientName}",
                 )
-
                 return@runCatching cached
             }
         }
@@ -280,70 +344,274 @@ object YouTubeVideoResolver {
             )
     }
 
+    private suspend fun tryAdaptive(
+        sourceMediaId: String,
+        videoId: String,
+        response: PlayerResponse,
+        client: YouTubeClient,
+        quality: CapsuleVideoQuality,
+    ): Cached? {
+        val videoFormats = selectAdaptiveVideoFormats(response, quality)
+        val audioFormats = selectAdaptiveAudioFormats(response)
+        if (videoFormats.isEmpty() || audioFormats.isEmpty()) return null
+
+        var audioChoice: Pair<PlayerResponse.StreamingData.Format, String>? = null
+        for (audioFormat in audioFormats.take(4)) {
+            val url = resolveAndValidate(audioFormat, videoId, client) ?: continue
+            audioChoice = audioFormat to url
+            break
+        }
+        val (audioFormat, audioUrl) = audioChoice ?: return null
+
+        for (videoFormat in videoFormats.take(6)) {
+            val videoUrl = resolveAndValidate(videoFormat, videoId, client) ?: continue
+            val expiresAtMs = expiry(response)
+            return Cached(
+                sourceMediaId = sourceMediaId,
+                videoId = videoId,
+                videoStreamUrl = videoUrl,
+                videoFormat = videoFormat,
+                audioStreamUrl = audioUrl,
+                audioFormat = audioFormat,
+                expiresAtMs = expiresAtMs,
+            )
+        }
+
+        return null
+    }
+
+    private suspend fun tryMuxed(
+        sourceMediaId: String,
+        videoId: String,
+        response: PlayerResponse,
+        client: YouTubeClient,
+        quality: CapsuleVideoQuality,
+    ): Cached? {
+        for (format in selectMuxedFormats(response, quality).take(8)) {
+            val url = resolveAndValidate(format, videoId, client) ?: continue
+            return Cached(
+                sourceMediaId = sourceMediaId,
+                videoId = videoId,
+                videoStreamUrl = url,
+                videoFormat = format,
+                audioStreamUrl = null,
+                audioFormat = null,
+                expiresAtMs = expiry(response),
+            )
+        }
+        return null
+    }
+
+    private fun selectAdaptiveVideoFormats(
+        response: PlayerResponse,
+        quality: CapsuleVideoQuality,
+    ): List<PlayerResponse.StreamingData.Format> {
+        val maxHeight = quality.maxHeight ?: 720
+
+        return response.streamingData
+            ?.adaptiveFormats
+            .orEmpty()
+            .asSequence()
+            .filter { format ->
+                val height = format.height ?: 0
+                val hasSource =
+                    format.url != null ||
+                        format.signatureCipher != null ||
+                        format.cipher != null
+
+                !format.isAudio &&
+                    format.width != null &&
+                    height in 1..maxHeight &&
+                    format.bitrate > 0 &&
+                    hasSource
+            }
+            .sortedWith(
+                compareByDescending<PlayerResponse.StreamingData.Format> {
+                    it.height ?: 0
+                }.thenByDescending {
+                    it.fps ?: 0
+                }.thenByDescending {
+                    it.mimeType.startsWith("video/mp4", ignoreCase = true)
+                }.thenByDescending {
+                    it.bitrate
+                },
+            )
+            .toList()
+    }
+
+    private fun selectAdaptiveAudioFormats(
+        response: PlayerResponse,
+    ): List<PlayerResponse.StreamingData.Format> =
+        response.streamingData
+            ?.adaptiveFormats
+            .orEmpty()
+            .asSequence()
+            .filter { format ->
+                format.isAudio &&
+                    format.bitrate > 0 &&
+                    (
+                        format.url != null ||
+                            format.signatureCipher != null ||
+                            format.cipher != null
+                    )
+            }
+            .sortedWith(
+                compareByDescending<PlayerResponse.StreamingData.Format> {
+                    it.mimeType.startsWith("audio/mp4", ignoreCase = true)
+                }.thenByDescending {
+                    it.bitrate
+                }.thenByDescending {
+                    it.audioSampleRate ?: 0
+                },
+            )
+            .toList()
+
     private fun selectMuxedFormats(
         response: PlayerResponse,
+        quality: CapsuleVideoQuality,
     ): List<PlayerResponse.StreamingData.Format> {
-        val formats = response.streamingData?.formats.orEmpty()
+        val maxHeight = quality.maxHeight ?: 720
 
-        val candidates =
-            formats
-                .asSequence()
-                .filter { format ->
-                    val hasVideo =
-                        format.width != null &&
-                            format.height != null
+        return response.streamingData
+            ?.formats
+            .orEmpty()
+            .asSequence()
+            .filter { format ->
+                val height = format.height ?: 0
+                val hasVideo = format.width != null && height > 0
+                val hasAudio =
+                    (format.audioChannels ?: 0) > 0 ||
+                        format.audioQuality != null ||
+                        format.mimeType.contains("mp4a", ignoreCase = true) ||
+                        format.mimeType.contains("opus", ignoreCase = true)
+                val hasSource =
+                    format.url != null ||
+                        format.signatureCipher != null ||
+                        format.cipher != null
 
-                    val hasAudio =
-                        (format.audioChannels ?: 0) > 0 ||
-                            format.audioQuality != null ||
-                            format.mimeType.contains("mp4a", ignoreCase = true) ||
-                            format.mimeType.contains("opus", ignoreCase = true)
-
-                    hasVideo &&
-                        hasAudio &&
-                        format.bitrate > 0 &&
-                        (
-                            format.url != null ||
-                                format.signatureCipher != null ||
-                                format.cipher != null
-                        )
-                }
-                .toList()
-
-        if (candidates.isEmpty()) return emptyList()
-
-        /*
-         * Prefer 720p muxed when YouTube offers it, then 480/360.
-         * 1080p is normally adaptive-only and should not outrank a stable
-         * muxed format just because the numeric height is larger.
-         */
-        fun qualityRank(format: PlayerResponse.StreamingData.Format): Int =
-            when (format.height ?: 0) {
-                in 700..800 -> 4
-                in 470..699 -> 3
-                in 350..469 -> 2
-                in 1..349 -> 1
-                else -> 0
+                hasVideo &&
+                    hasAudio &&
+                    height <= maxHeight &&
+                    format.bitrate > 0 &&
+                    hasSource
             }
-
-        return candidates.sortedWith(
-            compareByDescending<PlayerResponse.StreamingData.Format> {
-                it.mimeType.startsWith("video/mp4", ignoreCase = true)
-            }.thenByDescending {
-                qualityRank(it)
-            }.thenByDescending {
-                it.url != null
-            }.thenByDescending {
-                it.bitrate
-            },
-        )
+            .sortedWith(
+                compareByDescending<PlayerResponse.StreamingData.Format> {
+                    it.height ?: 0
+                }.thenByDescending {
+                    it.mimeType.startsWith("video/mp4", ignoreCase = true)
+                }.thenByDescending {
+                    it.url != null
+                }.thenByDescending {
+                    it.bitrate
+                },
+            )
+            .toList()
     }
+
+    private suspend fun resolveAndValidate(
+        format: PlayerResponse.StreamingData.Format,
+        videoId: String,
+        client: YouTubeClient,
+    ): String? {
+        var url =
+            NewPipeUtils.getStreamUrl(
+                format = format,
+                videoId = videoId,
+                client = client,
+            ).getOrNull() ?: return null
+
+        url =
+            StreamClientUtils.patchClientVersion(
+                url,
+                client.clientVersion,
+            )
+
+        return url.takeIf { validate(it, client.userAgent) }
+    }
+
+    private fun expiry(response: PlayerResponse): Long {
+        val expiresSeconds = response.streamingData?.expiresInSeconds ?: 300
+        return System.currentTimeMillis() + expiresSeconds.coerceAtLeast(60) * 1000L
+    }
+
+    private fun matchesExpectedVideoDetails(
+        details: PlayerResponse.VideoDetails?,
+        expectedTitle: String,
+        expectedArtists: List<String>,
+        expectedDurationSeconds: Int?,
+    ): Boolean {
+        details ?: return false
+
+        val expectedTitleNorm = normalizeTitleForCheck(expectedTitle)
+        val actualTitleNorm = normalizeTitleForCheck(details.title)
+        val artistNorms =
+            expectedArtists
+                .map(::normalizeForCheck)
+                .filter { it.isNotBlank() }
+
+        val titleMatches =
+            actualTitleNorm == expectedTitleNorm ||
+                artistNorms.any { artist ->
+                    actualTitleNorm == "$artist $expectedTitleNorm" ||
+                        actualTitleNorm == "$expectedTitleNorm $artist"
+                }
+        if (!titleMatches) return false
+
+        if (artistNorms.isNotEmpty()) {
+            val author =
+                normalizeForCheck(details.author)
+                    .removeSuffix(" vevo")
+                    .removeSuffix("vevo")
+                    .trim()
+            val artistMatches =
+                artistNorms.any { artist ->
+                    author.contains(artist) || artist.contains(author)
+                }
+            if (!artistMatches) return false
+        }
+
+        val expectedDuration = expectedDurationSeconds?.takeIf { it > 0 }
+        val actualDuration = details.lengthSeconds.toIntOrNull()?.takeIf { it > 0 }
+        if (expectedDuration != null && actualDuration != null) {
+            if (kotlin.math.abs(expectedDuration - actualDuration) > 65) return false
+        }
+
+        return true
+    }
+
+    private fun normalizeTitleForCheck(value: String): String =
+        normalizeForCheck(value)
+            .replace(Regex("\\bofficial\\s+music\\s+video\\b"), " ")
+            .replace(Regex("\\bofficial\\s+video\\b"), " ")
+            .replace(Regex("\\bmusic\\s+video\\b"), " ")
+            .replace(Regex("\\bofficial\\b"), " ")
+            .replace(Regex("\\s+"), " ")
+            .trim()
+
+    private fun normalizeForCheck(value: String): String =
+        value
+            .lowercase()
+            .replace('&', ' ')
+            .replace(Regex("[^\\p{L}\\p{N}]+"), " ")
+            .replace(Regex("\\s+"), " ")
+            .trim()
+
+    private fun preferredCacheKey(
+        videoId: String,
+        quality: CapsuleVideoQuality,
+    ) = "$videoId:${quality.name}:preferred"
+
+    private fun muxedCacheKey(
+        videoId: String,
+        quality: CapsuleVideoQuality,
+    ) = "$videoId:${quality.name}:muxed"
 
     private fun validate(
         url: String,
         fallbackUserAgent: String,
-    ): Boolean {
-        return runCatching {
+    ): Boolean =
+        runCatching {
             val clientParam =
                 url.toHttpUrlOrNull()
                     ?.queryParameter("c")
@@ -373,11 +641,9 @@ object YouTubeVideoResolver {
                 .newCall(request)
                 .execute()
                 .use { response ->
-                    response.code in 200..399 ||
-                        response.code == 416
+                    response.code in 200..399 || response.code == 416
                 }
         }.getOrDefault(false)
-    }
 
     private fun currentClient(): OkHttpClient {
         val proxy = YouTube.streamProxy
