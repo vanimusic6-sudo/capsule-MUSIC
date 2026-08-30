@@ -1,9 +1,6 @@
 /*
  * Capsule MUSIC
  * Stable IPC/domain protocol for the optional VIDEO backend.
- *
- * Keep this file free of NewPipe classes. MusicService depends only on these
- * plain data types, so upstream extractor changes cannot leak through the app.
  * GPL-3.0
  */
 package com.nikhil.yt.playback.video
@@ -11,7 +8,6 @@ package com.nikhil.yt.playback.video
 import android.os.Bundle
 import com.nikhil.yt.constants.CapsuleVideoQuality
 
-/** A resolved stream set returned by the isolated VIDEO backend. */
 data class CapsuleResolvedVideo(
     val videoId: String,
     val videoUrl: String,
@@ -40,13 +36,11 @@ enum class CapsuleVideoFailure {
 }
 
 internal object CapsuleVideoIpc {
-    const val ACTION_RESOLVE = "com.nikhil.yt.video.RESOLVE"
-    const val ACTION_CANCEL = "com.nikhil.yt.video.CANCEL"
-    const val ACTION_RESULT = "com.nikhil.yt.video.RESULT"
+    const val METHOD_RESOLVE = "resolve"
 
-    const val EXTRA_REQUEST_ID = "request_id"
     const val EXTRA_VIDEO_ID = "video_id"
     const val EXTRA_QUALITY = "quality"
+    const val EXTRA_MUXED_ONLY = "muxed_only"
     const val EXTRA_SUCCESS = "success"
     const val EXTRA_VIDEO_URL = "video_url"
     const val EXTRA_AUDIO_URL = "audio_url"
@@ -65,9 +59,8 @@ internal object CapsuleVideoIpc {
         runCatching { CapsuleVideoQuality.valueOf(raw.orEmpty()) }
             .getOrDefault(CapsuleVideoQuality.AUTO)
 
-    fun successBundle(requestId: String, resolved: CapsuleResolvedVideo): Bundle =
+    fun successBundle(resolved: CapsuleResolvedVideo): Bundle =
         Bundle().apply {
-            putString(EXTRA_REQUEST_ID, requestId)
             putBoolean(EXTRA_SUCCESS, true)
             putString(EXTRA_VIDEO_ID, resolved.videoId)
             putString(EXTRA_VIDEO_URL, resolved.videoUrl)
@@ -81,12 +74,10 @@ internal object CapsuleVideoIpc {
         }
 
     fun failureBundle(
-        requestId: String,
         failure: CapsuleVideoFailure,
         message: String?,
     ): Bundle =
         Bundle().apply {
-            putString(EXTRA_REQUEST_ID, requestId)
             putBoolean(EXTRA_SUCCESS, false)
             putString(EXTRA_FAILURE, failure.name)
             putString(EXTRA_MESSAGE, message)
