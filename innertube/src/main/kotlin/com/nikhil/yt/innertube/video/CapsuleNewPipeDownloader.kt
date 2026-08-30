@@ -1,10 +1,12 @@
 /*
  * Capsule MUSIC
- * Credential-free downloader used only by NewPipeExtractor in :capsule_video.
+ * Credential-free NewPipeExtractor downloader for the isolated :capsule_video process.
  *
- * This downloader intentionally does not accept or persist Google account
- * cookies/authorization. VIDEO is a public, optional feature and must remain
- * isolated from the account used by normal AUDIO/library traffic.
+ * Important:
+ * - Capsule account cookies/tokens never enter this process.
+ * - NewPipe's own anonymous/service headers are preserved.
+ * - Do NOT set Accept-Encoding manually: OkHttp handles transparent gzip itself.
+ *
  * GPL-3.0
  */
 package com.nikhil.yt.innertube.video
@@ -19,36 +21,57 @@ import java.io.IOException
 import java.util.concurrent.TimeUnit
 
 internal class CapsuleNewPipeDownloader : Downloader() {
+
     private val client =
         OkHttpClient.Builder()
-            .connectTimeout(12, TimeUnit.SECONDS)
-            .readTimeout(18, TimeUnit.SECONDS)
-            .writeTimeout(18, TimeUnit.SECONDS)
-            .callTimeout(24, TimeUnit.SECONDS)
+            .connectTimeout(15, TimeUnit.SECONDS)
+            .readTimeout(30, TimeUnit.SECONDS)
+            .writeTimeout(30, TimeUnit.SECONDS)
             .followRedirects(true)
             .followSslRedirects(true)
             .retryOnConnectionFailure(true)
             .build()
 
+    @Throws(IOException::class, ReCaptchaException::class)
     override fun execute(request: NewPipeRequest): NewPipeResponse {
-        val method = request.httpMethod().uppercase()
-        val rawBody = request.dataToSend()
-        val body =
-            when (method) {
-                "POST", "PUT", "PATCH" -> (rawBody ?: ByteArray(0)).toRequestBody(null)
-                else -> rawBody?.toRequestBody(null)
-            }
+        val method = request.httpMethod()
+        val requestBody = request.dataToSend()?.toRequestBody(null)
+
         val builder =
             okhttp3.Request.Builder()
                 .url(request.url())
-                .method(method, body)
+                .method(method, requestBody)
                 .header("User-Agent", DEFAULT_USER_AGENT)
-                .header("Accept-Encoding", "gzip")
 
+        /*
+         * The extractor itself may provide headers required by a particular
+         * YouTube client. Preserve them. The :capsule_video process never
+         * receives Capsule's logged-in Google state, so these cannot contain
+         * Capsule account credentials through the normal architecture.
+         *
+         * As defense in depth, explicitly reject account-identity headers and
+         * strip well-known signed-in Google cookie names while preserving
+         * anonymous/service cookies such as CONSENT/PREF/SOCS/visitor cookies.
+         */
         request.headers().forEach { (name, values) ->
-            if (name.lowercase() in CREDENTIAL_HEADERS) return@forEach
-            builder.removeHeader(name)
-            values.forEach { value -> builder.addHeader(name, value) }
+            when {
+                name.equals("Authorization", ignoreCase = true) -> Unit
+                name.equals("X-Goog-AuthUser", ignoreCase = true) -> Unit
+                name.equals("X-Goog-PageId", ignoreCase = true) -> Unit
+
+                name.equals("Cookie", ignoreCase = true) -> {
+                    builder.removeHeader(name)
+                    values
+                        .map(::sanitizeCookieHeader)
+                        .filter { it.isNotBlank() }
+                        .forEach { builder.addHeader(name, it) }
+                }
+
+                else -> {
+                    builder.removeHeader(name)
+                    values.forEach { value -> builder.addHeader(name, value) }
+                }
+            }
         }
 
         try {
@@ -60,12 +83,7 @@ internal class CapsuleNewPipeDownloader : Downloader() {
                     )
                 }
 
-                val responseBody =
-                    if (request.httpMethod().equals("HEAD", ignoreCase = true)) {
-                        ""
-                    } else {
-                        response.body?.string().orEmpty()
-                    }
+                val responseBody = response.body?.string().orEmpty()
 
                 return NewPipeResponse(
                     response.code,
@@ -84,16 +102,34 @@ internal class CapsuleNewPipeDownloader : Downloader() {
         }
     }
 
+    private fun sanitizeCookieHeader(raw: String): String =
+        raw.split(';')
+            .map { it.trim() }
+            .filter { cookie ->
+                val name = cookie.substringBefore('=').trim().uppercase()
+                name.isNotBlank() && name !in SENSITIVE_GOOGLE_COOKIES
+            }
+            .joinToString("; ")
+
     private companion object {
         const val DEFAULT_USER_AGENT =
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:140.0) Gecko/20100101 Firefox/140.0"
 
-        val CREDENTIAL_HEADERS =
+        val SENSITIVE_GOOGLE_COOKIES =
             setOf(
-                "authorization",
-                "cookie",
-                "x-goog-authuser",
-                "x-goog-pageid",
+                "SID",
+                "HSID",
+                "SSID",
+                "APISID",
+                "SAPISID",
+                "SIDCC",
+                "LOGIN_INFO",
+                "__SECURE-1PAPISID",
+                "__SECURE-3PAPISID",
+                "__SECURE-1PSID",
+                "__SECURE-3PSID",
+                "__SECURE-1PSIDCC",
+                "__SECURE-3PSIDCC",
             )
     }
 }
