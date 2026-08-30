@@ -1,5 +1,5 @@
-
- /** Velune - by Nikhil
+/*
+ * Velune - by Nikhil
  * Nikhil
  * Licensed Under GPL-3.0
  */
@@ -80,6 +80,7 @@ import com.nikhil.yt.ui.screens.settings.LastFMSettings
 import com.nikhil.yt.ui.screens.settings.MusicTogetherScreen
 import com.nikhil.yt.ui.screens.settings.PalettePickerScreen
 import com.nikhil.yt.ui.screens.settings.PlayerSettings
+import com.nikhil.yt.ui.screens.settings.VideoPlaybackSettings
 import com.nikhil.yt.ui.screens.settings.PoTokenScreen
 import com.nikhil.yt.ui.screens.settings.PrivacySettings
 import com.nikhil.yt.ui.screens.settings.SettingsScreen
@@ -319,6 +320,9 @@ fun NavGraphBuilder.navigationBuilder(
     }
     composable("settings/player") {
         PlayerSettings(navController, scrollBehavior)
+    }
+    composable("settings/video_playback") {
+        VideoPlaybackSettings(navController)
     }
     composable("settings/storage") {
         StorageSettings(navController, scrollBehavior)
