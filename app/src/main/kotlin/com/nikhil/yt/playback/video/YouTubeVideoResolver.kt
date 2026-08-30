@@ -6,6 +6,18 @@
  * VIDEO resolves an official YouTube Music clip first, then chooses either
  * a stable muxed stream or a higher-quality adaptive video + audio pair.
  *
+ * v2 changes:
+ *  - At most MAX_CLIENT_ATTEMPTS clients are tried per resolve, and the client
+ *    that last worked is tried first. v1 walked six clients for the same video
+ *    id within seconds, which is the single most scraper-looking pattern in the
+ *    old code.
+ *  - Stream probes now go through the request guard and share a per-resolve
+ *    budget. v1 could fire ~70 ungated requests for one VIDEO switch.
+ *  - The duplicated muxed pass at P360 is gone.
+ *  - playabilityStatus is classified: a permanently unavailable video aborts
+ *    the whole resolve instead of being retried on every client.
+ *  - Blocking OkHttp work moved off the calling dispatcher.
+ *
  * Licensed under GPL-3.0.
  */
 
@@ -26,6 +38,8 @@ import com.nikhil.yt.innertube.models.YouTubeClient.Companion.WEB_REMIX
 import com.nikhil.yt.innertube.models.response.PlayerResponse
 import com.nikhil.yt.innertube.pages.NewPipeUtils
 import com.nikhil.yt.utils.StreamClientUtils
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -36,6 +50,22 @@ import java.util.concurrent.TimeUnit
 object YouTubeVideoResolver {
     private const val TAG = "CapsuleVideo"
     private const val CACHE_SAFETY_MS = 30_000L
+
+    /**
+     * How many player clients a single resolve may try. Walking the full list
+     * turns one user action into a burst of near-identical player requests
+     * differing only by client name, which is exactly the shape anti-abuse
+     * systems look for.
+     */
+    private const val MAX_CLIENT_ATTEMPTS = 3
+
+    /**
+     * How many googlevideo range probes a single resolve may spend. Once the
+     * budget is gone we hand the URL to ExoPlayer unverified and let normal
+     * playback error handling deal with it, which costs one request instead of
+     * several.
+     */
+    private const val MAX_PROBES_PER_RESOLVE = 4
 
     data class ResolvedVideo(
         val sourceMediaId: String,
@@ -83,20 +113,36 @@ object YouTubeVideoResolver {
             )
     }
 
+    /** Per-resolve allowance for stream probes. Not thread safe by design. */
+    private class ProbeBudget(private var remaining: Int) {
+        fun consume(): Boolean {
+            if (remaining <= 0) return false
+            remaining -= 1
+            return true
+        }
+    }
+
     private val cache = ConcurrentHashMap<String, Cached>()
     private val latestCacheKeyByVideoId = ConcurrentHashMap<String, String>()
 
     @Volatile
     private var clientPair: Pair<java.net.Proxy?, OkHttpClient>? = null
 
+    /**
+     * The client that produced the last playable stream. Reusing it keeps a
+     * session consistent instead of cycling identities per track.
+     */
+    @Volatile
+    private var preferredClient: YouTubeClient? = null
+
     /*
-     * Safety-first VIDEO clients.
+     * Safety-first VIDEO clients, in fallback order.
      *
-     * Do not walk a long list of experimental/creator/test clients after a
-     * failure. These six cover the useful compatibility spread without turning
-     * one VIDEO switch into a burst of many player requests.
+     * The list stays broad for compatibility, but MAX_CLIENT_ATTEMPTS means a
+     * single resolve never walks all of it.
      *
-     * A 403/429/bot response stops the VIDEO path immediately; AUDIO is separate.
+     * A 403/429/bot response on the API surface stops the VIDEO path
+     * immediately; AUDIO is separate.
      */
     private val videoClients: List<YouTubeClient> =
         listOf(
@@ -107,6 +153,15 @@ object YouTubeVideoResolver {
             TVHTML5_SIMPLY_EMBEDDED_PLAYER,
             WEB_REMIX,
         ).distinct()
+
+    private fun orderedClients(): List<YouTubeClient> {
+        val preferred = preferredClient ?: return videoClients
+
+        return buildList {
+            add(preferred)
+            addAll(videoClients.filterNot { it.clientName == preferred.clientName })
+        }
+    }
 
     fun invalidate(videoId: String) {
         val prefix = "${videoId.trim()}:"
@@ -160,6 +215,7 @@ object YouTubeVideoResolver {
             ).getOrThrow()
 
         latestCacheKeyByVideoId[link.videoId] = preferredCacheKey(link.videoId, quality)
+        CapsuleVideoRequestGuard.noteSuccess()
         cached.asResolved()
     }
 
@@ -207,15 +263,28 @@ object YouTubeVideoResolver {
             ?.takeIf { it.expiresAtMs > now + CACHE_SAFETY_MS }
             ?.let { return@runCatching it }
 
+        if (CapsuleVideoRequestGuard.isBlocked()) {
+            throw CapsuleVideoRequestGuard.RequestBlockedException(
+                "YouTube VIDEO paused for " +
+                    "${CapsuleVideoRequestGuard.remainingBackoffMs() / 1000L}s",
+            )
+        }
+
         val signatureTimestamp =
             NewPipeUtils.getSignatureTimestamp(videoId)
                 .getOrNull()
 
         val isLoggedIn = YouTube.cookie != null
+        val budget = ProbeBudget(MAX_PROBES_PER_RESOLVE)
+
+        var attempts = 0
         var lastError: Throwable? = null
 
-        for (client in videoClients) {
+        for (client in orderedClients()) {
+            if (attempts >= MAX_CLIENT_ATTEMPTS) break
             if (client.loginRequired && !isLoggedIn) continue
+
+            attempts += 1
 
             CapsuleVideoRequestGuard.beforeMetadataRequest()
 
@@ -227,6 +296,8 @@ object YouTubeVideoResolver {
                         client = client,
                         signatureTimestamp = signatureTimestamp,
                     ).getOrThrow()
+                } catch (blocked: CapsuleVideoRequestGuard.RequestBlockedException) {
+                    throw blocked
                 } catch (throwable: Throwable) {
                     lastError = throwable
 
@@ -235,33 +306,54 @@ object YouTubeVideoResolver {
                         "Video player response failed for ${client.clientName}",
                     )
 
-                    if (CapsuleVideoRequestGuard.noteFailure(throwable)) {
+                    val kind = CapsuleVideoRequestGuard.noteApiFailure(throwable)
+
+                    when (kind) {
+                        CapsuleVideoRequestGuard.FailureKind.RATE_LIMITED,
+                        CapsuleVideoRequestGuard.FailureKind.BOT_CHECK,
+                        CapsuleVideoRequestGuard.FailureKind.FORBIDDEN,
+                        ->
+                            throw CapsuleVideoRequestGuard.RequestBlockedException(
+                                "YouTube VIDEO player request stopped after a " +
+                                    "${kind.name.lowercase()} response",
+                                throwable,
+                            )
+
+                        CapsuleVideoRequestGuard.FailureKind.PERMANENT -> throw throwable
+
+                        else -> continue
+                    }
+                }
+
+            val status = response.playabilityStatus.status
+            if (status != "OK") {
+                val reason =
+                    response.playabilityStatus.reason
+                        ?: "YouTube video is not playable"
+
+                val playabilityError = IllegalStateException(reason)
+                lastError = playabilityError
+
+                when (CapsuleVideoRequestGuard.classify("$status $reason")) {
+                    CapsuleVideoRequestGuard.FailureKind.RATE_LIMITED,
+                    CapsuleVideoRequestGuard.FailureKind.BOT_CHECK,
+                    -> {
+                        CapsuleVideoRequestGuard.noteApiFailure(playabilityError)
                         throw CapsuleVideoRequestGuard.RequestBlockedException(
-                            "YouTube VIDEO player request stopped after a 403/429/bot response",
-                            throwable,
+                            "YouTube VIDEO playability was blocked by anti-bot/rate limiting",
+                            playabilityError,
                         )
                     }
 
-                    continue
+                    /*
+                     * Removed, private, region-locked or age-gated clips are
+                     * not going to become playable on another client, so stop
+                     * instead of spending two more player requests.
+                     */
+                    CapsuleVideoRequestGuard.FailureKind.PERMANENT -> throw playabilityError
+
+                    else -> continue
                 }
-
-            if (response.playabilityStatus.status != "OK") {
-                val playabilityError =
-                    IllegalStateException(
-                        response.playabilityStatus.reason
-                            ?: "YouTube video is not playable",
-                    )
-
-                lastError = playabilityError
-
-                if (CapsuleVideoRequestGuard.noteFailure(playabilityError)) {
-                    throw CapsuleVideoRequestGuard.RequestBlockedException(
-                        "YouTube VIDEO playability was blocked by anti-bot/rate limiting",
-                        playabilityError,
-                    )
-                }
-
-                continue
             }
 
             val playerMusicVideoType = response.videoDetails?.musicVideoType
@@ -269,11 +361,14 @@ object YouTubeVideoResolver {
                 playerMusicVideoType != null &&
                 playerMusicVideoType != MUSIC_VIDEO_TYPE_OMV
             ) {
-                lastError =
-                    IllegalStateException(
-                        "Matched item is not an official YouTube Music video",
-                    )
-                continue
+                /*
+                 * The matcher already decided this id is an OMV. If the player
+                 * disagrees, the id itself is wrong: retrying other clients
+                 * cannot change that.
+                 */
+                throw IllegalStateException(
+                    "Matched item is not an official YouTube Music video",
+                )
             }
 
             if (
@@ -285,62 +380,71 @@ object YouTubeVideoResolver {
                     expectedDurationSeconds = expectedDurationSeconds,
                 )
             ) {
-                lastError =
-                    IllegalStateException(
-                        "YouTube player metadata did not match the current song",
-                    )
-                continue
+                throw IllegalStateException(
+                    "YouTube player metadata did not match the current song",
+                )
             }
 
             val preferMuxedFirst = quality == CapsuleVideoQuality.P360
 
-            if (preferMuxedFirst) {
-                tryMuxed(
-                    sourceMediaId = sourceMediaId,
-                    videoId = videoId,
-                    response = response,
-                    client = client,
-                    quality = quality,
-                )?.let { cached ->
-                    cache[key] = cached
-                    if (adaptiveAllowed) latestCacheKeyByVideoId[videoId] = key
-                    return@runCatching cached
-                }
-            }
-
-            if (adaptiveAllowed) {
-                tryAdaptive(
-                    sourceMediaId = sourceMediaId,
-                    videoId = videoId,
-                    response = response,
-                    client = client,
-                    quality = quality,
-                )?.let { cached ->
-                    cache[key] = cached
-                    latestCacheKeyByVideoId[videoId] = key
-                    Timber.tag(TAG).i(
-                        "Resolved $videoId as adaptive ${cached.videoFormat.height ?: 0}p " +
-                            "via ${client.clientName}",
+            val resolved =
+                if (preferMuxedFirst || !adaptiveAllowed) {
+                    tryMuxed(
+                        sourceMediaId = sourceMediaId,
+                        videoId = videoId,
+                        response = response,
+                        client = client,
+                        quality = quality,
+                        budget = budget,
+                    ) ?: if (adaptiveAllowed) {
+                        tryAdaptive(
+                            sourceMediaId = sourceMediaId,
+                            videoId = videoId,
+                            response = response,
+                            client = client,
+                            quality = quality,
+                            budget = budget,
+                        )
+                    } else {
+                        null
+                    }
+                } else {
+                    tryAdaptive(
+                        sourceMediaId = sourceMediaId,
+                        videoId = videoId,
+                        response = response,
+                        client = client,
+                        quality = quality,
+                        budget = budget,
+                    ) ?: tryMuxed(
+                        sourceMediaId = sourceMediaId,
+                        videoId = videoId,
+                        response = response,
+                        client = client,
+                        quality = quality,
+                        budget = budget,
                     )
-                    return@runCatching cached
                 }
+
+            if (resolved != null) {
+                cache[key] = resolved
+                if (adaptiveAllowed) latestCacheKeyByVideoId[videoId] = key
+                preferredClient = client
+
+                Timber.tag(TAG).i(
+                    "Resolved $videoId as " +
+                        (if (resolved.audioStreamUrl != null) "adaptive" else "muxed") +
+                        " ${resolved.videoFormat.height ?: 0}p via ${client.clientName}",
+                )
+
+                return@runCatching resolved
             }
 
-            tryMuxed(
-                sourceMediaId = sourceMediaId,
-                videoId = videoId,
-                response = response,
-                client = client,
-                quality = quality,
-            )?.let { cached ->
-                cache[key] = cached
-                if (adaptiveAllowed) latestCacheKeyByVideoId[videoId] = key
-                Timber.tag(TAG).i(
-                    "Resolved $videoId as muxed ${cached.videoFormat.height ?: 0}p " +
-                        "via ${client.clientName}",
-                )
-                return@runCatching cached
-            }
+            lastError =
+                lastError
+                    ?: IllegalStateException(
+                        "No compatible stream from ${client.clientName}",
+                    )
         }
 
         throw lastError
@@ -355,6 +459,7 @@ object YouTubeVideoResolver {
         response: PlayerResponse,
         client: YouTubeClient,
         quality: CapsuleVideoQuality,
+        budget: ProbeBudget,
     ): Cached? {
         val videoFormats = selectAdaptiveVideoFormats(response, quality)
         val audioFormats = selectAdaptiveAudioFormats(response)
@@ -362,15 +467,14 @@ object YouTubeVideoResolver {
 
         var audioChoice: Pair<PlayerResponse.StreamingData.Format, String>? = null
         for (audioFormat in audioFormats.take(2)) {
-            val url = resolveAndValidate(audioFormat, videoId, client) ?: continue
+            val url = resolveAndValidate(audioFormat, videoId, client, budget) ?: continue
             audioChoice = audioFormat to url
             break
         }
         val (audioFormat, audioUrl) = audioChoice ?: return null
 
-        for (videoFormat in videoFormats.take(3)) {
-            val videoUrl = resolveAndValidate(videoFormat, videoId, client) ?: continue
-            val expiresAtMs = expiry(response)
+        for (videoFormat in videoFormats.take(2)) {
+            val videoUrl = resolveAndValidate(videoFormat, videoId, client, budget) ?: continue
             return Cached(
                 sourceMediaId = sourceMediaId,
                 videoId = videoId,
@@ -378,7 +482,7 @@ object YouTubeVideoResolver {
                 videoFormat = videoFormat,
                 audioStreamUrl = audioUrl,
                 audioFormat = audioFormat,
-                expiresAtMs = expiresAtMs,
+                expiresAtMs = expiry(response),
             )
         }
 
@@ -391,9 +495,10 @@ object YouTubeVideoResolver {
         response: PlayerResponse,
         client: YouTubeClient,
         quality: CapsuleVideoQuality,
+        budget: ProbeBudget,
     ): Cached? {
-        for (format in selectMuxedFormats(response, quality).take(3)) {
-            val url = resolveAndValidate(format, videoId, client) ?: continue
+        for (format in selectMuxedFormats(response, quality).take(2)) {
+            val url = resolveAndValidate(format, videoId, client, budget) ?: continue
             return Cached(
                 sourceMediaId = sourceMediaId,
                 videoId = videoId,
@@ -518,6 +623,7 @@ object YouTubeVideoResolver {
         format: PlayerResponse.StreamingData.Format,
         videoId: String,
         client: YouTubeClient,
+        budget: ProbeBudget,
     ): String? {
         var url =
             NewPipeUtils.getStreamUrl(
@@ -531,6 +637,13 @@ object YouTubeVideoResolver {
                 url,
                 client.clientVersion,
             )
+
+        /*
+         * Out of probe budget: hand the URL over unverified. One playback error
+         * is cheaper than another round of range requests, and ExoPlayer's own
+         * error path already falls back.
+         */
+        if (!budget.consume()) return url
 
         return url.takeIf { validate(it, client.userAgent) }
     }
@@ -656,48 +769,60 @@ object YouTubeVideoResolver {
         quality: CapsuleVideoQuality,
     ) = "$videoId:${quality.name}:muxed"
 
-    private fun validate(
+    private suspend fun validate(
         url: String,
         fallbackUserAgent: String,
     ): Boolean {
+        CapsuleVideoRequestGuard.beforeStreamProbe()
+
         return try {
-            val clientParam =
-                url.toHttpUrlOrNull()
-                    ?.queryParameter("c")
-                    ?.trim()
-                    .orEmpty()
+            withContext(Dispatchers.IO) {
+                val clientParam =
+                    url.toHttpUrlOrNull()
+                        ?.queryParameter("c")
+                        ?.trim()
+                        .orEmpty()
 
-            val userAgent =
-                StreamClientUtils.resolveUserAgent(clientParam)
-                    .ifEmpty { fallbackUserAgent }
+                val userAgent =
+                    StreamClientUtils.resolveUserAgent(clientParam)
+                        .ifEmpty { fallbackUserAgent }
 
-            val originReferer =
-                StreamClientUtils.resolveOriginReferer(clientParam)
+                val originReferer =
+                    StreamClientUtils.resolveOriginReferer(clientParam)
 
-            val request =
-                Request.Builder()
-                    .url(url)
-                    .get()
-                    .header("User-Agent", userAgent)
-                    .header("Range", "bytes=0-1023")
-                    .apply {
-                        originReferer.origin?.let { header("Origin", it) }
-                        originReferer.referer?.let { header("Referer", it) }
+                val request =
+                    Request.Builder()
+                        .url(url)
+                        .get()
+                        .header("User-Agent", userAgent)
+                        .header("Range", "bytes=0-1023")
+                        .apply {
+                            originReferer.origin?.let { header("Origin", it) }
+                            originReferer.referer?.let { header("Referer", it) }
+                        }
+                        .build()
+
+                currentClient()
+                    .newCall(request)
+                    .execute()
+                    .use { response ->
+                        val kind = CapsuleVideoRequestGuard.noteStreamStatus(response.code)
+
+                        if (kind == CapsuleVideoRequestGuard.FailureKind.RATE_LIMITED) {
+                            throw CapsuleVideoRequestGuard.RequestBlockedException(
+                                "YouTube VIDEO stream validation returned HTTP ${response.code}",
+                            )
+                        }
+
+                        /*
+                         * A lone 403 here means "this format/URL is not usable",
+                         * not "we are being throttled". Reject the format and
+                         * let the caller try the next one; the guard only trips
+                         * once these repeat.
+                         */
+                        response.code in 200..399 || response.code == 416
                     }
-                    .build()
-
-            currentClient()
-                .newCall(request)
-                .execute()
-                .use { response ->
-                    if (CapsuleVideoRequestGuard.noteHttpStatus(response.code)) {
-                        throw CapsuleVideoRequestGuard.RequestBlockedException(
-                            "YouTube VIDEO stream validation returned HTTP ${response.code}",
-                        )
-                    }
-
-                    response.code in 200..399 || response.code == 416
-                }
+            }
         } catch (blocked: CapsuleVideoRequestGuard.RequestBlockedException) {
             throw blocked
         } catch (throwable: Throwable) {
