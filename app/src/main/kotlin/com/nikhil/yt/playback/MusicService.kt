@@ -1,5 +1,5 @@
-
- /** Velune - by Nikhil
+/*
+ * Velune - by Nikhil
  * Nikhil
  * Licensed Under GPL-3.0
  */
@@ -290,6 +290,7 @@ class MusicService :
     val videoPlaybackState = MutableStateFlow(CapsuleVideoPlaybackState())
     private var videoOriginalMediaItem: MediaItem? = null
     private var videoOriginalMediaId: String? = null
+    private var videoResolveJob: Job? = null
     private val streamRecoveryState = ConcurrentHashMap<String, Pair<Int, Long>>()
     @Volatile
     private var pendingStreamRefreshValidationMediaId: String? = null
@@ -3384,6 +3385,8 @@ class MusicService :
         transitionedMediaId != videoOriginalMediaId &&
         !isCurrentCapsuleVideoItem()
     ) {
+        videoResolveJob?.cancel()
+        videoResolveJob = null
         videoOriginalMediaItem = null
         videoOriginalMediaId = null
         videoPlaybackState.value =
@@ -4115,7 +4118,7 @@ class MusicService :
                     ?.takeIf { it.isNotBlank() }
                     ?: dataSpec.uri
                         .takeIf { it.scheme.equals(CAPSULE_VIDEO_SCHEME, ignoreCase = true) }
-                        ?.host
+                        ?.lastPathSegment
                         ?.takeIf { it.isNotBlank() }
 
             if (videoId != null) {
@@ -4282,49 +4285,118 @@ class MusicService :
         val canonicalMediaId = currentItem.mediaId.trim()
         if (canonicalMediaId.isBlank()) return
 
-        val metadata = currentItem.metadata ?: player.currentMetadata
-        val requestedVideoId =
-            metadata
-                ?.setVideoId
-                ?.trim()
-                ?.takeIf { it.isNotBlank() }
-                ?: canonicalMediaId
-
         val currentIndex = player.currentMediaItemIndex
         if (currentIndex < 0) return
 
-        val position = player.currentPosition.coerceAtLeast(0L)
-        val wasPlaying = player.playWhenReady
-
+        /*
+         * Do NOT replace the working audio item while YouTube Music is still
+         * resolving the linked video. Audio continues uninterrupted until a
+         * real official video stream has already been found and validated.
+         */
+        videoResolveJob?.cancel()
         videoOriginalMediaItem = currentItem
         videoOriginalMediaId = canonicalMediaId
+
         videoPlaybackState.value =
             CapsuleVideoPlaybackState(
                 mode = CapsulePlaybackMode.VIDEO,
                 phase = CapsuleVideoPhase.RESOLVING,
                 mediaId = canonicalMediaId,
-                videoId = requestedVideoId,
+                videoId = null,
                 message = null,
             )
 
-        val videoItem =
-            MediaItem.Builder()
-                .setMediaId(canonicalMediaId)
-                .setUri("$CAPSULE_VIDEO_SCHEME://$requestedVideoId")
-                .setCustomCacheKey("$CAPSULE_VIDEO_CACHE_PREFIX$requestedVideoId")
-                .setMediaMetadata(currentItem.mediaMetadata)
-                .apply {
-                    currentItem.localConfiguration?.tag?.let(::setTag)
-                }
-                .build()
+        videoResolveJob =
+            scope.launch {
+                val resolved =
+                    withContext(Dispatchers.IO) {
+                        YouTubeVideoResolver.resolveForSong(canonicalMediaId)
+                    }
 
-        player.replaceMediaItem(currentIndex, videoItem)
-        player.seekTo(currentIndex, position)
-        player.prepare()
-        player.playWhenReady = wasPlaying
+                /*
+                 * The user may have skipped the track or returned to AUDIO
+                 * while the network request was running.
+                 */
+                if (
+                    player.currentMediaItem?.mediaId != canonicalMediaId ||
+                    videoPlaybackState.value.mode != CapsulePlaybackMode.VIDEO ||
+                    videoPlaybackState.value.phase != CapsuleVideoPhase.RESOLVING
+                ) {
+                    return@launch
+                }
+
+                resolved.onFailure { throwable ->
+                    videoResolveJob = null
+
+                    Timber.tag("CapsuleVideo").w(
+                        throwable,
+                        "No official YouTube Music video available for $canonicalMediaId",
+                    )
+
+                    videoOriginalMediaItem = null
+                    videoOriginalMediaId = null
+                    videoPlaybackState.value =
+                        CapsuleVideoPlaybackState(
+                            mode = CapsulePlaybackMode.AUDIO,
+                            phase = CapsuleVideoPhase.UNAVAILABLE,
+                            mediaId = canonicalMediaId,
+                            videoId = null,
+                            message =
+                                throwable.message
+                                    ?: "Official YouTube Music video unavailable",
+                        )
+                }.onSuccess { video ->
+                    videoResolveJob = null
+
+                    val position =
+                        player.currentPosition
+                            .coerceAtLeast(0L)
+                    val wasPlaying =
+                        player.playWhenReady
+
+                    val videoItem =
+                        MediaItem.Builder()
+                            .setMediaId(canonicalMediaId)
+                            /*
+                             * Keep the case-sensitive YouTube id in the PATH,
+                             * not in URI host/authority.
+                             */
+                            .setUri(
+                                "$CAPSULE_VIDEO_SCHEME://play/${video.videoId}",
+                            )
+                            .setCustomCacheKey(
+                                "$CAPSULE_VIDEO_CACHE_PREFIX${video.videoId}",
+                            )
+                            .setMediaMetadata(currentItem.mediaMetadata)
+                            .apply {
+                                currentItem.localConfiguration?.tag?.let(::setTag)
+                            }
+                            .build()
+
+                    videoPlaybackState.value =
+                        CapsuleVideoPlaybackState(
+                            mode = CapsulePlaybackMode.VIDEO,
+                            phase = CapsuleVideoPhase.RESOLVING,
+                            mediaId = canonicalMediaId,
+                            videoId = video.videoId,
+                            qualityLabel = video.qualityLabel,
+                            width = video.format.width,
+                            height = video.format.height,
+                            message = null,
+                        )
+
+                    player.replaceMediaItem(currentIndex, videoItem)
+                    player.seekTo(currentIndex, position)
+                    player.prepare()
+                    player.playWhenReady = wasPlaying
+                }
+            }
     }
 
     private fun leaveCapsuleVideoMode() {
+        videoResolveJob?.cancel()
+        videoResolveJob = null
+
         val currentItem = player.currentMediaItem ?: run {
             videoPlaybackState.value = CapsuleVideoPlaybackState()
             return
@@ -4354,6 +4426,9 @@ class MusicService :
     }
 
     private fun restoreOriginalAudioItem(failureMessage: String?) {
+        videoResolveJob?.cancel()
+        videoResolveJob = null
+
         val currentItem = player.currentMediaItem ?: return
         val canonicalMediaId =
             videoOriginalMediaId
