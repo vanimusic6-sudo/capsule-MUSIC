@@ -1,5 +1,5 @@
 
- /** Capsule MUSIC
+ /*** Capsule MUSIC
  * Minimal AUDIO / VIDEO switch.
  * Keeps the original Capsule player layout untouched except for this control.
  * GPL-3.0
@@ -17,7 +17,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.weight
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
