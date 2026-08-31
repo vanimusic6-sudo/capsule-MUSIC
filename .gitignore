@@ -39,3 +39,7 @@ captures/
 *.keystore
 *.properties
 !gradle.properties
+# The blanket *.properties rule above is a keystore/secret guard, but it also
+# swallowed the Gradle wrapper config, which is why ./gradlew stopped working.
+!gradle/wrapper/gradle-wrapper.properties
+!app/src/main/res/resources.properties
