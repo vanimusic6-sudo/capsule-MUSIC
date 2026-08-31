@@ -4335,6 +4335,7 @@ class MusicService :
             val videoId =
                 videoKey
                     ?.removePrefix(CAPSULE_VIDEO_CACHE_PREFIX)
+                    ?.substringBefore(':')
                     ?.takeIf { it.isNotBlank() }
                     ?: dataSpec.uri
                         .takeIf { it.scheme.equals(CAPSULE_VIDEO_SCHEME, ignoreCase = true) }
@@ -4660,7 +4661,16 @@ class MusicService :
                         MediaItem.Builder()
                             .setMediaId(canonicalMediaId)
                             .setUri("$CAPSULE_VIDEO_SCHEME://play/${video.videoId}")
-                            .setCustomCacheKey("$CAPSULE_VIDEO_CACHE_PREFIX${video.videoId}")
+                            /*
+                             * The itag belongs in the key. The resolver caches
+                             * per quality, so without it a 360p and a 720p run
+                             * of the same clip share one cache entry and get
+                             * spans from two different files stitched together.
+                             */
+                            .setCustomCacheKey(
+                                "$CAPSULE_VIDEO_CACHE_PREFIX" +
+                                    "${video.videoId}:${video.format.itag}",
+                            )
                             .setMediaMetadata(currentItem.mediaMetadata)
                             .apply {
                                 currentItem.localConfiguration?.tag?.let(::setTag)
@@ -4772,14 +4782,25 @@ class MusicService :
         if (invalidateFailedVideo && !failedVideoId.isNullOrBlank()) {
             YouTubeVideoResolver.invalidate(failedVideoId)
             scope.launch(Dispatchers.IO) {
+                /*
+                 * VIDEO bytes live in videoCache since the cache split, and the
+                 * muxed key now carries an itag suffix, so this has to be a
+                 * prefix scan over the right cache rather than one exact key.
+                 */
                 runCatching {
-                    playerCache.removeResource("$CAPSULE_VIDEO_CACHE_PREFIX$failedVideoId")
-                    playerCache.keys
+                    videoCache.keys
                         .filter { key ->
-                            key.startsWith(CAPSULE_VIDEO_STREAM_CACHE_PREFIX) &&
-                                key.contains(":$failedVideoId:")
+                            (
+                                key.startsWith(CAPSULE_VIDEO_CACHE_PREFIX) &&
+                                    key
+                                        .removePrefix(CAPSULE_VIDEO_CACHE_PREFIX)
+                                        .substringBefore(':') == failedVideoId
+                            ) || (
+                                key.startsWith(CAPSULE_VIDEO_STREAM_CACHE_PREFIX) &&
+                                    key.contains(":$failedVideoId:")
+                            )
                         }
-                        .forEach(playerCache::removeResource)
+                        .forEach(videoCache::removeResource)
                 }
             }
         }
