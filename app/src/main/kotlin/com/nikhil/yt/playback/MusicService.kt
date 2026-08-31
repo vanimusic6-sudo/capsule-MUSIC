@@ -156,6 +156,7 @@ import com.nikhil.yt.db.entities.Song
 import com.nikhil.yt.db.entities.SongEntity
 import com.nikhil.yt.di.DownloadCache
 import com.nikhil.yt.di.PlayerCache
+import com.nikhil.yt.di.VideoCache
 import com.nikhil.yt.extensions.SilentHandler
 import com.nikhil.yt.extensions.collect
 import com.nikhil.yt.extensions.collectLatest
@@ -188,6 +189,7 @@ import com.nikhil.yt.playback.video.CAPSULE_VIDEO_STREAM_CACHE_PREFIX
 import com.nikhil.yt.playback.video.CapsulePlaybackMode
 import com.nikhil.yt.playback.video.CapsuleVideoPhase
 import com.nikhil.yt.playback.video.CapsuleVideoPlaybackState
+import com.nikhil.yt.playback.video.CapsuleCacheRoutingDataSource
 import com.nikhil.yt.playback.video.YouTubeVideoResolver
 import com.nikhil.yt.ui.screens.settings.DiscordPresenceManager
 import com.nikhil.yt.ui.screens.settings.ListenBrainzManager
@@ -196,7 +198,7 @@ import com.nikhil.yt.utils.DiscordRPC
 import com.nikhil.yt.utils.NetworkConnectivityObserver
 import com.nikhil.yt.utils.StreamClientUtils
 import com.nikhil.yt.utils.SyncUtils
-import com.nikhil.yt.utils.YTPlayerUtils
+import com.nikhil.yt.playback.audio.CapsuleAudioEngine
 import com.nikhil.yt.utils.dataStore
 import com.nikhil.yt.utils.enumPreference
 import com.nikhil.yt.utils.get
@@ -418,6 +420,10 @@ class MusicService :
     @Inject
     @PlayerCache
     lateinit var playerCache: Cache
+
+    @Inject
+    @VideoCache
+    lateinit var videoCache: Cache
 
     @Inject
     @DownloadCache
@@ -1417,7 +1423,7 @@ class MusicService :
 
     private suspend fun recoverSong(
         mediaId: String,
-        playbackData: YTPlayerUtils.PlaybackData? = null
+        playbackData: CapsuleAudioEngine.PlaybackData? = null
     ) {
         val song = database.song(mediaId).first()
         val mediaMetadata = withContext(Dispatchers.Main) {
@@ -1425,7 +1431,7 @@ class MusicService :
         } ?: return
         val duration = song?.song?.duration?.takeIf { it != -1 }
             ?: mediaMetadata.duration.takeIf { it != -1 }
-            ?: (playbackData?.videoDetails ?: YTPlayerUtils.playerResponseForMetadata(mediaId)
+            ?: (playbackData?.videoDetails ?: CapsuleAudioEngine.playerResponseForMetadata(mediaId)
                 .getOrNull()?.videoDetails)?.lengthSeconds?.toInt()
             ?: -1
         database.query {
@@ -4077,16 +4083,16 @@ class MusicService :
 
         if (
             currentMediaId != null &&
-            YTPlayerUtils.isBotDetectionException(error)
+            CapsuleAudioEngine.isBotDetectionException(error)
         ) {
             /*
              * An explicit bot-check is not a reason to cycle through more
              * identities. Open the AUDIO breaker and stop this attempt.
              */
-            YTPlayerUtils.markBotDetectionFailure(
+            CapsuleAudioEngine.markBotDetectionFailure(
                 error.message ?: error.cause?.message,
             )
-            YTPlayerUtils.invalidateCachedStreamUrls(currentMediaId)
+            CapsuleAudioEngine.invalidateCachedStreamUrls(currentMediaId)
             playbackUrlCache.remove(currentMediaId)
             pendingStreamRefreshValidationMediaId = null
 
@@ -4155,15 +4161,15 @@ class MusicService :
             )
 
             /*
-             * 403 is scoped to this track + client. 429 opens YTPlayerUtils'
+             * 403 is scoped to this track + client. 429 opens CapsuleAudioEngine's
              * global cooldown. Never poison the client for every song.
              */
-            YTPlayerUtils.markStreamClientFailed(
+            CapsuleAudioEngine.markStreamClientFailed(
                 videoId = currentMediaId,
                 clientKey = failingStreamClientKey,
                 httpStatusCode = httpStatusCode,
             )
-            YTPlayerUtils.invalidateCachedStreamUrls(currentMediaId)
+            CapsuleAudioEngine.invalidateCachedStreamUrls(currentMediaId)
             playbackUrlCache.remove(currentMediaId)
             pendingStreamRefreshValidationMediaId = null
 
@@ -4273,8 +4279,26 @@ class MusicService :
             ).setCacheWriteDataSinkFactory(null)
             .setFlags(FLAG_IGNORE_CACHE_ON_ERROR)
 
+    private fun createVideoCacheDataSource(): CacheDataSource.Factory =
+        CacheDataSource
+            .Factory()
+            .setCache(videoCache)
+            .setUpstreamDataSourceFactory(
+                DefaultDataSource.Factory(
+                    this,
+                    OkHttpDataSource.Factory(mediaOkHttpClient),
+                ),
+            )
+            .setFlags(FLAG_IGNORE_CACHE_ON_ERROR)
+
     private fun createDataSourceFactory(): DataSource.Factory {
-        return ResolvingDataSource.Factory(createCacheDataSource()) { dataSpec ->
+        val routedCacheFactory =
+            CapsuleCacheRoutingDataSource.Factory(
+                audioFactory = createCacheDataSource(),
+                videoFactory = createVideoCacheDataSource(),
+            )
+
+        return ResolvingDataSource.Factory(routedCacheFactory) { dataSpec ->
             val splitStreamKey =
                 dataSpec.key
                     ?.takeIf { it.startsWith(CAPSULE_VIDEO_STREAM_CACHE_PREFIX) }
@@ -4329,7 +4353,7 @@ class MusicService :
                                 mode = CapsulePlaybackMode.AUDIO,
                                 phase = CapsuleVideoPhase.REQUEST_ERROR,
                                 videoId = videoId,
-                                message = throwable.message ?: "Video request failed",
+                                message = "VIDEO temporarily unavailable — continuing with audio",
                             )
                         throw PlaybackException(
                             throwable.message ?: "Video stream unavailable",
@@ -4394,7 +4418,7 @@ class MusicService :
             }
 
             val playbackData = runBlocking(Dispatchers.IO) {
-                YTPlayerUtils.playerResponseForPlayback(
+                CapsuleAudioEngine.playerResponseForPlayback(
                     mediaId,
                     audioQuality = audioQuality,
                     connectivityManager = connectivityManager,
@@ -4622,7 +4646,7 @@ class MusicService :
                                     ?: if (noMatchingVideo) {
                                         "Official YouTube Music video unavailable"
                                     } else {
-                                        "Video request failed"
+                                        "VIDEO temporarily unavailable — continuing with audio"
                                     },
                         )
                 }.onSuccess { video ->
@@ -4970,8 +4994,8 @@ class MusicService :
     fun retryCurrentFromFreshStream() {
         val mediaId = player.currentMediaItem?.mediaId ?: return
         clearStreamRefreshGuards(mediaId)
-        YTPlayerUtils.clearTrackClientFailures(mediaId)
-        YTPlayerUtils.invalidateCachedStreamUrls(mediaId)
+        CapsuleAudioEngine.clearTrackClientFailures(mediaId)
+        CapsuleAudioEngine.invalidateCachedStreamUrls(mediaId)
         playbackUrlCache.remove(mediaId)
         pendingStreamRefreshValidationMediaId = mediaId
         player.prepare()
@@ -5240,7 +5264,7 @@ class MusicService :
         if (cachedSuccess) return
 
         val playbackTracking =
-            YTPlayerUtils.playerResponseForMetadata(mediaId, null)
+            CapsuleAudioEngine.playerResponseForMetadata(mediaId, null)
                 .getOrNull()
                 ?.playbackTracking
                 ?: return
