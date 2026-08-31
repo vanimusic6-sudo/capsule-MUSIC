@@ -586,15 +586,27 @@ object YTPlayerUtils {
                         )
                     }
 
-                    YouTubeFailureKind.LOGIN_REQUIRED,
-                    YouTubeFailureKind.AGE_RESTRICTED,
-                    YouTubeFailureKind.PERMANENT,
-                    -> {
+                    YouTubeFailureKind.PERMANENT -> {
+                        /*
+                         * A removed/private/region-permanent item is a property
+                         * of the content itself. Rotating clients only adds
+                         * traffic and cannot make the item exist again.
+                         */
                         throw PlaybackException(
-                            "This track is unavailable in the current session",
+                            "This track is unavailable",
                             playerFailure,
                             PlaybackException.ERROR_CODE_REMOTE_ERROR,
                         )
+                    }
+
+                    YouTubeFailureKind.LOGIN_REQUIRED,
+                    YouTubeFailureKind.AGE_RESTRICTED,
+                    -> {
+                        /*
+                         * These responses can be client-specific. Keep the hard
+                         * request budget, but allow the next reviewed client.
+                         * Never open the global breaker for login/age.
+                         */
                     }
 
                     else -> Unit
@@ -636,20 +648,30 @@ object YTPlayerUtils {
                         )
                     }
 
-                    YouTubeFailureKind.AGE_RESTRICTED,
-                    YouTubeFailureKind.LOGIN_REQUIRED,
-                    YouTubeFailureKind.PERMANENT,
-                    -> {
-                        /*
-                         * These are properties of the track/session, not a
-                         * signal to rotate through more client identities.
-                         * Stop this track without opening the global breaker.
-                         */
+                    YouTubeFailureKind.PERMANENT -> {
                         throw PlaybackException(
-                            reason.ifBlank { "This track is unavailable in the current session" },
+                            reason.ifBlank { "This track is unavailable" },
                             null,
                             PlaybackException.ERROR_CODE_REMOTE_ERROR,
                         )
+                    }
+
+                    YouTubeFailureKind.AGE_RESTRICTED,
+                    YouTubeFailureKind.LOGIN_REQUIRED,
+                    -> {
+                        /*
+                         * Do not open the global breaker. A different reviewed
+                         * client can legitimately return a playable response.
+                         * The request budget still caps the total attempts.
+                         */
+                        lastFailure =
+                            PlaybackException(
+                                reason.ifBlank {
+                                    "This track requires a different playback session"
+                                },
+                                null,
+                                PlaybackException.ERROR_CODE_REMOTE_ERROR,
+                            )
                     }
 
                     YouTubeFailureKind.FORBIDDEN -> {
@@ -1171,6 +1193,18 @@ object YTPlayerUtils {
             playabilityStatus = status,
             text = reason,
         )
+
+    internal fun shouldTryNextClientForTest(
+        kind: YouTubeFailureKind,
+    ): Boolean =
+        when (kind) {
+            YouTubeFailureKind.RATE_LIMITED,
+            YouTubeFailureKind.BOT_CHECK,
+            YouTubeFailureKind.PERMANENT,
+            -> false
+
+            else -> true
+        }
 
     private fun isBotDetectionError(
         reason: String,
