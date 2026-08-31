@@ -74,4 +74,22 @@ class YouTubeFailureClassifierTest {
             ),
         )
     }
+    @Test
+    fun explicitBotBodyWinsOver401And403() {
+        assertEquals(
+            YouTubeFailureKind.BOT_CHECK,
+            YouTubeFailureClassifier.classify(
+                httpStatusCode = 403,
+                text = "Sign in to confirm you're not a bot",
+            ),
+        )
+        assertEquals(
+            YouTubeFailureKind.BOT_CHECK,
+            YouTubeFailureClassifier.classify(
+                httpStatusCode = 401,
+                text = "Подтвердите, что вы не робот",
+            ),
+        )
+    }
+
 }
