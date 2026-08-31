@@ -35,8 +35,20 @@ object YouTubeFailureClassifier {
                 .orEmpty()
         val normalizedText = text.orEmpty().lowercase(Locale.US)
 
+        /*
+         * 429 is already a definitive machine-readable stop signal.
+         * For generic 401/403, however, an explicit anti-bot response body is
+         * more specific and must win over the transport code.
+         */
+        if (httpStatusCode == 429) {
+            return YouTubeFailureKind.RATE_LIMITED
+        }
+
+        if (containsExplicitBotSignal(normalizedText)) {
+            return YouTubeFailureKind.BOT_CHECK
+        }
+
         when (httpStatusCode) {
-            429 -> return YouTubeFailureKind.RATE_LIMITED
             401 -> return YouTubeFailureKind.LOGIN_REQUIRED
             403 -> return YouTubeFailureKind.FORBIDDEN
             in 500..599 -> return YouTubeFailureKind.TRANSIENT
@@ -50,9 +62,6 @@ object YouTubeFailureClassifier {
             -> return YouTubeFailureKind.AGE_RESTRICTED
 
             "LOGIN_REQUIRED" -> {
-                if (containsExplicitBotSignal(normalizedText)) {
-                    return YouTubeFailureKind.BOT_CHECK
-                }
                 if (containsAgeSignal(normalizedText)) {
                     return YouTubeFailureKind.AGE_RESTRICTED
                 }
