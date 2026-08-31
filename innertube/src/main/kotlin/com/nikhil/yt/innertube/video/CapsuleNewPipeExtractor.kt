@@ -9,6 +9,8 @@
  */
 package com.nikhil.yt.innertube.video
 
+import com.nikhil.yt.innertube.YouTubeFailureClassifier
+import com.nikhil.yt.innertube.YouTubeFailureKind
 import org.schabi.newpipe.extractor.NewPipe
 import org.schabi.newpipe.extractor.exceptions.ContentNotAvailableException
 import org.schabi.newpipe.extractor.exceptions.ExtractionException
@@ -122,33 +124,38 @@ object CapsuleNewPipeExtractor {
                 .take(8)
                 .mapNotNull { it?.message }
                 .joinToString(" ")
-                .lowercase()
 
-        return when {
-            throwable is ReCaptchaException ||
-                "captcha" in text ||
-                "not a bot" in text ||
-                "confirm you're not a bot" in text ||
-                "confirm you’re not a bot" in text ||
-                "unusual traffic" in text -> CapsuleNewPipeFailure.BOT_BLOCKED
+        /*
+         * CapsuleNewPipeDownloader represents HTTP 429 as ReCaptchaException
+         * for NewPipe API compatibility, so machine-like 429 text must win
+         * before the exception class itself is treated as a bot/captcha event.
+         */
+        return when (
+            YouTubeFailureClassifier.classify(
+                httpStatusCode = null,
+                playabilityStatus = null,
+                text = text,
+            )
+        ) {
+            YouTubeFailureKind.RATE_LIMITED -> CapsuleNewPipeFailure.RATE_LIMITED
+            YouTubeFailureKind.BOT_CHECK -> CapsuleNewPipeFailure.BOT_BLOCKED
+            YouTubeFailureKind.LOGIN_REQUIRED,
+            YouTubeFailureKind.AGE_RESTRICTED,
+            YouTubeFailureKind.UNPLAYABLE,
+            YouTubeFailureKind.PERMANENT,
+            -> CapsuleNewPipeFailure.UNAVAILABLE
 
-            "429" in text || "too many requests" in text || "rate limit" in text ->
-                CapsuleNewPipeFailure.RATE_LIMITED
-
-            throwable is ContentNotAvailableException ||
-                "video unavailable" in text ||
-                "private video" in text ||
-                "not available in your country" in text ||
-                "age-restricted" in text -> CapsuleNewPipeFailure.UNAVAILABLE
-
-            throwable is SocketTimeoutException ||
-                throwable is IOException ||
-                "timeout" in text ||
-                "unable to resolve host" in text ||
-                "connection reset" in text -> CapsuleNewPipeFailure.NETWORK
-
-            throwable is ExtractionException -> CapsuleNewPipeFailure.EXTRACTOR
-            else -> CapsuleNewPipeFailure.UNKNOWN
+            YouTubeFailureKind.TRANSIENT -> CapsuleNewPipeFailure.NETWORK
+            YouTubeFailureKind.FORBIDDEN -> CapsuleNewPipeFailure.EXTRACTOR
+            YouTubeFailureKind.NONE ->
+                when {
+                    throwable is ReCaptchaException -> CapsuleNewPipeFailure.BOT_BLOCKED
+                    throwable is ContentNotAvailableException -> CapsuleNewPipeFailure.UNAVAILABLE
+                    throwable is SocketTimeoutException || throwable is IOException ->
+                        CapsuleNewPipeFailure.NETWORK
+                    throwable is ExtractionException -> CapsuleNewPipeFailure.EXTRACTOR
+                    else -> CapsuleNewPipeFailure.UNKNOWN
+                }
         }
     }
 
