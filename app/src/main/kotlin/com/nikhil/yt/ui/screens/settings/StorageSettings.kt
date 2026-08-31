@@ -399,14 +399,14 @@ fun StorageSettings(
             item {
                 NewCacheCard(
                     icon = R.drawable.motion_photos_on,
-                    title = "Video cache",
+                    title = stringResource(R.string.video_cache),
                     description =
                         "${formatFileSize(videoCacheSize)} / " +
                             formatFileSize(CAPSULE_VIDEO_CACHE_BYTES),
                     progress = videoCacheProgress,
                     showMaxCacheSize = false,
                     maxCacheSizeText = null,
-                    clearActionText = "Clear video cache",
+                    clearActionText = stringResource(R.string.clear_video_cache),
                     onClearClick = { clearVideoCacheDialog = true },
                 )
             }
@@ -554,7 +554,7 @@ fun StorageSettings(
 
         if (clearVideoCacheDialog) {
             ActionPromptDialog(
-                title = "Clear video cache",
+                title = stringResource(R.string.clear_video_cache),
                 onDismiss = { clearVideoCacheDialog = false },
                 onConfirm = {
                     coroutineScope.launch(Dispatchers.IO) {
@@ -567,10 +567,7 @@ fun StorageSettings(
                 onCancel = { clearVideoCacheDialog = false },
                 content = {
                     Text(
-                        text =
-                            "Remove cached video data. " +
-                                "Downloaded songs and the music cache " +
-                                "will not be affected.",
+                        text = stringResource(R.string.clear_video_cache_dialog),
                     )
                 },
             )
