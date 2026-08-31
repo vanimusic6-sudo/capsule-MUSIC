@@ -6,21 +6,18 @@
  * This does not try to impersonate or hide Capsule as an official YouTube
  * application. Its purpose is the opposite: make VIDEO polite and fail closed.
  *
- * v2 changes:
- *  - API and STREAM traffic are gated separately (stream probes used to bypass
- *    the gate entirely, which was the main source of request bursts).
- *  - A token bucket puts a real ceiling on sustained traffic instead of only
- *    enforcing a minimum gap.
- *  - Failures are classified instead of pattern-matched into one boolean, so a
- *    routine googlevideo 403 no longer kills the whole VIDEO path for 10 min.
- *  - Backoff escalates (10 min -> 30 min -> 2 h -> 6 h) and can be persisted
- *    across process death through [onStateChanged] / [restore].
+ * v3 hardening:
+ *  - HTTP status and playabilityStatus are classified before localized text;
+ *  - generic "sign in" is no longer treated as a bot-check;
+ *  - Ktor ResponseException status is read directly when available;
+ *  - existing token bucket / escalating breaker behaviour is preserved.
  *
  * GPL-3.0
  */
 
 package com.nikhil.yt.innertube
 
+import io.ktor.client.plugins.ResponseException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -29,67 +26,28 @@ import kotlin.math.min
 import kotlin.random.Random
 
 object CapsuleVideoRequestGuard {
-
-    // ---------------------------------------------------------------------
-    // Tuning
-    // ---------------------------------------------------------------------
-
-    /**
-     * Which endpoint family a request belongs to.
-     *
-     * API      -> youtubei (search / player / browse). Expensive, closely
-     *             watched, and the only surface where a 403 really means
-     *             "stop".
-     * STREAM   -> googlevideo range probes. Cheap, noisy, and a 403 there is
-     *             usually just a bad format or a stale signature.
-     */
     enum class Surface { API, STREAM }
 
     enum class FailureKind {
-        /** Nothing suspicious. Retrying another client/format is fine. */
         NONE,
-
-        /** HTTP 429 / "too many requests". Always trips the breaker. */
         RATE_LIMITED,
-
-        /** Anti-bot interstitial or captcha. Always trips the breaker. */
         BOT_CHECK,
-
-        /** HTTP 403. Trips on API, tolerated (counted) on STREAM. */
         FORBIDDEN,
-
-        /** Timeout, IO error, 5xx. Retry is reasonable. */
         TRANSIENT,
-
-        /** Video is gone / private / region-locked / login-only. Do not retry. */
         PERMANENT,
     }
 
-    /** Minimum spacing between two youtubei requests. */
     private const val API_MIN_GAP_MS = 900L
     private const val API_JITTER_MS = 600L
-
-    /** Minimum spacing between two googlevideo range probes. */
     private const val STREAM_MIN_GAP_MS = 150L
     private const val STREAM_JITTER_MS = 120L
 
-    /**
-     * Sustained ceiling. The bucket holds [BUCKET_CAPACITY] tokens and refills
-     * one token every [REFILL_INTERVAL_MS], i.e. ~180 API requests per hour
-     * with room for a short burst when the user actually switches to VIDEO.
-     *
-     * A stream probe costs less than an API call because it is a 1 KiB range
-     * request against a CDN rather than an InnerTube call.
-     */
     private const val BUCKET_CAPACITY = 20.0
     private const val REFILL_INTERVAL_MS = 20_000.0
     private const val API_COST = 1.0
     private const val STREAM_COST = 0.34
-
-    /** How long a caller may be parked waiting for a token before we give up. */
     private const val MAX_QUEUE_WAIT_MS = 2_500L
 
-    /** Escalating circuit-breaker steps. */
     private val BACKOFF_STEPS_MS =
         longArrayOf(
             10 * 60 * 1000L,
@@ -98,23 +56,9 @@ object CapsuleVideoRequestGuard {
             6 * 60 * 60 * 1000L,
         )
 
-    /** Clean running time after which the escalation level decays back down. */
     private const val ESCALATION_DECAY_MS = 6 * 60 * 60 * 1000L
-
-    /**
-     * A single googlevideo 403 is normal. This many in a row, across different
-     * formats and clients, is not.
-     */
     private const val STREAM_FORBIDDEN_STREAK_LIMIT = 6
 
-    // ---------------------------------------------------------------------
-    // State
-    // ---------------------------------------------------------------------
-
-    /**
-     * Serialisable view of the breaker, so the app can persist it (DataStore,
-     * Room, SharedPreferences) and survive process death.
-     */
     data class Snapshot(
         val blockedUntilMs: Long,
         val escalationLevel: Int,
@@ -122,15 +66,6 @@ object CapsuleVideoRequestGuard {
         val reason: String?,
     )
 
-    /**
-     * Called whenever the breaker state changes. Wire this to persistent
-     * storage from Application.onCreate:
-     *
-     *     CapsuleVideoRequestGuard.restore(loadedSnapshot)
-     *     CapsuleVideoRequestGuard.onStateChanged = { scope.launch { save(it) } }
-     *
-     * Must not block: it runs on the caller's dispatcher.
-     */
     @Volatile
     var onStateChanged: ((Snapshot) -> Unit)? = null
 
@@ -168,10 +103,6 @@ object CapsuleVideoRequestGuard {
         cause: Throwable? = null,
     ) : IllegalStateException(message, cause)
 
-    // ---------------------------------------------------------------------
-    // Persistence
-    // ---------------------------------------------------------------------
-
     fun snapshot(): Snapshot =
         Snapshot(
             blockedUntilMs = blockedUntilMs,
@@ -180,16 +111,10 @@ object CapsuleVideoRequestGuard {
             reason = blockReason,
         )
 
-    /**
-     * Restores a previously persisted breaker state. Safe to call once at
-     * startup; ignores snapshots whose block window already elapsed.
-     */
     fun restore(snapshot: Snapshot?) {
         snapshot ?: return
 
         val now = System.currentTimeMillis()
-
-        // Guard against a clock jump / restored backup from the future.
         val sane = snapshot.blockedUntilMs <= now + BACKOFF_STEPS_MS.last()
 
         blockedUntilMs = if (sane) snapshot.blockedUntilMs else 0L
@@ -201,14 +126,8 @@ object CapsuleVideoRequestGuard {
         decayEscalationIfClean(now)
     }
 
-    // ---------------------------------------------------------------------
-    // Gate
-    // ---------------------------------------------------------------------
-
-    /** Kept for source compatibility with v1 call sites. */
     suspend fun beforeMetadataRequest() = acquire(Surface.API)
 
-    /** Gate for googlevideo range probes. v1 did not gate these at all. */
     suspend fun beforeStreamProbe() = acquire(Surface.STREAM)
 
     suspend fun acquire(surface: Surface) {
@@ -259,9 +178,7 @@ object CapsuleVideoRequestGuard {
                 }
 
             val waitMs = gap - (now - lastAt)
-            if (waitMs > 0L) {
-                delay(waitMs)
-            }
+            if (waitMs > 0L) delay(waitMs)
 
             val stamp = System.currentTimeMillis()
             if (surface == Surface.API) {
@@ -280,86 +197,44 @@ object CapsuleVideoRequestGuard {
         lastRefillAtMs = now
     }
 
-    // ---------------------------------------------------------------------
-    // Failure handling
-    // ---------------------------------------------------------------------
+    fun classify(text: String?): FailureKind =
+        mapFailureKind(
+            YouTubeFailureClassifier.classify(
+                httpStatusCode = null,
+                playabilityStatus = null,
+                text = text,
+            ),
+        )
 
-    /**
-     * Classifies a throwable chain or a raw message without changing any state.
-     * Exposed so callers can decide whether a playabilityStatus reason is worth
-     * retrying on another client.
-     */
-    fun classify(text: String?): FailureKind {
-        val message = " ${text.orEmpty().lowercase()} "
-        if (message.isBlank()) return FailureKind.NONE
+    fun classify(
+        httpStatusCode: Int? = null,
+        playabilityStatus: String? = null,
+        text: String? = null,
+    ): FailureKind =
+        mapFailureKind(
+            YouTubeFailureClassifier.classify(
+                httpStatusCode = httpStatusCode,
+                playabilityStatus = playabilityStatus,
+                text = text,
+            ),
+        )
 
-        val rateLimited =
-            " 429 " in message ||
-                "http 429" in message ||
-                "response code 429" in message ||
-                "too many requests" in message ||
-                "rate limit" in message ||
-                "quota exceeded" in message
+    fun classify(throwable: Throwable): FailureKind {
+        val responseCode =
+            generateSequence(throwable as Throwable?) { it?.cause }
+                .take(8)
+                .filterIsInstance<ResponseException>()
+                .firstOrNull()
+                ?.response
+                ?.status
+                ?.value
 
-        if (rateLimited) return FailureKind.RATE_LIMITED
-
-        val botCheck =
-            "not a bot" in message ||
-                "bot detection" in message ||
-                "unusual traffic" in message ||
-                "captcha" in message ||
-                "recaptcha" in message ||
-                "confirm you're not a bot" in message ||
-                "confirm you’re not a bot" in message ||
-                "sign in to confirm" in message
-
-        if (botCheck) return FailureKind.BOT_CHECK
-
-        val permanent =
-            "video unavailable" in message ||
-                "is not available" in message ||
-                "no longer available" in message ||
-                "private video" in message ||
-                "has been removed" in message ||
-                "removed by the uploader" in message ||
-                "terms of service" in message ||
-                "not available in your country" in message ||
-                "age" in message && "verif" in message
-
-        if (permanent) return FailureKind.PERMANENT
-
-        val forbidden =
-            " 403 " in message ||
-                "http 403" in message ||
-                "response code 403" in message ||
-                "forbidden" in message
-
-        if (forbidden) return FailureKind.FORBIDDEN
-
-        val transient =
-            "timeout" in message ||
-                "timed out" in message ||
-                "connection reset" in message ||
-                "unexpected end of stream" in message ||
-                "unable to resolve host" in message ||
-                " 500 " in message ||
-                " 502 " in message ||
-                " 503 " in message ||
-                " 504 " in message
-
-        if (transient) return FailureKind.TRANSIENT
-
-        return FailureKind.NONE
+        return classify(
+            httpStatusCode = responseCode,
+            text = flatten(throwable),
+        )
     }
 
-    /** Classifies without touching state, so callers can decide when to trip. */
-    fun classify(throwable: Throwable): FailureKind = classify(flatten(throwable))
-
-    /**
-     * Opens the breaker explicitly, after the caller has exhausted its own
-     * fallbacks. Use this instead of tripping on the first suspicious response
-     * when a retry on another client is still plausible.
-     */
     fun noteBlockedAfterAllAttempts(reason: String) {
         trip(reason)
     }
@@ -370,18 +245,11 @@ object CapsuleVideoRequestGuard {
             .mapNotNull { it?.message }
             .joinToString(" ")
 
-    /**
-     * Reports a failure from the youtubei surface.
-     *
-     * Returns true when the VIDEO circuit breaker was opened, matching the v1
-     * contract so existing call sites keep working.
-     */
     fun noteFailure(throwable: Throwable): Boolean =
-        noteApiFailure(throwable) != FailureKind.NONE &&
-            isBlocked()
+        noteApiFailure(throwable) != FailureKind.NONE && isBlocked()
 
     fun noteApiFailure(throwable: Throwable): FailureKind {
-        val kind = classify(flatten(throwable))
+        val kind = classify(throwable)
 
         when (kind) {
             FailureKind.RATE_LIMITED,
@@ -395,14 +263,6 @@ object CapsuleVideoRequestGuard {
         return kind
     }
 
-    /**
-     * Reports the status code of a googlevideo range probe.
-     *
-     * 429 trips immediately. 403 only trips once it repeats
-     * [STREAM_FORBIDDEN_STREAK_LIMIT] times in a row, because an isolated 403
-     * there normally means a stale signature or a format the chosen client is
-     * not allowed to read, not that we are being throttled.
-     */
     fun noteStreamStatus(code: Int): FailureKind {
         if (code in 200..399 || code == 416) {
             streamForbiddenStreak = 0
@@ -427,10 +287,6 @@ object CapsuleVideoRequestGuard {
         return FailureKind.TRANSIENT
     }
 
-    /**
-     * v1 name. Kept so old call sites compile, but it now only trips for codes
-     * that genuinely warrant it on the API surface.
-     */
     fun noteHttpStatus(code: Int): Boolean {
         if (code != 403 && code != 429) return false
 
@@ -438,14 +294,9 @@ object CapsuleVideoRequestGuard {
         return true
     }
 
-    /** Resets the stream failure streak after a fully successful resolve. */
     fun noteSuccess() {
         streamForbiddenStreak = 0
     }
-
-    // ---------------------------------------------------------------------
-    // Breaker
-    // ---------------------------------------------------------------------
 
     fun isBlocked(): Boolean {
         val until = blockedUntilMs
@@ -470,14 +321,16 @@ object CapsuleVideoRequestGuard {
         val now = System.currentTimeMillis()
         decayEscalationIfClean(now)
 
-        val step = BACKOFF_STEPS_MS[escalationLevel.coerceIn(0, BACKOFF_STEPS_MS.lastIndex)]
+        val step =
+            BACKOFF_STEPS_MS[
+                escalationLevel.coerceIn(0, BACKOFF_STEPS_MS.lastIndex)
+            ]
 
         blockedUntilMs = max(blockedUntilMs, now + step)
         blockReason = reason
         lastTripAtMs = now
         escalationLevel = min(escalationLevel + 1, BACKOFF_STEPS_MS.lastIndex)
 
-        // Drain the bucket: whatever we were doing, we were doing too much.
         tokens = 0.0
         lastRefillAtMs = now
 
@@ -497,7 +350,20 @@ object CapsuleVideoRequestGuard {
         onStateChanged?.invoke(snapshot())
     }
 
-    /** Test / debug helper. Never call this to work around a live block. */
+    private fun mapFailureKind(kind: YouTubeFailureKind): FailureKind =
+        when (kind) {
+            YouTubeFailureKind.NONE -> FailureKind.NONE
+            YouTubeFailureKind.RATE_LIMITED -> FailureKind.RATE_LIMITED
+            YouTubeFailureKind.BOT_CHECK -> FailureKind.BOT_CHECK
+            YouTubeFailureKind.FORBIDDEN -> FailureKind.FORBIDDEN
+            YouTubeFailureKind.TRANSIENT -> FailureKind.TRANSIENT
+            YouTubeFailureKind.LOGIN_REQUIRED,
+            YouTubeFailureKind.AGE_RESTRICTED,
+            YouTubeFailureKind.UNPLAYABLE,
+            YouTubeFailureKind.PERMANENT,
+            -> FailureKind.PERMANENT
+        }
+
     fun resetForTests() {
         blockedUntilMs = 0L
         blockReason = null
