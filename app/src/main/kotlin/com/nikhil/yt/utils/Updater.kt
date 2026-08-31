@@ -43,7 +43,8 @@ private data class AtomEntry(
 object Updater {
     private const val RepositoryOwner = "vanimusic6-sudo"
     private const val RepositoryName = "capsule-MUSIC"
-    private const val RepositoryWeb = "https://github.com/$RepositoryOwner/$RepositoryName"
+    private const val RepositoryWeb =
+        "https://github.com/$RepositoryOwner/$RepositoryName"
     private const val ReleasesFeed = "$RepositoryWeb/releases.atom"
     private const val ReleaseCacheIntervalMs = 15 * 60 * 1000L
 
@@ -52,6 +53,10 @@ object Updater {
      * Unauthenticated GitHub REST requests have a small rate limit and can
      * return HTTP 403. Public Atom feeds are enough for release/commit checks
      * and do not consume that REST API quota.
+     *
+     * Automatic NewPipeExtractor VIDEO-engine builds use tags beginning with
+     * "video-engine-". They are intentionally hidden from the NORMAL Capsule
+     * app updater and handled separately by CapsuleVideoEngineUpdater.
      */
     private val client = HttpClient()
 
@@ -67,10 +72,14 @@ object Updater {
     private fun parseAtomFeed(xml: String): List<AtomEntry> {
         if (xml.isBlank()) return emptyList()
 
-        val parser = Xml.newPullParser().apply {
-            setFeature(XmlPullParser.FEATURE_PROCESS_NAMESPACES, false)
-            setInput(StringReader(xml))
-        }
+        val parser =
+            Xml.newPullParser().apply {
+                setFeature(
+                    XmlPullParser.FEATURE_PROCESS_NAMESPACES,
+                    false,
+                )
+                setInput(StringReader(xml))
+            }
 
         val entries = mutableListOf<AtomEntry>()
         var insideEntry = false
@@ -124,9 +133,19 @@ object Updater {
                         }
 
                         "link" -> if (insideEntry) {
-                            val href = parser.getAttributeValue(null, "href").orEmpty()
-                            val rel = parser.getAttributeValue(null, "rel").orEmpty()
-                            if (href.isNotBlank() && (link.isBlank() || rel == "alternate")) {
+                            val href =
+                                parser
+                                    .getAttributeValue(null, "href")
+                                    .orEmpty()
+                            val rel =
+                                parser
+                                    .getAttributeValue(null, "rel")
+                                    .orEmpty()
+
+                            if (
+                                href.isNotBlank() &&
+                                (link.isBlank() || rel == "alternate")
+                            ) {
                                 link = href
                             }
                         }
@@ -138,20 +157,22 @@ object Updater {
                         "author" -> insideAuthor = false
 
                         "entry" -> {
-                            entries += AtomEntry(
-                                id = id,
-                                title = title,
-                                updated = updated,
-                                link = link,
-                                content = content,
-                                author = author,
-                            )
+                            entries +=
+                                AtomEntry(
+                                    id = id,
+                                    title = title,
+                                    updated = updated,
+                                    link = link,
+                                    content = content,
+                                    author = author,
+                                )
                             insideEntry = false
                             insideAuthor = false
                         }
                     }
                 }
             }
+
             event = parser.next()
         }
 
@@ -161,46 +182,66 @@ object Updater {
     private suspend fun getFeed(url: String): HttpResponse =
         client.get(url) {
             headers {
-                append("Accept", "application/atom+xml, application/xml;q=0.9, text/xml;q=0.8, */*;q=0.5")
+                append(
+                    "Accept",
+                    "application/atom+xml, application/xml;q=0.9, " +
+                        "text/xml;q=0.8, */*;q=0.5",
+                )
                 append("User-Agent", "capsule-android")
                 append("Cache-Control", "no-cache")
             }
         }
 
     private fun releaseFromAtom(entry: AtomEntry): ReleaseInfo {
-        val tagFromUrl = entry.link
-            .substringAfter("/releases/tag/", "")
-            .substringBefore('?')
-            .substringBefore('#')
-            .trim('/')
+        val tagFromUrl =
+            entry.link
+                .substringAfter("/releases/tag/", "")
+                .substringBefore('?')
+                .substringBefore('#')
+                .trim('/')
 
-        val tag = tagFromUrl.ifBlank {
-            entry.title
-                .removePrefix("capsule ")
-                .removePrefix("Capsule ")
-                .trim()
-        }
+        val tag =
+            tagFromUrl.ifBlank {
+                entry.title
+                    .removePrefix("capsule ")
+                    .removePrefix("Capsule ")
+                    .trim()
+            }
 
         return ReleaseInfo(
             tagName = tag,
             name = entry.title.ifBlank { tag },
             body = entry.content.takeIf { it.isNotBlank() },
             publishedAt = entry.updated,
-            htmlUrl = entry.link.ifBlank {
-                if (tag.isBlank()) "$RepositoryWeb/releases" else "$RepositoryWeb/releases/tag/$tag"
-            },
+            htmlUrl =
+                entry.link.ifBlank {
+                    if (tag.isBlank()) {
+                        "$RepositoryWeb/releases"
+                    } else {
+                        "$RepositoryWeb/releases/tag/$tag"
+                    }
+                },
         )
     }
 
     private fun commitFromAtom(entry: AtomEntry): GitCommit {
-        val shaFromUrl = entry.link
-            .substringAfter("/commit/", "")
-            .substringBefore('/')
-            .substringBefore('?')
-            .substringBefore('#')
+        val shaFromUrl =
+            entry.link
+                .substringAfter("/commit/", "")
+                .substringBefore('/')
+                .substringBefore('?')
+                .substringBefore('#')
 
-        val shaFromId = entry.id.substringAfterLast('/').substringAfterLast(':')
-        val sha = shaFromUrl.ifBlank { shaFromId }.take(7).ifBlank { "commit" }
+        val shaFromId =
+            entry.id
+                .substringAfterLast('/')
+                .substringAfterLast(':')
+
+        val sha =
+            shaFromUrl
+                .ifBlank { shaFromId }
+                .take(7)
+                .ifBlank { "commit" }
 
         return GitCommit(
             sha = sha,
@@ -211,7 +252,16 @@ object Updater {
         )
     }
 
-    suspend fun getCachedReleases(): List<ReleaseInfo> = cachedReleases
+    private fun isNormalCapsuleRelease(release: ReleaseInfo): Boolean =
+        !release.tagName
+            .trim()
+            .startsWith(
+                "video-engine-",
+                ignoreCase = true,
+            )
+
+    suspend fun getCachedReleases(): List<ReleaseInfo> =
+        cachedReleases
 
     suspend fun getLatestVersionName(): Result<String> =
         getLatestReleaseInfo().map { latest ->
@@ -223,8 +273,14 @@ object Updater {
 
     suspend fun getLatestReleaseInfo(): Result<ReleaseInfo> =
         runCatching {
-            val latest = getAllReleases().getOrThrow().firstOrNull()
-                ?: throw IllegalStateException("No capsule releases found")
+            val latest =
+                getAllReleases()
+                    .getOrThrow()
+                    .firstOrNull()
+                    ?: throw IllegalStateException(
+                        "No capsule releases found",
+                    )
+
             lastCheckTime = System.currentTimeMillis()
             latest
         }
@@ -262,19 +318,28 @@ object Updater {
                     return@runCatching cachedReleases.take(limit)
                 }
 
-                // Do not leak GitHub REST-style HTTP 403 messages into the UI.
+                /*
+                 * Do not leak GitHub REST-style HTTP 403 messages into UI.
+                 */
                 throw IllegalStateException(
-                    "Could not reach capsule releases. Please try again later.",
+                    "Could not reach capsule releases. " +
+                        "Please try again later.",
                 )
             }
 
-            val parsed = parseAtomFeed(response.bodyAsText())
-                .map(::releaseFromAtom)
-                .filter { it.tagName.isNotBlank() || it.name.isNotBlank() }
+            val parsed =
+                parseAtomFeed(response.bodyAsText())
+                    .map(::releaseFromAtom)
+                    .filter {
+                        it.tagName.isNotBlank() ||
+                            it.name.isNotBlank()
+                    }
+                    .filter(::isNormalCapsuleRelease)
 
             cachedReleases = parsed
             lastReleaseFetchAt = now
             lastCheckTime = now
+
             parsed.take(limit)
         }
 
@@ -284,11 +349,16 @@ object Updater {
     ): Result<List<GitCommit>> =
         runCatching {
             val safeBranch = branch.trim().ifBlank { "main" }
-            val response = getFeed("$RepositoryWeb/commits/$safeBranch.atom")
+            val response =
+                getFeed(
+                    "$RepositoryWeb/commits/$safeBranch.atom",
+                )
             val status = response.status.value
 
             if (status !in 200..299) {
-                throw IllegalStateException("Commit history is temporarily unavailable")
+                throw IllegalStateException(
+                    "Commit history is temporarily unavailable",
+                )
             }
 
             parseAtomFeed(response.bodyAsText())
@@ -297,8 +367,9 @@ object Updater {
         }
 
     /*
-     * Open the latest release page instead of assuming a fixed APK filename.
-     * This keeps updates working even if the workflow changes the asset name.
+     * GitHub /releases/latest ignores prereleases, so automatic
+     * video-engine-* candidate releases do not hijack this URL.
      */
-    fun getLatestDownloadUrl(): String = "$RepositoryWeb/releases/latest"
+    fun getLatestDownloadUrl(): String =
+        "$RepositoryWeb/releases/latest"
 }
