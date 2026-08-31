@@ -24,9 +24,13 @@ enum class CapsuleVideoPhase {
 }
 
 /**
- * [preferredMode] is what the user chose and is sticky across queue transitions.
- * [mode] is what is actually playing right now. If a song has no matching clip,
- * preferredMode remains VIDEO while mode falls back to AUDIO and phase is UNAVAILABLE.
+ * [preferredMode] is the user's choice for the CURRENT track only.
+ *
+ * VIDEO is intentionally not sticky across queue transitions. MusicService
+ * resets the next/previous/selected track to AUDIO and a fresh VIDEO request
+ * happens only after the user explicitly presses VIDEO again.
+ *
+ * [mode] is what is actually playing right now.
  */
 data class CapsuleVideoPlaybackState(
     val preferredMode: CapsulePlaybackMode = CapsulePlaybackMode.AUDIO,
