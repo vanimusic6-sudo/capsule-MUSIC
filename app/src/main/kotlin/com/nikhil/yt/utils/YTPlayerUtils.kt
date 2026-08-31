@@ -22,6 +22,8 @@ import com.nikhil.yt.constants.AudioStreamPolicy
 import com.nikhil.yt.constants.PlayerStreamClient
 import com.nikhil.yt.innertube.CapsuleAnonymousSession
 import com.nikhil.yt.innertube.YouTube
+import com.nikhil.yt.innertube.YouTubeFailureClassifier
+import com.nikhil.yt.innertube.YouTubeFailureKind
 import com.nikhil.yt.innertube.models.YouTubeClient
 import com.nikhil.yt.innertube.models.YouTubeClient.Companion.TVHTML5
 import com.nikhil.yt.innertube.models.YouTubeClient.Companion.VISIONOS
@@ -30,6 +32,7 @@ import com.nikhil.yt.innertube.models.response.PlayerResponse
 import com.nikhil.yt.innertube.pages.NewPipeUtils
 import java.util.Locale
 import java.util.concurrent.ConcurrentHashMap
+import io.ktor.client.plugins.ResponseException
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.OkHttpClient
 import timber.log.Timber
@@ -48,6 +51,16 @@ object YTPlayerUtils {
      * clients creates more traffic. Stop network resolution for a while.
      */
     private const val GLOBAL_BREAKER_MS = 10 * 60 * 1000L
+
+    /* Hard request budget for one logical AUDIO resolve. */
+    private const val MAX_PLAYER_REQUESTS_PER_RESOLVE = 3
+    private const val MAX_STREAM_PROBES_PER_CLIENT = 2
+    private const val MAX_STREAM_PROBES_PER_RESOLVE = 4
+    private const val FRESH_CACHE_SAFETY_MS = 30_000L
+
+    /* Bound slow-growing in-memory state on very long sessions. */
+    private const val MAX_STREAM_CACHE_ENTRIES = 800
+    private const val MAX_FAILED_CLIENT_ENTRIES = 1_200
 
     @Volatile
     private var streamClientPair: Pair<java.net.Proxy?, OkHttpClient>? = null
@@ -93,12 +106,6 @@ object YTPlayerUtils {
      */
     private val MAIN_CLIENT: YouTubeClient = VISIONOS
 
-    private val STREAM_FALLBACK_CLIENTS: Array<YouTubeClient> =
-        arrayOf(
-            VISIONOS,
-            TVHTML5_DOWNGRADED,
-            TVHTML5,
-        )
 
     private data class CachedStreamUrl(
         val url: String,
@@ -109,6 +116,34 @@ object YTPlayerUtils {
         val success: Boolean,
         val statusCode: Int? = null,
     )
+
+    internal class ResolveRequestBudget(
+        private val maxPlayerRequests: Int = MAX_PLAYER_REQUESTS_PER_RESOLVE,
+        private val maxStreamProbes: Int = MAX_STREAM_PROBES_PER_RESOLVE,
+    ) {
+        var playerRequestsUsed: Int = 0
+            private set
+        var streamProbesUsed: Int = 0
+            private set
+
+        fun tryConsumePlayerRequest(): Boolean {
+            if (playerRequestsUsed >= maxPlayerRequests) return false
+            playerRequestsUsed += 1
+            return true
+        }
+
+        fun tryConsumeStreamProbe(): Boolean {
+            if (streamProbesUsed >= maxStreamProbes) return false
+            streamProbesUsed += 1
+            return true
+        }
+
+        val playerBudgetExhausted: Boolean
+            get() = playerRequestsUsed >= maxPlayerRequests
+
+        val streamProbeBudgetExhausted: Boolean
+            get() = streamProbesUsed >= maxStreamProbes
+    }
 
     private val streamUrlCache =
         ConcurrentHashMap<String, CachedStreamUrl>()
@@ -165,6 +200,7 @@ object YTPlayerUtils {
                 ] =
                     System.currentTimeMillis() +
                         TRACK_CLIENT_BACKOFF_MS
+                pruneFailedClientMap()
             }
 
             429 -> {
@@ -344,63 +380,66 @@ object YTPlayerUtils {
         runCatching {
             throwIfGlobalBreakerActive()
 
+            val budget = ResolveRequestBudget()
+            val signatureTimestamp = getSignatureTimestampOrNull(videoId)
             val attempts =
                 when (audioQuality) {
                     AudioQuality.HIGHEST ->
-                        listOf(
-                            AudioQuality.HIGHEST,
-                            AudioQuality.HIGH,
-                        )
-
+                        listOf(AudioQuality.HIGHEST, AudioQuality.HIGH)
                     AudioQuality.AUTO ->
-                        listOf(
-                            AudioQuality.AUTO,
-                            AudioQuality.HIGH,
-                        )
-
+                        listOf(AudioQuality.AUTO, AudioQuality.HIGH)
                     else -> listOf(audioQuality)
                 }.distinct()
 
             var lastError: Throwable? = null
 
-            for (attempt in attempts) {
-                val attemptResult =
-                    runCatching {
-                        playerResponseForPlaybackOnce(
-                            videoId = videoId,
-                            playlistId = playlistId,
-                            audioQuality = attempt,
-                            connectivityManager =
-                                connectivityManager,
-                            preferredStreamClient =
-                                preferredStreamClient,
-                            streamPolicy = streamPolicy,
-                            networkMetered = networkMetered,
-                            avoidCodecs = avoidCodecs,
-                        )
+            try {
+                for (attempt in attempts) {
+                    if (budget.playerBudgetExhausted) break
+
+                    val attemptResult =
+                        runCatching {
+                            playerResponseForPlaybackOnce(
+                                videoId = videoId,
+                                playlistId = playlistId,
+                                audioQuality = attempt,
+                                connectivityManager = connectivityManager,
+                                preferredStreamClient = preferredStreamClient,
+                                streamPolicy = streamPolicy,
+                                networkMetered = networkMetered,
+                                avoidCodecs = avoidCodecs,
+                                signatureTimestamp = signatureTimestamp,
+                                budget = budget,
+                            )
+                        }
+
+                    if (attemptResult.isSuccess) {
+                        return@runCatching attemptResult.getOrThrow()
                     }
 
-                if (attemptResult.isSuccess) {
-                    return@runCatching attemptResult.getOrThrow()
+                    lastError = attemptResult.exceptionOrNull()
+                    if (isGlobalBreakerActive()) {
+                        throw lastError
+                            ?: IllegalStateException("YouTube playback breaker active")
+                    }
                 }
 
-                lastError = attemptResult.exceptionOrNull()
-
-                /*
-                 * Never turn a global breaker into a second quality attempt.
-                 */
-                if (isGlobalBreakerActive()) {
-                    throw lastError
-                        ?: IllegalStateException(
-                            "YouTube playback breaker active",
-                        )
-                }
-            }
-
-            throw lastError
-                ?: IllegalStateException(
-                    "Failed to resolve stream",
+                throw lastError
+                    ?: PlaybackException(
+                        "YouTube AUDIO request budget exhausted",
+                        null,
+                        PlaybackException.ERROR_CODE_REMOTE_ERROR,
+                    )
+            } finally {
+                Timber.tag(logTag).i(
+                    "AUDIO resolve stats videoId=%s player=%d/%d probes=%d/%d",
+                    videoId,
+                    budget.playerRequestsUsed,
+                    MAX_PLAYER_REQUESTS_PER_RESOLVE,
+                    budget.streamProbesUsed,
+                    MAX_STREAM_PROBES_PER_RESOLVE,
                 )
+            }
         }
 
     private suspend fun playerResponseForPlaybackOnce(
@@ -412,6 +451,8 @@ object YTPlayerUtils {
         streamPolicy: AudioStreamPolicy,
         networkMetered: Boolean?,
         avoidCodecs: Set<String>,
+        signatureTimestamp: Int?,
+        budget: ResolveRequestBudget,
     ): PlaybackData {
         throwIfGlobalBreakerActive()
 
@@ -420,9 +461,6 @@ object YTPlayerUtils {
             videoId,
             playlistId,
         )
-
-        val signatureTimestamp =
-            getSignatureTimestampOrNull(videoId)
 
         val preferredYouTubeClient =
             preferredClient(
@@ -481,7 +519,6 @@ object YTPlayerUtils {
 
         if (streamClients.isEmpty()) {
             throwIfGlobalBreakerActive()
-
             throw PlaybackException(
                 "No safe YouTube stream client is currently available for this track",
                 null,
@@ -494,6 +531,7 @@ object YTPlayerUtils {
 
         for ((index, client) in streamClients.withIndex()) {
             throwIfGlobalBreakerActive()
+            if (!budget.tryConsumePlayerRequest()) break
 
             Timber.tag(logTag).i(
                 "Trying safe AUDIO client %d/%d: %s",
@@ -509,62 +547,134 @@ object YTPlayerUtils {
                     signatureTimestamp = signatureTimestamp,
                 )
 
-            val playerResponse =
-                playerResponseResult
-                    .onFailure {
-                        lastFailure = it
-                        Timber.tag(logTag).w(
-                            it,
-                            "Player request failed for %s",
-                            effectiveIdentityKey(client),
+            val playerFailure = playerResponseResult.exceptionOrNull()
+            if (playerFailure != null) {
+                lastFailure = playerFailure
+                val failureKind = classifyThrowableFailure(playerFailure)
+
+                Timber.tag(logTag).w(
+                    playerFailure,
+                    "Player request failed for %s (%s)",
+                    effectiveIdentityKey(client),
+                    failureKind,
+                )
+
+                when (failureKind) {
+                    YouTubeFailureKind.RATE_LIMITED -> {
+                        tripGlobalBreaker("YouTube returned HTTP 429")
+                        throw PlaybackException(
+                            "YouTube rate limited playback",
+                            playerFailure,
+                            PlaybackException.ERROR_CODE_REMOTE_ERROR,
                         )
                     }
-                    .getOrNull()
-                    ?: continue
 
-            lastPlayerResponse = playerResponse
+                    YouTubeFailureKind.BOT_CHECK -> {
+                        tripGlobalBreaker("YouTube requested a bot check")
+                        throw PlaybackException(
+                            "YouTube requested a bot check",
+                            playerFailure,
+                            PlaybackException.ERROR_CODE_REMOTE_ERROR,
+                        )
+                    }
 
-            if (playerResponse.playabilityStatus.status != "OK") {
-                val reason =
-                    playerResponse
-                        .playabilityStatus
-                        .reason
-                        .orEmpty()
+                    YouTubeFailureKind.FORBIDDEN -> {
+                        markStreamClientFailed(
+                            videoId = videoId,
+                            clientKey = effectiveIdentityKey(client),
+                            httpStatusCode = 403,
+                        )
+                    }
 
-                if (isBotDetectionError(reason)) {
-                    tripGlobalBreaker(
-                        reason =
-                            "YouTube bot-check: " +
-                                reason.take(160),
-                    )
+                    YouTubeFailureKind.LOGIN_REQUIRED,
+                    YouTubeFailureKind.AGE_RESTRICTED,
+                    YouTubeFailureKind.PERMANENT,
+                    -> {
+                        throw PlaybackException(
+                            "This track is unavailable in the current session",
+                            playerFailure,
+                            PlaybackException.ERROR_CODE_REMOTE_ERROR,
+                        )
+                    }
 
-                    throw PlaybackException(
-                        reason.ifBlank {
-                            "YouTube requested a bot check"
-                        },
-                        null,
-                        PlaybackException.ERROR_CODE_REMOTE_ERROR,
-                    )
+                    else -> Unit
                 }
 
-                /*
-                 * UNPLAYABLE/embedding-disabled/etc. is a legitimate
-                 * per-client result. Try the next allowed safe client without
-                 * globally punishing it.
-                 */
+                continue
+            }
+
+            val playerResponse = playerResponseResult.getOrThrow()
+            lastPlayerResponse = playerResponse
+
+            val status = playerResponse.playabilityStatus.status
+            if (status != "OK") {
+                val reason = playerResponse.playabilityStatus.reason.orEmpty()
+                val failureKind =
+                    YouTubeFailureClassifier.classify(
+                        playabilityStatus = status,
+                        text = reason,
+                    )
+
+                when (failureKind) {
+                    YouTubeFailureKind.RATE_LIMITED -> {
+                        tripGlobalBreaker("YouTube returned a rate-limit response")
+                        throw PlaybackException(
+                            reason.ifBlank { "YouTube rate limited playback" },
+                            null,
+                            PlaybackException.ERROR_CODE_REMOTE_ERROR,
+                        )
+                    }
+
+                    YouTubeFailureKind.BOT_CHECK -> {
+                        tripGlobalBreaker(
+                            "YouTube bot-check: ${reason.take(160)}",
+                        )
+                        throw PlaybackException(
+                            reason.ifBlank { "YouTube requested a bot check" },
+                            null,
+                            PlaybackException.ERROR_CODE_REMOTE_ERROR,
+                        )
+                    }
+
+                    YouTubeFailureKind.AGE_RESTRICTED,
+                    YouTubeFailureKind.LOGIN_REQUIRED,
+                    YouTubeFailureKind.PERMANENT,
+                    -> {
+                        /*
+                         * These are properties of the track/session, not a
+                         * signal to rotate through more client identities.
+                         * Stop this track without opening the global breaker.
+                         */
+                        throw PlaybackException(
+                            reason.ifBlank { "This track is unavailable in the current session" },
+                            null,
+                            PlaybackException.ERROR_CODE_REMOTE_ERROR,
+                        )
+                    }
+
+                    YouTubeFailureKind.FORBIDDEN -> {
+                        markStreamClientFailed(
+                            videoId = videoId,
+                            clientKey = effectiveIdentityKey(client),
+                            httpStatusCode = 403,
+                        )
+                    }
+
+                    else -> Unit
+                }
+
                 Timber.tag(logTag).w(
-                    "Client %s returned %s: %s",
+                    "Client %s returned %s (%s): %s",
                     effectiveIdentityKey(client),
-                    playerResponse.playabilityStatus.status,
+                    status,
+                    failureKind,
                     reason,
                 )
                 continue
             }
 
             val isMetered =
-                networkMetered
-                    ?: connectivityManager
-                        .isActiveNetworkMetered
+                networkMetered ?: connectivityManager.isActiveNetworkMetered
 
             val candidates =
                 selectAudioFormatCandidates(
@@ -574,26 +684,21 @@ object YTPlayerUtils {
                     avoidCodecs = avoidCodecs,
                 )
 
-            if (candidates.isEmpty()) {
-                continue
-            }
+            if (candidates.isEmpty()) continue
 
             val expectedDurationMs =
-                playerResponse
-                    .videoDetails
+                playerResponse.videoDetails
                     ?.lengthSeconds
                     ?.toLongOrNull()
                     ?.takeIf { it > 0L }
                     ?.times(1000L)
 
-            for (candidate in candidates.asSequence().take(6)) {
+            var probesForClient = 0
+
+            candidateLoop@ for (candidate in candidates) {
                 if (
                     expectedDurationMs != null &&
-                    isLikelyPreview(
-                        format = candidate,
-                        expectedDurationMs =
-                            expectedDurationMs,
-                    )
+                    isLikelyPreview(candidate, expectedDurationMs)
                 ) {
                     continue
                 }
@@ -605,59 +710,82 @@ object YTPlayerUtils {
                         client = client,
                     )
 
+                val now = System.currentTimeMillis()
                 val cached = streamUrlCache[cacheKey]
+                if (cached != null) {
+                    if (cached.expiresAtMs > now + FRESH_CACHE_SAFETY_MS) {
+                        val expiresInSeconds =
+                            ((cached.expiresAtMs - now) / 1000L)
+                                .coerceAtLeast(1L)
+                                .coerceAtMost(Int.MAX_VALUE.toLong())
+                                .toInt()
+
+                        Timber.tag(logTag).i(
+                            "Safe AUDIO fresh-cache hit with %s, itag=%d (no probe)",
+                            effectiveIdentityKey(client),
+                            candidate.itag,
+                        )
+
+                        return PlaybackData(
+                            audioConfig = playerResponse.playerConfig?.audioConfig,
+                            videoDetails = playerResponse.videoDetails,
+                            playbackTracking = playerResponse.playbackTracking,
+                            format = candidate,
+                            streamUrl = cached.url,
+                            streamExpiresInSeconds = expiresInSeconds,
+                        )
+                    }
+
+                    streamUrlCache.remove(cacheKey, cached)
+                }
+
+                if (probesForClient >= MAX_STREAM_PROBES_PER_CLIENT) break
+                if (!budget.tryConsumeStreamProbe()) break
+                probesForClient += 1
 
                 val candidateUrl =
-                    if (
-                        cached != null &&
-                        cached.expiresAtMs >
-                            System.currentTimeMillis()
-                    ) {
-                        cached.url
-                    } else {
-                        findUrlOrNull(
-                            format = candidate,
-                            videoId = videoId,
-                            client = client,
-                        )
-                    } ?: continue
-
-                val probe =
-                    validateStatus(
-                        url = candidateUrl,
+                    findUrlOrNull(
+                        format = candidate,
+                        videoId = videoId,
                         client = client,
-                    )
+                    ) ?: continue
+
+                val probe = validateStatus(candidateUrl, client)
 
                 if (!probe.success) {
                     when (probe.statusCode) {
-                        403 -> {
+                        403, 401 -> {
                             markStreamClientFailed(
                                 videoId = videoId,
-                                clientKey =
-                                    effectiveIdentityKey(client),
+                                clientKey = effectiveIdentityKey(client),
                                 httpStatusCode = 403,
                             )
+                            /*
+                             * A rejected first stream is enough evidence to
+                             * leave this exact client for this track. Do not
+                             * hammer five more formats from the same response.
+                             */
+                            break@candidateLoop
                         }
 
                         429 -> {
                             markStreamClientFailed(
                                 videoId = videoId,
-                                clientKey =
-                                    effectiveIdentityKey(client),
+                                clientKey = effectiveIdentityKey(client),
                                 httpStatusCode = 429,
                             )
                             throwIfGlobalBreakerActive()
                         }
-                    }
 
-                    continue
+                        else -> {
+                            if (budget.streamProbeBudgetExhausted) break@candidateLoop
+                            continue@candidateLoop
+                        }
+                    }
                 }
 
                 val expiresInSeconds =
-                    playerResponse
-                        .streamingData
-                        ?.expiresInSeconds
-                        ?: 300
+                    playerResponse.streamingData?.expiresInSeconds ?: 300
 
                 streamUrlCache[cacheKey] =
                     CachedStreamUrl(
@@ -666,6 +794,7 @@ object YTPlayerUtils {
                             System.currentTimeMillis() +
                                 expiresInSeconds * 1000L,
                     )
+                pruneStreamUrlCache()
 
                 Timber.tag(logTag).i(
                     "Safe AUDIO stream validated with %s, itag=%d",
@@ -674,34 +803,22 @@ object YTPlayerUtils {
                 )
 
                 return PlaybackData(
-                    audioConfig =
-                        playerResponse
-                            .playerConfig
-                            ?.audioConfig,
-                    videoDetails =
-                        playerResponse.videoDetails,
-                    playbackTracking =
-                        playerResponse.playbackTracking,
+                    audioConfig = playerResponse.playerConfig?.audioConfig,
+                    videoDetails = playerResponse.videoDetails,
+                    playbackTracking = playerResponse.playbackTracking,
                     format = candidate,
                     streamUrl = candidateUrl,
-                    streamExpiresInSeconds =
-                        expiresInSeconds,
+                    streamExpiresInSeconds = expiresInSeconds,
                 )
             }
         }
 
         throwIfGlobalBreakerActive()
 
-        val lastStatus =
-            lastPlayerResponse
-                ?.playabilityStatus
-                ?.status
-
+        val lastStatus = lastPlayerResponse?.playabilityStatus?.status
         throw PlaybackException(
             buildString {
-                append(
-                    "No playable safe YouTube AUDIO stream",
-                )
+                append("No playable safe YouTube AUDIO stream")
                 lastStatus?.let {
                     append(" (last status: ")
                     append(it)
@@ -753,44 +870,41 @@ object YTPlayerUtils {
         audioQuality: AudioQuality,
         networkMetered: Boolean,
         avoidCodecs: Set<String> = emptySet(),
+    ): List<PlayerResponse.StreamingData.Format> =
+        selectAudioFormatCandidatesForTest(
+            formats = playerResponse.streamingData?.adaptiveFormats.orEmpty(),
+            audioQuality = audioQuality,
+            networkMetered = networkMetered,
+            avoidCodecs = avoidCodecs,
+        )
+
+    internal fun selectAudioFormatCandidatesForTest(
+        formats: List<PlayerResponse.StreamingData.Format>,
+        audioQuality: AudioQuality,
+        networkMetered: Boolean,
+        avoidCodecs: Set<String> = emptySet(),
     ): List<PlayerResponse.StreamingData.Format> {
         val audioFormats =
-            playerResponse
-                .streamingData
-                ?.adaptiveFormats
-                ?.asSequence()
-                ?.filter {
-                    it.isAudio && it.bitrate > 0
-                }
-                ?.filter {
+            formats
+                .asSequence()
+                .filter { it.isAudio && it.bitrate > 0 }
+                .filter {
                     it.url != null ||
                         it.signatureCipher != null ||
                         it.cipher != null
                 }
-                ?.filter { format ->
-                    val codec =
-                        extractCodec(format.mimeType)
-                            ?.lowercase()
-
-                    codec == null ||
-                        codec !in avoidCodecs
+                .filter { format ->
+                    val codec = extractCodec(format.mimeType)?.lowercase()
+                    codec == null || codec !in avoidCodecs
                 }
-                ?.toList()
-                .orEmpty()
+                .toList()
 
-        if (audioFormats.isEmpty()) {
-            return emptyList()
-        }
+        if (audioFormats.isEmpty()) return emptyList()
 
         val effectiveQuality =
             when (audioQuality) {
                 AudioQuality.AUTO ->
-                    if (networkMetered) {
-                        AudioQuality.HIGH
-                    } else {
-                        AudioQuality.HIGHEST
-                    }
-
+                    if (networkMetered) AudioQuality.HIGH else AudioQuality.HIGHEST
                 else -> audioQuality
             }
 
@@ -803,53 +917,27 @@ object YTPlayerUtils {
             }
 
         val preferHigher =
-            compareByDescending<PlayerResponse.StreamingData.Format> {
-                it.url != null
-            }
+            compareByDescending<PlayerResponse.StreamingData.Format> { it.url != null }
                 .thenByDescending { it.bitrate }
-                .thenByDescending {
-                    codecRank(
-                        extractCodec(it.mimeType),
-                    )
-                }
-                .thenByDescending {
-                    it.audioSampleRate ?: 0
-                }
+                .thenByDescending { codecRank(extractCodec(it.mimeType)) }
+                .thenByDescending { it.audioSampleRate ?: 0 }
 
         val preferLowerAboveTarget =
-            compareByDescending<PlayerResponse.StreamingData.Format> {
-                it.url != null
-            }
+            compareByDescending<PlayerResponse.StreamingData.Format> { it.url != null }
                 .thenBy { it.bitrate }
-                .thenByDescending {
-                    codecRank(
-                        extractCodec(it.mimeType),
-                    )
-                }
-                .thenByDescending {
-                    it.audioSampleRate ?: 0
-                }
+                .thenByDescending { codecRank(extractCodec(it.mimeType)) }
+                .thenByDescending { it.audioSampleRate ?: 0 }
 
         return if (targetBitrateBps == null) {
             audioFormats.sortedWith(preferHigher)
         } else {
-            val belowOrEqual =
-                audioFormats.filter {
-                    it.bitrate <= targetBitrateBps
-                }
-
+            val belowOrEqual = audioFormats.filter { it.bitrate <= targetBitrateBps }
             if (belowOrEqual.isNotEmpty()) {
                 belowOrEqual.sortedWith(preferHigher)
             } else {
-                val aboveOrEqual =
-                    audioFormats.filter {
-                        it.bitrate >= targetBitrateBps
-                    }
-
+                val aboveOrEqual = audioFormats.filter { it.bitrate >= targetBitrateBps }
                 if (aboveOrEqual.isNotEmpty()) {
-                    aboveOrEqual.sortedWith(
-                        preferLowerAboveTarget,
-                    )
+                    aboveOrEqual.sortedWith(preferLowerAboveTarget)
                 } else {
                     audioFormats.sortedWith(preferHigher)
                 }
@@ -1050,49 +1138,87 @@ object YTPlayerUtils {
             "${effectiveIdentityKey(client)}:" +
             "$itag"
 
+    private fun classifyThrowableFailure(
+        throwable: Throwable,
+    ): YouTubeFailureKind {
+        val chain =
+            generateSequence(throwable as Throwable?) { it?.cause }
+                .take(8)
+                .toList()
+
+        val httpStatusCode =
+            chain
+                .filterIsInstance<ResponseException>()
+                .firstOrNull()
+                ?.response
+                ?.status
+                ?.value
+
+        val text = chain.mapNotNull { it?.message }.joinToString(" ")
+
+        return YouTubeFailureClassifier.classify(
+            httpStatusCode = httpStatusCode,
+            playabilityStatus = null,
+            text = text,
+        )
+    }
+
+    internal fun classifyPlayabilityForTest(
+        status: String?,
+        reason: String?,
+    ): YouTubeFailureKind =
+        YouTubeFailureClassifier.classify(
+            playabilityStatus = status,
+            text = reason,
+        )
+
     private fun isBotDetectionError(
         reason: String,
-    ): Boolean {
-        val lower =
-            reason.lowercase(Locale.US)
-
-        return "sign in" in lower ||
-            "bot" in lower ||
-            (
-                "confirm" in lower &&
-                    "not a" in lower
-            ) ||
-            (
-                "verify" in lower &&
-                    "human" in lower
-            )
-    }
+    ): Boolean =
+        YouTubeFailureClassifier.classify(text = reason) ==
+            YouTubeFailureKind.BOT_CHECK
 
     fun isBotDetectionException(
         error: PlaybackException,
     ): Boolean {
-        if (
-            isBotDetectionError(
-                error.message.orEmpty(),
-            )
-        ) {
-            return true
-        }
-
-        var cause: Throwable? = error.cause
-
-        while (cause != null) {
-            if (
-                isBotDetectionError(
-                    cause.message.orEmpty(),
-                )
-            ) {
-                return true
+        val text =
+            buildString {
+                append(error.message.orEmpty())
+                var cause: Throwable? = error.cause
+                var depth = 0
+                while (cause != null && depth < 8) {
+                    append(' ')
+                    append(cause.message.orEmpty())
+                    cause = cause.cause
+                    depth += 1
+                }
             }
 
-            cause = cause.cause
-        }
-
-        return false
+        return isBotDetectionError(text)
     }
+
+    private fun pruneStreamUrlCache() {
+        val now = System.currentTimeMillis()
+        streamUrlCache.entries.removeIf { it.value.expiresAtMs <= now }
+
+        if (streamUrlCache.size <= MAX_STREAM_CACHE_ENTRIES) return
+
+        streamUrlCache.entries
+            .sortedBy { it.value.expiresAtMs }
+            .take(streamUrlCache.size - MAX_STREAM_CACHE_ENTRIES)
+            .forEach { streamUrlCache.remove(it.key, it.value) }
+    }
+
+    private fun pruneFailedClientMap() {
+        val now = System.currentTimeMillis()
+        failedTrackClientsUntil.entries.removeIf { it.value <= now }
+
+        if (failedTrackClientsUntil.size <= MAX_FAILED_CLIENT_ENTRIES) return
+
+        failedTrackClientsUntil.entries
+            .sortedBy { it.value }
+            .take(failedTrackClientsUntil.size - MAX_FAILED_CLIENT_ENTRIES)
+            .forEach { failedTrackClientsUntil.remove(it.key, it.value) }
+    }
+
 }
