@@ -120,8 +120,10 @@ private class LazyCache(
 
 @Module
 @InstallIn(SingletonComponent::class)
+const val CAPSULE_VIDEO_CACHE_BYTES = 192L * 1024L * 1024L
+const val CAPSULE_VIDEO_CACHE_DIRECTORY = "capsule_video_cache"
+
 object AppModule {
-    private const val VIDEO_CACHE_BYTES = 192L * 1024L * 1024L
 
     @Singleton
     @Provides
@@ -170,9 +172,21 @@ object AppModule {
         databaseProvider: DatabaseProvider,
     ): Cache =
         LazyCache {
+            /*
+             * Early hardening builds stored this cache under filesDir.
+             * Remove that legacy location once before opening the new cache so
+             * an upgrade cannot leave an unreachable ~192 MiB directory behind.
+             */
+            runCatching {
+                context.filesDir
+                    .resolve(CAPSULE_VIDEO_CACHE_DIRECTORY)
+                    .takeIf { it.exists() }
+                    ?.deleteRecursively()
+            }
+
             SimpleCache(
-                context.filesDir.resolve("capsule_video_cache"),
-                LeastRecentlyUsedCacheEvictor(VIDEO_CACHE_BYTES),
+                context.cacheDir.resolve(CAPSULE_VIDEO_CACHE_DIRECTORY),
+                LeastRecentlyUsedCacheEvictor(CAPSULE_VIDEO_CACHE_BYTES),
                 databaseProvider,
             )
         }
