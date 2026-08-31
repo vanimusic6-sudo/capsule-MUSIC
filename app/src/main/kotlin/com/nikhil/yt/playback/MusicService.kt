@@ -98,6 +98,8 @@ import com.nikhil.yt.constants.AudioCrossfadeDurationKey
 import com.nikhil.yt.constants.AudioNormalizationKey
 import com.nikhil.yt.constants.AudioOffload
 import com.nikhil.yt.constants.AudioQualityKey
+import com.nikhil.yt.constants.AudioStreamPolicy
+import com.nikhil.yt.constants.AudioStreamPolicyKey
 import com.nikhil.yt.constants.CapsuleVideoQuality
 import com.nikhil.yt.constants.CapsuleVideoQualityKey
 import com.nikhil.yt.constants.AutoDownloadOnLikeKey
@@ -132,8 +134,6 @@ import com.nikhil.yt.constants.PauseListenHistoryKey
 import com.nikhil.yt.constants.PauseOnDeviceMuteKey
 import com.nikhil.yt.constants.PermanentShuffleKey
 import com.nikhil.yt.constants.PersistentQueueKey
-import com.nikhil.yt.constants.PlayerStreamClient
-import com.nikhil.yt.constants.PlayerStreamClientKey
 import com.nikhil.yt.constants.PlayerVolumeKey
 import com.nikhil.yt.constants.RepeatModeKey
 import com.nikhil.yt.constants.ScrobbleDelayPercentKey
@@ -286,10 +286,10 @@ class MusicService :
         AudioQualityKey,
         com.nikhil.yt.constants.AudioQuality.AUTO
     )
-    private val preferredStreamClient by enumPreference(
+    private val audioStreamPolicy by enumPreference(
         this,
-        PlayerStreamClientKey,
-        PlayerStreamClient.IOS
+        AudioStreamPolicyKey,
+        AudioStreamPolicy.AUTO_SAFE,
     )
     private val capsuleVideoQuality by enumPreference(
         this,
@@ -3438,76 +3438,85 @@ class MusicService :
             mediaItem?.mediaId
                 ?.trim()
                 ?.takeIf { it.isNotBlank() }
+
         val videoState = videoPlaybackState.value
         val previousCanonicalId =
             videoOriginalMediaId
                 ?: videoState.mediaId
+
         val canonicalChanged =
             transitionedMediaId != null &&
                 previousCanonicalId != null &&
                 transitionedMediaId != previousCanonicalId
 
+        /*
+         * FINAL CAPSULE VIDEO POLICY
+         *
+         * VIDEO belongs only to the track for which the user explicitly
+         * enabled it. A real queue transition always starts the new song in
+         * normal AUDIO. Seeking/re-preparing the same song does not reset it.
+         */
         if (
             canonicalChanged &&
             !isCurrentCapsuleVideoItem()
         ) {
-            val keepVideoPreference =
-                videoState.preferredMode == CapsulePlaybackMode.VIDEO
-
             videoResolveJob?.cancel()
             videoResolveJob = null
+
+            /*
+             * If the old queue slot was temporarily replaced by a
+             * capsule-video MediaItem, put the original AUDIO item back so
+             * pressing Previous later cannot silently re-enter VIDEO.
+             */
+            val originalVideoTrackItem = videoOriginalMediaItem
+            if (
+                originalVideoTrackItem != null &&
+                previousCanonicalId != null
+            ) {
+                val staleVideoIndex =
+                    (0 until player.mediaItemCount).firstOrNull { index ->
+                        val queuedItem = player.getMediaItemAt(index)
+                        queuedItem.mediaId == previousCanonicalId &&
+                            queuedItem.localConfiguration
+                                ?.uri
+                                ?.scheme
+                                ?.equals(
+                                    CAPSULE_VIDEO_SCHEME,
+                                    ignoreCase = true,
+                                ) == true
+                    }
+
+                if (staleVideoIndex != null) {
+                    runCatching {
+                        player.replaceMediaItem(
+                            staleVideoIndex,
+                            originalVideoTrackItem,
+                        )
+                    }.onFailure { throwable ->
+                        Timber.tag("CapsuleVideo").w(
+                            throwable,
+                            "Could not restore the previous AUDIO queue slot",
+                        )
+                    }
+                }
+            }
+
             videoOriginalMediaItem = null
             videoOriginalMediaId = null
-
-            val videoAllowedNow =
-                keepVideoPreference &&
-                    canAttemptCapsuleVideoNow()
+            videoSuspendedForScreenOff = false
 
             videoPlaybackState.value =
                 CapsuleVideoPlaybackState(
-                    preferredMode =
-                        if (keepVideoPreference) {
-                            CapsulePlaybackMode.VIDEO
-                        } else {
-                            CapsulePlaybackMode.AUDIO
-                        },
+                    preferredMode = CapsulePlaybackMode.AUDIO,
                     mode = CapsulePlaybackMode.AUDIO,
-                    phase =
-                        when {
-                            !keepVideoPreference -> CapsuleVideoPhase.IDLE
-                            isVideoRequestBackoffActive() -> CapsuleVideoPhase.REQUEST_ERROR
-                            videoAllowedNow -> CapsuleVideoPhase.RESOLVING
-                            else -> CapsuleVideoPhase.IDLE
-                        },
+                    phase = CapsuleVideoPhase.IDLE,
                     mediaId = transitionedMediaId,
-                    message =
-                        if (keepVideoPreference && isVideoRequestBackoffActive()) {
-                            "Video requests temporarily paused"
-                        } else {
-                            null
-                        },
+                    videoId = null,
+                    qualityLabel = null,
+                    width = null,
+                    height = null,
+                    message = null,
                 )
-
-            if (keepVideoPreference && videoAllowedNow) {
-                /*
-                 * Let the normal audio item start immediately. VIDEO resolution
-                 * happens in the background and replaces only this current item
-                 * after a validated clip/stream has been found.
-                 */
-                scope.launch {
-                    delay(80)
-                    if (
-                        videoPlaybackState.value.preferredMode == CapsulePlaybackMode.VIDEO &&
-                        player.currentMediaItem?.mediaId == transitionedMediaId &&
-                        !isCurrentCapsuleVideoItem() &&
-                        canAttemptCapsuleVideoNow()
-                    ) {
-                        enterCapsuleVideoMode()
-                    }
-                }
-            } else if (keepVideoPreference && !screenInteractive) {
-                videoSuspendedForScreenOff = true
-            }
         }
 
     clearStreamRefreshGuards(
@@ -4066,18 +4075,27 @@ class MusicService :
         val currentMediaId = player.currentMediaItem?.mediaId
         val httpStatusCode = error.httpStatusCodeOrNull()
 
-        if (currentMediaId != null && YTPlayerUtils.isBotDetectionException(error)) {
-            if (markAndCheckRecoveryAllowance(currentMediaId)) {
-                Timber.tag("MusicService").w(
-                    "Bot detection error for $currentMediaId — clearing caches and retrying with fresh stream"
-                )
-                YTPlayerUtils.invalidateCachedStreamUrls(currentMediaId)
-                playbackUrlCache.remove(currentMediaId)
-                pendingStreamRefreshValidationMediaId = currentMediaId
-                player.prepare()
-                player.playWhenReady = true
-                return
-            }
+        if (
+            currentMediaId != null &&
+            YTPlayerUtils.isBotDetectionException(error)
+        ) {
+            /*
+             * An explicit bot-check is not a reason to cycle through more
+             * identities. Open the AUDIO breaker and stop this attempt.
+             */
+            YTPlayerUtils.markBotDetectionFailure(
+                error.message ?: error.cause?.message,
+            )
+            YTPlayerUtils.invalidateCachedStreamUrls(currentMediaId)
+            playbackUrlCache.remove(currentMediaId)
+            pendingStreamRefreshValidationMediaId = null
+
+            Timber.tag("MusicService").w(
+                "YouTube bot-check for $currentMediaId — AUDIO requests cooling down",
+            )
+
+            player.pause()
+            return
         }
 
         val shouldAttemptStreamRefresh =
@@ -4104,21 +4122,56 @@ class MusicService :
             return
         }
 
-        if (shouldAttemptStreamRefresh && currentMediaId != null && markAndCheckRecoveryAllowance(currentMediaId)) {
-            val failingStreamClientKey =
+        if (
+            shouldAttemptStreamRefresh &&
+            currentMediaId != null &&
+            markAndCheckRecoveryAllowance(currentMediaId)
+        ) {
+            val failingHttpUrl =
                 playbackUrlCache[currentMediaId]
                     ?.first
                     ?.toHttpUrlOrNull()
+
+            val failingStreamClientKey =
+                failingHttpUrl
                     ?.queryParameter("c")
                     ?.trim()
                     ?.takeIf { it.isNotBlank() }
+                    ?.let { clientName ->
+                        failingHttpUrl
+                            .queryParameter("cver")
+                            ?.trim()
+                            ?.takeIf { it.isNotBlank() }
+                            ?.let { clientVersion ->
+                                "$clientName@$clientVersion"
+                            }
+                            ?: clientName
+                    }
+
             Timber.tag("MusicService").w(
-                "Attempting stream refresh for $currentMediaId (http=$httpStatusCode, code=${error.errorCode}, client=${failingStreamClientKey ?: "unknown"})"
+                "Attempting stream refresh for $currentMediaId " +
+                    "(http=$httpStatusCode, code=${error.errorCode}, " +
+                    "client=${failingStreamClientKey ?: "unknown"})",
             )
-            YTPlayerUtils.markStreamClientFailed(currentMediaId, failingStreamClientKey, httpStatusCode)
-            YTPlayerUtils.markPreferredClientFailed(currentMediaId, preferredStreamClient, httpStatusCode)
+
+            /*
+             * 403 is scoped to this track + client. 429 opens YTPlayerUtils'
+             * global cooldown. Never poison the client for every song.
+             */
+            YTPlayerUtils.markStreamClientFailed(
+                videoId = currentMediaId,
+                clientKey = failingStreamClientKey,
+                httpStatusCode = httpStatusCode,
+            )
             YTPlayerUtils.invalidateCachedStreamUrls(currentMediaId)
             playbackUrlCache.remove(currentMediaId)
+            pendingStreamRefreshValidationMediaId = null
+
+            if (httpStatusCode == 429) {
+                player.pause()
+                return
+            }
+
             pendingStreamRefreshValidationMediaId = currentMediaId
             player.prepare()
             player.playWhenReady = true
@@ -4272,7 +4325,7 @@ class MusicService :
                         maybeOpenVideoCircuitBreaker(throwable)
                         videoPlaybackState.value =
                             videoPlaybackState.value.copy(
-                                preferredMode = CapsulePlaybackMode.VIDEO,
+                                preferredMode = CapsulePlaybackMode.AUDIO,
                                 mode = CapsulePlaybackMode.AUDIO,
                                 phase = CapsuleVideoPhase.REQUEST_ERROR,
                                 videoId = videoId,
@@ -4345,7 +4398,7 @@ class MusicService :
                     mediaId,
                     audioQuality = audioQuality,
                     connectivityManager = connectivityManager,
-                    preferredStreamClient = preferredStreamClient,
+                    streamPolicy = audioStreamPolicy,
                     avoidCodecs = avoidStreamCodecs,
                 )
             }.getOrElse { throwable ->
@@ -4554,7 +4607,7 @@ class MusicService :
                     videoOriginalMediaId = null
                     videoPlaybackState.value =
                         CapsuleVideoPlaybackState(
-                            preferredMode = CapsulePlaybackMode.VIDEO,
+                            preferredMode = CapsulePlaybackMode.AUDIO,
                             mode = CapsulePlaybackMode.AUDIO,
                             phase =
                                 if (noMatchingVideo) {
@@ -4653,7 +4706,7 @@ class MusicService :
         )
         restoreOriginalAudioItem(
             failureMessage = message,
-            preferredModeAfter = CapsulePlaybackMode.VIDEO,
+            preferredModeAfter = CapsulePlaybackMode.AUDIO,
             failurePhase = CapsuleVideoPhase.REQUEST_ERROR,
             invalidateFailedVideo = true,
         )
@@ -4839,31 +4892,40 @@ class MusicService :
 
     private fun suspendCapsuleVideoForScreenOff() {
         val state = videoPlaybackState.value
-        if (state.preferredMode != CapsulePlaybackMode.VIDEO) return
+        val videoWasRequested =
+            state.preferredMode == CapsulePlaybackMode.VIDEO ||
+                state.mode == CapsulePlaybackMode.VIDEO ||
+                state.phase == CapsuleVideoPhase.RESOLVING ||
+                isCurrentCapsuleVideoItem()
 
-        videoSuspendedForScreenOff = true
+        if (!videoWasRequested) return
+
+        /*
+         * Screen-off is a hard end of this track's VIDEO session.
+         * Playback immediately returns to AUDIO and unlock never schedules a
+         * new extractor request by itself.
+         */
+        videoSuspendedForScreenOff = false
         videoResolveJob?.cancel()
         videoResolveJob = null
 
         if (isCurrentCapsuleVideoItem()) {
-            /*
-             * Restore the original audio item but keep VIDEO as the user's
-             * preference. Do not invalidate the already-resolved clip/cache:
-             * after unlock it can often resume without another search.
-             */
             restoreOriginalAudioItem(
                 failureMessage = null,
-                preferredModeAfter = CapsulePlaybackMode.VIDEO,
+                preferredModeAfter = CapsulePlaybackMode.AUDIO,
                 invalidateFailedVideo = false,
             )
         } else {
+            val currentId = player.currentMediaItem?.mediaId
+
             videoOriginalMediaItem = null
             videoOriginalMediaId = null
             videoPlaybackState.value =
-                state.copy(
-                    preferredMode = CapsulePlaybackMode.VIDEO,
+                CapsuleVideoPlaybackState(
+                    preferredMode = CapsulePlaybackMode.AUDIO,
                     mode = CapsulePlaybackMode.AUDIO,
                     phase = CapsuleVideoPhase.IDLE,
+                    mediaId = currentId,
                     videoId = null,
                     qualityLabel = null,
                     width = null,
@@ -4874,48 +4936,27 @@ class MusicService :
     }
 
     private fun resumeCapsuleVideoAfterUnlockIfAllowed() {
-        if (!videoSuspendedForScreenOff) return
-        if (!canUseCapsuleVideoForScreen()) return
-
-        if (videoPlaybackState.value.preferredMode != CapsulePlaybackMode.VIDEO) {
-            videoSuspendedForScreenOff = false
-            return
-        }
-
-        if (isVideoRequestBackoffActive()) {
-            videoSuspendedForScreenOff = false
-            videoPlaybackState.value =
-                videoPlaybackState.value.copy(
-                    mode = CapsulePlaybackMode.AUDIO,
-                    phase = CapsuleVideoPhase.REQUEST_ERROR,
-                    message = "Video requests temporarily paused",
-                )
-            return
-        }
-
+        /*
+         * Deliberately no automatic VIDEO resume. Unlocking stays in AUDIO.
+         */
         videoSuspendedForScreenOff = false
 
-        val expectedMediaId =
-            player.currentMediaItem?.mediaId
-                ?.trim()
-                ?.takeIf { it.isNotBlank() }
-                ?: return
-
-        scope.launch {
-            /*
-             * Small delay lets Android finish the unlock transition. This is a
-             * single resume attempt, not a polling loop.
-             */
-            delay(250)
-
-            if (
-                canAttemptCapsuleVideoNow() &&
-                videoPlaybackState.value.preferredMode == CapsulePlaybackMode.VIDEO &&
-                player.currentMediaItem?.mediaId == expectedMediaId &&
-                !isCurrentCapsuleVideoItem()
-            ) {
-                enterCapsuleVideoMode()
-            }
+        val state = videoPlaybackState.value
+        if (
+            state.preferredMode == CapsulePlaybackMode.VIDEO &&
+            state.mode != CapsulePlaybackMode.VIDEO
+        ) {
+            videoPlaybackState.value =
+                state.copy(
+                    preferredMode = CapsulePlaybackMode.AUDIO,
+                    mode = CapsulePlaybackMode.AUDIO,
+                    phase = CapsuleVideoPhase.IDLE,
+                    videoId = null,
+                    qualityLabel = null,
+                    width = null,
+                    height = null,
+                    message = null,
+                )
         }
     }
 
@@ -4929,6 +4970,7 @@ class MusicService :
     fun retryCurrentFromFreshStream() {
         val mediaId = player.currentMediaItem?.mediaId ?: return
         clearStreamRefreshGuards(mediaId)
+        YTPlayerUtils.clearTrackClientFailures(mediaId)
         YTPlayerUtils.invalidateCachedStreamUrls(mediaId)
         playbackUrlCache.remove(mediaId)
         pendingStreamRefreshValidationMediaId = mediaId
