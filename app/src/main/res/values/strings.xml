@@ -488,6 +488,9 @@
     <string name="clear_image_cache">Clear image cache</string>
     <string name="max_song_cache_size">Max song cache size</string>
     <string name="clear_song_cache">Clear song cache</string>
+    <string name="video_cache">Video cache</string>
+    <string name="clear_video_cache">Clear video cache</string>
+    <string name="clear_video_cache_dialog">Remove cached video data. Downloaded songs and the music cache will not be affected.</string>
     <string name="size_used">%s used</string>
     <string name="privacy">Privacy</string>
     <string name="listen_history">Listen history</string>
