@@ -1,0 +1,479 @@
+name: YouTube client policy sync
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "23 */12 * * *"
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+concurrency:
+  group: youtube-client-policy-sync
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    name: Sync safe YouTube client identities
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout Capsule main
+        uses: actions/checkout@v6
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Set up Gradle 9.3.1
+        uses: gradle/actions/setup-gradle@v6
+        with:
+          gradle-version: "9.3.1"
+
+      - name: Read yt-dlp client table and regenerate Capsule snapshot
+        id: sync
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          curl \
+            --fail \
+            --silent \
+            --show-error \
+            --retry 3 \
+            https://raw.githubusercontent.com/yt-dlp/yt-dlp/master/yt_dlp/extractor/youtube/_base.py \
+            -o /tmp/yt_base.py
+
+          upstream_sha="$(
+            git ls-remote \
+              https://github.com/yt-dlp/yt-dlp.git \
+              refs/heads/master \
+              | awk '{print $1}'
+          )"
+
+          test -n "$upstream_sha"
+          export YTDLP_SOURCE_SHA="$upstream_sha"
+
+          python3 - <<'PY'
+          from __future__ import annotations
+
+          from pathlib import Path
+          import datetime as dt
+          import os
+          import re
+          import sys
+
+          source_path = Path("/tmp/yt_base.py")
+          target_path = Path(
+              "innertube/src/main/kotlin/com/nikhil/yt/innertube/models/"
+              "YouTubeClientUpstream.kt"
+          )
+
+          source = source_path.read_text(encoding="utf-8")
+          source_sha = os.environ["YTDLP_SOURCE_SHA"]
+
+          def client_block(name: str) -> str:
+              marker = f"    '{name}': {{"
+              start = source.find(marker)
+              if start < 0:
+                  raise RuntimeError(f"yt-dlp client not found: {name}")
+
+              open_brace = source.find("{", start)
+              depth = 0
+              in_string = False
+              quote = ""
+              escaped = False
+
+              for index in range(open_brace, len(source)):
+                  ch = source[index]
+
+                  if in_string:
+                      if escaped:
+                          escaped = False
+                      elif ch == "\\":
+                          escaped = True
+                      elif ch == quote:
+                          in_string = False
+                      continue
+
+                  if ch in ("'", '"'):
+                      in_string = True
+                      quote = ch
+                      continue
+
+                  if ch == "{":
+                      depth += 1
+                  elif ch == "}":
+                      depth -= 1
+                      if depth == 0:
+                          return source[start:index + 1]
+
+              raise RuntimeError(f"unterminated yt-dlp client block: {name}")
+
+          def string_field(block: str, field: str, *, required: bool = True):
+              pattern = re.compile(
+                  rf"['\"]{re.escape(field)}['\"]\s*:\s*(['\"])(.*?)\1",
+                  re.DOTALL,
+              )
+              match = pattern.search(block)
+              if match:
+                  return match.group(2)
+              if required:
+                  raise RuntimeError(f"missing {field!r} in client block")
+              return None
+
+          def scalar_field(block: str, field: str, *, required: bool = True):
+              quoted = string_field(block, field, required=False)
+              if quoted is not None:
+                  return quoted
+
+              pattern = re.compile(
+                  rf"['\"]{re.escape(field)}['\"]\s*:\s*([0-9]+)"
+              )
+              match = pattern.search(block)
+              if match:
+                  return match.group(1)
+
+              if required:
+                  raise RuntimeError(f"missing {field!r} in client block")
+              return None
+
+          def kotlin(value: str) -> str:
+              return (
+                  value
+                  .replace("\\", "\\\\")
+                  .replace('"', '\\"')
+                  .replace("\n", "\\n")
+              )
+
+          names = {
+              "web": "web",
+              "web_music": "web_music",
+              "web_creator": "web_creator",
+              "web_embedded": "web_embedded",
+              "mweb": "mweb",
+              "ios": "ios",
+              "android": "android",
+              "visionos": "visionos",
+              "tv": "tv",
+              "tv_downgraded": "tv_downgraded",
+          }
+
+          blocks = {key: client_block(value) for key, value in names.items()}
+
+          safe_active = ("visionos", "tv", "tv_downgraded")
+          policy_changes = []
+
+          for name in safe_active:
+              block = blocks[name]
+              # Fail closed on any new PO-token-related policy marker.
+              # A false positive is preferable to silently enabling a client
+              # whose attestation requirements changed.
+              if "PO_TOKEN" in block:
+                  policy_changes.append(name)
+
+          output = Path(os.environ["GITHUB_OUTPUT"])
+
+          if policy_changes:
+              output.write_text(
+                  "policy_changed=true\n"
+                  + "unsafe_clients="
+                  + ",".join(policy_changes)
+                  + "\n"
+                  + f"upstream_sha={source_sha}\n",
+                  encoding="utf-8",
+              )
+              print(
+                  "::warning::Safe Capsule client policy changed upstream: "
+                  + ", ".join(policy_changes)
+              )
+              sys.exit(0)
+
+          def data(name: str):
+              block = blocks[name]
+              return {
+                  "version": string_field(block, "clientVersion"),
+                  "ua": string_field(block, "userAgent", required=False),
+                  "os_name": string_field(block, "osName", required=False),
+                  "os_version": string_field(block, "osVersion", required=False),
+                  "make": string_field(block, "deviceMake", required=False),
+                  "model": string_field(block, "deviceModel", required=False),
+                  "sdk": scalar_field(block, "androidSdkVersion", required=False),
+              }
+
+          web = data("web")
+          web_music = data("web_music")
+          web_creator = data("web_creator")
+          web_embedded = data("web_embedded")
+          mweb = data("mweb")
+          ios = data("ios")
+          android = data("android")
+          visionos = data("visionos")
+          tv = data("tv")
+          tv_down = data("tv_downgraded")
+
+          required_pairs = [
+              ("mweb.userAgent", mweb["ua"]),
+              ("ios.userAgent", ios["ua"]),
+              ("ios.osName", ios["os_name"]),
+              ("ios.osVersion", ios["os_version"]),
+              ("ios.deviceMake", ios["make"]),
+              ("ios.deviceModel", ios["model"]),
+              ("android.userAgent", android["ua"]),
+              ("android.osName", android["os_name"]),
+              ("android.osVersion", android["os_version"]),
+              ("android.androidSdkVersion", android["sdk"]),
+              ("visionos.userAgent", visionos["ua"]),
+              ("visionos.osName", visionos["os_name"]),
+              ("visionos.osVersion", visionos["os_version"]),
+              ("visionos.deviceMake", visionos["make"]),
+              ("visionos.deviceModel", visionos["model"]),
+              ("tv.userAgent", tv["ua"]),
+              ("tv_downgraded.userAgent", tv_down["ua"]),
+          ]
+
+          missing = [name for name, value in required_pairs if not value]
+          if missing:
+              raise RuntimeError(
+                  "yt-dlp schema changed; manual review required: "
+                  + ", ".join(missing)
+              )
+
+          today = dt.datetime.now(dt.timezone.utc).date().isoformat()
+
+          generated = f'''/*
+           * GENERATED INPUT FOR Capsule's YouTube client identities.
+           *
+           * Source: yt-dlp/yt-dlp master, yt_dlp/extractor/youtube/_base.py
+           * Source commit: {source_sha}
+           * Snapshot: {today}
+           *
+           * Do not hand-edit during normal maintenance. The
+           * youtube-client-policy-update.yml workflow regenerates this file and opens a
+           * PR only after Capsule compiles successfully.
+           *
+           * GPL-3.0
+           */
+
+          package com.nikhil.yt.innertube.models
+
+          object YouTubeClientUpstream {{
+              const val SOURCE_REPOSITORY = "yt-dlp/yt-dlp"
+              const val SOURCE_PATH = "yt_dlp/extractor/youtube/_base.py"
+              const val SOURCE_COMMIT = "{source_sha}"
+              const val SOURCE_SNAPSHOT = "{today}"
+
+              const val WEB_VERSION = "{kotlin(web["version"])}"
+              const val WEB_MUSIC_VERSION = "{kotlin(web_music["version"])}"
+              const val WEB_CREATOR_VERSION = "{kotlin(web_creator["version"])}"
+              const val WEB_EMBEDDED_VERSION = "{kotlin(web_embedded["version"])}"
+
+              const val MWEB_VERSION = "{kotlin(mweb["version"])}"
+              const val MWEB_USER_AGENT = "{kotlin(mweb["ua"])}"
+
+              const val IOS_VERSION = "{kotlin(ios["version"])}"
+              const val IOS_USER_AGENT = "{kotlin(ios["ua"])}"
+              const val IOS_OS_NAME = "{kotlin(ios["os_name"])}"
+              const val IOS_OS_VERSION = "{kotlin(ios["os_version"])}"
+              const val IOS_DEVICE_MAKE = "{kotlin(ios["make"])}"
+              const val IOS_DEVICE_MODEL = "{kotlin(ios["model"])}"
+
+              const val ANDROID_VERSION = "{kotlin(android["version"])}"
+              const val ANDROID_USER_AGENT = "{kotlin(android["ua"])}"
+              const val ANDROID_OS_NAME = "{kotlin(android["os_name"])}"
+              const val ANDROID_OS_VERSION = "{kotlin(android["os_version"])}"
+              const val ANDROID_SDK = "{kotlin(android["sdk"])}"
+
+              const val VISIONOS_VERSION = "{kotlin(visionos["version"])}"
+              const val VISIONOS_USER_AGENT = "{kotlin(visionos["ua"])}"
+              const val VISIONOS_OS_NAME = "{kotlin(visionos["os_name"])}"
+              const val VISIONOS_OS_VERSION = "{kotlin(visionos["os_version"])}"
+              const val VISIONOS_DEVICE_MAKE = "{kotlin(visionos["make"])}"
+              const val VISIONOS_DEVICE_MODEL = "{kotlin(visionos["model"])}"
+
+              const val TV_VERSION = "{kotlin(tv["version"])}"
+              const val TV_USER_AGENT = "{kotlin(tv["ua"])}"
+
+              const val TV_DOWNGRADED_VERSION = "{kotlin(tv_down["version"])}"
+              const val TV_DOWNGRADED_USER_AGENT = "{kotlin(tv_down["ua"])}"
+          }}
+          '''
+
+          old = target_path.read_text(encoding="utf-8") if target_path.exists() else ""
+
+          def identity_payload(text: str) -> str:
+              # Do not open a PR merely because yt-dlp master moved while all
+              # client identities stayed identical.
+              text = re.sub(
+                  r'(?m)^\s*const val SOURCE_COMMIT = ".*"\s*$',
+                  "",
+                  text,
+              )
+              text = re.sub(
+                  r'(?m)^\s*const val SOURCE_SNAPSHOT = ".*"\s*$',
+                  "",
+                  text,
+              )
+              return text.strip()
+
+          changed = identity_payload(old) != identity_payload(generated)
+
+          if changed:
+              target_path.parent.mkdir(parents=True, exist_ok=True)
+              target_path.write_text(generated, encoding="utf-8")
+
+          with output.open("w", encoding="utf-8") as fp:
+              fp.write("policy_changed=false\n")
+              fp.write(f"changed={'true' if changed else 'false'}\n")
+              fp.write(f"upstream_sha={source_sha}\n")
+
+          print("Upstream:", source_sha)
+          print("Generated:", target_path)
+          print("Changed:", changed)
+          PY
+
+      - name: Open policy-change safety issue
+        if: steps.sync.outputs.policy_changed == 'true'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          UNSAFE_CLIENTS: ${{ steps.sync.outputs.unsafe_clients }}
+          UPSTREAM_SHA: ${{ steps.sync.outputs.upstream_sha }}
+        run: |
+          set -euo pipefail
+
+          title="YouTube playback client policy changed"
+
+          existing="$(
+            gh issue list \
+              --state open \
+              --search "\"$title\" in:title" \
+              --json number \
+              --jq '.[0].number // empty'
+          )"
+
+          body="$(cat <<EOF
+          Capsule stopped automatic YouTube client synchronization.
+
+          yt-dlp now declares a PO-token policy for one or more clients in Capsule's safe AUDIO allowlist:
+
+          \`$UNSAFE_CLIENTS\`
+
+          Upstream commit:
+          \`$UPSTREAM_SHA\`
+
+          Safety action:
+          - no client rotation was performed;
+          - no runtime identity update was applied;
+          - the existing Capsule client snapshot remains unchanged;
+          - manual review is required before changing the allowlist or adding a genuine token provider.
+
+          This is intentional fail-closed behavior.
+          EOF
+          )"
+
+          if [[ -n "$existing" ]]; then
+            gh issue comment "$existing" --body "$body"
+          else
+            gh issue create \
+              --title "$title" \
+              --body "$body"
+          fi
+
+      - name: Stop on policy change
+        if: steps.sync.outputs.policy_changed == 'true'
+        run: |
+          echo "Upstream safety policy changed; refusing automatic update."
+          exit 1
+
+      - name: Nothing changed
+        if: steps.sync.outputs.policy_changed != 'true' && steps.sync.outputs.changed != 'true'
+        run: |
+          echo "Capsule YouTube client snapshot is current."
+
+      - name: Compile and test updated client snapshot
+        if: steps.sync.outputs.changed == 'true'
+        run: |
+          gradle \
+            :innertube:test \
+            :app:assembleUniversalDebug \
+            --stacktrace \
+            --no-daemon
+
+      - name: Push update branch
+        if: steps.sync.outputs.changed == 'true'
+        id: branch
+        shell: bash
+        env:
+          UPSTREAM_SHA: ${{ steps.sync.outputs.upstream_sha }}
+        run: |
+          set -euo pipefail
+
+          short="${UPSTREAM_SHA:0:12}"
+          branch="automation/youtube-clients-$short"
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git checkout -B "$branch"
+          git add \
+            innertube/src/main/kotlin/com/nikhil/yt/innertube/models/YouTubeClientUpstream.kt
+
+          git commit \
+            -m "Sync YouTube client identities from yt-dlp $short"
+
+          git push --force origin "$branch"
+
+          echo "name=$branch" >> "$GITHUB_OUTPUT"
+
+      - name: Open compatibility PR
+        if: steps.sync.outputs.changed == 'true'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BRANCH: ${{ steps.branch.outputs.name }}
+          UPSTREAM_SHA: ${{ steps.sync.outputs.upstream_sha }}
+        run: |
+          set -euo pipefail
+
+          existing="$(
+            gh pr list \
+              --head "$BRANCH" \
+              --state open \
+              --json number \
+              --jq '.[0].number // empty'
+          )"
+
+          if [[ -n "$existing" ]]; then
+            echo "PR #$existing already exists."
+            exit 0
+          fi
+
+          gh pr create \
+            --base main \
+            --head "$BRANCH" \
+            --title "Sync safe YouTube playback clients" \
+            --body "$(cat <<EOF
+          Automatic client-identity synchronization from yt-dlp.
+
+          Upstream commit:
+          \`$UPSTREAM_SHA\`
+
+          Safety checks passed before this PR was opened:
+          - Capsule's active allowlist clients still have no newly declared PO-token policy in yt-dlp;
+          - no new client was added to the fallback chain;
+          - no runtime client rotation was enabled;
+          - \`:innertube:test\` passed;
+          - \`:app:assembleUniversalDebug\` passed.
+
+          This PR is intentionally **not auto-merged**. A newer identity is not automatically safer; upstream playback-policy changes still require review.
+          EOF
+          )"
