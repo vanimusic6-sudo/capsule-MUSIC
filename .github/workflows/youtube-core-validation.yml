@@ -1,0 +1,74 @@
+name: YouTube Core Validation
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "app/src/main/kotlin/com/nikhil/yt/playback/**"
+      - "app/src/main/kotlin/com/nikhil/yt/utils/**"
+      - "app/src/main/kotlin/com/nikhil/yt/di/**"
+      - "app/src/main/kotlin/com/nikhil/yt/ui/screens/settings/StorageSettings.kt"
+      - "app/src/test/**"
+      - "innertube/src/main/**"
+      - "innertube/src/test/**"
+      - "gradle/libs.versions.toml"
+      - ".github/workflows/youtube-core-validation.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "app/src/main/kotlin/com/nikhil/yt/playback/**"
+      - "app/src/main/kotlin/com/nikhil/yt/utils/**"
+      - "app/src/main/kotlin/com/nikhil/yt/di/**"
+      - "app/src/main/kotlin/com/nikhil/yt/ui/screens/settings/StorageSettings.kt"
+      - "app/src/test/**"
+      - "innertube/src/main/**"
+      - "innertube/src/test/**"
+      - "gradle/libs.versions.toml"
+      - ".github/workflows/youtube-core-validation.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: youtube-core-validation-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    name: Test and build YouTube core
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Set up Gradle 9.3.1
+        uses: gradle/actions/setup-gradle@v6
+        with:
+          gradle-version: "9.3.1"
+
+      - name: Ensure locale metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p app/src/main/res
+          cat > app/src/main/res/resources.properties <<'EOF'
+          unqualifiedResLocale=en-US
+          EOF
+
+      - name: Run YouTube core tests and debug build
+        run: |
+          gradle \
+            :innertube:test \
+            :app:testUniversalDebugUnitTest \
+            :app:assembleUniversalDebug \
+            --stacktrace \
+            --no-daemon
