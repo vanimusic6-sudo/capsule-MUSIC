@@ -118,11 +118,17 @@ private class LazyCache(
         delegate().release()
 }
 
-@Module
-@InstallIn(SingletonComponent::class)
+/*
+ * Kept at file scope, above the module annotations, so that @Module and
+ * @InstallIn stay attached to AppModule itself. Annotating a top-level
+ * property instead does not compile, and would silently strip every @Provides
+ * in this file out of the Hilt graph if it did.
+ */
 const val CAPSULE_VIDEO_CACHE_BYTES = 192L * 1024L * 1024L
 const val CAPSULE_VIDEO_CACHE_DIRECTORY = "capsule_video_cache"
 
+@Module
+@InstallIn(SingletonComponent::class)
 object AppModule {
 
     @Singleton
