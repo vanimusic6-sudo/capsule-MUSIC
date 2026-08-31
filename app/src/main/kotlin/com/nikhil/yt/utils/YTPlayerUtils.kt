@@ -18,6 +18,7 @@ package com.nikhil.yt.utils
 import android.net.ConnectivityManager
 import androidx.media3.common.PlaybackException
 import com.nikhil.yt.constants.AudioQuality
+import com.nikhil.yt.constants.AudioStreamPolicy
 import com.nikhil.yt.constants.PlayerStreamClient
 import com.nikhil.yt.innertube.CapsuleAnonymousSession
 import com.nikhil.yt.innertube.YouTube
@@ -122,13 +123,18 @@ object YTPlayerUtils {
         ConcurrentHashMap<String, Long>()
 
     fun invalidateCachedStreamUrls(videoId: String) {
+        /*
+         * Stream URL invalidation must NOT clear the per-track client failure
+         * map. Otherwise MusicService can mark a client as failed on 403 and
+         * immediately erase that protection in the next line.
+         */
         val prefix = "$videoId:"
         streamUrlCache.keys.removeIf { it.startsWith(prefix) }
+    }
 
-        val failedPrefix = "$videoId:"
-        failedTrackClientsUntil.keys.removeIf {
-            it.startsWith(failedPrefix)
-        }
+    fun clearTrackClientFailures(videoId: String) {
+        val prefix = "$videoId:"
+        failedTrackClientsUntil.keys.removeIf { it.startsWith(prefix) }
     }
 
     fun clearPlaybackSafetyState() {
@@ -175,15 +181,32 @@ object YTPlayerUtils {
         httpStatusCode: Int?,
     ) {
         /*
-         * Old preference names are intentionally mapped to the actual
-         * safety-policy client used by this resolver.
+         * Legacy PlayerStreamClient values are kept only for source/settings
+         * compatibility. They must not silently re-enable old Android-VR/iOS
+         * playback identities.
          */
-        val effective = preferredClient(client)
+        val effective =
+            if (client == PlayerStreamClient.TVHTML5) {
+                TVHTML5
+            } else {
+                VISIONOS
+            }
 
         markStreamClientFailed(
             videoId = videoId,
             clientKey = effectiveIdentityKey(effective),
             httpStatusCode = httpStatusCode,
+        )
+    }
+
+    fun markBotDetectionFailure(reason: String? = null) {
+        tripGlobalBreaker(
+            reason =
+                reason
+                    ?.trim()
+                    ?.takeIf { it.isNotBlank() }
+                    ?.let { "YouTube bot-check: ${it.take(160)}" }
+                    ?: "YouTube requested a bot check",
         )
     }
 
@@ -193,21 +216,32 @@ object YTPlayerUtils {
     ): Boolean {
         if (isGlobalBreakerActive()) return true
 
-        val key =
-            buildFailedClientKey(
-                videoId = videoId,
-                clientKey = effectiveIdentityKey(client),
-            )
+        val now = System.currentTimeMillis()
+        val keys =
+            listOf(
+                buildFailedClientKey(
+                    videoId = videoId,
+                    clientKey = effectiveIdentityKey(client),
+                ),
+                buildFailedClientKey(
+                    videoId = videoId,
+                    clientKey = client.clientName,
+                ),
+            ).distinct()
 
-        val until =
-            failedTrackClientsUntil[key] ?: return false
+        var blocked = false
 
-        if (until <= System.currentTimeMillis()) {
-            failedTrackClientsUntil.remove(key)
-            return false
+        for (key in keys) {
+            val until = failedTrackClientsUntil[key] ?: continue
+
+            if (until <= now) {
+                failedTrackClientsUntil.remove(key)
+            } else {
+                blocked = true
+            }
         }
 
-        return true
+        return blocked
     }
 
     private fun normalizeStreamClientKey(
@@ -303,6 +337,7 @@ object YTPlayerUtils {
         connectivityManager: ConnectivityManager,
         preferredStreamClient: PlayerStreamClient =
             PlayerStreamClient.ANDROID_VR,
+        streamPolicy: AudioStreamPolicy = AudioStreamPolicy.AUTO_SAFE,
         networkMetered: Boolean? = null,
         avoidCodecs: Set<String> = emptySet(),
     ): Result<PlaybackData> =
@@ -339,6 +374,7 @@ object YTPlayerUtils {
                                 connectivityManager,
                             preferredStreamClient =
                                 preferredStreamClient,
+                            streamPolicy = streamPolicy,
                             networkMetered = networkMetered,
                             avoidCodecs = avoidCodecs,
                         )
@@ -373,6 +409,7 @@ object YTPlayerUtils {
         audioQuality: AudioQuality,
         connectivityManager: ConnectivityManager,
         preferredStreamClient: PlayerStreamClient,
+        streamPolicy: AudioStreamPolicy,
         networkMetered: Boolean?,
         avoidCodecs: Set<String>,
     ): PlaybackData {
@@ -388,12 +425,40 @@ object YTPlayerUtils {
             getSignatureTimestampOrNull(videoId)
 
         val preferredYouTubeClient =
-            preferredClient(preferredStreamClient)
+            preferredClient(
+                streamPolicy = streamPolicy,
+                legacyPreference = preferredStreamClient,
+            )
+
+        val policyOrder =
+            when (streamPolicy) {
+                AudioStreamPolicy.AUTO_SAFE,
+                AudioStreamPolicy.VISIONOS,
+                -> listOf(
+                    VISIONOS,
+                    YouTubeClient.TVHTML5_DOWNGRADED,
+                    TVHTML5,
+                )
+
+                AudioStreamPolicy.TV_DOWNGRADED ->
+                    listOf(
+                        YouTubeClient.TVHTML5_DOWNGRADED,
+                        VISIONOS,
+                        TVHTML5,
+                    )
+
+                AudioStreamPolicy.TVHTML5 ->
+                    listOf(
+                        TVHTML5,
+                        VISIONOS,
+                        YouTubeClient.TVHTML5_DOWNGRADED,
+                    )
+            }
 
         val streamClients =
             buildList {
                 add(preferredYouTubeClient)
-                addAll(STREAM_FALLBACK_CLIENTS)
+                addAll(policyOrder)
             }
                 .distinct()
                 .filterNot { client ->
@@ -666,22 +731,21 @@ object YTPlayerUtils {
         )
 
     private fun preferredClient(
-        preference: PlayerStreamClient,
+        streamPolicy: AudioStreamPolicy,
+        legacyPreference: PlayerStreamClient,
     ): YouTubeClient =
-        when (preference) {
-            /*
-             * Legacy setting values intentionally collapse into the current
-             * safety policy. This avoids silently re-enabling a client whose
-             * PO-token requirements changed upstream.
-             */
-            PlayerStreamClient.TVHTML5 -> TVHTML5
+        when (streamPolicy) {
+            AudioStreamPolicy.AUTO_SAFE ->
+                if (legacyPreference == PlayerStreamClient.TVHTML5) {
+                    TVHTML5
+                } else {
+                    VISIONOS
+                }
 
-            PlayerStreamClient.ANDROID_VR,
-            PlayerStreamClient.WEB_REMIX,
-            PlayerStreamClient.IOS,
-            PlayerStreamClient.MOBILE,
-            PlayerStreamClient.ANDROID_MUSIC,
-            -> VISIONOS
+            AudioStreamPolicy.VISIONOS -> VISIONOS
+            AudioStreamPolicy.TV_DOWNGRADED ->
+                YouTubeClient.TVHTML5_DOWNGRADED
+            AudioStreamPolicy.TVHTML5 -> TVHTML5
         }
 
     private fun selectAudioFormatCandidates(
