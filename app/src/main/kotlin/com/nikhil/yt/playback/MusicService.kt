@@ -208,10 +208,12 @@ import com.nikhil.yt.utils.reportException
 import com.nikhil.yt.ui.widget.updateVeluneWidgetState
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -227,6 +229,7 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.withContext
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.OkHttpClient
@@ -299,6 +302,91 @@ class MusicService :
         CapsuleVideoQuality.AUTO,
     )
     private val playbackUrlCache = ConcurrentHashMap<String, Pair<String, Long>>()
+
+    /*
+     * One resolve per track, shared by everyone who wants it.
+     *
+     * The ResolvingDataSource callback runs on ExoPlayer's loader thread, so
+     * whatever it does there is time the next track cannot start buffering.
+     * Rather than each caller starting its own chain, every resolve is owned by
+     * the service scope and looked up here: the prefetch below starts it early,
+     * and if the loader arrives before it finished, the loader simply awaits
+     * the job that is already running instead of launching a second one.
+     */
+    private val inFlightAudioResolves =
+        ConcurrentHashMap<String, Deferred<Result<CapsuleAudioEngine.PlaybackData>>>()
+
+    private val audioResolveLock = Any()
+
+    private fun audioResolveJob(
+        mediaId: String,
+    ): Deferred<Result<CapsuleAudioEngine.PlaybackData>> =
+        synchronized(audioResolveLock) {
+            inFlightAudioResolves[mediaId]?.takeIf { !it.isCompleted }
+                ?: ioScope
+                    .async {
+                        CapsuleAudioEngine.playerResponseForPlayback(
+                            mediaId,
+                            audioQuality = audioQuality,
+                            connectivityManager = connectivityManager,
+                            streamPolicy = audioStreamPolicy,
+                            avoidCodecs = avoidStreamCodecs,
+                        )
+                    }
+                    .also { job ->
+                        inFlightAudioResolves[mediaId] = job
+                        job.invokeOnCompletion {
+                            inFlightAudioResolves.remove(mediaId, job)
+                        }
+                    }
+        }
+
+    /*
+     * Resolve what is coming next while the current track is still playing, so
+     * the loader thread finds a ready URL instead of a network chain. This is
+     * the part that actually keeps playback moving; the timeout further down is
+     * only a floor for the cases prefetch cannot cover.
+     */
+    private fun prefetchUpcomingAudio() {
+        val upcoming =
+            runCatching {
+                buildList {
+                    val count = player.mediaItemCount
+                    val start = player.currentMediaItemIndex
+                    for (offset in 1..PREFETCH_AHEAD) {
+                        val index = start + offset
+                        if (index < 0 || index >= count) break
+                        player
+                            .getMediaItemAt(index)
+                            .mediaId
+                            .trim()
+                            .takeIf { it.isNotBlank() }
+                            ?.let { add(it) }
+                    }
+                }
+            }.getOrNull().orEmpty()
+
+        val now = System.currentTimeMillis()
+
+        upcoming.forEach { mediaId ->
+            val cached = playbackUrlCache[mediaId]
+            if (cached != null && cached.second > now + PREFETCH_FRESHNESS_MS) return@forEach
+            if (inFlightAudioResolves.containsKey(mediaId)) return@forEach
+
+            ioScope.launch {
+                val resolved =
+                    runCatching { audioResolveJob(mediaId).await() }
+                        .getOrNull()
+                        ?.getOrNull()
+                        ?: return@launch
+
+                playbackUrlCache[mediaId] =
+                    resolved.streamUrl to
+                        System.currentTimeMillis() +
+                        (resolved.streamExpiresInSeconds * 1000L)
+            }
+        }
+    }
 
     /**
      * Video mode is deliberately isolated from the normal YouTube audio resolver.
@@ -3440,6 +3528,8 @@ class MusicService :
     override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
         super.onMediaItemTransition(mediaItem, reason)
 
+        prefetchUpcomingAudio()
+
         val transitionedMediaId =
             mediaItem?.mediaId
                 ?.trim()
@@ -4345,7 +4435,11 @@ class MusicService :
             if (videoId != null) {
                 val resolvedVideo =
                     runBlocking(Dispatchers.IO) {
-                        YouTubeVideoResolver.resolveMuxed(videoId, capsuleVideoQuality)
+                        runCatching {
+                            withTimeout(VIDEO_RESOLVE_TIMEOUT_MS) {
+                                YouTubeVideoResolver.resolveMuxed(videoId, capsuleVideoQuality)
+                            }
+                        }.getOrElse { Result.failure(it) }
                     }.getOrElse { throwable ->
                         maybeOpenVideoCircuitBreaker(throwable)
                         videoPlaybackState.value =
@@ -4418,14 +4512,22 @@ class MusicService :
                 return@Factory dataSpec.withUri(it.first.toUri()).subrange(dataSpec.uriPositionOffset, length)
             }
 
-            val playbackData = runBlocking(Dispatchers.IO) {
-                CapsuleAudioEngine.playerResponseForPlayback(
-                    mediaId,
-                    audioQuality = audioQuality,
-                    connectivityManager = connectivityManager,
-                    streamPolicy = audioStreamPolicy,
-                    avoidCodecs = avoidStreamCodecs,
-                )
+            /*
+             * Await the shared resolve rather than starting one here. The work
+             * itself lives in ioScope, so a skip that abandons this load leaves
+             * the job running to completion and its URL lands in the cache for
+             * whoever needs it next, instead of being cancelled halfway and
+             * repeated from scratch.
+             *
+             * The timeout is a floor, not the mechanism: with prefetch working
+             * this await normally returns immediately.
+             */
+            val playbackData = runBlocking {
+                runCatching {
+                    withTimeout(AUDIO_RESOLVE_TIMEOUT_MS) {
+                        audioResolveJob(mediaId).await()
+                    }
+                }.getOrElse { Result.failure(it) }
             }.getOrElse { throwable ->
                 when (throwable) {
                     is PlaybackException -> throw throwable
@@ -5656,6 +5758,23 @@ class MusicService :
         const val NOTIFICATION_ID = 888
         const val ERROR_CODE_NO_STREAM = 1000001
         const val CHUNK_LENGTH = 512 * 1024L
+
+        /*
+         * How far ahead to resolve. Two is enough to cover a normal transition
+         * plus one impatient skip without turning the queue into a crawler.
+         */
+        private const val PREFETCH_AHEAD = 2
+
+        /* Do not re-resolve a URL that still has this much life left. */
+        private const val PREFETCH_FRESHNESS_MS = 60_000L
+
+        /*
+         * Floors for the two blocking resolves in the ResolvingDataSource.
+         * They exist so a stalled network cannot pin the loader thread; with
+         * prefetch in place they should almost never be reached.
+         */
+        private const val AUDIO_RESOLVE_TIMEOUT_MS = 25_000L
+        private const val VIDEO_RESOLVE_TIMEOUT_MS = 20_000L
         const val PERSISTENT_QUEUE_FILE = "persistent_queue.data"
         const val PERSISTENT_AUTOMIX_FILE = "persistent_automix.data"
         const val PERSISTENT_PLAYER_STATE_FILE = "persistent_player_state.data"
