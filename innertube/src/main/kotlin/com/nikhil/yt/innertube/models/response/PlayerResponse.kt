@@ -77,15 +77,23 @@ data class PlayerResponse(
     }
 
     @Serializable
+    /*
+     * Only videoId is guaranteed. Several client identities answer with a
+     * trimmed videoDetails (no viewCount, sometimes no author or thumbnail),
+     * and with non-null fields kotlinx rejects the ENTIRE PlayerResponse over
+     * one missing string. That threw away a perfectly playable stream and
+     * burned the client out of the rotation. Metadata is optional here; the
+     * stream is the point.
+     */
     data class VideoDetails(
         val videoId: String,
-        val title: String,
-        val author: String,
-        val channelId: String,
-        val lengthSeconds: String,
-        val musicVideoType: String?,
-        val viewCount: String,
-        val thumbnail: Thumbnails,
+        val title: String? = null,
+        val author: String? = null,
+        val channelId: String? = null,
+        val lengthSeconds: String? = null,
+        val musicVideoType: String? = null,
+        val viewCount: String? = null,
+        val thumbnail: Thumbnails? = null,
     )
 
     @Serializable
