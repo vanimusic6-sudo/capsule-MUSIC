@@ -117,6 +117,20 @@ android {
         buildConfig = true
     }
 
+    testOptions {
+        unitTests {
+            /*
+             * JVM unit tests run against a stub android.jar whose methods throw
+             * by default. Media3's PlaybackException constructor calls
+             * SystemClock.elapsedRealtime(), so constructing one in a plain unit
+             * test blows up before the assertion is ever reached. Returning
+             * defaults instead keeps these pure-logic tests runnable without
+             * pulling in Robolectric.
+             */
+            isReturnDefaultValues = true
+        }
+    }
+
     dependenciesInfo {
         includeInApk = false
         includeInBundle = false
