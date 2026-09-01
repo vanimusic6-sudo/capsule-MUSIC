@@ -207,6 +207,18 @@ fun VeluneSettingsScreen(
                 )
             }
 
+            /*
+             * The debug screen was registered on settings/misc but nothing
+             * linked to it, so the log viewer was unreachable from the app.
+             */
+            item {
+                SettingsItemScreenshotStyle(
+                    icon = painterResource(R.drawable.experiment),
+                    title = "Developer",
+                    onClick = { navController.navigate("settings/misc") }
+                )
+            }
+
             item {
                 SettingsItemScreenshotStyle(
                     icon = painterResource(R.drawable.info),
