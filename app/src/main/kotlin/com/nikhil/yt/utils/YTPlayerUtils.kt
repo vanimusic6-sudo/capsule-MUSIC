@@ -79,8 +79,17 @@ object YTPlayerUtils {
         }
 
         val client =
+            /*
+             * OkHttp defaults callTimeout to zero, meaning no ceiling at all.
+             * These probes decide whether playback starts, so an unbounded call
+             * is simply a bug: a stalled connection had no way to fail.
+             */
             OkHttpClient.Builder()
                 .proxy(current)
+                .connectTimeout(java.time.Duration.ofSeconds(5))
+                .readTimeout(java.time.Duration.ofSeconds(8))
+                .writeTimeout(java.time.Duration.ofSeconds(8))
+                .callTimeout(java.time.Duration.ofSeconds(10))
                 .build()
 
         streamClientPair = current to client
