@@ -130,9 +130,18 @@ object CapsuleVideoRequestGuard {
 
     suspend fun beforeStreamProbe() = acquire(Surface.STREAM)
 
+    /*
+     * Pacing by reservation, not by sleeping under the lock.
+     *
+     * The lock is held only long enough to work out when this request may run
+     * and to claim that slot; the wait happens after it is released. Sleeping
+     * inside the lock made every other caller queue behind whoever happened to
+     * be waiting, which serialized the whole VIDEO surface and showed up as
+     * video flashing on for a second and disappearing again.
+     */
     suspend fun acquire(surface: Surface) {
-        gate.withLock {
-            var now = System.currentTimeMillis()
+        val scheduledAtMs = gate.withLock {
+            val now = System.currentTimeMillis()
             decayEscalationIfClean(now)
 
             val remaining = blockedUntilMs - now
@@ -152,6 +161,8 @@ object CapsuleVideoRequestGuard {
             refill(now)
 
             val cost = if (surface == Surface.API) API_COST else STREAM_COST
+
+            var readyAt = now
             if (tokens < cost) {
                 val waitForToken = ((cost - tokens) * REFILL_INTERVAL_MS).toLong()
                 if (waitForToken > MAX_QUEUE_WAIT_MS) {
@@ -160,9 +171,8 @@ object CapsuleVideoRequestGuard {
                             "${max(1L, waitForToken / 1000L)}s",
                     )
                 }
-                delay(waitForToken)
-                now = System.currentTimeMillis()
-                refill(now)
+                readyAt = now + waitForToken
+                refill(readyAt)
             }
 
             tokens = max(0.0, tokens - cost)
@@ -177,16 +187,32 @@ object CapsuleVideoRequestGuard {
                     STREAM_MIN_GAP_MS + Random.nextLong(STREAM_JITTER_MS + 1)
                 }
 
-            val waitMs = gap - (now - lastAt)
-            if (waitMs > 0L) delay(waitMs)
+            val scheduledAt = max(readyAt, lastAt + gap)
 
-            val stamp = System.currentTimeMillis()
-            if (surface == Surface.API) {
-                lastApiRequestAtMs = stamp
-            } else {
-                lastStreamRequestAtMs = stamp
+            /*
+             * Reservations must not stack up without limit. If the backlog
+             * already reaches past the queue ceiling, refuse now instead of
+             * parking the caller for an unbounded stretch.
+             */
+            if (scheduledAt - now > MAX_QUEUE_WAIT_MS) {
+                tokens = min(BUCKET_CAPACITY, tokens + cost)
+                throw RequestBlockedException(
+                    "VIDEO request queue is full, retry in " +
+                        "${max(1L, (scheduledAt - now) / 1000L)}s",
+                )
             }
+
+            if (surface == Surface.API) {
+                lastApiRequestAtMs = scheduledAt
+            } else {
+                lastStreamRequestAtMs = scheduledAt
+            }
+
+            scheduledAt
         }
+
+        val waitMs = scheduledAtMs - System.currentTimeMillis()
+        if (waitMs > 0L) delay(waitMs)
     }
 
     private fun refill(now: Long) {
