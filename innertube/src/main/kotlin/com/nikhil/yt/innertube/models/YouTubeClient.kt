@@ -193,6 +193,15 @@ data class YouTubeClient(
                 useSignatureTimestamp = false,
             )
 
+        /*
+         * TVHTML5 is a web-family client: its formats are ciphered and the
+         * player call is expected to carry
+         * playbackContext.contentPlaybackContext.signatureTimestamp. Sending it
+         * without one made YouTube answer every single request with
+         * "reload the page" (UNPLAYABLE), which read like a dead client but was
+         * really a malformed request on our side. VISIONOS gets away without it
+         * because iOS-family responses are not ciphered.
+         */
         val TVHTML5 =
             YouTubeClient(
                 clientName = "TVHTML5",
@@ -201,7 +210,7 @@ data class YouTubeClient(
                 userAgent = YouTubeClientUpstream.TV_USER_AGENT,
                 friendlyName = "TV",
                 loginSupported = false,
-                useSignatureTimestamp = false,
+                useSignatureTimestamp = true,
             )
 
         /*
@@ -216,7 +225,7 @@ data class YouTubeClient(
                 userAgent = YouTubeClientUpstream.TV_DOWNGRADED_USER_AGENT,
                 friendlyName = "TV downgraded",
                 loginSupported = false,
-                useSignatureTimestamp = false,
+                useSignatureTimestamp = true,
             )
 
         /*
