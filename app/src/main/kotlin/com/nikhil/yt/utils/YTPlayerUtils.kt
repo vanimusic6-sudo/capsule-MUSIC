@@ -56,6 +56,9 @@ object YTPlayerUtils {
     private const val MAX_PLAYER_REQUESTS_PER_RESOLVE = 3
     private const val MAX_STREAM_PROBES_PER_CLIENT = 2
     private const val MAX_STREAM_PROBES_PER_RESOLVE = 4
+
+    /* Pause before the single retry of a probe that never reached the network. */
+    private const val TRANSPORT_RETRY_DELAY_MS = 350L
     private const val FRESH_CACHE_SAFETY_MS = 30_000L
 
     /* Bound slow-growing in-memory state on very long sessions. */
@@ -124,6 +127,13 @@ object YTPlayerUtils {
     private data class StreamProbeResult(
         val success: Boolean,
         val statusCode: Int? = null,
+        /*
+         * True when the probe never reached YouTube at all: DNS failure, no
+         * route, TLS or timeout. That says something about this device's
+         * network, not about the stream or the client identity, so it must not
+         * be treated as evidence against either.
+         */
+        val transportFailure: Boolean = false,
     )
 
     internal class ResolveRequestBudget(
@@ -781,9 +791,34 @@ object YTPlayerUtils {
                         client = client,
                     ) ?: continue
 
-                val probe = validateStatus(candidateUrl, client)
+                var probe = validateStatus(candidateUrl, client)
 
-                if (!probe.success) {
+                /*
+                 * One retry for a transport failure. Flaky VPN DNS very often
+                 * resolves the same host on a second attempt a moment later.
+                 */
+                if (probe.transportFailure) {
+                    Thread.sleep(TRANSPORT_RETRY_DELAY_MS)
+                    probe = validateStatus(candidateUrl, client)
+                }
+
+                /*
+                 * Still unreachable. The probe is an optimisation that catches
+                 * a rejected URL early, not a precondition for playback, and
+                 * here it has told us nothing about the stream. Fall through to
+                 * the accept path below and let the player, which has its own
+                 * retry policy, decide. Discarding a good response and burning
+                 * the rest of the client chain cannot fix broken DNS.
+                 */
+                if (probe.transportFailure) {
+                    Timber.tag(logTag).w(
+                        "Accepting %s itag=%d unprobed: network unreachable",
+                        effectiveIdentityKey(client),
+                        candidate.itag,
+                    )
+                }
+
+                if (!probe.success && !probe.transportFailure) {
                     when (probe.statusCode) {
                         403, 401 -> {
                             markStreamClientFailed(
@@ -1089,18 +1124,39 @@ object YTPlayerUtils {
                 statusCode = code,
             )
         } catch (error: Exception) {
+            val transport = isTransportFailure(error)
+
             Timber.tag(logTag).w(
-                error,
-                "Stream URL validation failed",
+                "Stream probe %s: %s",
+                if (transport) "could not reach the network" else "failed",
+                error.javaClass.simpleName,
             )
-            reportException(error)
+
+            if (!transport) reportException(error)
 
             StreamProbeResult(
                 success = false,
                 statusCode = null,
+                transportFailure = transport,
             )
         }
     }
+
+    /*
+     * Local connectivity problems, not YouTube verdicts. VPN DNS in particular
+     * fails to resolve individual googlevideo edge hosts fairly often, and that
+     * used to be indistinguishable from a dead stream.
+     */
+    private fun isTransportFailure(error: Throwable): Boolean =
+        generateSequence(error) { it.cause }
+            .any { cause ->
+                cause is java.net.UnknownHostException ||
+                    cause is java.net.ConnectException ||
+                    cause is java.net.NoRouteToHostException ||
+                    cause is java.net.SocketTimeoutException ||
+                    cause is java.io.InterruptedIOException ||
+                    cause is javax.net.ssl.SSLException
+            }
 
     private fun getSignatureTimestampOrNull(
         videoId: String,
