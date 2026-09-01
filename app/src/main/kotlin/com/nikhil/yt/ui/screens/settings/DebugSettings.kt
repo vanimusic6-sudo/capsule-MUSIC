@@ -390,7 +390,11 @@ private fun LogViewerPanel() {
     val context = LocalContext.current
     val clipboard = LocalClipboardManager.current
 
-    var filterMode by remember { mutableStateOf(0) }
+    /*
+     * 0 = Discord, 1 = YouTube core, 2 = everything.
+     * Defaults to the YouTube core because that is what field runs measure.
+     */
+    var filterMode by remember { mutableStateOf(1) }
     var selectedLevels by remember {
         mutableStateOf(setOf(Log.INFO, Log.WARN, Log.ERROR))
     }
@@ -403,6 +407,12 @@ private fun LogViewerPanel() {
                         (entry.tag?.contains("DiscordPresenceManager", true) == true) ||
                         entry.message.contains("DiscordPresenceManager") ||
                         entry.message.contains("DiscordRPC")
+
+                1 -> (entry.tag?.contains("YTPlayerUtils", true) == true) ||
+                        (entry.tag?.contains("Capsule", true) == true) ||
+                        (entry.tag?.contains("YouTubeVideoResolver", true) == true) ||
+                        (entry.tag?.contains("MusicService", true) == true)
+
                 else -> true
             }
             val levelMatch = selectedLevels.contains(entry.level)
@@ -558,7 +568,7 @@ private fun LogViewerPanel() {
                 SegmentedButton(
                     selected = filterMode == 0,
                     onClick = { filterMode = 0 },
-                    shape = SegmentedButtonDefaults.itemShape(index = 0, count = 2),
+                    shape = SegmentedButtonDefaults.itemShape(index = 0, count = 3),
                     icon = { }
                 ) {
                     Text(stringResource(R.string.filter_discord_only))
@@ -566,7 +576,15 @@ private fun LogViewerPanel() {
                 SegmentedButton(
                     selected = filterMode == 1,
                     onClick = { filterMode = 1 },
-                    shape = SegmentedButtonDefaults.itemShape(index = 1, count = 2),
+                    shape = SegmentedButtonDefaults.itemShape(index = 1, count = 3),
+                    icon = { }
+                ) {
+                    Text(stringResource(R.string.filter_youtube_only))
+                }
+                SegmentedButton(
+                    selected = filterMode == 2,
+                    onClick = { filterMode = 2 },
+                    shape = SegmentedButtonDefaults.itemShape(index = 2, count = 3),
                     icon = { }
                 ) {
                     Text(stringResource(R.string.filter_all_logs))
