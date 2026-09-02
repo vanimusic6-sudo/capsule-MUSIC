@@ -515,6 +515,20 @@ object YTPlayerUtils {
                     TVHTML5,
                 )
 
+                AudioStreamPolicy.IOS ->
+                    listOf(
+                        YouTubeClient.IOS,
+                        VISIONOS,
+                        YouTubeClient.IOS_MUSIC,
+                    )
+
+                AudioStreamPolicy.IOS_MUSIC ->
+                    listOf(
+                        YouTubeClient.IOS_MUSIC,
+                        VISIONOS,
+                        YouTubeClient.IOS,
+                    )
+
                 AudioStreamPolicy.TV_DOWNGRADED ->
                     listOf(
                         YouTubeClient.TVHTML5_DOWNGRADED,
@@ -946,6 +960,8 @@ object YTPlayerUtils {
                 }
 
             AudioStreamPolicy.VISIONOS -> VISIONOS
+            AudioStreamPolicy.IOS -> YouTubeClient.IOS
+            AudioStreamPolicy.IOS_MUSIC -> YouTubeClient.IOS_MUSIC
             AudioStreamPolicy.TV_DOWNGRADED ->
                 YouTubeClient.TVHTML5_DOWNGRADED
             AudioStreamPolicy.TVHTML5 -> TVHTML5
