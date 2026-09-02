@@ -5535,8 +5535,10 @@ class MusicService :
                     ObjectOutputStream(fos).use { output ->
                         output.writeObject(payload)
                         output.flush()
+                        // ObjectOutputStream closes the underlying FileOutputStream.
+                        // Sync while the descriptor is still valid.
+                        fos.fd.sync()
                     }
-                    fos.fd.sync()
                 }
 
                 if (persistentFile.exists() && !persistentFile.delete()) {
