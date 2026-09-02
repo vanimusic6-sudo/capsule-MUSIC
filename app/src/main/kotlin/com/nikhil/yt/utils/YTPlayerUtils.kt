@@ -489,10 +489,28 @@ object YTPlayerUtils {
 
         val policyOrder =
             when (streamPolicy) {
+                /*
+                 * Ordered by what the field runs actually showed:
+                 *
+                 *   VISIONOS   179/179 first try. Stays first.
+                 *   IOS        same family, same shape (anonymous, no
+                 *              signatureTimestamp, uncipherd URLs) and fully
+                 *              upstream-synced, so it is the likeliest of the
+                 *              defined identities to work when VISIONOS does.
+                 *   IOS_MUSIC  same family again, but its version string is
+                 *              pinned by hand rather than synced, so it sits
+                 *              behind IOS.
+                 *   TV         0/92 right now. Kept so it revives on its own if
+                 *              upstream fixes it, but never reached while the
+                 *              iOS identities answer, and the per-resolve
+                 *              request budget caps the chain anyway.
+                 */
                 AudioStreamPolicy.AUTO_SAFE,
                 AudioStreamPolicy.VISIONOS,
                 -> listOf(
                     VISIONOS,
+                    YouTubeClient.IOS,
+                    YouTubeClient.IOS_MUSIC,
                     YouTubeClient.TVHTML5_DOWNGRADED,
                     TVHTML5,
                 )
@@ -501,6 +519,7 @@ object YTPlayerUtils {
                     listOf(
                         YouTubeClient.TVHTML5_DOWNGRADED,
                         VISIONOS,
+                        YouTubeClient.IOS,
                         TVHTML5,
                     )
 
@@ -508,6 +527,7 @@ object YTPlayerUtils {
                     listOf(
                         TVHTML5,
                         VISIONOS,
+                        YouTubeClient.IOS,
                         YouTubeClient.TVHTML5_DOWNGRADED,
                     )
             }
