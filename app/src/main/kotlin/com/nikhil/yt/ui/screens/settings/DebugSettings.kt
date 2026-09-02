@@ -9,8 +9,6 @@
 package com.nikhil.yt.ui.screens.settings
 
 import android.content.Intent
-import androidx.core.content.FileProvider
-import java.io.File
 import android.text.format.DateFormat
 import android.util.Log
 import androidx.compose.animation.AnimatedContent
@@ -388,6 +386,12 @@ private fun DebugTimestampItem(
 @Composable
 private fun LogViewerPanel() {
     val allLogs by GlobalLog.logs.collectAsState()
+
+    /*
+     * The buffer only publishes while someone is watching, so ask for a
+     * snapshot as soon as this panel appears.
+     */
+    LaunchedEffect(Unit) { GlobalLog.refresh() }
     val coroutineScope = rememberCoroutineScope()
     val context = LocalContext.current
     val clipboard = LocalClipboardManager.current
@@ -643,57 +647,13 @@ private fun LogViewerPanel() {
                 FilledTonalButton(
                     onClick = {
                         if (filtered.isEmpty()) return@FilledTonalButton
-
-                        /*
-                         * The log goes out as a file, not as EXTRA_TEXT.
-                         * Intent extras travel over a Binder transaction with a
-                         * hard ~1MB ceiling shared by the whole call, so a real
-                         * session's log either threw TransactionTooLargeException
-                         * or arrived empty. A content:// stream has no such limit
-                         * and lands in the target app as an attachment.
-                         */
-                        runCatching {
-                            val sb = StringBuilder()
-                            filtered.forEach { sb.appendLine(GlobalLog.format(it)) }
-
-                            val logDir = File(context.cacheDir, "logs")
-                            logDir.mkdirs()
-                            logDir
-                                .listFiles()
-                                ?.forEach { old -> old.delete() }
-
-                            val logFile = File(logDir, "capsule-log.txt")
-                            logFile.writeText(sb.toString())
-
-                            val uri =
-                                FileProvider.getUriForFile(
-                                    context,
-                                    "${context.packageName}.FileProvider",
-                                    logFile,
-                                )
-
-                            val send =
-                                Intent(Intent.ACTION_SEND).apply {
-                                    type = "text/plain"
-                                    putExtra(Intent.EXTRA_STREAM, uri)
-                                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                                }
-
-                            context.startActivity(
-                                Intent.createChooser(
-                                    send,
-                                    context.getString(R.string.share_logs),
-                                ),
-                            )
-                        }.onFailure {
-                            clipboard.setText(
-                                AnnotatedString(
-                                    filtered.joinToString("\n") { entry ->
-                                        GlobalLog.format(entry)
-                                    },
-                                ),
-                            )
+                        val sb = StringBuilder()
+                        filtered.forEach { sb.appendLine(GlobalLog.format(it)) }
+                        val send = Intent(Intent.ACTION_SEND).apply {
+                            type = "text/plain"
+                            putExtra(Intent.EXTRA_TEXT, sb.toString())
                         }
+                        context.startActivity(Intent.createChooser(send, context.getString(R.string.share_logs)))
                     },
                     enabled = filtered.isNotEmpty(),
                     modifier = Modifier.weight(1f)
