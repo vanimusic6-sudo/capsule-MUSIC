@@ -98,6 +98,7 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import com.nikhil.yt.LocalPlayerConnection
 import com.nikhil.yt.R
+import com.nikhil.yt.constants.DebugLoggingEnabledKey
 import com.nikhil.yt.ui.component.IconButton
 import com.nikhil.yt.ui.component.PreferenceGroupTitle
 import com.nikhil.yt.ui.component.SwitchPreference
@@ -113,6 +114,11 @@ import kotlin.math.roundToInt
 fun DebugSettings(
     navController: NavController
 ) {
+    val (debugLoggingEnabled, onDebugLoggingEnabledChange) = rememberPreference(
+        key = DebugLoggingEnabledKey,
+        defaultValue = false
+    )
+
     val (showDevDebug, onShowDevDebugChange) = rememberPreference(
         key = booleanPreferencesKey("dev_show_discord_debug"),
         defaultValue = false
@@ -161,6 +167,14 @@ fun DebugSettings(
         ) {
             PreferenceGroupTitle(
                 title = stringResource(R.string.experimental_features)
+            )
+
+            SwitchPreference(
+                title = { Text(stringResource(R.string.enable_debug_logging)) },
+                description = stringResource(R.string.enable_debug_logging_desc),
+                icon = { Icon(painterResource(R.drawable.manage_search), null) },
+                checked = debugLoggingEnabled,
+                onCheckedChange = onDebugLoggingEnabledChange
             )
 
             SwitchPreference(
