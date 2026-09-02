@@ -28,6 +28,7 @@ import com.nikhil.yt.ui.theme.ThemeSeedPalette
 import com.nikhil.yt.ui.theme.ThemeSeedPaletteCodec
 import com.nikhil.yt.utils.dataStore
 import com.nikhil.yt.utils.PreferenceStore
+import com.nikhil.yt.utils.DebugLoggingController
 import com.nikhil.yt.utils.get
 import com.nikhil.yt.utils.reportException
 import com.nikhil.yt.innertube.YouTube
@@ -81,7 +82,6 @@ class App : Application(), SingletonImageLoader.Factory {
 
         val processName = currentProcessName()
         if (processName?.endsWith(":crash") == true) {
-            Timber.plant(Timber.DebugTree())
             return
         }
 
@@ -92,15 +92,16 @@ class App : Application(), SingletonImageLoader.Factory {
          * credential-free downloader from CapsuleVideoExtractorProvider.
          */
         if (processName?.endsWith(":capsule_video") == true) {
-            Timber.plant(Timber.DebugTree())
             return
         }
 
         PreferenceStore.start(this)
-        Timber.plant(Timber.DebugTree())
-        try {
-            Timber.plant(com.nikhil.yt.utils.GlobalLogTree())
-        } catch (_: Exception) {}
+        applicationScope.launch(Dispatchers.IO) {
+            dataStore.data
+                .map { it[DebugLoggingEnabledKey] ?: false }
+                .distinctUntilChanged()
+                .collect(DebugLoggingController::setEnabled)
+        }
 
         initializeCriticalSync()
         initializeDeferredAsync()
