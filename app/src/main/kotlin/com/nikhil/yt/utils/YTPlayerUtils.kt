@@ -28,6 +28,7 @@ import com.nikhil.yt.innertube.models.YouTubeClient
 import com.nikhil.yt.innertube.models.YouTubeClient.Companion.TVHTML5
 import com.nikhil.yt.innertube.models.YouTubeClient.Companion.VISIONOS
 import com.nikhil.yt.innertube.models.YouTubeClient.Companion.TVHTML5_DOWNGRADED
+import com.nikhil.yt.innertube.models.YouTubeClient.Companion.WEB_EMBEDDED
 import com.nikhil.yt.innertube.models.response.PlayerResponse
 import com.nikhil.yt.innertube.pages.NewPipeUtils
 import java.util.Locale
@@ -53,7 +54,7 @@ object YTPlayerUtils {
     private const val GLOBAL_BREAKER_MS = 10 * 60 * 1000L
 
     /* Hard request budget for one logical AUDIO resolve. */
-    private const val MAX_PLAYER_REQUESTS_PER_RESOLVE = 3
+    private const val MAX_PLAYER_REQUESTS_PER_RESOLVE = 4
     private const val MAX_STREAM_PROBES_PER_CLIENT = 2
     private const val MAX_STREAM_PROBES_PER_RESOLVE = 4
 
@@ -106,15 +107,17 @@ object YTPlayerUtils {
      *   primary anonymous client; current upstream policy does not declare a
      *   mandatory GVS/Player PO token.
      *
-     * TVHTML5:
-     *   conservative compatibility fallback. Used anonymously.
+     * WEB_EMBEDDED:
+     *   anonymous web fallback. It currently has no declared GVS PO-token
+     *   requirement upstream, but needs the normal youtube.com player origin
+     *   and JS signature deciphering.
      *
      * TVHTML5_DOWNGRADED:
      *   compatibility fallback maintained upstream without a currently
      *   declared mandatory PO-token policy.
      *
-     * Android/iOS/Android-VR client identities remain defined for source
-     * compatibility but are intentionally NOT part of this automatic chain.
+     * Android/iOS/Android-VR client identities remain manual compatibility
+     * modes because current HTTPS GVS URLs require a real PO-token.
      */
     private val MAIN_CLIENT: YouTubeClient = VISIONOS
 
@@ -493,56 +496,62 @@ object YTPlayerUtils {
                  * Ordered by what the field runs actually showed:
                  *
                  *   VISIONOS   179/179 first try. Stays first.
-                 *   IOS        same family, same shape (anonymous, no
-                 *              signatureTimestamp, uncipherd URLs) and fully
-                 *              upstream-synced, so it is the likeliest of the
-                 *              defined identities to work when VISIONOS does.
-                 *   IOS_MUSIC  same family again, but its version string is
-                 *              pinned by hand rather than synced, so it sits
-                 *              behind IOS.
-                 *   TV         0/92 right now. Kept so it revives on its own if
-                 *              upstream fixes it, but never reached while the
-                 *              iOS identities answer, and the per-resolve
-                 *              request budget caps the chain anyway.
+                 *   WEB_EMBEDDED has no currently declared GVS PO-token
+                 *              requirement and is the first real spare.
+                 *   TV_DOWN / TV also have no declared GVS token requirement;
+                 *              both now use their matching youtube.com host,
+                 *              origin and referer instead of music.youtube.com.
+                 *
+                 * iOS and Android families are deliberately absent here:
+                 * their current HTTPS GVS policy requires a genuine PO-token.
                  */
                 AudioStreamPolicy.AUTO_SAFE,
                 AudioStreamPolicy.VISIONOS,
                 -> listOf(
                     VISIONOS,
-                    YouTubeClient.IOS,
-                    YouTubeClient.IOS_MUSIC,
-                    YouTubeClient.TVHTML5_DOWNGRADED,
+                    WEB_EMBEDDED,
+                    TVHTML5_DOWNGRADED,
                     TVHTML5,
                 )
+
+                AudioStreamPolicy.WEB_EMBEDDED ->
+                    listOf(
+                        WEB_EMBEDDED,
+                        VISIONOS,
+                        TVHTML5_DOWNGRADED,
+                        TVHTML5,
+                    )
 
                 AudioStreamPolicy.IOS ->
                     listOf(
                         YouTubeClient.IOS,
                         VISIONOS,
-                        YouTubeClient.IOS_MUSIC,
+                        WEB_EMBEDDED,
+                        TVHTML5_DOWNGRADED,
                     )
 
                 AudioStreamPolicy.IOS_MUSIC ->
                     listOf(
                         YouTubeClient.IOS_MUSIC,
                         VISIONOS,
-                        YouTubeClient.IOS,
+                        WEB_EMBEDDED,
+                        TVHTML5_DOWNGRADED,
                     )
 
                 AudioStreamPolicy.TV_DOWNGRADED ->
                     listOf(
                         YouTubeClient.TVHTML5_DOWNGRADED,
-                        VISIONOS,
-                        YouTubeClient.IOS,
                         TVHTML5,
+                        VISIONOS,
+                        WEB_EMBEDDED,
                     )
 
                 AudioStreamPolicy.TVHTML5 ->
                     listOf(
                         TVHTML5,
+                        TVHTML5_DOWNGRADED,
                         VISIONOS,
-                        YouTubeClient.IOS,
-                        YouTubeClient.TVHTML5_DOWNGRADED,
+                        WEB_EMBEDDED,
                     )
             }
 
@@ -960,6 +969,7 @@ object YTPlayerUtils {
                 }
 
             AudioStreamPolicy.VISIONOS -> VISIONOS
+            AudioStreamPolicy.WEB_EMBEDDED -> WEB_EMBEDDED
             AudioStreamPolicy.IOS -> YouTubeClient.IOS
             AudioStreamPolicy.IOS_MUSIC -> YouTubeClient.IOS_MUSIC
             AudioStreamPolicy.TV_DOWNGRADED ->
