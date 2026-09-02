@@ -169,7 +169,7 @@ jobs:
 
           blocks = {key: client_block(value) for key, value in names.items()}
 
-          safe_active = ("visionos", "tv", "tv_downgraded")
+          safe_active = ("visionos", "web_embedded", "tv", "tv_downgraded")
           policy_changes = []
 
           for name in safe_active:
