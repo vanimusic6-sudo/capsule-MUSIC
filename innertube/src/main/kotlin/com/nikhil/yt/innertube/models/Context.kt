@@ -29,6 +29,12 @@ data class Context(
         val gl: String,
         val hl: String,
         val visitorData: String?,
+        /*
+         * Some identities are checked against the user agent declared INSIDE
+         * the context, not just the HTTP header. Left null for everyone else;
+         * explicitNulls is off, so the key is simply absent then.
+         */
+        val userAgent: String? = null,
     )
 
     @Serializable
