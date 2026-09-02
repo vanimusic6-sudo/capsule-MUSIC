@@ -10,10 +10,12 @@ package com.nikhil.yt.utils
 
 import android.content.Context
 import android.content.res.Configuration
+import timber.log.Timber
 import java.util.Locale
 
 fun reportException(throwable: Throwable) {
-    throwable.printStackTrace()
+    /* Honors the runtime debug-logging switch instead of always writing stderr. */
+    Timber.e(throwable)
 }
 
 @Suppress("DEPRECATION")
