@@ -28,6 +28,12 @@ enum class AudioStreamPolicy {
     /** Use current visionOS identity first, then safe fallbacks. */
     VISIONOS,
 
+    /** Use the current iOS identity first. Same family as visionOS. */
+    IOS,
+
+    /** Use the iOS Music identity first. Version is pinned, not CI-synced. */
+    IOS_MUSIC,
+
     /** Use current downgraded TV compatibility identity first. */
     TV_DOWNGRADED,
 
