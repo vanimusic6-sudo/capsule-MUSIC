@@ -101,14 +101,46 @@ class InnerTube {
         }
     }
 
+    private fun YouTubeClient.usesMainYouTubePlayer(): Boolean =
+        clientName.equals("TVHTML5", ignoreCase = true) ||
+            clientName.equals("WEB", ignoreCase = true) ||
+            clientName.equals("WEB_EMBEDDED_PLAYER", ignoreCase = true)
+
+    private fun playerEndpoint(client: YouTubeClient): String =
+        if (client.usesMainYouTubePlayer()) {
+            "${YouTubeClient.ORIGIN_YOUTUBE}/youtubei/v1/player"
+        } else {
+            "${YouTubeClient.ORIGIN_YOUTUBE_MUSIC}/youtubei/v1/player"
+        }
+
+    private fun requestOrigin(client: YouTubeClient): String =
+        if (client.usesMainYouTubePlayer()) {
+            YouTubeClient.ORIGIN_YOUTUBE
+        } else {
+            YouTubeClient.ORIGIN_YOUTUBE_MUSIC
+        }
+
+    private fun requestReferer(client: YouTubeClient): String =
+        when {
+            client.clientName.equals("TVHTML5", ignoreCase = true) ->
+                YouTubeClient.REFERER_YOUTUBE_TV
+
+            client.isEmbedded -> "${YouTubeClient.ORIGIN_YOUTUBE}/embed/"
+            client.usesMainYouTubePlayer() -> "${YouTubeClient.ORIGIN_YOUTUBE}/"
+            else -> YouTubeClient.REFERER_YOUTUBE_MUSIC
+        }
+
     private fun HttpRequestBuilder.ytClient(client: YouTubeClient, setLogin: Boolean = false) {
+        val origin = requestOrigin(client)
+
         contentType(ContentType.Application.Json)
         headers {
             append("X-Goog-Api-Format-Version", "1")
             append("X-YouTube-Client-Name", client.clientId)
             append("X-YouTube-Client-Version", client.clientVersion)
-            append("X-Origin", YouTubeClient.ORIGIN_YOUTUBE_MUSIC)
-            append("Referer", YouTubeClient.REFERER_YOUTUBE_MUSIC)
+            append("Origin", origin)
+            append("X-Origin", origin)
+            append("Referer", requestReferer(client))
 
             authState.visitorData?.let { append("X-Goog-Visitor-Id", it) }
 
@@ -121,7 +153,7 @@ class InnerTube {
                     val sapisid = sapisidMap["SAPISID"]
                     if (sapisid != null) {
                         val currentTime = System.currentTimeMillis() / 1000
-                        val sapisidHash = sha1("$currentTime $sapisid ${YouTubeClient.ORIGIN_YOUTUBE_MUSIC}")
+                        val sapisidHash = sha1("$currentTime $sapisid $origin")
                         append("Authorization", "SAPISIDHASH ${currentTime}_${sapisidHash}")
                     }
                 }
@@ -188,7 +220,7 @@ class InnerTube {
         signatureTimestamp: Int?,
         poToken: String? = null,
     ) = withRetry {
-        httpClient.post("player") {
+        httpClient.post(playerEndpoint(client)) {
         ytClient(client, setLogin = true)
         setBody(
             PlayerBody(
@@ -196,7 +228,7 @@ class InnerTube {
                     if (client.isEmbedded) {
                         it.copy(
                             thirdParty = Context.ThirdParty(
-                                embedUrl = "https://www.youtube.com/watch?v=${videoId}"
+                                embedUrl = "https://www.youtube.com/embed/${videoId}"
                             )
                         )
                     } else it
