@@ -78,6 +78,9 @@ private fun AudioStreamPolicy.title(): String =
         AudioStreamPolicy.AUTO_SAFE -> "Safe automatic"
         AudioStreamPolicy.VISIONOS ->
             "visionOS ${YouTubeClientUpstream.VISIONOS_VERSION}"
+        AudioStreamPolicy.IOS ->
+            "iOS ${YouTubeClientUpstream.IOS_VERSION}"
+        AudioStreamPolicy.IOS_MUSIC -> "iOS Music"
         AudioStreamPolicy.TV_DOWNGRADED ->
             "TV compatibility ${YouTubeClientUpstream.TV_DOWNGRADED_VERSION}"
         AudioStreamPolicy.TVHTML5 ->
@@ -87,11 +90,20 @@ private fun AudioStreamPolicy.title(): String =
 private fun AudioStreamPolicy.description(): String =
     when (this) {
         AudioStreamPolicy.AUTO_SAFE ->
-            "Recommended. visionOS → TV compatibility → TV HTML5. " +
+            "Recommended. visionOS → iOS → iOS Music → TV. " +
                 "Only Capsule's reviewed low-friction client allowlist is used."
 
         AudioStreamPolicy.VISIONOS ->
-            "Prefer the current visionOS identity, then use the reviewed safe fallbacks."
+            "Prefer the current visionOS identity, then use the reviewed safe fallbacks. " +
+                "This is what field runs resolve fastest."
+
+        AudioStreamPolicy.IOS ->
+            "Prefer the current iOS identity. Same family as visionOS and " +
+                "synchronized by CI, so it is the closest working spare."
+
+        AudioStreamPolicy.IOS_MUSIC ->
+            "Prefer the iOS Music identity. Its version is pinned by hand " +
+                "rather than synchronized, so it can go stale."
 
         AudioStreamPolicy.TV_DOWNGRADED ->
             "Prefer yt-dlp's downgraded TV compatibility identity, then use safe fallbacks."
@@ -332,8 +344,8 @@ fun PlayerSettings(
         Text(
             text =
                 "Capsule Safe AUDIO Core uses only the reviewed client allowlist. " +
-                    "Legacy Android VR / iOS / Android Music choices are hidden because " +
-                    "their current upstream PO-token requirements are different. " +
+                    "Android VR and Android Music remain hidden because their current " +
+                    "upstream PO-token requirements are different. " +
                     "Client identities are synchronized by CI, not changed live during playback.",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.secondary,
