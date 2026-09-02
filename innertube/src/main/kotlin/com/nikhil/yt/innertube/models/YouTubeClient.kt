@@ -33,6 +33,13 @@ data class YouTubeClient(
     val loginRequired: Boolean = false,
     val useSignatureTimestamp: Boolean = false,
     val isEmbedded: Boolean = false,
+    /*
+     * Repeat the user agent inside INNERTUBE_CONTEXT.client. Cobalt-based TV
+     * identities appear to be validated against it, and sending only the HTTP
+     * header made YouTube answer every anonymous player call with
+     * "reload the page".
+     */
+    val includeUserAgentInContext: Boolean = false,
 ) {
     fun toContext(
         locale: YouTubeLocale,
@@ -52,6 +59,8 @@ data class YouTubeClient(
                     gl = locale.gl,
                     hl = locale.hl,
                     visitorData = visitorData,
+                    userAgent =
+                        if (includeUserAgentInContext) userAgent else null,
                 ),
             user =
                 Context.User(
@@ -87,12 +96,20 @@ data class YouTubeClient(
          * version freshness.
          */
 
+        /*
+         * REQUIRE_JS_PLAYER upstream, so the player call has to carry
+         * signatureTimestamp and the returned formats are ciphered.
+         * NewPipeUtils.getStreamUrl handles the deciphering.
+         */
         val WEB =
             YouTubeClient(
                 clientName = "WEB",
                 clientVersion = YouTubeClientUpstream.WEB_VERSION,
                 clientId = "1",
                 userAgent = USER_AGENT_WEB,
+                friendlyName = "Web",
+                loginSupported = false,
+                useSignatureTimestamp = true,
             )
 
         val WEB_REMIX =
@@ -194,13 +211,15 @@ data class YouTubeClient(
             )
 
         /*
-         * Both TV identities currently answer every anonymous player call with
-         * "reload the page" (UNPLAYABLE): 92 attempts, 0 successes across field
-         * runs. Sending signatureTimestamp was tried and changed nothing, so
-         * the cause is elsewhere -- most likely the visitorData we mint comes
-         * from the music web endpoint and the TV client will not accept it.
-         * Kept in the chain, but last, so they cost nothing while dead and
-         * start working again the moment upstream sorts them out.
+         * The TV identities answered every anonymous player call with
+         * "reload the page" (UNPLAYABLE): 92 attempts, 0 successes.
+         *
+         * Two settings differ from a working implementation of the same
+         * client: signatureTimestamp, and repeating the user agent inside the
+         * context. signatureTimestamp alone changed nothing, so both are on
+         * now. If this still fails, the remaining difference is that the
+         * working implementations run TVHTML5 signed in, which is not
+         * something Capsule does for stream requests.
          */
         val TVHTML5 =
             YouTubeClient(
@@ -210,7 +229,8 @@ data class YouTubeClient(
                 userAgent = YouTubeClientUpstream.TV_USER_AGENT,
                 friendlyName = "TV",
                 loginSupported = false,
-                useSignatureTimestamp = false,
+                useSignatureTimestamp = true,
+                includeUserAgentInContext = true,
             )
 
         /*
@@ -225,7 +245,8 @@ data class YouTubeClient(
                 userAgent = YouTubeClientUpstream.TV_DOWNGRADED_USER_AGENT,
                 friendlyName = "TV downgraded",
                 loginSupported = false,
-                useSignatureTimestamp = false,
+                useSignatureTimestamp = true,
+                includeUserAgentInContext = true,
             )
 
         /*
