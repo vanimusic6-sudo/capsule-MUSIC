@@ -33,8 +33,13 @@ data class PlayerResponse(
     )
 
     @Serializable
+    /*
+     * audioConfig is optional. Not every client identity includes it, and a
+     * required field here would reject the whole PlayerResponse over missing
+     * loudness metadata, exactly as VideoDetails used to.
+     */
     data class PlayerConfig(
-        val audioConfig: AudioConfig,
+        val audioConfig: AudioConfig? = null,
     ) {
         @Serializable
         data class AudioConfig(
@@ -67,6 +72,8 @@ data class PlayerResponse(
             val audioSampleRate: Int?,
             val audioChannels: Int?,
             val loudnessDb: Double?,
+            /* Sometimes present per format when playerConfig omits it. */
+            val perceptualLoudnessDb: Double? = null,
             val lastModified: Long?,
             val signatureCipher: String?,
             val cipher: String?,
