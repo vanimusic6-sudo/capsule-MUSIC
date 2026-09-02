@@ -72,13 +72,23 @@ object StreamClientUtils {
 
         return when {
             c.equals("WEB_REMIX", ignoreCase = true) ||
-                c.equals("WEB", ignoreCase = true) ||
-                c.equals("WEB_CREATOR", ignoreCase = true) ||
-                c.equals("WEB_EMBEDDED_PLAYER", ignoreCase = true) ||
-                c.equals("MWEB", ignoreCase = true) ->
+                c.equals("WEB_CREATOR", ignoreCase = true) ->
                 OriginReferer(
                     YouTubeClient.ORIGIN_YOUTUBE_MUSIC,
                     YouTubeClient.REFERER_YOUTUBE_MUSIC,
+                )
+
+            c.equals("WEB", ignoreCase = true) ||
+                c.equals("MWEB", ignoreCase = true) ->
+                OriginReferer(
+                    YouTubeClient.ORIGIN_YOUTUBE,
+                    "${YouTubeClient.ORIGIN_YOUTUBE}/",
+                )
+
+            c.equals("WEB_EMBEDDED_PLAYER", ignoreCase = true) ->
+                OriginReferer(
+                    YouTubeClient.ORIGIN_YOUTUBE,
+                    "${YouTubeClient.ORIGIN_YOUTUBE}/embed/",
                 )
 
             c.equals("TVHTML5", ignoreCase = true) ||
