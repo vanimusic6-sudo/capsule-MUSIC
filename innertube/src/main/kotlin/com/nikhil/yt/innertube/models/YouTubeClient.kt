@@ -194,13 +194,13 @@ data class YouTubeClient(
             )
 
         /*
-         * TVHTML5 is a web-family client: its formats are ciphered and the
-         * player call is expected to carry
-         * playbackContext.contentPlaybackContext.signatureTimestamp. Sending it
-         * without one made YouTube answer every single request with
-         * "reload the page" (UNPLAYABLE), which read like a dead client but was
-         * really a malformed request on our side. VISIONOS gets away without it
-         * because iOS-family responses are not ciphered.
+         * Both TV identities currently answer every anonymous player call with
+         * "reload the page" (UNPLAYABLE): 92 attempts, 0 successes across field
+         * runs. Sending signatureTimestamp was tried and changed nothing, so
+         * the cause is elsewhere -- most likely the visitorData we mint comes
+         * from the music web endpoint and the TV client will not accept it.
+         * Kept in the chain, but last, so they cost nothing while dead and
+         * start working again the moment upstream sorts them out.
          */
         val TVHTML5 =
             YouTubeClient(
@@ -210,7 +210,7 @@ data class YouTubeClient(
                 userAgent = YouTubeClientUpstream.TV_USER_AGENT,
                 friendlyName = "TV",
                 loginSupported = false,
-                useSignatureTimestamp = true,
+                useSignatureTimestamp = false,
             )
 
         /*
@@ -225,7 +225,7 @@ data class YouTubeClient(
                 userAgent = YouTubeClientUpstream.TV_DOWNGRADED_USER_AGENT,
                 friendlyName = "TV downgraded",
                 loginSupported = false,
-                useSignatureTimestamp = true,
+                useSignatureTimestamp = false,
             )
 
         /*
