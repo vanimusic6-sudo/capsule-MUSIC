@@ -325,13 +325,27 @@ class MusicService :
             inFlightAudioResolves[mediaId]?.takeIf { !it.isCompleted }
                 ?: ioScope
                     .async {
-                        CapsuleAudioEngine.playerResponseForPlayback(
+                        val startedAt = System.currentTimeMillis()
+                        Timber.tag(CAPSULE_RESOLVE_TAG).i(
+                            "resolve start id=%s",
                             mediaId,
-                            audioQuality = audioQuality,
-                            connectivityManager = connectivityManager,
-                            streamPolicy = audioStreamPolicy,
-                            avoidCodecs = avoidStreamCodecs,
                         )
+                        CapsuleAudioEngine
+                            .playerResponseForPlayback(
+                                mediaId,
+                                audioQuality = audioQuality,
+                                connectivityManager = connectivityManager,
+                                streamPolicy = audioStreamPolicy,
+                                avoidCodecs = avoidStreamCodecs,
+                            )
+                            .also { result ->
+                                Timber.tag(CAPSULE_RESOLVE_TAG).i(
+                                    "resolve done id=%s ok=%s tookMs=%d",
+                                    mediaId,
+                                    result.isSuccess,
+                                    System.currentTimeMillis() - startedAt,
+                                )
+                            }
                     }
                     .also { job ->
                         inFlightAudioResolves[mediaId] = job
@@ -368,10 +382,22 @@ class MusicService :
 
         val now = System.currentTimeMillis()
 
+        Timber.tag(CAPSULE_RESOLVE_TAG).i(
+            "prefetch queue ahead=%d ids=%s",
+            upcoming.size,
+            upcoming.joinToString(","),
+        )
+
         upcoming.forEach { mediaId ->
             val cached = playbackUrlCache[mediaId]
-            if (cached != null && cached.second > now + PREFETCH_FRESHNESS_MS) return@forEach
-            if (inFlightAudioResolves.containsKey(mediaId)) return@forEach
+            if (cached != null && cached.second > now + PREFETCH_FRESHNESS_MS) {
+                Timber.tag(CAPSULE_RESOLVE_TAG).i("prefetch skip cached id=%s", mediaId)
+                return@forEach
+            }
+            if (inFlightAudioResolves.containsKey(mediaId)) {
+                Timber.tag(CAPSULE_RESOLVE_TAG).i("prefetch skip inflight id=%s", mediaId)
+                return@forEach
+            }
 
             ioScope.launch {
                 val resolved =
@@ -4522,12 +4548,31 @@ class MusicService :
              * The timeout is a floor, not the mechanism: with prefetch working
              * this await normally returns immediately.
              */
+            val loaderWaitStartedAt = System.currentTimeMillis()
+            val alreadyRunning = inFlightAudioResolves.containsKey(mediaId)
+
             val playbackData = runBlocking {
                 runCatching {
                     withTimeout(AUDIO_RESOLVE_TIMEOUT_MS) {
                         audioResolveJob(mediaId).await()
                     }
-                }.getOrElse { Result.failure(it) }
+                }.getOrElse { failure ->
+                    Timber.tag(CAPSULE_RESOLVE_TAG).w(
+                        "loader gave up id=%s waitedMs=%d cause=%s",
+                        mediaId,
+                        System.currentTimeMillis() - loaderWaitStartedAt,
+                        failure::class.java.simpleName,
+                    )
+                    Result.failure(failure)
+                }
+            }.also {
+                val waited = System.currentTimeMillis() - loaderWaitStartedAt
+                Timber.tag(CAPSULE_RESOLVE_TAG).i(
+                    "loader blocked id=%s waitedMs=%d joinedExisting=%s",
+                    mediaId,
+                    waited,
+                    alreadyRunning,
+                )
             }.getOrElse { throwable ->
                 when (throwable) {
                     is PlaybackException -> throw throwable
@@ -4561,9 +4606,22 @@ class MusicService :
             }
             run {
                 val format = nonNullPlayback.format
-                val loudnessDb = nonNullPlayback.audioConfig?.loudnessDb
-                val perceptualLoudnessDb = nonNullPlayback.audioConfig?.perceptualLoudnessDb
-                
+
+                /*
+                 * Loudness arrives in two places and not every client fills
+                 * both. VISIONOS, which currently serves every track, omits
+                 * playerConfig.audioConfig entirely, so normalization was
+                 * silently doing nothing on every single song. The selected
+                 * format usually carries its own loudnessDb, so use that
+                 * whenever the player-level value is missing.
+                 */
+                val loudnessDb =
+                    nonNullPlayback.audioConfig?.loudnessDb ?: format.loudnessDb
+                val perceptualLoudnessDb =
+                    nonNullPlayback.audioConfig?.perceptualLoudnessDb
+                        ?: format.perceptualLoudnessDb
+
+
                 Timber.tag("AudioNormalization").d("Storing format for $mediaId with loudnessDb: $loudnessDb, perceptualLoudnessDb: $perceptualLoudnessDb")
                 if (loudnessDb == null && perceptualLoudnessDb == null) {
                     Timber.tag("AudioNormalization").w("No loudness data available from YouTube for video: $mediaId")
@@ -5763,7 +5821,10 @@ class MusicService :
          * How far ahead to resolve. Two is enough to cover a normal transition
          * plus one impatient skip without turning the queue into a crawler.
          */
-        private const val PREFETCH_AHEAD = 2
+        /* Single tag so a field run can be filtered down to the resolve path. */
+        private const val CAPSULE_RESOLVE_TAG = "CapsuleResolve"
+
+        private const val PREFETCH_AHEAD = 4
 
         /* Do not re-resolve a URL that still has this much life left. */
         private const val PREFETCH_FRESHNESS_MS = 60_000L
