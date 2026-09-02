@@ -33,7 +33,8 @@ object GlobalLog {
      * time. The StateFlow only ever carries a snapshot, and one is produced at
      * most every PUBLISH_INTERVAL_MS, and only while something is observing it.
      */
-    private val buffer = ArrayDeque<LogEntry>(MAX_ENTRIES)
+    /* Do not reserve storage for 5000 entries while logging is disabled. */
+    private val buffer = ArrayDeque<LogEntry>()
 
     private val _logs = MutableStateFlow<List<LogEntry>>(emptyList())
     val logs = _logs.asStateFlow()
@@ -41,11 +42,24 @@ object GlobalLog {
     private val lock = Any()
 
     @Volatile
+    private var enabled = false
+
+    @Volatile
     private var lastPublishedAtMs = 0L
 
     private val timeFormat = SimpleDateFormat("HH:mm:ss.SSS", Locale.getDefault())
 
+    val isEnabled: Boolean
+        get() = enabled
+
+    internal fun setEnabled(value: Boolean) {
+        enabled = value
+        if (!value) clear()
+    }
+
     fun append(level: Int, tag: String?, message: String) {
+        if (!enabled) return
+
         val entry = LogEntry(System.currentTimeMillis(), level, tag, message)
 
         val snapshot =
@@ -72,7 +86,10 @@ object GlobalLog {
      * Everything currently held, regardless of when the last snapshot went out.
      * Sharing and exporting must never miss the newest lines.
      */
-    fun snapshot(): List<LogEntry> = synchronized(lock) { buffer.toList() }
+    fun snapshot(): List<LogEntry> {
+        if (!enabled) return emptyList()
+        return synchronized(lock) { buffer.toList() }
+    }
 
     /*
      * Publish immediately. The viewer calls this when it opens, otherwise it
@@ -80,6 +97,11 @@ object GlobalLog {
      * observer went away.
      */
     fun refresh() {
+        if (!enabled) {
+            _logs.value = emptyList()
+            return
+        }
+
         val snapshot = synchronized(lock) {
             lastPublishedAtMs = System.currentTimeMillis()
             buffer.toList()
@@ -113,11 +135,45 @@ object GlobalLog {
 /** Timber Tree that forwards logs to GlobalLog */
 class GlobalLogTree : Timber.Tree() {
     override fun log(priority: Int, tag: String?, message: String, t: Throwable?) {
+        if (!GlobalLog.isEnabled) return
+
         try {
             val final = if (t != null) "$message\n$t" else message
             GlobalLog.append(priority, tag, final)
         } catch (_: Exception) {
             // swallow
         }
+    }
+}
+
+/**
+ * Owns the only Timber trees used by the main process.
+ *
+ * When logging is disabled Timber's forest is empty, so call sites return
+ * before message formatting, stack-trace rendering or Logcat I/O. Direct
+ * [GlobalLog.append] callers are also stopped by the guard in [GlobalLog].
+ */
+object DebugLoggingController {
+    private val debugTree = Timber.DebugTree()
+    private val globalLogTree = GlobalLogTree()
+
+    @Volatile
+    private var enabled = false
+
+    @Synchronized
+    fun setEnabled(value: Boolean) {
+        if (enabled == value) return
+
+        if (value) {
+            GlobalLog.setEnabled(true)
+            Timber.plant(debugTree)
+            Timber.plant(globalLogTree)
+        } else {
+            Timber.uproot(globalLogTree)
+            Timber.uproot(debugTree)
+            GlobalLog.setEnabled(false)
+        }
+
+        enabled = value
     }
 }
