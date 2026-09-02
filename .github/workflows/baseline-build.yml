@@ -1,0 +1,201 @@
+name: Baseline Build
+
+on:
+  push:
+    branches:
+      - ci/baseline-build
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: baseline-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  baseline:
+    name: Test, lint and signed release
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    env:
+      STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
+      KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+      KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+
+    steps:
+      - name: Checkout clean source
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 1
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Set up Gradle 9.3.1
+        uses: gradle/actions/setup-gradle@v6
+        with:
+          gradle-version: "9.3.1"
+
+      - name: Validate signing secrets
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${{ secrets.KEYSTORE_BASE64 }}" || { echo "KEYSTORE_BASE64 is missing"; exit 1; }
+          test -n "$STORE_PASSWORD" || { echo "STORE_PASSWORD is missing"; exit 1; }
+          test -n "$KEY_ALIAS" || { echo "KEY_ALIAS is missing"; exit 1; }
+          test -n "$KEY_PASSWORD" || { echo "KEY_PASSWORD is missing"; exit 1; }
+
+      - name: Restore release keystore
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p app/keystore
+          printf '%s' '${{ secrets.KEYSTORE_BASE64 }}' | base64 --decode > app/keystore/release.keystore
+          test -s app/keystore/release.keystore
+
+      - name: Verify keystore before build
+        shell: bash
+        run: |
+          set -euo pipefail
+          keytool -list \
+            -keystore app/keystore/release.keystore \
+            -storepass "$STORE_PASSWORD" \
+            -alias "$KEY_ALIAS" >/dev/null
+          echo "Release keystore and alias are valid"
+
+      - name: Prepare AGP locale metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ ! -f app/src/main/res/resources.properties ]; then
+            printf '%s\n' 'unqualifiedResLocale=en-US' > app/src/main/res/resources.properties
+          fi
+          cat app/src/main/res/resources.properties
+
+      - name: Show build tool versions
+        run: |
+          java -version
+          gradle --version
+
+      - name: Unit tests
+        id: unit_tests
+        continue-on-error: true
+        run: gradle :app:testUniversalDebugUnitTest --stacktrace --no-daemon
+
+      - name: Android lint
+        id: android_lint
+        continue-on-error: true
+        run: gradle :app:lintUniversalDebug --stacktrace --no-daemon
+
+      - name: Build signed Universal Release
+        id: release_build
+        continue-on-error: true
+        run: gradle :app:assembleUniversalRelease --stacktrace --no-daemon
+
+      - name: Locate release APK
+        id: apk
+        if: steps.release_build.outcome == 'success'
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="$(find app/build/outputs/apk/universal/release -type f -name '*.apk' | head -n 1)"
+          test -n "$APK"
+          test -s "$APK"
+          echo "path=$APK" >> "$GITHUB_OUTPUT"
+          echo "Found APK: $APK"
+          sha256sum "$APK"
+
+      - name: Verify APK signature
+        id: signature
+        if: steps.release_build.outcome == 'success' && steps.apk.outcome == 'success'
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          APKSIGNER="$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -n 1)"
+          test -x "$APKSIGNER"
+          "$APKSIGNER" verify --verbose --print-certs "${{ steps.apk.outputs.path }}"
+
+      - name: Upload baseline APK
+        if: steps.release_build.outcome == 'success' && steps.apk.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: capsule-music-baseline-universal-release
+          path: ${{ steps.apk.outputs.path }}
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload diagnostic reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: capsule-music-baseline-reports
+          path: |
+            app/build/reports/tests/
+            app/build/reports/lint-results-*
+          if-no-files-found: ignore
+          retention-days: 14
+
+      - name: Baseline summary and gate
+        if: always()
+        shell: bash
+        env:
+          UNIT_TESTS: ${{ steps.unit_tests.outcome }}
+          ANDROID_LINT: ${{ steps.android_lint.outcome }}
+          RELEASE_BUILD: ${{ steps.release_build.outcome }}
+          APK_LOCATE: ${{ steps.apk.outcome }}
+          SIGNATURE: ${{ steps.signature.outcome }}
+        run: |
+          set -euo pipefail
+          FAILED=0
+
+          echo "## Capsule MUSIC baseline" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Stage | Result |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|---|---|" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Unit tests | $UNIT_TESTS |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Android lint | $ANDROID_LINT |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Universal Release build | $RELEASE_BUILD |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Locate APK | $APK_LOCATE |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| APK signature | $SIGNATURE |" >> "$GITHUB_STEP_SUMMARY"
+
+          check_required() {
+            local label="$1"
+            local result="$2"
+            if [ "$result" = "success" ]; then
+              echo "OK: $label"
+            else
+              echo "::error::$label: $result"
+              FAILED=1
+            fi
+          }
+
+          check_required "Unit tests" "$UNIT_TESTS"
+          check_required "Android lint" "$ANDROID_LINT"
+          check_required "Universal Release build" "$RELEASE_BUILD"
+
+          if [ "$RELEASE_BUILD" = "success" ]; then
+            check_required "Locate APK" "$APK_LOCATE"
+            check_required "APK signature" "$SIGNATURE"
+          fi
+
+          if [ "$FAILED" -ne 0 ]; then
+            echo "Baseline diagnostics found one or more failures."
+            exit 1
+          fi
+
+          echo "All baseline checks passed."
+
+      - name: Remove restored secrets and CI-only locale metadata
+        if: always()
+        shell: bash
+        run: |
+          rm -f app/keystore/release.keystore
+          git checkout -- app/src/main/res/resources.properties 2>/dev/null || rm -f app/src/main/res/resources.properties
