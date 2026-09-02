@@ -548,6 +548,8 @@
     <string name="logout_confirm_yes">Выйти</string>
     <string name="logout_confirm_no">Отменить</string>
     <string name="experiment_settings">Экспериментальные настройки</string>
+    <string name="enable_debug_logging">Отладочные логи</string>
+    <string name="enable_debug_logging_desc">По умолчанию выключены. Включайте только для поиска проблем; выключение останавливает Logcat и буфер логов в памяти.</string>
     <string name="show_discord_debug_ui">Показывать интерфейс для отладки</string>
     <string name="enable_discord_debug_lines">Включить строки настроек отладки</string>
     <string name="presence_manager_running">Менеджер статуса: работает</string>
