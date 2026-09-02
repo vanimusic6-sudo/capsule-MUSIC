@@ -78,6 +78,8 @@ private fun AudioStreamPolicy.title(): String =
         AudioStreamPolicy.AUTO_SAFE -> "Safe automatic"
         AudioStreamPolicy.VISIONOS ->
             "visionOS ${YouTubeClientUpstream.VISIONOS_VERSION}"
+        AudioStreamPolicy.WEB_EMBEDDED ->
+            "Web Embedded ${YouTubeClientUpstream.WEB_EMBEDDED_VERSION}"
         AudioStreamPolicy.IOS ->
             "iOS ${YouTubeClientUpstream.IOS_VERSION}"
         AudioStreamPolicy.IOS_MUSIC -> "iOS Music"
@@ -90,20 +92,21 @@ private fun AudioStreamPolicy.title(): String =
 private fun AudioStreamPolicy.description(): String =
     when (this) {
         AudioStreamPolicy.AUTO_SAFE ->
-            "Recommended. visionOS → iOS → iOS Music → TV. " +
-                "Only Capsule's reviewed low-friction client allowlist is used."
+            "Recommended. visionOS → Web Embedded → TV compatibility → TV. " +
+                "Clients that currently require a GVS PO-token are skipped."
 
         AudioStreamPolicy.VISIONOS ->
             "Prefer the current visionOS identity, then use the reviewed safe fallbacks. " +
                 "This is what field runs resolve fastest."
 
+        AudioStreamPolicy.WEB_EMBEDDED ->
+            "Prefer the anonymous Web Embedded identity, then use visionOS and TV fallbacks."
+
         AudioStreamPolicy.IOS ->
-            "Prefer the current iOS identity. Same family as visionOS and " +
-                "synchronized by CI, so it is the closest working spare."
+            "Manual compatibility mode. Current iOS media URLs can require a real PO-token."
 
         AudioStreamPolicy.IOS_MUSIC ->
-            "Prefer the iOS Music identity. Its version is pinned by hand " +
-                "rather than synchronized, so it can go stale."
+            "Manual compatibility mode. The identity is pinned and can require a real PO-token."
 
         AudioStreamPolicy.TV_DOWNGRADED ->
             "Prefer yt-dlp's downgraded TV compatibility identity, then use safe fallbacks."
