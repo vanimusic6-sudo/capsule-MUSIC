@@ -3,6 +3,7 @@ package com.nikhil.yt.utils
 import androidx.media3.common.PlaybackException
 import com.nikhil.yt.constants.AudioQuality
 import com.nikhil.yt.innertube.YouTubeFailureKind
+import com.nikhil.yt.innertube.models.YouTubeClient
 import com.nikhil.yt.innertube.models.response.PlayerResponse
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -108,6 +109,29 @@ class YTPlayerUtilsSafetyTest {
                 YouTubeFailureKind.PERMANENT,
             ),
         )
+    }
+
+    @Test
+    fun webEmbeddedStreamUsesMainYouTubeOrigin() {
+        val headers =
+            StreamClientUtils.resolveOriginReferer(
+                "WEB_EMBEDDED_PLAYER",
+            )
+
+        assertEquals(YouTubeClient.ORIGIN_YOUTUBE, headers.origin)
+        assertEquals(
+            "${YouTubeClient.ORIGIN_YOUTUBE}/embed/",
+            headers.referer,
+        )
+    }
+
+    @Test
+    fun webRemixStreamKeepsYouTubeMusicOrigin() {
+        val headers =
+            StreamClientUtils.resolveOriginReferer("WEB_REMIX")
+
+        assertEquals(YouTubeClient.ORIGIN_YOUTUBE_MUSIC, headers.origin)
+        assertEquals(YouTubeClient.REFERER_YOUTUBE_MUSIC, headers.referer)
     }
 
 
