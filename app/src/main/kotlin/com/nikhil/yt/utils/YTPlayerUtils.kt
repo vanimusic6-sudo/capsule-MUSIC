@@ -220,34 +220,57 @@ object YTPlayerUtils {
         NewPipeUtils.clearPlayerCaches()
     }
 
+    /**
+     * Discard only state tied to the previous network route. This is called
+     * after Android reports a genuinely different default Network (for
+     * example a VPN hand-off), never for a manual retry on the same IP.
+     */
+    fun onNetworkChanged() {
+        streamClientPair?.second?.let { client ->
+            client.dispatcher.cancelAll()
+            client.connectionPool.evictAll()
+        }
+        streamClientPair = null
+        streamUrlCache.clear()
+        failedTrackClientsUntil.clear()
+        globalPlaybackBreakerUntilMs = 0L
+        globalPlaybackBreakerReason = null
+        CapsuleAnonymousSession.reset()
+        NewPipeUtils.resetForNetworkChange()
+
+        Timber.tag(logTag).i(
+            "Default network changed; cleared network-bound playback state",
+        )
+    }
+
     fun markStreamClientFailed(
         videoId: String,
         clientKey: String?,
         httpStatusCode: Int?,
     ) {
+        /* A rate limit is global even when the failing URL has no client tag. */
+        if (httpStatusCode == 429) {
+            tripGlobalBreaker(
+                reason = "YouTube returned HTTP 429",
+            )
+            return
+        }
+
         val normalizedClientKey =
             normalizeStreamClientKey(clientKey)
 
         if (normalizedClientKey.isEmpty()) return
 
-        when (httpStatusCode) {
-            403 -> {
-                failedTrackClientsUntil[
-                    buildFailedClientKey(
-                        videoId = videoId,
-                        clientKey = normalizedClientKey,
-                    )
-                ] =
-                    System.currentTimeMillis() +
-                        TRACK_CLIENT_BACKOFF_MS
-                pruneFailedClientMap()
-            }
-
-            429 -> {
-                tripGlobalBreaker(
-                    reason = "YouTube returned HTTP 429",
+        if (httpStatusCode == 403) {
+            failedTrackClientsUntil[
+                buildFailedClientKey(
+                    videoId = videoId,
+                    clientKey = normalizedClientKey,
                 )
-            }
+            ] =
+                System.currentTimeMillis() +
+                    TRACK_CLIENT_BACKOFF_MS
+            pruneFailedClientMap()
         }
     }
 

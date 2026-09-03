@@ -217,6 +217,11 @@
     <string name="error_no_internet">No network connection</string>
     <string name="error_timeout">Timeout</string>
     <string name="error_unknown">Unknown error</string>
+    <string name="error_youtube_network_restricted_title">YouTube temporarily limited this connection</string>
+    <string name="error_youtube_network_restricted_description">YouTube requested an anti-bot check for the current network address. This is usually temporary and doesn’t mean the app or account was damaged.</string>
+    <string name="error_youtube_network_restricted_recommendation_title">What to do</string>
+    <string name="error_youtube_network_restricted_recommendation">If a VPN is active, change its server or turn it off. Wait for the connection to settle, then tap Retry. Avoid rapid track switching while the VPN is reconnecting.</string>
+    <string name="error_youtube_network_restricted_technical">YouTube anti-bot response</string>
     <!-- Player action -->
     <string name="action_like">Like</string>
     <string name="action_like_all">Like all</string>

@@ -37,6 +37,8 @@ import androidx.media3.common.PlaybackException
 import androidx.media3.datasource.HttpDataSource
 import android.widget.Toast
 import com.nikhil.yt.R
+import com.nikhil.yt.innertube.YouTubeFailureClassifier
+import com.nikhil.yt.innertube.YouTubeFailureKind
 
 @Composable
 fun PlaybackError(
@@ -52,9 +54,43 @@ fun PlaybackError(
     val retryText = stringResource(R.string.retry)
     val copyText = stringResource(R.string.copy)
     val copiedText = stringResource(R.string.copied)
+    val restrictedTitle =
+        stringResource(R.string.error_youtube_network_restricted_title)
+    val restrictedDescription =
+        stringResource(R.string.error_youtube_network_restricted_description)
+    val recommendationTitle =
+        stringResource(R.string.error_youtube_network_restricted_recommendation_title)
+    val recommendation =
+        stringResource(R.string.error_youtube_network_restricted_recommendation)
+    val restrictedTechnical =
+        stringResource(R.string.error_youtube_network_restricted_technical)
     val httpCode = error.httpStatusCodeOrNull()
+    val errorText =
+        remember(error) {
+            buildString {
+                append(error.message.orEmpty())
+                var throwable: Throwable? = error.cause
+                var depth = 0
+                while (throwable != null && depth < 8) {
+                    append(' ')
+                    append(throwable.message.orEmpty())
+                    throwable = throwable.cause
+                    depth += 1
+                }
+            }
+        }
+    val isYouTubeBotCheck =
+        remember(errorText, httpCode) {
+            YouTubeFailureClassifier.classify(
+                httpStatusCode = httpCode,
+                text = errorText,
+            ) == YouTubeFailureKind.BOT_CHECK
+        }
+    val title =
+        if (isYouTubeBotCheck) restrictedTitle else fallbackUnknown
     val reason =
         when {
+            isYouTubeBotCheck -> restrictedDescription
             error.errorCode == PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED -> fallbackNoInternet
             error.errorCode == PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT -> fallbackTimeout
             httpCode in setOf(403, 404, 410, 416) -> fallbackNoStream
@@ -70,7 +106,7 @@ fun PlaybackError(
                 ?: fallbackUnknown
         }
 
-    val details =
+    val rawDetails =
         remember(error, reason, httpCode) {
             buildString {
                 appendLine(reason)
@@ -94,6 +130,12 @@ fun PlaybackError(
                     depth++
                 }
             }.trim()
+        }
+    val visibleDetails =
+        if (isYouTubeBotCheck) {
+            "$restrictedTechnical\nCode: ${error.errorCode}"
+        } else {
+            rawDetails
         }
 
     Surface(
@@ -122,10 +164,10 @@ fun PlaybackError(
                     verticalArrangement = Arrangement.spacedBy(4.dp),
                 ) {
                     Text(
-                        text = fallbackUnknown,
+                        text = title,
                         style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
                         color = MaterialTheme.colorScheme.onErrorContainer,
-                        maxLines = 1,
+                        maxLines = 2,
                         overflow = TextOverflow.Ellipsis,
                     )
 
@@ -139,17 +181,42 @@ fun PlaybackError(
                 }
             }
 
+            if (isYouTubeBotCheck) {
+                Surface(
+                    shape = MaterialTheme.shapes.large,
+                    color = MaterialTheme.colorScheme.onErrorContainer.copy(alpha = 0.09f),
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Column(
+                        modifier = Modifier.padding(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp),
+                    ) {
+                        Text(
+                            text = recommendationTitle,
+                            style = MaterialTheme.typography.labelLarge,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.onErrorContainer,
+                        )
+                        Text(
+                            text = recommendation,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onErrorContainer.copy(alpha = 0.92f),
+                        )
+                    }
+                }
+            }
+
             Surface(
                 shape = MaterialTheme.shapes.large,
                 color = MaterialTheme.colorScheme.onErrorContainer.copy(alpha = 0.06f),
                 modifier = Modifier.fillMaxWidth(),
             ) {
                 Text(
-                    text = details,
+                    text = visibleDetails,
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onErrorContainer.copy(alpha = 0.92f),
                     modifier = Modifier.padding(12.dp),
-                    maxLines = 12,
+                    maxLines = if (isYouTubeBotCheck) 3 else 12,
                     overflow = TextOverflow.Clip,
                 )
             }
@@ -171,7 +238,7 @@ fun PlaybackError(
 
                 Button(
                     onClick = {
-                        clipboard.setText(AnnotatedString(details))
+                        clipboard.setText(AnnotatedString(rawDetails))
                         Toast.makeText(context, copiedText, Toast.LENGTH_SHORT).show()
                     },
                     colors =

@@ -161,6 +161,20 @@ object NewPipeUtils {
         }
     }
 
+    /**
+     * A new Android default network can have a different VPN exit IP. Rebuild
+     * the downloader on the next decipher instead of reusing sockets and a JS
+     * player cache populated through the previous route.
+     */
+    fun resetForNetworkChange() {
+        synchronized(playerManagerLock) {
+            YoutubeJavaScriptPlayerManager.clearAllCaches()
+            downloaderInitialized = false
+            configuredProxy = null
+            lastPlayerCacheRecoveryAtMs = 0L
+        }
+    }
+
     internal fun decipherSignatureCipher(
         cipherString: String,
         signatureResolver: (String) -> String,

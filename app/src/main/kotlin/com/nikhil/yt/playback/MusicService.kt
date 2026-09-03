@@ -168,6 +168,8 @@ import com.nikhil.yt.extensions.toMediaItem
 import com.nikhil.yt.extensions.toPersistQueue
 import com.nikhil.yt.extensions.toQueue
 import com.nikhil.yt.innertube.YouTube
+import com.nikhil.yt.innertube.YouTubeFailureClassifier
+import com.nikhil.yt.innertube.YouTubeFailureKind
 import com.nikhil.yt.innertube.models.SongItem
 import com.nikhil.yt.innertube.models.WatchEndpoint
 import com.nikhil.yt.lastfm.LastFM
@@ -237,6 +239,8 @@ import java.io.ObjectInputStream
 import java.io.ObjectOutputStream
 import java.io.Serializable
 import java.net.ConnectException
+import java.net.NoRouteToHostException
+import java.net.SocketException
 import java.net.SocketTimeoutException
 import java.net.UnknownHostException
 import java.time.LocalDateTime
@@ -299,6 +303,7 @@ class MusicService :
     lateinit var connectivityObserver: NetworkConnectivityObserver
     val waitingForNetworkConnection = MutableStateFlow(false)
     private val isNetworkConnected = MutableStateFlow(false)
+    private var networkRecoveryJob: Job? = null
 
     private val audioQuality by enumPreference(
         this,
@@ -395,6 +400,35 @@ class MusicService :
             }.getOrNull().orEmpty()
 
         val now = System.currentTimeMillis()
+
+        val relevantIds =
+            buildSet {
+                player.currentMediaItem
+                    ?.mediaId
+                    ?.trim()
+                    ?.takeIf { it.isNotBlank() }
+                    ?.let(::add)
+                addAll(upcoming)
+            }
+
+        /*
+         * Rapid skipping used to leave every abandoned prefetch alive. Each
+         * one owns its own client fallback budget, so a short swipe burst
+         * could keep contacting YouTube for tracks no longer near playback.
+         * Keep only the current item and the two useful look-ahead items.
+         */
+        inFlightAudioResolves.forEach { (mediaId, job) ->
+            if (
+                mediaId !in relevantIds &&
+                inFlightAudioResolves.remove(mediaId, job)
+            ) {
+                job.cancel()
+                Timber.tag(CAPSULE_RESOLVE_TAG).i(
+                    "prefetch cancel stale id=%s",
+                    mediaId,
+                )
+            }
+        }
 
         Timber.tag(CAPSULE_RESOLVE_TAG).i(
             "prefetch queue ahead=%d ids=%s",
@@ -832,11 +866,50 @@ class MusicService :
                 isNetworkConnected.value = isConnected
                 if (isConnected && waitingForNetworkConnection.value) {
                     // Simple auto-play logic like OuterTune
+                    networkRecoveryJob?.cancel()
+                    networkRecoveryJob = null
                     waitingForNetworkConnection.value = false
                     if (player.currentMediaItem != null && player.playWhenReady) {
                         player.prepare()
                         player.play()
                     }
+                }
+            }
+        }
+
+        scope.launch {
+            var previousNetworkId: Long? = null
+
+            connectivityObserver.activeNetworkId.collect { networkId ->
+                if (networkId == null) return@collect
+
+                val previous = previousNetworkId
+                previousNetworkId = networkId
+                if (previous == null || previous == networkId) return@collect
+
+                /*
+                 * Wi-Fi/mobile/VPN hand-off: signed media URLs, anonymous
+                 * visitor state and anti-bot cooldowns belong to the previous
+                 * route. Cancel obsolete prefetches and make the next explicit
+                 * retry resolve once through the new route. Do not auto-play:
+                 * the user remains in control after an error.
+                 */
+                Timber.tag("MusicService").i(
+                    "Default network changed (%d -> %d); resetting playback route",
+                    previous,
+                    networkId,
+                )
+                inFlightAudioResolves.forEach { (mediaId, job) ->
+                    if (inFlightAudioResolves.remove(mediaId, job)) {
+                        job.cancel()
+                    }
+                }
+                playbackUrlCache.clear()
+                streamRecoveryState.clear()
+                clearStreamRefreshGuards()
+
+                withContext(Dispatchers.IO) {
+                    CapsuleAudioEngine.onNetworkChanged()
                 }
             }
         }
@@ -1448,6 +1521,31 @@ class MusicService :
 
     private fun waitOnNetworkError() {
         waitingForNetworkConnection.value = true
+        networkRecoveryJob?.cancel()
+
+        val mediaId = player.currentMediaItem?.mediaId ?: return
+        if (!player.playWhenReady) return
+
+        /*
+         * A VPN can replace its tunnel quickly enough that Android never
+         * leaves the validated-online state. In that case StateFlow has no
+         * later false -> true edge to wake the old recovery path. Perform one
+         * delayed, guarded retry after the route has had time to settle.
+         */
+        networkRecoveryJob =
+            scope.launch {
+                delay(NETWORK_SETTLE_RETRY_MS)
+                if (
+                    waitingForNetworkConnection.value &&
+                    player.playWhenReady &&
+                    player.currentMediaItem?.mediaId == mediaId &&
+                    connectivityObserver.isCurrentlyConnected()
+                ) {
+                    waitingForNetworkConnection.value = false
+                    player.prepare()
+                    player.play()
+                }
+            }
     }
 
     private fun skipOnError() {
@@ -2122,6 +2220,8 @@ class MusicService :
         currentQueue = EmptyQueue
         queueTitle = null
         clearStreamRefreshGuards()
+        networkRecoveryJob?.cancel()
+        networkRecoveryJob = null
         waitingForNetworkConnection.value = false
         currentMediaMetadata.value = null
         player.playWhenReady = false
@@ -4175,13 +4275,6 @@ class MusicService :
             )
             return
         }
-        val isConnectionError = (error.cause?.cause is PlaybackException) &&
-                (error.cause?.cause as PlaybackException).errorCode == PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED
-
-        if (!isNetworkConnected.value || isConnectionError) {
-            waitOnNetworkError()
-            return
-        }
 
         val currentMediaId = player.currentMediaItem?.mediaId
         val httpStatusCode = error.httpStatusCodeOrNull()
@@ -4206,6 +4299,11 @@ class MusicService :
             )
 
             player.pause()
+            return
+        }
+
+        if (!isNetworkConnected.value || error.isTransientNetworkFailure()) {
+            waitOnNetworkError()
             return
         }
 
@@ -4529,10 +4627,10 @@ class MusicService :
 
             /*
              * Await the shared resolve rather than starting one here. The work
-             * itself lives in ioScope, so a skip that abandons this load leaves
-             * the job running to completion and its URL lands in the cache for
-             * whoever needs it next, instead of being cancelled halfway and
-             * repeated from scratch.
+             * itself lives in ioScope, so every caller for this track shares
+             * the same job. A media transition keeps jobs for the current and
+             * next two tracks, while older abandoned prefetches are cancelled
+             * to avoid request bursts during rapid skipping.
              *
              * The timeout is a floor, not the mechanism: with prefetch working
              * this await normally returns immediately.
@@ -5173,14 +5271,13 @@ class MusicService :
                 .joinToString(" ")
                 .lowercase()
 
+        val classifiedFailure =
+            YouTubeFailureClassifier.classify(text = message)
         val looksRateLimitedOrBotBlocked =
-            "429" in message ||
-                "403" in message ||
-                "too many requests" in message ||
-                "not a bot" in message ||
-                "bot detection" in message ||
-                "confirm you're not a bot" in message ||
-                "confirm you’re not a bot" in message
+            classifiedFailure == YouTubeFailureKind.RATE_LIMITED ||
+                classifiedFailure == YouTubeFailureKind.BOT_CHECK ||
+                "429" in message ||
+                "403" in message
 
         if (looksRateLimitedOrBotBlocked) {
             videoRequestBackoffUntilMs =
@@ -5305,6 +5402,25 @@ class MusicService :
             t = t.cause
         }
         return null
+    }
+
+    private fun PlaybackException.isTransientNetworkFailure(): Boolean {
+        val networkErrorCodes =
+            setOf(
+                PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED,
+                PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT,
+            )
+
+        return generateSequence(this as Throwable?) { it?.cause }
+            .take(8)
+            .any { throwable ->
+                (throwable is PlaybackException && throwable.errorCode in networkErrorCodes) ||
+                    throwable is UnknownHostException ||
+                    throwable is ConnectException ||
+                    throwable is NoRouteToHostException ||
+                    throwable is SocketTimeoutException ||
+                    throwable is SocketException
+            }
     }
 
     private fun markAndCheckRecoveryAllowance(mediaId: String): Boolean {
@@ -6047,6 +6163,7 @@ class MusicService :
         private const val CAPSULE_RESOLVE_TAG = "CapsuleResolve"
 
         private const val PREFETCH_AHEAD = 2
+        private const val NETWORK_SETTLE_RETRY_MS = 1_500L
 
         /* Do not re-resolve a URL that still has this much life left. */
         private const val PREFETCH_FRESHNESS_MS = 60_000L

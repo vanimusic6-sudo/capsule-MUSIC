@@ -116,6 +116,11 @@ object CapsuleAudioEngine {
         YTPlayerUtils.clearPlaybackSafetyState()
     }
 
+    /** Reset URL/session state only after Android changes the default route. */
+    fun onNetworkChanged() {
+        YTPlayerUtils.onNetworkChanged()
+    }
+
     /**
      * Preserve current semantics:
      * - 403 -> exact track/client cooldown

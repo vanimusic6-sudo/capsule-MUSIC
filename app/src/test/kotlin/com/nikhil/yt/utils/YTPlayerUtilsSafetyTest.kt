@@ -39,6 +39,14 @@ class YTPlayerUtilsSafetyTest {
                 PlaybackException.ERROR_CODE_REMOTE_ERROR,
             )
         assertTrue(YTPlayerUtils.isBotDetectionException(error))
+
+        val localizedError =
+            PlaybackException(
+                "Войдите в аккаунт, чтобы подтвердить, что вы не бот",
+                null,
+                PlaybackException.ERROR_CODE_REMOTE_ERROR,
+            )
+        assertTrue(YTPlayerUtils.isBotDetectionException(localizedError))
     }
 
     @Test
@@ -109,6 +117,11 @@ class YTPlayerUtilsSafetyTest {
                 YouTubeFailureKind.PERMANENT,
             ),
         )
+        assertFalse(
+            YTPlayerUtils.shouldTryNextClientForTest(
+                YouTubeFailureKind.BOT_CHECK,
+            ),
+        )
     }
 
     @Test
@@ -133,7 +146,6 @@ class YTPlayerUtilsSafetyTest {
         assertEquals(YouTubeClient.ORIGIN_YOUTUBE_MUSIC, headers.origin)
         assertEquals(YouTubeClient.REFERER_YOUTUBE_MUSIC, headers.referer)
     }
-
 
     private fun format(
         itag: Int,
