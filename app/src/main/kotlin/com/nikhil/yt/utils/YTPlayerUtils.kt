@@ -1,14 +1,15 @@
 /*
  * Capsule MUSIC
- * Safety-first YouTube AUDIO stream resolver.
+ * Stable YouTube AUDIO stream resolver.
  *
- * Goals:
- * - a 403 for one song/client must never poison that client for every song;
- * - 429/bot-check must stop request escalation instead of cycling clients;
- * - normal AUDIO stream acquisition uses a credential-free InnerTube session;
- * - current fallback clients avoid identities with known mandatory PO-token
- *   requirements where possible;
- * - stream URL cache is scoped by video + client identity + itag.
+ * Playback deliberately behaves like a normal single-session player:
+ * - one reviewed client identity per logical resolve;
+ * - no automatic client rotation after a rejected request;
+ * - no pre-flight GVS probe before Media3 opens the stream;
+ * - 429/bot-check opens a global breaker instead of escalating traffic;
+ * - 403 from a signed media URL is treated as refreshable, not as a reason to
+ *   quarantine the only healthy client for the whole track;
+ * - secondary loudness lookup never starts extra player requests.
  *
  * GPL-3.0
  */
@@ -21,57 +22,38 @@ import com.nikhil.yt.constants.AudioQuality
 import com.nikhil.yt.constants.AudioStreamPolicy
 import com.nikhil.yt.constants.PlayerStreamClient
 import com.nikhil.yt.innertube.CapsuleAnonymousSession
-import com.nikhil.yt.innertube.YouTube
 import com.nikhil.yt.innertube.YouTubeFailureClassifier
 import com.nikhil.yt.innertube.YouTubeFailureKind
 import com.nikhil.yt.innertube.models.YouTubeClient
-import com.nikhil.yt.innertube.models.YouTubeClient.Companion.TVHTML5
-import com.nikhil.yt.innertube.models.YouTubeClient.Companion.VISIONOS
-import com.nikhil.yt.innertube.models.YouTubeClient.Companion.TVHTML5_DOWNGRADED
 import com.nikhil.yt.innertube.models.YouTubeClient.Companion.MWEB
+import com.nikhil.yt.innertube.models.YouTubeClient.Companion.TVHTML5
+import com.nikhil.yt.innertube.models.YouTubeClient.Companion.TVHTML5_DOWNGRADED
+import com.nikhil.yt.innertube.models.YouTubeClient.Companion.VISIONOS
 import com.nikhil.yt.innertube.models.YouTubeClient.Companion.WEB
 import com.nikhil.yt.innertube.models.YouTubeClient.Companion.WEB_EMBEDDED
 import com.nikhil.yt.innertube.models.response.PlayerResponse
 import com.nikhil.yt.innertube.pages.NewPipeUtils
+import io.ktor.client.plugins.ResponseException
 import java.util.Locale
 import java.util.concurrent.ConcurrentHashMap
-import io.ktor.client.plugins.ResponseException
-import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
-import okhttp3.OkHttpClient
 import timber.log.Timber
 
 object YTPlayerUtils {
     private const val logTag = "YTPlayerUtils"
 
-    /*
-     * 403 usually means this exact stream/client combination is bad.
-     * It must NOT globally disable the client.
-     */
-    private const val TRACK_CLIENT_BACKOFF_MS = 10 * 60 * 1000L
-
-    /*
-     * 429 and explicit bot-detection are different: continuing to rotate
-     * clients creates more traffic. Stop network resolution for a while.
-     */
     private const val GLOBAL_BREAKER_MS = 10 * 60 * 1000L
 
-    /* Hard request budget for one logical AUDIO resolve. */
-    private const val MAX_PLAYER_REQUESTS_PER_RESOLVE = 4
-    private const val MAX_STREAM_PROBES_PER_CLIENT = 2
-    private const val MAX_STREAM_PROBES_PER_RESOLVE = 4
+    /*
+     * A logical AUDIO resolve is intentionally one player request. Media3 is
+     * the stream validator: doing a separate range probe doubled GVS traffic
+     * and made rapid skipping much noisier than a normal player.
+     */
+    private const val MAX_PLAYER_REQUESTS_PER_RESOLVE = 1
+    private const val MAX_STREAM_PROBES_PER_RESOLVE = 0
 
-    /* Pause before the single retry of a probe that never reached the network. */
-    private const val TRANSPORT_RETRY_DELAY_MS = 350L
     private const val FRESH_CACHE_SAFETY_MS = 30_000L
-
-    /* Bound slow-growing in-memory state on very long sessions. */
     private const val MAX_STREAM_CACHE_ENTRIES = 800
-    private const val MAX_FAILED_CLIENT_ENTRIES = 1_200
-    private const val LOUDNESS_HIT_TTL_MS = 24 * 60 * 60 * 1000L
     private const val LOUDNESS_MISS_TTL_MS = 30 * 60 * 1000L
-
-    @Volatile
-    private var streamClientPair: Pair<java.net.Proxy?, OkHttpClient>? = null
 
     @Volatile
     private var globalPlaybackBreakerUntilMs: Long = 0L
@@ -79,52 +61,7 @@ object YTPlayerUtils {
     @Volatile
     private var globalPlaybackBreakerReason: String? = null
 
-    private fun currentStreamClient(): OkHttpClient {
-        val current = YouTube.streamProxy
-
-        streamClientPair?.let { (proxy, client) ->
-            if (proxy == current) return client
-        }
-
-        val client =
-            /*
-             * OkHttp defaults callTimeout to zero, meaning no ceiling at all.
-             * These probes decide whether playback starts, so an unbounded call
-             * is simply a bug: a stalled connection had no way to fail.
-             */
-            OkHttpClient.Builder()
-                .proxy(current)
-                .connectTimeout(java.time.Duration.ofSeconds(5))
-                .readTimeout(java.time.Duration.ofSeconds(8))
-                .writeTimeout(java.time.Duration.ofSeconds(8))
-                .callTimeout(java.time.Duration.ofSeconds(10))
-                .build()
-
-        streamClientPair = current to client
-        return client
-    }
-
-    /*
-     * Current safety policy:
-     *
-     * VISIONOS:
-     *   primary anonymous client; current upstream policy does not declare a
-     *   mandatory GVS/Player PO token.
-     *
-     * WEB_EMBEDDED:
-     *   anonymous web fallback. It currently has no declared GVS PO-token
-     *   requirement upstream, but needs the normal youtube.com player origin
-     *   and JS signature deciphering.
-     *
-     * TVHTML5_DOWNGRADED:
-     *   compatibility fallback maintained upstream without a currently
-     *   declared mandatory PO-token policy.
-     *
-     * Android/iOS/Android-VR client identities remain manual compatibility
-     * modes because current HTTPS GVS URLs require a real PO-token.
-     */
     private val MAIN_CLIENT: YouTubeClient = VISIONOS
-
 
     private data class CachedStreamUrl(
         val url: String,
@@ -139,18 +76,6 @@ object YTPlayerUtils {
     private data class CachedLoudnessMetadata(
         val value: LoudnessMetadata?,
         val expiresAtMs: Long,
-    )
-
-    private data class StreamProbeResult(
-        val success: Boolean,
-        val statusCode: Int? = null,
-        /*
-         * True when the probe never reached YouTube at all: DNS failure, no
-         * route, TLS or timeout. That says something about this device's
-         * network, not about the stream or the client identity, so it must not
-         * be treated as evidence against either.
-         */
-        val transportFailure: Boolean = false,
     )
 
     internal class ResolveRequestBudget(
@@ -181,38 +106,23 @@ object YTPlayerUtils {
             get() = streamProbesUsed >= maxStreamProbes
     }
 
-    private val streamUrlCache =
-        ConcurrentHashMap<String, CachedStreamUrl>()
-
-    /*
-     * Key = videoId + exact client identity.
-     *
-     * This is the critical fix for the bug where one 403 disabled IOS /
-     * ANDROID_VR / another client for every song until app restart.
-     */
-    private val failedTrackClientsUntil =
-        ConcurrentHashMap<String, Long>()
-    private val loudnessMetadataCache =
-        ConcurrentHashMap<String, CachedLoudnessMetadata>()
+    private val streamUrlCache = ConcurrentHashMap<String, CachedStreamUrl>()
+    private val loudnessMetadataCache = ConcurrentHashMap<String, CachedLoudnessMetadata>()
 
     fun invalidateCachedStreamUrls(videoId: String) {
-        /*
-         * Stream URL invalidation must NOT clear the per-track client failure
-         * map. Otherwise MusicService can mark a client as failed on 403 and
-         * immediately erase that protection in the next line.
-         */
         val prefix = "$videoId:"
         streamUrlCache.keys.removeIf { it.startsWith(prefix) }
     }
 
-    fun clearTrackClientFailures(videoId: String) {
-        val prefix = "$videoId:"
-        failedTrackClientsUntil.keys.removeIf { it.startsWith(prefix) }
-    }
+    /*
+     * Kept for source compatibility with recovery code. A media-URL 403 is not
+     * evidence that VisionOS itself is unusable for this song, so there is no
+     * per-track client quarantine to clear anymore.
+     */
+    fun clearTrackClientFailures(videoId: String) = Unit
 
     fun clearPlaybackSafetyState() {
         streamUrlCache.clear()
-        failedTrackClientsUntil.clear()
         loudnessMetadataCache.clear()
         globalPlaybackBreakerUntilMs = 0L
         globalPlaybackBreakerReason = null
@@ -220,19 +130,9 @@ object YTPlayerUtils {
         NewPipeUtils.clearPlayerCaches()
     }
 
-    /**
-     * Discard only state tied to the previous network route. This is called
-     * after Android reports a genuinely different default Network (for
-     * example a VPN hand-off), never for a manual retry on the same IP.
-     */
     fun onNetworkChanged() {
-        streamClientPair?.second?.let { client ->
-            client.dispatcher.cancelAll()
-            client.connectionPool.evictAll()
-        }
-        streamClientPair = null
         streamUrlCache.clear()
-        failedTrackClientsUntil.clear()
+        loudnessMetadataCache.clear()
         globalPlaybackBreakerUntilMs = 0L
         globalPlaybackBreakerReason = null
         CapsuleAnonymousSession.reset()
@@ -248,29 +148,18 @@ object YTPlayerUtils {
         clientKey: String?,
         httpStatusCode: Int?,
     ) {
-        /* A rate limit is global even when the failing URL has no client tag. */
         if (httpStatusCode == 429) {
-            tripGlobalBreaker(
-                reason = "YouTube returned HTTP 429",
-            )
+            tripGlobalBreaker("YouTube returned HTTP 429")
             return
         }
 
-        val normalizedClientKey =
-            normalizeStreamClientKey(clientKey)
-
-        if (normalizedClientKey.isEmpty()) return
-
-        if (httpStatusCode == 403) {
-            failedTrackClientsUntil[
-                buildFailedClientKey(
-                    videoId = videoId,
-                    clientKey = normalizedClientKey,
-                )
-            ] =
-                System.currentTimeMillis() +
-                    TRACK_CLIENT_BACKOFF_MS
-            pruneFailedClientMap()
+        if (httpStatusCode == 403 || httpStatusCode == 401) {
+            Timber.tag(logTag).w(
+                "Signed AUDIO stream rejected for %s (%s, HTTP %s); URL will be refreshed with the same client",
+                videoId,
+                normalizeStreamClientKey(clientKey).ifBlank { "unknown-client" },
+                httpStatusCode,
+            )
         }
     }
 
@@ -279,17 +168,8 @@ object YTPlayerUtils {
         client: PlayerStreamClient,
         httpStatusCode: Int?,
     ) {
-        /*
-         * Legacy PlayerStreamClient values are kept only for source/settings
-         * compatibility. They must not silently re-enable old Android-VR/iOS
-         * playback identities.
-         */
         val effective =
-            if (client == PlayerStreamClient.TVHTML5) {
-                TVHTML5
-            } else {
-                VISIONOS
-            }
+            if (client == PlayerStreamClient.TVHTML5) TVHTML5 else VISIONOS
 
         markStreamClientFailed(
             videoId = videoId,
@@ -309,70 +189,22 @@ object YTPlayerUtils {
         )
     }
 
-    private fun isStreamClientTemporarilyBlocked(
-        videoId: String,
-        client: YouTubeClient,
-    ): Boolean {
-        if (isGlobalBreakerActive()) return true
-
-        val now = System.currentTimeMillis()
-        val keys =
-            listOf(
-                buildFailedClientKey(
-                    videoId = videoId,
-                    clientKey = effectiveIdentityKey(client),
-                ),
-                buildFailedClientKey(
-                    videoId = videoId,
-                    clientKey = client.clientName,
-                ),
-            ).distinct()
-
-        var blocked = false
-
-        for (key in keys) {
-            val until = failedTrackClientsUntil[key] ?: continue
-
-            if (until <= now) {
-                failedTrackClientsUntil.remove(key)
-            } else {
-                blocked = true
-            }
-        }
-
-        return blocked
-    }
-
-    private fun normalizeStreamClientKey(
-        clientKey: String?,
-    ): String =
+    private fun normalizeStreamClientKey(clientKey: String?): String =
         clientKey
             ?.trim()
             ?.takeIf { it.isNotBlank() }
             ?.uppercase(Locale.US)
             .orEmpty()
 
-    private fun effectiveIdentityKey(
-        client: YouTubeClient,
-    ): String =
-        normalizeStreamClientKey(
-            "${client.clientName}@${client.clientVersion}",
-        )
-
-    private fun buildFailedClientKey(
-        videoId: String,
-        clientKey: String,
-    ): String =
-        "$videoId:${normalizeStreamClientKey(clientKey)}"
+    private fun effectiveIdentityKey(client: YouTubeClient): String =
+        normalizeStreamClientKey("${client.clientName}@${client.clientVersion}")
 
     private fun tripGlobalBreaker(reason: String) {
         val now = System.currentTimeMillis()
         val newUntil = now + GLOBAL_BREAKER_MS
-
         if (newUntil > globalPlaybackBreakerUntilMs) {
             globalPlaybackBreakerUntilMs = newUntil
         }
-
         globalPlaybackBreakerReason = reason
 
         Timber.tag(logTag).w(
@@ -384,7 +216,6 @@ object YTPlayerUtils {
 
     private fun isGlobalBreakerActive(): Boolean {
         val until = globalPlaybackBreakerUntilMs
-
         if (until <= 0L) return false
 
         if (until <= System.currentTimeMillis()) {
@@ -392,7 +223,6 @@ object YTPlayerUtils {
             globalPlaybackBreakerReason = null
             return false
         }
-
         return true
     }
 
@@ -400,8 +230,7 @@ object YTPlayerUtils {
         if (!isGlobalBreakerActive()) return
 
         val remainingSeconds =
-            ((globalPlaybackBreakerUntilMs -
-                System.currentTimeMillis()) / 1000L)
+            ((globalPlaybackBreakerUntilMs - System.currentTimeMillis()) / 1000L)
                 .coerceAtLeast(1L)
 
         throw PlaybackException(
@@ -434,63 +263,27 @@ object YTPlayerUtils {
         playlistId: String? = null,
         audioQuality: AudioQuality,
         connectivityManager: ConnectivityManager,
-        preferredStreamClient: PlayerStreamClient =
-            PlayerStreamClient.ANDROID_VR,
+        preferredStreamClient: PlayerStreamClient = PlayerStreamClient.ANDROID_VR,
         streamPolicy: AudioStreamPolicy = AudioStreamPolicy.AUTO_SAFE,
         networkMetered: Boolean? = null,
         avoidCodecs: Set<String> = emptySet(),
     ): Result<PlaybackData> =
         runCatching {
             throwIfGlobalBreakerActive()
-
             val budget = ResolveRequestBudget()
-            val attempts =
-                when (audioQuality) {
-                    AudioQuality.HIGHEST ->
-                        listOf(AudioQuality.HIGHEST, AudioQuality.HIGH)
-                    AudioQuality.AUTO ->
-                        listOf(AudioQuality.AUTO, AudioQuality.HIGH)
-                    else -> listOf(audioQuality)
-                }.distinct()
-
-            var lastError: Throwable? = null
 
             try {
-                for (attempt in attempts) {
-                    if (budget.playerBudgetExhausted) break
-
-                    val attemptResult =
-                        runCatching {
-                            playerResponseForPlaybackOnce(
-                                videoId = videoId,
-                                playlistId = playlistId,
-                                audioQuality = attempt,
-                                connectivityManager = connectivityManager,
-                                preferredStreamClient = preferredStreamClient,
-                                streamPolicy = streamPolicy,
-                                networkMetered = networkMetered,
-                                avoidCodecs = avoidCodecs,
-                                budget = budget,
-                            )
-                        }
-
-                    if (attemptResult.isSuccess) {
-                        return@runCatching attemptResult.getOrThrow()
-                    }
-
-                    lastError = attemptResult.exceptionOrNull()
-                    if (isGlobalBreakerActive()) {
-                        throw lastError
-                            ?: IllegalStateException("YouTube playback breaker active")
-                    }
-                }
-
-                throw lastError
-                    ?: PlaybackException(
-                        "YouTube AUDIO request budget exhausted",
-                        null,
-                        PlaybackException.ERROR_CODE_REMOTE_ERROR,
-                    )
+                playerResponseForPlaybackOnce(
+                    videoId = videoId,
+                    playlistId = playlistId,
+                    audioQuality = audioQuality,
+                    connectivityManager = connectivityManager,
+                    preferredStreamClient = preferredStreamClient,
+                    streamPolicy = streamPolicy,
+                    networkMetered = networkMetered,
+                    avoidCodecs = avoidCodecs,
+                    budget = budget,
+                )
             } finally {
                 Timber.tag(logTag).i(
                     "AUDIO resolve stats videoId=%s player=%d/%d probes=%d/%d",
@@ -516,506 +309,202 @@ object YTPlayerUtils {
     ): PlaybackData {
         throwIfGlobalBreakerActive()
 
-        Timber.tag(logTag).i(
-            "Fetching safe AUDIO player response for videoId: %s, playlistId: %s",
-            videoId,
-            playlistId,
-        )
-
-        val preferredYouTubeClient =
+        val client =
             preferredClient(
                 streamPolicy = streamPolicy,
                 legacyPreference = preferredStreamClient,
             )
 
-        val policyOrder =
-            when (streamPolicy) {
-                /*
-                 * Ordered by what the field runs actually showed:
-                 *
-                 *   VISIONOS   179/179 first try. Stays first.
-                 *   WEB_EMBEDDED has no currently declared GVS PO-token
-                 *              requirement and is the first real spare.
-                 *   TV_DOWN / TV also have no declared GVS token requirement;
-                 *              both now use their matching youtube.com host,
-                 *              origin and referer instead of music.youtube.com.
-                 *
-                 * iOS and Android families are deliberately absent here:
-                 * their current HTTPS GVS policy requires a genuine PO-token.
-                 */
-                AudioStreamPolicy.AUTO_SAFE,
-                AudioStreamPolicy.VISIONOS,
-                -> {
-                    val hasWebGvsToken =
-                        YouTube.authState.resolveGvsPoToken(WEB) != null
-
-                    if (hasWebGvsToken) {
-                        listOf(VISIONOS, WEB_EMBEDDED, WEB, MWEB)
-                    } else {
-                        listOf(
-                            VISIONOS,
-                            WEB_EMBEDDED,
-                            TVHTML5_DOWNGRADED,
-                            TVHTML5,
-                        )
-                    }
-                }
-
-                AudioStreamPolicy.WEB_EMBEDDED ->
-                    listOf(
-                        WEB_EMBEDDED,
-                        VISIONOS,
-                        TVHTML5_DOWNGRADED,
-                        TVHTML5,
-                    )
-
-                AudioStreamPolicy.WEB ->
-                    listOf(
-                        WEB,
-                        MWEB,
-                        VISIONOS,
-                        WEB_EMBEDDED,
-                    )
-
-                AudioStreamPolicy.MWEB ->
-                    listOf(
-                        MWEB,
-                        WEB,
-                        VISIONOS,
-                        WEB_EMBEDDED,
-                    )
-
-                AudioStreamPolicy.IOS ->
-                    listOf(
-                        YouTubeClient.IOS,
-                        VISIONOS,
-                        WEB_EMBEDDED,
-                        TVHTML5_DOWNGRADED,
-                    )
-
-                AudioStreamPolicy.IOS_MUSIC ->
-                    listOf(
-                        YouTubeClient.IOS_MUSIC,
-                        VISIONOS,
-                        WEB_EMBEDDED,
-                        TVHTML5_DOWNGRADED,
-                    )
-
-                AudioStreamPolicy.TV_DOWNGRADED ->
-                    listOf(
-                        YouTubeClient.TVHTML5_DOWNGRADED,
-                        TVHTML5,
-                        VISIONOS,
-                        WEB_EMBEDDED,
-                    )
-
-                AudioStreamPolicy.TVHTML5 ->
-                    listOf(
-                        TVHTML5,
-                        TVHTML5_DOWNGRADED,
-                        VISIONOS,
-                        WEB_EMBEDDED,
-                    )
-            }
-
-        val streamClients =
-            buildList {
-                add(preferredYouTubeClient)
-                addAll(policyOrder)
-            }
-                .distinct()
-                .filterNot { client ->
-                    val blocked =
-                        isStreamClientTemporarilyBlocked(
-                            videoId = videoId,
-                            client = client,
-                        )
-
-                    if (blocked) {
-                        Timber.tag(logTag).w(
-                            "Temporarily blocked only for %s: %s",
-                            videoId,
-                            effectiveIdentityKey(client),
-                        )
-                    }
-
-                    blocked
-                }
-
-        if (streamClients.isEmpty()) {
-            throwIfGlobalBreakerActive()
+        if (!budget.tryConsumePlayerRequest()) {
             throw PlaybackException(
-                "No safe YouTube stream client is currently available for this track",
+                "YouTube AUDIO request budget exhausted",
                 null,
                 PlaybackException.ERROR_CODE_REMOTE_ERROR,
             )
         }
 
-        var lastPlayerResponse: PlayerResponse? = null
-        var lastFailure: Throwable? = null
+        Timber.tag(logTag).i(
+            "Resolving AUDIO once with %s for videoId=%s playlistId=%s",
+            effectiveIdentityKey(client),
+            videoId,
+            playlistId,
+        )
 
-        for ((index, client) in streamClients.withIndex()) {
-            throwIfGlobalBreakerActive()
-            if (!budget.tryConsumePlayerRequest()) break
+        val signatureTimestamp =
+            if (client.useSignatureTimestamp) getSignatureTimestampOrNull(videoId) else null
 
-            Timber.tag(logTag).i(
-                "Trying safe AUDIO client %d/%d: %s",
-                index + 1,
-                streamClients.size,
-                effectiveIdentityKey(client),
+        val responseResult =
+            CapsuleAnonymousSession.player(
+                videoId = videoId,
+                client = client,
+                signatureTimestamp = signatureTimestamp,
             )
 
-            /*
-             * Native clients already return ready URLs. Fetching the HTML5
-             * JavaScript player for visionOS was unnecessary work and could
-             * cache a transient parser failure before a Web client was used.
-             */
-            val signatureTimestamp =
-                if (client.useSignatureTimestamp) {
-                    getSignatureTimestampOrNull(videoId)
-                } else {
-                    null
-                }
-
-            val playerResponseResult =
-                CapsuleAnonymousSession.player(
-                    videoId = videoId,
-                    client = client,
-                    signatureTimestamp = signatureTimestamp,
-                )
-
-            val playerFailure = playerResponseResult.exceptionOrNull()
-            if (playerFailure != null) {
-                lastFailure = playerFailure
-                val failureKind = classifyThrowableFailure(playerFailure)
-
-                Timber.tag(logTag).w(
-                    playerFailure,
-                    "Player request failed for %s (%s)",
-                    effectiveIdentityKey(client),
-                    failureKind,
-                )
-
-                when (failureKind) {
-                    YouTubeFailureKind.RATE_LIMITED -> {
-                        tripGlobalBreaker("YouTube returned HTTP 429")
-                        throw PlaybackException(
-                            "YouTube rate limited playback",
-                            playerFailure,
-                            PlaybackException.ERROR_CODE_REMOTE_ERROR,
-                        )
-                    }
-
-                    YouTubeFailureKind.BOT_CHECK -> {
-                        tripGlobalBreaker("YouTube requested a bot check")
-                        throw PlaybackException(
-                            "YouTube requested a bot check",
-                            playerFailure,
-                            PlaybackException.ERROR_CODE_REMOTE_ERROR,
-                        )
-                    }
-
-                    YouTubeFailureKind.FORBIDDEN -> {
-                        markStreamClientFailed(
-                            videoId = videoId,
-                            clientKey = effectiveIdentityKey(client),
-                            httpStatusCode = 403,
-                        )
-                    }
-
-                    YouTubeFailureKind.PERMANENT -> {
-                        /*
-                         * A removed/private/region-permanent item is a property
-                         * of the content itself. Rotating clients only adds
-                         * traffic and cannot make the item exist again.
-                         */
-                        throw PlaybackException(
-                            "This track is unavailable",
-                            playerFailure,
-                            PlaybackException.ERROR_CODE_REMOTE_ERROR,
-                        )
-                    }
-
-                    YouTubeFailureKind.LOGIN_REQUIRED,
-                    YouTubeFailureKind.AGE_RESTRICTED,
-                    -> {
-                        /*
-                         * These responses can be client-specific. Keep the hard
-                         * request budget, but allow the next reviewed client.
-                         * Never open the global breaker for login/age.
-                         */
-                    }
-
-                    else -> Unit
-                }
-
-                continue
-            }
-
-            val playerResponse = playerResponseResult.getOrThrow()
-            lastPlayerResponse = playerResponse
-
-            val status = playerResponse.playabilityStatus.status
-            if (status != "OK") {
-                val reason = playerResponse.playabilityStatus.reason.orEmpty()
-                val failureKind =
-                    YouTubeFailureClassifier.classify(
-                        playabilityStatus = status,
-                        text = reason,
-                    )
-
-                when (failureKind) {
-                    YouTubeFailureKind.RATE_LIMITED -> {
-                        tripGlobalBreaker("YouTube returned a rate-limit response")
-                        throw PlaybackException(
-                            reason.ifBlank { "YouTube rate limited playback" },
-                            null,
-                            PlaybackException.ERROR_CODE_REMOTE_ERROR,
-                        )
-                    }
-
-                    YouTubeFailureKind.BOT_CHECK -> {
-                        tripGlobalBreaker(
-                            "YouTube bot-check: ${reason.take(160)}",
-                        )
-                        throw PlaybackException(
-                            reason.ifBlank { "YouTube requested a bot check" },
-                            null,
-                            PlaybackException.ERROR_CODE_REMOTE_ERROR,
-                        )
-                    }
-
-                    YouTubeFailureKind.PERMANENT -> {
-                        throw PlaybackException(
-                            reason.ifBlank { "This track is unavailable" },
-                            null,
-                            PlaybackException.ERROR_CODE_REMOTE_ERROR,
-                        )
-                    }
-
-                    YouTubeFailureKind.AGE_RESTRICTED,
-                    YouTubeFailureKind.LOGIN_REQUIRED,
-                    -> {
-                        /*
-                         * Do not open the global breaker. A different reviewed
-                         * client can legitimately return a playable response.
-                         * The request budget still caps the total attempts.
-                         */
-                        lastFailure =
-                            PlaybackException(
-                                reason.ifBlank {
-                                    "This track requires a different playback session"
-                                },
-                                null,
-                                PlaybackException.ERROR_CODE_REMOTE_ERROR,
-                            )
-                    }
-
-                    YouTubeFailureKind.FORBIDDEN -> {
-                        markStreamClientFailed(
-                            videoId = videoId,
-                            clientKey = effectiveIdentityKey(client),
-                            httpStatusCode = 403,
-                        )
-                    }
-
-                    else -> Unit
-                }
-
-                Timber.tag(logTag).w(
-                    "Client %s returned %s (%s): %s",
-                    effectiveIdentityKey(client),
-                    status,
-                    failureKind,
-                    reason,
-                )
-                continue
-            }
-
-            val isMetered =
-                networkMetered ?: connectivityManager.isActiveNetworkMetered
-
-            val candidates =
-                selectAudioFormatCandidates(
-                    playerResponse = playerResponse,
-                    audioQuality = audioQuality,
-                    networkMetered = isMetered,
-                    avoidCodecs = avoidCodecs,
-                )
-
-            if (candidates.isEmpty()) continue
-
-            val expectedDurationMs =
-                playerResponse.videoDetails
-                    ?.lengthSeconds
-                    ?.toLongOrNull()
-                    ?.takeIf { it > 0L }
-                    ?.times(1000L)
-
-            var probesForClient = 0
-
-            candidateLoop@ for (candidate in candidates) {
-                if (
-                    expectedDurationMs != null &&
-                    isLikelyPreview(candidate, expectedDurationMs)
-                ) {
-                    continue
-                }
-
-                val cacheKey =
-                    buildCacheKey(
-                        videoId = videoId,
-                        itag = candidate.itag,
-                        client = client,
-                    )
-
-                val now = System.currentTimeMillis()
-                val cached = streamUrlCache[cacheKey]
-                if (cached != null) {
-                    if (cached.expiresAtMs > now + FRESH_CACHE_SAFETY_MS) {
-                        val expiresInSeconds =
-                            ((cached.expiresAtMs - now) / 1000L)
-                                .coerceAtLeast(1L)
-                                .coerceAtMost(Int.MAX_VALUE.toLong())
-                                .toInt()
-
-                        Timber.tag(logTag).i(
-                            "Safe AUDIO fresh-cache hit with %s, itag=%d (no probe)",
-                            effectiveIdentityKey(client),
-                            candidate.itag,
-                        )
-
-                        return PlaybackData(
-                            audioConfig = playerResponse.playerConfig?.audioConfig,
-                            videoDetails = playerResponse.videoDetails,
-                            playbackTracking = playerResponse.playbackTracking,
-                            format = candidate,
-                            streamUrl = cached.url,
-                            streamExpiresInSeconds = expiresInSeconds,
-                        )
-                    }
-
-                    streamUrlCache.remove(cacheKey, cached)
-                }
-
-                if (probesForClient >= MAX_STREAM_PROBES_PER_CLIENT) break
-                if (!budget.tryConsumeStreamProbe()) break
-                probesForClient += 1
-
-                val candidateUrl =
-                    findUrlOrNull(
-                        format = candidate,
-                        videoId = videoId,
-                        client = client,
-                    ) ?: continue
-
-                var probe = validateStatus(candidateUrl, client)
-
-                /*
-                 * One retry for a transport failure. Flaky VPN DNS very often
-                 * resolves the same host on a second attempt a moment later.
-                 */
-                if (probe.transportFailure) {
-                    Thread.sleep(TRANSPORT_RETRY_DELAY_MS)
-                    probe = validateStatus(candidateUrl, client)
-                }
-
-                /*
-                 * Still unreachable. The probe is an optimisation that catches
-                 * a rejected URL early, not a precondition for playback, and
-                 * here it has told us nothing about the stream. Fall through to
-                 * the accept path below and let the player, which has its own
-                 * retry policy, decide. Discarding a good response and burning
-                 * the rest of the client chain cannot fix broken DNS.
-                 */
-                if (probe.transportFailure) {
-                    Timber.tag(logTag).w(
-                        "Accepting %s itag=%d unprobed: network unreachable",
-                        effectiveIdentityKey(client),
-                        candidate.itag,
-                    )
-                }
-
-                if (!probe.success && !probe.transportFailure) {
-                    when (probe.statusCode) {
-                        403, 401 -> {
-                            markStreamClientFailed(
-                                videoId = videoId,
-                                clientKey = effectiveIdentityKey(client),
-                                httpStatusCode = 403,
-                            )
-                            /*
-                             * A rejected first stream is enough evidence to
-                             * leave this exact client for this track. Do not
-                             * hammer five more formats from the same response.
-                             */
-                            break@candidateLoop
-                        }
-
-                        429 -> {
-                            markStreamClientFailed(
-                                videoId = videoId,
-                                clientKey = effectiveIdentityKey(client),
-                                httpStatusCode = 429,
-                            )
-                            throwIfGlobalBreakerActive()
-                        }
-
-                        else -> {
-                            if (budget.streamProbeBudgetExhausted) break@candidateLoop
-                            continue@candidateLoop
-                        }
-                    }
-                }
-
-                val expiresInSeconds =
-                    playerResponse.streamingData?.expiresInSeconds ?: 300
-
-                streamUrlCache[cacheKey] =
-                    CachedStreamUrl(
-                        url = candidateUrl,
-                        expiresAtMs =
-                            System.currentTimeMillis() +
-                                expiresInSeconds * 1000L,
-                    )
-                pruneStreamUrlCache()
-
-                Timber.tag(logTag).i(
-                    "Safe AUDIO stream validated with %s, itag=%d",
-                    effectiveIdentityKey(client),
-                    candidate.itag,
-                )
-
-                return PlaybackData(
-                    audioConfig = playerResponse.playerConfig?.audioConfig,
-                    videoDetails = playerResponse.videoDetails,
-                    playbackTracking = playerResponse.playbackTracking,
-                    format = candidate,
-                    streamUrl = candidateUrl,
-                    streamExpiresInSeconds = expiresInSeconds,
-                )
-            }
+        val playerFailure = responseResult.exceptionOrNull()
+        if (playerFailure != null) {
+            val kind = classifyThrowableFailure(playerFailure)
+            throwPlayerFailure(
+                videoId = videoId,
+                client = client,
+                kind = kind,
+                cause = playerFailure,
+                reason = playerFailure.message.orEmpty(),
+            )
         }
 
-        throwIfGlobalBreakerActive()
+        val playerResponse = responseResult.getOrThrow()
+        val status = playerResponse.playabilityStatus.status
+        if (status != "OK") {
+            val reason = playerResponse.playabilityStatus.reason.orEmpty()
+            val kind =
+                YouTubeFailureClassifier.classify(
+                    playabilityStatus = status,
+                    text = reason,
+                )
+            throwPlayerFailure(
+                videoId = videoId,
+                client = client,
+                kind = kind,
+                cause = null,
+                reason = reason.ifBlank { status.orEmpty() },
+            )
+        }
 
-        val lastStatus = lastPlayerResponse?.playabilityStatus?.status
-        throw PlaybackException(
-            buildString {
-                append("No playable safe YouTube AUDIO stream")
-                lastStatus?.let {
-                    append(" (last status: ")
-                    append(it)
-                    append(")")
+        val isMetered = networkMetered ?: connectivityManager.isActiveNetworkMetered
+        val candidates =
+            selectAudioFormatCandidates(
+                playerResponse = playerResponse,
+                audioQuality = audioQuality,
+                networkMetered = isMetered,
+                avoidCodecs = avoidCodecs,
+            )
+
+        if (candidates.isEmpty()) {
+            throw PlaybackException(
+                "No playable YouTube AUDIO format",
+                null,
+                PlaybackException.ERROR_CODE_REMOTE_ERROR,
+            )
+        }
+
+        val expectedDurationMs =
+            playerResponse.videoDetails
+                ?.lengthSeconds
+                ?.toLongOrNull()
+                ?.takeIf { it > 0L }
+                ?.times(1000L)
+
+        for (candidate in candidates) {
+            if (expectedDurationMs != null && isLikelyPreview(candidate, expectedDurationMs)) {
+                continue
+            }
+
+            val cacheKey = buildCacheKey(videoId, candidate.itag, client)
+            val now = System.currentTimeMillis()
+            val cached = streamUrlCache[cacheKey]
+            if (cached != null) {
+                if (cached.expiresAtMs > now + FRESH_CACHE_SAFETY_MS) {
+                    val expiresInSeconds =
+                        ((cached.expiresAtMs - now) / 1000L)
+                            .coerceAtLeast(1L)
+                            .coerceAtMost(Int.MAX_VALUE.toLong())
+                            .toInt()
+
+                    return PlaybackData(
+                        audioConfig = playerResponse.playerConfig?.audioConfig,
+                        videoDetails = playerResponse.videoDetails,
+                        playbackTracking = playerResponse.playbackTracking,
+                        format = candidate,
+                        streamUrl = cached.url,
+                        streamExpiresInSeconds = expiresInSeconds,
+                    )
                 }
-                lastFailure?.message
-                    ?.takeIf { it.isNotBlank() }
-                    ?.let {
-                        append(": ")
-                        append(it.take(160))
-                    }
-            },
-            lastFailure,
+                streamUrlCache.remove(cacheKey, cached)
+            }
+
+            val candidateUrl =
+                findUrlOrNull(
+                    format = candidate,
+                    videoId = videoId,
+                    client = client,
+                ) ?: continue
+
+            val expiresInSeconds = playerResponse.streamingData?.expiresInSeconds ?: 300
+            streamUrlCache[cacheKey] =
+                CachedStreamUrl(
+                    url = candidateUrl,
+                    expiresAtMs = System.currentTimeMillis() + expiresInSeconds * 1000L,
+                )
+            pruneStreamUrlCache()
+
+            Timber.tag(logTag).i(
+                "AUDIO URL ready with %s itag=%d; Media3 will validate the stream",
+                effectiveIdentityKey(client),
+                candidate.itag,
+            )
+
+            return PlaybackData(
+                audioConfig = playerResponse.playerConfig?.audioConfig,
+                videoDetails = playerResponse.videoDetails,
+                playbackTracking = playerResponse.playbackTracking,
+                format = candidate,
+                streamUrl = candidateUrl,
+                streamExpiresInSeconds = expiresInSeconds,
+            )
+        }
+
+        throw PlaybackException(
+            "No playable YouTube AUDIO stream URL",
+            null,
+            PlaybackException.ERROR_CODE_REMOTE_ERROR,
+        )
+    }
+
+    private fun throwPlayerFailure(
+        videoId: String,
+        client: YouTubeClient,
+        kind: YouTubeFailureKind,
+        cause: Throwable?,
+        reason: String,
+    ): Nothing {
+        when (kind) {
+            YouTubeFailureKind.RATE_LIMITED -> {
+                tripGlobalBreaker("YouTube returned HTTP 429")
+            }
+
+            YouTubeFailureKind.BOT_CHECK -> {
+                tripGlobalBreaker(
+                    reason.takeIf { it.isNotBlank() }
+                        ?.let { "YouTube bot-check: ${it.take(160)}" }
+                        ?: "YouTube requested a bot check",
+                )
+            }
+
+            YouTubeFailureKind.FORBIDDEN -> {
+                markStreamClientFailed(
+                    videoId = videoId,
+                    clientKey = effectiveIdentityKey(client),
+                    httpStatusCode = 403,
+                )
+            }
+
+            else -> Unit
+        }
+
+        val message =
+            when (kind) {
+                YouTubeFailureKind.RATE_LIMITED -> "YouTube rate limited playback"
+                YouTubeFailureKind.BOT_CHECK -> "YouTube requested a bot check"
+                YouTubeFailureKind.PERMANENT -> "This track is unavailable"
+                YouTubeFailureKind.LOGIN_REQUIRED -> "This track requires a signed-in playback session"
+                YouTubeFailureKind.AGE_RESTRICTED -> "This track is age restricted"
+                YouTubeFailureKind.FORBIDDEN -> "YouTube rejected the playback request"
+                else -> reason.ifBlank { "YouTube AUDIO playback request failed" }
+            }
+
+        throw PlaybackException(
+            message,
+            cause,
             PlaybackException.ERROR_CODE_REMOTE_ERROR,
         )
     }
@@ -1031,67 +520,25 @@ object YTPlayerUtils {
         )
 
     /**
-     * Fetches only missing ReplayGain-style metadata after playback has
-     * already started. The request never blocks stream acquisition and misses
-     * are cached so tracks without loudness data do not create background
-     * traffic on every replay.
+     * Do not start another player request merely to obtain ReplayGain metadata.
+     * The playback response already contributes loudness when YouTube includes
+     * it; if it does not, unity gain is safer than multiplying request volume.
      */
-    suspend fun resolveLoudnessForNormalization(
-        videoId: String,
-    ): LoudnessMetadata? {
+    suspend fun resolveLoudnessForNormalization(videoId: String): LoudnessMetadata? {
         val now = System.currentTimeMillis()
         loudnessMetadataCache[videoId]
             ?.takeIf { it.expiresAtMs > now }
             ?.let { return it.value }
-
-        val signatureTimestamp = getSignatureTimestampOrNull(videoId)
-        val hasWebGvsToken = YouTube.authState.resolveGvsPoToken(WEB) != null
-        val clients =
-            buildList {
-                add(WEB_EMBEDDED)
-                add(TVHTML5_DOWNGRADED)
-                if (hasWebGvsToken) {
-                    add(WEB)
-                    add(MWEB)
-                }
-            }.distinct().take(3)
-
-        for (client in clients) {
-            val response =
-                CapsuleAnonymousSession.player(
-                    videoId = videoId,
-                    client = client,
-                    signatureTimestamp = signatureTimestamp,
-                ).getOrNull() ?: continue
-
-            val audioConfig = response.playerConfig?.audioConfig
-            val audioFormat =
-                response.streamingData
-                    ?.adaptiveFormats
-                    ?.firstOrNull { it.isAudio }
-            val value =
-                LoudnessMetadata(
-                    loudnessDb = audioConfig?.loudnessDb ?: audioFormat?.loudnessDb,
-                    perceptualLoudnessDb =
-                        audioConfig?.perceptualLoudnessDb
-                            ?: audioFormat?.perceptualLoudnessDb,
-                )
-
-            if (value.loudnessDb != null || value.perceptualLoudnessDb != null) {
-                loudnessMetadataCache[videoId] =
-                    CachedLoudnessMetadata(
-                        value = value,
-                        expiresAtMs = now + LOUDNESS_HIT_TTL_MS,
-                    )
-                return value
-            }
-        }
 
         loudnessMetadataCache[videoId] =
             CachedLoudnessMetadata(
                 value = null,
                 expiresAtMs = now + LOUDNESS_MISS_TTL_MS,
             )
+        Timber.tag(logTag).d(
+            "Skipping secondary loudness player request for %s",
+            videoId,
+        )
         return null
     }
 
@@ -1100,21 +547,17 @@ object YTPlayerUtils {
         legacyPreference: PlayerStreamClient,
     ): YouTubeClient =
         when (streamPolicy) {
-            AudioStreamPolicy.AUTO_SAFE ->
-                if (legacyPreference == PlayerStreamClient.TVHTML5) {
-                    TVHTML5
-                } else {
-                    VISIONOS
-                }
+            /* AUTO_SAFE is intentionally deterministic. */
+            AudioStreamPolicy.AUTO_SAFE,
+            AudioStreamPolicy.VISIONOS,
+            -> VISIONOS
 
-            AudioStreamPolicy.VISIONOS -> VISIONOS
             AudioStreamPolicy.WEB_EMBEDDED -> WEB_EMBEDDED
             AudioStreamPolicy.WEB -> WEB
             AudioStreamPolicy.MWEB -> MWEB
             AudioStreamPolicy.IOS -> YouTubeClient.IOS
             AudioStreamPolicy.IOS_MUSIC -> YouTubeClient.IOS_MUSIC
-            AudioStreamPolicy.TV_DOWNGRADED ->
-                YouTubeClient.TVHTML5_DOWNGRADED
+            AudioStreamPolicy.TV_DOWNGRADED -> TVHTML5_DOWNGRADED
             AudioStreamPolicy.TVHTML5 -> TVHTML5
         }
 
@@ -1142,9 +585,7 @@ object YTPlayerUtils {
                 .asSequence()
                 .filter { it.isAudio && it.bitrate > 0 }
                 .filter {
-                    it.url != null ||
-                        it.signatureCipher != null ||
-                        it.cipher != null
+                    it.url != null || it.signatureCipher != null || it.cipher != null
                 }
                 .filter { format ->
                     val codec = extractCodec(format.mimeType)?.lowercase()
@@ -1156,8 +597,7 @@ object YTPlayerUtils {
 
         val effectiveQuality =
             when (audioQuality) {
-                AudioQuality.AUTO ->
-                    if (networkMetered) AudioQuality.HIGH else AudioQuality.HIGHEST
+                AudioQuality.AUTO -> if (networkMetered) AudioQuality.HIGH else AudioQuality.HIGHEST
                 else -> audioQuality
             }
 
@@ -1198,37 +638,20 @@ object YTPlayerUtils {
         }
     }
 
-    private fun extractCodec(
-        mimeType: String,
-    ): String? {
-        val match =
-            Regex("""codecs="([^"]+)"""")
-                .find(mimeType)
-                ?: return null
-
-        return match
-            .groupValues
+    private fun extractCodec(mimeType: String): String? {
+        val match = Regex("""codecs="([^"]+)"""").find(mimeType) ?: return null
+        return match.groupValues
             .getOrNull(1)
             ?.split(",")
             ?.firstOrNull()
             ?.trim()
     }
 
-    private fun codecRank(
-        codec: String?,
-    ): Int =
+    private fun codecRank(codec: String?): Int =
         when {
             codec.isNullOrBlank() -> 0
-            codec.contains(
-                "opus",
-                ignoreCase = true,
-            ) -> 3
-
-            codec.contains(
-                "mp4a",
-                ignoreCase = true,
-            ) -> 2
-
+            codec.contains("opus", ignoreCase = true) -> 3
+            codec.contains("mp4a", ignoreCase = true) -> 2
             else -> 1
         }
 
@@ -1236,125 +659,17 @@ object YTPlayerUtils {
         format: PlayerResponse.StreamingData.Format,
         expectedDurationMs: Long,
     ): Boolean {
-        val approx =
-            format.approxDurationMs
-                ?.toLongOrNull()
-                ?: return false
+        val approx = format.approxDurationMs?.toLongOrNull() ?: return false
+        if (expectedDurationMs < 90_000L) return false
 
-        if (expectedDurationMs < 90_000L) {
-            return false
-        }
-
-        return approx in
-            1L..minOf(
-                90_000L,
-                (expectedDurationMs * 9L) / 10L,
-            )
+        return approx in 1L..minOf(90_000L, (expectedDurationMs * 9L) / 10L)
     }
 
-    /*
-     * One tiny range probe only.
-     *
-     * The old code issued up to three different range probes for some clients.
-     * For safety and lower request volume, a single byte is enough to reject a
-     * dead 403/429 URL before handing it to Media3.
-     */
-    private fun validateStatus(
-        url: String,
-        client: YouTubeClient,
-    ): StreamProbeResult {
-        return try {
-            val httpUrl = url.toHttpUrlOrNull()
-            val clientParam =
-                httpUrl
-                    ?.queryParameter("c")
-                    ?.trim()
-                    .orEmpty()
-
-            val originReferer =
-                StreamClientUtils
-                    .resolveOriginReferer(clientParam)
-
-            val request =
-                okhttp3.Request
-                    .Builder()
-                    .get()
-                    .header(
-                        "User-Agent",
-                        client.userAgent,
-                    )
-                    .header(
-                        "Range",
-                        "bytes=0-0",
-                    )
-                    .apply {
-                        originReferer.origin?.let {
-                            header("Origin", it)
-                        }
-                        originReferer.referer?.let {
-                            header("Referer", it)
-                        }
-                    }
-                    .url(url)
-                    .build()
-
-            val code =
-                currentStreamClient()
-                    .newCall(request)
-                    .execute()
-                    .use { it.code }
-
-            StreamProbeResult(
-                success =
-                    code in 200..399 ||
-                        code == 416,
-                statusCode = code,
-            )
-        } catch (error: Exception) {
-            val transport = isTransportFailure(error)
-
-            Timber.tag(logTag).w(
-                "Stream probe %s: %s",
-                if (transport) "could not reach the network" else "failed",
-                error.javaClass.simpleName,
-            )
-
-            if (!transport) reportException(error)
-
-            StreamProbeResult(
-                success = false,
-                statusCode = null,
-                transportFailure = transport,
-            )
-        }
-    }
-
-    /*
-     * Local connectivity problems, not YouTube verdicts. VPN DNS in particular
-     * fails to resolve individual googlevideo edge hosts fairly often, and that
-     * used to be indistinguishable from a dead stream.
-     */
-    private fun isTransportFailure(error: Throwable): Boolean =
-        generateSequence(error) { it.cause }
-            .any { cause ->
-                cause is java.net.UnknownHostException ||
-                    cause is java.net.ConnectException ||
-                    cause is java.net.NoRouteToHostException ||
-                    cause is java.net.SocketTimeoutException ||
-                    cause is java.io.InterruptedIOException ||
-                    cause is javax.net.ssl.SSLException
-            }
-
-    private fun getSignatureTimestampOrNull(
-        videoId: String,
-    ): Int? =
+    private fun getSignatureTimestampOrNull(videoId: String): Int? =
         NewPipeUtils
             .getSignatureTimestamp(videoId)
             .onFailure {
-                Timber.tag(logTag).w(
-                    it,
-                    "Failed to get signature timestamp",
-                )
+                Timber.tag(logTag).w(it, "Failed to get signature timestamp")
                 reportException(it)
             }
             .getOrNull()
@@ -1366,16 +681,9 @@ object YTPlayerUtils {
     ): String? {
         val url =
             NewPipeUtils
-                .getStreamUrl(
-                    format,
-                    videoId,
-                    client,
-                )
+                .getStreamUrl(format, videoId, client)
                 .onFailure {
-                    Timber.tag(logTag).w(
-                        it,
-                        "Failed to get stream URL",
-                    )
+                    Timber.tag(logTag).w(it, "Failed to get stream URL")
                     reportException(it)
                 }
                 .getOrNull()
@@ -1391,14 +699,9 @@ object YTPlayerUtils {
         videoId: String,
         itag: Int,
         client: YouTubeClient,
-    ): String =
-        "$videoId:" +
-            "${effectiveIdentityKey(client)}:" +
-            "$itag"
+    ): String = "$videoId:${effectiveIdentityKey(client)}:$itag"
 
-    private fun classifyThrowableFailure(
-        throwable: Throwable,
-    ): YouTubeFailureKind {
+    private fun classifyThrowableFailure(throwable: Throwable): YouTubeFailureKind {
         val chain =
             generateSequence(throwable as Throwable?) { it?.cause }
                 .take(8)
@@ -1430,27 +733,12 @@ object YTPlayerUtils {
             text = reason,
         )
 
-    internal fun shouldTryNextClientForTest(
-        kind: YouTubeFailureKind,
-    ): Boolean =
-        when (kind) {
-            YouTubeFailureKind.RATE_LIMITED,
-            YouTubeFailureKind.BOT_CHECK,
-            YouTubeFailureKind.PERMANENT,
-            -> false
+    internal fun shouldTryNextClientForTest(kind: YouTubeFailureKind): Boolean = false
 
-            else -> true
-        }
+    private fun isBotDetectionError(reason: String): Boolean =
+        YouTubeFailureClassifier.classify(text = reason) == YouTubeFailureKind.BOT_CHECK
 
-    private fun isBotDetectionError(
-        reason: String,
-    ): Boolean =
-        YouTubeFailureClassifier.classify(text = reason) ==
-            YouTubeFailureKind.BOT_CHECK
-
-    fun isBotDetectionException(
-        error: PlaybackException,
-    ): Boolean {
+    fun isBotDetectionException(error: PlaybackException): Boolean {
         val text =
             buildString {
                 append(error.message.orEmpty())
@@ -1478,17 +766,4 @@ object YTPlayerUtils {
             .take(streamUrlCache.size - MAX_STREAM_CACHE_ENTRIES)
             .forEach { streamUrlCache.remove(it.key, it.value) }
     }
-
-    private fun pruneFailedClientMap() {
-        val now = System.currentTimeMillis()
-        failedTrackClientsUntil.entries.removeIf { it.value <= now }
-
-        if (failedTrackClientsUntil.size <= MAX_FAILED_CLIENT_ENTRIES) return
-
-        failedTrackClientsUntil.entries
-            .sortedBy { it.value }
-            .take(failedTrackClientsUntil.size - MAX_FAILED_CLIENT_ENTRIES)
-            .forEach { failedTrackClientsUntil.remove(it.key, it.value) }
-    }
-
 }
