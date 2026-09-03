@@ -1017,11 +1017,12 @@ object YTPlayerUtils {
         val clients =
             buildList {
                 add(WEB_EMBEDDED)
+                add(TVHTML5_DOWNGRADED)
                 if (hasWebGvsToken) {
                     add(WEB)
                     add(MWEB)
                 }
-            }.distinct().take(2)
+            }.distinct().take(3)
 
         for (client in clients) {
             val response =

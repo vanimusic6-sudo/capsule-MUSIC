@@ -219,15 +219,9 @@ data class YouTubeClient(
             )
 
         /*
-         * The TV identities answered every anonymous player call with
-         * "reload the page" (UNPLAYABLE): 92 attempts, 0 successes.
-         *
-         * Two settings differ from a working implementation of the same
-         * client: signatureTimestamp, and repeating the user agent inside the
-         * context. signatureTimestamp alone changed nothing, so both are on
-         * now. If this still fails, the remaining difference is that the
-         * working implementations run TVHTML5 signed in, which is not
-         * something Capsule does for stream requests.
+         * TV needs signatureTimestamp, its user agent repeated in context,
+         * and the runtime configInfo obtained from youtube.com/tv. InnerTube
+         * supplies the page bootstrap before using this identity.
          */
         val TVHTML5 =
             YouTubeClient(

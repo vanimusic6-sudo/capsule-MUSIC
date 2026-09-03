@@ -103,7 +103,7 @@ internal fun rememberCapsuleArtworkColors(
             return@LaunchedEffect
         }
 
-        val thumbnailUrl = mediaMetadata.thumbnailUrl
+        val thumbnailUrl = mediaMetadata?.thumbnailUrl
         if (thumbnailUrl.isNullOrBlank()) {
             colors = fallback
             return@LaunchedEffect

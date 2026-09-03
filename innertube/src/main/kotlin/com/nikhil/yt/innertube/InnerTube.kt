@@ -8,7 +8,6 @@
 
 package com.nikhil.yt.innertube
 
-import com.nikhil.yt.innertube.models.Context
 import com.nikhil.yt.innertube.models.MediaInfo
 import com.nikhil.yt.innertube.models.ReturnYouTubeDislikeResponse
 import com.nikhil.yt.innertube.models.YouTubeClient
@@ -29,7 +28,6 @@ import io.ktor.client.statement.bodyAsText
 import io.ktor.http.*
 import io.ktor.serialization.kotlinx.json.*
 import kotlinx.serialization.ExperimentalSerializationApi
-import kotlinx.serialization.json.Json
 import java.net.Proxy
 import java.io.IOException
 import kotlinx.coroutines.delay

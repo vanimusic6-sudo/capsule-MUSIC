@@ -65,13 +65,10 @@ jobs:
           EOF
 
       - name: Run YouTube core tests and debug build
-        env:
-          CAPSULE_LIVE_CLIENT_TEST: "1"
         run: |
           gradle \
             :innertube:test \
             :app:testUniversalDebugUnitTest \
             :app:assembleUniversalDebug \
-            --info \
             --stacktrace \
             --no-daemon
