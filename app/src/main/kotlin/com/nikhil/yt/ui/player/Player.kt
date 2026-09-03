@@ -215,6 +215,9 @@ fun BottomSheetPlayer(
                 palette = palette,
                 fallbackColor = fallbackColor,
             )
+        if (gradientColorsCache.size >= 32) {
+            gradientColorsCache.keys.firstOrNull()?.let(gradientColorsCache::remove)
+        }
         gradientColorsCache[metadata.id] = extracted
         gradientColors = extracted
     }

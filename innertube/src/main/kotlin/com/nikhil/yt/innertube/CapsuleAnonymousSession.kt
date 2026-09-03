@@ -1,12 +1,11 @@
 /*
  * Capsule MUSIC
  *
- * Credential-free InnerTube session used by public playback/search paths.
+ * Cookie-free InnerTube session used by public playback/search paths.
  *
- * This session never imports Capsule's account cookie, dataSyncId or account
- * PO tokens. It also never fabricates a PO token. If a client starts requiring
- * a real attestation token, that client must be removed from the safe fallback
- * set until Capsule has a genuine compatible provider.
+ * This session never imports Capsule's account cookie or dataSyncId and never
+ * fabricates a PO token. It can use only the genuine web PO tokens explicitly
+ * enabled by the user, together with their matching visitorData.
  *
  * GPL-3.0
  */
@@ -52,20 +51,16 @@ object CapsuleAnonymousSession {
         runCatching {
             prepare()
 
-            /*
-             * Intentionally NO synthetic/fake PO token.
-             *
-             * A random/local token is not equivalent to BotGuard/DroidGuard/
-             * iOSGuard attestation. Safe Capsule clients are selected specifically
-             * so that normal playback does not depend on such a token.
-             */
+            val playerPoToken =
+                innerTube.authState.resolvePlayerPoToken(client)
+
             innerTube
                 .player(
                     client = client,
                     videoId = videoId,
                     playlistId = null,
                     signatureTimestamp = signatureTimestamp,
-                    poToken = null,
+                    poToken = playerPoToken,
                 )
                 .body<PlayerResponse>()
         }
@@ -86,25 +81,6 @@ object CapsuleAnonymousSession {
             .body<SearchResponse>()
     }
 
-    /**
-     * Removes an account-derived GVS poToken that the legacy URL helper may
-     * append from the global [YouTube] auth state.
-     */
-    fun stripAccountPoToken(
-        url: String,
-        client: YouTubeClient?,
-    ): String {
-        val accountToken =
-            YouTube.authState.resolveGvsPoToken(client) ?: return url
-
-        if (!url.contains("pot=$accountToken")) return url
-
-        return url
-            .replace("&pot=$accountToken", "")
-            .replace("?pot=$accountToken&", "?")
-            .replace("?pot=$accountToken", "")
-    }
-
     private suspend fun prepare() {
         mutex.withLock {
             innerTube.locale = YouTube.locale
@@ -115,25 +91,30 @@ object CapsuleAnonymousSession {
                 innerTube.proxy = proxy
             }
 
-            /*
-             * Defensive reset: this object must never retain credentials.
-             */
             val current = innerTube.authState
-            if (
-                current.cookie != null ||
-                current.dataSyncId != null ||
-                current.poToken != null ||
-                current.poTokenGvs != null ||
-                current.poTokenPlayer != null
-            ) {
-                innerTube.authState =
-                    PlaybackAuthState(visitorData = current.visitorData)
-            }
+            val configured = YouTube.authState.normalized()
+            val tokensEnabled = configured.webClientPoTokenEnabled
+            val configuredVisitorData =
+                configured.visitorData.takeIf { tokensEnabled }
+
+            /*
+             * Copy only explicitly enabled public playback attestation. Login
+             * cookies and dataSyncId never cross into this session.
+             */
+            innerTube.authState =
+                PlaybackAuthState(
+                    visitorData = configuredVisitorData ?: current.visitorData,
+                    poToken = configured.poToken.takeIf { tokensEnabled },
+                    poTokenGvs = configured.poTokenGvs.takeIf { tokensEnabled },
+                    poTokenPlayer = configured.poTokenPlayer.takeIf { tokensEnabled },
+                    webClientPoTokenEnabled = tokensEnabled,
+                )
 
             val now = System.currentTimeMillis()
             val needsVisitorData =
-                innerTube.visitorData.isNullOrBlank() ||
-                    now - visitorDataFetchedAtMs > VISITOR_DATA_TTL_MS
+                configuredVisitorData == null &&
+                    (innerTube.visitorData.isNullOrBlank() ||
+                        now - visitorDataFetchedAtMs > VISITOR_DATA_TTL_MS)
 
             if (needsVisitorData) {
                 fetchVisitorData()?.let { fetched ->

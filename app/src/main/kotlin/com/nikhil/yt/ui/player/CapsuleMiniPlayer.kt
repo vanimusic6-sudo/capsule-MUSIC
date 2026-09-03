@@ -2,7 +2,6 @@
  * Capsule MUSIC
  *
  * Capsule Mini Player adapted from the original Capsule/Metrolist implementation.
- * Only the Velune-facing APIs were changed.
  *
  * GPL-3.0
  */
@@ -39,6 +38,7 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -56,7 +56,9 @@ import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
@@ -74,6 +76,8 @@ import com.nikhil.yt.LocalDatabase
 import com.nikhil.yt.LocalPlayerConnection
 import com.nikhil.yt.R
 import com.nikhil.yt.constants.MiniPlayerHeight
+import com.nikhil.yt.constants.MiniPlayerBackgroundStyle
+import com.nikhil.yt.constants.MiniPlayerBackgroundStyleKey
 import com.nikhil.yt.constants.SwipeSensitivityKey
 import com.nikhil.yt.constants.SwipeThumbnailKey
 import com.nikhil.yt.db.entities.ArtistEntity
@@ -82,6 +86,7 @@ import com.nikhil.yt.together.TogetherRole
 import com.nikhil.yt.together.TogetherSessionState
 import com.nikhil.yt.ui.screens.settings.DiscordPresenceManager
 import com.nikhil.yt.utils.rememberPreference
+import com.nikhil.yt.utils.rememberEnumPreference
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 
@@ -93,9 +98,6 @@ import kotlin.math.roundToInt
  */
 val LocalCapsuleDockVisible =
     compositionLocalOf { false }
-
-private val CapsuleMiniBackground =
-    Color(0xFF171717)
 
 private val CapsuleMiniOutline =
     Color(0xFF363636)
@@ -152,6 +154,12 @@ fun CapsuleMiniPlayer(
         rememberPreference(
             SwipeThumbnailKey,
             defaultValue = true,
+        )
+
+    val miniPlayerBackground by
+        rememberEnumPreference(
+            MiniPlayerBackgroundStyleKey,
+            defaultValue = MiniPlayerBackgroundStyle.THEME,
         )
 
     val togetherState by
@@ -484,13 +492,7 @@ fun CapsuleMiniPlayer(
                         )
                     }
                     .clip(miniPlayerShape)
-                    .background(
-                        if (pureBlack) {
-                            Color.Black
-                        } else {
-                            CapsuleMiniBackground
-                        },
-                    )
+                    .background(Color.Transparent)
                     .border(
                         width = 1.dp,
                         color =
@@ -499,6 +501,12 @@ fun CapsuleMiniPlayer(
                             miniPlayerShape,
                     ),
         ) {
+            CapsuleMiniBackgroundLayer(
+                style = miniPlayerBackground,
+                pureBlack = pureBlack,
+                modifier = Modifier.fillMaxSize(),
+            )
+
             Row(
                 verticalAlignment =
                     Alignment.CenterVertically,
@@ -566,6 +574,77 @@ fun CapsuleMiniPlayer(
                 )
             }
         }
+    }
+}
+
+@Composable
+private fun CapsuleMiniBackgroundLayer(
+    style: MiniPlayerBackgroundStyle,
+    pureBlack: Boolean,
+    modifier: Modifier = Modifier,
+) {
+    val primary = MaterialTheme.colorScheme.primary
+    val secondary = MaterialTheme.colorScheme.secondary
+    val surface = MaterialTheme.colorScheme.surface
+
+    when (style) {
+        MiniPlayerBackgroundStyle.THEME ->
+            Box(
+                modifier =
+                    modifier.background(
+                        if (pureBlack) {
+                            Brush.linearGradient(listOf(Color.Black, Color.Black))
+                        } else {
+                            Brush.linearGradient(
+                                listOf(
+                                    lerp(surface, primary, 0.18f),
+                                    lerp(surface, Color.Black, 0.36f),
+                                ),
+                            )
+                        },
+                    ),
+            )
+
+        MiniPlayerBackgroundStyle.GRADIENT ->
+            Box(
+                modifier =
+                    modifier.background(
+                        Brush.linearGradient(
+                            listOf(
+                                lerp(primary, Color.Black, 0.42f),
+                                lerp(secondary, Color.Black, 0.56f),
+                            ),
+                        ),
+                    ),
+            )
+
+        MiniPlayerBackgroundStyle.COLOR_FLOW ->
+            CapsuleProceduralBackground(
+                effect = CapsuleBackgroundEffect.COLOR_FLOW,
+                modifier = modifier,
+                compact = true,
+            )
+
+        MiniPlayerBackgroundStyle.CAPSULE_STAR ->
+            CapsuleProceduralBackground(
+                effect = CapsuleBackgroundEffect.CAPSULE_STAR,
+                modifier = modifier,
+                compact = true,
+            )
+
+        MiniPlayerBackgroundStyle.AURORA ->
+            CapsuleProceduralBackground(
+                effect = CapsuleBackgroundEffect.AURORA,
+                modifier = modifier,
+                compact = true,
+            )
+
+        MiniPlayerBackgroundStyle.NEBULA ->
+            CapsuleProceduralBackground(
+                effect = CapsuleBackgroundEffect.NEBULA,
+                modifier = modifier,
+                compact = true,
+            )
     }
 }
 

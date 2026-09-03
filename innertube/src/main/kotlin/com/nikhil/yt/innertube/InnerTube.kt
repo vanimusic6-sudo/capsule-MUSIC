@@ -37,6 +37,38 @@ import java.util.*
 import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
 
+internal data class PlayerRequestProfile(
+    val endpoint: String,
+    val origin: String,
+    val referer: String,
+)
+
+internal fun resolvePlayerRequestProfile(client: YouTubeClient): PlayerRequestProfile {
+    val usesYouTubeMusic =
+        client.clientName.equals("WEB_REMIX", ignoreCase = true) ||
+            client.clientName.equals("ANDROID_MUSIC", ignoreCase = true) ||
+            client.clientName.equals("IOS_MUSIC", ignoreCase = true)
+    val origin =
+        if (usesYouTubeMusic) {
+            YouTubeClient.ORIGIN_YOUTUBE_MUSIC
+        } else {
+            YouTubeClient.ORIGIN_YOUTUBE
+        }
+    val referer =
+        when {
+            client.clientName.equals("TVHTML5", ignoreCase = true) ->
+                YouTubeClient.REFERER_YOUTUBE_TV
+            client.isEmbedded -> YouTubeClient.THIRD_PARTY_EMBED_URL
+            usesYouTubeMusic -> YouTubeClient.REFERER_YOUTUBE_MUSIC
+            else -> "${YouTubeClient.ORIGIN_YOUTUBE}/"
+        }
+    return PlayerRequestProfile(
+        endpoint = "$origin/youtubei/v1/player",
+        origin = origin,
+        referer = referer,
+    )
+}
+
 /**
  * Provide access to InnerTube endpoints.
  * For making HTTP requests, not parsing response.
@@ -101,34 +133,14 @@ class InnerTube {
         }
     }
 
-    private fun YouTubeClient.usesMainYouTubePlayer(): Boolean =
-        clientName.equals("TVHTML5", ignoreCase = true) ||
-            clientName.equals("WEB", ignoreCase = true) ||
-            clientName.equals("WEB_EMBEDDED_PLAYER", ignoreCase = true)
-
     private fun playerEndpoint(client: YouTubeClient): String =
-        if (client.usesMainYouTubePlayer()) {
-            "${YouTubeClient.ORIGIN_YOUTUBE}/youtubei/v1/player"
-        } else {
-            "${YouTubeClient.ORIGIN_YOUTUBE_MUSIC}/youtubei/v1/player"
-        }
+        resolvePlayerRequestProfile(client).endpoint
 
     private fun requestOrigin(client: YouTubeClient): String =
-        if (client.usesMainYouTubePlayer()) {
-            YouTubeClient.ORIGIN_YOUTUBE
-        } else {
-            YouTubeClient.ORIGIN_YOUTUBE_MUSIC
-        }
+        resolvePlayerRequestProfile(client).origin
 
     private fun requestReferer(client: YouTubeClient): String =
-        when {
-            client.clientName.equals("TVHTML5", ignoreCase = true) ->
-                YouTubeClient.REFERER_YOUTUBE_TV
-
-            client.isEmbedded -> "${YouTubeClient.ORIGIN_YOUTUBE}/embed/"
-            client.usesMainYouTubePlayer() -> "${YouTubeClient.ORIGIN_YOUTUBE}/"
-            else -> YouTubeClient.REFERER_YOUTUBE_MUSIC
-        }
+        resolvePlayerRequestProfile(client).referer
 
     private fun HttpRequestBuilder.ytClient(client: YouTubeClient, setLogin: Boolean = false) {
         val origin = requestOrigin(client)
@@ -228,7 +240,7 @@ class InnerTube {
                     if (client.isEmbedded) {
                         it.copy(
                             thirdParty = Context.ThirdParty(
-                                embedUrl = "https://www.youtube.com/embed/${videoId}"
+                                embedUrl = YouTubeClient.THIRD_PARTY_EMBED_URL,
                             )
                         )
                     } else it

@@ -56,6 +56,8 @@ import com.nikhil.yt.constants.LyricsLineSpacingKey
 import com.nikhil.yt.constants.LyricsScrollKey
 import com.nikhil.yt.constants.LyricsTextPositionKey
 import com.nikhil.yt.constants.LyricsTextSizeKey
+import com.nikhil.yt.constants.MiniPlayerBackgroundStyle
+import com.nikhil.yt.constants.MiniPlayerBackgroundStyleKey
 import com.nikhil.yt.constants.PlayerBackgroundStyle
 import com.nikhil.yt.constants.PlayerBackgroundStyleKey
 import com.nikhil.yt.constants.PureBlackKey
@@ -185,6 +187,15 @@ fun AppearanceSettings(
             PlayerBackgroundStyleKey,
             defaultValue =
                 PlayerBackgroundStyle.COLORING,
+        )
+
+    val (
+        miniPlayerBackground,
+        onMiniPlayerBackgroundChange,
+    ) =
+        rememberEnumPreference(
+            MiniPlayerBackgroundStyleKey,
+            defaultValue = MiniPlayerBackgroundStyle.THEME,
         )
 
     val (
@@ -417,17 +428,17 @@ fun AppearanceSettings(
          */
 
         PreferenceGroupTitle(
-            title = "Capsule",
+            title = stringResource(R.string.capsule_settings_group),
         )
 
         SwitchPreference(
             title = {
                 Text(
-                    "Capsule Bottom Bar",
+                    stringResource(R.string.capsule_bottom_bar),
                 )
             },
             description =
-                "Use the Capsule navigation dock.",
+                stringResource(R.string.capsule_bottom_bar_description),
             icon = {
                 Icon(
                     painter =
@@ -459,12 +470,11 @@ fun AppearanceSettings(
         SwitchPreference(
             title = {
                 Text(
-                    "Capsule Theme",
+                    stringResource(R.string.capsule_theme),
                 )
             },
             description =
-                "Dark monochrome Capsule visual style. " +
-                    "Your existing Velune theme settings are preserved.",
+                stringResource(R.string.capsule_theme_description),
             icon = {
                 Icon(
                     painterResource(
@@ -745,42 +755,67 @@ fun AppearanceSettings(
             valueText = {
                 when (it) {
                     PlayerBackgroundStyle.DEFAULT ->
-                        stringResource(
-                            R.string.follow_theme,
-                        )
+                        stringResource(R.string.background_theme_color)
 
                     PlayerBackgroundStyle.GRADIENT ->
-                        stringResource(
-                            R.string.gradient,
-                        )
+                        stringResource(R.string.background_artwork_gradient)
 
                     PlayerBackgroundStyle.CUSTOM ->
-                        stringResource(
-                            R.string.custom,
-                        )
+                        stringResource(R.string.custom)
 
                     PlayerBackgroundStyle.BLUR ->
-                        stringResource(
-                            R.string.player_background_blur,
-                        )
+                        stringResource(R.string.player_background_blur)
 
                     PlayerBackgroundStyle.COLORING ->
-                        stringResource(
-                            R.string.coloring,
-                        )
+                        stringResource(R.string.background_artwork_color)
 
                     PlayerBackgroundStyle.BLUR_GRADIENT ->
-                        stringResource(
-                            R.string.blur_gradient,
-                        )
+                        stringResource(R.string.blur_gradient)
 
                     PlayerBackgroundStyle.GLOW ->
-                        stringResource(
-                            R.string.glow,
-                        )
+                        stringResource(R.string.glow)
 
                     PlayerBackgroundStyle.GLOW_ANIMATED ->
-                        "Glow Animated"
+                        stringResource(R.string.background_color_animation)
+
+                    PlayerBackgroundStyle.CAPSULE_STAR ->
+                        stringResource(R.string.background_capsule_star)
+
+                    PlayerBackgroundStyle.AURORA ->
+                        stringResource(R.string.background_aurora)
+
+                    PlayerBackgroundStyle.NEBULA ->
+                        stringResource(R.string.background_nebula)
+                }
+            },
+        )
+
+        EnumListPreference(
+            title = {
+                Text(stringResource(R.string.mini_player_background_style))
+            },
+            icon = {
+                Icon(
+                    painterResource(R.drawable.album),
+                    contentDescription = null,
+                )
+            },
+            selectedValue = miniPlayerBackground,
+            onValueSelected = onMiniPlayerBackgroundChange,
+            valueText = { style ->
+                when (style) {
+                    MiniPlayerBackgroundStyle.THEME ->
+                        stringResource(R.string.background_theme_color)
+                    MiniPlayerBackgroundStyle.GRADIENT ->
+                        stringResource(R.string.gradient)
+                    MiniPlayerBackgroundStyle.COLOR_FLOW ->
+                        stringResource(R.string.background_color_animation)
+                    MiniPlayerBackgroundStyle.CAPSULE_STAR ->
+                        stringResource(R.string.background_capsule_star)
+                    MiniPlayerBackgroundStyle.AURORA ->
+                        stringResource(R.string.background_aurora)
+                    MiniPlayerBackgroundStyle.NEBULA ->
+                        stringResource(R.string.background_nebula)
                 }
             },
         )

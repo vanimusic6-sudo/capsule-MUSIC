@@ -18,18 +18,18 @@ import kotlinx.serialization.Serializable
  */
 @Serializable
 data class PlayerResponse(
-    val responseContext: ResponseContext,
+    val responseContext: ResponseContext = ResponseContext(),
     val playabilityStatus: PlayabilityStatus,
-    val playerConfig: PlayerConfig?,
-    val streamingData: StreamingData?,
-    val videoDetails: VideoDetails?,
+    val playerConfig: PlayerConfig? = null,
+    val streamingData: StreamingData? = null,
+    val videoDetails: VideoDetails? = null,
     @SerialName("playbackTracking")
-    val playbackTracking: PlaybackTracking?,
+    val playbackTracking: PlaybackTracking? = null,
 ) {
     @Serializable
     data class PlayabilityStatus(
         val status: String,
-        val reason: String?,
+        val reason: String? = null,
     )
 
     @Serializable
@@ -43,40 +43,40 @@ data class PlayerResponse(
     ) {
         @Serializable
         data class AudioConfig(
-            val loudnessDb: Double?,
-            val perceptualLoudnessDb: Double?,
+            val loudnessDb: Double? = null,
+            val perceptualLoudnessDb: Double? = null,
         )
     }
 
     @Serializable
     data class StreamingData(
-        val formats: List<Format>?,
-        val adaptiveFormats: List<Format>,
-        val expiresInSeconds: Int,
+        val formats: List<Format>? = null,
+        val adaptiveFormats: List<Format> = emptyList(),
+        val expiresInSeconds: Int = 300,
     ) {
         @Serializable
         data class Format(
             val itag: Int,
-            val url: String?,
+            val url: String? = null,
             val mimeType: String,
             val bitrate: Int,
-            val width: Int?,
-            val height: Int?,
-            val contentLength: Long?,
+            val width: Int? = null,
+            val height: Int? = null,
+            val contentLength: Long? = null,
             val quality: String,
-            val fps: Int?,
-            val qualityLabel: String?,
-            val averageBitrate: Int?,
-            val audioQuality: String?,
-            val approxDurationMs: String?,
-            val audioSampleRate: Int?,
-            val audioChannels: Int?,
-            val loudnessDb: Double?,
+            val fps: Int? = null,
+            val qualityLabel: String? = null,
+            val averageBitrate: Int? = null,
+            val audioQuality: String? = null,
+            val approxDurationMs: String? = null,
+            val audioSampleRate: Int? = null,
+            val audioChannels: Int? = null,
+            val loudnessDb: Double? = null,
             /* Sometimes present per format when playerConfig omits it. */
             val perceptualLoudnessDb: Double? = null,
-            val lastModified: Long?,
-            val signatureCipher: String?,
-            val cipher: String?,
+            val lastModified: Long? = null,
+            val signatureCipher: String? = null,
+            val cipher: String? = null,
         ) {
             val isAudio: Boolean
                 get() = width == null
@@ -106,26 +106,26 @@ data class PlayerResponse(
     @Serializable
     data class PlaybackTracking(
         @SerialName("videostatsPlaybackUrl")
-        val videostatsPlaybackUrl: VideostatsPlaybackUrl?,
+        val videostatsPlaybackUrl: VideostatsPlaybackUrl? = null,
         @SerialName("videostatsWatchtimeUrl")
-        val videostatsWatchtimeUrl: VideostatsWatchtimeUrl?,
+        val videostatsWatchtimeUrl: VideostatsWatchtimeUrl? = null,
         @SerialName("atrUrl")
-        val atrUrl: AtrUrl?,
+        val atrUrl: AtrUrl? = null,
     ) {
         @Serializable
         data class VideostatsPlaybackUrl(
             @SerialName("baseUrl")
-            val baseUrl: String?,
+            val baseUrl: String? = null,
         )
         @Serializable
         data class VideostatsWatchtimeUrl(
             @SerialName("baseUrl")
-            val baseUrl: String?,
+            val baseUrl: String? = null,
         )
         @Serializable
         data class AtrUrl(
             @SerialName("baseUrl")
-            val baseUrl: String?,
+            val baseUrl: String? = null,
         )
     }
 }

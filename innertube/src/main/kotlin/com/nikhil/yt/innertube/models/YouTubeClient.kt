@@ -87,6 +87,13 @@ data class YouTubeClient(
         const val REFERER_YOUTUBE_TV = "$ORIGIN_YOUTUBE/tv"
 
         /*
+         * WEB_EMBEDDED must describe a real third-party embed. Pointing its
+         * thirdParty context back at youtube.com makes it indistinguishable
+         * from the normal WEB client and YouTube rejects many player calls.
+         */
+        const val THIRD_PARTY_EMBED_URL = "https://www.reddit.com/"
+
+        /*
          * ------------------------------------------------------------------
          * CURRENT IDENTITIES
          * ------------------------------------------------------------------

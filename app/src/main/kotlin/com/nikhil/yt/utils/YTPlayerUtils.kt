@@ -28,6 +28,8 @@ import com.nikhil.yt.innertube.models.YouTubeClient
 import com.nikhil.yt.innertube.models.YouTubeClient.Companion.TVHTML5
 import com.nikhil.yt.innertube.models.YouTubeClient.Companion.VISIONOS
 import com.nikhil.yt.innertube.models.YouTubeClient.Companion.TVHTML5_DOWNGRADED
+import com.nikhil.yt.innertube.models.YouTubeClient.Companion.MWEB
+import com.nikhil.yt.innertube.models.YouTubeClient.Companion.WEB
 import com.nikhil.yt.innertube.models.YouTubeClient.Companion.WEB_EMBEDDED
 import com.nikhil.yt.innertube.models.response.PlayerResponse
 import com.nikhil.yt.innertube.pages.NewPipeUtils
@@ -65,6 +67,8 @@ object YTPlayerUtils {
     /* Bound slow-growing in-memory state on very long sessions. */
     private const val MAX_STREAM_CACHE_ENTRIES = 800
     private const val MAX_FAILED_CLIENT_ENTRIES = 1_200
+    private const val LOUDNESS_HIT_TTL_MS = 24 * 60 * 60 * 1000L
+    private const val LOUDNESS_MISS_TTL_MS = 30 * 60 * 1000L
 
     @Volatile
     private var streamClientPair: Pair<java.net.Proxy?, OkHttpClient>? = null
@@ -127,6 +131,16 @@ object YTPlayerUtils {
         val expiresAtMs: Long,
     )
 
+    data class LoudnessMetadata(
+        val loudnessDb: Double?,
+        val perceptualLoudnessDb: Double?,
+    )
+
+    private data class CachedLoudnessMetadata(
+        val value: LoudnessMetadata?,
+        val expiresAtMs: Long,
+    )
+
     private data class StreamProbeResult(
         val success: Boolean,
         val statusCode: Int? = null,
@@ -178,6 +192,8 @@ object YTPlayerUtils {
      */
     private val failedTrackClientsUntil =
         ConcurrentHashMap<String, Long>()
+    private val loudnessMetadataCache =
+        ConcurrentHashMap<String, CachedLoudnessMetadata>()
 
     fun invalidateCachedStreamUrls(videoId: String) {
         /*
@@ -197,6 +213,7 @@ object YTPlayerUtils {
     fun clearPlaybackSafetyState() {
         streamUrlCache.clear()
         failedTrackClientsUntil.clear()
+        loudnessMetadataCache.clear()
         globalPlaybackBreakerUntilMs = 0L
         globalPlaybackBreakerReason = null
         CapsuleAnonymousSession.reset()
@@ -507,12 +524,21 @@ object YTPlayerUtils {
                  */
                 AudioStreamPolicy.AUTO_SAFE,
                 AudioStreamPolicy.VISIONOS,
-                -> listOf(
-                    VISIONOS,
-                    WEB_EMBEDDED,
-                    TVHTML5_DOWNGRADED,
-                    TVHTML5,
-                )
+                -> {
+                    val hasWebGvsToken =
+                        YouTube.authState.resolveGvsPoToken(WEB) != null
+
+                    if (hasWebGvsToken) {
+                        listOf(VISIONOS, WEB_EMBEDDED, WEB, MWEB)
+                    } else {
+                        listOf(
+                            VISIONOS,
+                            WEB_EMBEDDED,
+                            TVHTML5_DOWNGRADED,
+                            TVHTML5,
+                        )
+                    }
+                }
 
                 AudioStreamPolicy.WEB_EMBEDDED ->
                     listOf(
@@ -520,6 +546,22 @@ object YTPlayerUtils {
                         VISIONOS,
                         TVHTML5_DOWNGRADED,
                         TVHTML5,
+                    )
+
+                AudioStreamPolicy.WEB ->
+                    listOf(
+                        WEB,
+                        MWEB,
+                        VISIONOS,
+                        WEB_EMBEDDED,
+                    )
+
+                AudioStreamPolicy.MWEB ->
+                    listOf(
+                        MWEB,
+                        WEB,
+                        VISIONOS,
+                        WEB_EMBEDDED,
                     )
 
                 AudioStreamPolicy.IOS ->
@@ -956,6 +998,70 @@ object YTPlayerUtils {
                 getSignatureTimestampOrNull(videoId),
         )
 
+    /**
+     * Fetches only missing ReplayGain-style metadata after playback has
+     * already started. The request never blocks stream acquisition and misses
+     * are cached so tracks without loudness data do not create background
+     * traffic on every replay.
+     */
+    suspend fun resolveLoudnessForNormalization(
+        videoId: String,
+    ): LoudnessMetadata? {
+        val now = System.currentTimeMillis()
+        loudnessMetadataCache[videoId]
+            ?.takeIf { it.expiresAtMs > now }
+            ?.let { return it.value }
+
+        val signatureTimestamp = getSignatureTimestampOrNull(videoId)
+        val hasWebGvsToken = YouTube.authState.resolveGvsPoToken(WEB) != null
+        val clients =
+            buildList {
+                add(WEB_EMBEDDED)
+                if (hasWebGvsToken) {
+                    add(WEB)
+                    add(MWEB)
+                }
+            }.distinct().take(2)
+
+        for (client in clients) {
+            val response =
+                CapsuleAnonymousSession.player(
+                    videoId = videoId,
+                    client = client,
+                    signatureTimestamp = signatureTimestamp,
+                ).getOrNull() ?: continue
+
+            val audioConfig = response.playerConfig?.audioConfig
+            val audioFormat =
+                response.streamingData
+                    ?.adaptiveFormats
+                    ?.firstOrNull { it.isAudio }
+            val value =
+                LoudnessMetadata(
+                    loudnessDb = audioConfig?.loudnessDb ?: audioFormat?.loudnessDb,
+                    perceptualLoudnessDb =
+                        audioConfig?.perceptualLoudnessDb
+                            ?: audioFormat?.perceptualLoudnessDb,
+                )
+
+            if (value.loudnessDb != null || value.perceptualLoudnessDb != null) {
+                loudnessMetadataCache[videoId] =
+                    CachedLoudnessMetadata(
+                        value = value,
+                        expiresAtMs = now + LOUDNESS_HIT_TTL_MS,
+                    )
+                return value
+            }
+        }
+
+        loudnessMetadataCache[videoId] =
+            CachedLoudnessMetadata(
+                value = null,
+                expiresAtMs = now + LOUDNESS_MISS_TTL_MS,
+            )
+        return null
+    }
+
     private fun preferredClient(
         streamPolicy: AudioStreamPolicy,
         legacyPreference: PlayerStreamClient,
@@ -970,6 +1076,8 @@ object YTPlayerUtils {
 
             AudioStreamPolicy.VISIONOS -> VISIONOS
             AudioStreamPolicy.WEB_EMBEDDED -> WEB_EMBEDDED
+            AudioStreamPolicy.WEB -> WEB
+            AudioStreamPolicy.MWEB -> MWEB
             AudioStreamPolicy.IOS -> YouTubeClient.IOS
             AudioStreamPolicy.IOS_MUSIC -> YouTubeClient.IOS_MUSIC
             AudioStreamPolicy.TV_DOWNGRADED ->
@@ -1223,7 +1331,7 @@ object YTPlayerUtils {
         videoId: String,
         client: YouTubeClient,
     ): String? {
-        var url =
+        val url =
             NewPipeUtils
                 .getStreamUrl(
                     format,
@@ -1240,26 +1348,10 @@ object YTPlayerUtils {
                 .getOrNull()
                 ?: return null
 
-        /*
-         * The legacy URL helper can read global account PO-token state.
-         * Playback here is anonymous, so strip only a token that exactly
-         * matches Capsule's authenticated account state.
-         */
-        url =
-            CapsuleAnonymousSession
-                .stripAccountPoToken(
-                    url = url,
-                    client = client,
-                )
-
-        url =
-            StreamClientUtils.patchClientVersion(
-                url = url,
-                clientVersion =
-                    client.clientVersion,
-            )
-
-        return url
+        return StreamClientUtils.patchClientVersion(
+            url = url,
+            clientVersion = client.clientVersion,
+        )
     }
 
     private fun buildCacheKey(

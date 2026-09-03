@@ -120,7 +120,7 @@ class YTPlayerUtilsSafetyTest {
 
         assertEquals(YouTubeClient.ORIGIN_YOUTUBE, headers.origin)
         assertEquals(
-            "${YouTubeClient.ORIGIN_YOUTUBE}/embed/",
+            YouTubeClient.THIRD_PARTY_EMBED_URL,
             headers.referer,
         )
     }

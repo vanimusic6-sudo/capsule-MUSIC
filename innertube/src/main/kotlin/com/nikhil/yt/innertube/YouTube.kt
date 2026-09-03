@@ -66,7 +66,6 @@ import com.nikhil.yt.innertube.pages.SearchResult
 import com.nikhil.yt.innertube.pages.SearchSuggestionPage
 import com.nikhil.yt.innertube.pages.SearchSummary
 import com.nikhil.yt.innertube.pages.SearchSummaryPage
-import com.nikhil.yt.innertube.utils.PoTokenGenerator
 import io.ktor.client.call.body
 import io.ktor.client.statement.bodyAsText
 
@@ -119,6 +118,10 @@ object YouTube {
     var poTokenPlayer: String?
         get() = authState.poTokenPlayer
         set(value) { authState = authState.copy(poTokenPlayer = value) }
+
+    var webClientPoTokenEnabled: Boolean
+        get() = authState.webClientPoTokenEnabled
+        set(value) { authState = authState.copy(webClientPoTokenEnabled = value) }
 
     var proxy: Proxy?
         get() = innerTube.proxy
@@ -483,15 +486,11 @@ object YouTube {
         poToken: String? = null
     ): Result<PlayerResponse> = runCatching {
 
-        var resolvedPoToken = authState.resolvePlayerPoToken(client, explicitPoToken = poToken)
-
-        if (resolvedPoToken == null && PlaybackAuthState.needsServiceIntegrity(client)) {
-              resolvedPoToken = com.nikhil.yt.innertube.utils.PoTokenGenerator.generateContentToken(
-                identifier = authState.visitorData ?: "dummy_visitor_data_for_token",
-                videoId = videoId
+        val resolvedPoToken =
+            authState.resolvePlayerPoToken(
+                client = client,
+                explicitPoToken = poToken,
             )
-            authState = authState.copy(poTokenPlayer = resolvedPoToken)
-        }
 
         innerTube.player(client, videoId, playlistId, signatureTimestamp, resolvedPoToken).body<PlayerResponse>()
     }

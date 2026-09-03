@@ -88,7 +88,7 @@ object StreamClientUtils {
             c.equals("WEB_EMBEDDED_PLAYER", ignoreCase = true) ->
                 OriginReferer(
                     YouTubeClient.ORIGIN_YOUTUBE,
-                    "${YouTubeClient.ORIGIN_YOUTUBE}/embed/",
+                    YouTubeClient.THIRD_PARTY_EMBED_URL,
                 )
 
             c.equals("TVHTML5", ignoreCase = true) ||

@@ -31,6 +31,7 @@ import com.nikhil.yt.utils.PreferenceStore
 import com.nikhil.yt.utils.DebugLoggingController
 import com.nikhil.yt.utils.get
 import com.nikhil.yt.utils.reportException
+import com.nikhil.yt.innertube.CapsuleAnonymousSession
 import com.nikhil.yt.innertube.YouTube
 import com.nikhil.yt.innertube.models.YouTubeLocale
 import com.nikhil.yt.kugou.KuGou
@@ -262,6 +263,15 @@ class App : Application(), SingletonImageLoader.Factory {
                 .distinctUntilChanged()
                 .collect { token ->
                     YouTube.poTokenPlayer = token?.takeIf { it.isNotBlank() }
+                }
+        }
+        applicationScope.launch(Dispatchers.IO) {
+            dataStore.data
+                .map { it[WebClientPoTokenEnabledKey] ?: false }
+                .distinctUntilChanged()
+                .collect { enabled ->
+                    YouTube.webClientPoTokenEnabled = enabled
+                    CapsuleAnonymousSession.reset()
                 }
         }
         applicationScope.launch(Dispatchers.IO) {

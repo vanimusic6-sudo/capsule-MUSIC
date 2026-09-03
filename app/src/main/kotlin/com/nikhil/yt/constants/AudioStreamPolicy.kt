@@ -31,6 +31,12 @@ enum class AudioStreamPolicy {
     /** Use current anonymous Web Embedded identity first. */
     WEB_EMBEDDED,
 
+    /** Use the desktop Web identity with a user-configured genuine PO token. */
+    WEB,
+
+    /** Use the mobile Web identity with a user-configured genuine PO token. */
+    MWEB,
+
     /** Manual compatibility mode; current iOS GVS URLs can require PO-token. */
     IOS,
 

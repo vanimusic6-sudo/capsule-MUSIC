@@ -361,6 +361,18 @@ enum class PlayerBackgroundStyle {
     BLUR_GRADIENT,
     GLOW,
     GLOW_ANIMATED,
+    CAPSULE_STAR,
+    AURORA,
+    NEBULA,
+}
+
+enum class MiniPlayerBackgroundStyle {
+    THEME,
+    GRADIENT,
+    COLOR_FLOW,
+    CAPSULE_STAR,
+    AURORA,
+    NEBULA,
 }
 
 // Keys for customized background
@@ -387,6 +399,7 @@ val TopSize = stringPreferencesKey("topSize")
 val HistoryDuration = floatPreferencesKey("historyDuration")
 
 val PlayerBackgroundStyleKey = stringPreferencesKey("playerBackgroundStyle")
+val MiniPlayerBackgroundStyleKey = stringPreferencesKey("capsuleMiniPlayerBackgroundStyle")
 val LyricsTextPositionKey = stringPreferencesKey("lyricsTextPosition")
 val LyricsClickKey = booleanPreferencesKey("lyricsClick")
 val LyricsScrollKey = booleanPreferencesKey("lyricsScrollKey")

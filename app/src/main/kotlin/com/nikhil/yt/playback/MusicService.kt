@@ -222,6 +222,7 @@ import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
@@ -243,6 +244,26 @@ import javax.inject.Inject
 import kotlin.math.min
 import kotlin.math.pow
 import kotlin.time.Duration.Companion.seconds
+
+internal data class TrackLoudness(
+    val loudnessDb: Double?,
+    val perceptualLoudnessDb: Double?,
+) {
+    val preferredValue: Double?
+        get() =
+            loudnessDb?.takeIf { it.isFinite() }
+                ?: perceptualLoudnessDb?.takeIf { it.isFinite() }
+}
+
+internal fun calculateNormalizationFactor(
+    loudness: TrackLoudness?,
+    maxSafeGainFactor: Float,
+): Float {
+    val loudnessDb = loudness?.preferredValue ?: return 1f
+    val rawFactor = 10f.pow(-loudnessDb.toFloat() / 20f)
+    if (!rawFactor.isFinite() || rawFactor <= 0f) return 1f
+    return if (rawFactor > 1f) min(rawFactor, maxSafeGainFactor) else rawFactor
+}
 
 @OptIn(ExperimentalCoroutinesApi::class, FlowPreview::class)
 @AndroidEntryPoint
@@ -512,6 +533,12 @@ class MusicService :
         currentMediaMetadata.flatMapLatest { mediaMetadata ->
             database.format(mediaMetadata?.id)
         }.flowOn(Dispatchers.IO)
+
+    private val freshlyResolvedLoudness =
+        ConcurrentHashMap<String, TrackLoudness>()
+    private val freshlyResolvedLoudnessVersion = MutableStateFlow(0L)
+    private val normalizationLookupBlockedUntil =
+        ConcurrentHashMap<String, Long>()
 
     private val normalizeFactor = MutableStateFlow(1f)
     var playerVolume = MutableStateFlow(1f)
@@ -931,32 +958,36 @@ class MusicService :
             }
 
         combine(
+            currentMediaMetadata,
             currentFormat,
+            freshlyResolvedLoudnessVersion,
             dataStore.data
                 .map { it[AudioNormalizationKey] ?: true }
                 .distinctUntilChanged(),
-        ) { format, normalizeAudio ->
-            format to normalizeAudio
-        }.collectLatest(scope) { (format, normalizeAudio) ->
+        ) { metadata, format, _, normalizeAudio ->
+            val fresh = metadata?.id?.let(freshlyResolvedLoudness::get)
+            val stored =
+                TrackLoudness(
+                    loudnessDb = format?.loudnessDb,
+                    perceptualLoudnessDb = format?.perceptualLoudnessDb,
+                )
+            (fresh?.takeIf { it.preferredValue != null } ?: stored) to normalizeAudio
+        }.collectLatest(scope) { (loudness, normalizeAudio) ->
             audioNormalizationEnabled.value = normalizeAudio
             Timber.tag("AudioNormalization").d("Audio normalization enabled: $normalizeAudio")
-            Timber.tag("AudioNormalization").d("Format loudnessDb: ${format?.loudnessDb}, perceptualLoudnessDb: ${format?.perceptualLoudnessDb}")
+            Timber.tag("AudioNormalization").d(
+                "Resolved loudnessDb: ${loudness.loudnessDb}, " +
+                    "perceptualLoudnessDb: ${loudness.perceptualLoudnessDb}",
+            )
             
             normalizeFactor.value =
                 if (normalizeAudio) {
-                    val loudness = format?.loudnessDb ?: format?.perceptualLoudnessDb
-                    
-                    if (loudness != null) {
-                        val loudnessDb = loudness.toFloat()
-                        var factor = 10f.pow(-loudnessDb / 20)
-                        
-                        Timber.tag("AudioNormalization").d("Calculated raw normalization factor: $factor (from loudness: $loudnessDb)")
-                        
-                        if (factor > 1f) {
-                            factor = min(factor, maxSafeGainFactor)
-                            Timber.tag("AudioNormalization").d("Factor capped at maxSafeGainFactor: $factor")
-                        }
-                        
+                    if (loudness.preferredValue != null) {
+                        val factor =
+                            calculateNormalizationFactor(
+                                loudness = loudness,
+                                maxSafeGainFactor = maxSafeGainFactor,
+                            )
                         Timber.tag("AudioNormalization").i("Applying normalization factor: $factor")
                         factor
                     } else {
@@ -4587,16 +4618,51 @@ class MusicService :
                  * format usually carries its own loudnessDb, so use that
                  * whenever the player-level value is missing.
                  */
-                val loudnessDb =
+                val responseLoudnessDb =
                     nonNullPlayback.audioConfig?.loudnessDb ?: format.loudnessDb
-                val perceptualLoudnessDb =
+                val responsePerceptualLoudnessDb =
                     nonNullPlayback.audioConfig?.perceptualLoudnessDb
                         ?: format.perceptualLoudnessDb
+                val storedLoudness =
+                    if (
+                        responseLoudnessDb == null &&
+                        responsePerceptualLoudnessDb == null
+                    ) {
+                        runBlocking(Dispatchers.IO) {
+                            database.format(mediaId).first()
+                        }
+                    } else {
+                        null
+                    }
+                val loudnessDb =
+                    responseLoudnessDb
+                        ?: freshlyResolvedLoudness[mediaId]?.loudnessDb
+                        ?: storedLoudness?.loudnessDb
+                val perceptualLoudnessDb =
+                    responsePerceptualLoudnessDb
+                        ?: freshlyResolvedLoudness[mediaId]?.perceptualLoudnessDb
+                        ?: storedLoudness?.perceptualLoudnessDb
 
+                publishResolvedLoudness(
+                    mediaId = mediaId,
+                    loudness =
+                        TrackLoudness(
+                            loudnessDb = loudnessDb,
+                            perceptualLoudnessDb = perceptualLoudnessDb,
+                        ),
+                )
 
                 Timber.tag("AudioNormalization").d("Storing format for $mediaId with loudnessDb: $loudnessDb, perceptualLoudnessDb: $perceptualLoudnessDb")
                 if (loudnessDb == null && perceptualLoudnessDb == null) {
                     Timber.tag("AudioNormalization").w("No loudness data available from YouTube for video: $mediaId")
+                    resolveMissingLoudnessInBackground(
+                        mediaId = mediaId,
+                        format = format,
+                        playbackUrl =
+                            nonNullPlayback.playbackTracking
+                                ?.videostatsPlaybackUrl
+                                ?.baseUrl,
+                    )
                 }
 
                 database.query {
@@ -4624,6 +4690,86 @@ class MusicService :
                 val length = if (dataSpec.length >= 0) minOf(dataSpec.length, CHUNK_LENGTH) else CHUNK_LENGTH
                 return@Factory dataSpec.withUri(streamUrl.toUri()).subrange(dataSpec.uriPositionOffset, length)
             }
+        }
+    }
+
+    private fun publishResolvedLoudness(
+        mediaId: String,
+        loudness: TrackLoudness,
+    ) {
+        freshlyResolvedLoudness[mediaId] = loudness
+
+        if (freshlyResolvedLoudness.size > 128) {
+            freshlyResolvedLoudness.keys
+                .asSequence()
+                .filterNot { it == mediaId }
+                .take(freshlyResolvedLoudness.size - 96)
+                .forEach(freshlyResolvedLoudness::remove)
+        }
+
+        freshlyResolvedLoudnessVersion.update { it + 1L }
+    }
+
+    private fun resolveMissingLoudnessInBackground(
+        mediaId: String,
+        format:
+            com.nikhil.yt.innertube.models.response.PlayerResponse
+                .StreamingData.Format,
+        playbackUrl: String?,
+    ) {
+        val now = System.currentTimeMillis()
+        if (normalizationLookupBlockedUntil.size > 512) {
+            normalizationLookupBlockedUntil.entries.removeIf { it.value <= now }
+        }
+        val previousBlock = normalizationLookupBlockedUntil.putIfAbsent(mediaId, Long.MAX_VALUE)
+
+        if (previousBlock != null) {
+            if (previousBlock > now) return
+            if (!normalizationLookupBlockedUntil.replace(mediaId, previousBlock, Long.MAX_VALUE)) return
+        }
+
+        ioScope.launch {
+            val resolved =
+                YTPlayerUtils.resolveLoudnessForNormalization(mediaId)
+
+            if (resolved == null) {
+                normalizationLookupBlockedUntil[mediaId] =
+                    System.currentTimeMillis() + 30 * 60 * 1000L
+                return@launch
+            }
+
+            val loudness =
+                TrackLoudness(
+                    loudnessDb = resolved.loudnessDb,
+                    perceptualLoudnessDb = resolved.perceptualLoudnessDb,
+                )
+            publishResolvedLoudness(mediaId, loudness)
+            normalizationLookupBlockedUntil.remove(mediaId)
+
+            database.query {
+                upsert(
+                    FormatEntity(
+                        id = mediaId,
+                        itag = format.itag,
+                        mimeType = format.mimeType.substringBefore(';'),
+                        codecs =
+                            format.mimeType
+                                .substringAfter("codecs=", "")
+                                .removeSurrounding("\""),
+                        bitrate = format.bitrate,
+                        sampleRate = format.audioSampleRate,
+                        contentLength = format.contentLength ?: C.LENGTH_UNSET.toLong(),
+                        loudnessDb = loudness.loudnessDb,
+                        perceptualLoudnessDb = loudness.perceptualLoudnessDb,
+                        playbackUrl = playbackUrl,
+                    ),
+                )
+            }
+
+            Timber.tag("AudioNormalization").i(
+                "Applied delayed loudness metadata for %s",
+                mediaId,
+            )
         }
     }
 
