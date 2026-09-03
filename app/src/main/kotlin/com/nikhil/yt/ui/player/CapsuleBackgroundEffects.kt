@@ -1,6 +1,6 @@
 /*
  * Capsule MUSIC
- * Lightweight procedural backgrounds for the full and mini players.
+ * Calm procedural backgrounds shared by the player, mini-player and dock.
  * Licensed under GPL-3.0
  */
 
@@ -17,13 +17,13 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.graphics.drawscope.rotate
 import kotlin.math.PI
 import kotlin.math.abs
 import kotlin.math.cos
@@ -43,6 +43,7 @@ internal fun CapsuleProceduralBackground(
     modifier: Modifier = Modifier,
     colors: List<Color> = emptyList(),
     compact: Boolean = false,
+    allowTransparency: Boolean = false,
 ) {
     val primary = MaterialTheme.colorScheme.primary
     val secondary = MaterialTheme.colorScheme.secondary
@@ -53,81 +54,150 @@ internal fun CapsuleProceduralBackground(
                 colors.getOrElse(0) { primary },
                 colors.getOrElse(1) { secondary },
                 colors.getOrElse(2) { tertiary },
-            ).map(::comfortableEffectColor)
+            ).map(::capsuleMutedArtworkColor)
         }
-    val animation = rememberInfiniteTransition(label = "capsule_background")
+    val animation = rememberInfiniteTransition(label = "capsuleBackground")
     val phase =
         animation.animateFloat(
             initialValue = 0f,
             targetValue = 1f,
             animationSpec =
                 infiniteRepeatable(
-                    animation = tween(24_000, easing = LinearEasing),
+                    animation = tween(28_000, easing = LinearEasing),
                 ),
-            label = "capsule_background_phase",
+            label = "capsuleBackgroundPhase",
         )
 
     Canvas(modifier = modifier) {
         when (effect) {
             CapsuleBackgroundEffect.COLOR_FLOW ->
-                drawColorFlow(palette, phase.value, compact)
+                drawSoftColorFlow(
+                    palette = palette,
+                    phase = phase.value,
+                    compact = compact,
+                    allowTransparency = allowTransparency,
+                )
 
             CapsuleBackgroundEffect.CAPSULE_STAR ->
-                drawCapsuleStar(palette, phase.value, compact)
+                drawCapsuleStarField(
+                    palette = palette,
+                    phase = phase.value,
+                    compact = compact,
+                    allowTransparency = allowTransparency,
+                )
 
             CapsuleBackgroundEffect.AURORA ->
-                drawAurora(palette, phase.value, compact)
+                drawSoftAurora(
+                    palette = palette,
+                    phase = phase.value,
+                    compact = compact,
+                    allowTransparency = allowTransparency,
+                )
 
             CapsuleBackgroundEffect.NEBULA ->
-                drawNebula(palette, phase.value, compact)
+                drawArtworkNebula(
+                    palette = palette,
+                    phase = phase.value,
+                    compact = compact,
+                    allowTransparency = allowTransparency,
+                )
         }
     }
 }
 
-private fun comfortableEffectColor(color: Color): Color {
-    val maximum = max(color.red, max(color.green, color.blue))
-    if (maximum <= 0.82f) return color
-    val scale = 0.82f / maximum
+/** Reduce saturation and cap brightness before a cover colour reaches UI. */
+internal fun capsuleMutedArtworkColor(color: Color): Color {
+    val luminance =
+        color.red * 0.2126f +
+            color.green * 0.7152f +
+            color.blue * 0.0722f
+    val gray = Color(luminance, luminance, luminance, color.alpha)
+    val desaturated = lerp(color, gray, 0.28f)
+    val softened = lerp(desaturated, Color(0xFFE6E1EA), 0.1f)
+    val maximum = max(softened.red, max(softened.green, softened.blue))
+    if (maximum <= 0.76f) return softened
+
+    val scale = 0.76f / maximum
     return Color(
-        red = color.red * scale,
-        green = color.green * scale,
-        blue = color.blue * scale,
-        alpha = color.alpha,
+        red = softened.red * scale,
+        green = softened.green * scale,
+        blue = softened.blue * scale,
+        alpha = softened.alpha,
     )
 }
 
-private fun DrawScope.drawColorFlow(
+/** Shared edge and selected-tab colours keep the mini-player and dock related. */
+internal fun capsuleSurfaceOutline(colors: List<Color>): Color {
+    val accent =
+        capsuleMutedArtworkColor(
+            colors.firstOrNull() ?: Color(0xFF6F7180),
+        )
+    return lerp(Color(0xFF353640), deepColor(accent, 0.48f), 0.24f)
+}
+
+internal fun capsuleDockIndicatorColor(colors: List<Color>): Color {
+    val accent =
+        capsuleMutedArtworkColor(
+            colors.firstOrNull() ?: Color(0xFFAAA7B3),
+        )
+    return lerp(Color(0xFFE4E2E8), accent, 0.18f)
+}
+
+private fun deepColor(
+    color: Color,
+    amount: Float,
+): Color = lerp(color, Color(0xFF03040A), amount.coerceIn(0f, 1f))
+
+private fun DrawScope.drawSoftColorFlow(
     palette: List<Color>,
     phase: Float,
     compact: Boolean,
+    allowTransparency: Boolean,
 ) {
-    drawRect(Color(0xFF06070B))
+    val baseAlpha = if (compact && allowTransparency) 0.84f else 1f
+    val base = deepColor(lerp(palette[0], palette[1], 0.34f), 0.54f)
+    drawRect(base.copy(alpha = baseAlpha))
+    drawRect(
+        brush =
+            Brush.linearGradient(
+                colors =
+                    listOf(
+                        deepColor(palette[0], 0.42f).copy(alpha = 0.62f),
+                        deepColor(palette[1], 0.5f).copy(alpha = 0.48f),
+                        deepColor(palette[2], 0.58f).copy(alpha = 0.56f),
+                    ),
+                start = Offset.Zero,
+                end = Offset(size.width, size.height),
+            ),
+    )
+
     val angle = phase * 2f * PI.toFloat()
-    val radius = max(size.width, size.height) * if (compact) 1.25f else 0.9f
+    val radius = max(size.width, size.height) * if (compact) 1.15f else 0.78f
     val centers =
         listOf(
             Offset(
-                x = size.width * (0.22f + 0.18f * sin(angle)),
-                y = size.height * (0.28f + 0.16f * cos(angle)),
+                size.width * (0.18f + 0.15f * sin(angle)),
+                size.height * (0.32f + 0.12f * cos(angle * 0.72f)),
             ),
             Offset(
-                x = size.width * (0.78f + 0.16f * cos(angle * 0.8f)),
-                y = size.height * (0.72f + 0.18f * sin(angle * 0.8f)),
+                size.width * (0.82f + 0.13f * cos(angle * 0.62f)),
+                size.height * (0.66f + 0.14f * sin(angle * 0.66f)),
             ),
             Offset(
-                x = size.width * (0.5f + 0.22f * sin(angle + 2.1f)),
-                y = size.height * (0.48f + 0.2f * cos(angle + 2.1f)),
+                size.width * (0.5f + 0.2f * sin(angle * 0.48f + 2.2f)),
+                size.height * (0.48f + 0.15f * cos(angle * 0.52f + 1.4f)),
             ),
         )
 
     palette.forEachIndexed { index, color ->
+        val pastel = lerp(color, Color(0xFFE4DFE8), 0.2f)
         drawRect(
             brush =
                 Brush.radialGradient(
                     colors =
                         listOf(
-                            color.copy(alpha = if (compact) 0.62f else 0.74f),
-                            color.copy(alpha = 0.22f),
+                            pastel.copy(alpha = if (compact) 0.2f else 0.3f),
+                            pastel.copy(alpha = if (compact) 0.09f else 0.13f),
                             Color.Transparent,
                         ),
                     center = centers[index],
@@ -135,105 +205,167 @@ private fun DrawScope.drawColorFlow(
                 ),
         )
     }
-    drawRect(Color.Black.copy(alpha = if (compact) 0.12f else 0.2f))
+
+    /* A quiet veil, not a glass/blur layer. */
+    drawRect(Color(0xFF070810).copy(alpha = if (compact) 0.08f else 0.14f))
 }
 
-private fun DrawScope.drawCapsuleStar(
+private fun DrawScope.drawCapsuleStarField(
     palette: List<Color>,
     phase: Float,
     compact: Boolean,
+    allowTransparency: Boolean,
 ) {
+    val baseAlpha = if (compact && allowTransparency) 0.88f else 1f
+    val top = deepColor(lerp(palette[0], palette[1], 0.22f), 0.62f)
+    val bottom = deepColor(lerp(palette[1], palette[2], 0.44f), 0.78f)
     drawRect(
         brush =
             Brush.verticalGradient(
-                listOf(Color(0xFF10152A), Color(0xFF03040A)),
+                listOf(
+                    top.copy(alpha = baseAlpha),
+                    deepColor(palette[0], 0.74f).copy(alpha = baseAlpha),
+                    bottom.copy(alpha = baseAlpha),
+                ),
             ),
     )
+
+    val angle = phase * 2f * PI.toFloat()
     drawRect(
         brush =
             Brush.radialGradient(
                 colors =
                     listOf(
-                        palette[0].copy(alpha = 0.42f),
-                        palette[1].copy(alpha = 0.12f),
+                        palette[0].copy(alpha = if (compact) 0.2f else 0.28f),
+                        palette[1].copy(alpha = if (compact) 0.07f else 0.11f),
                         Color.Transparent,
                     ),
-                center = Offset(size.width * 0.5f, size.height * 0.48f),
-                radius = max(size.width, size.height) * 0.72f,
+                center =
+                    Offset(
+                        size.width * (0.48f + 0.12f * sin(angle * 0.42f)),
+                        size.height * (0.42f + 0.1f * cos(angle * 0.38f)),
+                    ),
+                radius = max(size.width, size.height) * if (compact) 1.1f else 0.68f,
             ),
     )
 
-    val starCount = if (compact) 18 else 52
+    val starCount = if (compact) 26 else 76
     repeat(starCount) { index ->
-        val x = deterministicFraction(index * 17 + 3) * size.width
-        val y = deterministicFraction(index * 31 + 11) * size.height
+        val depth = 0.42f + deterministicFraction(index * 37 + 9) * 0.58f
+        val drift = (depth - 0.4f) * if (compact) 1.2f * density else 2.6f * density
+        val x =
+            deterministicFraction(index * 17 + 3) * size.width +
+                sin(angle * (0.22f + depth * 0.15f) + index) * drift
+        val y =
+            deterministicFraction(index * 31 + 11) * size.height +
+                cos(angle * (0.18f + depth * 0.12f) + index * 0.7f) * drift
         val twinkle =
-            0.25f +
-                0.65f *
-                ((sin((phase * 2f * PI + index * 0.73).toFloat()) + 1f) / 2f)
+            0.18f +
+                depth * 0.34f +
+                0.2f *
+                ((sin(angle * (0.65f + depth) + index * 0.73f) + 1f) / 2f)
+        val radius =
+            (if (index % 13 == 0) 1.55f else 0.72f + depth * 0.38f) * density
+
+        if (index % 13 == 0) {
+            drawCircle(
+                color = palette[index % palette.size].copy(alpha = twinkle * 0.2f),
+                radius = radius * 3.2f,
+                center = Offset(x, y),
+            )
+        }
         drawCircle(
-            color = Color.White.copy(alpha = twinkle),
-            radius =
-                (if (index % 9 == 0) 1.9f else 1.05f) *
-                    density,
+            color = Color.White.copy(alpha = twinkle.coerceAtMost(0.78f)),
+            radius = radius,
             center = Offset(x, y),
         )
     }
 
-    val center = Offset(size.width * 0.5f, size.height * 0.5f)
-    val orbitWidth = size.width * if (compact) 0.64f else 0.42f
-    val orbitHeight = size.height * if (compact) 0.52f else 0.18f
-    rotate(phase * 360f, pivot = center) {
-        drawOval(
-            color = palette[1].copy(alpha = 0.38f),
-            topLeft = Offset(center.x - orbitWidth / 2f, center.y - orbitHeight / 2f),
-            size = Size(orbitWidth, orbitHeight),
-            style = Stroke(width = if (compact) 1.15f * density else 1.7f * density),
-        )
-        drawCircle(
-            color = palette[2].copy(alpha = 0.3f),
-            radius = if (compact) 5f * density else 8f * density,
-            center = Offset(center.x + orbitWidth / 2f, center.y),
-        )
-        drawCircle(
-            color = Color.White.copy(alpha = 0.9f),
-            radius = if (compact) 2.2f * density else 3.5f * density,
-            center = Offset(center.x + orbitWidth / 2f, center.y),
+    repeat(if (compact) 1 else 3) { index ->
+        drawFallingComet(
+            palette = palette,
+            phase = phase,
+            index = index,
+            compact = compact,
         )
     }
-    drawFourPointStar(
-        center = center,
-        outerRadius = minOf(size.width, size.height) * if (compact) 0.2f else 0.055f,
-        color = Color.White.copy(alpha = 0.92f),
+
+    drawRect(Color.Black.copy(alpha = if (compact) 0.05f else 0.1f))
+}
+
+private fun DrawScope.drawFallingComet(
+    palette: List<Color>,
+    phase: Float,
+    index: Int,
+    compact: Boolean,
+) {
+    val offset = deterministicFraction(index * 71 + 19)
+    val progress = (phase * (1.12f + index * 0.19f) + offset) % 1f
+    val fade = sin(progress * PI).toFloat().coerceAtLeast(0f)
+    if (fade < 0.06f) return
+
+    val startX = size.width * (0.42f + deterministicFraction(index * 43 + 7) * 0.72f)
+    val head =
+        Offset(
+            x = startX - progress * size.width * (if (compact) 0.76f else 0.92f),
+            y = -size.height * 0.2f + progress * size.height * 1.4f,
+        )
+    val trailLength =
+        minOf(size.width, size.height) * if (compact) 0.48f else 0.16f
+    val direction = Offset(0.74f, -0.67f)
+    val segments = if (compact) 7 else 11
+    val cometColor = lerp(palette[index % palette.size], Color.White, 0.56f)
+
+    repeat(segments) { segment ->
+        val fromFraction = segment.toFloat() / segments
+        val toFraction = (segment + 1f) / segments
+        val alpha = fade * (1f - fromFraction) * (if (compact) 0.34f else 0.42f)
+        drawLine(
+            color = cometColor.copy(alpha = alpha),
+            start = head + direction * (trailLength * toFraction),
+            end = head + direction * (trailLength * fromFraction),
+            strokeWidth =
+                (if (segment == 0) 1.8f else 1.15f) * density,
+            cap = StrokeCap.Round,
+        )
+    }
+
+    drawCircle(
+        color = cometColor.copy(alpha = fade * 0.16f),
+        radius = if (compact) 5f * density else 7f * density,
+        center = head,
+    )
+    drawCircle(
+        color = Color.White.copy(alpha = fade * 0.86f),
+        radius = if (compact) 1.45f * density else 2f * density,
+        center = head,
     )
 }
 
-private fun DrawScope.drawAurora(
+private fun DrawScope.drawSoftAurora(
     palette: List<Color>,
     phase: Float,
     compact: Boolean,
+    allowTransparency: Boolean,
 ) {
-    drawRect(
-        brush =
-            Brush.verticalGradient(
-                listOf(Color(0xFF050A14), Color(0xFF07111C), Color(0xFF020407)),
-            ),
-    )
+    val baseAlpha = if (compact && allowTransparency) 0.86f else 1f
+    drawRect(deepColor(palette[0], 0.78f).copy(alpha = baseAlpha))
     val wave = phase * 2f * PI.toFloat()
     val bands = if (compact) 2 else 3
+
     repeat(bands) { index ->
-        val baseline = size.height * (0.24f + index * 0.2f)
-        val amplitude = size.height * (if (compact) 0.2f else 0.13f)
+        val baseline = size.height * (0.24f + index * 0.22f)
+        val amplitude = size.height * (if (compact) 0.16f else 0.11f)
         val path =
             Path().apply {
-                moveTo(-size.width * 0.1f, baseline)
+                moveTo(-size.width * 0.12f, baseline)
                 cubicTo(
                     size.width * 0.2f,
-                    baseline + amplitude * sin(wave + index),
+                    baseline + amplitude * sin(wave * 0.55f + index),
                     size.width * 0.68f,
-                    baseline - amplitude * cos(wave * 0.7f + index),
-                    size.width * 1.1f,
-                    baseline + amplitude * sin(wave * 0.55f + index * 1.4f),
+                    baseline - amplitude * cos(wave * 0.42f + index),
+                    size.width * 1.12f,
+                    baseline + amplitude * sin(wave * 0.36f + index * 1.4f),
                 )
             }
         drawPath(
@@ -242,58 +374,87 @@ private fun DrawScope.drawAurora(
                 Brush.horizontalGradient(
                     listOf(
                         Color.Transparent,
-                        palette[index].copy(alpha = if (compact) 0.52f else 0.42f),
-                        palette[(index + 1) % palette.size].copy(alpha = 0.34f),
+                        palette[index].copy(alpha = if (compact) 0.22f else 0.28f),
+                        palette[(index + 1) % palette.size].copy(alpha = 0.18f),
                         Color.Transparent,
                     ),
                 ),
             style =
                 Stroke(
-                    width = size.height * if (compact) 0.34f else 0.19f,
+                    width = size.height * if (compact) 0.3f else 0.17f,
                 ),
         )
     }
-    drawRect(Color.Black.copy(alpha = 0.14f))
+    drawRect(Color.Black.copy(alpha = 0.16f))
 }
 
-private fun DrawScope.drawNebula(
+private fun DrawScope.drawArtworkNebula(
     palette: List<Color>,
     phase: Float,
     compact: Boolean,
+    allowTransparency: Boolean,
 ) {
-    drawRect(Color(0xFF05040A))
+    val baseAlpha = if (compact && allowTransparency) 0.88f else 1f
+    val base = deepColor(lerp(palette[0], palette[1], 0.28f), 0.76f)
+    drawRect(base.copy(alpha = baseAlpha))
+
     val angle = phase * 2f * PI.toFloat()
-    val radius = max(size.width, size.height) * if (compact) 1.1f else 0.74f
-    val first =
-        Offset(
-            size.width * (0.3f + 0.08f * cos(angle)),
-            size.height * (0.38f + 0.09f * sin(angle)),
+    val radius = max(size.width, size.height) * if (compact) 1.08f else 0.68f
+    val centers =
+        listOf(
+            Offset(
+                size.width * (0.24f + 0.07f * cos(angle * 0.42f)),
+                size.height * (0.34f + 0.08f * sin(angle * 0.38f)),
+            ),
+            Offset(
+                size.width * (0.76f + 0.08f * sin(angle * 0.34f + 1.8f)),
+                size.height * (0.62f + 0.07f * cos(angle * 0.31f + 1.2f)),
+            ),
+            Offset(
+                size.width * (0.52f + 0.12f * cos(angle * 0.27f + 3.1f)),
+                size.height * (0.46f + 0.09f * sin(angle * 0.29f + 2.4f)),
+            ),
         )
-    val second =
-        Offset(
-            size.width * (0.72f + 0.07f * sin(angle)),
-            size.height * (0.62f + 0.08f * cos(angle)),
+
+    centers.forEachIndexed { index, center ->
+        val cloud = deepColor(palette[index], if (compact) 0.25f else 0.18f)
+        drawRect(
+            brush =
+                Brush.radialGradient(
+                    colors =
+                        listOf(
+                            cloud.copy(alpha = if (compact) 0.34f else 0.46f),
+                            cloud.copy(alpha = if (compact) 0.15f else 0.2f),
+                            Color.Transparent,
+                        ),
+                    center = center,
+                    radius = radius * (0.88f + index * 0.08f),
+                ),
         )
+    }
+
+    /* Dark negative space keeps the nebula deep instead of neon. */
     drawRect(
         brush =
             Brush.radialGradient(
-                listOf(palette[0].copy(alpha = 0.6f), Color.Transparent),
-                center = first,
-                radius = radius,
+                colors =
+                    listOf(
+                        Color.Transparent,
+                        Color(0xFF010207).copy(alpha = 0.28f),
+                    ),
+                center = Offset(size.width * 0.5f, size.height * 0.48f),
+                radius = minOf(size.width, size.height) * if (compact) 1.2f else 0.72f,
             ),
     )
-    drawRect(
-        brush =
-            Brush.radialGradient(
-                listOf(palette[2].copy(alpha = 0.5f), Color.Transparent),
-                center = second,
-                radius = radius,
-            ),
-    )
-    repeat(if (compact) 9 else 24) { index ->
+
+    repeat(if (compact) 16 else 42) { index ->
+        val twinkle =
+            0.12f +
+                0.2f *
+                ((sin(angle * 0.52f + index * 0.91f) + 1f) / 2f)
         drawCircle(
-            color = Color.White.copy(alpha = 0.18f + (index % 4) * 0.08f),
-            radius = (0.7f + index % 3 * 0.35f) * density,
+            color = Color.White.copy(alpha = twinkle),
+            radius = (0.55f + index % 4 * 0.2f) * density,
             center =
                 Offset(
                     deterministicFraction(index * 23 + 5) * size.width,
@@ -301,28 +462,7 @@ private fun DrawScope.drawNebula(
                 ),
         )
     }
-    drawRect(Color.Black.copy(alpha = 0.18f))
-}
-
-private fun DrawScope.drawFourPointStar(
-    center: Offset,
-    outerRadius: Float,
-    color: Color,
-) {
-    val innerRadius = outerRadius * 0.22f
-    val path =
-        Path().apply {
-            moveTo(center.x, center.y - outerRadius)
-            lineTo(center.x + innerRadius, center.y - innerRadius)
-            lineTo(center.x + outerRadius, center.y)
-            lineTo(center.x + innerRadius, center.y + innerRadius)
-            lineTo(center.x, center.y + outerRadius)
-            lineTo(center.x - innerRadius, center.y + innerRadius)
-            lineTo(center.x - outerRadius, center.y)
-            lineTo(center.x - innerRadius, center.y - innerRadius)
-            close()
-        }
-    drawPath(path = path, color = color)
+    drawRect(Color.Black.copy(alpha = if (compact) 0.08f else 0.13f))
 }
 
 private fun deterministicFraction(seed: Int): Float =

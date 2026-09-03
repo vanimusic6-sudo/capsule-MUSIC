@@ -93,7 +93,7 @@
     <string name="background_theme_color">Theme color</string>
     <string name="background_artwork_gradient">Artwork gradient</string>
     <string name="background_artwork_color">Artwork color</string>
-    <string name="background_color_animation">Color animation</string>
+    <string name="background_color_animation">Soft animated gradient</string>
     <string name="background_capsule_star">Capsule Star</string>
     <string name="background_aurora">Aurora</string>
     <string name="background_nebula">Nebula</string>

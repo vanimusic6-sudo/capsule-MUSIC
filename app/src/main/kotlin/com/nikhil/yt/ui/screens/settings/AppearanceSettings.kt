@@ -186,7 +186,7 @@ fun AppearanceSettings(
         rememberEnumPreference(
             PlayerBackgroundStyleKey,
             defaultValue =
-                PlayerBackgroundStyle.COLORING,
+                PlayerBackgroundStyle.CAPSULE_STAR,
         )
 
     val (
@@ -195,7 +195,7 @@ fun AppearanceSettings(
     ) =
         rememberEnumPreference(
             MiniPlayerBackgroundStyleKey,
-            defaultValue = MiniPlayerBackgroundStyle.THEME,
+            defaultValue = MiniPlayerBackgroundStyle.CAPSULE_STAR,
         )
 
     val (
@@ -807,7 +807,7 @@ fun AppearanceSettings(
                     MiniPlayerBackgroundStyle.THEME ->
                         stringResource(R.string.background_theme_color)
                     MiniPlayerBackgroundStyle.GRADIENT ->
-                        stringResource(R.string.gradient)
+                        stringResource(R.string.background_artwork_gradient)
                     MiniPlayerBackgroundStyle.COLOR_FLOW ->
                         stringResource(R.string.background_color_animation)
                     MiniPlayerBackgroundStyle.CAPSULE_STAR ->

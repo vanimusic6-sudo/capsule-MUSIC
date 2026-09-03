@@ -353,6 +353,9 @@ enum class PreferredLyricsProvider {
 }
 
 enum class PlayerBackgroundStyle {
+    CAPSULE_STAR,
+    GLOW_ANIMATED,
+    NEBULA,
     DEFAULT,
     GRADIENT,
     CUSTOM,
@@ -360,19 +363,16 @@ enum class PlayerBackgroundStyle {
     COLORING,
     BLUR_GRADIENT,
     GLOW,
-    GLOW_ANIMATED,
-    CAPSULE_STAR,
     AURORA,
-    NEBULA,
 }
 
 enum class MiniPlayerBackgroundStyle {
-    THEME,
-    GRADIENT,
-    COLOR_FLOW,
     CAPSULE_STAR,
-    AURORA,
+    COLOR_FLOW,
     NEBULA,
+    GRADIENT,
+    AURORA,
+    THEME,
 }
 
 // Keys for customized background

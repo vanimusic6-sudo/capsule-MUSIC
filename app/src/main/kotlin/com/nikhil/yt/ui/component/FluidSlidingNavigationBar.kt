@@ -33,20 +33,30 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.nikhil.yt.LocalPlayerConnection
+import com.nikhil.yt.constants.MiniPlayerBackgroundStyle
+import com.nikhil.yt.constants.MiniPlayerBackgroundStyleKey
 import com.nikhil.yt.ui.screens.Screens
+import com.nikhil.yt.ui.player.CapsuleCompactSurfaceBackground
+import com.nikhil.yt.ui.player.capsuleDockIndicatorColor
+import com.nikhil.yt.ui.player.capsuleSurfaceOutline
+import com.nikhil.yt.ui.player.rememberCapsuleArtworkColors
 import com.nikhil.yt.ui.theme.CapsuleBottomBarEnabledKey
+import com.nikhil.yt.utils.rememberEnumPreference
 import com.nikhil.yt.utils.rememberPreference
 
 @Composable
@@ -69,6 +79,7 @@ fun FluidSlidingNavigationBar(
             modifier = modifier,
             items = items,
             currentRoute = currentRoute,
+            pureBlack = pureBlack,
             onTabSelected = onTabSelected,
             connectedToMiniPlayer =
                 capsuleMiniPlayerVisible,
@@ -136,9 +147,47 @@ private fun CapsuleNavigationBar(
     modifier: Modifier,
     items: List<Screens>,
     currentRoute: String?,
+    pureBlack: Boolean,
     onTabSelected: (Screens) -> Unit,
     connectedToMiniPlayer: Boolean,
 ) {
+    val playerConnection = LocalPlayerConnection.current
+    val mediaMetadata =
+        if (playerConnection == null) {
+            null
+        } else {
+            val value by
+                playerConnection.mediaMetadata.collectAsState()
+            value
+        }
+    val miniPlayerBackground by
+        rememberEnumPreference(
+            MiniPlayerBackgroundStyleKey,
+            defaultValue = MiniPlayerBackgroundStyle.CAPSULE_STAR,
+        )
+    val dockBackground =
+        if (connectedToMiniPlayer) {
+            miniPlayerBackground
+        } else {
+            MiniPlayerBackgroundStyle.THEME
+        }
+    val artworkColors =
+        rememberCapsuleArtworkColors(
+            mediaMetadata = mediaMetadata,
+            enabled =
+                connectedToMiniPlayer &&
+                    dockBackground !=
+                    MiniPlayerBackgroundStyle.THEME,
+        )
+    val dockOutline = capsuleSurfaceOutline(artworkColors)
+    val dockIndicator = capsuleDockIndicatorColor(artworkColors)
+    val dockMutedContent =
+        lerp(
+            Color(0xFFA2A1AA),
+            artworkColors.firstOrNull() ?: Color(0xFFA2A1AA),
+            0.08f,
+        )
+
     val dockTopRadius by
         animateDpAsState(
             targetValue =
@@ -200,81 +249,90 @@ private fun CapsuleNavigationBar(
         contentAlignment =
             Alignment.Center,
     ) {
-        BoxWithConstraints(
+        Box(
             modifier =
                 Modifier
                     .fillMaxWidth()
                     .fillMaxHeight()
                     .clip(dockShape)
-                    .background(
-                        Color(0xFF151515),
-                    )
                     .border(
                         width = 1.dp,
-                        color =
-                            Color(0xFF353535),
+                        color = dockOutline,
                         shape =
                             dockShape,
-                    )
-                    .padding(5.dp),
+                    ),
         ) {
-            if (items.isEmpty()) {
-                return@BoxWithConstraints
-            }
-
-            val itemCount =
-                items.size.coerceAtLeast(1)
-
-            val itemWidth =
-                maxWidth /
-                    itemCount.toFloat()
-
-            val indicatorOffset by
-                animateDpAsState(
-                    targetValue =
-                        itemWidth *
-                            selectedIndex
-                                .toFloat(),
-                    animationSpec =
-                        spring(
-                            dampingRatio =
-                                Spring.DampingRatioNoBouncy,
-                            stiffness =
-                                Spring.StiffnessMediumLow,
-                        ),
-                    label =
-                        "capsuleDockIndicatorOffset",
-                )
-
-            Box(
-                modifier =
-                    Modifier
-                        .offset(
-                            x =
-                                indicatorOffset,
-                        )
-                        .width(itemWidth)
-                        .fillMaxHeight()
-                        .padding(
-                            horizontal = 2.dp,
-                        )
-                        .clip(
-                            RoundedCornerShape(
-                                21.dp,
-                            ),
-                        )
-                        .background(
-                            Color(0xFFF0F0F0),
-                        ),
+            CapsuleCompactSurfaceBackground(
+                style = dockBackground,
+                pureBlack = pureBlack,
+                colors = artworkColors,
+                modifier = Modifier.fillMaxSize(),
+                allowTransparency = false,
             )
 
-            Row(
+            BoxWithConstraints(
                 modifier =
-                    Modifier.fillMaxSize(),
-                verticalAlignment =
-                    Alignment.CenterVertically,
+                    Modifier
+                        .fillMaxSize()
+                        .padding(5.dp),
             ) {
-                items.forEach { screen ->
+                if (items.isEmpty()) {
+                    return@BoxWithConstraints
+                }
+
+                val itemCount =
+                    items.size.coerceAtLeast(1)
+
+                val itemWidth =
+                    maxWidth /
+                        itemCount.toFloat()
+
+                val indicatorOffset by
+                    animateDpAsState(
+                        targetValue =
+                            itemWidth *
+                                selectedIndex
+                                    .toFloat(),
+                        animationSpec =
+                            spring(
+                                dampingRatio =
+                                    Spring.DampingRatioNoBouncy,
+                                stiffness =
+                                    Spring.StiffnessMediumLow,
+                            ),
+                        label =
+                            "capsuleDockIndicatorOffset",
+                    )
+
+                Box(
+                    modifier =
+                        Modifier
+                            .offset(
+                                x =
+                                    indicatorOffset,
+                            )
+                            .width(itemWidth)
+                            .fillMaxHeight()
+                            .padding(
+                                horizontal = 2.dp,
+                            )
+                            .clip(
+                                RoundedCornerShape(
+                                    21.dp,
+                                ),
+                            )
+                            .background(
+                                dockIndicator,
+                            ),
+                )
+
+                Row(
+                    modifier =
+                        Modifier.fillMaxSize(),
+                    verticalAlignment =
+                        Alignment.CenterVertically,
+                ) {
+                    items.forEach { screen ->
                     val isSelected =
                         remember(
                             currentRoute,
@@ -308,9 +366,9 @@ private fun CapsuleNavigationBar(
                         animateColorAsState(
                             targetValue =
                                 if (isSelected) {
-                                    Color(0xFF101010)
+                                    Color(0xFF121219)
                                 } else {
-                                    Color(0xFF979797)
+                                    dockMutedContent
                                 },
                             animationSpec =
                                 spring(
@@ -397,6 +455,7 @@ private fun CapsuleNavigationBar(
                                     ),
                             )
                         }
+                    }
                     }
                 }
             }

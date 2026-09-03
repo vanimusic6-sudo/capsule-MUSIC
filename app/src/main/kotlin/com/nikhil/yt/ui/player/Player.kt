@@ -36,16 +36,10 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.media3.common.C
 import androidx.navigation.NavController
-import androidx.palette.graphics.Palette
-import coil3.imageLoader
-import coil3.request.ImageRequest
-import coil3.request.allowHardware
-import coil3.toBitmap
 import com.nikhil.yt.LocalPlayerConnection
 import com.nikhil.yt.constants.DarkModeKey
 import com.nikhil.yt.constants.DisableBlurKey
@@ -63,14 +57,11 @@ import com.nikhil.yt.ui.component.LocalMenuState
 import com.nikhil.yt.ui.component.rememberBottomSheetState
 import com.nikhil.yt.ui.menu.PlayerMenu
 import com.nikhil.yt.ui.screens.settings.DarkMode
-import com.nikhil.yt.ui.theme.PlayerColorExtractor
 import com.nikhil.yt.ui.utils.ShowMediaInfo
 import com.nikhil.yt.utils.rememberEnumPreference
 import com.nikhil.yt.utils.rememberPreference
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
-import kotlinx.coroutines.withContext
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -92,7 +83,7 @@ fun BottomSheetPlayer(
     val playerBackground by
         rememberEnumPreference(
             key = PlayerBackgroundStyleKey,
-            defaultValue = PlayerBackgroundStyle.COLORING,
+            defaultValue = PlayerBackgroundStyle.CAPSULE_STAR,
         )
     val playerCustomImageUri by rememberPreference(PlayerCustomImageUriKey, "")
     val playerCustomBlur by rememberPreference(PlayerCustomBlurKey, 0f)
@@ -142,85 +133,14 @@ fun BottomSheetPlayer(
         }
     }
 
-    var gradientColors by remember {
-        mutableStateOf<List<Color>>(emptyList())
-    }
-    val gradientColorsCache = remember {
-        mutableMapOf<String, List<Color>>()
-    }
-    val defaultGradientColors =
-        listOf(
-            MaterialTheme.colorScheme.surface,
-            MaterialTheme.colorScheme.surfaceVariant,
+    val needsArtworkPalette =
+        playerBackground != PlayerBackgroundStyle.DEFAULT &&
+            playerBackground != PlayerBackgroundStyle.CUSTOM
+    val gradientColors =
+        rememberCapsuleArtworkColors(
+            mediaMetadata = mediaMetadata,
+            enabled = needsArtworkPalette,
         )
-    val fallbackColor = MaterialTheme.colorScheme.surface.toArgb()
-
-    LaunchedEffect(mediaMetadata?.id, playerBackground, fallbackColor) {
-        val needsArtworkPalette =
-            playerBackground == PlayerBackgroundStyle.GRADIENT ||
-                playerBackground == PlayerBackgroundStyle.COLORING ||
-                playerBackground == PlayerBackgroundStyle.BLUR_GRADIENT ||
-                playerBackground == PlayerBackgroundStyle.GLOW ||
-                playerBackground == PlayerBackgroundStyle.GLOW_ANIMATED
-
-        if (!needsArtworkPalette) {
-            gradientColors = emptyList()
-            return@LaunchedEffect
-        }
-
-        val metadata = mediaMetadata
-        val thumbnailUrl = metadata?.thumbnailUrl
-        if (metadata == null || thumbnailUrl == null) {
-            gradientColors = emptyList()
-            return@LaunchedEffect
-        }
-
-        gradientColorsCache[metadata.id]?.let {
-            gradientColors = it
-            return@LaunchedEffect
-        }
-
-        val request =
-            ImageRequest.Builder(context)
-                .data(thumbnailUrl)
-                .size(
-                    PlayerColorExtractor.Config.IMAGE_SIZE,
-                    PlayerColorExtractor.Config.IMAGE_SIZE,
-                )
-                .allowHardware(false)
-                .build()
-
-        val result =
-            runCatching {
-                withContext(Dispatchers.IO) {
-                    context.imageLoader.execute(request)
-                }
-            }.getOrNull()
-
-        val bitmap = result?.image?.toBitmap()
-        if (bitmap == null) {
-            gradientColors = defaultGradientColors
-            return@LaunchedEffect
-        }
-
-        val palette =
-            withContext(Dispatchers.Default) {
-                Palette.from(bitmap)
-                    .maximumColorCount(PlayerColorExtractor.Config.MAX_COLOR_COUNT)
-                    .resizeBitmapArea(PlayerColorExtractor.Config.BITMAP_AREA)
-                    .generate()
-            }
-        val extracted =
-            PlayerColorExtractor.extractGradientColors(
-                palette = palette,
-                fallbackColor = fallbackColor,
-            )
-        if (gradientColorsCache.size >= 32) {
-            gradientColorsCache.keys.firstOrNull()?.let(gradientColorsCache::remove)
-        }
-        gradientColorsCache[metadata.id] = extracted
-        gradientColors = extracted
-    }
 
     val textColor =
         when (playerBackground) {

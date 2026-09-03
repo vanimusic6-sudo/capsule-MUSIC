@@ -164,6 +164,7 @@ data class YouTubeClient(
                 userAgent = YouTubeClientUpstream.MWEB_USER_AGENT,
                 friendlyName = "Mobile Web",
                 loginSupported = false,
+                useSignatureTimestamp = true,
             )
 
         val IOS =

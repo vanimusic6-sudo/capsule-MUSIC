@@ -90,7 +90,7 @@
     <string name="background_theme_color">Цвет темы</string>
     <string name="background_artwork_gradient">Градиент обложки</string>
     <string name="background_artwork_color">Цвет обложки</string>
-    <string name="background_color_animation">Цветовая анимация</string>
+    <string name="background_color_animation">Мягкий анимированный градиент</string>
     <string name="background_capsule_star">Capsule Star</string>
     <string name="background_aurora">Аврора</string>
     <string name="background_nebula">Туманность</string>

@@ -100,7 +100,7 @@ val LocalCapsuleDockVisible =
     compositionLocalOf { false }
 
 private val CapsuleMiniOutline =
-    Color(0xFF363636)
+    Color(0xFF363640)
 
 private val CapsuleMiniPrimary =
     Color(0xFFF1F1F1)
@@ -159,7 +159,15 @@ fun CapsuleMiniPlayer(
     val miniPlayerBackground by
         rememberEnumPreference(
             MiniPlayerBackgroundStyleKey,
-            defaultValue = MiniPlayerBackgroundStyle.THEME,
+            defaultValue = MiniPlayerBackgroundStyle.CAPSULE_STAR,
+        )
+
+    val miniArtworkColors =
+        rememberCapsuleArtworkColors(
+            mediaMetadata = mediaMetadata,
+            enabled =
+                miniPlayerBackground !=
+                    MiniPlayerBackgroundStyle.THEME,
         )
 
     val togetherState by
@@ -496,15 +504,19 @@ fun CapsuleMiniPlayer(
                     .border(
                         width = 1.dp,
                         color =
-                            CapsuleMiniOutline,
+                            capsuleSurfaceOutline(
+                                miniArtworkColors,
+                            ),
                         shape =
                             miniPlayerShape,
                     ),
         ) {
-            CapsuleMiniBackgroundLayer(
+            CapsuleCompactSurfaceBackground(
                 style = miniPlayerBackground,
                 pureBlack = pureBlack,
+                colors = miniArtworkColors,
                 modifier = Modifier.fillMaxSize(),
+                allowTransparency = true,
             )
 
             Row(
@@ -578,14 +590,24 @@ fun CapsuleMiniPlayer(
 }
 
 @Composable
-private fun CapsuleMiniBackgroundLayer(
+internal fun CapsuleCompactSurfaceBackground(
     style: MiniPlayerBackgroundStyle,
     pureBlack: Boolean,
+    colors: List<Color>,
     modifier: Modifier = Modifier,
+    allowTransparency: Boolean = false,
 ) {
     val primary = MaterialTheme.colorScheme.primary
     val secondary = MaterialTheme.colorScheme.secondary
+    val tertiary = MaterialTheme.colorScheme.tertiary
     val surface = MaterialTheme.colorScheme.surface
+    val palette =
+        listOf(
+            colors.getOrElse(0) { primary },
+            colors.getOrElse(1) { secondary },
+            colors.getOrElse(2) { tertiary },
+        ).map(::capsuleMutedArtworkColor)
+    val surfaceAlpha = if (allowTransparency) 0.9f else 1f
 
     when (style) {
         MiniPlayerBackgroundStyle.THEME ->
@@ -593,12 +615,21 @@ private fun CapsuleMiniBackgroundLayer(
                 modifier =
                     modifier.background(
                         if (pureBlack) {
-                            Brush.linearGradient(listOf(Color.Black, Color.Black))
+                            Brush.linearGradient(
+                                listOf(
+                                    Color.Black.copy(alpha = surfaceAlpha),
+                                    Color.Black.copy(alpha = surfaceAlpha),
+                                ),
+                            )
                         } else {
                             Brush.linearGradient(
                                 listOf(
-                                    lerp(surface, primary, 0.18f),
-                                    lerp(surface, Color.Black, 0.36f),
+                                    lerp(surface, primary, 0.12f).copy(
+                                        alpha = surfaceAlpha,
+                                    ),
+                                    lerp(surface, Color.Black, 0.3f).copy(
+                                        alpha = surfaceAlpha,
+                                    ),
                                 ),
                             )
                         },
@@ -611,8 +642,12 @@ private fun CapsuleMiniBackgroundLayer(
                     modifier.background(
                         Brush.linearGradient(
                             listOf(
-                                lerp(primary, Color.Black, 0.42f),
-                                lerp(secondary, Color.Black, 0.56f),
+                                lerp(palette[0], Color(0xFF05060B), 0.52f)
+                                    .copy(alpha = surfaceAlpha),
+                                lerp(palette[1], Color(0xFF05060B), 0.62f)
+                                    .copy(alpha = surfaceAlpha),
+                                lerp(palette[2], Color(0xFF05060B), 0.7f)
+                                    .copy(alpha = surfaceAlpha),
                             ),
                         ),
                     ),
@@ -621,29 +656,37 @@ private fun CapsuleMiniBackgroundLayer(
         MiniPlayerBackgroundStyle.COLOR_FLOW ->
             CapsuleProceduralBackground(
                 effect = CapsuleBackgroundEffect.COLOR_FLOW,
+                colors = palette,
                 modifier = modifier,
                 compact = true,
+                allowTransparency = allowTransparency,
             )
 
         MiniPlayerBackgroundStyle.CAPSULE_STAR ->
             CapsuleProceduralBackground(
                 effect = CapsuleBackgroundEffect.CAPSULE_STAR,
+                colors = palette,
                 modifier = modifier,
                 compact = true,
+                allowTransparency = allowTransparency,
             )
 
         MiniPlayerBackgroundStyle.AURORA ->
             CapsuleProceduralBackground(
                 effect = CapsuleBackgroundEffect.AURORA,
+                colors = palette,
                 modifier = modifier,
                 compact = true,
+                allowTransparency = allowTransparency,
             )
 
         MiniPlayerBackgroundStyle.NEBULA ->
             CapsuleProceduralBackground(
                 effect = CapsuleBackgroundEffect.NEBULA,
+                colors = palette,
                 modifier = modifier,
                 compact = true,
+                allowTransparency = allowTransparency,
             )
     }
 }

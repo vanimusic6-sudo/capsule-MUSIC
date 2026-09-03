@@ -33,7 +33,10 @@ import kotlinx.serialization.json.Json
 import java.net.Proxy
 import java.io.IOException
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import java.util.*
+import java.util.concurrent.ConcurrentHashMap
 import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
 
@@ -75,7 +78,20 @@ internal fun resolvePlayerRequestProfile(client: YouTubeClient): PlayerRequestPr
  */
 @OptIn(ExperimentalEncodingApi::class)
 class InnerTube {
+    private data class CachedPlayerBootstrap(
+        val value: PlayerBootstrapConfig,
+        val expiresAtMs: Long,
+    )
+
+    private companion object {
+        const val PLAYER_BOOTSTRAP_TTL_MS = 30 * 60 * 1000L
+        const val PLAYER_BOOTSTRAP_MISS_TTL_MS = 2 * 60 * 1000L
+    }
+
     private var httpClient = createClient()
+    private val playerBootstrapCache =
+        ConcurrentHashMap<String, CachedPlayerBootstrap>()
+    private val playerBootstrapMutex = Mutex()
 
     var locale = YouTubeLocale(
         gl = Locale.getDefault().country,
@@ -104,11 +120,7 @@ class InnerTube {
         expectSuccess = true
 
         install(ContentNegotiation) {
-            json(Json {
-                ignoreUnknownKeys = true
-                explicitNulls = false
-                encodeDefaults = true
-            })
+            json(PlayerRequestJson)
         }
 
         install(ContentEncoding) {
@@ -142,7 +154,11 @@ class InnerTube {
     private fun requestReferer(client: YouTubeClient): String =
         resolvePlayerRequestProfile(client).referer
 
-    private fun HttpRequestBuilder.ytClient(client: YouTubeClient, setLogin: Boolean = false) {
+    private fun HttpRequestBuilder.ytClient(
+        client: YouTubeClient,
+        setLogin: Boolean = false,
+        forPlayer: Boolean = false,
+    ) {
         val origin = requestOrigin(client)
 
         contentType(ContentType.Application.Json)
@@ -151,8 +167,19 @@ class InnerTube {
             append("X-YouTube-Client-Name", client.clientId)
             append("X-YouTube-Client-Version", client.clientVersion)
             append("Origin", origin)
-            append("X-Origin", origin)
-            append("Referer", requestReferer(client))
+
+            /*
+             * Match YouTube's own player API call. Anonymous player requests
+             * do not carry X-Origin or a page Referer; the embedded page is
+             * represented by context.thirdParty instead. Sending both was one
+             * of the differences behind the generic "reload the page" reply.
+             */
+            if (!forPlayer || (setLogin && authState.hasLoginCookie)) {
+                append("X-Origin", origin)
+            }
+            if (!forPlayer) {
+                append("Referer", requestReferer(client))
+            }
 
             authState.visitorData?.let { append("X-Goog-Visitor-Id", it) }
 
@@ -232,33 +259,94 @@ class InnerTube {
         signatureTimestamp: Int?,
         poToken: String? = null,
     ) = withRetry {
+        val bootstrap = resolvePlayerBootstrap(client, videoId)
+
         httpClient.post(playerEndpoint(client)) {
-        ytClient(client, setLogin = true)
-        setBody(
-            PlayerBody(
-                context = client.toContext(locale, visitorData, dataSyncId).let {
-                    if (client.isEmbedded) {
-                        it.copy(
-                            thirdParty = Context.ThirdParty(
-                                embedUrl = YouTubeClient.THIRD_PARTY_EMBED_URL,
-                            )
-                        )
-                    } else it
-                },
-                videoId = videoId,
-                playlistId = playlistId,
-                playbackContext = if (client.useSignatureTimestamp && signatureTimestamp != null) {
-                    PlayerBody.PlaybackContext(
-                        PlayerBody.PlaybackContext.ContentPlaybackContext(
-                            signatureTimestamp
-                        )
-                    )
-                } else null,
-                serviceIntegrityDimensions = poToken?.let {
-                    PlayerBody.ServiceIntegrityDimensions(poToken = it)
-                },
+            ytClient(
+                client = client,
+                setLogin = true,
+                forPlayer = true,
             )
-        )
+            bootstrap.apiKey?.let { parameter("key", it) }
+            setBody(
+                buildPlayerRequestPayload(
+                    client = client,
+                    locale = locale,
+                    visitorData = visitorData,
+                    dataSyncId = dataSyncId,
+                    videoId = videoId,
+                    playlistId = playlistId,
+                    signatureTimestamp =
+                        signatureTimestamp.takeIf {
+                            client.useSignatureTimestamp
+                        },
+                    poToken = poToken,
+                    bootstrap = bootstrap,
+                ),
+            )
+        }
+    }
+
+    private suspend fun resolvePlayerBootstrap(
+        client: YouTubeClient,
+        videoId: String,
+    ): PlayerBootstrapConfig {
+        val url = playerBootstrapUrl(client, videoId)
+            ?: return PlayerBootstrapConfig.EMPTY
+        val cacheKey =
+            listOf(
+                client.clientName.uppercase(Locale.US),
+                client.clientVersion,
+                if (client.isEmbedded) "embedded" else "standard",
+            ).joinToString(":")
+        val now = System.currentTimeMillis()
+
+        playerBootstrapCache[cacheKey]
+            ?.takeIf { it.expiresAtMs > now }
+            ?.let { return it.value }
+
+        return playerBootstrapMutex.withLock {
+            val lockedNow = System.currentTimeMillis()
+            playerBootstrapCache[cacheKey]
+                ?.takeIf { it.expiresAtMs > lockedNow }
+                ?.let { return@withLock it.value }
+
+            val parsed =
+                runCatching {
+                    val html =
+                        withRetry(
+                            maxAttempts = 2,
+                            initialDelay = 250L,
+                        ) {
+                            httpClient
+                                .get(url) {
+                                    userAgent(client.userAgent)
+                                    if (client.isEmbedded) {
+                                        header(
+                                            "Referer",
+                                            YouTubeClient.THIRD_PARTY_EMBED_URL,
+                                        )
+                                    }
+                                }
+                                .bodyAsText()
+                        }
+                    parsePlayerBootstrapConfig(html, client)
+                }.getOrElse {
+                    PlayerBootstrapConfig.EMPTY
+                }
+
+            playerBootstrapCache[cacheKey] =
+                CachedPlayerBootstrap(
+                    value = parsed,
+                    expiresAtMs =
+                        lockedNow +
+                            if (parsed.hasRuntimeData) {
+                                PLAYER_BOOTSTRAP_TTL_MS
+                            } else {
+                                PLAYER_BOOTSTRAP_MISS_TTL_MS
+                            },
+                )
+            parsed
         }
     }
 

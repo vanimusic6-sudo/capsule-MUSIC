@@ -465,7 +465,7 @@ fun Lyrics(
 
     val playerBackground by rememberEnumPreference(
         key = PlayerBackgroundStyleKey,
-        defaultValue = PlayerBackgroundStyle.DEFAULT
+        defaultValue = PlayerBackgroundStyle.CAPSULE_STAR
     )
 
     val darkTheme by rememberEnumPreference(DarkModeKey, defaultValue = DarkMode.AUTO)
