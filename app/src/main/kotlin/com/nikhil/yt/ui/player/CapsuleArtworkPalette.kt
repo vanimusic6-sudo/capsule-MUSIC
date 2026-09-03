@@ -6,6 +6,9 @@
 
 package com.nikhil.yt.ui.player
 
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.tween
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -25,6 +28,8 @@ import com.nikhil.yt.models.MediaMetadata
 import com.nikhil.yt.ui.theme.PlayerColorExtractor
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+
+private const val ARTWORK_PALETTE_TRANSITION_MS = 1_400
 
 private object CapsuleArtworkPaletteCache {
     private const val MAX_ENTRIES = 32
@@ -74,16 +79,13 @@ internal fun rememberCapsuleArtworkColors(
         mediaMetadata?.let {
             "${it.id}|${it.thumbnailUrl.orEmpty()}"
         }
-    var colors by
-        remember(cacheKey, enabled) {
-            mutableStateOf(
-                if (enabled && cacheKey != null) {
-                    CapsuleArtworkPaletteCache.get(cacheKey).orEmpty()
-                } else {
-                    emptyList()
-                },
-            )
-        }
+    /*
+     * Keep the last visible palette while the next cover is being decoded.
+     * Keying this state by cacheKey used to recreate it for every track and
+     * briefly expose the theme fallback before the new artwork was ready.
+     */
+    var targetColors by remember { mutableStateOf(fallback) }
+    var hasArtworkPalette by remember { mutableStateOf(false) }
 
     LaunchedEffect(
         cacheKey,
@@ -93,19 +95,27 @@ internal fun rememberCapsuleArtworkColors(
         tertiary,
         surface,
     ) {
-        if (!enabled || cacheKey == null) {
-            colors = emptyList()
+        if (!enabled) {
+            return@LaunchedEffect
+        }
+
+        if (cacheKey == null) {
+            if (!hasArtworkPalette) {
+                targetColors = fallback
+            }
             return@LaunchedEffect
         }
 
         CapsuleArtworkPaletteCache.get(cacheKey)?.let {
-            colors = it
+            targetColors = it
+            hasArtworkPalette = true
             return@LaunchedEffect
         }
 
         val thumbnailUrl = mediaMetadata?.thumbnailUrl
         if (thumbnailUrl.isNullOrBlank()) {
-            colors = fallback
+            // Metadata can arrive before its thumbnail. Retain the previous
+            // palette instead of starting an old -> theme -> artwork flash.
             return@LaunchedEffect
         }
 
@@ -125,7 +135,6 @@ internal fun rememberCapsuleArtworkColors(
                 }.image?.toBitmap()
             }.getOrNull()
         if (bitmap == null) {
-            colors = fallback
             return@LaunchedEffect
         }
 
@@ -143,13 +152,44 @@ internal fun rememberCapsuleArtworkColors(
                     fallbackColor = surface.toArgb(),
                 )
             }.getOrElse {
-                colors = fallback
                 return@LaunchedEffect
             }
 
         CapsuleArtworkPaletteCache.put(cacheKey, extracted)
-        colors = extracted
+        targetColors = extracted
+        hasArtworkPalette = true
     }
 
-    return if (colors.isEmpty() && enabled) fallback else colors
+    val first by
+        animateColorAsState(
+            targetValue = targetColors.getOrElse(0) { fallback[0] },
+            animationSpec =
+                tween(
+                    durationMillis = ARTWORK_PALETTE_TRANSITION_MS,
+                    easing = FastOutSlowInEasing,
+                ),
+            label = "capsuleArtworkPrimary",
+        )
+    val second by
+        animateColorAsState(
+            targetValue = targetColors.getOrElse(1) { fallback[1] },
+            animationSpec =
+                tween(
+                    durationMillis = ARTWORK_PALETTE_TRANSITION_MS,
+                    easing = FastOutSlowInEasing,
+                ),
+            label = "capsuleArtworkSecondary",
+        )
+    val third by
+        animateColorAsState(
+            targetValue = targetColors.getOrElse(2) { fallback[2] },
+            animationSpec =
+                tween(
+                    durationMillis = ARTWORK_PALETTE_TRANSITION_MS,
+                    easing = FastOutSlowInEasing,
+                ),
+            label = "capsuleArtworkTertiary",
+        )
+
+    return if (enabled) listOf(first, second, third) else emptyList()
 }
