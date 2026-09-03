@@ -139,7 +139,6 @@ import com.nikhil.yt.constants.RepeatModeKey
 import com.nikhil.yt.constants.ScrobbleDelayPercentKey
 import com.nikhil.yt.constants.ScrobbleDelaySecondsKey
 import com.nikhil.yt.constants.ScrobbleMinSongDurationKey
-import com.nikhil.yt.constants.ShowLyricsKey
 import com.nikhil.yt.constants.SkipSilenceKey
 import com.nikhil.yt.constants.SmartTrimmerKey
 import com.nikhil.yt.constants.StopMusicOnTaskClearKey
@@ -150,7 +149,6 @@ import com.nikhil.yt.db.entities.AlbumEntity
 import com.nikhil.yt.db.entities.ArtistEntity
 import com.nikhil.yt.db.entities.Event
 import com.nikhil.yt.db.entities.FormatEntity
-import com.nikhil.yt.db.entities.LyricsEntity
 import com.nikhil.yt.db.entities.RelatedSongMap
 import com.nikhil.yt.db.entities.Song
 import com.nikhil.yt.db.entities.SongEntity
@@ -173,7 +171,6 @@ import com.nikhil.yt.innertube.YouTube
 import com.nikhil.yt.innertube.models.SongItem
 import com.nikhil.yt.innertube.models.WatchEndpoint
 import com.nikhil.yt.lastfm.LastFM
-import com.nikhil.yt.lyrics.LyricsHelper
 import com.nikhil.yt.lyrics.LyricsPreloadManager
 import com.nikhil.yt.models.PersistPlayerState
 import com.nikhil.yt.models.PersistQueue
@@ -220,7 +217,6 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.flow.distinctUntilChangedBy
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOn
@@ -256,9 +252,6 @@ class MusicService :
     PlaybackStatsListener.Callback {
     @Inject
     lateinit var database: MusicDatabase
-
-    @Inject
-    lateinit var lyricsHelper: LyricsHelper
 
     @Inject
     lateinit var syncUtils: SyncUtils
@@ -834,27 +827,6 @@ class MusicService :
                 ensurePresenceManager()
             } else {
                 discordRpc?.closeRPC()
-            }
-        }
-
-        combine(
-            currentMediaMetadata.distinctUntilChangedBy { it?.id },
-            dataStore.data.map { it[ShowLyricsKey] ?: false }.distinctUntilChanged(),
-        ) { mediaMetadata, showLyrics ->
-            mediaMetadata to showLyrics
-        }.collectLatest(ioScope) { (mediaMetadata, showLyrics) ->
-            if (showLyrics && mediaMetadata != null && database.lyrics(mediaMetadata.id)
-                    .first() == null
-            ) {
-                val lyrics = lyricsHelper.getLyrics(mediaMetadata)
-                database.query {
-                    upsert(
-                        LyricsEntity(
-                            id = mediaMetadata.id,
-                            lyrics = lyrics,
-                        ),
-                    )
-                }
             }
         }
 

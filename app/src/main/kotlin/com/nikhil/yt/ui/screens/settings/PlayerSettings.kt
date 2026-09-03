@@ -55,7 +55,6 @@ import com.nikhil.yt.constants.NetworkMeteredKey
 import com.nikhil.yt.constants.PauseOnDeviceMuteKey
 import com.nikhil.yt.constants.PermanentShuffleKey
 import com.nikhil.yt.constants.PersistentQueueKey
-import com.nikhil.yt.constants.SeekExtraSeconds
 import com.nikhil.yt.constants.SkipSilenceKey
 import com.nikhil.yt.constants.StopMusicOnTaskClearKey
 import com.nikhil.yt.innertube.models.YouTubeClientUpstream
@@ -168,11 +167,6 @@ fun PlayerSettings(
     val (audioOffload, onAudioOffloadChange) =
         rememberPreference(
             AudioOffload,
-            defaultValue = false,
-        )
-    val (seekExtraSeconds, onSeekExtraSeconds) =
-        rememberPreference(
-            SeekExtraSeconds,
             defaultValue = false,
         )
     val (autoDownloadOnLike, onAutoDownloadOnLikeChange) =
@@ -446,28 +440,6 @@ fun PlayerSettings(
                     onSkipSilenceChange(false)
                 }
             },
-        )
-
-        SwitchPreference(
-            title = {
-                Text(
-                    stringResource(
-                        R.string.seek_seconds_addup,
-                    ),
-                )
-            },
-            description =
-                stringResource(
-                    R.string.seek_seconds_addup_description,
-                ),
-            icon = {
-                Icon(
-                    painterResource(R.drawable.arrow_forward),
-                    null,
-                )
-            },
-            checked = seekExtraSeconds,
-            onCheckedChange = onSeekExtraSeconds,
         )
 
         SwitchPreference(

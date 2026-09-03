@@ -132,6 +132,9 @@ fun CapsulePlayerContent(
     val playbackState by
         playerConnection.playbackState.collectAsState()
 
+    val playbackError by
+        playerConnection.error.collectAsState()
+
     val canSkipPrevious by
         playerConnection.canSkipPrevious.collectAsState()
 
@@ -514,7 +517,13 @@ fun CapsulePlayerContent(
             contentAlignment = Alignment.Center,
         ) {
             val mediaShape =
-                if (isCapsuleVideoPlaying) {
+                val currentPlaybackError = playbackError
+                if (currentPlaybackError != null) {
+                    PlaybackError(
+                        error = currentPlaybackError,
+                        retry = playerConnection.service::retryCurrentFromFreshStream,
+                    )
+                } else if (isCapsuleVideoPlaying) {
                     RoundedCornerShape(28.dp)
                 } else {
                     CapsuleArtworkShape

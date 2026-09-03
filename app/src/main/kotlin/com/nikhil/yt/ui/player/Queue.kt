@@ -8,31 +8,21 @@
 
 package com.nikhil.yt.ui.player
 
-import androidx.activity.compose.BackHandler
 import android.annotation.SuppressLint
-import android.text.format.Formatter
 import android.widget.Toast
-import androidx.compose.animation.AnimatedContent
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
-import androidx.compose.animation.slideInVertically
-import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
-import androidx.compose.foundation.basicMarquee
-import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.add
@@ -40,28 +30,16 @@ import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.foundation.layout.systemBars
-import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LocalContentColor
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.Slider
 import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -69,54 +47,35 @@ import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.SwipeToDismissBox
 import androidx.compose.material3.SwipeToDismissBoxValue
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.derivedStateOf
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.rememberUpdatedState
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.toMutableStateList
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.nestedscroll.nestedScroll
-import androidx.compose.ui.platform.LocalClipboard
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.AnnotatedString
-import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
-import androidx.compose.ui.util.fastForEachReversed
-import androidx.compose.ui.window.DialogProperties
-import androidx.media3.common.Player
 import androidx.media3.common.Timeline
 import androidx.media3.exoplayer.source.ShuffleOrder.DefaultShuffleOrder
 import androidx.navigation.NavController
 import com.nikhil.yt.LocalPlayerConnection
 import com.nikhil.yt.R
 import com.nikhil.yt.constants.ListItemHeight
-import com.nikhil.yt.constants.PlayerDesignStyle
-import com.nikhil.yt.constants.PlayerDesignStyleKey
-import com.nikhil.yt.constants.PlayerButtonsStyle
-import com.nikhil.yt.constants.PlayerButtonsStyleKey
 import com.nikhil.yt.constants.QueueEditLockKey
 import com.nikhil.yt.constants.AutoLoadMoreKey
 import com.nikhil.yt.extensions.metadata
@@ -124,7 +83,6 @@ import com.nikhil.yt.extensions.move
 import com.nikhil.yt.extensions.togglePlayPause
 import com.nikhil.yt.extensions.toggleRepeatMode
 import com.nikhil.yt.models.MediaMetadata
-import com.nikhil.yt.ui.component.ActionPromptDialog
 import com.nikhil.yt.ui.component.BottomSheet
 import com.nikhil.yt.ui.component.BottomSheetState
 import com.nikhil.yt.ui.component.LocalBottomSheetPageState
@@ -133,19 +91,12 @@ import com.nikhil.yt.ui.component.MediaMetadataListItem
 import com.nikhil.yt.ui.menu.PlayerMenu
 import com.nikhil.yt.ui.menu.SelectionMediaMetadataMenu
 import com.nikhil.yt.ui.utils.ShowMediaInfo
-import com.nikhil.yt.utils.makeTimeString
-import com.nikhil.yt.utils.rememberEnumPreference
 import com.nikhil.yt.utils.rememberPreference
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import sh.calvin.reorderable.ReorderableItem
 import sh.calvin.reorderable.rememberReorderableLazyListState
-import kotlin.math.roundToInt
-import androidx.datastore.preferences.core.booleanPreferencesKey
-import androidx.compose.ui.text.font.FontFamily
 
 @SuppressLint("UnrememberedMutableState")
 @OptIn(ExperimentalFoundationApi::class)
@@ -157,15 +108,10 @@ fun Queue(
     modifier: Modifier = Modifier,
     backgroundColor: Color,
     onBackgroundColor: Color,
-    TextBackgroundColor: Color,
-    textButtonColor: Color,
-    iconButtonColor: Color,
-    onShowLyrics: () -> Unit = {},
     pureBlack: Boolean,
 ) {
     val context = LocalContext.current
     val haptic = LocalHapticFeedback.current
-    val clipboardManager = LocalClipboard.current
     val menuState = LocalMenuState.current
     val bottomSheetPageState = LocalBottomSheetPageState.current
 
@@ -175,8 +121,6 @@ fun Queue(
 
     val currentWindowIndex by playerConnection.currentWindowIndex.collectAsState()
     val mediaMetadata by playerConnection.mediaMetadata.collectAsState()
-
-    val currentFormat by playerConnection.currentFormat.collectAsState(initial = null)
 
     val selectedSongs = remember { mutableStateListOf<MediaMetadata>() }
     val selectedItems = remember { mutableStateListOf<Timeline.Window>() }
@@ -198,186 +142,14 @@ fun Queue(
         togetherSessionState is com.nikhil.yt.together.TogetherSessionState.Joined &&
             (togetherSessionState as com.nikhil.yt.together.TogetherSessionState.Joined).role is com.nikhil.yt.together.TogetherRole.Guest
     val effectiveLocked = locked || togetherForcesLock
-
-    val playerDesignStyle by rememberEnumPreference(
-        key = PlayerDesignStyleKey,
-        defaultValue = PlayerDesignStyle.V3
-    )
-
     val snackbarHostState = remember { SnackbarHostState() }
-    var dismissJob: Job? by remember { mutableStateOf(null) }
-
-    var showSleepTimerDialog by remember { mutableStateOf(false) }
-    var sleepTimerValue by remember { mutableStateOf(30f) }
-    val sleepTimerEnabled = remember(
-        playerConnection.service.sleepTimer.triggerTime,
-        playerConnection.service.sleepTimer.pauseWhenSongEnd
-    ) {
-        playerConnection.service.sleepTimer.isActive
-    }
-    var sleepTimerTimeLeft by remember { mutableStateOf(0L) }
-    
-    val (showCodecOnPlayer) = rememberPreference(
-        key = booleanPreferencesKey("show_codec_on_player"),
-        defaultValue = false
-    )
-
-    LaunchedEffect(sleepTimerEnabled) {
-        if (sleepTimerEnabled) {
-            while (isActive) {
-                sleepTimerTimeLeft = if (playerConnection.service.sleepTimer.pauseWhenSongEnd) {
-                    playerConnection.player.duration - playerConnection.player.currentPosition
-                } else {
-                    playerConnection.service.sleepTimer.triggerTime - System.currentTimeMillis()
-                }
-                delay(1000L)
-            }
-        }
-    }
 
     BottomSheet(
         state = state,
         backgroundColor = Color.Unspecified,
         modifier = modifier,
-        collapsedContent = {
-            when (playerDesignStyle) {
-                PlayerDesignStyle.V2, PlayerDesignStyle.V5 -> {
-                    QueueCollapsedContentV2(
-                        showCodecOnPlayer = showCodecOnPlayer,
-                        currentFormat = currentFormat,
-                        textBackgroundColor = TextBackgroundColor,
-                        textButtonColor = textButtonColor,
-                        iconButtonColor = iconButtonColor,
-                        sleepTimerEnabled = sleepTimerEnabled,
-                        sleepTimerTimeLeft = sleepTimerTimeLeft,
-                        repeatMode = repeatMode,
-                        mediaMetadata = mediaMetadata,
-                        onExpandQueue = { state.expandSoft() },
-                        onSleepTimerClick = {
-                            if (sleepTimerEnabled) {
-                                playerConnection.service.sleepTimer.clear()
-                            } else {
-                                showSleepTimerDialog = true
-                            }
-                        },
-                        onShowLyrics = onShowLyrics,
-                        onRepeatModeClick = { playerConnection.player.toggleRepeatMode() },
-                        onMenuClick = {
-                            menuState.show {
-                                PlayerMenu(
-                                    mediaMetadata = mediaMetadata,
-                                    navController = navController,
-                                    playerBottomSheetState = playerBottomSheetState,
-                                    onShowDetailsDialog = {
-                                        mediaMetadata?.id?.let {
-                                            bottomSheetPageState.show {
-                                                ShowMediaInfo(it)
-                                            }
-                                        }
-                                    },
-                                    onDismiss = menuState::dismiss
-                                )
-                            }
-                        }
-                    )
-                }
-
-                PlayerDesignStyle.V3 -> {
-                    QueueCollapsedContentV3(
-                        showCodecOnPlayer = showCodecOnPlayer,
-                        currentFormat = currentFormat,
-                        textBackgroundColor = TextBackgroundColor,
-                        sleepTimerEnabled = sleepTimerEnabled,
-                        sleepTimerTimeLeft = sleepTimerTimeLeft,
-                        onExpandQueue = { state.expandSoft() },
-                        onSleepTimerClick = {
-                            if (sleepTimerEnabled) {
-                                playerConnection.service.sleepTimer.clear()
-                            } else {
-                                showSleepTimerDialog = true
-                            }
-                        },
-                        onShowLyrics = onShowLyrics,
-                        onMenuClick = {
-                            menuState.show {
-                                PlayerMenu(
-                                    mediaMetadata = mediaMetadata,
-                                    navController = navController,
-                                    playerBottomSheetState = playerBottomSheetState,
-                                    onShowDetailsDialog = {
-                                        mediaMetadata?.id?.let {
-                                            bottomSheetPageState.show {
-                                                ShowMediaInfo(it)
-                                            }
-                                        }
-                                    },
-                                    onDismiss = menuState::dismiss
-                                )
-                            }
-                        }
-                    )
-                }
-
-                PlayerDesignStyle.V4 -> {
-                    QueueCollapsedContentV4(
-                        showCodecOnPlayer = showCodecOnPlayer,
-                        currentFormat = currentFormat,
-                        textBackgroundColor = TextBackgroundColor,
-                        textButtonColor = textButtonColor,
-                        iconButtonColor = iconButtonColor,
-                        sleepTimerEnabled = sleepTimerEnabled,
-                        sleepTimerTimeLeft = sleepTimerTimeLeft,
-                        mediaMetadata = mediaMetadata,
-                        onExpandQueue = { state.expandSoft() },
-                        onSleepTimerClick = {
-                            if (sleepTimerEnabled) {
-                                playerConnection.service.sleepTimer.clear()
-                            } else {
-                                showSleepTimerDialog = true
-                            }
-                        },
-                        onShowLyrics = onShowLyrics
-                    )
-                }
-                
-                PlayerDesignStyle.V1 -> {
-                    QueueCollapsedContentV1(
-                        showCodecOnPlayer = showCodecOnPlayer,
-                        currentFormat = currentFormat,
-                        textBackgroundColor = TextBackgroundColor,
-                        sleepTimerEnabled = sleepTimerEnabled,
-                        sleepTimerTimeLeft = sleepTimerTimeLeft,
-                        onExpandQueue = { state.expandSoft() },
-                        onSleepTimerClick = {
-                            if (sleepTimerEnabled) {
-                                playerConnection.service.sleepTimer.clear()
-                            } else {
-                                showSleepTimerDialog = true
-                            }
-                        },
-                        onShowLyrics = onShowLyrics
-                    )
-                }
-                else -> {}
-            }
-
-            if (showSleepTimerDialog) {
-                SleepTimerDialog(
-                    onDismiss = { showSleepTimerDialog = false },
-                    onConfirm = { minutes ->
-                        showSleepTimerDialog = false
-                        playerConnection.service.sleepTimer.start(minutes)
-                    },
-                    onEndOfSong = {
-                        showSleepTimerDialog = false
-                        playerConnection.service.sleepTimer.start(-1)
-                    },
-                    initialValue = sleepTimerValue
-                )
-            }
-        },
+        collapsedContent = {},
     ) {
-        val queueTitle by playerConnection.queueTitle.collectAsState()
         val queueWindows by playerConnection.queueWindows.collectAsState()
         val automix by playerConnection.service.automixItems.collectAsState()
         val automixLoading by playerConnection.service.automixLoading.collectAsState()
@@ -390,6 +162,7 @@ fun Queue(
         }
 
         val coroutineScope = rememberCoroutineScope()
+        var dismissJob by remember { mutableStateOf<Job?>(null) }
 
         LaunchedEffect(automixError) {
             val error = automixError ?: return@LaunchedEffect
@@ -400,7 +173,7 @@ fun Queue(
             playerConnection.service.automixError.value = null
         }
 
-        val headerItems = 1
+        val headerItems = 0
         val lazyListState = rememberLazyListState()
         var dragInfo by remember { mutableStateOf<Pair<Int, Int>?>(null) }
 
@@ -464,7 +237,7 @@ fun Queue(
             if (currentPlayingUid != null && shouldScrollToCurrent) {
                 val indexInMutableList = mutableQueueWindows.indexOfFirst { it.uid == currentPlayingUid }
                 if (indexInMutableList != -1) {
-                    lazyListState.scrollToItem(indexInMutableList + 1)
+                    lazyListState.scrollToItem(indexInMutableList + headerItems)
                 }
             }
         }
@@ -504,10 +277,7 @@ fun Queue(
             if (!state.isCollapsed && currentPlayingUid != null) {
                 val indexInMutableList = mutableQueueWindows.indexOfFirst { it.uid == currentPlayingUid }
                 if (indexInMutableList != -1) {
-                    // Scroll to the item + headerItems (Spacer)
-                    // The Spacer is at index 0, so the first song is at index 1.
-                    // If indexInMutableList is 0 (first song), we want to scroll to index 1.
-                    lazyListState.scrollToItem(indexInMutableList + 1)
+                    lazyListState.scrollToItem(indexInMutableList + headerItems)
                 }
             }
         }
@@ -576,6 +346,89 @@ fun Queue(
                     }
                 )
 
+                AnimatedVisibility(
+                    visible = selection,
+                    enter = fadeIn() + expandVertically(),
+                    exit = fadeOut() + shrinkVertically(),
+                ) {
+                    Column {
+                        Row(
+                            modifier = Modifier.height(48.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            val count = selectedSongs.size
+                            IconButton(
+                                onClick = {
+                                    selection = false
+                                    selectedSongs.clear()
+                                    selectedItems.clear()
+                                },
+                            ) {
+                                Icon(
+                                    painter = painterResource(R.drawable.close),
+                                    contentDescription = null,
+                                )
+                            }
+                            Text(
+                                text = stringResource(R.string.elements_selected, count),
+                                modifier = Modifier.weight(1f),
+                            )
+                            IconButton(
+                                onClick = {
+                                    if (count == mutableQueueWindows.size) {
+                                        selectedSongs.clear()
+                                        selectedItems.clear()
+                                    } else {
+                                        queueWindows
+                                            .filter { it.mediaItem.metadata!! !in selectedSongs }
+                                            .forEach {
+                                                selectedSongs.add(it.mediaItem.metadata!!)
+                                                selectedItems.add(it)
+                                            }
+                                    }
+                                },
+                            ) {
+                                Icon(
+                                    painter =
+                                        painterResource(
+                                            if (count == mutableQueueWindows.size) {
+                                                R.drawable.deselect
+                                            } else {
+                                                R.drawable.select_all
+                                            },
+                                        ),
+                                    contentDescription = null,
+                                )
+                            }
+                            IconButton(
+                                onClick = {
+                                    menuState.show {
+                                        SelectionMediaMetadataMenu(
+                                            songSelection = selectedSongs,
+                                            onDismiss = menuState::dismiss,
+                                            clearAction = {
+                                                selectedSongs.clear()
+                                                selectedItems.clear()
+                                                selection = false
+                                            },
+                                            currentItems = selectedItems,
+                                        )
+                                    }
+                                },
+                            ) {
+                                Icon(
+                                    painter = painterResource(R.drawable.more_vert),
+                                    contentDescription = null,
+                                    tint = LocalContentColor.current,
+                                )
+                            }
+                        }
+                        if (pureBlack) {
+                            HorizontalDivider()
+                        }
+                    }
+                }
+
                 LazyColumn(
                     state = lazyListState,
                     contentPadding =
@@ -590,16 +443,6 @@ fun Queue(
                         .weight(1f)
                         .nestedScroll(state.preUpPostDownNestedScrollConnection)
                 ) {
-                
-                item {
-                    Spacer(
-                        modifier =
-                        Modifier
-                            .animateContentSize()
-                            .height(if (selection) 48.dp else 0.dp),
-                    )
-                }
-
                 itemsIndexed(
                     items = mutableQueueWindows,
                     key = { _, item -> item.uid.hashCode() },
@@ -763,8 +606,10 @@ fun Queue(
                                                 if (!selection) {
                                                     selection = true
                                                 }
-                                                selectedSongs.clear() // Clear all selections
-                                                selectedSongs.add(window.mediaItem.metadata!!) // Select current item
+                                                selectedSongs.clear()
+                                                selectedItems.clear()
+                                                selectedSongs.add(window.mediaItem.metadata!!)
+                                                selectedItems.add(currentItem)
                                             },
                                         ),
                                 )
@@ -865,151 +710,6 @@ fun Queue(
             }
         }
 
-        // Old header hidden - now using sticky header at top of queue
-        Column(
-            modifier =
-            Modifier
-                .height(0.dp)
-        ) {
-
-            AnimatedVisibility(
-                visible = selection,
-                enter = fadeIn() + expandVertically(),
-                exit = fadeOut() + shrinkVertically(),
-            ) {
-                Row(
-                    modifier =
-                    Modifier
-                        .height(48.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    val count = selectedSongs.size
-                    IconButton(
-                        onClick = {
-                            selection = false
-                        },
-                    ) {
-                        Icon(
-                            painter = painterResource(R.drawable.close),
-                            contentDescription = null,
-                        )
-                    }
-                    Text(
-                        text = stringResource(R.string.elements_selected, count),
-                        modifier = Modifier.weight(1f)
-                    )
-                    IconButton(
-                        onClick = {
-                            if (count == mutableQueueWindows.size) {
-                                selectedSongs.clear()
-                                selectedItems.clear()
-                            } else {
-                                queueWindows
-                                    .filter { it.mediaItem.metadata!! !in selectedSongs }
-                                    .forEach {
-                                        selectedSongs.add(it.mediaItem.metadata!!)
-                                        selectedItems.add(it)
-                                    }
-                            }
-                        },
-                    ) {
-                        Icon(
-                            painter =
-                            painterResource(
-                                if (count == mutableQueueWindows.size) {
-                                    R.drawable.deselect
-                                } else {
-                                    R.drawable.select_all
-                                },
-                            ),
-                            contentDescription = null,
-                        )
-                    }
-
-                    IconButton(
-                        onClick = {
-                            menuState.show {
-                                SelectionMediaMetadataMenu(
-                                    songSelection = selectedSongs,
-                                    onDismiss = menuState::dismiss,
-                                    clearAction = {
-                                        selectedSongs.clear()
-                                        selectedItems.clear()
-                                    },
-                                    currentItems = selectedItems,
-                                )
-                            }
-                        },
-                    ) {
-                        Icon(
-                            painter = painterResource(R.drawable.more_vert),
-                            contentDescription = null,
-                            tint = LocalContentColor.current,
-                        )
-                    }
-                }
-            }
-            if (pureBlack) {
-                    HorizontalDivider()
-            }
-        }
-
-        val shuffleModeEnabled by playerConnection.shuffleModeEnabled.collectAsState()
-
-        // Bottom bar hidden - controls now in sticky header
-        Box(modifier = Modifier.fillMaxSize()) {
-            Box(
-            modifier =
-            Modifier
-                .height(0.dp)
-                .align(Alignment.BottomCenter)
-        ) {
-            IconButton(
-                modifier = Modifier.align(Alignment.CenterStart),
-                onClick = {
-                    coroutineScope
-                        .launch {
-                            lazyListState.animateScrollToItem(
-                                if (playerConnection.player.shuffleModeEnabled) playerConnection.player.currentMediaItemIndex else 0,
-                            )
-                        }.invokeOnCompletion {
-                            playerConnection.player.shuffleModeEnabled =
-                                !playerConnection.player.shuffleModeEnabled
-                        }
-                },
-            ) {
-                Icon(
-                    painter = painterResource(R.drawable.shuffle),
-                    contentDescription = null,
-                    modifier = Modifier.alpha(if (shuffleModeEnabled) 1f else 0.5f),
-                )
-            }
-
-            Icon(
-                painter = painterResource(R.drawable.expand_more),
-                contentDescription = null,
-                modifier = Modifier.align(Alignment.Center),
-            )
-
-            IconButton(
-                modifier = Modifier.align(Alignment.CenterEnd),
-                onClick = playerConnection.player::toggleRepeatMode,
-            ) {
-                Icon(
-                    painter =
-                    painterResource(
-                        when (repeatMode) {
-                            Player.REPEAT_MODE_OFF, Player.REPEAT_MODE_ALL -> R.drawable.repeat
-                            Player.REPEAT_MODE_ONE -> R.drawable.repeat_one
-                            else -> throw IllegalStateException()
-                        },
-                    ),
-                    contentDescription = null,
-                    modifier = Modifier.alpha(if (repeatMode == Player.REPEAT_MODE_OFF) 0.5f else 1f),
-                )
-            }
-        }
-
         SnackbarHost(
             hostState = snackbarHostState,
             modifier =
@@ -1024,6 +724,5 @@ fun Queue(
                 .align(Alignment.BottomCenter),
         )
     }
-}
 }
 }

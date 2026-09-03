@@ -35,18 +35,14 @@ import com.nikhil.yt.innertube.YouTube
 import com.nikhil.yt.innertube.models.YouTubeLocale
 import com.nikhil.yt.kugou.KuGou
 import com.nikhil.yt.lastfm.LastFM
-import com.nikhil.yt.ui.player.CanvasArtworkPlaybackCache
 import dagger.hilt.android.HiltAndroidApp
-import kotlinx.coroutines.DelicateCoroutinesApi
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import android.content.Intent
 import java.io.PrintWriter
@@ -75,7 +71,6 @@ class App : Application(), SingletonImageLoader.Factory {
         }
     }
 
-    @OptIn(DelicateCoroutinesApi::class)
     override fun onCreate() {
         super.onCreate()
         instance = this
@@ -108,8 +103,6 @@ class App : Application(), SingletonImageLoader.Factory {
     }
 
     private fun initializeCriticalSync() {
-        CanvasArtworkPlaybackCache.init(this)
-
         val locale = Locale.getDefault()
         val languageTag = locale.toLanguageTag().replace("-Hant", "")
         YouTube.locale = YouTubeLocale(

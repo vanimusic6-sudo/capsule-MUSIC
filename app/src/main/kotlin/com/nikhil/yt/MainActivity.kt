@@ -172,7 +172,6 @@ import com.nikhil.yt.constants.SlimNavBarKey
 
 
 import com.nikhil.yt.constants.StopMusicOnTaskClearKey
-import com.nikhil.yt.constants.UseNewMiniPlayerDesignKey
 import com.nikhil.yt.constants.UseSystemFontKey
 import com.nikhil.yt.db.MusicDatabase
 import com.nikhil.yt.db.entities.SearchHistory
@@ -210,7 +209,6 @@ import com.nikhil.yt.ui.screens.settings.DiscordPresenceManager
 import com.nikhil.yt.ui.screens.settings.NavigationTab
 import com.nikhil.yt.ui.theme.VeluneTheme
 import com.nikhil.yt.ui.theme.CapsuleBottomBarEnabledKey
-import com.nikhil.yt.ui.theme.CapsuleMiniPlayerEnabledKey
 import com.nikhil.yt.ui.theme.ColorSaver
 import com.nikhil.yt.ui.theme.DefaultThemeColor
 import com.nikhil.yt.ui.theme.extractThemeColor
@@ -630,15 +628,9 @@ class MainActivity : ComponentActivity() {
 
                     val navigationItems = remember { Screens.MainScreens }
                     val (slimNav) = rememberPreference(SlimNavBarKey, defaultValue = false)
-                    val (useNewMiniPlayerDesign) = rememberPreference(UseNewMiniPlayerDesignKey, defaultValue = true)
                     val capsuleBottomBarEnabled by
                         rememberPreference(
                             CapsuleBottomBarEnabledKey,
-                            defaultValue = false,
-                        )
-                    val capsuleMiniPlayerEnabled by
-                        rememberPreference(
-                            CapsuleMiniPlayerEnabledKey,
                             defaultValue = false,
                         )
                     val defaultOpenTab by rememberEnumPreference(DefaultOpenTabKey, NavigationTab.HOME)
@@ -751,12 +743,8 @@ class MainActivity : ComponentActivity() {
                         label = "",
                     )
 
-                    val usesFloatingMiniPlayer =
-                        useNewMiniPlayerDesign || capsuleMiniPlayerEnabled
-
                     val capsuleConnected =
                         capsuleBottomBarEnabled &&
-                                capsuleMiniPlayerEnabled &&
                                 shouldShowNavigationBar &&
                                 !useRail
 
@@ -771,7 +759,7 @@ class MainActivity : ComponentActivity() {
                                             0.dp
                                         }) +
                                         getBottomNavPadding() +
-                                        (if (usesFloatingMiniPlayer && !capsuleConnected) {
+                                        (if (!capsuleConnected) {
                                             MiniPlayerBottomSpacing
                                         } else {
                                             0.dp
@@ -786,8 +774,7 @@ class MainActivity : ComponentActivity() {
                                 !useRail
 
                     val capsuleMiniPlayerActuallyVisible =
-                        capsuleMiniPlayerEnabled &&
-                                playerConnection != null &&
+                        playerConnection != null &&
                                 !playerBottomSheetState.isDismissed
 
                     var yearInMusicSavedPlayerAnchor by rememberSaveable { mutableIntStateOf(-1) }
