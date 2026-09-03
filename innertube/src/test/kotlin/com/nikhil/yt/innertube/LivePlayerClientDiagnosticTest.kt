@@ -65,6 +65,7 @@ class LivePlayerClientDiagnosticTest {
             }
             val result = lines.joinToString(separator = "\n")
 
+            System.err.println("CAPSULE LIVE CLIENT REPORT\n$result")
             fail("CAPSULE LIVE CLIENT REPORT\n$result")
         }
 }

@@ -72,5 +72,6 @@ jobs:
             :innertube:test \
             :app:testUniversalDebugUnitTest \
             :app:assembleUniversalDebug \
+            --info \
             --stacktrace \
             --no-daemon
