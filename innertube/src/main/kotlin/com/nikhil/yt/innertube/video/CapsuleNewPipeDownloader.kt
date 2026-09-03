@@ -83,7 +83,7 @@ internal class CapsuleNewPipeDownloader : Downloader() {
                     )
                 }
 
-                val responseBody = response.body?.string().orEmpty()
+                val responseBody = response.body.string()
 
                 return NewPipeResponse(
                     response.code,

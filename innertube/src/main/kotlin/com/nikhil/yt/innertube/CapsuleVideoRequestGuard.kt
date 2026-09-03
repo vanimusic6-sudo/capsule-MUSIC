@@ -247,7 +247,7 @@ object CapsuleVideoRequestGuard {
 
     fun classify(throwable: Throwable): FailureKind {
         val responseCode =
-            generateSequence(throwable as Throwable?) { it?.cause }
+            generateSequence(throwable) { it.cause }
                 .take(8)
                 .filterIsInstance<ResponseException>()
                 .firstOrNull()
@@ -266,9 +266,9 @@ object CapsuleVideoRequestGuard {
     }
 
     private fun flatten(throwable: Throwable): String =
-        generateSequence(throwable as Throwable?) { it?.cause }
+        generateSequence(throwable) { it.cause }
             .take(8)
-            .mapNotNull { it?.message }
+            .mapNotNull { it.message }
             .joinToString(" ")
 
     fun noteFailure(throwable: Throwable): Boolean =

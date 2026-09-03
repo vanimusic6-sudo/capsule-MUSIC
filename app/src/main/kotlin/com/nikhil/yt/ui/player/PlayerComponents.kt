@@ -37,6 +37,7 @@ import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
 import com.nikhil.yt.constants.PlayerBackgroundStyle
 import com.nikhil.yt.models.MediaMetadata
+import com.nikhil.yt.ui.theme.PlayerBackgroundColorUtils
 
 @Composable
 fun PlayerBackground(
