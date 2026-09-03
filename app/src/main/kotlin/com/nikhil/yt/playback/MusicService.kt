@@ -337,6 +337,14 @@ class MusicService :
 
     private val audioResolveLock = Any()
 
+    private fun cancelInFlightAudioResolves() {
+        inFlightAudioResolves.forEach { (mediaId, job) ->
+            if (inFlightAudioResolves.remove(mediaId, job)) {
+                job.cancel()
+            }
+        }
+    }
+
     private fun audioResolveJob(
         mediaId: String,
     ): Deferred<Result<CapsuleAudioEngine.PlaybackData>> =
@@ -899,11 +907,7 @@ class MusicService :
                     previous,
                     networkId,
                 )
-                inFlightAudioResolves.forEach { (mediaId, job) ->
-                    if (inFlightAudioResolves.remove(mediaId, job)) {
-                        job.cancel()
-                    }
-                }
+                cancelInFlightAudioResolves()
                 playbackUrlCache.clear()
                 streamRecoveryState.clear()
                 clearStreamRefreshGuards()
@@ -2219,6 +2223,7 @@ class MusicService :
         clearAutomix()
         currentQueue = EmptyQueue
         queueTitle = null
+        cancelInFlightAudioResolves()
         clearStreamRefreshGuards()
         networkRecoveryJob?.cancel()
         networkRecoveryJob = null
@@ -4293,6 +4298,7 @@ class MusicService :
             CapsuleAudioEngine.invalidateCachedStreamUrls(currentMediaId)
             playbackUrlCache.remove(currentMediaId)
             pendingStreamRefreshValidationMediaId = null
+            cancelInFlightAudioResolves()
 
             Timber.tag("MusicService").w(
                 "YouTube bot-check for $currentMediaId — AUDIO requests cooling down",
@@ -4377,6 +4383,7 @@ class MusicService :
             pendingStreamRefreshValidationMediaId = null
 
             if (httpStatusCode == 429) {
+                cancelInFlightAudioResolves()
                 player.pause()
                 return
             }
