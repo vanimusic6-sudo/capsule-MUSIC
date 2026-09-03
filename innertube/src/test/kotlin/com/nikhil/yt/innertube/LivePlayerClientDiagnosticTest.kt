@@ -24,8 +24,9 @@ class LivePlayerClientDiagnosticTest {
                     YouTubeClient.TVHTML5_DOWNGRADED,
                     YouTubeClient.TVHTML5,
                 )
-            val result =
-                clients.joinToString(separator = "\n") { client ->
+            val lines = mutableListOf<String>()
+            for (client in clients) {
+                lines +=
                     runCatching {
                         innerTube
                             .player(
@@ -57,11 +58,12 @@ class LivePlayerClientDiagnosticTest {
                         },
                         onFailure = { throwable ->
                             "${client.friendlyName}: " +
-                                "${throwable::class.simpleName}; " +
+                                "${throwable.javaClass.simpleName}; " +
                                 "${throwable.message}"
                         },
                     )
-                }
+            }
+            val result = lines.joinToString(separator = "\n")
 
             fail("CAPSULE LIVE CLIENT REPORT\n$result")
         }
