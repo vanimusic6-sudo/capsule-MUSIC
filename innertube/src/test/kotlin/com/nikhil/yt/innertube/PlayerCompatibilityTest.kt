@@ -63,22 +63,21 @@ class PlayerCompatibilityTest {
     @Test
     fun slimPlayerResponseDoesNotLosePlayableAudio() {
         val response =
-            Json { ignoreUnknownKeys = true }
-                .decodeFromString<PlayerResponse>(
-                    """
-                    {
-                      "playabilityStatus": { "status": "OK" },
-                      "streamingData": {
-                        "adaptiveFormats": [{
-                          "itag": 251,
-                          "mimeType": "audio/webm; codecs=\"opus\"",
-                          "bitrate": 128000,
-                          "quality": "tiny"
-                        }]
-                      }
-                    }
-                    """.trimIndent(),
-                )
+            Json.decodeFromString<PlayerResponse>(
+                """
+                {
+                  "playabilityStatus": { "status": "OK" },
+                  "streamingData": {
+                    "adaptiveFormats": [{
+                      "itag": 251,
+                      "mimeType": "audio/webm; codecs=\"opus\"",
+                      "bitrate": 128000,
+                      "quality": "tiny"
+                    }]
+                  }
+                }
+                """.trimIndent(),
+            )
 
         assertEquals("OK", response.playabilityStatus.status)
         assertEquals(251, response.streamingData?.adaptiveFormats?.single()?.itag)
