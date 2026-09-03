@@ -540,6 +540,8 @@ class MusicService :
     private val freshlyResolvedLoudnessVersion = MutableStateFlow(0L)
     private val normalizationLookupBlockedUntil =
         ConcurrentHashMap<String, Long>()
+    private val normalizationLookupJobs =
+        ConcurrentHashMap<String, Job>()
 
     private val normalizeFactor = MutableStateFlow(1f)
     var playerVolume = MutableStateFlow(1f)
@@ -975,6 +977,10 @@ class MusicService :
             (fresh?.takeIf { it.preferredValue != null } ?: stored) to normalizeAudio
         }.collectLatest(scope) { (loudness, normalizeAudio) ->
             audioNormalizationEnabled.value = normalizeAudio
+            if (!normalizeAudio) {
+                normalizationLookupJobs.values.forEach { it.cancel() }
+                normalizationLookupJobs.clear()
+            }
             Timber.tag("AudioNormalization").d("Audio normalization enabled: $normalizeAudio")
             Timber.tag("AudioNormalization").d(
                 "Resolved loudnessDb: ${loudness.loudnessDb}, " +
@@ -4654,7 +4660,11 @@ class MusicService :
                 )
 
                 Timber.tag("AudioNormalization").d("Storing format for $mediaId with loudnessDb: $loudnessDb, perceptualLoudnessDb: $perceptualLoudnessDb")
-                if (loudnessDb == null && perceptualLoudnessDb == null) {
+                if (
+                    loudnessDb == null &&
+                    perceptualLoudnessDb == null &&
+                    audioNormalizationEnabled.value
+                ) {
                     Timber.tag("AudioNormalization").w("No loudness data available from YouTube for video: $mediaId")
                     resolveMissingLoudnessInBackground(
                         mediaId = mediaId,
@@ -4729,7 +4739,7 @@ class MusicService :
             if (!normalizationLookupBlockedUntil.replace(mediaId, previousBlock, Long.MAX_VALUE)) return
         }
 
-        ioScope.launch {
+        val job = ioScope.launch {
             val resolved =
                 YTPlayerUtils.resolveLoudnessForNormalization(mediaId)
 
@@ -4771,6 +4781,13 @@ class MusicService :
                 "Applied delayed loudness metadata for %s",
                 mediaId,
             )
+        }
+        normalizationLookupJobs[mediaId] = job
+        job.invokeOnCompletion { cause ->
+            normalizationLookupJobs.remove(mediaId)
+            if (cause != null) {
+                normalizationLookupBlockedUntil.remove(mediaId)
+            }
         }
     }
 
