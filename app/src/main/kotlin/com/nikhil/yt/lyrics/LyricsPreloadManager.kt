@@ -6,10 +6,8 @@
 
 package com.nikhil.yt.lyrics
 
-import android.util.Log
-import androidx.datastore.preferences.core.booleanPreferencesKey
-import androidx.datastore.preferences.core.intPreferencesKey
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -25,6 +23,8 @@ import com.nikhil.yt.models.MediaMetadata
 import com.nikhil.yt.utils.NetworkConnectivityObserver
 import com.nikhil.yt.utils.dataStore
 import com.nikhil.yt.utils.reportException
+import timber.log.Timber
+import java.util.concurrent.ConcurrentHashMap
 import javax.inject.Inject
 
 /**
@@ -38,6 +38,7 @@ class LyricsPreloadManager @Inject constructor(
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var preloadJob: Job? = null
+    private val preloadMissBlockedUntil = ConcurrentHashMap<String, Long>()
     
     // Track current queue to detect changes
     private var currentQueueIds: List<String> = emptyList()
@@ -55,13 +56,13 @@ class LyricsPreloadManager @Inject constructor(
         preloadJob?.cancel()
         
         // Check if pre-load is enabled
-        scope.launch {
+        preloadJob = scope.launch {
             try {
                 val preferences = context.dataStore.data.first()
                 val isEnabled = preferences[PreloadQueueLyricsEnabledKey] ?: true
                 
                 if (!isEnabled) {
-                    Log.d(TAG, "Queue lyrics pre-load is disabled")
+                    Timber.tag(TAG).d("Queue lyrics pre-load is disabled")
                     return@launch
                 }
                 
@@ -73,7 +74,7 @@ class LyricsPreloadManager @Inject constructor(
                 }
                 
                 if (!isNetworkAvailable) {
-                    Log.w(TAG, "Network unavailable, skipping lyrics pre-load")
+                    Timber.tag(TAG).d("Network unavailable, skipping lyrics pre-load")
                     return@launch
                 }
                 
@@ -83,13 +84,15 @@ class LyricsPreloadManager @Inject constructor(
                 val nextSongs = getNextSongs(queue, currentIndex, preloadCount)
                 
                 if (nextSongs.isEmpty()) {
-                    Log.d(TAG, "No songs to pre-load")
+                    Timber.tag(TAG).d("No songs to pre-load")
                     return@launch
                 }
                 
-                Log.d(TAG, "Starting pre-load for ${nextSongs.size} songs")
+                Timber.tag(TAG).d("Starting pre-load for ${nextSongs.size} songs")
                 preloadLyrics(nextSongs)
                 
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 reportException(e)
             }
@@ -116,41 +119,55 @@ class LyricsPreloadManager @Inject constructor(
 
     /**
      * Pre-load lyrics for the given songs.
-     * Uses parallel fetching with limited concurrency.
+     * Uses one cancellable request chain to avoid duplicate background work.
      */
-    private fun preloadLyrics(songs: List<MediaMetadata>) {
-        preloadJob = scope.launch {
+    private suspend fun preloadLyrics(songs: List<MediaMetadata>) {
+        // Process songs sequentially. One tracked coroutine means a queue
+        // change cancels every outstanding network request instead of leaving
+        // an untracked launcher behind.
+        songs.forEach { song ->
+            val now = System.currentTimeMillis()
+            val blockedUntil = preloadMissBlockedUntil[song.id] ?: 0L
+            if (blockedUntil > now) {
+                Timber.tag(TAG).d("Skipping recent lyrics miss for: ${song.title}")
+                return@forEach
+            }
+            if (blockedUntil != 0L) preloadMissBlockedUntil.remove(song.id, blockedUntil)
+
+            val existingLyrics = database.lyrics(song.id).first()
+            if (existingLyrics != null) {
+                Timber.tag(TAG).d(
+                    if (existingLyrics.lyrics == LyricsEntity.LYRICS_NOT_FOUND) {
+                        "Lyrics already known to be unavailable for: ${song.title}"
+                    } else {
+                        "Lyrics already cached for: ${song.title}"
+                    },
+                )
+                return@forEach
+            }
+
             try {
-                // Process songs with limited concurrency
-                songs.forEach { song ->
-                    // Check if lyrics already exist in database
-                    val existingLyrics = database.lyrics(song.id).first()
-                    if (existingLyrics != null && existingLyrics.lyrics != LyricsEntity.LYRICS_NOT_FOUND) {
-                        Log.d(TAG, "Lyrics already cached for: ${song.title}")
-                        return@forEach
+                val lyrics = fetchLyricsForSong(song)
+                if (lyrics != null && lyrics != LyricsEntity.LYRICS_NOT_FOUND) {
+                    preloadMissBlockedUntil.remove(song.id)
+                    database.query {
+                        upsert(
+                            LyricsEntity(
+                                id = song.id,
+                                lyrics = lyrics,
+                            ),
+                        )
                     }
-                    
-                    // Fetch lyrics for this song
-                    try {
-                        val lyrics = fetchLyricsForSong(song)
-                        if (lyrics != null && lyrics != LyricsEntity.LYRICS_NOT_FOUND) {
-                            // Save to database using query block
-                            database.query {
-                                upsert(
-                                    LyricsEntity(
-                                        id = song.id,
-                                        lyrics = lyrics
-                                    )
-                                )
-                            }
-                            Log.d(TAG, "Pre-loaded lyrics for: ${song.title}")
-                        }
-                    } catch (e: Exception) {
-                        Log.w(TAG, "Failed to pre-load lyrics for ${song.title}: ${e.message}")
-                    }
+                    Timber.tag(TAG).d("Pre-loaded lyrics for: ${song.title}")
+                } else {
+                    preloadMissBlockedUntil[song.id] = now + PRELOAD_MISS_COOLDOWN_MS
                 }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
-                reportException(e)
+                Timber.tag(TAG).d(
+                    "Failed to pre-load lyrics for ${song.title}: ${e.message}",
+                )
             }
         }
     }
@@ -164,8 +181,10 @@ class LyricsPreloadManager @Inject constructor(
         
         return try {
             lyricsHelper.getLyrics(song, preferredProviderOnly = true)
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
-            Log.w(TAG, "Error fetching lyrics for ${song.title}: ${e.message}")
+            Timber.tag(TAG).d("Error fetching lyrics for ${song.title}: ${e.message}")
             null
         }
     }
@@ -188,6 +207,7 @@ class LyricsPreloadManager @Inject constructor(
 
     companion object {
         private const val TAG = "LyricsPreloadManager"
-        private const val DEFAULT_PRELOAD_COUNT = 3
+        private const val DEFAULT_PRELOAD_COUNT = 1
+        private const val PRELOAD_MISS_COOLDOWN_MS = 30 * 60 * 1_000L
     }
 }

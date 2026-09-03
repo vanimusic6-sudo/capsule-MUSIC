@@ -101,6 +101,7 @@ fun BottomSheetPlayer(
         }
 
     val playbackState by playerConnection.playbackState.collectAsState()
+    val isPlaying by playerConnection.isPlaying.collectAsState()
     val mediaMetadata by playerConnection.mediaMetadata.collectAsState()
     val currentSong by playerConnection.currentSong.collectAsState(initial = null)
     val currentSongLiked = currentSong?.song?.liked == true
@@ -114,14 +115,20 @@ fun BottomSheetPlayer(
         mutableLongStateOf(playerConnection.player.duration)
     }
 
-    LaunchedEffect(mediaMetadata?.id, playbackState) {
+    LaunchedEffect(mediaMetadata?.id, playbackState, isPlaying) {
         while (isActive) {
             position = playerConnection.player.currentPosition.coerceAtLeast(0L)
             duration =
                 playerConnection.player.duration
                     .takeIf { it > 0L && it != C.TIME_UNSET }
                     ?: C.TIME_UNSET
-            delay(100)
+            delay(
+                when {
+                    !isPlaying -> 1_000L
+                    state.isExpanded -> 250L
+                    else -> 500L
+                },
+            )
         }
     }
 

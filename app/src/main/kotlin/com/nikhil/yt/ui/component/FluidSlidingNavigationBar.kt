@@ -268,6 +268,10 @@ private fun CapsuleNavigationBar(
                 colors = artworkColors,
                 modifier = Modifier.fillMaxSize(),
                 allowTransparency = false,
+                // The mini-player carries the motion. A matching static phase
+                // keeps the connected dock cohesive without a second
+                // full-time animation clock and Canvas redraw loop.
+                animated = false,
             )
 
             BoxWithConstraints(

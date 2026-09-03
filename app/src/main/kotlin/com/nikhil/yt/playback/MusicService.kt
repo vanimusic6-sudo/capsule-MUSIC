@@ -244,7 +244,6 @@ import java.util.concurrent.ConcurrentHashMap
 import javax.inject.Inject
 import kotlin.math.min
 import kotlin.math.pow
-import kotlin.time.Duration.Companion.seconds
 
 internal data class TrackLoudness(
     val loudnessDb: Double?,
@@ -516,6 +515,9 @@ class MusicService :
     private var currentQueue: Queue = EmptyQueue
     var queueTitle: String? = null
     private val persistentStateLock = Any()
+    private var persistentProgressJob: Job? = null
+    private var pendingPersistentQueueSaveJob: Job? = null
+    private var pendingPersistentPlayerStateSaveJob: Job? = null
     @Volatile
     private var suppressAutoPlayback = false
     private var lastPresenceToken: String? = null
@@ -1145,17 +1147,6 @@ class MusicService :
             }
             withContext(Dispatchers.Main) {
                 queueRestoreCompleted.value = true
-            }
-        }
-
-        scope.launch {
-            while (isActive) {
-                val interval = if (player.isPlaying) 10.seconds else 30.seconds
-                delay(interval)
-                val shouldSave = withContext(Dispatchers.IO) { dataStore.get(PersistentQueueKey, true) }
-                if (shouldSave) {
-                    saveQueueToDisk()
-                }
             }
         }
 
@@ -3785,12 +3776,7 @@ class MusicService :
         scrobbleManager?.onSongStart(player.currentMetadata, duration = player.duration)
     }
 
-    scope.launch {
-        val shouldSave = withContext(Dispatchers.IO) { dataStore.get(PersistentQueueKey, true) }
-        if (shouldSave) {
-            saveQueueToDisk()
-        }
-    }
+    schedulePersistentQueueSave()
     ensurePresenceManager()
 }
 
@@ -3810,13 +3796,6 @@ class MusicService :
         pendingStreamRefreshValidationMediaId = null
         streamRecoveryState.remove(activeMediaId)
         Timber.tag("MusicService").i("Stream refresh validated and playback resumed for $activeMediaId")
-    }
-
-    scope.launch {
-        val shouldSave = withContext(Dispatchers.IO) { dataStore.get(PersistentQueueKey, true) }
-        if (shouldSave) {
-            saveQueueToDisk()
-        }
     }
 
     if (playbackState == Player.STATE_IDLE || playbackState == Player.STATE_ENDED) {
@@ -3994,6 +3973,11 @@ class MusicService :
             )
         }
     }
+    if (events.containsAny(EVENT_TIMELINE_CHANGED, Player.EVENT_MEDIA_ITEM_TRANSITION)) {
+        schedulePersistentQueueSave()
+    } else if (events.contains(EVENT_POSITION_DISCONTINUITY)) {
+        schedulePersistentPlayerStateSave(syncToDisk = true)
+    }
     if (events.containsAny(
             Player.EVENT_PLAYBACK_STATE_CHANGED,
             Player.EVENT_PLAY_WHEN_READY_CHANGED
@@ -4120,6 +4104,7 @@ class MusicService :
         }
 
    if (events.containsAny(Player.EVENT_IS_PLAYING_CHANGED)) {
+        updatePersistentProgressCheckpoint(player.isPlaying)
         ensurePresenceManager()
         scrobbleManager?.onPlayerStateChanged(player.isPlaying, player.currentMetadata, duration = player.duration)
     } else if (events.contains(Player.EVENT_MEDIA_ITEM_TRANSITION)) {
@@ -4151,11 +4136,7 @@ class MusicService :
             applyCurrentFirstShuffleOrder()
         }
 
-        scope.launch {
-            if (dataStore.get(PersistentQueueKey, true)) {
-                saveQueueToDisk()
-            }
-        }
+        schedulePersistentQueueSave()
     }
 
     override fun onRepeatModeChanged(repeatMode: Int) {
@@ -4181,11 +4162,7 @@ class MusicService :
             }
         }
 
-        scope.launch {
-            if (dataStore.get(PersistentQueueKey, true)) {
-                saveQueueToDisk()
-            }
-        }
+        schedulePersistentPlayerStateSave(syncToDisk = true)
     }
 
     override fun onPlayerError(error: PlaybackException) {
@@ -5645,6 +5622,79 @@ class MusicService :
         )
     }
 
+    /**
+     * Queue/timeline changes can arrive as several Player callbacks for one
+     * user action. Coalesce them into one durable snapshot instead of writing
+     * the same three files repeatedly.
+     */
+    private fun schedulePersistentQueueSave(
+        delayMs: Long = PERSISTENT_SAVE_DEBOUNCE_MS,
+    ) {
+        pendingPersistentQueueSaveJob?.cancel()
+        pendingPersistentQueueSaveJob =
+            scope.launch {
+                delay(delayMs)
+                val shouldSave =
+                    withContext(Dispatchers.IO) {
+                        dataStore.get(PersistentQueueKey, true)
+                    }
+                if (shouldSave) saveQueueToDisk()
+            }
+    }
+
+    private fun schedulePersistentPlayerStateSave(
+        syncToDisk: Boolean,
+        delayMs: Long = PERSISTENT_SAVE_DEBOUNCE_MS,
+    ) {
+        pendingPersistentPlayerStateSaveJob?.cancel()
+        pendingPersistentPlayerStateSaveJob =
+            scope.launch {
+                delay(delayMs)
+                val shouldSave =
+                    withContext(Dispatchers.IO) {
+                        dataStore.get(PersistentQueueKey, true)
+                    }
+                if (shouldSave) {
+                    savePlayerStateToDisk(syncToDisk = syncToDisk)
+                }
+            }
+    }
+
+    /**
+     * While audio is advancing, persist only the small position/state record
+     * once per minute. Pause/stop writes are durable immediately, so a normal
+     * exit still restores the exact position without waking flash storage
+     * every ten seconds.
+     */
+    private fun updatePersistentProgressCheckpoint(isPlaying: Boolean) {
+        persistentProgressJob?.cancel()
+        persistentProgressJob = null
+
+        if (!isPlaying) {
+            schedulePersistentPlayerStateSave(
+                syncToDisk = true,
+                delayMs = 0L,
+            )
+            return
+        }
+
+        persistentProgressJob =
+            scope.launch {
+                while (isActive && player.isPlaying) {
+                    delay(PERSISTENT_PROGRESS_INTERVAL_MS)
+                    if (!player.isPlaying) break
+
+                    val shouldSave =
+                        withContext(Dispatchers.IO) {
+                            dataStore.get(PersistentQueueKey, true)
+                        }
+                    if (shouldSave) {
+                        savePlayerStateToDisk(syncToDisk = false)
+                    }
+                }
+            }
+    }
+
     private inline fun <reified T> readPersistentObject(fileName: String): T? {
         val persistentFile = filesDir.resolve(fileName)
         if (!persistentFile.exists() || !persistentFile.isFile) return null
@@ -5663,7 +5713,11 @@ class MusicService :
         }
     }
 
-    private fun writePersistentObject(fileName: String, payload: Serializable) {
+    private fun writePersistentObject(
+        fileName: String,
+        payload: Serializable,
+        syncToDisk: Boolean = true,
+    ) {
         val persistentFile = filesDir.resolve(fileName)
         val tempFile = filesDir.resolve("$fileName.tmp")
 
@@ -5673,9 +5727,11 @@ class MusicService :
                     ObjectOutputStream(fos).use { output ->
                         output.writeObject(payload)
                         output.flush()
-                        // ObjectOutputStream closes the underlying FileOutputStream.
-                        // Sync while the descriptor is still valid.
-                        fos.fd.sync()
+                        if (syncToDisk) {
+                            // ObjectOutputStream closes the underlying stream.
+                            // Sync while the descriptor is still valid.
+                            fos.fd.sync()
+                        }
                     }
                 }
 
@@ -5689,6 +5745,29 @@ class MusicService :
                 runCatching { tempFile.delete() }
                 reportException(it)
             }
+        }
+    }
+
+    private suspend fun savePlayerStateToDisk(syncToDisk: Boolean) {
+        if (player.mediaItemCount <= 0) return
+
+        val persistPlayerState =
+            PersistPlayerState(
+                playWhenReady = player.playWhenReady,
+                repeatMode = player.repeatMode,
+                shuffleModeEnabled = player.shuffleModeEnabled,
+                volume = playerVolume.value,
+                currentPosition = player.currentPosition,
+                currentMediaItemIndex = player.currentMediaItemIndex,
+                playbackState = player.playbackState,
+            )
+
+        withContext(Dispatchers.IO) {
+            writePersistentObject(
+                PERSISTENT_PLAYER_STATE_FILE,
+                persistPlayerState,
+                syncToDisk = syncToDisk,
+            )
         }
     }
 
@@ -5742,6 +5821,9 @@ class MusicService :
 
     override fun onDestroy() {
         super.onDestroy()
+        persistentProgressJob?.cancel()
+        pendingPersistentQueueSaveJob?.cancel()
+        pendingPersistentPlayerStateSaveJob?.cancel()
         unregisterCapsuleScreenStateReceiver()
         unregisterBluetoothReceiver()
         try {
@@ -5964,10 +6046,12 @@ class MusicService :
         /* Single tag so a field run can be filtered down to the resolve path. */
         private const val CAPSULE_RESOLVE_TAG = "CapsuleResolve"
 
-        private const val PREFETCH_AHEAD = 4
+        private const val PREFETCH_AHEAD = 2
 
         /* Do not re-resolve a URL that still has this much life left. */
         private const val PREFETCH_FRESHNESS_MS = 60_000L
+        private const val PERSISTENT_PROGRESS_INTERVAL_MS = 60_000L
+        private const val PERSISTENT_SAVE_DEBOUNCE_MS = 750L
 
         /*
          * Floors for the two blocking resolves in the ResolvingDataSource.

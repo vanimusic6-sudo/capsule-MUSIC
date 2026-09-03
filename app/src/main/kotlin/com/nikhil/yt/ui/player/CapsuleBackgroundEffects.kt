@@ -14,6 +14,8 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.State
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
@@ -37,6 +39,41 @@ internal enum class CapsuleBackgroundEffect {
     NEBULA,
 }
 
+private const val BACKGROUND_CYCLE_MS = 28_000
+private const val COMPACT_BACKGROUND_FPS = 15
+private const val FULL_BACKGROUND_FPS = 24
+private const val STATIC_BACKGROUND_PHASE = 0.18f
+
+/**
+ * Compose's infinite transition normally invalidates the Canvas at the display
+ * refresh rate. These backgrounds move very slowly, so quantising the phase is
+ * visually indistinguishable while avoiding most gradient/star redraws.
+ */
+@Composable
+private fun rememberCapsuleAnimationPhase(compact: Boolean): State<Float> {
+    val animation = rememberInfiniteTransition(label = "capsuleBackground")
+    val rawPhase =
+        animation.animateFloat(
+            initialValue = 0f,
+            targetValue = 1f,
+            animationSpec =
+                infiniteRepeatable(
+                    animation = tween(BACKGROUND_CYCLE_MS, easing = LinearEasing),
+                ),
+            label = "capsuleBackgroundPhase",
+        )
+    val framesPerSecond =
+        if (compact) COMPACT_BACKGROUND_FPS else FULL_BACKGROUND_FPS
+    val stepCount = BACKGROUND_CYCLE_MS / 1_000 * framesPerSecond
+
+    return remember(rawPhase, stepCount) {
+        derivedStateOf {
+            val step = (rawPhase.value * stepCount).toInt()
+            step.toFloat() / stepCount.toFloat()
+        }
+    }
+}
+
 @Composable
 internal fun CapsuleProceduralBackground(
     effect: CapsuleBackgroundEffect,
@@ -44,6 +81,7 @@ internal fun CapsuleProceduralBackground(
     colors: List<Color> = emptyList(),
     compact: Boolean = false,
     allowTransparency: Boolean = false,
+    animated: Boolean = true,
 ) {
     val primary = MaterialTheme.colorScheme.primary
     val secondary = MaterialTheme.colorScheme.secondary
@@ -56,24 +94,20 @@ internal fun CapsuleProceduralBackground(
                 colors.getOrElse(2) { tertiary },
             ).map(::capsuleMutedArtworkColor)
         }
-    val animation = rememberInfiniteTransition(label = "capsuleBackground")
     val phase =
-        animation.animateFloat(
-            initialValue = 0f,
-            targetValue = 1f,
-            animationSpec =
-                infiniteRepeatable(
-                    animation = tween(28_000, easing = LinearEasing),
-                ),
-            label = "capsuleBackgroundPhase",
-        )
+        if (animated) {
+            rememberCapsuleAnimationPhase(compact = compact)
+        } else {
+            null
+        }
 
     Canvas(modifier = modifier) {
+        val phaseValue = phase?.value ?: STATIC_BACKGROUND_PHASE
         when (effect) {
             CapsuleBackgroundEffect.COLOR_FLOW ->
                 drawSoftColorFlow(
                     palette = palette,
-                    phase = phase.value,
+                    phase = phaseValue,
                     compact = compact,
                     allowTransparency = allowTransparency,
                 )
@@ -81,7 +115,7 @@ internal fun CapsuleProceduralBackground(
             CapsuleBackgroundEffect.CAPSULE_STAR ->
                 drawCapsuleStarField(
                     palette = palette,
-                    phase = phase.value,
+                    phase = phaseValue,
                     compact = compact,
                     allowTransparency = allowTransparency,
                 )
@@ -89,7 +123,7 @@ internal fun CapsuleProceduralBackground(
             CapsuleBackgroundEffect.AURORA ->
                 drawSoftAurora(
                     palette = palette,
-                    phase = phase.value,
+                    phase = phaseValue,
                     compact = compact,
                     allowTransparency = allowTransparency,
                 )
@@ -97,7 +131,7 @@ internal fun CapsuleProceduralBackground(
             CapsuleBackgroundEffect.NEBULA ->
                 drawArtworkNebula(
                     palette = palette,
-                    phase = phase.value,
+                    phase = phaseValue,
                     compact = compact,
                     allowTransparency = allowTransparency,
                 )

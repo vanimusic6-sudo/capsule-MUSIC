@@ -596,6 +596,7 @@ internal fun CapsuleCompactSurfaceBackground(
     colors: List<Color>,
     modifier: Modifier = Modifier,
     allowTransparency: Boolean = false,
+    animated: Boolean = true,
 ) {
     val primary = MaterialTheme.colorScheme.primary
     val secondary = MaterialTheme.colorScheme.secondary
@@ -660,6 +661,7 @@ internal fun CapsuleCompactSurfaceBackground(
                 modifier = modifier,
                 compact = true,
                 allowTransparency = allowTransparency,
+                animated = animated,
             )
 
         MiniPlayerBackgroundStyle.CAPSULE_STAR ->
@@ -669,6 +671,7 @@ internal fun CapsuleCompactSurfaceBackground(
                 modifier = modifier,
                 compact = true,
                 allowTransparency = allowTransparency,
+                animated = animated,
             )
 
         MiniPlayerBackgroundStyle.AURORA ->
@@ -678,6 +681,7 @@ internal fun CapsuleCompactSurfaceBackground(
                 modifier = modifier,
                 compact = true,
                 allowTransparency = allowTransparency,
+                animated = animated,
             )
 
         MiniPlayerBackgroundStyle.NEBULA ->
@@ -687,6 +691,7 @@ internal fun CapsuleCompactSurfaceBackground(
                 modifier = modifier,
                 compact = true,
                 allowTransparency = allowTransparency,
+                animated = animated,
             )
     }
 }

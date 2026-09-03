@@ -26,7 +26,7 @@ object GlobalLog {
      * How often the UI snapshot may be rebuilt. Rebuilding a 5000 element list
      * on every single log line was costing more CPU than the work being logged.
      */
-    private const val PUBLISH_INTERVAL_MS = 400L
+    private const val PUBLISH_INTERVAL_MS = 1_000L
 
     /*
      * The deque is the real buffer: appending and trimming are both constant
@@ -147,14 +147,16 @@ class GlobalLogTree : Timber.Tree() {
 }
 
 /**
- * Owns the only Timber trees used by the main process.
+ * Owns the only Timber tree used by the main process.
  *
- * When logging is disabled Timber's forest is empty, so call sites return
- * before message formatting, stack-trace rendering or Logcat I/O. Direct
- * [GlobalLog.append] callers are also stopped by the guard in [GlobalLog].
+ * The diagnostics screen needs the in-app buffer, not a second copy in
+ * Logcat. Keeping only [GlobalLogTree] halves the hot-path work while a field
+ * log is being recorded. When logging is disabled Timber's forest is empty,
+ * so call sites return before message formatting or stack-trace rendering.
+ * Direct [GlobalLog.append] callers are also stopped by the guard in
+ * [GlobalLog].
  */
 object DebugLoggingController {
-    private val debugTree = Timber.DebugTree()
     private val globalLogTree = GlobalLogTree()
 
     @Volatile
@@ -166,11 +168,9 @@ object DebugLoggingController {
 
         if (value) {
             GlobalLog.setEnabled(true)
-            Timber.plant(debugTree)
             Timber.plant(globalLogTree)
         } else {
             Timber.uproot(globalLogTree)
-            Timber.uproot(debugTree)
             GlobalLog.setEnabled(false)
         }
 
