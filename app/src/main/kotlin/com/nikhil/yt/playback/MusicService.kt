@@ -195,6 +195,7 @@ import com.nikhil.yt.utils.DiscordRPC
 import com.nikhil.yt.utils.NetworkConnectivityObserver
 import com.nikhil.yt.utils.StreamClientUtils
 import com.nikhil.yt.utils.SyncUtils
+import com.nikhil.yt.utils.YTPlayerUtils
 import com.nikhil.yt.playback.audio.CapsuleAudioEngine
 import com.nikhil.yt.utils.dataStore
 import com.nikhil.yt.utils.enumPreference
