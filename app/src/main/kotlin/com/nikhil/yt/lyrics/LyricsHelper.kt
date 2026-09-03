@@ -21,10 +21,10 @@ import com.nikhil.yt.utils.dataStore
 import com.nikhil.yt.utils.reportException
 import com.nikhil.yt.utils.NetworkConnectivityObserver
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.async
 import kotlinx.coroutines.Dispatchers
@@ -73,38 +73,35 @@ constructor(
 
         val ordered = orderedProviders()
         val providers = if (preferredProviderOnly) listOf(ordered.first()) else ordered
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-        val deferred = scope.async {
-            for (provider in providers) {
-                val enabled = provider.isEnabled(context)
-                
-                if (enabled) {
-                    try {
-                        val result = provider.getLyrics(
-                            mediaMetadata.id,
-                            mediaMetadata.title,
-                            mediaMetadata.artists.joinToString { it.name },
-                            mediaMetadata.album?.title,
-                            mediaMetadata.duration,
-                        )
-                        result.onSuccess { lyrics ->
-                            if (isMeaningfulLyrics(lyrics)) {
-                                return@async lyrics
-                            }
-                        }.onFailure {
-                            reportException(it)
-                        }
-                    } catch (e: Exception) {
-                        reportException(e)
-                    }
+        for (provider in providers) {
+            if (!provider.isEnabled(context)) continue
+
+            try {
+                val result =
+                    provider.getLyrics(
+                        mediaMetadata.id,
+                        mediaMetadata.title,
+                        mediaMetadata.artists.joinToString { it.name },
+                        mediaMetadata.album?.title,
+                        mediaMetadata.duration,
+                    )
+                val lyrics = result.getOrNull()
+                if (lyrics != null && isMeaningfulLyrics(lyrics)) {
+                    cache.put(
+                        mediaMetadata.id,
+                        listOf(LyricsResult(provider.name, lyrics)),
+                    )
+                    return lyrics
                 }
+                result.exceptionOrNull()?.let(::reportException)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                reportException(e)
             }
-            return@async LYRICS_NOT_FOUND
         }
 
-        val lyrics = deferred.await()
-        scope.cancel()
-        return lyrics
+        return LYRICS_NOT_FOUND
     }
 
     suspend fun getAllLyrics(
