@@ -8,6 +8,7 @@
 
 package com.nikhil.yt.ui.player
 
+import android.os.SystemClock
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateDpAsState
@@ -85,8 +86,9 @@ import com.nikhil.yt.models.MediaMetadata
 import com.nikhil.yt.together.TogetherRole
 import com.nikhil.yt.together.TogetherSessionState
 import com.nikhil.yt.ui.screens.settings.DiscordPresenceManager
-import com.nikhil.yt.utils.rememberPreference
 import com.nikhil.yt.utils.rememberEnumPreference
+import com.nikhil.yt.utils.rememberPreference
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 
@@ -208,7 +210,7 @@ fun CapsuleMiniPlayer(
                 dampingRatio =
                     Spring.DampingRatioNoBouncy,
                 stiffness =
-                    Spring.StiffnessLow,
+                    Spring.StiffnessMediumLow,
             )
         }
 
@@ -307,22 +309,34 @@ fun CapsuleMiniPlayer(
                             canSkipPrevious,
                             canSkipNext,
                         ) {
+                            var dragTargetOffset = offsetXAnimatable.value
+                            var motionJob: Job? = null
+
                             detectHorizontalDragGestures(
                                 onDragStart = {
+                                    motionJob?.cancel()
+                                    dragTargetOffset = offsetXAnimatable.value
+                                    motionJob =
+                                        coroutineScope.launch {
+                                            offsetXAnimatable.stop()
+                                        }
                                     dragStartTime =
-                                        System.currentTimeMillis()
+                                        SystemClock.uptimeMillis()
 
                                     totalDragDistance =
                                         0f
                                 },
                                 onDragCancel = {
-                                    coroutineScope.launch {
-                                        offsetXAnimatable
-                                            .animateTo(
+                                    val settleFrom = dragTargetOffset
+                                    motionJob?.cancel()
+                                    motionJob =
+                                        coroutineScope.launch {
+                                            offsetXAnimatable.snapTo(settleFrom)
+                                            offsetXAnimatable.animateTo(
                                                 0f,
                                                 animationSpec,
                                             )
-                                    }
+                                        }
                                 },
                                 onHorizontalDrag = {
                                         _,
@@ -357,17 +371,17 @@ fun CapsuleMiniPlayer(
                                      * even at the edge of the queue the card may
                                      * return toward the center. It never gets stuck.
                                      */
+                                    val returningFromLeftEdge =
+                                        tryingToSwipeRight &&
+                                            !canSkipPrevious &&
+                                            dragTargetOffset < 0f
+                                    val returningFromRightEdge =
+                                        tryingToSwipeLeft &&
+                                            !canSkipNext &&
+                                            dragTargetOffset > 0f
                                     val canReturnToCenter =
-                                        (
-                                            tryingToSwipeRight &&
-                                                !canSkipPrevious &&
-                                                offsetXAnimatable.value < 0f
-                                        ) ||
-                                            (
-                                                tryingToSwipeLeft &&
-                                                    !canSkipNext &&
-                                                    offsetXAnimatable.value > 0f
-                                            )
+                                        returningFromLeftEdge ||
+                                            returningFromRightEdge
 
                                     if (
                                         allowLeft ||
@@ -379,18 +393,18 @@ fun CapsuleMiniPlayer(
                                                 adjustedDragAmount,
                                             )
 
-                                        coroutineScope.launch {
-                                            offsetXAnimatable
-                                                .snapTo(
-                                                    offsetXAnimatable.value +
-                                                        adjustedDragAmount,
-                                                )
-                                        }
+                                        dragTargetOffset += adjustedDragAmount
+                                        val nextOffset = dragTargetOffset
+                                        motionJob?.cancel()
+                                        motionJob =
+                                            coroutineScope.launch {
+                                                offsetXAnimatable.snapTo(nextOffset)
+                                            }
                                     }
                                 },
                                 onDragEnd = {
                                     val dragDuration =
-                                        System.currentTimeMillis() -
+                                        SystemClock.uptimeMillis() -
                                             dragStartTime
 
                                     val velocity =
@@ -401,8 +415,7 @@ fun CapsuleMiniPlayer(
                                             0f
                                         }
 
-                                    val currentOffset =
-                                        offsetXAnimatable.value
+                                    val currentOffset = dragTargetOffset
 
                                     val minDistanceThreshold =
                                         50f
@@ -443,13 +456,15 @@ fun CapsuleMiniPlayer(
                                         }
                                     }
 
-                                    coroutineScope.launch {
-                                        offsetXAnimatable
-                                            .animateTo(
+                                    motionJob?.cancel()
+                                    motionJob =
+                                        coroutineScope.launch {
+                                            offsetXAnimatable.snapTo(currentOffset)
+                                            offsetXAnimatable.animateTo(
                                                 0f,
                                                 animationSpec,
                                             )
-                                    }
+                                        }
                                 },
                             )
                         }
@@ -506,6 +521,9 @@ fun CapsuleMiniPlayer(
                         color =
                             capsuleSurfaceOutline(
                                 miniArtworkColors,
+                                glass =
+                                    miniPlayerBackground ==
+                                        MiniPlayerBackgroundStyle.GLASS,
                             ),
                         shape =
                             miniPlayerShape,
@@ -516,7 +534,6 @@ fun CapsuleMiniPlayer(
                 pureBlack = pureBlack,
                 colors = miniArtworkColors,
                 modifier = Modifier.fillMaxSize(),
-                allowTransparency = true,
             )
 
             Row(
@@ -595,7 +612,6 @@ internal fun CapsuleCompactSurfaceBackground(
     pureBlack: Boolean,
     colors: List<Color>,
     modifier: Modifier = Modifier,
-    allowTransparency: Boolean = false,
     animated: Boolean = true,
 ) {
     val primary = MaterialTheme.colorScheme.primary
@@ -608,7 +624,6 @@ internal fun CapsuleCompactSurfaceBackground(
             colors.getOrElse(1) { secondary },
             colors.getOrElse(2) { tertiary },
         ).map(::capsuleMutedArtworkColor)
-    val surfaceAlpha = if (allowTransparency) 0.9f else 1f
 
     when (style) {
         MiniPlayerBackgroundStyle.THEME ->
@@ -618,18 +633,18 @@ internal fun CapsuleCompactSurfaceBackground(
                         if (pureBlack) {
                             Brush.linearGradient(
                                 listOf(
-                                    Color.Black.copy(alpha = surfaceAlpha),
-                                    Color.Black.copy(alpha = surfaceAlpha),
+                                    Color.Black,
+                                    Color.Black,
                                 ),
                             )
                         } else {
                             Brush.linearGradient(
                                 listOf(
                                     lerp(surface, primary, 0.12f).copy(
-                                        alpha = surfaceAlpha,
+                                        alpha = 1f,
                                     ),
                                     lerp(surface, Color.Black, 0.3f).copy(
-                                        alpha = surfaceAlpha,
+                                        alpha = 1f,
                                     ),
                                 ),
                             )
@@ -638,20 +653,12 @@ internal fun CapsuleCompactSurfaceBackground(
             )
 
         MiniPlayerBackgroundStyle.GRADIENT ->
-            Box(
-                modifier =
-                    modifier.background(
-                        Brush.linearGradient(
-                            listOf(
-                                lerp(palette[0], Color(0xFF05060B), 0.52f)
-                                    .copy(alpha = surfaceAlpha),
-                                lerp(palette[1], Color(0xFF05060B), 0.62f)
-                                    .copy(alpha = surfaceAlpha),
-                                lerp(palette[2], Color(0xFF05060B), 0.7f)
-                                    .copy(alpha = surfaceAlpha),
-                            ),
-                        ),
-                    ),
+            CapsuleProceduralBackground(
+                effect = CapsuleBackgroundEffect.MATTE_GRADIENT,
+                colors = palette,
+                modifier = modifier,
+                compact = true,
+                animated = false,
             )
 
         MiniPlayerBackgroundStyle.COLOR_FLOW ->
@@ -660,7 +667,6 @@ internal fun CapsuleCompactSurfaceBackground(
                 colors = palette,
                 modifier = modifier,
                 compact = true,
-                allowTransparency = allowTransparency,
                 animated = animated,
             )
 
@@ -670,17 +676,6 @@ internal fun CapsuleCompactSurfaceBackground(
                 colors = palette,
                 modifier = modifier,
                 compact = true,
-                allowTransparency = allowTransparency,
-                animated = animated,
-            )
-
-        MiniPlayerBackgroundStyle.AURORA ->
-            CapsuleProceduralBackground(
-                effect = CapsuleBackgroundEffect.AURORA,
-                colors = palette,
-                modifier = modifier,
-                compact = true,
-                allowTransparency = allowTransparency,
                 animated = animated,
             )
 
@@ -690,8 +685,13 @@ internal fun CapsuleCompactSurfaceBackground(
                 colors = palette,
                 modifier = modifier,
                 compact = true,
-                allowTransparency = allowTransparency,
                 animated = animated,
+            )
+
+        MiniPlayerBackgroundStyle.GLASS ->
+            CapsuleGlassSurface(
+                colors = palette,
+                modifier = modifier,
             )
     }
 }

@@ -96,9 +96,7 @@
     <string name="player_design_v4">Cinemático</string>
     <string name="player_design_v5">Pequeño</string>
     <string name="new_mini_player_design">Nuevo diseño de mini reproductor</string>
-    <string name="player_background_blur">Desenfoque</string>
     <string name="coloring">Colorido</string>
-    <string name="blur_gradient">Gradiente desenfocado</string>
     <string name="glow">Brillante</string>
     <string name="player_buttons_style">Colores de los botones del reproductor</string>
     <string name="default_style">Por defecto</string>

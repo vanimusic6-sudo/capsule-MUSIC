@@ -307,7 +307,6 @@
     <string name="palette_spring">Весна</string>
     <string name="palette_summer">Лето</string>
     <string name="palette_twilight">Сумерки</string>
-    <string name="palette_aurora">Аврора</string>
     <string name="palette_candy">Конфета</string>
     <string name="palette_rainbow">Радуга</string>
     <string name="palette_aquamarine">Аквамарин</string>
@@ -333,8 +332,6 @@
     <string name="ok_button">Принять</string>
     <string name="custom_radius">Настроить радиус скругления углов миниатюры</string>
     <string name="custom">Своё</string>
-    <string name="customized_background">Пользовательский фон</string>
-    <string name="customize_background_title">Настроить фон</string>
     <string name="add_image">Добавить изображение</string>
     <string name="blur">Размытие</string>
     <string name="contrast">Контраст</string>

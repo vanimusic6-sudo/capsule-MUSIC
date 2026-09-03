@@ -358,12 +358,8 @@ enum class PlayerBackgroundStyle {
     NEBULA,
     DEFAULT,
     GRADIENT,
-    CUSTOM,
-    BLUR,
     COLORING,
-    BLUR_GRADIENT,
     GLOW,
-    AURORA,
 }
 
 enum class MiniPlayerBackgroundStyle {
@@ -371,15 +367,9 @@ enum class MiniPlayerBackgroundStyle {
     COLOR_FLOW,
     NEBULA,
     GRADIENT,
-    AURORA,
+    GLASS,
     THEME,
 }
-
-// Keys for customized background
-val PlayerCustomImageUriKey = stringPreferencesKey("playerCustomImageUri")
-val PlayerCustomBlurKey = floatPreferencesKey("playerCustomBlur")
-val PlayerCustomContrastKey = floatPreferencesKey("playerCustomContrast")
-val PlayerCustomBrightnessKey = floatPreferencesKey("playerCustomBrightness")
 
 
 val LyricsAnimationStyleKey = stringPreferencesKey("lyricsAnimationStyle")

@@ -42,13 +42,8 @@ import androidx.media3.common.C
 import androidx.navigation.NavController
 import com.nikhil.yt.LocalPlayerConnection
 import com.nikhil.yt.constants.DarkModeKey
-import com.nikhil.yt.constants.DisableBlurKey
 import com.nikhil.yt.constants.PlayerBackgroundStyle
 import com.nikhil.yt.constants.PlayerBackgroundStyleKey
-import com.nikhil.yt.constants.PlayerCustomBlurKey
-import com.nikhil.yt.constants.PlayerCustomBrightnessKey
-import com.nikhil.yt.constants.PlayerCustomContrastKey
-import com.nikhil.yt.constants.PlayerCustomImageUriKey
 import com.nikhil.yt.models.MediaMetadata
 import com.nikhil.yt.ui.component.BottomSheet
 import com.nikhil.yt.ui.component.BottomSheetState
@@ -59,7 +54,6 @@ import com.nikhil.yt.ui.menu.PlayerMenu
 import com.nikhil.yt.ui.screens.settings.DarkMode
 import com.nikhil.yt.ui.utils.ShowMediaInfo
 import com.nikhil.yt.utils.rememberEnumPreference
-import com.nikhil.yt.utils.rememberPreference
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 
@@ -85,11 +79,6 @@ fun BottomSheetPlayer(
             key = PlayerBackgroundStyleKey,
             defaultValue = PlayerBackgroundStyle.CAPSULE_STAR,
         )
-    val playerCustomImageUri by rememberPreference(PlayerCustomImageUriKey, "")
-    val playerCustomBlur by rememberPreference(PlayerCustomBlurKey, 0f)
-    val playerCustomContrast by rememberPreference(PlayerCustomContrastKey, 1f)
-    val playerCustomBrightness by rememberPreference(PlayerCustomBrightnessKey, 1f)
-    val disableBlur by rememberPreference(DisableBlurKey, true)
 
     val systemDark = isSystemInDarkTheme()
     val darkTheme by rememberEnumPreference(DarkModeKey, defaultValue = DarkMode.ON)
@@ -141,8 +130,7 @@ fun BottomSheetPlayer(
     }
 
     val needsArtworkPalette =
-        playerBackground != PlayerBackgroundStyle.DEFAULT &&
-            playerBackground != PlayerBackgroundStyle.CUSTOM
+        playerBackground != PlayerBackgroundStyle.DEFAULT
     val gradientColors =
         rememberCapsuleArtworkColors(
             mediaMetadata = mediaMetadata,
@@ -229,13 +217,7 @@ fun BottomSheetPlayer(
             if (!state.isCollapsed) {
                 PlayerBackground(
                     playerBackground = playerBackground,
-                    mediaMetadata = mediaMetadata,
                     gradientColors = gradientColors,
-                    disableBlur = disableBlur,
-                    playerCustomImageUri = playerCustomImageUri,
-                    playerCustomBlur = playerCustomBlur,
-                    playerCustomContrast = playerCustomContrast,
-                    playerCustomBrightness = playerCustomBrightness,
                 )
             }
 
@@ -421,15 +403,9 @@ private fun playerSurfaceColor(
             0f
         }
 
-    return when (playerBackground) {
-        PlayerBackgroundStyle.BLUR,
-        PlayerBackgroundStyle.GRADIENT,
-        -> MaterialTheme.colorScheme.surface.copy(alpha = 1f - fadeProgress)
-        else ->
-            if (useBlackBackground) {
-                Color.Black.copy(alpha = 1f - fadeProgress)
-            } else {
-                MaterialTheme.colorScheme.surface.copy(alpha = 1f - fadeProgress)
-            }
+    return if (useBlackBackground) {
+        Color.Black.copy(alpha = 1f - fadeProgress)
+    } else {
+        MaterialTheme.colorScheme.surface.copy(alpha = 1f - fadeProgress)
     }
 }

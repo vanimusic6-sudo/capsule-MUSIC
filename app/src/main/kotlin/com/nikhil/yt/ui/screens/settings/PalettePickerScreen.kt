@@ -720,15 +720,6 @@ object ThemePalettes {
         neutral = Color(0xFF4B0082)
     )
     
-    val Aurora = ThemePalette(
-        id = "aurora",
-        nameResId = R.string.palette_aurora,
-        primary = Color(0xFF00FF7F),
-        secondary = Color(0xFF00FF7F),
-        tertiary = Color(0xFF00FF7F),
-        neutral = Color(0xFF00FF7F)
-    )
-    
     val Candy = ThemePalette(
         id = "candy",
         nameResId = R.string.palette_candy,
@@ -825,7 +816,6 @@ object ThemePalettes {
         Spring,
         Summer,
         Twilight,
-        Aurora,
         Candy,
         Rainbow
     )

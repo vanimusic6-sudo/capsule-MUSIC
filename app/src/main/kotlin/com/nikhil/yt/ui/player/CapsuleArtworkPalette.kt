@@ -27,12 +27,15 @@ import coil3.toBitmap
 import com.nikhil.yt.models.MediaMetadata
 import com.nikhil.yt.ui.theme.PlayerColorExtractor
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 
 private const val ARTWORK_PALETTE_TRANSITION_MS = 1_400
 
 private object CapsuleArtworkPaletteCache {
     private const val MAX_ENTRIES = 32
+    private val extractionMutex = Mutex()
     private val values =
         object : LinkedHashMap<String, List<Color>>(
             MAX_ENTRIES,
@@ -53,6 +56,17 @@ private object CapsuleArtworkPaletteCache {
         colors: List<Color>,
     ) {
         values[key] = colors
+    }
+
+    suspend fun getOrExtract(
+        key: String,
+        extract: suspend () -> List<Color>?,
+    ): List<Color>? {
+        get(key)?.let { return it }
+
+        return extractionMutex.withLock {
+            get(key) ?: extract()?.also { put(key, it) }
+        }
     }
 }
 
@@ -119,43 +133,41 @@ internal fun rememberCapsuleArtworkColors(
             return@LaunchedEffect
         }
 
-        val request =
-            ImageRequest.Builder(context)
-                .data(thumbnailUrl)
-                .size(
-                    PlayerColorExtractor.Config.IMAGE_SIZE,
-                    PlayerColorExtractor.Config.IMAGE_SIZE,
-                )
-                .allowHardware(false)
-                .build()
-        val bitmap =
-            runCatching {
-                withContext(Dispatchers.IO) {
-                    context.imageLoader.execute(request)
-                }.image?.toBitmap()
-            }.getOrNull()
-        if (bitmap == null) {
-            return@LaunchedEffect
-        }
-
         val extracted =
-            runCatching {
-                val palette =
-                    withContext(Dispatchers.Default) {
-                        Palette.from(bitmap)
-                            .maximumColorCount(PlayerColorExtractor.Config.MAX_COLOR_COUNT)
-                            .resizeBitmapArea(PlayerColorExtractor.Config.BITMAP_AREA)
-                            .generate()
-                    }
-                PlayerColorExtractor.extractGradientColors(
-                    palette = palette,
-                    fallbackColor = surface.toArgb(),
-                )
-            }.getOrElse {
-                return@LaunchedEffect
-            }
+            CapsuleArtworkPaletteCache.getOrExtract(cacheKey) {
+                val request =
+                    ImageRequest.Builder(context)
+                        .data(thumbnailUrl)
+                        .size(
+                            PlayerColorExtractor.Config.IMAGE_SIZE,
+                            PlayerColorExtractor.Config.IMAGE_SIZE,
+                        )
+                        .allowHardware(false)
+                        .build()
+                val artworkBitmap =
+                    runCatching {
+                        withContext(Dispatchers.IO) {
+                            context.imageLoader.execute(request)
+                        }.image?.toBitmap()
+                    }.getOrNull()
+                        ?: return@getOrExtract null
 
-        CapsuleArtworkPaletteCache.put(cacheKey, extracted)
+                runCatching {
+                    val palette =
+                        withContext(Dispatchers.Default) {
+                            Palette.from(artworkBitmap)
+                                .maximumColorCount(PlayerColorExtractor.Config.MAX_COLOR_COUNT)
+                                .resizeBitmapArea(PlayerColorExtractor.Config.BITMAP_AREA)
+                                .generate()
+                        }
+                    PlayerColorExtractor.extractGradientColors(
+                        palette = palette,
+                        fallbackColor = surface.toArgb(),
+                    )
+                }.getOrNull()
+            }
+                ?: return@LaunchedEffect
+
         targetColors = extracted
         hasArtworkPalette = true
     }

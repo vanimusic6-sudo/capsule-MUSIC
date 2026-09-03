@@ -760,17 +760,8 @@ fun AppearanceSettings(
                     PlayerBackgroundStyle.GRADIENT ->
                         stringResource(R.string.background_artwork_gradient)
 
-                    PlayerBackgroundStyle.CUSTOM ->
-                        stringResource(R.string.custom)
-
-                    PlayerBackgroundStyle.BLUR ->
-                        stringResource(R.string.player_background_blur)
-
                     PlayerBackgroundStyle.COLORING ->
                         stringResource(R.string.background_artwork_color)
-
-                    PlayerBackgroundStyle.BLUR_GRADIENT ->
-                        stringResource(R.string.blur_gradient)
 
                     PlayerBackgroundStyle.GLOW ->
                         stringResource(R.string.glow)
@@ -780,9 +771,6 @@ fun AppearanceSettings(
 
                     PlayerBackgroundStyle.CAPSULE_STAR ->
                         stringResource(R.string.background_capsule_star)
-
-                    PlayerBackgroundStyle.AURORA ->
-                        stringResource(R.string.background_aurora)
 
                     PlayerBackgroundStyle.NEBULA ->
                         stringResource(R.string.background_nebula)
@@ -812,41 +800,13 @@ fun AppearanceSettings(
                         stringResource(R.string.background_color_animation)
                     MiniPlayerBackgroundStyle.CAPSULE_STAR ->
                         stringResource(R.string.background_capsule_star)
-                    MiniPlayerBackgroundStyle.AURORA ->
-                        stringResource(R.string.background_aurora)
                     MiniPlayerBackgroundStyle.NEBULA ->
                         stringResource(R.string.background_nebula)
+                    MiniPlayerBackgroundStyle.GLASS ->
+                        stringResource(R.string.background_glass)
                 }
             },
         )
-
-        if (
-            playerBackground ==
-            PlayerBackgroundStyle.CUSTOM
-        ) {
-            PreferenceEntry(
-                title = {
-                    Text(
-                        stringResource(
-                            R.string.customized_background,
-                        ),
-                    )
-                },
-                icon = {
-                    Icon(
-                        painterResource(
-                            R.drawable.image,
-                        ),
-                        null,
-                    )
-                },
-                onClick = {
-                    navController.navigate(
-                        "customize_background",
-                    )
-                },
-            )
-        }
 
         SwitchPreference(
             title = {

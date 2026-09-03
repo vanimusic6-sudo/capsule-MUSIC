@@ -217,6 +217,7 @@ object YTPlayerUtils {
         globalPlaybackBreakerUntilMs = 0L
         globalPlaybackBreakerReason = null
         CapsuleAnonymousSession.reset()
+        NewPipeUtils.clearPlayerCaches()
     }
 
     fun markStreamClientFailed(
@@ -420,7 +421,6 @@ object YTPlayerUtils {
             throwIfGlobalBreakerActive()
 
             val budget = ResolveRequestBudget()
-            val signatureTimestamp = getSignatureTimestampOrNull(videoId)
             val attempts =
                 when (audioQuality) {
                     AudioQuality.HIGHEST ->
@@ -447,7 +447,6 @@ object YTPlayerUtils {
                                 streamPolicy = streamPolicy,
                                 networkMetered = networkMetered,
                                 avoidCodecs = avoidCodecs,
-                                signatureTimestamp = signatureTimestamp,
                                 budget = budget,
                             )
                         }
@@ -490,7 +489,6 @@ object YTPlayerUtils {
         streamPolicy: AudioStreamPolicy,
         networkMetered: Boolean?,
         avoidCodecs: Set<String>,
-        signatureTimestamp: Int?,
         budget: ResolveRequestBudget,
     ): PlaybackData {
         throwIfGlobalBreakerActive()
@@ -643,6 +641,18 @@ object YTPlayerUtils {
                 streamClients.size,
                 effectiveIdentityKey(client),
             )
+
+            /*
+             * Native clients already return ready URLs. Fetching the HTML5
+             * JavaScript player for visionOS was unnecessary work and could
+             * cache a transient parser failure before a Web client was used.
+             */
+            val signatureTimestamp =
+                if (client.useSignatureTimestamp) {
+                    getSignatureTimestampOrNull(videoId)
+                } else {
+                    null
+                }
 
             val playerResponseResult =
                 CapsuleAnonymousSession.player(
@@ -994,8 +1004,7 @@ object YTPlayerUtils {
         CapsuleAnonymousSession.player(
             videoId = videoId,
             client = MAIN_CLIENT,
-            signatureTimestamp =
-                getSignatureTimestampOrNull(videoId),
+            signatureTimestamp = null,
         )
 
     /**

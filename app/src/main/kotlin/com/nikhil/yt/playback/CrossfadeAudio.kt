@@ -92,7 +92,13 @@ internal class CrossfadeAudio(
             val fadeMs = crossfadeDurationMs.value
             if (fadeMs <= 0) {
                 stopOverlapCrossfade(resetMainFade = true)
-                delay(250)
+                /*
+                 * Crossfade is disabled by default. Polling four times every
+                 * second here kept the playback service waking up for a
+                 * feature that was not in use. Suspend until the preference
+                 * actually changes instead.
+                 */
+                crossfadeDurationMs.first { it > 0 }
                 continue
             }
 

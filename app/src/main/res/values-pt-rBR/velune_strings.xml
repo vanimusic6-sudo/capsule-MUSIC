@@ -98,9 +98,7 @@
     <string name="player_design_v4">Cinemático</string>
     <string name="player_design_v5">Metro</string>
     <string name="new_mini_player_design">Novo design do mini reprodutor</string>
-    <string name="player_background_blur">Borrão</string>
     <string name="coloring">Coloração</string>
-    <string name="blur_gradient">Gradiente de desfoque</string>
     <string name="glow">Brilho</string>
     <string name="player_buttons_style">Cores do botão do reprodutor</string>
     <string name="default_style">Padrão</string>

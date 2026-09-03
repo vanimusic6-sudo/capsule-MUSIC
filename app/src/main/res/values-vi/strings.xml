@@ -317,7 +317,6 @@
     <string name="palette_spring">Mùa xuân</string>
     <string name="palette_summer">Mùa hè</string>
     <string name="palette_twilight">Chạng vạng</string>
-    <string name="palette_aurora">Cực quang</string>
     <string name="palette_candy">Kẹo</string>
     <string name="palette_rainbow">Cầu vồng</string>
     <!-- Additional Palettes -->
@@ -345,8 +344,6 @@
     <string name="ok_button">OK</string>
     <string name="custom_radius">Tùy chỉnh bán kính góc ảnh thumbnail</string>
     <string name="custom">Tùy chỉnh</string>
-    <string name="customized_background">Nền được tùy chỉnh</string>
-    <string name="customize_background_title">Tùy chỉnh nền</string>
     <string name="add_image">Thêm hình ảnh</string>
     <string name="blur">Làm mờ</string>
     <string name="contrast">Độ tương phản</string>

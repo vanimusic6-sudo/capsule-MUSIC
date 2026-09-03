@@ -98,9 +98,7 @@
     <string name="player_design_v4">Kinematisch</string>
     <string name="player_design_v5">Metro</string>
     <string name="new_mini_player_design">Neues Mini-Player-Design</string>
-    <string name="player_background_blur">Verwischen</string>
     <string name="coloring">Farbung</string>
-    <string name="blur_gradient">Weichzeichnerverlauf</string>
     <string name="glow">Leuchten</string>
     <string name="player_buttons_style">Farben der Player-Tasten</string>
     <string name="default_style">Standard</string>

@@ -92,8 +92,8 @@
     <string name="background_artwork_color">Цвет обложки</string>
     <string name="background_color_animation">Мягкий анимированный градиент</string>
     <string name="background_capsule_star">Capsule Star</string>
-    <string name="background_aurora">Аврора</string>
     <string name="background_nebula">Туманность</string>
+    <string name="background_glass">Стекло</string>
     <string name="capsule_settings_group">Capsule</string>
     <string name="capsule_bottom_bar">Навигационная панель Capsule</string>
     <string name="capsule_bottom_bar_description">Использовать нижнюю навигационную панель Capsule.</string>
@@ -107,9 +107,7 @@
     <string name="player_design_v3">Минимальный</string>
     <string name="player_design_v4">Кинематографичный</string>
     <string name="new_mini_player_design">Новый дизайн мини плеера</string>
-    <string name="player_background_blur">Размытие</string>
     <string name="coloring">Раскраска</string>
-    <string name="blur_gradient">Размытие градиента</string>
     <string name="glow">Свечение</string>
     <string name="player_buttons_style">Цвета кнопок плеера</string>
     <string name="default_style">По умолчанию</string>
