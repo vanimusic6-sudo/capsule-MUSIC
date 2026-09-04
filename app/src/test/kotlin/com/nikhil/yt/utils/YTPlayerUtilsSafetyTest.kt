@@ -1,15 +1,19 @@
 package com.nikhil.yt.utils
 
 import androidx.media3.common.PlaybackException
-import com.nikhil.yt.constants.AudioQuality
+import com.nikhil.yt.constants.AudioStreamPolicy
 import com.nikhil.yt.innertube.YouTubeFailureKind
-import com.nikhil.yt.innertube.models.YouTubeClient
-import com.nikhil.yt.innertube.models.response.PlayerResponse
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
+/**
+ * Tests for the small part of the legacy YouTube utility that still belongs to
+ * the current playback safety boundary: failure classification and the global
+ * request breaker. Client selection, stream format selection and GVS headers
+ * are now owned by InnerTubeX and must not be re-specified here.
+ */
 class YTPlayerUtilsSafetyTest {
     @Test
     fun ageRestrictedPlayabilityNeverLooksLikeBot() {
@@ -68,109 +72,35 @@ class YTPlayerUtilsSafetyTest {
     }
 
     @Test
-    fun autoMeteredPrefersHighButNotHugeBitrate() {
-        val result =
-            YTPlayerUtils.selectAudioFormatCandidatesForTest(
-                formats =
-                    listOf(
-                        format(itag = 1, bitrate = 128_000, codec = "opus"),
-                        format(itag = 2, bitrate = 256_000, codec = "opus"),
-                    ),
-                audioQuality = AudioQuality.AUTO,
-                networkMetered = true,
+    fun retiredClientPoliciesCanNeverReachPlayback() {
+        val retired =
+            listOf(
+                AudioStreamPolicy.MWEB,
+                AudioStreamPolicy.IOS,
+                AudioStreamPolicy.IOS_MUSIC,
+                AudioStreamPolicy.TV_DOWNGRADED,
             )
 
-        assertEquals(128_000, result.first().bitrate)
+        retired.forEach { policy ->
+            assertFalse(policy.isUserSelectable)
+            assertEquals(AudioStreamPolicy.AUTO_SAFE, policy.normalizedForPlayback())
+        }
     }
 
     @Test
-    fun avoidCodecsActuallyFiltersThem() {
-        val result =
-            YTPlayerUtils.selectAudioFormatCandidatesForTest(
-                formats =
-                    listOf(
-                        format(itag = 1, bitrate = 256_000, codec = "opus"),
-                        format(itag = 2, bitrate = 160_000, codec = "mp4a.40.2"),
-                    ),
-                audioQuality = AudioQuality.HIGHEST,
-                networkMetered = false,
-                avoidCodecs = setOf("opus"),
+    fun reviewedClientPoliciesRemainSelectable() {
+        val reviewed =
+            listOf(
+                AudioStreamPolicy.AUTO_SAFE,
+                AudioStreamPolicy.VISIONOS,
+                AudioStreamPolicy.WEB_EMBEDDED,
+                AudioStreamPolicy.WEB,
+                AudioStreamPolicy.TVHTML5,
             )
 
-        assertEquals(2, result.first().itag)
+        reviewed.forEach { policy ->
+            assertTrue(policy.isUserSelectable)
+            assertEquals(policy, policy.normalizedForPlayback())
+        }
     }
-
-    @Test
-    fun loginAndAgeCanTryNextReviewedClient() {
-        assertTrue(
-            YTPlayerUtils.shouldTryNextClientForTest(
-                YouTubeFailureKind.LOGIN_REQUIRED,
-            ),
-        )
-        assertTrue(
-            YTPlayerUtils.shouldTryNextClientForTest(
-                YouTubeFailureKind.AGE_RESTRICTED,
-            ),
-        )
-        assertFalse(
-            YTPlayerUtils.shouldTryNextClientForTest(
-                YouTubeFailureKind.PERMANENT,
-            ),
-        )
-        assertFalse(
-            YTPlayerUtils.shouldTryNextClientForTest(
-                YouTubeFailureKind.BOT_CHECK,
-            ),
-        )
-    }
-
-    @Test
-    fun webEmbeddedStreamUsesMainYouTubeOrigin() {
-        val headers =
-            StreamClientUtils.resolveOriginReferer(
-                "WEB_EMBEDDED_PLAYER",
-            )
-
-        assertEquals(YouTubeClient.ORIGIN_YOUTUBE, headers.origin)
-        assertEquals(
-            YouTubeClient.THIRD_PARTY_EMBED_URL,
-            headers.referer,
-        )
-    }
-
-    @Test
-    fun webRemixStreamKeepsYouTubeMusicOrigin() {
-        val headers =
-            StreamClientUtils.resolveOriginReferer("WEB_REMIX")
-
-        assertEquals(YouTubeClient.ORIGIN_YOUTUBE_MUSIC, headers.origin)
-        assertEquals(YouTubeClient.REFERER_YOUTUBE_MUSIC, headers.referer)
-    }
-
-    private fun format(
-        itag: Int,
-        bitrate: Int,
-        codec: String,
-    ): PlayerResponse.StreamingData.Format =
-        PlayerResponse.StreamingData.Format(
-            itag = itag,
-            url = "https://example.invalid/$itag",
-            mimeType = "audio/webm; codecs=\"$codec\"",
-            bitrate = bitrate,
-            width = null,
-            height = null,
-            contentLength = 1_000_000L,
-            quality = "tiny",
-            fps = null,
-            qualityLabel = null,
-            averageBitrate = bitrate,
-            audioQuality = "AUDIO_QUALITY_HIGH",
-            approxDurationMs = "180000",
-            audioSampleRate = 48_000,
-            audioChannels = 2,
-            loudnessDb = null,
-            lastModified = null,
-            signatureCipher = null,
-            cipher = null,
-        )
 }
