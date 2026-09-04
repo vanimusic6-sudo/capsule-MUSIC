@@ -158,31 +158,28 @@ internal fun CapsuleProceduralBackground(
     }
 }
 
-/** Dedicated translucent option. Every other compact style stays opaque. */
+/** Dedicated neutral translucent option. Every other compact style stays opaque. */
 @Composable
 internal fun CapsuleGlassSurface(
     colors: List<Color>,
     modifier: Modifier = Modifier,
 ) {
-    val primary = MaterialTheme.colorScheme.primary
-    val secondary = MaterialTheme.colorScheme.secondary
-    val palette =
-        remember(colors, primary, secondary) {
-            listOf(
-                colors.getOrElse(0) { primary },
-                colors.getOrElse(1) { secondary },
-            ).map(::capsuleMutedArtworkColor)
-        }
+    // Keep the public signature shared by the player/dock, but deliberately do
+    // not use artwork colours here. GLASS must remain the same neutral panel for
+    // every song instead of changing tint whenever the cover changes.
+    @Suppress("UNUSED_VARIABLE")
+    val ignoredArtworkColors = colors
 
     Canvas(modifier = modifier) {
-        drawRect(Color(0xC20A0B11))
+        drawRect(Color(0xB80A0B10))
         drawRect(
             brush =
                 Brush.linearGradient(
                     colors =
                         listOf(
-                            deepColor(palette[0], 0.56f).copy(alpha = 0.72f),
-                            deepColor(palette[1], 0.68f).copy(alpha = 0.62f),
+                            Color.White.copy(alpha = 0.055f),
+                            Color(0xFF15161D).copy(alpha = 0.28f),
+                            Color.Black.copy(alpha = 0.2f),
                         ),
                     start = Offset.Zero,
                     end = Offset(size.width, size.height),
@@ -193,8 +190,8 @@ internal fun CapsuleGlassSurface(
                 Brush.radialGradient(
                     colors =
                         listOf(
-                            Color.White.copy(alpha = 0.12f),
-                            palette[0].copy(alpha = 0.07f),
+                            Color.White.copy(alpha = 0.095f),
+                            Color.White.copy(alpha = 0.025f),
                             Color.Transparent,
                         ),
                     center = Offset(size.width * 0.16f, 0f),
@@ -202,14 +199,14 @@ internal fun CapsuleGlassSurface(
                 ),
         )
         drawLine(
-            color = Color.White.copy(alpha = 0.18f),
+            color = Color.White.copy(alpha = 0.17f),
             start = Offset(size.width * 0.08f, 0.7f * density),
             end = Offset(size.width * 0.92f, 0.7f * density),
             strokeWidth = 0.7f * density,
             cap = StrokeCap.Round,
         )
         drawLine(
-            color = Color.Black.copy(alpha = 0.28f),
+            color = Color.Black.copy(alpha = 0.24f),
             start = Offset(size.width * 0.1f, size.height - 0.7f * density),
             end = Offset(size.width * 0.9f, size.height - 0.7f * density),
             strokeWidth = 0.7f * density,
@@ -243,27 +240,30 @@ internal fun capsuleSurfaceOutline(
     colors: List<Color>,
     glass: Boolean = false,
 ): Color {
+    if (glass) {
+        return Color.White.copy(alpha = 0.24f)
+    }
+
     val accent =
         capsuleMutedArtworkColor(
             colors.firstOrNull() ?: Color(0xFF6F7180),
         )
-    return if (glass) {
-        lerp(Color.White, accent, 0.38f).copy(alpha = 0.3f)
-    } else {
-        lerp(Color(0xFF353640), deepColor(accent, 0.48f), 0.24f)
-    }
+    return lerp(Color(0xFF353640), deepColor(accent, 0.48f), 0.24f)
 }
 
 internal fun capsuleDockIndicatorColor(
     colors: List<Color>,
     glass: Boolean = false,
 ): Color {
+    if (glass) {
+        return Color(0xFFE4E2E8).copy(alpha = 0.88f)
+    }
+
     val accent =
         capsuleMutedArtworkColor(
             colors.firstOrNull() ?: Color(0xFFAAA7B3),
         )
-    val result = lerp(Color(0xFFE4E2E8), accent, 0.18f)
-    return if (glass) result.copy(alpha = 0.88f) else result
+    return lerp(Color(0xFFE4E2E8), accent, 0.18f)
 }
 
 private fun deepColor(
@@ -524,64 +524,7 @@ private fun DrawScope.drawCapsuleStarField(
         )
     }
 
-    repeat(if (compact) 1 else 2) { index ->
-        drawFallingComet(
-            palette = palette,
-            phase = phase,
-            index = index,
-            compact = compact,
-        )
-    }
-
     drawVignette(alpha = if (compact) 0.16f else 0.28f)
-}
-
-private fun DrawScope.drawFallingComet(
-    palette: List<Color>,
-    phase: Float,
-    index: Int,
-    compact: Boolean,
-) {
-    val offset = deterministicFraction(index * 71 + 19)
-    val progress = (phase * (0.92f + index * 0.13f) + offset) % 1f
-    val fade = sin(progress * PI).toFloat().coerceAtLeast(0f)
-    if (fade < 0.08f) return
-
-    val startX = size.width * (0.46f + deterministicFraction(index * 43 + 7) * 0.66f)
-    val head =
-        Offset(
-            x = startX - progress * size.width * (if (compact) 0.72f else 0.86f),
-            y = -size.height * 0.18f + progress * size.height * 1.34f,
-        )
-    val trailLength =
-        minOf(size.width, size.height) * if (compact) 0.58f else 0.2f
-    val direction = Offset(0.72f, -0.69f)
-    val segments = if (compact) 8 else 10
-    val cometColor = lerp(palette[index % palette.size], Color.White, 0.62f)
-
-    repeat(segments) { segment ->
-        val fromFraction = segment.toFloat() / segments
-        val toFraction = (segment + 1f) / segments
-        val alpha = fade * (1f - fromFraction) * (if (compact) 0.28f else 0.34f)
-        drawLine(
-            color = cometColor.copy(alpha = alpha),
-            start = head + direction * (trailLength * toFraction),
-            end = head + direction * (trailLength * fromFraction),
-            strokeWidth = (1.35f - fromFraction * 0.55f) * density,
-            cap = StrokeCap.Round,
-        )
-    }
-
-    drawCircle(
-        color = cometColor.copy(alpha = fade * 0.14f),
-        radius = if (compact) 4.6f * density else 6.5f * density,
-        center = head,
-    )
-    drawCircle(
-        color = Color.White.copy(alpha = fade * 0.84f),
-        radius = if (compact) 1.25f * density else 1.75f * density,
-        center = head,
-    )
 }
 
 private fun DrawScope.drawArtworkNebula(
