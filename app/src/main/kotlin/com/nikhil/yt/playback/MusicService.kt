@@ -644,7 +644,9 @@ class MusicService :
 
     val autoAddedMediaIds: MutableSet<String> = java.util.Collections.synchronizedSet(mutableSetOf())
 
-    private var consecutivePlaybackErr = 0
+    private val trackFailureGuard =
+        ConsecutiveTrackFailureGuard(MAX_CONSECUTIVE_TRACK_FAILURES)
+    private var trackFailureResetJob: Job? = null
 
     val maxSafeGainFactor = 1.414f // +3 dB
     @Volatile
@@ -816,7 +818,7 @@ class MusicService :
         setupAudioFocusRequest()
 
         mediaLibrarySessionCallback.apply {
-            toggleLike = ::toggleLike
+            toggleLike = { source -> this@MusicService.toggleLike(source) }
             toggleStartRadio = ::toggleStartRadio
             toggleLibrary = ::toggleLibrary
         }
@@ -1562,16 +1564,9 @@ class MusicService :
     }
 
     private fun skipOnError() {
-        /**
-         * Auto skip to the next media item on error.
-         *
-         * To prevent a "runaway diesel engine" scenario, force the user to take action after
-         * too many errors come up too quickly. Pause to show player "stopped" state
-         */
-        consecutivePlaybackErr += 2
         val nextWindowIndex = player.nextMediaItemIndex
 
-        if (consecutivePlaybackErr <= MAX_CONSECUTIVE_ERR && nextWindowIndex != C.INDEX_UNSET) {
+        if (nextWindowIndex != C.INDEX_UNSET) {
             player.seekTo(nextWindowIndex, C.TIME_UNSET)
             player.prepare()
             player.play()
@@ -1579,11 +1574,44 @@ class MusicService :
         }
 
         player.pause()
-        consecutivePlaybackErr = 0
     }
 
     private fun stopOnError() {
         player.pause()
+    }
+
+    private fun handleTerminalPlaybackError() {
+        trackFailureResetJob?.cancel()
+        trackFailureResetJob = null
+        val mediaId = player.currentMediaItem?.mediaId
+        val wasOpen = trackFailureGuard.isOpen
+        val mayAutoSkip = trackFailureGuard.recordFailure(mediaId)
+
+        if (!wasOpen && trackFailureGuard.isOpen) {
+            Timber.tag("MusicService").e(
+                "Playback failure circuit opened after %d tracks; queue traversal stopped at id=%s",
+                trackFailureGuard.failureCount,
+                mediaId,
+            )
+            Toast.makeText(
+                this,
+                getString(R.string.error_too_many_failed_tracks),
+                Toast.LENGTH_LONG,
+            ).show()
+        } else if (!mayAutoSkip) {
+            Timber.tag("MusicService").w(
+                "Playback failure circuit suppressed another skip id=%s count=%d open=%s",
+                mediaId,
+                trackFailureGuard.failureCount,
+                trackFailureGuard.isOpen,
+            )
+        }
+
+        if (mayAutoSkip && dataStore.get(AutoSkipNextOnErrorKey, false)) {
+            skipOnError()
+        } else {
+            stopOnError()
+        }
     }
 
     private fun updateNotification() {
@@ -2245,7 +2273,9 @@ class MusicService :
         player.clearMediaItems()
         abandonAudioFocus()
         closeAudioEffectSession()
-        consecutivePlaybackErr = 0
+        trackFailureResetJob?.cancel()
+        trackFailureResetJob = null
+        trackFailureGuard.reset()
     }
 
     fun playNext(items: List<MediaItem>) {
@@ -3439,7 +3469,12 @@ class MusicService :
         }
     }
 
-    fun toggleLike() {
+    fun toggleLike(source: String = "service") {
+         Timber.tag("MusicService").i(
+             "Toggle like requested id=%s source=%s",
+             currentSong.value?.song?.id,
+             source,
+         )
          database.query {
              currentSong.value?.let {
                  val song = it.song.toggleLike()
@@ -3910,6 +3945,12 @@ class MusicService :
     super.onPlaybackStateChanged(playbackState)
 
     val activeMediaId = player.currentMediaItem?.mediaId
+    if (playbackState != Player.STATE_READY) {
+        trackFailureResetJob?.cancel()
+        trackFailureResetJob = null
+    } else if (player.isPlaying && activeMediaId != null) {
+        scheduleTrackFailureGuardReset(activeMediaId)
+    }
     clearStreamRefreshGuards(activeMediaId)
     if (
         playbackState == Player.STATE_READY &&
@@ -4045,6 +4086,37 @@ class MusicService :
         }
     }
 }
+
+    override fun onIsPlayingChanged(isPlaying: Boolean) {
+        super.onIsPlayingChanged(isPlaying)
+        val activeMediaId = player.currentMediaItem?.mediaId
+        if (isPlaying && player.playbackState == Player.STATE_READY && activeMediaId != null) {
+            scheduleTrackFailureGuardReset(activeMediaId)
+        } else {
+            trackFailureResetJob?.cancel()
+            trackFailureResetJob = null
+        }
+    }
+
+    private fun scheduleTrackFailureGuardReset(mediaId: String) {
+        trackFailureResetJob?.cancel()
+        trackFailureResetJob =
+            scope.launch {
+                delay(HEALTHY_PLAYBACK_RESET_MS)
+                if (
+                    player.currentMediaItem?.mediaId == mediaId &&
+                    player.playbackState == Player.STATE_READY &&
+                    player.isPlaying
+                ) {
+                    trackFailureGuard.onHealthyPlayback()
+                    Timber.tag("MusicService").i(
+                        "Playback failure circuit reset after healthy playback id=%s",
+                        mediaId,
+                    )
+                }
+                trackFailureResetJob = null
+            }
+    }
 
 
     override fun onEvents(player: Player, events: Player.Events) {
@@ -4481,20 +4553,12 @@ class MusicService :
                     if (t is kotlinx.coroutines.CancellationException) throw t
                     Timber.tag("MusicService").e(t, "failed to recover from silence-skipper error")
                 }
-                if (dataStore.get(AutoSkipNextOnErrorKey, false)) {
-                    skipOnError()
-                } else {
-                    stopOnError()
-                }
+                handleTerminalPlaybackError()
             }
 
             return
         }
-        if (dataStore.get(AutoSkipNextOnErrorKey, false)) {
-            skipOnError()
-        } else {
-            stopOnError()
-        }
+        handleTerminalPlaybackError()
     }
 
     private suspend fun trimPlayerCacheToBytes(limitBytes: Long) {
@@ -6016,6 +6080,7 @@ class MusicService :
 
         private const val PREFETCH_AHEAD = 1
         private const val NETWORK_SETTLE_RETRY_MS = 1_500L
+        private const val HEALTHY_PLAYBACK_RESET_MS = 5_000L
 
         /* Do not re-resolve a URL that still has this much life left. */
         private const val PREFETCH_FRESHNESS_MS = 60_000L
@@ -6027,7 +6092,7 @@ class MusicService :
          */
         private const val AUDIO_RESOLVE_TIMEOUT_MS = 20_000L
         private const val VIDEO_RESOLVE_TIMEOUT_MS = 20_000L
-        const val MAX_CONSECUTIVE_ERR = 5
+        const val MAX_CONSECUTIVE_TRACK_FAILURES = 3
         const val MIN_PRESENCE_UPDATE_INTERVAL = 20_000L
     }
 }

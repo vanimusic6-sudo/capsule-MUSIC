@@ -73,10 +73,21 @@ object CapsuleInnerTubeXPlayer {
     private const val ENGINE_RESOLVE_TIMEOUT_MS = 18_000L
     private const val DEFAULT_STREAM_TTL_SECONDS = 5 * 60
     private const val MAX_SABR_ROLLOVERS = 1
+    private const val MAX_CIPHER_FAILURE_DETAIL_LENGTH = 180
 
     private val bundleMutex = Mutex()
     private val resolveMutex = Mutex()
     private val streamClientFailures = ConcurrentHashMap<String, FailedStreamClients>()
+
+    /**
+     * InnerTubeX deliberately converts QuickJsException into an empty cipher
+     * result, so it never reaches the Result failure returned to this class.
+     * Observe that library event and retire cipher profiles for the rest of
+     * this process session. Network changes must not clear a deterministic
+     * player-JS failure.
+     */
+    @Volatile
+    private var cipherSessionFailure: String? = null
 
     @Volatile
     private var currentBundle: ExtractionBundle? = null
@@ -150,11 +161,20 @@ object CapsuleInnerTubeXPlayer {
         streamPolicy: AudioStreamPolicy,
     ): Result<PlaybackData> =
         try {
+            val playbackClientOverrideId = profileOverride(streamPolicy)
+            cipherSessionFailure
+                ?.takeIf { playbackClientOverrideId != "VISIONOS" }
+                ?.let { failure ->
+                    throw IllegalStateException(
+                        "Cipher playback is disabled for this session after EJS failure: $failure",
+                    )
+                }
+
             val hints =
                 ContentHints(
                     isUploaded = playlistId == "MLPT" || playlistId?.contains("MLPT") == true,
                     wantVideo = false,
-                    playbackClientOverrideId = profileOverride(streamPolicy),
+                    playbackClientOverrideId = playbackClientOverrideId,
                 ).withStreamCapabilities(
                     allowHls = false,
                     allowSabr = false,
@@ -407,6 +427,18 @@ object CapsuleInnerTubeXPlayer {
                     "${it.key}=${it.value}"
                 }
             val message = event.message + details.takeUnless { event.details.isEmpty() }.orEmpty()
+            if (
+                event.tag == "EjsChallengeSolver" &&
+                "EJS solve failed" in message &&
+                "QuickJsException" in message
+            ) {
+                if (cipherSessionFailure == null) {
+                    cipherSessionFailure = message.take(MAX_CIPHER_FAILURE_DETAIL_LENGTH)
+                    Timber.tag(TAG).e(
+                        "Cipher session breaker opened after deterministic QuickJS failure",
+                    )
+                }
+            }
             when (event.level) {
                 InnerTubeLogLevel.DEBUG -> Timber.tag(event.tag).d(message)
                 InnerTubeLogLevel.INFO -> Timber.tag(event.tag).i(message)

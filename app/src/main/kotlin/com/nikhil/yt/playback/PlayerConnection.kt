@@ -129,7 +129,7 @@ class PlayerConnection(
     }
 
     fun toggleLike() {
-        service.toggleLike()
+        service.toggleLike("player_ui")
     }
 
     fun seekToNext() {

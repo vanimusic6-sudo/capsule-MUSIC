@@ -303,7 +303,7 @@ fun Queue(
                     backgroundColor = backgroundColor,
                     onBackgroundColor = onBackgroundColor,
                     onToggleLike = {
-                        playerConnection.service.toggleLike()
+                        playerConnection.service.toggleLike("queue_header")
                     },
                     onMenuClick = {
                         menuState.show {

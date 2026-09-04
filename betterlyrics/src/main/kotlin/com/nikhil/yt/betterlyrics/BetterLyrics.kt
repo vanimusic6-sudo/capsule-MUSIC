@@ -21,10 +21,12 @@ import io.ktor.client.statement.bodyAsText
 import io.ktor.http.isSuccess
 import io.ktor.serialization.kotlinx.json.json
 import kotlinx.serialization.json.Json
+import java.util.concurrent.ConcurrentHashMap
 
 object BetterLyrics {
     private const val API_BASE_URL = "https://lyrics-api.boidu.dev/"
     private const val GET_LYRICS_PATH = "/getLyrics"
+    private val apiKeyRequiredQueries = ConcurrentHashMap.newKeySet<String>()
     private val jsonFormat by lazy {
         Json {
             isLenient = true
@@ -67,6 +69,13 @@ object BetterLyrics {
         val cleanAlbum = album?.trim().orEmpty()
 
         if (cleanTitle.isBlank() || cleanArtist.isBlank()) return null
+        val queryKey =
+            listOf(cleanArtist.lowercase(), cleanTitle.lowercase(), cleanAlbum.lowercase(), durationSeconds)
+                .joinToString("\u0000")
+        if (queryKey in apiKeyRequiredQueries) {
+            logger?.invoke("Skipping query already rejected as API-key-only in this session")
+            return null
+        }
 
         logger?.invoke(
             buildString {
@@ -100,9 +109,15 @@ object BetterLyrics {
             logger?.invoke("Response Status: ${response.status}")
     
             val responseText = response.bodyAsText()
-            logger?.invoke("Raw Response: $responseText")
 
             if (!response.status.isSuccess()) {
+                if (
+                    response.status.value == 401 &&
+                    responseText.contains("API key required", ignoreCase = true)
+                ) {
+                    apiKeyRequiredQueries += queryKey
+                    logger?.invoke("Query requires a BetterLyrics API key; suppressing session retries")
+                }
                 logger?.invoke("Request failed with status: ${response.status}")
                 return null
             }

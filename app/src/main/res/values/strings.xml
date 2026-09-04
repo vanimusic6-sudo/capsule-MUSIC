@@ -217,6 +217,7 @@
     <string name="error_no_internet">No network connection</string>
     <string name="error_timeout">Timeout</string>
     <string name="error_unknown">Unknown error</string>
+    <string name="error_too_many_failed_tracks">Several tracks failed to load. Playback was stopped to protect your queue.</string>
     <string name="error_youtube_network_restricted_title">YouTube temporarily limited this connection</string>
     <string name="error_youtube_network_restricted_description">YouTube requested an anti-bot check for the current network address. This is usually temporary and doesn’t mean the app or account was damaged.</string>
     <string name="error_youtube_network_restricted_recommendation_title">What to do</string>
