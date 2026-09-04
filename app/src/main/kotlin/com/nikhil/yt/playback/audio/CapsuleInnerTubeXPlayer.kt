@@ -360,7 +360,9 @@ object CapsuleInnerTubeXPlayer {
         connectivityManager: ConnectivityManager,
     ): InnerTubeXAudioQuality =
         when (this) {
-            AudioQuality.HIGH -> InnerTubeXAudioQuality.HIGH
+            AudioQuality.HIGHEST,
+            AudioQuality.HIGH,
+            -> InnerTubeXAudioQuality.HIGH
             AudioQuality.LOW -> InnerTubeXAudioQuality.LOW
             AudioQuality.AUTO ->
                 if (connectivityManager.isActiveNetworkMetered) {
