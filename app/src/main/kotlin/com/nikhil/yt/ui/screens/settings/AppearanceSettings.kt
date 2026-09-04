@@ -702,7 +702,7 @@ fun AppearanceSettings(
         PreferenceGroupTitle(
             title =
                 stringResource(
-                    R.string.library,
+                    R.string.filter_library,
                 ),
         )
 
