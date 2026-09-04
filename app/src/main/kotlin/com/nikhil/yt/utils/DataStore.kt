@@ -20,6 +20,7 @@ import androidx.datastore.preferences.core.MutablePreferences
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.preferencesDataStore
+import com.nikhil.yt.constants.AudioOffload
 import com.nikhil.yt.extensions.toEnum
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -53,6 +54,11 @@ object PreferenceStore {
      * its first value, silently returning defaults makes user settings appear
      * to reset after a cold start. One bounded disk read here gives all later
      * synchronous reads a real snapshot; continuous updates stay asynchronous.
+     *
+     * Audio offload is also migrated here, before MusicService can be created.
+     * This removes the cold-start race where App wanted the efficient default
+     * but the service briefly interpreted a missing key as disabled. An
+     * explicit user value of false is never overwritten.
      */
     fun start(context: Context) {
         if (started) return
@@ -62,7 +68,16 @@ object PreferenceStore {
             val initialPreferences =
                 runBlocking(Dispatchers.IO) {
                     withTimeoutOrNull(INITIAL_LOAD_TIMEOUT_MS) {
-                        context.dataStore.data.first()
+                        var snapshot = context.dataStore.data.first()
+                        if (snapshot[AudioOffload] == null) {
+                            context.dataStore.edit { prefs ->
+                                if (prefs[AudioOffload] == null) {
+                                    prefs[AudioOffload] = true
+                                }
+                            }
+                            snapshot = context.dataStore.data.first()
+                        }
+                        snapshot
                     }
                 }
 
