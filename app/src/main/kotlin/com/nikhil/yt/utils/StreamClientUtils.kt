@@ -6,6 +6,7 @@
 
 package com.nikhil.yt.utils
 
+import com.metrolist.innertubex.models.YouTubeClient as InnerTubeXClient
 import com.nikhil.yt.innertube.models.YouTubeClient
 
 object StreamClientUtils {
@@ -13,18 +14,24 @@ object StreamClientUtils {
         val c = clientParam.trim()
 
         return when {
-            c.equals("WEB_REMIX", ignoreCase = true) ||
-                c.equals("WEB", ignoreCase = true) ||
-                c.equals("WEB_CREATOR", ignoreCase = true) ||
-                c.equals("WEB_EMBEDDED_PLAYER", ignoreCase = true) ->
+            c.equals("WEB_REMIX", ignoreCase = true) ->
+                InnerTubeXClient.WEB_REMIX.userAgent
+
+            c.equals("WEB_EMBEDDED_PLAYER", ignoreCase = true) ->
+                InnerTubeXClient.WEB_EMBEDDED_PLAYER.userAgent
+
+            c.equals("WEB", ignoreCase = true) ||
+                c.equals("WEB_CREATOR", ignoreCase = true) ->
                 YouTubeClient.USER_AGENT_WEB
 
             c.equals("MWEB", ignoreCase = true) ->
                 YouTubeClient.MWEB.userAgent
 
-            c.equals("TVHTML5", ignoreCase = true) ||
-                c.equals("TVHTML5_SIMPLY_EMBEDDED_PLAYER", ignoreCase = true) ||
+            c.equals("TVHTML5_SIMPLY_EMBEDDED_PLAYER", ignoreCase = true) ||
                 c.equals("TVHTML5_SIMPLY", ignoreCase = true) ->
+                InnerTubeXClient.TVHTML5_SIMPLY.userAgent
+
+            c.equals("TVHTML5", ignoreCase = true) ->
                 YouTubeClient.TVHTML5.userAgent
 
             c.equals("IOS_MUSIC", ignoreCase = true) ->
@@ -52,13 +59,9 @@ object StreamClientUtils {
                 YouTubeClient.MOBILE.userAgent
 
             c.startsWith("VISIONOS", ignoreCase = true) ->
-                YouTubeClient.VISIONOS.userAgent
+                InnerTubeXClient.VISIONOS.userAgent
 
-            /*
-             * Unknown `c` must not silently masquerade as Android VR.
-             * visionOS is Capsule's current conservative anonymous default.
-             */
-            else -> YouTubeClient.VISIONOS.userAgent
+            else -> InnerTubeXClient.VISIONOS.userAgent
         }
     }
 
@@ -86,14 +89,18 @@ object StreamClientUtils {
                 )
 
             c.equals("WEB_EMBEDDED_PLAYER", ignoreCase = true) ->
+                /* InnerTubeX uses normal youtube.com media headers here. */
                 OriginReferer(
                     YouTubeClient.ORIGIN_YOUTUBE,
-                    YouTubeClient.THIRD_PARTY_EMBED_URL,
+                    "${YouTubeClient.ORIGIN_YOUTUBE}/",
                 )
 
-            c.equals("TVHTML5", ignoreCase = true) ||
-                c.equals("TVHTML5_SIMPLY_EMBEDDED_PLAYER", ignoreCase = true) ||
+            c.equals("TVHTML5_SIMPLY_EMBEDDED_PLAYER", ignoreCase = true) ||
                 c.equals("TVHTML5_SIMPLY", ignoreCase = true) ->
+                /* Current InnerTubeX intentionally sends no Origin/Referer. */
+                OriginReferer(null, null)
+
+            c.equals("TVHTML5", ignoreCase = true) ->
                 OriginReferer(
                     YouTubeClient.ORIGIN_YOUTUBE,
                     YouTubeClient.REFERER_YOUTUBE_TV,
