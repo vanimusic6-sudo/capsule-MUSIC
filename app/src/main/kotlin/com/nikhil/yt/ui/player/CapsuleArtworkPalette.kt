@@ -30,12 +30,13 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import java.util.concurrent.ConcurrentHashMap
 
 private const val ARTWORK_PALETTE_TRANSITION_MS = 1_400
 
 private object CapsuleArtworkPaletteCache {
     private const val MAX_ENTRIES = 32
-    private val extractionMutex = Mutex()
+    private val extractionMutexes = ConcurrentHashMap<String, Mutex>()
     private val values =
         object : LinkedHashMap<String, List<Color>>(
             MAX_ENTRIES,
@@ -64,8 +65,13 @@ private object CapsuleArtworkPaletteCache {
     ): List<Color>? {
         get(key)?.let { return it }
 
-        return extractionMutex.withLock {
-            get(key) ?: extract()?.also { put(key, it) }
+        val extractionMutex = extractionMutexes.getOrPut(key) { Mutex() }
+        return try {
+            extractionMutex.withLock {
+                get(key) ?: extract()?.also { put(key, it) }
+            }
+        } finally {
+            extractionMutexes.remove(key, extractionMutex)
         }
     }
 }
@@ -79,6 +85,22 @@ private object CapsuleArtworkPaletteCache {
 internal fun rememberCapsuleArtworkColors(
     mediaMetadata: MediaMetadata?,
     enabled: Boolean = true,
+): List<Color> =
+    rememberArtworkGradientColors(
+        cacheKey =
+            mediaMetadata?.let {
+                "track:${it.id}|${it.thumbnailUrl.orEmpty()}"
+            },
+        thumbnailUrl = mediaMetadata?.thumbnailUrl,
+        enabled = enabled,
+    )
+
+/** Shared artwork palette for non-player surfaces such as playlist cards. */
+@Composable
+internal fun rememberArtworkGradientColors(
+    cacheKey: String?,
+    thumbnailUrl: String?,
+    enabled: Boolean = true,
 ): List<Color> {
     val context = LocalContext.current
     val primary = MaterialTheme.colorScheme.primary
@@ -88,10 +110,6 @@ internal fun rememberCapsuleArtworkColors(
     val fallback =
         remember(primary, secondary, tertiary) {
             listOf(primary, secondary, tertiary)
-        }
-    val cacheKey =
-        mediaMetadata?.let {
-            "${it.id}|${it.thumbnailUrl.orEmpty()}"
         }
     /*
      * Keep the last visible palette while the next cover is being decoded.
@@ -103,6 +121,7 @@ internal fun rememberCapsuleArtworkColors(
 
     LaunchedEffect(
         cacheKey,
+        thumbnailUrl,
         enabled,
         primary,
         secondary,
@@ -126,7 +145,6 @@ internal fun rememberCapsuleArtworkColors(
             return@LaunchedEffect
         }
 
-        val thumbnailUrl = mediaMetadata?.thumbnailUrl
         if (thumbnailUrl.isNullOrBlank()) {
             // Metadata can arrive before its thumbnail. Retain the previous
             // palette instead of starting an old -> theme -> artwork flash.

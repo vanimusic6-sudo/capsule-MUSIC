@@ -343,8 +343,8 @@
     <string name="contrast">Контраст</string>
     <string name="brightness">Яркость</string>
     <string name="custom_value">Пользовательское</string>
-    <string name="new_library_design">Новый дизайн библиотеки</string>
-    <string name="new_library_design_description">Включить новый дизайн библиотеки (может быть нестабильным)</string>
+    <string name="new_library_design">Обновлённая библиотека</string>
+    <string name="new_library_design_description">Просторные карточки плейлистов с градиентами на основе обложек</string>
     <string name="velune_canvas">Velune Canvas</string>
     <string name="velune_canvas_desc">Анимировать обложку альбома при воспроизведении (С помощью BetterLyrics)</string>
     <string name="show_button1_description">Включить видимость кнопки 1 в Discord Rich Presence</string>

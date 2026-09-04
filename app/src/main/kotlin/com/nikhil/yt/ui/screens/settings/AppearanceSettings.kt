@@ -158,7 +158,7 @@ fun AppearanceSettings(
             key =
                 com.nikhil.yt.constants
                     .UseNewLibraryDesignKey,
-            defaultValue = false,
+            defaultValue = true,
         )
 
     val (
@@ -695,14 +695,14 @@ fun AppearanceSettings(
 
         /*
          * =========================
-         * Player
+         * Library
          * =========================
          */
 
         PreferenceGroupTitle(
             title =
                 stringResource(
-                    R.string.player,
+                    R.string.library,
                 ),
         )
 
@@ -730,6 +730,19 @@ fun AppearanceSettings(
                 useNewLibraryDesign,
             onCheckedChange =
                 onUseNewLibraryDesignChange,
+        )
+
+        /*
+         * =========================
+         * Player
+         * =========================
+         */
+
+        PreferenceGroupTitle(
+            title =
+                stringResource(
+                    R.string.player,
+                ),
         )
 
         EnumListPreference(

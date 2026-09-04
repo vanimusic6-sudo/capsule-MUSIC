@@ -63,6 +63,7 @@ import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
@@ -214,28 +215,24 @@ fun CapsuleMiniPlayer(
             )
         }
 
-    val autoSwipeThreshold =
-        remember(swipeSensitivity) {
-            (
-                600 /
-                    (
-                        1f +
-                            kotlin.math.exp(
-                                -(
-                                    -11.44748 *
-                                        swipeSensitivity +
-                                        9.04945
-                                ),
-                            )
-                        )
-            ).roundToInt()
+    val density = LocalDensity.current
+    val normalizedSwipeSensitivity = swipeSensitivity.coerceIn(0f, 1f)
+    val swipeDistanceThresholdPx =
+        remember(density, normalizedSwipeSensitivity) {
+            with(density) {
+                (84.dp - 36.dp * normalizedSwipeSensitivity).toPx()
+            }
         }
-
-    val canSkipPrevious =
-        playerConnection.player.previousMediaItemIndex != -1
-
-    val canSkipNext =
-        playerConnection.player.nextMediaItemIndex != -1
+    val fastSwipeMinDistancePx =
+        remember(density) {
+            with(density) { 24.dp.toPx() }
+        }
+    val swipeVelocityThresholdPxPerMs =
+        remember(density, normalizedSwipeSensitivity) {
+            with(density) {
+                (0.55.dp - 0.30.dp * normalizedSwipeSensitivity).toPx()
+            }
+        }
 
     fun restartPresence() {
         if (DiscordPresenceManager.isRunning()) {
@@ -305,9 +302,10 @@ fun CapsuleMiniPlayer(
                 .let { baseModifier ->
                     if (swipeThumbnail) {
                         baseModifier.pointerInput(
-                            swipeSensitivity,
-                            canSkipPrevious,
-                            canSkipNext,
+                            mediaMetadata?.id,
+                            swipeDistanceThresholdPx,
+                            swipeVelocityThresholdPxPerMs,
+                            layoutDirection,
                         ) {
                             var dragTargetOffset = offsetXAnimatable.value
                             var motionJob: Job? = null
@@ -339,9 +337,10 @@ fun CapsuleMiniPlayer(
                                         }
                                 },
                                 onHorizontalDrag = {
-                                        _,
+                                        change,
                                         dragAmount,
                                     ->
+                                    change.consume()
                                     val adjustedDragAmount =
                                         if (
                                             layoutDirection ==
@@ -357,6 +356,11 @@ fun CapsuleMiniPlayer(
 
                                     val tryingToSwipeLeft =
                                         adjustedDragAmount < 0f
+
+                                    val canSkipPrevious =
+                                        playerConnection.player.previousMediaItemIndex != -1
+                                    val canSkipNext =
+                                        playerConnection.player.nextMediaItemIndex != -1
 
                                     val allowLeft =
                                         tryingToSwipeLeft &&
@@ -417,32 +421,27 @@ fun CapsuleMiniPlayer(
 
                                     val currentOffset = dragTargetOffset
 
-                                    val minDistanceThreshold =
-                                        50f
-
-                                    val velocityThreshold =
-                                        (
-                                            swipeSensitivity *
-                                                -8.25f
-                                        ) + 8.5f
-
                                     val shouldChangeSong =
                                         (
                                             kotlin.math.abs(
                                                 currentOffset,
                                             ) >
-                                                minDistanceThreshold &&
+                                                fastSwipeMinDistancePx &&
                                                 velocity >
-                                                velocityThreshold
+                                                swipeVelocityThresholdPxPerMs
                                         ) ||
                                             (
                                                 kotlin.math.abs(
                                                     currentOffset,
                                                 ) >
-                                                    autoSwipeThreshold
+                                                    swipeDistanceThresholdPx
                                             )
 
                                     if (shouldChangeSong) {
+                                        val canSkipPrevious =
+                                            playerConnection.player.previousMediaItemIndex != -1
+                                        val canSkipNext =
+                                            playerConnection.player.nextMediaItemIndex != -1
                                         if (
                                             currentOffset > 0f &&
                                             canSkipPrevious
