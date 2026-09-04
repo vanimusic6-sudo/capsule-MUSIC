@@ -1,3 +1,5 @@
+@file:Suppress("UnsafeOptInUsageError")
+
 /*
  * Velune - by Nikhil
  * Nikhil
@@ -10,6 +12,36 @@ import androidx.media3.common.C
 import androidx.media3.common.TrackSelectionParameters
 import androidx.media3.exoplayer.ExoPlayer
 import timber.log.Timber
+import java.util.WeakHashMap
+
+private val capsuleOffloadListeners =
+    WeakHashMap<ExoPlayer, ExoPlayer.AudioOffloadListener>()
+
+private fun ExoPlayer.ensureCapsuleOffloadDiagnostics() {
+    synchronized(capsuleOffloadListeners) {
+        if (capsuleOffloadListeners.containsKey(this)) return
+
+        val listener =
+            object : ExoPlayer.AudioOffloadListener {
+                override fun onOffloadedPlayback(isOffloadedPlayback: Boolean) {
+                    Timber.tag("AudioOffload").i(
+                        "offloadedPlayback=%s",
+                        isOffloadedPlayback,
+                    )
+                }
+
+                override fun onSleepingForOffloadChanged(isSleepingForOffload: Boolean) {
+                    Timber.tag("AudioOffload").i(
+                        "sleepingForOffload=%s",
+                        isSleepingForOffload,
+                    )
+                }
+            }
+
+        capsuleOffloadListeners[this] = listener
+        addAudioOffloadListener(listener)
+    }
+}
 
 /**
  * Applies Capsule's low-power audio playback policy to an ExoPlayer.
@@ -28,6 +60,7 @@ import timber.log.Timber
  */
 fun ExoPlayer.setOffloadEnabled(enabled: Boolean) {
     setWakeMode(C.WAKE_MODE_LOCAL)
+    ensureCapsuleOffloadDiagnostics()
 
     val mode =
         if (enabled) {
