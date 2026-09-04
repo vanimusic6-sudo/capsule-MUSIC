@@ -17,8 +17,11 @@ import com.nikhil.yt.constants.PlayerStreamClient
 import com.nikhil.yt.innertube.CapsuleAnonymousSession
 import com.nikhil.yt.innertube.models.YouTubeClient
 import com.nikhil.yt.innertube.models.response.PlayerResponse
+import java.util.concurrent.ConcurrentHashMap
 
 object CapsuleAudioEngine {
+    private val lastResolvedClientByVideoId = ConcurrentHashMap<String, String>()
+
     data class PlaybackData(
         val audioConfig: PlayerResponse.PlayerConfig.AudioConfig?,
         val videoDetails: PlayerResponse.VideoDetails?,
@@ -63,6 +66,12 @@ object CapsuleAudioEngine {
             )
             .onFailure(CapsulePlaybackSafety::observeFailure)
             .map { resolved ->
+                resolved.streamClient
+                    .substringBefore('@')
+                    .trim()
+                    .takeIf { it.isNotBlank() }
+                    ?.let { lastResolvedClientByVideoId[videoId] = it }
+
                 PlaybackData(
                     audioConfig = resolved.audioConfig,
                     videoDetails = resolved.videoDetails,
@@ -94,15 +103,18 @@ object CapsuleAudioEngine {
     fun invalidateCachedStreamUrls(videoId: String) = Unit
 
     fun clearTrackClientFailures(videoId: String) {
+        lastResolvedClientByVideoId.remove(videoId)
         CapsuleInnerTubeXPlayer.clearTrackClientFailures(videoId)
     }
 
     fun clearPlaybackSafetyState() {
+        lastResolvedClientByVideoId.clear()
         CapsuleInnerTubeXPlayer.clearPlaybackState()
         CapsulePlaybackSafety.clear()
     }
 
     fun onNetworkChanged() {
+        lastResolvedClientByVideoId.clear()
         CapsuleInnerTubeXPlayer.onNetworkChanged()
         CapsulePlaybackSafety.clear()
     }
@@ -110,7 +122,8 @@ object CapsuleAudioEngine {
     /**
      * A stream/source rejection is local to one song + extraction client.
      * HTTP 429 additionally opens the global cooldown instead of rotating more
-     * identities.
+     * identities. If Media3 cannot recover a client from the signed URL, use
+     * the exact client remembered from the successful InnerTubeX extraction.
      */
     fun markStreamClientFailed(
         videoId: String,
@@ -118,10 +131,18 @@ object CapsuleAudioEngine {
         httpStatusCode: Int?,
     ) {
         CapsulePlaybackSafety.markHttpStatusFailure(httpStatusCode)
+        val resolvedClient =
+            clientKey
+                ?.substringBefore('@')
+                ?.trim()
+                ?.takeIf { it.isNotBlank() }
+                ?: lastResolvedClientByVideoId[videoId]
+
         CapsuleInnerTubeXPlayer.markStreamClientFailed(
             videoId = videoId,
-            clientName = clientKey,
+            clientName = resolvedClient,
         )
+        lastResolvedClientByVideoId.remove(videoId)
     }
 
     /**
@@ -138,6 +159,7 @@ object CapsuleAudioEngine {
             videoId = videoId,
             clientName = client.name,
         )
+        lastResolvedClientByVideoId.remove(videoId)
     }
 
     fun markBotDetectionFailure(reason: String? = null) {
