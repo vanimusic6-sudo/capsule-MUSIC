@@ -1,21 +1,12 @@
 /*
  * Capsule MUSIC
  *
- * Capsule Audio Engine — Phase 1 façade.
- *
- * Purpose:
- * - give MusicService one stable AUDIO entry point;
- * - keep the currently working YTPlayerUtils implementation unchanged;
- * - make it possible to replace the resolver internals later without making
- *   MusicService depend on those details;
- * - preserve the existing safety behaviour for 403 / 429 / bot-checks.
- *
- * This phase deliberately does NOT add client rotation, token spoofing,
- * CAPTCHA bypasses, or runtime code updates.
+ * Stable AUDIO boundary. Playback extraction is now isolated from Capsule's
+ * browse/search InnerTube implementation and uses the maintained InnerTubeX
+ * stack for modern player/cipher/client handling.
  *
  * GPL-3.0
  */
-
 package com.nikhil.yt.playback.audio
 
 import android.net.ConnectivityManager
@@ -26,21 +17,7 @@ import com.nikhil.yt.constants.PlayerStreamClient
 import com.nikhil.yt.innertube.models.response.PlayerResponse
 import com.nikhil.yt.utils.YTPlayerUtils
 
-/**
- * Stable AUDIO boundary for the rest of the application.
- *
- * Phase 1 is intentionally a thin adapter over the already-working
- * [YTPlayerUtils]. In later phases the implementation can move behind this
- * object without changing MusicService again.
- */
 object CapsuleAudioEngine {
-
-    /**
-     * Engine-owned result type.
-     *
-     * MusicService currently needs these exact fields, so keeping them here
-     * removes the need for the service to depend on YTPlayerUtils.PlaybackData.
-     */
     data class PlaybackData(
         val audioConfig: PlayerResponse.PlayerConfig.AudioConfig?,
         val videoDetails: PlayerResponse.VideoDetails?,
@@ -48,6 +25,10 @@ object CapsuleAudioEngine {
         val format: PlayerResponse.StreamingData.Format,
         val streamUrl: String,
         val streamExpiresInSeconds: Int,
+        /** Actual extraction client/profile family used for this song. */
+        val streamClient: String? = null,
+        /** Required GVS request headers returned by InnerTubeX. */
+        val streamHeaders: Map<String, String> = emptyMap(),
     )
 
     suspend fun playerResponseForPlayback(
@@ -55,23 +36,51 @@ object CapsuleAudioEngine {
         playlistId: String? = null,
         audioQuality: AudioQuality,
         connectivityManager: ConnectivityManager,
-        preferredStreamClient: PlayerStreamClient =
-            PlayerStreamClient.ANDROID_VR,
-        streamPolicy: AudioStreamPolicy =
-            AudioStreamPolicy.AUTO_SAFE,
+        preferredStreamClient: PlayerStreamClient = PlayerStreamClient.ANDROID_VR,
+        streamPolicy: AudioStreamPolicy = AudioStreamPolicy.AUTO_SAFE,
         networkMetered: Boolean? = null,
         avoidCodecs: Set<String> = emptySet(),
-    ): Result<PlaybackData> =
-        YTPlayerUtils
+    ): Result<PlaybackData> {
+        /*
+         * MWEB/iOS compatibility switches are kept on the old resolver for now
+         * because Capsule exposes them as explicit legacy choices. Normal
+         * playback, Web Remix, Embedded and TV are all handled by InnerTubeX.
+         */
+        if (
+            streamPolicy == AudioStreamPolicy.MWEB ||
+            streamPolicy == AudioStreamPolicy.IOS ||
+            streamPolicy == AudioStreamPolicy.IOS_MUSIC
+        ) {
+            return YTPlayerUtils
+                .playerResponseForPlayback(
+                    videoId = videoId,
+                    playlistId = playlistId,
+                    audioQuality = audioQuality,
+                    connectivityManager = connectivityManager,
+                    preferredStreamClient = preferredStreamClient,
+                    streamPolicy = streamPolicy,
+                    networkMetered = networkMetered,
+                    avoidCodecs = avoidCodecs,
+                )
+                .map { resolved ->
+                    PlaybackData(
+                        audioConfig = resolved.audioConfig,
+                        videoDetails = resolved.videoDetails,
+                        playbackTracking = resolved.playbackTracking,
+                        format = resolved.format,
+                        streamUrl = resolved.streamUrl,
+                        streamExpiresInSeconds = resolved.streamExpiresInSeconds,
+                    )
+                }
+        }
+
+        return CapsuleInnerTubeXPlayer
             .playerResponseForPlayback(
                 videoId = videoId,
                 playlistId = playlistId,
                 audioQuality = audioQuality,
                 connectivityManager = connectivityManager,
-                preferredStreamClient = preferredStreamClient,
                 streamPolicy = streamPolicy,
-                networkMetered = networkMetered,
-                avoidCodecs = avoidCodecs,
             )
             .map { resolved ->
                 PlaybackData(
@@ -80,10 +89,12 @@ object CapsuleAudioEngine {
                     playbackTracking = resolved.playbackTracking,
                     format = resolved.format,
                     streamUrl = resolved.streamUrl,
-                    streamExpiresInSeconds =
-                        resolved.streamExpiresInSeconds,
+                    streamExpiresInSeconds = resolved.streamExpiresInSeconds,
+                    streamClient = resolved.streamClient,
+                    streamHeaders = resolved.streamHeaders,
                 )
             }
+    }
 
     suspend fun playerResponseForMetadata(
         videoId: String,
@@ -94,43 +105,38 @@ object CapsuleAudioEngine {
             playlistId = playlistId,
         )
 
-    /**
-     * A stream URL may be stale while the client itself remains valid.
-     * This keeps the existing per-track failure state intact.
-     */
     fun invalidateCachedStreamUrls(videoId: String) {
         YTPlayerUtils.invalidateCachedStreamUrls(videoId)
     }
 
-    /**
-     * Explicit/manual retry hook for one track.
-     */
     fun clearTrackClientFailures(videoId: String) {
+        CapsuleInnerTubeXPlayer.clearTrackClientFailures(videoId)
         YTPlayerUtils.clearTrackClientFailures(videoId)
     }
 
-    /**
-     * Full explicit reset. Do not use this to work around a live YouTube block.
-     */
     fun clearPlaybackSafetyState() {
+        CapsuleInnerTubeXPlayer.clearPlaybackState()
         YTPlayerUtils.clearPlaybackSafetyState()
     }
 
-    /** Reset URL/session state only after Android changes the default route. */
     fun onNetworkChanged() {
+        CapsuleInnerTubeXPlayer.onNetworkChanged()
         YTPlayerUtils.onNetworkChanged()
     }
 
     /**
-     * Preserve current semantics:
-     * - 403 -> exact track/client cooldown
-     * - 429 -> global AUDIO breaker
+     * A stream/source rejection is local to one song + extraction client.
+     * 429/bot protection remains global through the existing safety breaker.
      */
     fun markStreamClientFailed(
         videoId: String,
         clientKey: String?,
         httpStatusCode: Int?,
     ) {
+        CapsuleInnerTubeXPlayer.markStreamClientFailed(
+            videoId = videoId,
+            clientName = clientKey,
+        )
         YTPlayerUtils.markStreamClientFailed(
             videoId = videoId,
             clientKey = clientKey,
@@ -154,8 +160,6 @@ object CapsuleAudioEngine {
         YTPlayerUtils.markBotDetectionFailure(reason)
     }
 
-    fun isBotDetectionException(
-        error: PlaybackException,
-    ): Boolean =
+    fun isBotDetectionException(error: PlaybackException): Boolean =
         YTPlayerUtils.isBotDetectionException(error)
 }
