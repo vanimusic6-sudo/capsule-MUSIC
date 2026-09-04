@@ -30,7 +30,7 @@ on:
       - ".github/workflows/youtube-core-validation.yml"
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: youtube-core-validation-${{ github.ref }}
@@ -45,6 +45,49 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v6
+        with:
+          ref: ${{ github.head_ref || github.ref_name }}
+          fetch-depth: 0
+
+      - name: Apply pending final audit cleanup
+        if: github.event_name == 'pull_request' && github.head_ref == 'cleanup/capsule-player-only'
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          legacy="app/src/main/kotlin/com/nikhil/yt/utils/YTPlayerUtils.kt"
+          if [[ ! -f "$legacy" ]]; then
+            echo "Final audit cleanup already applied."
+            exit 0
+          fi
+
+          python3 <<'PY'
+          from pathlib import Path
+
+          workflow = Path('.github/workflows/one-shot-audit-cleanup.yml').read_text(encoding='utf-8')
+          marker = "          python3 <<'PY'\n"
+          start = workflow.index(marker) + len(marker)
+          end = workflow.index("          PY\n", start)
+          block = workflow[start:end]
+          script = "\n".join(
+              line[10:] if line.startswith("          ") else line
+              for line in block.splitlines()
+          )
+          exec(compile(script, 'final_audit_cleanup.py', 'exec'))
+          PY
+
+          git diff --check
+          git config user.name "vani-s"
+          git config user.email "vanimusic6@gmail.com"
+          git add -A
+
+          if git diff --cached --quiet; then
+            echo "Cleanup produced no changes."
+            exit 0
+          fi
+
+          git commit -m "Finish Capsule audit cleanup"
+          git push origin HEAD:cleanup/capsule-player-only
 
       - name: Set up JDK 21
         uses: actions/setup-java@v5
