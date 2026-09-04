@@ -31,18 +31,50 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeoutOrNull
+import timber.log.Timber
 import kotlin.properties.ReadOnlyProperty
 
 val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "settings")
+
 object PreferenceStore {
+    private const val INITIAL_LOAD_TIMEOUT_MS = 1500L
+
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val _prefs = MutableStateFlow<Preferences?>(null)
-    @Volatile private var started = false
 
+    @Volatile
+    private var started = false
+
+    /**
+     * Prime the in-memory snapshot before exposing the store as started.
+     *
+     * A large part of the app still has synchronous preference delegates. If
+     * those are read on the main thread before DataStore's collector produces
+     * its first value, silently returning defaults makes user settings appear
+     * to reset after a cold start. One bounded disk read here gives all later
+     * synchronous reads a real snapshot; continuous updates stay asynchronous.
+     */
     fun start(context: Context) {
         if (started) return
         synchronized(this) {
             if (started) return
+
+            val initialPreferences =
+                runBlocking(Dispatchers.IO) {
+                    withTimeoutOrNull(INITIAL_LOAD_TIMEOUT_MS) {
+                        context.dataStore.data.first()
+                    }
+                }
+
+            if (initialPreferences != null) {
+                _prefs.value = initialPreferences
+            } else {
+                Timber.tag("PreferenceStore").w(
+                    "Initial DataStore snapshot was not available within %d ms",
+                    INITIAL_LOAD_TIMEOUT_MS,
+                )
+            }
+
             started = true
             scope.launch {
                 context.dataStore.data.collect { preferences ->
