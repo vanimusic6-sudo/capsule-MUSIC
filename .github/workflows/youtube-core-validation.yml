@@ -73,6 +73,23 @@ jobs:
               line[10:] if line.startswith("          ") else line
               for line in block.splitlines()
           )
+
+          # CapsuleAudioEngine is small enough to migrate directly. Once it no
+          # longer references legacy YTPlayerUtils, resume the one-shot script
+          # at the MusicService portion instead of trying to patch it twice.
+          engine = Path(
+              'app/src/main/kotlin/com/nikhil/yt/playback/audio/CapsuleAudioEngine.kt'
+          ).read_text(encoding='utf-8')
+          if 'YTPlayerUtils' not in engine:
+              section_start = script.index(
+                  '# --- M-2: CapsuleAudioEngine must have no dependency on YTPlayerUtils. ---'
+              )
+              section_end = script.index(
+                  '# --- M-2: stop making a second legacy player request for missing loudness. ---',
+                  section_start,
+              )
+              script = script[:section_start] + script[section_end:]
+
           exec(compile(script, 'final_audit_cleanup.py', 'exec'))
           PY
 
