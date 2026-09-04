@@ -42,11 +42,13 @@ import io.ktor.client.plugins.HttpTimeout
 import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.serialization.kotlinx.json.json
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withTimeout
 import kotlinx.serialization.json.Json
 import timber.log.Timber
+import java.net.SocketTimeoutException
 import java.util.concurrent.ConcurrentHashMap
 import kotlin.time.Clock
 
@@ -65,7 +67,9 @@ import kotlin.time.Clock
 object CapsuleInnerTubeXPlayer {
     private const val TAG = "CapsuleInnerTubeX"
     private const val STREAM_CLIENT_FAILURE_TTL_MS = 5 * 60 * 1000L
-    private const val RESOLVE_TIMEOUT_MS = 15_000L
+    /* One network request gets 8 s; the complete InnerTubeX client chain gets 18 s. */
+    private const val PER_REQUEST_TIMEOUT_MS = 8_000L
+    private const val ENGINE_RESOLVE_TIMEOUT_MS = 18_000L
     private const val DEFAULT_STREAM_TTL_SECONDS = 5 * 60
     private const val MAX_SABR_ROLLOVERS = 1
 
@@ -162,7 +166,7 @@ object CapsuleInnerTubeXPlayer {
 
             val resolvedQuality = audioQuality.toInnerTubeX(connectivityManager)
             val stream =
-                withTimeout(RESOLVE_TIMEOUT_MS) {
+                withTimeout(ENGINE_RESOLVE_TIMEOUT_MS) {
                     extractDirectStream(
                         videoId = videoId,
                         hints = hints,
@@ -171,6 +175,18 @@ object CapsuleInnerTubeXPlayer {
                 }
 
             Result.success(stream.toPlaybackData())
+        } catch (timeout: TimeoutCancellationException) {
+            Timber.tag(TAG).w(
+                timeout,
+                "engine resolve timeout id=%s budgetMs=%d",
+                videoId,
+                ENGINE_RESOLVE_TIMEOUT_MS,
+            )
+            Result.failure(
+                SocketTimeoutException(
+                    "InnerTubeX audio resolve exceeded ${ENGINE_RESOLVE_TIMEOUT_MS} ms",
+                ).apply { initCause(timeout) },
+            )
         } catch (error: CancellationException) {
             throw error
         } catch (error: StreamResolveException) {
@@ -365,9 +381,9 @@ object CapsuleInnerTubeXPlayer {
                 )
             }
             install(HttpTimeout) {
-                requestTimeoutMillis = 12_000
-                connectTimeoutMillis = 8_000
-                socketTimeoutMillis = 12_000
+                requestTimeoutMillis = PER_REQUEST_TIMEOUT_MS
+                connectTimeoutMillis = PER_REQUEST_TIMEOUT_MS
+                socketTimeoutMillis = PER_REQUEST_TIMEOUT_MS
             }
             YouTube.proxy?.let { configuredProxy ->
                 engine {

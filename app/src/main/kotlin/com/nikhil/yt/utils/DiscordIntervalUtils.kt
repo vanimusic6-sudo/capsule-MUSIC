@@ -15,7 +15,7 @@ import com.nikhil.yt.constants.DiscordPresenceIntervalValueKey
 import com.nikhil.yt.utils.dataStore
 
 fun getPresenceIntervalMillis(context: Context): Long {
-    val intervalPreset = context.dataStore[stringPreferencesKey("discordPresenceIntervalPreset")] ?: "20s"
+    val intervalPreset = context.dataStore[stringPreferencesKey("discordPresenceIntervalPreset")] ?: "1m"
     val customValue = context.dataStore[DiscordPresenceIntervalValueKey] ?: 30
     val customUnit = context.dataStore[DiscordPresenceIntervalUnitKey] ?: "S"
 
@@ -34,7 +34,6 @@ fun getPresenceIntervalMillis(context: Context): Long {
             }
             safeValue * multiplier
         }
-        else -> 20_000L
+        else -> 60_000L
     }
 }
-

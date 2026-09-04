@@ -1327,7 +1327,8 @@ fun LocalThumbnail(
                 if (isPlaying) {
                     PlayingIndicator(
                         color = Color.White,
-                        modifier = Modifier.height(24.dp)
+                        modifier = Modifier.height(24.dp),
+                        isPlaying = isPlaying,
                     )
                 } else {
                     Icon(

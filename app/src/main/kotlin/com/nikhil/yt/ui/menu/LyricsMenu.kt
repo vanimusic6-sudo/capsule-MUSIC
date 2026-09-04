@@ -56,6 +56,7 @@ import me.bush.translator.Translator
 import me.bush.translator.Language
 import com.nikhil.yt.utils.TranslatorLanguages
 import com.nikhil.yt.utils.TranslatorLang
+import com.nikhil.yt.utils.reportRecoverableException
 import androidx.compose.runtime.produceState
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -174,7 +175,8 @@ fun LyricsMenu(
                                     )
                                 },
                             )
-                        } catch (_: Exception) {
+                        } catch (error: Exception) {
+                            reportRecoverableException("LyricsMenu", "open web lyrics search", error)
                         }
                     },
                 ) {
@@ -431,7 +433,10 @@ fun LyricsMenu(
                                                 val batchIndices = mutableListOf<Int>()
                                                 while (cursor < translatableIndices.size && batchIndices.size < maxItemsPerBatch) {
                                                     val idx = translatableIndices[cursor]
-                                                    val pieceLen = contents[idx]!!.length
+                                                    val piece = requireNotNull(contents[idx]) {
+                                                        "Translatable lyric at index $idx is missing"
+                                                    }
+                                                    val pieceLen = piece.length
                                                     if (batchIndices.isEmpty() || currentChars + pieceLen + sep.length <= maxCharsPerRequest) {
                                                         batchIndices.add(idx)
                                                         currentChars += pieceLen + sep.length
@@ -439,7 +444,11 @@ fun LyricsMenu(
                                                     } else break
                                                 }
 
-                                                val batchTexts = batchIndices.map { contents[it]!! }
+                                                val batchTexts = batchIndices.map { idx ->
+                                                    requireNotNull(contents[idx]) {
+                                                        "Batched lyric at index $idx is missing"
+                                                    }
+                                                }
                                                 val joined = batchTexts.joinToString(separator = sep)
                                                 val translatedJoined =
                                                     translator.translateBlocking(joined, lang).translatedText
@@ -451,7 +460,9 @@ fun LyricsMenu(
                                                     }
                                                 } else {
                                                     for (idx in batchIndices) {
-                                                        val original = contents[idx]!!
+                                                        val original = requireNotNull(contents[idx]) {
+                                                            "Fallback lyric at index $idx is missing"
+                                                        }
                                                         val singleTranslated = runCatching {
                                                             translator.translateBlocking(original, lang).translatedText
                                                         }.getOrNull() ?: original

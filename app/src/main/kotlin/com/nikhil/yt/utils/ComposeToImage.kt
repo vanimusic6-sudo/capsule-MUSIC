@@ -215,7 +215,9 @@ object ComposeToImage {
                     .build()
                 val result = imageLoader.execute(request)
                 coverArtBitmap = result.image?.toBitmap()
-            } catch (_: Exception) {}
+            } catch (error: Exception) {
+                reportRecoverableException("ComposeToImage", "load cover artwork", error)
+            }
         }
 
         val outerCornerRadius = cardSize * 0.06f

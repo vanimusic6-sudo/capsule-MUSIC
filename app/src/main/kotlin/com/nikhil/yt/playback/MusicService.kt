@@ -201,6 +201,7 @@ import com.nikhil.yt.utils.get
 import com.nikhil.yt.utils.getAsync
 import com.nikhil.yt.utils.getPresenceIntervalMillis
 import com.nikhil.yt.utils.reportException
+import com.nikhil.yt.utils.reportRecoverableException
 import com.nikhil.yt.ui.widget.updateVeluneWidgetState
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.CoroutineScope
@@ -209,6 +210,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -230,10 +232,6 @@ import kotlinx.coroutines.withContext
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.OkHttpClient
 import timber.log.Timber
-import java.io.FileOutputStream
-import java.io.ObjectInputStream
-import java.io.ObjectOutputStream
-import java.io.Serializable
 import java.net.ConnectException
 import java.net.NoRouteToHostException
 import java.net.SocketException
@@ -293,13 +291,6 @@ class MusicService :
     private var scopeJob = Job()
     private var scope = CoroutineScope(Dispatchers.Main + scopeJob)
     private var ioScope = CoroutineScope(Dispatchers.IO + scopeJob)
-    /*
-     * Persistence must outlive the regular service scope during an
-     * explicit task-removal shutdown. The player snapshot is captured
-     * on main, then this independent IO scope flushes it before stopSelf.
-     */
-    private val persistenceScope =
-        CoroutineScope(Dispatchers.IO + kotlinx.coroutines.SupervisorJob())
     private val binder = MusicBinder()
 
     private lateinit var connectivityManager: ConnectivityManager
@@ -559,16 +550,16 @@ class MusicService :
 
     private var currentQueue: Queue = EmptyQueue
     var queueTitle: String? = null
-    private val persistentStateLock = Any()
-    private var persistentProgressJob: Job? = null
-    private var pendingPersistentQueueSaveJob: Job? = null
-    private var pendingPersistentPlayerStateSaveJob: Job? = null
-
-    private data class PersistentPlaybackSnapshot(
-        val queue: PersistQueue,
-        val automix: PersistQueue,
-        val playerState: PersistPlayerState,
-    )
+    private val playbackPersistence by lazy(LazyThreadSafetyMode.NONE) {
+        PlaybackPersistence(
+            context = this,
+            mainScope = { scope },
+            persistenceEnabled = { dataStore.get(PersistentQueueKey, true) },
+            snapshotProvider = ::capturePersistentPlaybackSnapshot,
+            playerStateProvider = ::capturePersistentPlayerState,
+            isPlayingProvider = { player.isPlaying },
+        )
+    }
     @Volatile
     private var suppressAutoPlayback = false
     private var lastPresenceToken: String? = null
@@ -870,7 +861,9 @@ class MusicService :
             }
         }
 
-        connectivityManager = getSystemService()!!
+        connectivityManager = requireNotNull(getSystemService()) {
+            "ConnectivityManager is unavailable"
+        }
         connectivityObserver = NetworkConnectivityObserver(this)
 
         scope.launch {
@@ -1108,7 +1101,9 @@ class MusicService :
                     if (discordRpc?.isRpcRunning() == true) {
                         withContext(Dispatchers.IO) { discordRpc?.closeRPC() }
                     }
-                } catch (_: Exception) {}
+                } catch (error: Exception) {
+                    reportRecoverableException("MusicService", "close previous Discord RPC", error)
+                }
                 discordRpc = newRpc
 
                 if (discordRpc != null) {
@@ -1118,7 +1113,11 @@ class MusicService :
                         }
                     }
                 } else {
-                    try { DiscordPresenceManager.stop() } catch (_: Exception) {}
+                    try {
+                        DiscordPresenceManager.stop()
+                    } catch (error: Exception) {
+                        reportRecoverableException("MusicService", "stop disabled Discord presence", error)
+                    }
                 }
             }
 
@@ -1186,7 +1185,7 @@ class MusicService :
 
         scope.launch(Dispatchers.IO) {
             if (dataStore.get(PersistentQueueKey, true)) {
-                readPersistentObject<PersistQueue>(PERSISTENT_QUEUE_FILE)
+                playbackPersistence.read(PERSISTENT_QUEUE_FILE, PersistQueue::class.java)
                     ?.let { persistedQueue ->
                     val restoredQueue = persistedQueue.toQueue()
                     withContext(Dispatchers.Main) {
@@ -1196,7 +1195,7 @@ class MusicService :
                         )
                     }
                 }
-                readPersistentObject<PersistQueue>(PERSISTENT_AUTOMIX_FILE)
+                playbackPersistence.read(PERSISTENT_AUTOMIX_FILE, PersistQueue::class.java)
                     ?.let { persistedAutomix ->
                     val items = persistedAutomix.items.map { it.toMediaItem() }
                     withContext(Dispatchers.Main) {
@@ -1205,7 +1204,7 @@ class MusicService :
                     }
                 }
                 
-                readPersistentObject<PersistPlayerState>(PERSISTENT_PLAYER_STATE_FILE)
+                playbackPersistence.read(PERSISTENT_PLAYER_STATE_FILE, PersistPlayerState::class.java)
                     ?.let { playerState ->
                     delay(1000)
                     withContext(Dispatchers.Main) {
@@ -1248,7 +1247,11 @@ class MusicService :
             if (!dataStore.get(EnableDiscordRPCKey, true)) {
                 if (DiscordPresenceManager.isRunning()) {
                     Timber.tag("MusicService").d("Discord RPC disabled → stopping presence manager")
-                    try { DiscordPresenceManager.stop() } catch (_: Exception) {}
+                    try {
+                        DiscordPresenceManager.stop()
+                    } catch (error: Exception) {
+                        reportRecoverableException("MusicService", "stop disabled Discord presence manager", error)
+                    }
                     lastPresenceToken = null
                 }
                 return@launch
@@ -1258,7 +1261,11 @@ class MusicService :
             if (key.isNullOrBlank()) {
                 if (DiscordPresenceManager.isRunning()) {
                     Timber.tag("MusicService").d("No Discord token → stopping presence manager")
-                    try { DiscordPresenceManager.stop() } catch (_: Exception) {}
+                    try {
+                        DiscordPresenceManager.stop()
+                    } catch (error: Exception) {
+                        reportRecoverableException("MusicService", "stop tokenless Discord presence manager", error)
+                    }
                     lastPresenceToken = null
                 }
                 return@launch
@@ -1519,7 +1526,9 @@ class MusicService :
         if (!bluetoothReceiverRegistered) return
         try {
             unregisterReceiver(bluetoothReceiver)
-        } catch (_: Exception) {}
+        } catch (error: Exception) {
+            reportRecoverableException("MusicService", "unregister Bluetooth receiver", error)
+        }
         bluetoothReceiverRegistered = false
     }
 
@@ -1754,8 +1763,8 @@ class MusicService :
         clearAutomix()
         automixSeedMediaId = null
         autoAddedMediaIds.clear()
-        if (queue.preloadItem != null) {
-            player.setMediaItem(queue.preloadItem!!.toMediaItem())
+        queue.preloadItem?.let { preloadItem ->
+            player.setMediaItem(preloadItem.toMediaItem())
             player.prepare()
             player.playWhenReady = playWhenReady
         }
@@ -3374,17 +3383,23 @@ class MusicService :
 
         try {
             togetherClient?.disconnect()
-        } catch (_: Exception) {}
+        } catch (error: Exception) {
+            reportRecoverableException("MusicService", "disconnect Together client", error)
+        }
         togetherClient = null
 
         try {
             togetherOnlineHost?.disconnect()
-        } catch (_: Exception) {}
+        } catch (error: Exception) {
+            reportRecoverableException("MusicService", "disconnect Together host", error)
+        }
         togetherOnlineHost = null
 
         try {
             togetherServer?.stop()
-        } catch (_: Exception) {}
+        } catch (error: Exception) {
+            reportRecoverableException("MusicService", "stop Together server", error)
+        }
         togetherServer = null
     }
 
@@ -3561,19 +3576,23 @@ class MusicService :
         audioEffectsSessionId = null
         try {
             equalizer?.release()
-        } catch (_: Exception) {
+        } catch (error: Exception) {
+            reportRecoverableException("MusicService", "release equalizer", error)
         }
         try {
             bassBoost?.release()
-        } catch (_: Exception) {
+        } catch (error: Exception) {
+            reportRecoverableException("MusicService", "release bass boost", error)
         }
         try {
             virtualizer?.release()
-        } catch (_: Exception) {
+        } catch (error: Exception) {
+            reportRecoverableException("MusicService", "release virtualizer", error)
         }
         try {
             loudnessEnhancer?.release()
-        } catch (_: Exception) {
+        } catch (error: Exception) {
+            reportRecoverableException("MusicService", "release loudness enhancer", error)
         }
         equalizer = null
         bassBoost = null
@@ -3883,7 +3902,7 @@ class MusicService :
         scrobbleManager?.onSongStart(player.currentMetadata, duration = player.duration)
     }
 
-    schedulePersistentQueueSave()
+    playbackPersistence.scheduleQueueSave()
     ensurePresenceManager()
 }
 
@@ -4012,7 +4031,13 @@ class MusicService :
                                 }
                             }
                         }
-                    } catch (_: Exception) {}
+                    } catch (error: Exception) {
+                        reportRecoverableException(
+                            "MusicService",
+                            "schedule ListenBrainz update after media transition",
+                            error,
+                        )
+                    }
                 }
             }
         } catch (e: Exception) {
@@ -4081,9 +4106,9 @@ class MusicService :
         }
     }
     if (events.containsAny(EVENT_TIMELINE_CHANGED, Player.EVENT_MEDIA_ITEM_TRANSITION)) {
-        schedulePersistentQueueSave()
+        playbackPersistence.scheduleQueueSave()
     } else if (events.contains(EVENT_POSITION_DISCONTINUITY)) {
-        schedulePersistentPlayerStateSave(syncToDisk = true)
+        playbackPersistence.schedulePlayerStateSave(syncToDisk = true)
     }
     if (events.containsAny(
             Player.EVENT_PLAYBACK_STATE_CHANGED,
@@ -4120,7 +4145,23 @@ class MusicService :
                             )
                             if (!success) {
                                 Timber.tag("MusicService").w("transition immediate presence update failed — attempting restart")
-                                try { DiscordPresenceManager.stop(); DiscordPresenceManager.start(this@MusicService, dataStore.get(DiscordTokenKey, ""), { song }, { player.currentPosition }, { !player.isPlaying }, { getPresenceIntervalMillis(this@MusicService) }) } catch (_: Exception) {}
+                                try {
+                                    DiscordPresenceManager.stop()
+                                    DiscordPresenceManager.start(
+                                        this@MusicService,
+                                        dataStore.get(DiscordTokenKey, ""),
+                                        { song },
+                                        { player.currentPosition },
+                                        { !player.isPlaying },
+                                        { getPresenceIntervalMillis(this@MusicService) },
+                                    )
+                                } catch (error: Exception) {
+                                    reportRecoverableException(
+                                        "MusicService",
+                                        "restart Discord presence after transition",
+                                        error,
+                                    )
+                                }
                             }
                             try {
                                 val lbEnabled = dataStore.get(ListenBrainzEnabledKey, false)
@@ -4135,7 +4176,13 @@ class MusicService :
                                     }
                                 }
 
-                            } catch (_: Exception) {}
+                            } catch (error: Exception) {
+                                reportRecoverableException(
+                                    "MusicService",
+                                    "schedule ListenBrainz transition update",
+                                    error,
+                                )
+                            }
                         }
                     }
                 } catch (e: Exception) {
@@ -4185,7 +4232,16 @@ class MusicService :
                             if (!success) {
                                 Timber.tag("MusicService").w("isPlaying/mediaTransition immediate presence update failed — restarting manager")
                                 if (DiscordPresenceManager.isRunning()) {
-                                    try { DiscordPresenceManager.stop(); DiscordPresenceManager.restart() } catch (_: Exception) {}
+                                    try {
+                                        DiscordPresenceManager.stop()
+                                        DiscordPresenceManager.restart()
+                                    } catch (error: Exception) {
+                                        reportRecoverableException(
+                                            "MusicService",
+                                            "restart Discord presence after playback-state change",
+                                            error,
+                                        )
+                                    }
                                 }
                             }
                             try {
@@ -4201,7 +4257,13 @@ class MusicService :
                                     }
                                 }
 
-                            } catch (_: Exception) {}
+                            } catch (error: Exception) {
+                                reportRecoverableException(
+                                    "MusicService",
+                                    "schedule ListenBrainz playback-state update",
+                                    error,
+                                )
+                            }
                         }
                     }
                 } catch (e: Exception) {
@@ -4211,7 +4273,7 @@ class MusicService :
         }
 
    if (events.containsAny(Player.EVENT_IS_PLAYING_CHANGED)) {
-        updatePersistentProgressCheckpoint(player.isPlaying)
+        playbackPersistence.updateProgressCheckpoint(player.isPlaying)
         ensurePresenceManager()
         scrobbleManager?.onPlayerStateChanged(player.isPlaying, player.currentMetadata, duration = player.duration)
     } else if (events.contains(Player.EVENT_MEDIA_ITEM_TRANSITION)) {
@@ -4243,7 +4305,7 @@ class MusicService :
             applyCurrentFirstShuffleOrder()
         }
 
-        schedulePersistentQueueSave()
+        playbackPersistence.scheduleQueueSave()
     }
 
     override fun onRepeatModeChanged(repeatMode: Int) {
@@ -4269,7 +4331,7 @@ class MusicService :
             }
         }
 
-        schedulePersistentPlayerStateSave(syncToDisk = true)
+        playbackPersistence.schedulePlayerStateSave(syncToDisk = true)
     }
 
     override fun onPlayerError(error: PlaybackException) {
@@ -4642,8 +4704,8 @@ class MusicService :
              * next track, while older abandoned prefetches are cancelled
              * to avoid request bursts during rapid skipping.
              *
-             * The timeout is a floor, not the mechanism: with prefetch working
-             * this await normally returns immediately.
+             * InnerTubeX owns an 18-second engine budget. This 20-second
+             * ceiling only catches a stuck job outside that engine.
              */
             val loaderWaitStartedAt = System.currentTimeMillis()
             val alreadyRunning = inFlightAudioResolves.containsKey(mediaId)
@@ -4654,12 +4716,23 @@ class MusicService :
                         audioResolveJob(mediaId).await()
                     }
                 }.getOrElse { failure ->
-                    Timber.tag(CAPSULE_RESOLVE_TAG).w(
-                        "loader gave up id=%s waitedMs=%d cause=%s",
-                        mediaId,
-                        System.currentTimeMillis() - loaderWaitStartedAt,
-                        failure::class.java.simpleName,
-                    )
+                    val waitedMs = System.currentTimeMillis() - loaderWaitStartedAt
+                    if (failure is TimeoutCancellationException) {
+                        Timber.tag(CAPSULE_RESOLVE_TAG).w(
+                            failure,
+                            "loader ceiling timeout id=%s waitedMs=%d budgetMs=%d",
+                            mediaId,
+                            waitedMs,
+                            AUDIO_RESOLVE_TIMEOUT_MS,
+                        )
+                    } else {
+                        Timber.tag(CAPSULE_RESOLVE_TAG).w(
+                            "loader gave up id=%s waitedMs=%d cause=%s",
+                            mediaId,
+                            waitedMs,
+                            failure::class.java.simpleName,
+                        )
+                    }
                     Result.failure(failure)
                 }
             }.also {
@@ -4682,7 +4755,9 @@ class MusicService :
                         )
                     }
 
-                    is java.net.SocketTimeoutException -> {
+                    is TimeoutCancellationException,
+                    is java.net.SocketTimeoutException,
+                    -> {
                         throw PlaybackException(
                             getString(R.string.error_timeout),
                             throwable,
@@ -5520,7 +5595,8 @@ class MusicService :
                             playTime = playbackStats.totalPlayTimeMs,
                         ),
                     )
-                } catch (_: SQLException) {
+                } catch (error: SQLException) {
+                    reportRecoverableException("MusicService", "insert playback-history event", error)
                 }
             }
 
@@ -5540,7 +5616,8 @@ class MusicService :
                             Timber.tag("MusicService").v(ie, "ListenBrainz finished submit failed")
                         }
                     }
-                } catch (_: Exception) {
+                } catch (error: Exception) {
+                    reportRecoverableException("MusicService", "submit finished ListenBrainz event", error)
                 }
             }
 
@@ -5636,211 +5713,47 @@ class MusicService :
         )
     }
 
-    /**
-     * Queue/timeline changes can arrive as several Player callbacks for one
-     * user action. Coalesce them into one durable snapshot instead of writing
-     * the same three files repeatedly.
-     */
-    private fun schedulePersistentQueueSave(
-        delayMs: Long = PERSISTENT_SAVE_DEBOUNCE_MS,
-    ) {
-        pendingPersistentQueueSaveJob?.cancel()
-        pendingPersistentQueueSaveJob =
-            scope.launch {
-                delay(delayMs)
-                val shouldSave =
-                    withContext(Dispatchers.IO) {
-                        dataStore.get(PersistentQueueKey, true)
-                    }
-                if (shouldSave) saveQueueToDisk()
-            }
-    }
-
-    private fun schedulePersistentPlayerStateSave(
-        syncToDisk: Boolean,
-        delayMs: Long = PERSISTENT_SAVE_DEBOUNCE_MS,
-    ) {
-        pendingPersistentPlayerStateSaveJob?.cancel()
-        pendingPersistentPlayerStateSaveJob =
-            scope.launch {
-                delay(delayMs)
-                val shouldSave =
-                    withContext(Dispatchers.IO) {
-                        dataStore.get(PersistentQueueKey, true)
-                    }
-                if (shouldSave) {
-                    savePlayerStateToDisk(syncToDisk = syncToDisk)
-                }
-            }
-    }
-
-    /**
-     * While audio is advancing, persist only the small position/state record
-     * once per minute. Pause/stop writes are durable immediately, so a normal
-     * exit still restores the exact position without waking flash storage
-     * every ten seconds.
-     */
-    private fun updatePersistentProgressCheckpoint(isPlaying: Boolean) {
-        persistentProgressJob?.cancel()
-        persistentProgressJob = null
-
-        if (!isPlaying) {
-            schedulePersistentPlayerStateSave(
-                syncToDisk = true,
-                delayMs = 0L,
-            )
-            return
-        }
-
-        persistentProgressJob =
-            scope.launch {
-                while (isActive && player.isPlaying) {
-                    delay(PERSISTENT_PROGRESS_INTERVAL_MS)
-                    if (!player.isPlaying) break
-
-                    val shouldSave =
-                        withContext(Dispatchers.IO) {
-                            dataStore.get(PersistentQueueKey, true)
-                        }
-                    if (shouldSave) {
-                        savePlayerStateToDisk(syncToDisk = false)
-                    }
-                }
-            }
-    }
-
-    private inline fun <reified T> readPersistentObject(fileName: String): T? {
-        val persistentFile = filesDir.resolve(fileName)
-        if (!persistentFile.exists() || !persistentFile.isFile) return null
-
-        return synchronized(persistentStateLock) {
-            runCatching {
-                persistentFile.inputStream().use { fis ->
-                    ObjectInputStream(fis).use { input ->
-                        input.readObject() as? T
-                    }
-                }
-            }.onFailure {
-                Timber.tag("MusicService").w(it, "Failed to read persistent file: $fileName")
-                runCatching { persistentFile.delete() }
-            }.getOrNull()
-        }
-    }
-
-    private fun writePersistentObject(
-        fileName: String,
-        payload: Serializable,
-        syncToDisk: Boolean = true,
-    ) {
-        val persistentFile = filesDir.resolve(fileName)
-        val tempFile = filesDir.resolve("$fileName.tmp")
-
-        synchronized(persistentStateLock) {
-            runCatching {
-                FileOutputStream(tempFile).use { fos ->
-                    ObjectOutputStream(fos).use { output ->
-                        output.writeObject(payload)
-                        output.flush()
-                        if (syncToDisk) {
-                            // ObjectOutputStream closes the underlying stream.
-                            // Sync while the descriptor is still valid.
-                            fos.fd.sync()
-                        }
-                    }
-                }
-
-                if (persistentFile.exists() && !persistentFile.delete()) {
-                    error("Could not replace $fileName")
-                }
-                if (!tempFile.renameTo(persistentFile)) {
-                    error("Could not atomically move $fileName")
-                }
-            }.onFailure {
-                runCatching { tempFile.delete() }
-                reportException(it)
-            }
-        }
-    }
-
-    private suspend fun savePlayerStateToDisk(syncToDisk: Boolean) {
-        if (player.mediaItemCount <= 0) return
-
-        val persistPlayerState =
-            PersistPlayerState(
-                playWhenReady = player.playWhenReady,
-                repeatMode = player.repeatMode,
-                shuffleModeEnabled = player.shuffleModeEnabled,
-                volume = playerVolume.value,
-                currentPosition = player.currentPosition,
-                currentMediaItemIndex = player.currentMediaItemIndex,
-                playbackState = player.playbackState,
-            )
-
-        withContext(Dispatchers.IO) {
-            writePersistentObject(
-                PERSISTENT_PLAYER_STATE_FILE,
-                persistPlayerState,
-                syncToDisk = syncToDisk,
-            )
-        }
-    }
-
     private fun capturePersistentPlaybackSnapshot(): PersistentPlaybackSnapshot? {
-    if (currentQueue == EmptyQueue || player.mediaItemCount <= 0) return null
+        if (currentQueue == EmptyQueue || player.mediaItemCount <= 0) return null
 
-    val mediaItemsSnapshot = player.mediaItems.mapNotNull { it.metadata }
-    if (mediaItemsSnapshot.isEmpty()) return null
+        val mediaItemsSnapshot = player.mediaItems.mapNotNull { it.metadata }
+        if (mediaItemsSnapshot.isEmpty()) return null
 
-    val currentMediaItemIndex = player.currentMediaItemIndex
-    val currentPosition = player.currentPosition
-    val automixSnapshot = automixItems.value.mapNotNull { it.metadata }
+        val currentMediaItemIndex = player.currentMediaItemIndex
+        val currentPosition = player.currentPosition
+        val automixSnapshot = automixItems.value.mapNotNull { it.metadata }
+        val playerState = capturePersistentPlayerState() ?: return null
 
-    return PersistentPlaybackSnapshot(
-        queue =
-            currentQueue.toPersistQueue(
-                title = queueTitle,
-                items = mediaItemsSnapshot,
-                mediaItemIndex = currentMediaItemIndex,
-                position = currentPosition,
-            ),
-        automix =
-            PersistQueue(
-                title = "automix",
-                items = automixSnapshot,
-                mediaItemIndex = 0,
-                position = 0,
-            ),
-        playerState =
-            PersistPlayerState(
-                playWhenReady = player.playWhenReady,
-                repeatMode = player.repeatMode,
-                shuffleModeEnabled = player.shuffleModeEnabled,
-                volume = playerVolume.value,
-                currentPosition = currentPosition,
-                currentMediaItemIndex = currentMediaItemIndex,
-                playbackState = player.playbackState,
-            ),
-    )
-}
-
-    private fun writePersistentPlaybackSnapshot(
-        snapshot: PersistentPlaybackSnapshot,
-        syncToDisk: Boolean = true,
-    ) {
-        writePersistentObject(PERSISTENT_QUEUE_FILE, snapshot.queue, syncToDisk)
-        writePersistentObject(PERSISTENT_AUTOMIX_FILE, snapshot.automix, syncToDisk)
-        writePersistentObject(PERSISTENT_PLAYER_STATE_FILE, snapshot.playerState, syncToDisk)
+        return PersistentPlaybackSnapshot(
+            queue =
+                currentQueue.toPersistQueue(
+                    title = queueTitle,
+                    items = mediaItemsSnapshot,
+                    mediaItemIndex = currentMediaItemIndex,
+                    position = currentPosition,
+                ),
+            automix =
+                PersistQueue(
+                    title = "automix",
+                    items = automixSnapshot,
+                    mediaItemIndex = 0,
+                    position = 0,
+                ),
+            playerState = playerState,
+        )
     }
 
-    private suspend fun saveQueueToDisk() {
-        val snapshot =
-            withContext(Dispatchers.Main.immediate) {
-                capturePersistentPlaybackSnapshot()
-            } ?: return
-
-        withContext(Dispatchers.IO) {
-            writePersistentPlaybackSnapshot(snapshot)
-        }
+    private fun capturePersistentPlayerState(): PersistPlayerState? {
+        if (player.mediaItemCount <= 0) return null
+        return PersistPlayerState(
+            playWhenReady = player.playWhenReady,
+            repeatMode = player.repeatMode,
+            shuffleModeEnabled = player.shuffleModeEnabled,
+            volume = playerVolume.value,
+            currentPosition = player.currentPosition,
+            currentMediaItemIndex = player.currentMediaItemIndex,
+            playbackState = player.playbackState,
+        )
     }
 
     private fun finishTaskRemovedPlaybackShutdown() {
@@ -5858,54 +5771,68 @@ class MusicService :
 
     override fun onDestroy() {
         super.onDestroy()
-        persistentProgressJob?.cancel()
-        pendingPersistentQueueSaveJob?.cancel()
-        pendingPersistentPlayerStateSaveJob?.cancel()
+        playbackPersistence.cancelPending()
         unregisterCapsuleScreenStateReceiver()
         unregisterBluetoothReceiver()
         try {
             scope.launch { stopTogetherInternal() }
-        } catch (_: Exception) {}
+        } catch (error: Exception) {
+            reportRecoverableException("MusicService", "schedule Together shutdown", error)
+        }
         try {
             DiscordPresenceManager.stop()
-        } catch (_: Exception) {}
+        } catch (error: Exception) {
+            reportRecoverableException("MusicService", "stop Discord presence during destroy", error)
+        }
         try {
             discordRpc?.closeRPC()
-        } catch (_: Exception) {}
+        } catch (error: Exception) {
+            reportRecoverableException("MusicService", "close Discord RPC during destroy", error)
+        }
         discordRpc = null
         try {
             connectivityObserver.unregister()
-        } catch (_: Exception) {}
+        } catch (error: Exception) {
+            reportRecoverableException("MusicService", "unregister connectivity observer", error)
+        }
         abandonAudioFocus()
         try {
             releaseAudioEffects()
-        } catch (_: Exception) {}
+        } catch (error: Exception) {
+            reportRecoverableException("MusicService", "release audio effects during destroy", error)
+        }
         /*
-     * onDestroy runs on the main thread. Never fsync the queue here.
-     * Task-removal shutdown waits for its IO flush before stopSelf;
-     * other destruction paths get a best-effort immutable snapshot.
-     */
-    try {
-        if (dataStore.get(PersistentQueueKey, true)) {
-            capturePersistentPlaybackSnapshot()?.let { snapshot ->
-                persistenceScope.launch(SilentHandler) {
-                    writePersistentPlaybackSnapshot(snapshot)
+         * onDestroy runs on the main thread. Never fsync the queue here.
+         * Task-removal shutdown waits for its IO flush before stopSelf;
+         * other destruction paths get a best-effort immutable snapshot.
+         */
+        try {
+            if (dataStore.get(PersistentQueueKey, true)) {
+                capturePersistentPlaybackSnapshot()?.let { snapshot ->
+                    playbackPersistence.flush(snapshot)
                 }
             }
+        } catch (error: Exception) {
+            reportRecoverableException("MusicService", "capture final playback snapshot", error)
         }
-    } catch (_: Exception) {}
         try {
             mediaSession.release()
-        } catch (_: Exception) {}
+        } catch (error: Exception) {
+            reportRecoverableException("MusicService", "release media session", error)
+        }
         try {
             crossfadeAudio?.release()
             crossfadeAudio = null
-        } catch (_: Exception) {}
+        } catch (error: Exception) {
+            reportRecoverableException("MusicService", "release crossfade audio", error)
+        }
         try {
             player.removeListener(this)
             player.removeListener(sleepTimer)
             player.release()
-        } catch (_: Exception) {}
+        } catch (error: Exception) {
+            reportRecoverableException("MusicService", "release player", error)
+        }
         scopeJob.cancel()
     }
 
@@ -5925,17 +5852,33 @@ class MusicService :
         super.onTaskRemoved(rootIntent)
         try {
             scope.launch {
-                try { discordRpc?.stopActivity() } catch (_: Exception) {}
+                try {
+                    discordRpc?.stopActivity()
+                } catch (error: Exception) {
+                    reportRecoverableException("MusicService", "stop Discord activity after task removal", error)
+                }
             }
-        } catch (_: Exception) {}
+        } catch (error: Exception) {
+            reportRecoverableException("MusicService", "schedule Discord activity stop", error)
+        }
 
         try {
             if (discordRpc?.isRpcRunning() == true) {
-                try { discordRpc?.closeRPC() } catch (_: Exception) {}
+                try {
+                    discordRpc?.closeRPC()
+                } catch (error: Exception) {
+                    reportRecoverableException("MusicService", "close Discord RPC after task removal", error)
+                }
             }
-        } catch (_: Exception) {}
+        } catch (error: Exception) {
+            reportRecoverableException("MusicService", "inspect Discord RPC after task removal", error)
+        }
         discordRpc = null
-        try { DiscordPresenceManager.stop() } catch (_: Exception) {}
+        try {
+            DiscordPresenceManager.stop()
+        } catch (error: Exception) {
+            reportRecoverableException("MusicService", "stop Discord presence after task removal", error)
+        }
         lastPresenceToken = null
 
         val stopMusicOnTaskClearEnabled = dataStore.get(StopMusicOnTaskClearKey, false)
@@ -5959,38 +5902,36 @@ class MusicService :
                 }
 
                 if (stopMusicOnTaskClearEnabled) {
-            pendingPersistentQueueSaveJob?.cancel()
-            pendingPersistentPlayerStateSaveJob?.cancel()
-            persistentProgressJob?.cancel()
+                    playbackPersistence.cancelPending()
 
-            val shutdownSnapshot =
-                if (dataStore.get(PersistentQueueKey, true)) {
-                    capturePersistentPlaybackSnapshot()
-                } else {
-                    null
+                    val shutdownSnapshot =
+                        if (dataStore.get(PersistentQueueKey, true)) {
+                            capturePersistentPlaybackSnapshot()
+                        } else {
+                            null
+                        }
+
+                    if (shutdownSnapshot == null) {
+                        finishTaskRemovedPlaybackShutdown()
+                        return
+                    }
+
+                    /*
+                     * Keep the service alive just long enough for the atomic
+                     * fsync/rename sequence. Main stays free, while stopSelf
+                     * is deferred until persistence has finished.
+                     */
+                    playbackPersistence.flush(shutdownSnapshot) {
+                        withContext(Dispatchers.Main) {
+                            finishTaskRemovedPlaybackShutdown()
+                        }
+                    }
+                    return
                 }
-
-            if (shutdownSnapshot == null) {
-                finishTaskRemovedPlaybackShutdown()
-                return
             }
-
-            /*
-             * Keep the service alive just long enough for the atomic
-             * fsync/rename sequence. Main stays free, while stopSelf
-             * is deferred until persistence has finished.
-             */
-            persistenceScope.launch(SilentHandler) {
-                writePersistentPlaybackSnapshot(shutdownSnapshot)
-                withContext(Dispatchers.Main) {
-                    finishTaskRemovedPlaybackShutdown()
-                }
-            }
-            return
+        } catch (error: Exception) {
+            reportRecoverableException("MusicService", "handle task-removal shutdown", error)
         }
-
-            }
-        } catch (_: Exception) {}
     }
 
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo) = mediaSession
@@ -6078,19 +6019,14 @@ class MusicService :
 
         /* Do not re-resolve a URL that still has this much life left. */
         private const val PREFETCH_FRESHNESS_MS = 60_000L
-        private const val PERSISTENT_PROGRESS_INTERVAL_MS = 60_000L
-        private const val PERSISTENT_SAVE_DEBOUNCE_MS = 750L
 
         /*
          * Floors for the two blocking resolves in the ResolvingDataSource.
          * They exist so a stalled network cannot pin the loader thread; with
          * prefetch in place they should almost never be reached.
          */
-        private const val AUDIO_RESOLVE_TIMEOUT_MS = 25_000L
+        private const val AUDIO_RESOLVE_TIMEOUT_MS = 20_000L
         private const val VIDEO_RESOLVE_TIMEOUT_MS = 20_000L
-        const val PERSISTENT_QUEUE_FILE = "persistent_queue.data"
-        const val PERSISTENT_AUTOMIX_FILE = "persistent_automix.data"
-        const val PERSISTENT_PLAYER_STATE_FILE = "persistent_player_state.data"
         const val MAX_CONSECUTIVE_ERR = 5
         const val MIN_PRESENCE_UPDATE_INTERVAL = 20_000L
     }

@@ -142,7 +142,9 @@ class ForYouSuggestionEngine @Inject constructor(
 
                 suggestions.addAll(filtered)
                 seenIds.addAll(filtered.map { it.id })
-            } catch (_: Exception) {}
+            } catch (error: Exception) {
+                reportRecoverableException("ForYou", "load artist radio suggestions", error)
+            }
         }
 
         // Fill remaining from liked songs radio if needed
@@ -166,7 +168,9 @@ class ForYouSuggestionEngine @Inject constructor(
 
                         suggestions.addAll(filtered)
                     }
-                } catch (_: Exception) {}
+                } catch (error: Exception) {
+                    reportRecoverableException("ForYou", "load liked-song radio suggestions", error)
+                }
             }
         }
 

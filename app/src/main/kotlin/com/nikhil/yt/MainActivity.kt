@@ -221,6 +221,7 @@ import com.nikhil.yt.utils.get
 import com.nikhil.yt.utils.rememberEnumPreference
 import com.nikhil.yt.utils.rememberPreference
 import com.nikhil.yt.utils.reportException
+import com.nikhil.yt.utils.reportRecoverableException
 import com.nikhil.yt.utils.setAppLocale
 import com.nikhil.yt.viewmodels.HomeViewModel
 import java.net.URLDecoder
@@ -377,7 +378,11 @@ class MainActivity : ComponentActivity() {
         // Only clear/stop presence when the activity is actually finishing (not on rotation)
         // and do not clear it for transient configuration changes.
         if (isFinishing && !isChangingConfigurations) {
-            try { DiscordPresenceManager.stop() } catch (_: Exception) {}
+            try {
+                DiscordPresenceManager.stop()
+            } catch (error: Exception) {
+                reportRecoverableException("MainActivity", "stop Discord presence", error)
+            }
         }
 
         val shouldStopOnTaskClear =
@@ -883,21 +888,16 @@ class MainActivity : ComponentActivity() {
                         if (navBackStackEntry?.destination?.route?.startsWith("search/") == true) {
                             val searchQuery =
                                 withContext(Dispatchers.IO) {
-                                    if (navBackStackEntry
+                                    val encodedQuery =
+                                        navBackStackEntry
                                             ?.arguments
-                                            ?.getString(
-                                                "query",
-                                            )!!
-                                            .contains(
-                                                "%",
-                                            )
-                                    ) {
-                                        navBackStackEntry?.arguments?.getString(
-                                            "query",
-                                        )!!
+                                            ?.getString("query")
+                                            .orEmpty()
+                                    if (encodedQuery.contains("%")) {
+                                        encodedQuery
                                     } else {
                                         URLDecoder.decode(
-                                            navBackStackEntry?.arguments?.getString("query")!!,
+                                            encodedQuery,
                                             "UTF-8"
                                         )
                                     }
@@ -976,8 +976,9 @@ class MainActivity : ComponentActivity() {
                     }
 
                     LaunchedEffect(Unit) {
-                        if (pendingIntent != null) {
-                            handleDeepLinkIntent(pendingIntent!!, navController)
+                        val queuedIntent = pendingIntent
+                        if (queuedIntent != null) {
+                            handleDeepLinkIntent(queuedIntent, navController)
                             pendingIntent = null
                         } else {
                             handleDeepLinkIntent(intent, navController)
@@ -1649,7 +1650,8 @@ class MainActivity : ComponentActivity() {
                             try {
                                 delay(100)
                                 searchBarFocusRequester.requestFocus()
-                            } catch (_: Exception) {
+                            } catch (error: Exception) {
+                                reportRecoverableException("MainActivity", "focus search bar", error)
                             }
                             openSearchImmediately = false
                         }

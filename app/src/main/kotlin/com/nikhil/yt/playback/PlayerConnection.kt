@@ -27,6 +27,7 @@ import com.nikhil.yt.extensions.metadata
 import com.nikhil.yt.playback.MusicService.MusicBinder
 import com.nikhil.yt.playback.queues.Queue
 import com.nikhil.yt.utils.reportException
+import com.nikhil.yt.utils.reportRecoverableException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -144,7 +145,9 @@ class PlayerConnection(
         if (com.nikhil.yt.ui.screens.settings.DiscordPresenceManager.isRunning()) {
             try {
                 com.nikhil.yt.ui.screens.settings.DiscordPresenceManager.restart()
-            } catch (_: Exception) {}
+            } catch (error: Exception) {
+                reportRecoverableException("PlayerConnection", "restart Discord presence after seek", error)
+            }
         }
     }
 
@@ -161,7 +164,9 @@ class PlayerConnection(
         if (com.nikhil.yt.ui.screens.settings.DiscordPresenceManager.isRunning()) {
             try {
                 com.nikhil.yt.ui.screens.settings.DiscordPresenceManager.restart()
-            } catch (_: Exception) {}
+            } catch (error: Exception) {
+                reportRecoverableException("PlayerConnection", "restart Discord presence after next", error)
+            }
         }
     }
 

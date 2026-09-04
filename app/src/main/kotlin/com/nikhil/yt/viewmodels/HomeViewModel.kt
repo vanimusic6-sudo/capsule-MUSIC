@@ -35,6 +35,7 @@ import com.nikhil.yt.utils.dataStore
 import com.nikhil.yt.utils.get
 import com.nikhil.yt.utils.SyncUtils
 import com.nikhil.yt.utils.reportException
+import com.nikhil.yt.utils.reportRecoverableException
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
@@ -115,7 +116,9 @@ class HomeViewModel @Inject constructor(
                         val hideExplicit = context.dataStore.get(HideExplicitKey, false)
                         val hideVideo = context.dataStore.get(HideVideoKey, false)
                         forYouSuggestions.value = forYouEngine.getSuggestions(hideExplicit, hideVideo)
-                    } catch (_: Exception) {}
+                    } catch (error: Exception) {
+                        reportRecoverableException("HomeViewModel", "load For You suggestions", error)
+                    }
                 }
                 
                 launch {

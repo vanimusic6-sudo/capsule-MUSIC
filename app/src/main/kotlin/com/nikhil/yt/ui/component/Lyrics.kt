@@ -185,6 +185,7 @@ import com.nikhil.yt.ui.utils.smoothFadingEdge
 import com.nikhil.yt.utils.ComposeToImage
 import com.nikhil.yt.utils.rememberEnumPreference
 import com.nikhil.yt.utils.rememberPreference
+import com.nikhil.yt.utils.reportRecoverableException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
@@ -2259,7 +2260,8 @@ fun Lyrics(
     }
 
     if (showShareDialog && shareDialogData != null) {
-        val (lyricsText, songTitle, artists) = shareDialogData!! 
+        val (lyricsText, songTitle, artists) =
+            requireNotNull(shareDialogData) { "Lyrics share dialog data is missing" }
         BasicAlertDialog(onDismissRequest = { showShareDialog = false }) {
             Card(
                 shape = MaterialTheme.shapes.medium,
@@ -2357,7 +2359,8 @@ fun Lyrics(
     }
 
     if (showColorPickerDialog && shareDialogData != null) {
-        val (lyricsText, songTitle, artists) = shareDialogData!!
+        val (lyricsText, songTitle, artists) =
+            requireNotNull(shareDialogData) { "Lyrics image dialog data is missing" }
         val coverUrl = mediaMetadata?.thumbnailUrl
 
         LaunchedEffect(coverUrl) {
@@ -2372,7 +2375,9 @@ fun Lyrics(
                             val palette = Palette.from(bmp).generate()
                             paletteGlassStyle = LyricsGlassStyle.fromPalette(palette)
                         }
-                    } catch (_: Exception) {}
+                    } catch (error: Exception) {
+                        reportRecoverableException("Lyrics", "derive lyrics palette", error)
+                    }
                 }
             }
         }

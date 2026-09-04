@@ -42,6 +42,7 @@ import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
 import kotlin.math.abs
 import kotlin.math.max
+import com.nikhil.yt.utils.reportRecoverableException
 
 @Composable
 fun DraggableScrollbar(
@@ -150,6 +151,7 @@ fun DraggableScrollbar(
                                         scrollOffset = 0
                                     )
                                 } catch (e: Exception) {
+                                    reportRecoverableException("ScrollBar", "scroll to dragged position", e)
                                 }
                             }
                         }

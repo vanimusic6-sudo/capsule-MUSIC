@@ -35,7 +35,8 @@ object ArtworkStorage {
             val text = f.readText()
             if (text.isBlank()) return emptyList()
             return json.decodeFromString(text)
-        } catch (_: Exception) {
+        } catch (error: Exception) {
+            reportRecoverableException("ArtworkStorage", "read saved artwork", error)
             return emptyList()
         }
     }
@@ -48,8 +49,8 @@ object ArtworkStorage {
             val idx = list.indexOfFirst { it.songId == artwork.songId }
             if (idx >= 0) list[idx] = artwork else list.add(artwork)
             fileFor(context).writeText(json.encodeToString(list))
-        } catch (_: Exception) {
-            // ignore write errors
+        } catch (error: Exception) {
+            reportRecoverableException("ArtworkStorage", "save artwork", error)
         }
     }
 
@@ -57,7 +58,8 @@ object ArtworkStorage {
         try {
             val f = fileFor(context)
             if (f.exists()) f.writeText("[]")
-        } catch (_: Exception) {
+        } catch (error: Exception) {
+            reportRecoverableException("ArtworkStorage", "clear saved artwork", error)
         }
     }
 
@@ -69,7 +71,8 @@ object ArtworkStorage {
                 list.removeAt(idx)
                 fileFor(context).writeText(json.encodeToString(list))
             }
-        } catch (_: Exception) {
+        } catch (error: Exception) {
+            reportRecoverableException("ArtworkStorage", "remove saved artwork", error)
         }
     }
 }

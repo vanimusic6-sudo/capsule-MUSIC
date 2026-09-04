@@ -41,7 +41,8 @@ suspend fun resolveAndPersistImages(context: Context, song: Song, isPaused: Bool
                         repo.putToCache(originalArtist, saved.artist)
                     }
                 }
-            } catch (_: Exception) {
+            } catch (error: Exception) {
+                reportRecoverableException(TAG, "seed Discord artwork cache", error)
             }
         }
 
@@ -88,7 +89,7 @@ suspend fun resolveAndPersistImages(context: Context, song: Song, isPaused: Bool
             // user explicitly disabled small image
             smallImageTypePref.lowercase() in listOf("none", "dontshow") -> null
             // ✅ only override the small image when paused; keep large image untouched
-            isPaused -> PAUSE_IMAGE_URL
+            isPaused -> CapsuleBrand.PAUSE_IMAGE_URL
             // song cover as small image
             smallImageTypePref.lowercase() == "song" -> song.song.thumbnailUrl
             // artist profile picture
@@ -109,8 +110,8 @@ suspend fun resolveAndPersistImages(context: Context, song: Song, isPaused: Bool
         val largePrefLower = largeImageTypePref.lowercase()
         val isLargeFromArtist = largePrefLower == "artist"
         val resolvedLargeFromSaved = when {
-            isLargeFromArtist -> saved?.artist?.asHttp()?.takeIf { it != PAUSE_IMAGE_URL }
-            else -> saved?.thumbnail?.asHttp()?.takeIf { it != PAUSE_IMAGE_URL }
+            isLargeFromArtist -> saved?.artist?.asHttp()?.takeIf { it != CapsuleBrand.PAUSE_IMAGE_URL }
+            else -> saved?.thumbnail?.asHttp()?.takeIf { it != CapsuleBrand.PAUSE_IMAGE_URL }
         }
         
         val smallPrefLower = smallImageTypePref.lowercase()
@@ -125,8 +126,8 @@ suspend fun resolveAndPersistImages(context: Context, song: Song, isPaused: Bool
         val isSmallFromArtist = smallPrefLower == "artist"
         val resolvedSmallFromSaved = if (allowSavedSmall) {
             when {
-                isSmallFromArtist -> saved?.artist?.asHttp()?.takeIf { it != PAUSE_IMAGE_URL }
-                else -> saved?.thumbnail?.asHttp()?.takeIf { it != PAUSE_IMAGE_URL }
+                isSmallFromArtist -> saved?.artist?.asHttp()?.takeIf { it != CapsuleBrand.PAUSE_IMAGE_URL }
+                else -> saved?.thumbnail?.asHttp()?.takeIf { it != CapsuleBrand.PAUSE_IMAGE_URL }
             }
         } else null
 
@@ -142,7 +143,7 @@ suspend fun resolveAndPersistImages(context: Context, song: Song, isPaused: Bool
         } else {
             val candidate = originalLargeCandidate?.takeIf { it.isNotBlank() }
             finalLarge = resolveUrlCandidate(candidate)
-            if (!finalLarge.isNullOrBlank() && (finalLarge.startsWith("http://") || finalLarge.startsWith("https://")) && finalLarge != PAUSE_IMAGE_URL) {
+            if (!finalLarge.isNullOrBlank() && (finalLarge.startsWith("http://") || finalLarge.startsWith("https://")) && finalLarge != CapsuleBrand.PAUSE_IMAGE_URL) {
                 try {
                     // Save to the correct field based on image source type and update tracking variables
                     if (isLargeFromArtist) {
@@ -166,7 +167,7 @@ suspend fun resolveAndPersistImages(context: Context, song: Song, isPaused: Bool
         } else {
             val candidate = originalSmallCandidate?.takeIf { it.isNotBlank() }
             finalSmall = resolveUrlCandidate(candidate)
-            if (!finalSmall.isNullOrBlank() && (finalSmall.startsWith("http://") || finalSmall.startsWith("https://")) && finalSmall != PAUSE_IMAGE_URL) {
+            if (!finalSmall.isNullOrBlank() && (finalSmall.startsWith("http://") || finalSmall.startsWith("https://")) && finalSmall != CapsuleBrand.PAUSE_IMAGE_URL) {
                 try {
                     // Save to the correct field based on image source type using tracked values
                     if (isSmallFromArtist) {
@@ -192,6 +193,3 @@ suspend fun resolveAndPersistImages(context: Context, song: Song, isPaused: Bool
         return null to null
     }
 }
-
-// Pause image constant reused from DiscordRPC companion
-private const val PAUSE_IMAGE_URL = "https://raw.githubusercontent.com/nikhilvishwakarma00/Velune/main/fastlane/metadata/android/en-US/images/RPC/pause_icon.png"

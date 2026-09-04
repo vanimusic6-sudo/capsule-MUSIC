@@ -27,9 +27,11 @@ import com.nikhil.yt.ui.screens.settings.ThemePalettes
 import com.nikhil.yt.ui.theme.ThemeSeedPalette
 import com.nikhil.yt.ui.theme.ThemeSeedPaletteCodec
 import com.nikhil.yt.utils.dataStore
+import com.nikhil.yt.utils.CapsuleBrand
 import com.nikhil.yt.utils.PreferenceStore
 import com.nikhil.yt.utils.DebugLoggingController
 import com.nikhil.yt.utils.get
+import com.nikhil.yt.utils.reportRecoverableException
 import com.nikhil.yt.utils.reportException
 import com.nikhil.yt.innertube.CapsuleAnonymousSession
 import com.nikhil.yt.innertube.YouTube
@@ -95,6 +97,7 @@ class App : Application(), SingletonImageLoader.Factory {
         }
 
         PreferenceStore.start(this)
+        migrateLegacyBrandPreferences()
 
         /*
          * PreferenceStore has already primed the first DataStore snapshot at
@@ -126,6 +129,31 @@ class App : Application(), SingletonImageLoader.Factory {
 
         initializeCriticalSync()
         initializeDeferredAsync()
+    }
+
+    private fun migrateLegacyBrandPreferences() {
+        applicationScope.launch(Dispatchers.IO) {
+            try {
+                dataStore.edit { preferences ->
+                    if (
+                        preferences[DiscordActivityButton2LabelKey] ==
+                        CapsuleBrand.LEGACY_DISCORD_BUTTON_LABEL
+                    ) {
+                        preferences[DiscordActivityButton2LabelKey] =
+                            CapsuleBrand.DEFAULT_DISCORD_BUTTON_LABEL
+                    }
+                    if (
+                        preferences[DiscordActivityButton2CustomUrlKey] ==
+                        CapsuleBrand.LEGACY_REPOSITORY_URL
+                    ) {
+                        preferences[DiscordActivityButton2CustomUrlKey] =
+                            CapsuleBrand.REPOSITORY_URL
+                    }
+                }
+            } catch (error: Exception) {
+                reportRecoverableException("App", "migrate legacy Discord branding", error)
+            }
+        }
     }
 
     private fun initializeCriticalSync() {
@@ -181,9 +209,12 @@ class App : Application(), SingletonImageLoader.Factory {
 
                 if (prefs[ProxyEnabledKey] == true) {
                     try {
+                        val proxyUrl = requireNotNull(prefs[ProxyUrlKey]) {
+                            "Proxy is enabled but its URL is missing"
+                        }
                         YouTube.proxy = Proxy(
                             prefs[ProxyTypeKey].toEnum(defaultValue = Proxy.Type.HTTP),
-                            prefs[ProxyUrlKey]!!.toInetSocketAddress()
+                            proxyUrl.toInetSocketAddress()
                         )
                     } catch (e: Exception) {
                         withContext(Dispatchers.Main) {
@@ -383,7 +414,8 @@ class App : Application(), SingletonImageLoader.Factory {
                 val size = file.length()
                 if (runCatching { file.delete() }.getOrDefault(false)) currentSize -= size
             }
-        } catch (_: Exception) {
+        } catch (error: Exception) {
+            reportRecoverableException("App", "trim image disk cache", error)
         }
     }
 

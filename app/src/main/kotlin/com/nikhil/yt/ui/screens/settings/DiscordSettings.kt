@@ -67,6 +67,7 @@ import com.nikhil.yt.utils.DiscordRPC
 import com.nikhil.yt.utils.getPresenceIntervalMillis
 import kotlinx.coroutines.*
 import com.nikhil.yt.utils.ArtworkStorage
+import com.nikhil.yt.utils.CapsuleBrand
 
 enum class ActivitySource { ARTIST, ALBUM, SONG, APP }
 
@@ -431,7 +432,7 @@ fun DiscordSettings(
        val intervalOptions = listOf("20s", "50s", "1m", "5m", "Custom", "Disabled")
        val (intervalSelection, onIntervalSelectionChange) = rememberPreference(
            key = stringPreferencesKey("discordPresenceIntervalPreset"),
-           defaultValue = "20s"
+           defaultValue = "1m"
         )
 
         var intervalExpanded by remember { mutableStateOf(false) }
@@ -574,7 +575,7 @@ if (intervalSelection == "Custom") {
         )
         val (button2Label, onButton2LabelChange) = rememberPreference(
             key = DiscordActivityButton2LabelKey,
-            defaultValue = "Go to Velune"
+            defaultValue = CapsuleBrand.DEFAULT_DISCORD_BUTTON_LABEL
         )
         val (button2Enabled, onButton2EnabledChange) = rememberPreference(
             key = DiscordActivityButton2EnabledKey,
@@ -962,7 +963,10 @@ fun RichPresence(
    val (button1Label) = rememberPreference(DiscordActivityButton1LabelKey, "Listen on YouTube Music")
    val (button1Enabled) = rememberPreference(DiscordActivityButton1EnabledKey, true)
 
-   val (button2Label) = rememberPreference(DiscordActivityButton2LabelKey, "Go to Velune")
+   val (button2Label) = rememberPreference(
+       DiscordActivityButton2LabelKey,
+       CapsuleBrand.DEFAULT_DISCORD_BUTTON_LABEL,
+   )
    val (button2Enabled) = rememberPreference(DiscordActivityButton2EnabledKey, true)
 
 // Button URL sources + custom
@@ -970,7 +974,10 @@ fun RichPresence(
    val (button1CustomUrl) = rememberPreference(DiscordActivityButton1CustomUrlKey, "")
 
    val (button2UrlSource) = rememberPreference(DiscordActivityButton2UrlSourceKey, "custom")
-   val (button2CustomUrl) = rememberPreference(DiscordActivityButton2CustomUrlKey, "https://github.com/nikhilvishwakarma00/Velune")
+   val (button2CustomUrl) = rememberPreference(
+       DiscordActivityButton2CustomUrlKey,
+       CapsuleBrand.REPOSITORY_URL,
+   )
 
 // Large text source + custom
    val (largeTextSource) = rememberPreference(DiscordLargeTextSourceKey, "album")
@@ -1002,7 +1009,7 @@ fun RichPresence(
     ActivitySource.ARTIST -> "$activityVerb ${song?.artists?.firstOrNull()?.name ?: "Artist"}"
     ActivitySource.ALBUM -> "$activityVerb ${song?.album?.title ?: song?.song?.albumName ?: "Album"}"
     ActivitySource.SONG -> "$activityVerb ${song?.song?.title ?: "Song"}"
-    ActivitySource.APP -> "$activityVerb Velune"
+    ActivitySource.APP -> "$activityVerb ${stringResource(R.string.app_name)}"
    }
 
 
@@ -1041,7 +1048,7 @@ fun RichPresence(
                                 model = when (largeImageType) {
                                     "thumbnail" -> song?.song?.thumbnailUrl
                                     "artist" -> song?.artists?.firstOrNull()?.thumbnailUrl
-                                    "appicon" -> "https://raw.githubusercontent.com/nikhilvishwakarma00/Velune/main/fastlane/metadata/android/en-US/images/icon.png"
+                                    "appicon" -> CapsuleBrand.APP_ICON_URL
                                     "custom" -> largeImageCustomUrl.ifBlank { song?.song?.thumbnailUrl }
                                     else -> song?.song?.thumbnailUrl
                                 },
@@ -1065,7 +1072,7 @@ fun RichPresence(
                             val smallModel = when (smallImageType.lowercase()) {
                                 "thumbnail" -> songThumb  // Only show song thumbnail, no fallback
                                 "artist" -> artistThumb   // Only show artist thumbnail, no fallback to song
-                                "appicon" -> "https://raw.githubusercontent.com/nikhilvishwakarma00/Velune/main/fastlane/metadata/android/en-US/images/icon.png"
+                                "appicon" -> CapsuleBrand.APP_ICON_URL
                                 "custom" -> smallImageCustomUrl.takeIf { it.isNotBlank() } ?: songThumb  // Custom with fallback to song only
                                 "dontshow", "none" -> null
                                 else -> artistThumb  // Default to artist without fallback

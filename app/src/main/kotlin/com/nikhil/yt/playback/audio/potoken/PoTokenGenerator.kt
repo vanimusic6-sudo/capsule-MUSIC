@@ -110,15 +110,20 @@ class PoTokenGenerator(context: Context) {
     ): PreparedSession =
         lock.withLock {
             val old = generator
-            val shouldRecreate =
-                forceRecreate ||
-                    old == null ||
-                    old.isDead ||
-                    old.isExpired ||
-                    sessionId != visitorData ||
-                    streamingToken == null
+            val recreateReason =
+                when {
+                    forceRecreate -> "forced_after_generation_failure"
+                    old == null -> "missing_session"
+                    old.isDead -> "dead_webview"
+                    old.isExpired -> "expired_session"
+                    sessionId != visitorData -> "visitor_changed"
+                    streamingToken == null -> "missing_streaming_token"
+                    else -> null
+                }
+            val shouldRecreate = recreateReason != null
 
             if (shouldRecreate) {
+                Timber.tag(TAG).i("Recreating Web PoToken session reason=%s", recreateReason)
                 if (old != null) withContext(Dispatchers.Main) { old.close() }
                 generator = null
                 streamingToken = null
