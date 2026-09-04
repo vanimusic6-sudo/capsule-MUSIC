@@ -8,11 +8,13 @@
 
 package com.nikhil.yt.extensions
 
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
+import timber.log.Timber
 
 fun <T> Flow<T>.collect(
     scope: CoroutineScope,
@@ -32,4 +34,17 @@ fun <T> Flow<T>.collectLatest(
     }
 }
 
-val SilentHandler = CoroutineExceptionHandler { _, _ -> }
+/**
+ * Best-effort background work may use this handler, but real failures must not
+ * disappear silently. Cancellation is normal coroutine control flow and is not
+ * reported as an application error.
+ */
+val SilentHandler =
+    CoroutineExceptionHandler { _, throwable ->
+        if (throwable !is CancellationException) {
+            Timber.tag("Coroutine").w(
+                throwable,
+                "Best-effort coroutine failed",
+            )
+        }
+    }
