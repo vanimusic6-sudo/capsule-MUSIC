@@ -200,7 +200,7 @@ fun PlayerSettings(
     val (audioOffload, onAudioOffloadChange) =
         rememberPreference(
             AudioOffload,
-            defaultValue = false,
+            defaultValue = true,
         )
     val (autoDownloadOnLike, onAutoDownloadOnLikeChange) =
         rememberPreference(

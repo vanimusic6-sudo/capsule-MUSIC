@@ -55,7 +55,6 @@ import androidx.media3.common.Player.REPEAT_MODE_OFF
 import androidx.media3.common.Player.REPEAT_MODE_ONE
 import androidx.media3.common.Player.STATE_IDLE
 import androidx.media3.common.Timeline
-import androidx.media3.common.audio.SonicAudioProcessor
 import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.HttpDataSource
@@ -70,8 +69,6 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.analytics.AnalyticsListener
 import androidx.media3.exoplayer.analytics.PlaybackStats
 import androidx.media3.exoplayer.analytics.PlaybackStatsListener
-import androidx.media3.exoplayer.audio.DefaultAudioSink
-import androidx.media3.exoplayer.audio.SilenceSkippingAudioProcessor
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.exoplayer.source.MediaSource
 import androidx.media3.exoplayer.source.MergingMediaSource
@@ -197,7 +194,6 @@ import com.nikhil.yt.utils.DiscordRPC
 import com.nikhil.yt.utils.NetworkConnectivityObserver
 import com.nikhil.yt.utils.StreamClientUtils
 import com.nikhil.yt.utils.SyncUtils
-import com.nikhil.yt.utils.YTPlayerUtils
 import com.nikhil.yt.playback.audio.CapsuleAudioEngine
 import com.nikhil.yt.utils.dataStore
 import com.nikhil.yt.utils.enumPreference
@@ -595,11 +591,6 @@ class MusicService :
     private val freshlyResolvedLoudness =
         ConcurrentHashMap<String, TrackLoudness>()
     private val freshlyResolvedLoudnessVersion = MutableStateFlow(0L)
-    private val normalizationLookupBlockedUntil =
-        ConcurrentHashMap<String, Long>()
-    private val normalizationLookupJobs =
-        ConcurrentHashMap<String, Job>()
-
     private val normalizeFactor = MutableStateFlow(1f)
     var playerVolume = MutableStateFlow(1f)
     private val audioFocusVolumeFactor = MutableStateFlow(1f)
@@ -804,7 +795,7 @@ class MusicService :
                 .setMediaSourceFactory(createMediaSourceFactory())
                 .setRenderersFactory(createRenderersFactory())
                 .setHandleAudioBecomingNoisy(true)
-                .setWakeMode(C.WAKE_MODE_NETWORK)
+                .setWakeMode(C.WAKE_MODE_LOCAL)
                 .setAudioAttributes(
                     AudioAttributes
                         .Builder()
@@ -821,7 +812,7 @@ class MusicService :
                     sleepTimer = SleepTimer(scope, this)
                     addListener(sleepTimer)
                     addAnalyticsListener(PlaybackStatsListener(false, this@MusicService))
-                    setOffloadEnabled(false)
+                    setOffloadEnabled(dataStore.get(AudioOffload, true))
                 }
 
         screenInteractive =
@@ -871,7 +862,7 @@ class MusicService :
             val prefs = dataStore.data.first()
             val repeatMode = prefs[RepeatModeKey] ?: REPEAT_MODE_OFF
             val volume = (prefs[PlayerVolumeKey] ?: 1f).coerceIn(0f, 1f)
-            val offload = prefs[AudioOffload] ?: false
+            val offload = prefs[AudioOffload] ?: true
             withContext(Dispatchers.Main) {
                 player.repeatMode = repeatMode
                 playerVolume.value = volume
@@ -984,7 +975,7 @@ class MusicService :
             }
 
         dataStore.data
-            .map { it[AudioOffload] ?: false }
+            .map { it[AudioOffload] ?: true }
             .distinctUntilChanged()
             .collectLatest(scope) { enabled ->
                 updateAudioOffload(enabled)
@@ -1024,7 +1015,7 @@ class MusicService :
                         .setMediaSourceFactory(createMediaSourceFactory())
                         .setRenderersFactory(createRenderersFactory())
                         .setHandleAudioBecomingNoisy(false)
-                        .setWakeMode(C.WAKE_MODE_NETWORK)
+                        .setWakeMode(C.WAKE_MODE_LOCAL)
                         .setAudioAttributes(
                             AudioAttributes
                                 .Builder()
@@ -1069,10 +1060,6 @@ class MusicService :
             (fresh?.takeIf { it.preferredValue != null } ?: stored) to normalizeAudio
         }.collectLatest(scope) { (loudness, normalizeAudio) ->
             audioNormalizationEnabled.value = normalizeAudio
-            if (!normalizeAudio) {
-                normalizationLookupJobs.values.forEach { it.cancel() }
-                normalizationLookupJobs.clear()
-            }
             Timber.tag("AudioNormalization").d("Audio normalization enabled: $normalizeAudio")
             Timber.tag("AudioNormalization").d(
                 "Resolved loudnessDb: ${loudness.loudnessDb}, " +
@@ -1835,6 +1822,8 @@ class MusicService :
                             if (player.shuffleModeEnabled) {
                                 applyCurrentFirstShuffleOrder()
                             }
+                        } catch (e: kotlinx.coroutines.CancellationException) {
+                            throw e
                         } catch (e: Exception) {
                             Timber.e(e, "Failed to load deferred queue items")
                         }
@@ -4427,6 +4416,7 @@ class MusicService :
                     player.play()
                     return@launch
                 } catch (t: Throwable) {
+                    if (t is kotlinx.coroutines.CancellationException) throw t
                     Timber.tag("MusicService").e(t, "failed to recover from silence-skipper error")
                 }
                 if (dataStore.get(AutoSkipNextOnErrorKey, false)) {
@@ -4762,14 +4752,9 @@ class MusicService :
                     perceptualLoudnessDb == null &&
                     audioNormalizationEnabled.value
                 ) {
-                    Timber.tag("AudioNormalization").w("No loudness data available from YouTube for video: $mediaId")
-                    resolveMissingLoudnessInBackground(
-                        mediaId = mediaId,
-                        format = format,
-                        playbackUrl =
-                            nonNullPlayback.playbackTracking
-                                ?.videostatsPlaybackUrl
-                                ?.baseUrl,
+                    Timber.tag("AudioNormalization").d(
+                        "No loudness metadata for %s; keeping unity gain without a second player request",
+                        mediaId,
                     )
                 }
 
@@ -4816,76 +4801,6 @@ class MusicService :
         }
 
         freshlyResolvedLoudnessVersion.update { it + 1L }
-    }
-
-    private fun resolveMissingLoudnessInBackground(
-        mediaId: String,
-        format:
-            com.nikhil.yt.innertube.models.response.PlayerResponse
-                .StreamingData.Format,
-        playbackUrl: String?,
-    ) {
-        val now = System.currentTimeMillis()
-        if (normalizationLookupBlockedUntil.size > 512) {
-            normalizationLookupBlockedUntil.entries.removeIf { it.value <= now }
-        }
-        val previousBlock = normalizationLookupBlockedUntil.putIfAbsent(mediaId, Long.MAX_VALUE)
-
-        if (previousBlock != null) {
-            if (previousBlock > now) return
-            if (!normalizationLookupBlockedUntil.replace(mediaId, previousBlock, Long.MAX_VALUE)) return
-        }
-
-        val job = ioScope.launch {
-            val resolved =
-                YTPlayerUtils.resolveLoudnessForNormalization(mediaId)
-
-            if (resolved == null) {
-                normalizationLookupBlockedUntil[mediaId] =
-                    System.currentTimeMillis() + 30 * 60 * 1000L
-                return@launch
-            }
-
-            val loudness =
-                TrackLoudness(
-                    loudnessDb = resolved.loudnessDb,
-                    perceptualLoudnessDb = resolved.perceptualLoudnessDb,
-                )
-            publishResolvedLoudness(mediaId, loudness)
-            normalizationLookupBlockedUntil.remove(mediaId)
-
-            database.query {
-                upsert(
-                    FormatEntity(
-                        id = mediaId,
-                        itag = format.itag,
-                        mimeType = format.mimeType.substringBefore(';'),
-                        codecs =
-                            format.mimeType
-                                .substringAfter("codecs=", "")
-                                .removeSurrounding("\""),
-                        bitrate = format.bitrate,
-                        sampleRate = format.audioSampleRate,
-                        contentLength = format.contentLength ?: C.LENGTH_UNSET.toLong(),
-                        loudnessDb = loudness.loudnessDb,
-                        perceptualLoudnessDb = loudness.perceptualLoudnessDb,
-                        playbackUrl = playbackUrl,
-                    ),
-                )
-            }
-
-            Timber.tag("AudioNormalization").i(
-                "Applied delayed loudness metadata for %s",
-                mediaId,
-            )
-        }
-        normalizationLookupJobs[mediaId] = job
-        job.invokeOnCompletion { cause ->
-            normalizationLookupJobs.remove(mediaId)
-            if (cause != null) {
-                normalizationLookupBlockedUntil.remove(mediaId)
-            }
-        }
     }
 
     fun setCapsulePlaybackMode(mode: CapsulePlaybackMode) {
@@ -5578,53 +5493,10 @@ class MusicService :
     }
 
     private fun updateAudioOffload(enabled: Boolean) {
-        runCatching {
-            val builder = player.trackSelectionParameters.buildUpon()
-            val audioOffloadPrefsClass = Class.forName("androidx.media3.common.AudioOffloadPreferences")
-            val audioOffloadPrefsBuilderClass = Class.forName("androidx.media3.common.AudioOffloadPreferences\$Builder")
-
-            val modeFieldName = if (enabled) "AUDIO_OFFLOAD_MODE_ENABLED" else "AUDIO_OFFLOAD_MODE_DISABLED"
-            val mode = audioOffloadPrefsClass.getField(modeFieldName).getInt(null)
-
-            val prefsBuilder = audioOffloadPrefsBuilderClass.getDeclaredConstructor().newInstance()
-            audioOffloadPrefsBuilderClass.getMethod("setAudioOffloadMode", Int::class.javaPrimitiveType).invoke(prefsBuilder, mode)
-            val prefs = audioOffloadPrefsBuilderClass.getMethod("build").invoke(prefsBuilder)
-
-            val setMethod =
-                builder.javaClass.methods.firstOrNull { method ->
-                    method.name == "setAudioOffloadPreferences" && method.parameterTypes.size == 1
-                }
-            if (setMethod != null) {
-                setMethod.invoke(builder, prefs)
-                player.trackSelectionParameters = builder.build()
-            }
-        }
         player.setOffloadEnabled(enabled)
     }
 
-    private fun createRenderersFactory() =
-        object : DefaultRenderersFactory(this) {
-            override fun buildAudioSink(
-                context: Context,
-                enableFloatOutput: Boolean,
-                enableAudioTrackPlaybackParams: Boolean,
-            ) = DefaultAudioSink
-                .Builder(this@MusicService)
-                .setEnableFloatOutput(enableFloatOutput)
-                .setEnableAudioTrackPlaybackParams(enableAudioTrackPlaybackParams)
-                .setAudioProcessorChain(
-                    DefaultAudioSink.DefaultAudioProcessorChain(
-                        SilenceSkippingAudioProcessor(
-                            1_500_000L,
-                            0.35f,
-                            500_000L,
-                            10,
-                            150.toShort(),
-                        ),
-                        SonicAudioProcessor(),
-                    ),
-                ).build()
-        }
+    private fun createRenderersFactory() = DefaultRenderersFactory(this)
 
     override fun onPlaybackStatsReady(
         eventTime: AnalyticsListener.EventTime,
@@ -5652,7 +5524,7 @@ class MusicService :
                 }
             }
 
-            CoroutineScope(Dispatchers.IO).launch {
+            ioScope.launch {
                 try {
                     val song = database.song(mediaItem.mediaId).first()
                         ?: return@launch
@@ -5672,8 +5544,14 @@ class MusicService :
                 }
             }
 
-            CoroutineScope(Dispatchers.IO).launch {
-                runCatching { registerRemoteListeningHistory(mediaItem.mediaId) }
+            ioScope.launch {
+                try {
+                    registerRemoteListeningHistory(mediaItem.mediaId)
+                } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                    throw cancelled
+                } catch (error: Exception) {
+                    Timber.tag("MusicService").v(error, "Remote listening-history sync failed")
+                }
             }
         }
     }
