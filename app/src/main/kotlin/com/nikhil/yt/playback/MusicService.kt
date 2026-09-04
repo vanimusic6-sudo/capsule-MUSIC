@@ -297,6 +297,13 @@ class MusicService :
     private var scopeJob = Job()
     private var scope = CoroutineScope(Dispatchers.Main + scopeJob)
     private var ioScope = CoroutineScope(Dispatchers.IO + scopeJob)
+    /*
+     * Persistence must outlive the regular service scope during an
+     * explicit task-removal shutdown. The player snapshot is captured
+     * on main, then this independent IO scope flushes it before stopSelf.
+     */
+    private val persistenceScope =
+        CoroutineScope(Dispatchers.IO + kotlinx.coroutines.SupervisorJob())
     private val binder = MusicBinder()
 
     private lateinit var connectivityManager: ConnectivityManager
@@ -560,6 +567,12 @@ class MusicService :
     private var persistentProgressJob: Job? = null
     private var pendingPersistentQueueSaveJob: Job? = null
     private var pendingPersistentPlayerStateSaveJob: Job? = null
+
+    private data class PersistentPlaybackSnapshot(
+        val queue: PersistQueue,
+        val automix: PersistQueue,
+        val playerState: PersistPlayerState,
+    )
     @Volatile
     private var suppressAutoPlayback = false
     private var lastPresenceToken: String? = null
@@ -5894,51 +5907,74 @@ class MusicService :
         }
     }
 
-    private suspend fun saveQueueToDisk() {
-        if (currentQueue == EmptyQueue) return
+    private fun capturePersistentPlaybackSnapshot(): PersistentPlaybackSnapshot? {
+    if (currentQueue == EmptyQueue || player.mediaItemCount <= 0) return null
 
-        val mediaItemsSnapshot = player.mediaItems.mapNotNull { it.metadata }
-        if (mediaItemsSnapshot.isEmpty()) return
+    val mediaItemsSnapshot = player.mediaItems.mapNotNull { it.metadata }
+    if (mediaItemsSnapshot.isEmpty()) return null
 
-        val currentMediaItemIndex = player.currentMediaItemIndex
-        val currentPosition = player.currentPosition
-        val automixSnapshot = automixItems.value.mapNotNull { it.metadata }
-        val playWhenReady = player.playWhenReady
-        val repeatMode = player.repeatMode
-        val shuffleModeEnabled = player.shuffleModeEnabled
-        val volume = playerVolume.value
-        val playbackState = player.playbackState
+    val currentMediaItemIndex = player.currentMediaItemIndex
+    val currentPosition = player.currentPosition
+    val automixSnapshot = automixItems.value.mapNotNull { it.metadata }
 
-        withContext(Dispatchers.IO) {
-            val persistQueue = currentQueue.toPersistQueue(
+    return PersistentPlaybackSnapshot(
+        queue =
+            currentQueue.toPersistQueue(
                 title = queueTitle,
                 items = mediaItemsSnapshot,
                 mediaItemIndex = currentMediaItemIndex,
-                position = currentPosition
-            )
-            
-            val persistAutomix =
-                PersistQueue(
-                    title = "automix",
-                    items = automixSnapshot,
-                    mediaItemIndex = 0,
-                    position = 0,
-                )
-
-            val persistPlayerState = PersistPlayerState(
-                playWhenReady = playWhenReady,
-                repeatMode = repeatMode,
-                shuffleModeEnabled = shuffleModeEnabled,
-                volume = volume,
+                position = currentPosition,
+            ),
+        automix =
+            PersistQueue(
+                title = "automix",
+                items = automixSnapshot,
+                mediaItemIndex = 0,
+                position = 0,
+            ),
+        playerState =
+            PersistPlayerState(
+                playWhenReady = player.playWhenReady,
+                repeatMode = player.repeatMode,
+                shuffleModeEnabled = player.shuffleModeEnabled,
+                volume = playerVolume.value,
                 currentPosition = currentPosition,
-                currentMediaItemIndex = currentMediaItemIndex, // Redundant but part of data class
-                playbackState = playbackState
-            )
-            
-            writePersistentObject(PERSISTENT_QUEUE_FILE, persistQueue)
-            writePersistentObject(PERSISTENT_AUTOMIX_FILE, persistAutomix)
-            writePersistentObject(PERSISTENT_PLAYER_STATE_FILE, persistPlayerState)
+                currentMediaItemIndex = currentMediaItemIndex,
+                playbackState = player.playbackState,
+            ),
+    )
+}
+
+    private fun writePersistentPlaybackSnapshot(
+        snapshot: PersistentPlaybackSnapshot,
+        syncToDisk: Boolean = true,
+    ) {
+        writePersistentObject(PERSISTENT_QUEUE_FILE, snapshot.queue, syncToDisk)
+        writePersistentObject(PERSISTENT_AUTOMIX_FILE, snapshot.automix, syncToDisk)
+        writePersistentObject(PERSISTENT_PLAYER_STATE_FILE, snapshot.playerState, syncToDisk)
+    }
+
+    private suspend fun saveQueueToDisk() {
+        val snapshot =
+            withContext(Dispatchers.Main.immediate) {
+                capturePersistentPlaybackSnapshot()
+            } ?: return
+
+        withContext(Dispatchers.IO) {
+            writePersistentPlaybackSnapshot(snapshot)
         }
+    }
+
+    private fun finishTaskRemovedPlaybackShutdown() {
+        runCatching { stopAndClearPlayback() }
+        runCatching {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                stopForeground(STOP_FOREGROUND_REMOVE)
+            } else {
+                stopForeground(true)
+            }
+        }
+        stopSelf()
     }
 
 
@@ -5966,46 +6002,20 @@ class MusicService :
         try {
             releaseAudioEffects()
         } catch (_: Exception) {}
-        try {
-            if (dataStore.get(PersistentQueueKey, true) && player.mediaItemCount > 0) {
-                val mediaItemsSnapshot = player.mediaItems.mapNotNull { it.metadata }
-                val currentMediaItemIndex = player.currentMediaItemIndex
-                val currentPosition = player.currentPosition
-                val automixSnapshot = automixItems.value.mapNotNull { it.metadata }
-                val repeatMode = player.repeatMode
-                val shuffleModeEnabled = player.shuffleModeEnabled
-                val volume = playerVolume.value
-                val playbackState = player.playbackState
-                val playWhenReady = player.playWhenReady
-                runBlocking(Dispatchers.IO) {
-                    val persistQueue = currentQueue.toPersistQueue(
-                        title = queueTitle,
-                        items = mediaItemsSnapshot,
-                        mediaItemIndex = currentMediaItemIndex,
-                        position = currentPosition
-                    )
-                    val persistAutomix = PersistQueue(
-                        title = "automix",
-                        items = automixSnapshot,
-                        mediaItemIndex = 0,
-                        position = 0,
-                    )
-                    val persistPlayerState = PersistPlayerState(
-                        playWhenReady = playWhenReady,
-                        repeatMode = repeatMode,
-                        shuffleModeEnabled = shuffleModeEnabled,
-                        volume = volume,
-                        currentPosition = currentPosition,
-                        currentMediaItemIndex = currentMediaItemIndex,
-                        playbackState = playbackState
-                    )
-
-                    writePersistentObject(PERSISTENT_QUEUE_FILE, persistQueue)
-                    writePersistentObject(PERSISTENT_AUTOMIX_FILE, persistAutomix)
-                    writePersistentObject(PERSISTENT_PLAYER_STATE_FILE, persistPlayerState)
+        /*
+     * onDestroy runs on the main thread. Never fsync the queue here.
+     * Task-removal shutdown waits for its IO flush before stopSelf;
+     * other destruction paths get a best-effort immutable snapshot.
+     */
+    try {
+        if (dataStore.get(PersistentQueueKey, true)) {
+            capturePersistentPlaybackSnapshot()?.let { snapshot ->
+                persistenceScope.launch(SilentHandler) {
+                    writePersistentPlaybackSnapshot(snapshot)
                 }
             }
-        } catch (_: Exception) {}
+        }
+    } catch (_: Exception) {}
         try {
             mediaSession.release()
         } catch (_: Exception) {}
@@ -6071,20 +6081,36 @@ class MusicService :
                 }
 
                 if (stopMusicOnTaskClearEnabled) {
-                    if (dataStore.get(PersistentQueueKey, true) && player.mediaItemCount > 0) {
-                        runBlocking { saveQueueToDisk() }
-                    }
-                    runCatching { stopAndClearPlayback() }
-                    runCatching {
-                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-                            stopForeground(STOP_FOREGROUND_REMOVE)
-                        } else {
-                            stopForeground(true)
-                        }
-                    }
-                    stopSelf()
-                    return
+            pendingPersistentQueueSaveJob?.cancel()
+            pendingPersistentPlayerStateSaveJob?.cancel()
+            persistentProgressJob?.cancel()
+
+            val shutdownSnapshot =
+                if (dataStore.get(PersistentQueueKey, true)) {
+                    capturePersistentPlaybackSnapshot()
+                } else {
+                    null
                 }
+
+            if (shutdownSnapshot == null) {
+                finishTaskRemovedPlaybackShutdown()
+                return
+            }
+
+            /*
+             * Keep the service alive just long enough for the atomic
+             * fsync/rename sequence. Main stays free, while stopSelf
+             * is deferred until persistence has finished.
+             */
+            persistenceScope.launch(SilentHandler) {
+                writePersistentPlaybackSnapshot(shutdownSnapshot)
+                withContext(Dispatchers.Main) {
+                    finishTaskRemovedPlaybackShutdown()
+                }
+            }
+            return
+        }
+
             }
         } catch (_: Exception) {}
     }
