@@ -397,7 +397,13 @@ internal class CrossfadeAudio(
     private fun ensureOverlapPlayer(): ExoPlayer {
         val existing = overlapPlayer
         if (existing != null) return existing
-        return overlapPlayerFactory().also { overlapPlayer = it }
+
+        return overlapPlayerFactory().also { created ->
+            // Crossfade is optional, but when it is enabled its temporary
+            // player must not acquire Media3's NETWORK WifiLock either.
+            created.setWakeMode(C.WAKE_MODE_LOCAL)
+            overlapPlayer = created
+        }
     }
 
     private suspend fun fetchNormalizeFactorForMediaId(mediaId: String): Float {
