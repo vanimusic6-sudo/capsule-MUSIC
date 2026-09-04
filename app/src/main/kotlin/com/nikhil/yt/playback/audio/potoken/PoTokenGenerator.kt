@@ -17,20 +17,12 @@ import timber.log.Timber
  * returns null and the playback selector can use a non-token profile.
  *
  * Capsule prewarms the visitor-bound part of this session during application
- * startup. The first WEB_REMIX playback then only has to mint the cheap,
- * video-bound token instead of cold-starting WebView + BotGuard on the loader.
+ * startup. State is shared by all instances so startup and InnerTubeX playback
+ * can never accidentally create separate BotGuard/WebView sessions.
  */
 class PoTokenGenerator(context: Context) {
     private val applicationContext = context.applicationContext
-    private val lock = Mutex()
     private val webViewSupported by lazy { runCatching { CookieManager.getInstance() }.isSuccess }
-
-    @Volatile
-    private var brokenWebView = false
-
-    private var sessionId: String? = null
-    private var streamingToken: String? = null
-    private var generator: PoTokenWebView? = null
 
     /**
      * Prepare only the reusable visitor-bound BotGuard session. This is safe to
@@ -181,6 +173,17 @@ class PoTokenGenerator(context: Context) {
 
     private companion object {
         const val TAG = "CapsulePoToken"
+        // One global session is intentional: the application prewarmer and the
+        // InnerTubeX TokenProvider must reuse the exact same WebView/minter.
+        val lock = Mutex()
+
+        @Volatile
+        var brokenWebView = false
+
+        var sessionId: String? = null
+        var streamingToken: String? = null
+        var generator: PoTokenWebView? = null
+
         // Cold WebView + BotGuard commonly takes a few seconds. Do not let a
         // damaged renderer stall AUDIO when a token-free profile is available.
         const val OVERALL_TIMEOUT_MS = 8_000L
