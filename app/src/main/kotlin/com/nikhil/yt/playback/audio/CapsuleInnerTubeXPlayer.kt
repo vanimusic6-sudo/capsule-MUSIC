@@ -1,0 +1,422 @@
+/*
+ * Capsule MUSIC
+ * Modern AUDIO extraction backend built on MetrolistGroup/InnerTubeX.
+ *
+ * The legacy InnerTube module remains responsible for browse/search/account
+ * features. Playback is isolated here so YouTube player/cipher churn cannot
+ * destabilize the rest of the application.
+ *
+ * GPL-3.0
+ */
+package com.nikhil.yt.playback.audio
+
+import android.content.Context
+import android.net.ConnectivityManager
+import com.metrolist.innertubex.InnerTube
+import com.metrolist.innertubex.InnerTubeLogLevel
+import com.metrolist.innertubex.InnerTubeLogger
+import com.metrolist.innertubex.cipher.PlayerConfigRepository
+import com.metrolist.innertubex.cipher.RemotePlayerConfigStore
+import com.metrolist.innertubex.cipher.YouTubeCipherService
+import com.metrolist.innertubex.extraction.AudioQuality as InnerTubeXAudioQuality
+import com.metrolist.innertubex.extraction.ContentHints
+import com.metrolist.innertubex.extraction.ExtractedStream
+import com.metrolist.innertubex.extraction.InnerTubeExtractor
+import com.metrolist.innertubex.extraction.PoTokenResult
+import com.metrolist.innertubex.extraction.StreamResolveException
+import com.metrolist.innertubex.extraction.TokenProvider
+import com.metrolist.innertubex.extraction.TokenProviderCapabilities
+import com.metrolist.innertubex.extraction.YtConfigParserImpl
+import com.metrolist.innertubex.extraction.generateClientPlaybackNonce
+import com.metrolist.innertubex.extraction.strategy.PoTokenProviderKind
+import com.nikhil.yt.App
+import com.nikhil.yt.constants.AudioQuality
+import com.nikhil.yt.constants.AudioStreamPolicy
+import com.nikhil.yt.innertube.YouTube
+import com.nikhil.yt.innertube.models.response.PlayerResponse
+import io.ktor.client.HttpClient
+import io.ktor.client.engine.okhttp.OkHttp
+import io.ktor.client.plugins.HttpTimeout
+import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
+import io.ktor.serialization.kotlinx.json.json
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withTimeout
+import kotlinx.serialization.json.Json
+import timber.log.Timber
+import java.util.concurrent.ConcurrentHashMap
+import kotlin.time.Clock
+
+/**
+ * Capsule's sole modern stream-extraction entry point.
+ *
+ * Important policy:
+ * - AUTO_SAFE lets InnerTubeX choose only currently compatible profiles;
+ * - WEB maps to WEB_REMIX (not the old generic desktop WEB path);
+ * - TVHTML5 maps to TVHTML5_SIMPLY because current upstream has disabled the
+ *   old TVHTML5 direct profile after failed playback benchmarks;
+ * - parser/source failures are remembered per song for five minutes, so a bad
+ *   client can roll over without poisoning playback globally or causing a
+ *   rapid client carousel.
+ */
+object CapsuleInnerTubeXPlayer {
+    private const val TAG = "CapsuleInnerTubeX"
+    private const val STREAM_CLIENT_FAILURE_TTL_MS = 5 * 60 * 1000L
+    private const val RESOLVE_TIMEOUT_MS = 15_000L
+    private const val DEFAULT_STREAM_TTL_SECONDS = 5 * 60
+
+    private val bundleMutex = Mutex()
+    private val streamClientFailures = ConcurrentHashMap<String, FailedStreamClients>()
+
+    @Volatile
+    private var currentBundle: ExtractionBundle? = null
+
+    @Volatile
+    private var networkGeneration: Long = 0L
+
+    data class PlaybackData(
+        val audioConfig: PlayerResponse.PlayerConfig.AudioConfig?,
+        val videoDetails: PlayerResponse.VideoDetails?,
+        val playbackTracking: PlayerResponse.PlaybackTracking?,
+        val format: PlayerResponse.StreamingData.Format,
+        val streamUrl: String,
+        val streamExpiresInSeconds: Int,
+        val streamClient: String,
+        val streamHeaders: Map<String, String>,
+    )
+
+    suspend fun playerResponseForPlayback(
+        videoId: String,
+        playlistId: String?,
+        audioQuality: AudioQuality,
+        connectivityManager: ConnectivityManager,
+        streamPolicy: AudioStreamPolicy,
+    ): Result<PlaybackData> =
+        try {
+            val hints =
+                ContentHints(
+                    isUploaded = playlistId == "MLPT" || playlistId?.contains("MLPT") == true,
+                    wantVideo = false,
+                    playbackClientOverrideId = profileOverride(streamPolicy),
+                ).withStreamCapabilities(
+                    allowHls = false,
+                    allowSabr = false,
+                    allowBoundedRange = true,
+                )
+
+            val stream =
+                withTimeout(RESOLVE_TIMEOUT_MS) {
+                    requireNotNull(
+                        bundle().extractor.extract(
+                            videoId = videoId,
+                            hints = hints,
+                            excludedClients = failedStreamClients(videoId),
+                            audioQuality = audioQuality.toInnerTubeX(connectivityManager),
+                            clientPlaybackNonce = generateClientPlaybackNonce(),
+                        ),
+                    ) { "InnerTubeX returned no playable AUDIO stream" }
+                }
+
+            check(stream.sabrBootstrap == null) {
+                "SABR stream selected for a direct-only Capsule audio player"
+            }
+
+            Result.success(stream.toPlaybackData())
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: StreamResolveException) {
+            val cause = error.cause
+            Result.failure(
+                if (error.reason == StreamResolveException.Reason.NETWORK && cause != null) {
+                    cause
+                } else {
+                    error
+                },
+            )
+        } catch (error: Exception) {
+            Result.failure(error)
+        }
+
+    fun markStreamClientFailed(
+        videoId: String,
+        clientName: String?,
+        nowMs: Long = System.currentTimeMillis(),
+    ) {
+        val normalized = clientName?.substringBefore('@')?.trim()?.takeIf { it.isNotBlank() } ?: return
+        streamClientFailures.compute(videoId) { _, failures ->
+            FailedStreamClients(
+                clientNames = failures?.clientNames.orEmpty() + normalized,
+                failedAtMs = nowMs,
+            )
+        }
+        Timber.tag(TAG).w("Per-song client rollover id=%s failedClient=%s", videoId, normalized)
+    }
+
+    fun clearTrackClientFailures(videoId: String) {
+        streamClientFailures.remove(videoId)
+    }
+
+    fun clearPlaybackState() {
+        streamClientFailures.clear()
+        networkGeneration += 1L
+    }
+
+    fun onNetworkChanged() {
+        streamClientFailures.clear()
+        networkGeneration += 1L
+    }
+
+    private fun failedStreamClients(
+        videoId: String,
+        nowMs: Long = System.currentTimeMillis(),
+    ): Set<String> {
+        val failures = streamClientFailures[videoId] ?: return emptySet()
+        if ((nowMs - failures.failedAtMs) !in 0 until STREAM_CLIENT_FAILURE_TTL_MS) {
+            streamClientFailures.remove(videoId, failures)
+            return emptySet()
+        }
+        return failures.clientNames
+    }
+
+    private suspend fun bundle(): ExtractionBundle {
+        val key = bundleKey()
+        currentBundle?.takeIf { it.key == key }?.let { return it }
+
+        return bundleMutex.withLock {
+            val lockedKey = bundleKey()
+            currentBundle?.takeIf { it.key == lockedKey }?.let { return@withLock it }
+
+            currentBundle?.closeQuietly()
+
+            val httpClient = createHttpClient()
+            val innerTube = InnerTube(httpClient = httpClient, logger = logger)
+            val remoteStore = RemotePlayerConfigStore(httpClient, configRepository, logger)
+            val cipherService = YouTubeCipherService(httpClient, remoteStore, logger)
+            val extractor =
+                InnerTubeExtractor(
+                    configParser = YtConfigParserImpl(httpClient, innerTube, remoteStore, logger),
+                    cipherService = cipherService,
+                    innerTube = innerTube,
+                    tokenProvider = configuredTokenProvider(),
+                    logger = logger,
+                )
+
+            ExtractionBundle(
+                key = lockedKey,
+                httpClient = httpClient,
+                cipherService = cipherService,
+                extractor = extractor,
+            ).also { currentBundle = it }
+        }
+    }
+
+    private fun bundleKey(): String =
+        buildString {
+            append(networkGeneration)
+            append('|')
+            append(YouTube.proxy?.toString().orEmpty())
+            append('|')
+            append(!YouTube.poTokenGvs.isNullOrBlank())
+        }
+
+    private fun createHttpClient(): HttpClient =
+        HttpClient(OkHttp) {
+            expectSuccess = false
+            install(ContentNegotiation) {
+                json(
+                    Json {
+                        ignoreUnknownKeys = true
+                        explicitNulls = false
+                        encodeDefaults = true
+                    },
+                )
+            }
+            install(HttpTimeout) {
+                requestTimeoutMillis = 12_000
+                connectTimeoutMillis = 8_000
+                socketTimeoutMillis = 12_000
+            }
+            YouTube.proxy?.let { configuredProxy ->
+                engine {
+                    proxy = configuredProxy
+                }
+            }
+        }
+
+    /**
+     * Respect genuine tokens already configured by the user. Automatic WebView
+     * minting is intentionally a separate host concern; if no token exists,
+     * InnerTubeX will simply exclude profiles that require one instead of
+     * sending a knowingly invalid WEB_REMIX/TV request.
+     */
+    private fun configuredTokenProvider(): TokenProvider? {
+        if (YouTube.poTokenGvs.isNullOrBlank()) return null
+        return object : TokenProvider {
+            override val capabilities =
+                TokenProviderCapabilities(
+                    providers = setOf(PoTokenProviderKind.WEB_BOTGUARD),
+                    usesWebView = false,
+                )
+
+            override suspend fun getPoToken(
+                videoId: String,
+                visitorData: String,
+                cookie: String?,
+            ): PoTokenResult =
+                PoTokenResult(
+                    playerRequestToken = YouTube.poTokenPlayer,
+                    streamingDataToken = requireNotNull(YouTube.poTokenGvs),
+                    visitorData = visitorData,
+                )
+        }
+    }
+
+    private val configRepository: PlayerConfigRepository by lazy {
+        AndroidPlayerConfigRepository(App.instance.applicationContext)
+    }
+
+    private val logger =
+        InnerTubeLogger { event ->
+            val details =
+                event.details.entries.joinToString(prefix = " [", postfix = "]") {
+                    "${it.key}=${it.value}"
+                }
+            val message = event.message + details.takeUnless { event.details.isEmpty() }.orEmpty()
+            when (event.level) {
+                InnerTubeLogLevel.DEBUG -> Timber.tag(event.tag).d(message)
+                InnerTubeLogLevel.INFO -> Timber.tag(event.tag).i(message)
+                InnerTubeLogLevel.WARN -> Timber.tag(event.tag).w(message)
+                InnerTubeLogLevel.ERROR -> Timber.tag(event.tag).e(message)
+            }
+        }
+
+    private fun profileOverride(policy: AudioStreamPolicy): String? =
+        when (policy) {
+            AudioStreamPolicy.AUTO_SAFE -> null
+            AudioStreamPolicy.VISIONOS -> "VISIONOS"
+            AudioStreamPolicy.WEB_EMBEDDED -> "WEB_EMBEDDED_PLAYER"
+            AudioStreamPolicy.WEB -> "WEB_REMIX"
+            AudioStreamPolicy.TVHTML5 -> "TVHTML5_SIMPLY"
+            AudioStreamPolicy.TV_DOWNGRADED -> "TVHTML5_DOWNGRADED"
+            // These legacy compatibility modes stay on the old resolver until
+            // their current upstream manifests are explicitly validated here.
+            AudioStreamPolicy.MWEB,
+            AudioStreamPolicy.IOS,
+            AudioStreamPolicy.IOS_MUSIC,
+            -> null
+        }
+
+    private fun AudioQuality.toInnerTubeX(
+        connectivityManager: ConnectivityManager,
+    ): InnerTubeXAudioQuality =
+        when (this) {
+            AudioQuality.HIGH -> InnerTubeXAudioQuality.HIGH
+            AudioQuality.LOW -> InnerTubeXAudioQuality.LOW
+            AudioQuality.AUTO ->
+                if (connectivityManager.isActiveNetworkMetered) {
+                    InnerTubeXAudioQuality.LOW
+                } else {
+                    InnerTubeXAudioQuality.AUTO
+                }
+        }
+
+    private fun ExtractedStream.toPlaybackData(): PlaybackData {
+        val fullMimeType =
+            if (codecs.isNullOrBlank()) {
+                mimeType.orEmpty()
+            } else {
+                "${mimeType.orEmpty()}; codecs=\"$codecs\""
+            }
+
+        return PlaybackData(
+            audioConfig =
+                if (loudnessDb != null || perceptualLoudnessDb != null) {
+                    PlayerResponse.PlayerConfig.AudioConfig(loudnessDb, perceptualLoudnessDb)
+                } else {
+                    null
+                },
+            videoDetails = null,
+            playbackTracking =
+                playbackTracking?.let {
+                    PlayerResponse.PlaybackTracking(
+                        videostatsPlaybackUrl =
+                            it.playbackUrl?.let(PlayerResponse.PlaybackTracking::VideostatsPlaybackUrl),
+                        videostatsWatchtimeUrl =
+                            it.watchtimeUrl?.let(PlayerResponse.PlaybackTracking::VideostatsWatchtimeUrl),
+                    )
+                },
+            format =
+                PlayerResponse.StreamingData.Format(
+                    itag = itag,
+                    url = audioUrl,
+                    mimeType = fullMimeType,
+                    bitrate = bitrate ?: 0,
+                    contentLength = contentLengthBytes,
+                    quality = "",
+                    averageBitrate = bitrate,
+                    approxDurationMs = mediaMetadata?.durationSeconds?.times(1000L)?.toString(),
+                    audioSampleRate = sampleRate,
+                    loudnessDb = loudnessDb,
+                    perceptualLoudnessDb = perceptualLoudnessDb,
+                ),
+            streamUrl = audioUrl,
+            streamExpiresInSeconds =
+                expiresAt
+                    ?.let {
+                        ((it.toEpochMilliseconds() - Clock.System.now().toEpochMilliseconds()) / 1000L)
+                            .toInt()
+                    }
+                    ?.coerceAtLeast(1)
+                    ?: DEFAULT_STREAM_TTL_SECONDS,
+            streamClient = clientName,
+            streamHeaders = headers,
+        )
+    }
+
+    private data class FailedStreamClients(
+        val clientNames: Set<String>,
+        val failedAtMs: Long,
+    )
+
+    private data class ExtractionBundle(
+        val key: String,
+        val httpClient: HttpClient,
+        val cipherService: YouTubeCipherService,
+        val extractor: InnerTubeExtractor,
+    ) {
+        fun closeQuietly() {
+            runCatching { httpClient.close() }
+        }
+    }
+
+    private class AndroidPlayerConfigRepository(context: Context) : PlayerConfigRepository {
+        private val preferences =
+            context.getSharedPreferences("capsule_innertubex_player_config", Context.MODE_PRIVATE)
+
+        override val enabled: Boolean = true
+        override val sourceUrl: String = PLAYER_CONFIG_URL
+        override val defaultSourceUrl: String = PLAYER_CONFIG_URL
+
+        override var cachedJson: String
+            get() = preferences.getString("json", "").orEmpty()
+            set(value) = preferences.edit().putString("json", value).apply()
+
+        override var cachedAtMs: Long
+            get() = preferences.getLong("cached_at_ms", 0L)
+            set(value) = preferences.edit().putLong("cached_at_ms", value).apply()
+
+        override var cachedSourceUrl: String
+            get() = preferences.getString("source_url", "").orEmpty()
+            set(value) = preferences.edit().putString("source_url", value).apply()
+
+        override var cachedEtag: String
+            get() = preferences.getString("etag", "").orEmpty()
+            set(value) = preferences.edit().putString("etag", value).apply()
+
+        private companion object {
+            const val PLAYER_CONFIG_URL =
+                "https://raw.githubusercontent.com/ZemerTeam/zemer-cipher/master/library/src/main/assets/player_configs.json"
+        }
+    }
+}
