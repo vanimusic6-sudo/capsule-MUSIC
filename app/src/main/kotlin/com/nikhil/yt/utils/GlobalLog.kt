@@ -23,6 +23,15 @@ object GlobalLog {
     private const val MAX_ENTRIES = 5000
 
     /*
+     * Identical hot-path callbacks can arrive twice within the same frame or
+     * loader hand-off (normalization was a common example). Keeping both adds
+     * zero diagnostic value but still allocates and copies strings while field
+     * logging is enabled. Only exact duplicates in a very small window are
+     * collapsed; later repetitions are preserved.
+     */
+    private const val DUPLICATE_WINDOW_MS = 250L
+
+    /*
      * How often the UI snapshot may be rebuilt. Rebuilding a 5000 element list
      * on every single log line was costing more CPU than the work being logged.
      */
@@ -47,6 +56,11 @@ object GlobalLog {
     @Volatile
     private var lastPublishedAtMs = 0L
 
+    private var lastAcceptedLevel: Int = Int.MIN_VALUE
+    private var lastAcceptedTag: String? = null
+    private var lastAcceptedMessage: String? = null
+    private var lastAcceptedAtMs: Long = 0L
+
     private val timeFormat = SimpleDateFormat("HH:mm:ss.SSS", Locale.getDefault())
 
     val isEnabled: Boolean
@@ -60,16 +74,29 @@ object GlobalLog {
     fun append(level: Int, tag: String?, message: String) {
         if (!enabled) return
 
-        val entry = LogEntry(System.currentTimeMillis(), level, tag, message)
+        val now = System.currentTimeMillis()
+        val entry = LogEntry(now, level, tag, message)
 
         val snapshot =
             synchronized(lock) {
+                val isBurstDuplicate =
+                    level == lastAcceptedLevel &&
+                        tag == lastAcceptedTag &&
+                        message == lastAcceptedMessage &&
+                        now - lastAcceptedAtMs in 0..DUPLICATE_WINDOW_MS
+
+                if (isBurstDuplicate) return@synchronized null
+
+                lastAcceptedLevel = level
+                lastAcceptedTag = tag
+                lastAcceptedMessage = message
+                lastAcceptedAtMs = now
+
                 buffer.addLast(entry)
                 while (buffer.size > MAX_ENTRIES) {
                     buffer.removeFirst()
                 }
 
-                val now = entry.time
                 val observed = _logs.subscriptionCount.value > 0
                 if (!observed || now - lastPublishedAtMs < PUBLISH_INTERVAL_MS) {
                     null
@@ -113,6 +140,10 @@ object GlobalLog {
         synchronized(lock) {
             buffer.clear()
             lastPublishedAtMs = 0L
+            lastAcceptedLevel = Int.MIN_VALUE
+            lastAcceptedTag = null
+            lastAcceptedMessage = null
+            lastAcceptedAtMs = 0L
         }
         _logs.value = emptyList()
     }
@@ -141,7 +172,7 @@ class GlobalLogTree : Timber.Tree() {
             val final = if (t != null) "$message\n$t" else message
             GlobalLog.append(priority, tag, final)
         } catch (_: Exception) {
-            // swallow
+            // Logging must never be allowed to crash the process or recurse.
         }
     }
 }
