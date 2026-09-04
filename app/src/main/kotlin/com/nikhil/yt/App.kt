@@ -36,6 +36,7 @@ import com.nikhil.yt.innertube.YouTube
 import com.nikhil.yt.innertube.models.YouTubeLocale
 import com.nikhil.yt.kugou.KuGou
 import com.nikhil.yt.lastfm.LastFM
+import com.nikhil.yt.playback.audio.potoken.PoTokenGenerator
 import dagger.hilt.android.HiltAndroidApp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -57,6 +58,7 @@ import java.util.concurrent.atomic.AtomicBoolean
 @HiltAndroidApp
 class App : Application(), SingletonImageLoader.Factory {
     private val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+    private val startupPoTokenGenerator by lazy { PoTokenGenerator(this) }
     @Volatile private var isInitialized = false
     private val didRunImageCacheTrim = AtomicBoolean(false)
 
@@ -274,6 +276,29 @@ class App : Application(), SingletonImageLoader.Factory {
                     CapsuleAnonymousSession.reset()
                 }
         }
+
+        /*
+         * Build the expensive WebView/BotGuard visitor session while Capsule is
+         * opening instead of making the first song pay that cold-start cost.
+         * The generator state is shared with InnerTubeX, so playback only mints
+         * the per-video token when WEB_REMIX is actually selected.
+         */
+        applicationScope.launch(Dispatchers.IO) {
+            dataStore.data
+                .map { prefs ->
+                    (prefs[WebClientPoTokenEnabledKey] ?: false) to
+                        prefs[VisitorDataKey]
+                            ?.trim()
+                            ?.takeIf { it.isNotBlank() && it != "null" }
+                }
+                .distinctUntilChanged()
+                .collect { (enabled, visitorData) ->
+                    if (enabled && visitorData != null) {
+                        startupPoTokenGenerator.prewarm(visitorData)
+                    }
+                }
+        }
+
         applicationScope.launch(Dispatchers.IO) {
             dataStore.data
                 .map { it[LastFMSessionKey] }
