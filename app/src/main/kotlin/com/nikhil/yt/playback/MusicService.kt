@@ -430,7 +430,7 @@ class MusicService :
          * Rapid skipping used to leave every abandoned prefetch alive. Each
          * one owns its own client fallback budget, so a short swipe burst
          * could keep contacting YouTube for tracks no longer near playback.
-         * Keep only the current item and the two useful look-ahead items.
+         * Keep only the current item and the one useful look-ahead item.
          */
         inFlightAudioResolves.forEach { (mediaId, job) ->
             if (
@@ -4649,7 +4649,7 @@ class MusicService :
              * Await the shared resolve rather than starting one here. The work
              * itself lives in ioScope, so every caller for this track shares
              * the same job. A media transition keeps jobs for the current and
-             * next two tracks, while older abandoned prefetches are cancelled
+             * next track, while older abandoned prefetches are cancelled
              * to avoid request bursts during rapid skipping.
              *
              * The timeout is a floor, not the mechanism: with prefetch working
@@ -6189,13 +6189,13 @@ class MusicService :
         const val CHUNK_LENGTH = 512 * 1024L
 
         /*
-         * How far ahead to resolve. Two is enough to cover a normal transition
-         * plus one impatient skip without turning the queue into a crawler.
+         * How far ahead to resolve. One track covers a normal transition without
+         * turning rapid queue navigation into parallel extraction bursts.
          */
         /* Single tag so a field run can be filtered down to the resolve path. */
         private const val CAPSULE_RESOLVE_TAG = "CapsuleResolve"
 
-        private const val PREFETCH_AHEAD = 2
+        private const val PREFETCH_AHEAD = 1
         private const val NETWORK_SETTLE_RETRY_MS = 1_500L
 
         /* Do not re-resolve a URL that still has this much life left. */
