@@ -38,6 +38,7 @@ import com.nikhil.yt.kugou.KuGou
 import com.nikhil.yt.lastfm.LastFM
 import com.nikhil.yt.playback.audio.potoken.PoTokenGenerator
 import dagger.hilt.android.HiltAndroidApp
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.CoroutineScope
@@ -212,6 +213,8 @@ class App : Application(), SingletonImageLoader.Factory {
                 }
 
                 isInitialized = true
+            } catch (cancelled: CancellationException) {
+                throw cancelled
             } catch (e: Exception) {
                 Timber.e(e, "Error during deferred initialization")
                 reportException(e)
