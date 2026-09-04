@@ -441,11 +441,11 @@
     <string name="audio_normalization">Audio normalization</string>
     <string name="audio_stream_policy">Audio stream client</string>
     <string name="audio_stream_policy_current">%1$s • client snapshot %2$s</string>
-    <string name="audio_stream_policy_note">Capsule uses a reviewed list of audio clients. Web clients are added to automatic fallback only when a genuine GVS PO token is enabled. Android VR and Android Music remain hidden because their current attestation requirements are incompatible.</string>
+    <string name="audio_stream_policy_note">Audio playback is pinned to the direct visionOS client. Cipher-dependent Web clients are temporarily disabled because rapid switching can leave their EJS resolver unable to produce stream URLs.</string>
     <string name="audio_stream_policy_auto">Safe automatic</string>
-    <string name="audio_stream_policy_auto_description">Recommended. Tries visionOS, Web Embedded and TV clients; WEB/MWEB are included when a genuine PO token is configured.</string>
+    <string name="audio_stream_policy_auto_description">Legacy setting. It now uses the stable direct visionOS client.</string>
     <string name="audio_stream_policy_visionos">visionOS %1$s</string>
-    <string name="audio_stream_policy_visionos_description">Prefer the current visionOS identity, then use the reviewed fallbacks.</string>
+    <string name="audio_stream_policy_visionos_description">Uses only the current direct visionOS identity. No cipher-dependent Web fallback is started.</string>
     <string name="audio_stream_policy_web_embedded">Web Embedded %1$s</string>
     <string name="audio_stream_policy_web_embedded_description">Prefer the anonymous third-party Web Embedded identity, then use visionOS and TV fallbacks.</string>
     <string name="audio_stream_policy_web">WEB %1$s</string>

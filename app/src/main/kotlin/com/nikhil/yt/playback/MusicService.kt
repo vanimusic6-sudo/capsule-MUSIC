@@ -307,7 +307,7 @@ class MusicService :
     private val audioStreamPolicy by enumPreference(
         this,
         AudioStreamPolicyKey,
-        AudioStreamPolicy.AUTO_SAFE,
+        AudioStreamPolicy.VISIONOS,
     )
     private val capsuleVideoQuality by enumPreference(
         this,

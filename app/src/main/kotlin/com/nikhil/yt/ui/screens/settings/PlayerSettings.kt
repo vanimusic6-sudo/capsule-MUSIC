@@ -169,7 +169,7 @@ fun PlayerSettings(
     val (audioStreamPolicy, onAudioStreamPolicyChange) =
         rememberEnumPreference(
             AudioStreamPolicyKey,
-            defaultValue = AudioStreamPolicy.AUTO_SAFE,
+            defaultValue = AudioStreamPolicy.VISIONOS,
         )
 
     val (networkMetered, onNetworkMeteredChange) =

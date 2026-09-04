@@ -56,10 +56,11 @@ import kotlin.time.Clock
  * Capsule's sole modern stream-extraction entry point.
  *
  * Important policy:
- * - AUTO_SAFE lets InnerTubeX choose only currently compatible profiles;
- * - WEB maps to WEB_REMIX (not the old generic desktop WEB path);
- * - retired policies are normalized to AUTO_SAFE at this boundary too, so an
- *   old persisted preference can never reactivate an unsupported transport;
+ * - every saved policy currently normalizes to the direct visionOS profile;
+ * - cipher-dependent WEB profiles stay disabled after rapid switching proved
+ *   capable of leaving the shared EJS solver in a repeated failure state;
+ * - only one extraction runs at a time, so swipe bursts cannot create a bank
+ *   of simultaneous player requests;
  * - parser/source failures are remembered per song for five minutes, so a bad
  *   client can roll over without poisoning playback globally or causing a
  *   rapid client carousel.
@@ -74,6 +75,7 @@ object CapsuleInnerTubeXPlayer {
     private const val MAX_SABR_ROLLOVERS = 1
 
     private val bundleMutex = Mutex()
+    private val resolveMutex = Mutex()
     private val streamClientFailures = ConcurrentHashMap<String, FailedStreamClients>()
 
     @Volatile
@@ -167,11 +169,13 @@ object CapsuleInnerTubeXPlayer {
             val resolvedQuality = audioQuality.toInnerTubeX(connectivityManager)
             val stream =
                 withTimeout(ENGINE_RESOLVE_TIMEOUT_MS) {
-                    extractDirectStream(
-                        videoId = videoId,
-                        hints = hints,
-                        audioQuality = resolvedQuality,
-                    )
+                    resolveMutex.withLock {
+                        extractDirectStream(
+                            videoId = videoId,
+                            hints = hints,
+                            audioQuality = resolvedQuality,
+                        )
+                    }
                 }
 
             Result.success(stream.toPlaybackData())
@@ -411,19 +415,10 @@ object CapsuleInnerTubeXPlayer {
             }
         }
 
-    private fun profileOverride(policy: AudioStreamPolicy): String? =
-        when (policy.normalizedForPlayback()) {
-            AudioStreamPolicy.AUTO_SAFE -> null
-            AudioStreamPolicy.VISIONOS -> "VISIONOS"
-            AudioStreamPolicy.WEB_EMBEDDED -> "WEB_EMBEDDED_PLAYER"
-            AudioStreamPolicy.WEB -> "WEB_REMIX"
-            AudioStreamPolicy.MWEB,
-            AudioStreamPolicy.IOS,
-            AudioStreamPolicy.IOS_MUSIC,
-            AudioStreamPolicy.TV_DOWNGRADED,
-            AudioStreamPolicy.TVHTML5,
-            -> null
-        }
+    private fun profileOverride(policy: AudioStreamPolicy): String {
+        check(policy.normalizedForPlayback() == AudioStreamPolicy.VISIONOS)
+        return "VISIONOS"
+    }
 
     private fun AudioQuality.toInnerTubeX(
         connectivityManager: ConnectivityManager,

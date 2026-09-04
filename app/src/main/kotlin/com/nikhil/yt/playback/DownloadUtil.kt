@@ -66,7 +66,7 @@ constructor(
     private val audioStreamPolicy by enumPreference(
         context,
         AudioStreamPolicyKey,
-        AudioStreamPolicy.AUTO_SAFE,
+        AudioStreamPolicy.VISIONOS,
     )
     private val songUrlCache = HashMap<String, Pair<String, Long>>()
 

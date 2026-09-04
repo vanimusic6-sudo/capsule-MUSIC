@@ -40,8 +40,8 @@ object CapsuleAudioEngine {
      *
      * The legacy parameters remain in the signature temporarily so older call
      * sites and diagnostics do not need a coordinated migration, but they can
-     * no longer route playback into the old resolver. Obsolete stored policies
-     * are normalized to AUTO_SAFE before they reach InnerTubeX.
+     * no longer route playback into the old resolver. Every stored policy is
+     * currently normalized to visionOS before it reaches InnerTubeX.
      */
     @Suppress("UNUSED_PARAMETER")
     suspend fun playerResponseForPlayback(
@@ -50,7 +50,7 @@ object CapsuleAudioEngine {
         audioQuality: AudioQuality,
         connectivityManager: ConnectivityManager,
         preferredStreamClient: PlayerStreamClient = PlayerStreamClient.ANDROID_VR,
-        streamPolicy: AudioStreamPolicy = AudioStreamPolicy.AUTO_SAFE,
+        streamPolicy: AudioStreamPolicy = AudioStreamPolicy.VISIONOS,
         networkMetered: Boolean? = null,
         avoidCodecs: Set<String> = emptySet(),
     ): Result<PlaybackData> {

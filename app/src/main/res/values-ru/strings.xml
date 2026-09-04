@@ -409,11 +409,11 @@
     <string name="audio_normalization">Нормализация аудио</string>
     <string name="audio_stream_policy">Клиент аудиопотока</string>
     <string name="audio_stream_policy_current">%1$s • снимок клиентов %2$s</string>
-    <string name="audio_stream_policy_note">Capsule использует проверенный список аудиоклиентов. WEB-клиенты добавляются в автоматический резерв только при включённом настоящем GVS PO-токене. Android VR и Android Music скрыты: их текущие требования к аттестации несовместимы.</string>
+    <string name="audio_stream_policy_note">Аудио закреплено за прямым клиентом visionOS. WEB-клиенты с расшифровкой временно отключены: при быстром переключении их EJS-резолвер может перестать получать ссылки на потоки.</string>
     <string name="audio_stream_policy_auto">Безопасный автоматический</string>
-    <string name="audio_stream_policy_auto_description">Рекомендуется. Проверяет visionOS, Web Embedded и TV; WEB/MWEB подключаются при наличии настоящего PO-токена.</string>
+    <string name="audio_stream_policy_auto_description">Устаревшая настройка. Теперь она использует стабильный прямой клиент visionOS.</string>
     <string name="audio_stream_policy_visionos">visionOS %1$s</string>
-    <string name="audio_stream_policy_visionos_description">Сначала использовать актуальный visionOS, затем проверенные резервные клиенты.</string>
+    <string name="audio_stream_policy_visionos_description">Используется только актуальный прямой visionOS. Резервные WEB-клиенты с расшифровкой не запускаются.</string>
     <string name="audio_stream_policy_web_embedded">Web Embedded %1$s</string>
     <string name="audio_stream_policy_web_embedded_description">Сначала использовать анонимный сторонний Web Embedded, затем visionOS и TV.</string>
     <string name="audio_stream_policy_web">WEB %1$s</string>
