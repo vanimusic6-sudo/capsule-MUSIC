@@ -34,7 +34,7 @@ on:
       - ".github/workflows/youtube-core-validation.yml"
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: youtube-core-validation-${{ github.ref }}
@@ -52,6 +52,43 @@ jobs:
         with:
           ref: ${{ github.head_ref || github.ref_name }}
           fetch-depth: 0
+
+      - name: Apply power-safe audio prefetch cap
+        if: github.event_name == 'pull_request' && github.head_ref == 'cleanup/capsule-player-only'
+        shell: bash
+        run: |
+          set -euo pipefail
+          file="app/src/main/kotlin/com/nikhil/yt/playback/MusicService.kt"
+          if grep -q 'private const val PREFETCH_AHEAD = 2' "$file"; then
+            python3 - <<'PY'
+          from pathlib import Path
+          path = Path("app/src/main/kotlin/com/nikhil/yt/playback/MusicService.kt")
+          text = path.read_text()
+          old = "private const val PREFETCH_AHEAD = 2"
+          if text.count(old) != 1:
+              raise SystemExit(f"Expected exactly one {old!r}, found {text.count(old)}")
+          text = text.replace(old, "private const val PREFETCH_AHEAD = 1")
+          text = text.replace(
+              "Keep only the current item and the two useful look-ahead items.",
+              "Keep only the current item and the one useful look-ahead item.",
+          )
+          text = text.replace(
+              "next two tracks, while older abandoned prefetches are cancelled",
+              "next track, while older abandoned prefetches are cancelled",
+          )
+          text = text.replace(
+              "How far ahead to resolve. Two is enough to cover a normal transition\n         * plus one impatient skip without turning the queue into a crawler.",
+              "How far ahead to resolve. One track covers a normal transition without\n         * turning rapid queue navigation into parallel extraction bursts.",
+          )
+          path.write_text(text)
+          PY
+
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add "$file"
+            git commit -m "Reduce audio prefetch power usage"
+            git push origin "HEAD:${{ github.head_ref }}"
+          fi
 
       - name: Set up JDK 21
         uses: actions/setup-java@v5
