@@ -79,6 +79,7 @@ class YTPlayerUtilsSafetyTest {
                 AudioStreamPolicy.IOS,
                 AudioStreamPolicy.IOS_MUSIC,
                 AudioStreamPolicy.TV_DOWNGRADED,
+                AudioStreamPolicy.TVHTML5,
             )
 
         retired.forEach { policy ->
@@ -95,7 +96,6 @@ class YTPlayerUtilsSafetyTest {
                 AudioStreamPolicy.VISIONOS,
                 AudioStreamPolicy.WEB_EMBEDDED,
                 AudioStreamPolicy.WEB,
-                AudioStreamPolicy.TVHTML5,
             )
 
         reviewed.forEach { policy ->
