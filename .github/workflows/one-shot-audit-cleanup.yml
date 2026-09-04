@@ -640,3 +640,5 @@ jobs:
           fi
           git commit -m "Finish Capsule audit cleanup"
           git push origin HEAD:cleanup/capsule-player-only
+
+# trigger after workflow registration
