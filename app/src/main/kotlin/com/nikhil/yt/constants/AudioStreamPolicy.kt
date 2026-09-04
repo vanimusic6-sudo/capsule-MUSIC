@@ -2,9 +2,10 @@
  * Capsule MUSIC
  * Safe AUDIO stream policy.
  *
- * This intentionally replaces the old "pretend to be client X" preference
- * with a small allowlist whose members are reviewed against current upstream
- * PO-token requirements.
+ * Only reviewed InnerTubeX-backed profiles are exposed to users. Legacy enum
+ * values are retained solely as migration tombstones so upgrades from older
+ * Capsule builds can safely fall back to AUTO_SAFE without reviving the old
+ * playback resolver.
  *
  * GPL-3.0
  */
@@ -17,35 +18,53 @@ val AudioStreamPolicyKey =
     stringPreferencesKey("capsuleAudioStreamPolicy")
 
 enum class AudioStreamPolicy {
-    /**
-     * Recommended.
-     *
-     * Try only Capsule's reviewed safe allowlist in priority order.
-     * The actual versions are synchronized by GitHub Actions.
-     */
+    /** Recommended: let InnerTubeX select only compatible automatic profiles. */
     AUTO_SAFE,
 
-    /** Use current visionOS identity first, then safe fallbacks. */
+    /** Fast direct visionOS compatibility profile. */
     VISIONOS,
 
-    /** Use current anonymous Web Embedded identity first. */
+    /** Stable Web Embedded profile. */
     WEB_EMBEDDED,
 
-    /** Use the desktop Web identity with a user-configured genuine PO token. */
+    /** Stable Web Remix profile with current PO-token handling. */
     WEB,
 
-    /** Use the mobile Web identity with a user-configured genuine PO token. */
+    /**
+     * Legacy migration tombstones. They are never exposed in normal settings
+     * and are normalized to AUTO_SAFE before playback.
+     */
     MWEB,
-
-    /** Manual compatibility mode; current iOS GVS URLs can require PO-token. */
     IOS,
-
-    /** Manual compatibility mode; pinned and may require PO-token. */
     IOS_MUSIC,
-
-    /** Use current downgraded TV compatibility identity first. */
     TV_DOWNGRADED,
 
-    /** Use current TVHTML5 identity first. */
+    /** Modern TV fallback maps to TVHTML5_SIMPLY in InnerTubeX. */
     TVHTML5,
+    ;
+
+    /** Profiles that are deliberately exposed to users. */
+    val isUserSelectable: Boolean
+        get() =
+            when (this) {
+                AUTO_SAFE,
+                VISIONOS,
+                WEB_EMBEDDED,
+                WEB,
+                TVHTML5,
+                -> true
+
+                MWEB,
+                IOS,
+                IOS_MUSIC,
+                TV_DOWNGRADED,
+                -> false
+            }
+
+    /**
+     * Never allow an obsolete persisted preference to reactivate a legacy or
+     * known-bad client. Old values become AUTO_SAFE at the AUDIO boundary.
+     */
+    fun normalizedForPlayback(): AudioStreamPolicy =
+        if (isUserSelectable) this else AUTO_SAFE
 }
