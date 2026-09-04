@@ -94,6 +94,28 @@ class App : Application(), SingletonImageLoader.Factory {
         }
 
         PreferenceStore.start(this)
+
+        /*
+         * PreferenceStore has already primed the first DataStore snapshot at
+         * this point. If visitorData exists from a previous launch, start the
+         * shared BotGuard/WebView session immediately instead of waiting for a
+         * later Flow collector. The first WEB_REMIX resolve can then reuse the
+         * warm visitor session and only mint its video-bound token.
+         *
+         * On a fresh install visitorData is not available yet; the collector in
+         * initializeDeferredAsync() obtains it and performs the same prewarm as
+         * soon as it arrives.
+         */
+        dataStore[VisitorDataKey]
+            ?.trim()
+            ?.takeIf { it.isNotBlank() && it != "null" }
+            ?.let { storedVisitorData ->
+                YouTube.visitorData = storedVisitorData
+                applicationScope.launch(Dispatchers.IO) {
+                    startupPoTokenGenerator.prewarm(storedVisitorData)
+                }
+            }
+
         applicationScope.launch(Dispatchers.IO) {
             dataStore.data
                 .map { it[DebugLoggingEnabledKey] ?: false }
