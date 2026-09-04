@@ -162,9 +162,9 @@ fun PlayerSettings(
     /*
      * This is intentionally a new setting key.
      *
-     * Old values such as ANDROID_VR / IOS / ANDROID_MUSIC are not migrated
-     * automatically because their upstream playback requirements changed.
-     * Everyone starts on AUTO_SAFE after the new core is installed.
+     * Old and retired client values are kept only as migration tombstones and
+     * normalize to AUTO_SAFE at the playback boundary. They are never shown to
+     * users again.
      */
     val (audioStreamPolicy, onAudioStreamPolicyChange) =
         rememberEnumPreference(
@@ -271,7 +271,7 @@ fun PlayerSettings(
             onDismiss = { showAudioStreamPolicyDialog = false },
             modifier = Modifier.padding(horizontal = 8.dp),
         ) {
-            items(AudioStreamPolicy.entries) { value ->
+            items(AudioStreamPolicy.entries.filter(AudioStreamPolicy::isUserSelectable)) { value ->
                 Row(
                     modifier =
                         Modifier
@@ -294,12 +294,12 @@ fun PlayerSettings(
                         modifier = Modifier.padding(start = 16.dp),
                     ) {
                         Text(
-                                    text = value.localizedTitle(),
+                            text = value.localizedTitle(),
                             style = MaterialTheme.typography.bodyLarge,
                         )
                         Spacer(Modifier.height(4.dp))
                         Text(
-                                    text = value.localizedDescription(),
+                            text = value.localizedDescription(),
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.secondary,
                         )
@@ -360,7 +360,7 @@ fun PlayerSettings(
             description =
                 stringResource(
                     R.string.audio_stream_policy_current,
-                    audioStreamPolicy.localizedTitle(),
+                    audioStreamPolicy.normalizedForPlayback().localizedTitle(),
                     YouTubeClientUpstream.SOURCE_SNAPSHOT,
                 ),
             icon = {
