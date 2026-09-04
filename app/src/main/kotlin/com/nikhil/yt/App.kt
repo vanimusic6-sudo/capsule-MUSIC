@@ -138,10 +138,9 @@ class App : Application(), SingletonImageLoader.Factory {
                 LastFM.sessionKey = prefs[LastFMSessionKey]
 
                 /*
-                 * Read the PoToken mode in the first startup snapshot instead
-                 * of waiting for a separate Flow collector. That removes the
-                 * race where the first AUDIO resolve could reach WEB_REMIX
-                 * before startup knew it should build the BotGuard session.
+                 * This flag still controls the legacy anonymous web session.
+                 * Modern AUDIO has its own InnerTubeX TokenProvider and does not
+                 * use this preference as a gate for Web BotGuard PoTokens.
                  */
                 YouTube.webClientPoTokenEnabled = prefs[WebClientPoTokenEnabledKey] ?: false
 
@@ -217,13 +216,12 @@ class App : Application(), SingletonImageLoader.Factory {
                     YouTube.visitorData = resolvedVisitorData
 
                     /*
-                     * Prewarm immediately in the same visitor-data pipeline.
-                     * On a fresh install this starts as soon as visitorData is
-                     * fetched; on an existing install it starts from the first
-                     * DataStore emission. PoTokenGenerator shares state across
-                     * instances, so playback joins this exact initialization.
+                     * Modern playback may choose WEB_REMIX even when the legacy
+                     * web-client switch is disabled. Prewarm the shared BotGuard
+                     * visitor session as soon as visitorData exists so the first
+                     * WEB_REMIX song only has to mint its cheap per-video token.
                      */
-                    if (YouTube.webClientPoTokenEnabled && resolvedVisitorData != null) {
+                    if (resolvedVisitorData != null) {
                         startupPoTokenGenerator.prewarm(resolvedVisitorData)
                     }
                 }
@@ -309,18 +307,6 @@ class App : Application(), SingletonImageLoader.Factory {
                 .collect { enabled ->
                     YouTube.webClientPoTokenEnabled = enabled
                     CapsuleAnonymousSession.reset()
-
-                    /*
-                     * If the enable flag wins the startup race after visitorData
-                     * has already arrived, start the same shared prewarm here.
-                     * This makes both ordering possibilities deterministic.
-                     */
-                    if (enabled) {
-                        YouTube.visitorData
-                            ?.trim()
-                            ?.takeIf { it.isNotBlank() && it != "null" }
-                            ?.let { startupPoTokenGenerator.prewarm(it) }
-                    }
                 }
         }
 
