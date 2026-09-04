@@ -29,6 +29,7 @@ import com.metrolist.innertubex.extraction.TokenProviderCapabilities
 import com.metrolist.innertubex.extraction.YtConfigParserImpl
 import com.metrolist.innertubex.extraction.generateClientPlaybackNonce
 import com.metrolist.innertubex.extraction.strategy.PoTokenProviderKind
+import com.metrolist.innertubex.models.YouTubeLocale as InnerTubeXLocale
 import com.nikhil.yt.App
 import com.nikhil.yt.constants.AudioQuality
 import com.nikhil.yt.constants.AudioStreamPolicy
@@ -150,7 +151,12 @@ object CapsuleInnerTubeXPlayer {
                 ).withStreamCapabilities(
                     allowHls = false,
                     allowSabr = false,
-                    allowBoundedRange = true,
+                    /*
+                     * Capsule's existing Media3 source does not yet implement
+                     * InnerTubeX's explicit chunk scheduler. Do not advertise a
+                     * transport feature the consumer cannot honour.
+                     */
+                    allowBoundedRange = false,
                 )
 
             val stream =
@@ -235,10 +241,24 @@ object CapsuleInnerTubeXPlayer {
             val lockedKey = bundleKey()
             currentBundle?.takeIf { it.key == lockedKey }?.let { return@withLock it }
 
-            currentBundle?.closeQuietly()
+            currentBundle?.closeSafely()
 
             val httpClient = createHttpClient()
-            val innerTube = InnerTube(httpClient = httpClient, logger = logger)
+            val innerTube =
+                InnerTube(httpClient = httpClient, logger = logger).also { playbackInnerTube ->
+                    playbackInnerTube.locale =
+                        InnerTubeXLocale(
+                            gl = YouTube.locale.gl,
+                            hl = YouTube.locale.hl,
+                        )
+                    playbackInnerTube.replaceSession(
+                        cookie = YouTube.cookie,
+                        visitorData = YouTube.visitorData,
+                        dataSyncId = YouTube.dataSyncId,
+                        authUser = "0",
+                        useLoginForBrowse = YouTube.useLoginForBrowse,
+                    )
+                }
             val remoteStore = RemotePlayerConfigStore(httpClient, configRepository, logger)
             val cipherService = YouTubeCipherService(httpClient, remoteStore, logger)
             val extractor =
@@ -253,20 +273,31 @@ object CapsuleInnerTubeXPlayer {
             ExtractionBundle(
                 key = lockedKey,
                 httpClient = httpClient,
+                innerTube = innerTube,
                 cipherService = cipherService,
                 extractor = extractor,
             ).also { currentBundle = it }
         }
     }
 
+    /**
+     * Only non-sensitive hashes are used as the identity key. If account,
+     * visitor, locale, proxy or token configuration changes, the extraction
+     * transport is rebuilt instead of reusing stale session state.
+     */
     private fun bundleKey(): String =
-        buildString {
-            append(networkGeneration)
-            append('|')
-            append(YouTube.proxy?.toString().orEmpty())
-            append('|')
-            append(!YouTube.poTokenGvs.isNullOrBlank())
-        }
+        listOf(
+            networkGeneration,
+            YouTube.proxy?.toString().orEmpty(),
+            YouTube.locale.gl,
+            YouTube.locale.hl,
+            YouTube.cookie?.hashCode() ?: 0,
+            YouTube.visitorData?.hashCode() ?: 0,
+            YouTube.dataSyncId?.hashCode() ?: 0,
+            YouTube.useLoginForBrowse,
+            !YouTube.poTokenGvs.isNullOrBlank(),
+            !YouTube.poTokenPlayer.isNullOrBlank(),
+        ).hashCode().toString()
 
     private fun createHttpClient(): HttpClient =
         HttpClient(OkHttp) {
@@ -400,10 +431,13 @@ object CapsuleInnerTubeXPlayer {
     private data class ExtractionBundle(
         val key: String,
         val httpClient: HttpClient,
+        val innerTube: InnerTube,
         val cipherService: YouTubeCipherService,
         val extractor: InnerTubeExtractor,
     ) {
-        fun closeQuietly() {
+        suspend fun closeSafely() {
+            runCatching { cipherService.dispose() }
+            runCatching { innerTube.close() }
             runCatching { httpClient.close() }
         }
     }
