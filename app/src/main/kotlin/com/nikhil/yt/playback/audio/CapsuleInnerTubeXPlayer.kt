@@ -160,7 +160,7 @@ object CapsuleInnerTubeXPlayer {
                     allowBoundedRange = false,
                 )
 
-            val stream =
+            val stream: ExtractedStream =
                 withTimeout(RESOLVE_TIMEOUT_MS) {
                     var sabrRollovers = 0
                     var excludedClients = failedStreamClients(videoId)
