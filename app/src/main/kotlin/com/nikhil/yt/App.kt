@@ -138,6 +138,14 @@ class App : Application(), SingletonImageLoader.Factory {
                 LastFM.sessionKey = prefs[LastFMSessionKey]
 
                 /*
+                 * Read the PoToken mode in the first startup snapshot instead
+                 * of waiting for a separate Flow collector. That removes the
+                 * race where the first AUDIO resolve could reach WEB_REMIX
+                 * before startup knew it should build the BotGuard session.
+                 */
+                YouTube.webClientPoTokenEnabled = prefs[WebClientPoTokenEnabledKey] ?: false
+
+                /*
                  * Hardware audio offload lets supported devices keep decoding
                  * and playback out of the main CPU path while the screen is
                  * off. Respect an explicit user choice, but make the efficient
@@ -194,15 +202,30 @@ class App : Application(), SingletonImageLoader.Factory {
                 .map { it[VisitorDataKey] }
                 .distinctUntilChanged()
                 .collect { visitorData ->
-                    YouTube.visitorData = visitorData
-                        ?.takeIf { it != "null" }
-                        ?: YouTube.visitorData().onFailure {
-                            reportException(it)
-                        }.getOrNull()?.also { newVisitorData ->
-                            dataStore.edit { settings ->
-                                settings[VisitorDataKey] = newVisitorData
+                    val resolvedVisitorData =
+                        visitorData
+                            ?.trim()
+                            ?.takeIf { it.isNotBlank() && it != "null" }
+                            ?: YouTube.visitorData().onFailure {
+                                reportException(it)
+                            }.getOrNull()?.also { newVisitorData ->
+                                dataStore.edit { settings ->
+                                    settings[VisitorDataKey] = newVisitorData
+                                }
                             }
-                        }
+
+                    YouTube.visitorData = resolvedVisitorData
+
+                    /*
+                     * Prewarm immediately in the same visitor-data pipeline.
+                     * On a fresh install this starts as soon as visitorData is
+                     * fetched; on an existing install it starts from the first
+                     * DataStore emission. PoTokenGenerator shares state across
+                     * instances, so playback joins this exact initialization.
+                     */
+                    if (YouTube.webClientPoTokenEnabled && resolvedVisitorData != null) {
+                        startupPoTokenGenerator.prewarm(resolvedVisitorData)
+                    }
                 }
         }
 
@@ -286,27 +309,17 @@ class App : Application(), SingletonImageLoader.Factory {
                 .collect { enabled ->
                     YouTube.webClientPoTokenEnabled = enabled
                     CapsuleAnonymousSession.reset()
-                }
-        }
 
-        /*
-         * Build the expensive WebView/BotGuard visitor session while Capsule is
-         * opening instead of making the first song pay that cold-start cost.
-         * The generator state is shared with InnerTubeX, so playback only mints
-         * the per-video token when WEB_REMIX is actually selected.
-         */
-        applicationScope.launch(Dispatchers.IO) {
-            dataStore.data
-                .map { prefs ->
-                    (prefs[WebClientPoTokenEnabledKey] ?: false) to
-                        prefs[VisitorDataKey]
+                    /*
+                     * If the enable flag wins the startup race after visitorData
+                     * has already arrived, start the same shared prewarm here.
+                     * This makes both ordering possibilities deterministic.
+                     */
+                    if (enabled) {
+                        YouTube.visitorData
                             ?.trim()
                             ?.takeIf { it.isNotBlank() && it != "null" }
-                }
-                .distinctUntilChanged()
-                .collect { (enabled, visitorData) ->
-                    if (enabled && visitorData != null) {
-                        startupPoTokenGenerator.prewarm(visitorData)
+                            ?.let { startupPoTokenGenerator.prewarm(it) }
                     }
                 }
         }
