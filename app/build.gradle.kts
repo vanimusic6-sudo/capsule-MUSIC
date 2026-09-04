@@ -17,10 +17,10 @@ if (localPropertiesFile.exists()) {
 
 android {
     namespace = "com.nikhil.yt"
-    compileSdk = 36
+    compileSdk = 37
 
     defaultConfig {
-    applicationId = "com.nikhil.yt"
+        applicationId = "com.nikhil.yt"
         minSdk = 26
         targetSdk = 36
         versionCode = 10
@@ -81,7 +81,7 @@ android {
     signingConfigs {
         create("release") {
             val keystoreFile = file("keystore/release.keystore")
-            if(keystoreFile.exists()) {
+            if (keystoreFile.exists()) {
                 storeFile = keystoreFile
                 storePassword = System.getenv("STORE_PASSWORD")
                 keyAlias = System.getenv("KEY_ALIAS")
@@ -119,14 +119,6 @@ android {
 
     testOptions {
         unitTests {
-            /*
-             * JVM unit tests run against a stub android.jar whose methods throw
-             * by default. Media3's PlaybackException constructor calls
-             * SystemClock.elapsedRealtime(), so constructing one in a plain unit
-             * test blows up before the assertion is ever reached. Returning
-             * defaults instead keeps these pure-logic tests runnable without
-             * pulling in Robolectric.
-             */
             isReturnDefaultValues = true
         }
     }
@@ -225,6 +217,7 @@ dependencies {
     ksp(libs.hilt.compiler)
 
     implementation(project(":innertube"))
+    implementation(libs.innertubex)
     implementation(project(":kugou"))
     implementation(project(":lrclib"))
     implementation(project(":lastfm"))
@@ -248,7 +241,6 @@ dependencies {
 
     implementation(libs.timber)
     testImplementation(libs.junit)
-    // Ensure ProcessLifecycleOwner is available for the presence manager and CI unit tests
     implementation("com.github.therealbush:translator:1.1.1")
     implementation("androidx.lifecycle:lifecycle-process:2.10.0")
     implementation("androidx.compose.material3.adaptive:adaptive:1.2.0")
@@ -261,11 +253,7 @@ tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>().configureEach 
     compilerOptions {
         jvmTarget.set(JvmTarget.JVM_21)
         freeCompilerArgs.add("-Xannotation-default-target=param-property")
-        freeCompilerArgs.addAll(
-            "-opt-in=kotlin.RequiresOptIn",
-            "-Xcontext-receivers"
-        )
-        // Suppress warnings
+        freeCompilerArgs.add("-opt-in=kotlin.RequiresOptIn")
         suppressWarnings.set(true)
     }
 }
@@ -280,4 +268,3 @@ configurations.configureEach {
         "androidx.compose.animation:animation-graphics:${libs.versions.compose.get()}",
     )
 }
-
