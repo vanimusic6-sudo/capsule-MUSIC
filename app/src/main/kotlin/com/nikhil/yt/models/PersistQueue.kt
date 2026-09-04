@@ -24,21 +24,36 @@ data class PersistQueue(
 }
 
 sealed class QueueType : Serializable {
+    companion object {
+        private const val serialVersionUID = 1L
+    }
+
     object LIST : QueueType() {
         private const val serialVersionUID = 1L
+        private fun readResolve(): Any = LIST
     }
+
     object YOUTUBE : QueueType() {
         private const val serialVersionUID = 1L
+        private fun readResolve(): Any = YOUTUBE
     }
+
     object YOUTUBE_ALBUM_RADIO : QueueType() {
         private const val serialVersionUID = 1L
+        private fun readResolve(): Any = YOUTUBE_ALBUM_RADIO
     }
+
     object LOCAL_ALBUM_RADIO : QueueType() {
         private const val serialVersionUID = 1L
+        private fun readResolve(): Any = LOCAL_ALBUM_RADIO
     }
 }
 
 sealed class QueueData : Serializable {
+    companion object {
+        private const val serialVersionUID = 1L
+    }
+
     data class YouTubeData(
         val endpoint: String,
         val continuation: String? = null
