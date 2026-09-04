@@ -56,8 +56,8 @@ import kotlin.time.Clock
  * Important policy:
  * - AUTO_SAFE lets InnerTubeX choose only currently compatible profiles;
  * - WEB maps to WEB_REMIX (not the old generic desktop WEB path);
- * - TVHTML5 maps to TVHTML5_SIMPLY because current upstream has disabled the
- *   old TVHTML5 direct profile after failed playback benchmarks;
+ * - retired policies are normalized to AUTO_SAFE at this boundary too, so an
+ *   old persisted preference can never reactivate an unsupported transport;
  * - parser/source failures are remembered per song for five minutes, so a bad
  *   client can roll over without poisoning playback globally or causing a
  *   rapid client carousel.
@@ -67,6 +67,7 @@ object CapsuleInnerTubeXPlayer {
     private const val STREAM_CLIENT_FAILURE_TTL_MS = 5 * 60 * 1000L
     private const val RESOLVE_TIMEOUT_MS = 15_000L
     private const val DEFAULT_STREAM_TTL_SECONDS = 5 * 60
+    private const val MAX_SABR_ROLLOVERS = 1
 
     private val bundleMutex = Mutex()
     private val streamClientFailures = ConcurrentHashMap<String, FailedStreamClients>()
@@ -161,20 +162,59 @@ object CapsuleInnerTubeXPlayer {
 
             val stream =
                 withTimeout(RESOLVE_TIMEOUT_MS) {
-                    requireNotNull(
-                        bundle().extractor.extract(
-                            videoId = videoId,
-                            hints = hints,
-                            excludedClients = failedStreamClients(videoId),
-                            audioQuality = audioQuality.toInnerTubeX(connectivityManager),
-                            clientPlaybackNonce = generateClientPlaybackNonce(),
-                        ),
-                    ) { "InnerTubeX returned no playable AUDIO stream" }
-                }
+                    var sabrRollovers = 0
+                    var excludedClients = failedStreamClients(videoId)
 
-            check(stream.sabrBootstrap == null) {
-                "SABR stream selected for a direct-only Capsule audio player"
-            }
+                    while (true) {
+                        val extracted =
+                            requireNotNull(
+                                bundle().extractor.extract(
+                                    videoId = videoId,
+                                    hints = hints,
+                                    excludedClients = excludedClients,
+                                    audioQuality = audioQuality.toInnerTubeX(connectivityManager),
+                                    clientPlaybackNonce = generateClientPlaybackNonce(),
+                                ),
+                            ) { "InnerTubeX returned no playable AUDIO stream" }
+
+                        if (extracted.sabrBootstrap == null) {
+                            return@withTimeout extracted
+                        }
+
+                        /*
+                         * Capsule currently consumes direct GVS URLs only. A
+                         * SABR-only result is a client-local incompatibility,
+                         * not a reason to crash the resolver. Retire that client
+                         * for this song and permit exactly one bounded rollover.
+                         */
+                        val sabrClient =
+                            extracted.clientName
+                                .substringBefore('@')
+                                .trim()
+                                .takeIf { it.isNotBlank() }
+
+                        if (
+                            sabrClient == null ||
+                            sabrRollovers >= MAX_SABR_ROLLOVERS ||
+                            sabrClient in excludedClients
+                        ) {
+                            throw IllegalStateException(
+                                "InnerTubeX returned SABR-only audio and no safe direct rollover remains",
+                            )
+                        }
+
+                        markStreamClientFailed(videoId, sabrClient)
+                        excludedClients = failedStreamClients(videoId)
+                        sabrRollovers += 1
+                        Timber.tag(TAG).w(
+                            "Rejected SABR-only stream id=%s client=%s rollover=%d/%d",
+                            videoId,
+                            sabrClient,
+                            sabrRollovers,
+                            MAX_SABR_ROLLOVERS,
+                        )
+                    }
+                }
 
             Result.success(stream.toPlaybackData())
         } catch (error: CancellationException) {
@@ -343,16 +383,16 @@ object CapsuleInnerTubeXPlayer {
         }
 
     private fun profileOverride(policy: AudioStreamPolicy): String? =
-        when (policy) {
+        when (policy.normalizedForPlayback()) {
             AudioStreamPolicy.AUTO_SAFE -> null
             AudioStreamPolicy.VISIONOS -> "VISIONOS"
             AudioStreamPolicy.WEB_EMBEDDED -> "WEB_EMBEDDED_PLAYER"
             AudioStreamPolicy.WEB -> "WEB_REMIX"
-            AudioStreamPolicy.TVHTML5 -> "TVHTML5_SIMPLY"
-            AudioStreamPolicy.TV_DOWNGRADED -> "TVHTML5_DOWNGRADED"
             AudioStreamPolicy.MWEB,
             AudioStreamPolicy.IOS,
             AudioStreamPolicy.IOS_MUSIC,
+            AudioStreamPolicy.TV_DOWNGRADED,
+            AudioStreamPolicy.TVHTML5,
             -> null
         }
 
@@ -438,9 +478,17 @@ object CapsuleInnerTubeXPlayer {
         val extractor: InnerTubeExtractor,
     ) {
         suspend fun closeSafely() {
-            runCatching { cipherService.dispose() }
+            try {
+                cipherService.dispose()
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                Timber.tag(TAG).d(error, "Cipher service disposal failed")
+            }
             runCatching { innerTube.close() }
+                .onFailure { Timber.tag(TAG).d(it, "InnerTube close failed") }
             runCatching { httpClient.close() }
+                .onFailure { Timber.tag(TAG).d(it, "HTTP client close failed") }
         }
     }
 
