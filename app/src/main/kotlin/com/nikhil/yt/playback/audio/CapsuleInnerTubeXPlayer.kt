@@ -34,6 +34,7 @@ import com.nikhil.yt.constants.AudioQuality
 import com.nikhil.yt.constants.AudioStreamPolicy
 import com.nikhil.yt.innertube.YouTube
 import com.nikhil.yt.innertube.models.response.PlayerResponse
+import com.nikhil.yt.playback.audio.potoken.PoTokenGenerator
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.okhttp.OkHttp
 import io.ktor.client.plugins.HttpTimeout
@@ -74,6 +75,53 @@ object CapsuleInnerTubeXPlayer {
 
     @Volatile
     private var networkGeneration: Long = 0L
+
+    private val poTokenGenerator: PoTokenGenerator by lazy {
+        PoTokenGenerator(App.instance.applicationContext)
+    }
+
+    private val tokenProvider =
+        object : TokenProvider {
+            override val capabilities =
+                TokenProviderCapabilities(
+                    providers = setOf(PoTokenProviderKind.WEB_BOTGUARD),
+                    usesWebView = true,
+                )
+
+            override suspend fun getPoToken(
+                videoId: String,
+                visitorData: String,
+                cookie: String?,
+            ): PoTokenResult? {
+                val configuredPlayer = YouTube.poTokenPlayer?.trim().orEmpty()
+                val configuredGvs = YouTube.poTokenGvs?.trim().orEmpty()
+
+                if (configuredPlayer.isNotBlank() && configuredGvs.isNotBlank()) {
+                    return PoTokenResult(
+                        playerRequestToken = configuredPlayer,
+                        streamingDataToken = configuredGvs,
+                        visitorData = visitorData,
+                    )
+                }
+
+                return poTokenGenerator
+                    .getWebClientPoToken(
+                        videoId = videoId,
+                        visitorData = visitorData,
+                    )
+                    ?.let { generated ->
+                        PoTokenResult(
+                            playerRequestToken = generated.playerRequestPoToken,
+                            streamingDataToken = generated.streamingDataPoToken,
+                            visitorData = visitorData,
+                        )
+                    }
+            }
+
+            override suspend fun close() {
+                poTokenGenerator.close()
+            }
+        }
 
     data class PlaybackData(
         val audioConfig: PlayerResponse.PlayerConfig.AudioConfig?,
@@ -198,7 +246,7 @@ object CapsuleInnerTubeXPlayer {
                     configParser = YtConfigParserImpl(httpClient, innerTube, remoteStore, logger),
                     cipherService = cipherService,
                     innerTube = innerTube,
-                    tokenProvider = configuredTokenProvider(),
+                    tokenProvider = tokenProvider,
                     logger = logger,
                 )
 
@@ -244,34 +292,6 @@ object CapsuleInnerTubeXPlayer {
             }
         }
 
-    /**
-     * Respect genuine tokens already configured by the user. Automatic WebView
-     * minting is intentionally a separate host concern; if no token exists,
-     * InnerTubeX will simply exclude profiles that require one instead of
-     * sending a knowingly invalid WEB_REMIX/TV request.
-     */
-    private fun configuredTokenProvider(): TokenProvider? {
-        if (YouTube.poTokenGvs.isNullOrBlank()) return null
-        return object : TokenProvider {
-            override val capabilities =
-                TokenProviderCapabilities(
-                    providers = setOf(PoTokenProviderKind.WEB_BOTGUARD),
-                    usesWebView = false,
-                )
-
-            override suspend fun getPoToken(
-                videoId: String,
-                visitorData: String,
-                cookie: String?,
-            ): PoTokenResult =
-                PoTokenResult(
-                    playerRequestToken = YouTube.poTokenPlayer,
-                    streamingDataToken = requireNotNull(YouTube.poTokenGvs),
-                    visitorData = visitorData,
-                )
-        }
-    }
-
     private val configRepository: PlayerConfigRepository by lazy {
         AndroidPlayerConfigRepository(App.instance.applicationContext)
     }
@@ -299,8 +319,6 @@ object CapsuleInnerTubeXPlayer {
             AudioStreamPolicy.WEB -> "WEB_REMIX"
             AudioStreamPolicy.TVHTML5 -> "TVHTML5_SIMPLY"
             AudioStreamPolicy.TV_DOWNGRADED -> "TVHTML5_DOWNGRADED"
-            // These legacy compatibility modes stay on the old resolver until
-            // their current upstream manifests are explicitly validated here.
             AudioStreamPolicy.MWEB,
             AudioStreamPolicy.IOS,
             AudioStreamPolicy.IOS_MUSIC,
