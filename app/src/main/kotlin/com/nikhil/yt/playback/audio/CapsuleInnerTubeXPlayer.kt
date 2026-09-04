@@ -160,60 +160,14 @@ object CapsuleInnerTubeXPlayer {
                     allowBoundedRange = false,
                 )
 
-            val stream: ExtractedStream =
+            val resolvedQuality = audioQuality.toInnerTubeX(connectivityManager)
+            val stream =
                 withTimeout(RESOLVE_TIMEOUT_MS) {
-                    var sabrRollovers = 0
-                    var excludedClients = failedStreamClients(videoId)
-
-                    while (true) {
-                        val extracted =
-                            requireNotNull(
-                                bundle().extractor.extract(
-                                    videoId = videoId,
-                                    hints = hints,
-                                    excludedClients = excludedClients,
-                                    audioQuality = audioQuality.toInnerTubeX(connectivityManager),
-                                    clientPlaybackNonce = generateClientPlaybackNonce(),
-                                ),
-                            ) { "InnerTubeX returned no playable AUDIO stream" }
-
-                        if (extracted.sabrBootstrap == null) {
-                            return@withTimeout extracted
-                        }
-
-                        /*
-                         * Capsule currently consumes direct GVS URLs only. A
-                         * SABR-only result is a client-local incompatibility,
-                         * not a reason to crash the resolver. Retire that client
-                         * for this song and permit exactly one bounded rollover.
-                         */
-                        val sabrClient =
-                            extracted.clientName
-                                .substringBefore('@')
-                                .trim()
-                                .takeIf { it.isNotBlank() }
-
-                        if (
-                            sabrClient == null ||
-                            sabrRollovers >= MAX_SABR_ROLLOVERS ||
-                            sabrClient in excludedClients
-                        ) {
-                            throw IllegalStateException(
-                                "InnerTubeX returned SABR-only audio and no safe direct rollover remains",
-                            )
-                        }
-
-                        markStreamClientFailed(videoId, sabrClient)
-                        excludedClients = failedStreamClients(videoId)
-                        sabrRollovers += 1
-                        Timber.tag(TAG).w(
-                            "Rejected SABR-only stream id=%s client=%s rollover=%d/%d",
-                            videoId,
-                            sabrClient,
-                            sabrRollovers,
-                            MAX_SABR_ROLLOVERS,
-                        )
-                    }
+                    extractDirectStream(
+                        videoId = videoId,
+                        hints = hints,
+                        audioQuality = resolvedQuality,
+                    )
                 }
 
             Result.success(stream.toPlaybackData())
@@ -231,6 +185,65 @@ object CapsuleInnerTubeXPlayer {
         } catch (error: Exception) {
             Result.failure(error)
         }
+
+    private suspend fun extractDirectStream(
+        videoId: String,
+        hints: ContentHints,
+        audioQuality: InnerTubeXAudioQuality,
+    ): ExtractedStream {
+        var sabrRollovers = 0
+        var excludedClients = failedStreamClients(videoId)
+
+        while (true) {
+            val extracted =
+                requireNotNull(
+                    bundle().extractor.extract(
+                        videoId = videoId,
+                        hints = hints,
+                        excludedClients = excludedClients,
+                        audioQuality = audioQuality,
+                        clientPlaybackNonce = generateClientPlaybackNonce(),
+                    ),
+                ) { "InnerTubeX returned no playable AUDIO stream" }
+
+            if (extracted.sabrBootstrap == null) {
+                return extracted
+            }
+
+            /*
+             * Capsule currently consumes direct GVS URLs only. A SABR-only
+             * result is a client-local incompatibility, not a reason to crash
+             * the resolver. Retire that client for this song and permit exactly
+             * one bounded rollover.
+             */
+            val sabrClient =
+                extracted.clientName
+                    .substringBefore('@')
+                    .trim()
+                    .takeIf { it.isNotBlank() }
+
+            if (
+                sabrClient == null ||
+                sabrRollovers >= MAX_SABR_ROLLOVERS ||
+                sabrClient in excludedClients
+            ) {
+                throw IllegalStateException(
+                    "InnerTubeX returned SABR-only audio and no safe direct rollover remains",
+                )
+            }
+
+            markStreamClientFailed(videoId, sabrClient)
+            excludedClients = failedStreamClients(videoId)
+            sabrRollovers += 1
+            Timber.tag(TAG).w(
+                "Rejected SABR-only stream id=%s client=%s rollover=%d/%d",
+                videoId,
+                sabrClient,
+                sabrRollovers,
+                MAX_SABR_ROLLOVERS,
+            )
+        }
+    }
 
     fun markStreamClientFailed(
         videoId: String,
