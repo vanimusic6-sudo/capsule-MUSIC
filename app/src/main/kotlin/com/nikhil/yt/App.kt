@@ -137,6 +137,18 @@ class App : Application(), SingletonImageLoader.Factory {
 
                 LastFM.sessionKey = prefs[LastFMSessionKey]
 
+                /*
+                 * Hardware audio offload lets supported devices keep decoding
+                 * and playback out of the main CPU path while the screen is
+                 * off. Respect an explicit user choice, but make the efficient
+                 * path the default for installs that never chose a value.
+                 */
+                if (prefs[AudioOffload] == null) {
+                    dataStore.edit { settings ->
+                        settings[AudioOffload] = true
+                    }
+                }
+
                 if (prefs[ProxyEnabledKey] == true) {
                     try {
                         YouTube.proxy = Proxy(
