@@ -65,7 +65,9 @@ internal fun byteCsvToWebSafeBase64(value: String): String {
             .filter { it.isNotBlank() }
             .map { it.trim().toInt().toByte() }
             .toByteArray()
-    return Base64.encodeToString(bytes, Base64.NO_WRAP or Base64.URL_SAFE).trimEnd('=')
+    // YouTube's PoToken representation keeps normal base64 padding. URL_SAFE
+    // only changes '+'/'/' to '-'/'_', matching the current Metrolist helper.
+    return Base64.encodeToString(bytes, Base64.NO_WRAP or Base64.URL_SAFE)
 }
 
 private fun bytesToJavascriptArray(bytes: ByteArray): String =
