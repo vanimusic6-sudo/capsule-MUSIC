@@ -35,6 +35,16 @@ jobs:
                   raise SystemExit(f'{label}: expected exactly one match, found {count}')
               text = text.replace(old, new, 1)
 
+          def replace_between(start_marker: str, end_marker: str, replacement: str, label: str, search_from: int = 0):
+              global text
+              start = text.find(start_marker, search_from)
+              if start < 0:
+                  raise SystemExit(f'{label}: start marker not found')
+              end = text.find(end_marker, start + len(start_marker))
+              if end < 0:
+                  raise SystemExit(f'{label}: end marker not found')
+              text = text[:start] + replacement + text[end:]
+
           replace_once(
           '''    private var scopeJob = Job()
               private var scope = CoroutineScope(Dispatchers.Main + scopeJob)
@@ -79,54 +89,6 @@ jobs:
           ''',
           'snapshot data class',
           )
-
-          old_save = '''    private suspend fun saveQueueToDisk() {
-              if (currentQueue == EmptyQueue) return
-
-              val mediaItemsSnapshot = player.mediaItems.mapNotNull { it.metadata }
-              if (mediaItemsSnapshot.isEmpty()) return
-
-              val currentMediaItemIndex = player.currentMediaItemIndex
-              val currentPosition = player.currentPosition
-              val automixSnapshot = automixItems.value.mapNotNull { it.metadata }
-              val playWhenReady = player.playWhenReady
-              val repeatMode = player.repeatMode
-              val shuffleModeEnabled = player.shuffleModeEnabled
-              val volume = playerVolume.value
-              val playbackState = player.playbackState
-
-              withContext(Dispatchers.IO) {
-                  val persistQueue = currentQueue.toPersistQueue(
-                      title = queueTitle,
-                      items = mediaItemsSnapshot,
-                      mediaItemIndex = currentMediaItemIndex,
-                      position = currentPosition
-                  )
-                  
-                  val persistAutomix =
-                      PersistQueue(
-                          title = "automix",
-                          items = automixSnapshot,
-                          mediaItemIndex = 0,
-                          position = 0,
-                      )
-
-                  val persistPlayerState = PersistPlayerState(
-                      playWhenReady = playWhenReady,
-                      repeatMode = repeatMode,
-                      shuffleModeEnabled = shuffleModeEnabled,
-                      volume = volume,
-                      currentPosition = currentPosition,
-                      currentMediaItemIndex = currentMediaItemIndex, // Redundant but part of data class
-                      playbackState = playbackState
-                  )
-                  
-                  writePersistentObject(PERSISTENT_QUEUE_FILE, persistQueue)
-                  writePersistentObject(PERSISTENT_AUTOMIX_FILE, persistAutomix)
-                  writePersistentObject(PERSISTENT_PLAYER_STATE_FILE, persistPlayerState)
-              }
-          }
-          '''
 
           new_save = '''    private fun capturePersistentPlaybackSnapshot(): PersistentPlaybackSnapshot? {
               if (currentQueue == EmptyQueue || player.mediaItemCount <= 0) return null
@@ -197,56 +159,20 @@ jobs:
                   }
                   stopSelf()
               }
+
+
           '''
-          replace_once(old_save, new_save, 'saveQueueToDisk')
+          replace_between(
+              '    private suspend fun saveQueueToDisk() {',
+              '    override fun onDestroy() {',
+              new_save,
+              'saveQueueToDisk region',
+          )
 
-          old_destroy = '''        try {
-                  if (dataStore.get(PersistentQueueKey, true) && player.mediaItemCount > 0) {
-                      val mediaItemsSnapshot = player.mediaItems.mapNotNull { it.metadata }
-                      val currentMediaItemIndex = player.currentMediaItemIndex
-                      val currentPosition = player.currentPosition
-                      val automixSnapshot = automixItems.value.mapNotNull { it.metadata }
-                      val repeatMode = player.repeatMode
-                      val shuffleModeEnabled = player.shuffleModeEnabled
-                      val volume = playerVolume.value
-                      val playbackState = player.playbackState
-                      val playWhenReady = player.playWhenReady
-                      runBlocking(Dispatchers.IO) {
-                          val persistQueue = currentQueue.toPersistQueue(
-                              title = queueTitle,
-                              items = mediaItemsSnapshot,
-                              mediaItemIndex = currentMediaItemIndex,
-                              position = currentPosition
-                          )
-                          val persistAutomix = PersistQueue(
-                              title = "automix",
-                              items = automixSnapshot,
-                              mediaItemIndex = 0,
-                              position = 0,
-                          )
-                          val persistPlayerState = PersistPlayerState(
-                              playWhenReady = playWhenReady,
-                              repeatMode = repeatMode,
-                              shuffleModeEnabled = shuffleModeEnabled,
-                              volume = volume,
-                              currentPosition = currentPosition,
-                              currentMediaItemIndex = currentMediaItemIndex,
-                              playbackState = playbackState
-                          )
-
-                          writePersistentObject(PERSISTENT_QUEUE_FILE, persistQueue)
-                          writePersistentObject(PERSISTENT_AUTOMIX_FILE, persistAutomix)
-                          writePersistentObject(PERSISTENT_PLAYER_STATE_FILE, persistPlayerState)
-                      }
-                  }
-              } catch (_: Exception) {}
-          '''
-
-          new_destroy = '''        /*
+          new_destroy_persistence = '''        /*
                * onDestroy runs on the main thread. Never fsync the queue here.
-               * Normal task-removal shutdown waits for its IO flush before
-               * stopSelf; other destruction paths get a best-effort immutable
-               * snapshot on the independent persistence scope.
+               * Task-removal shutdown waits for its IO flush before stopSelf;
+               * other destruction paths get a best-effort immutable snapshot.
                */
               try {
                   if (dataStore.get(PersistentQueueKey, true)) {
@@ -258,24 +184,16 @@ jobs:
                   }
               } catch (_: Exception) {}
           '''
-          replace_once(old_destroy, new_destroy, 'onDestroy persistence')
+          replace_between(
+              '        try {\n            if (dataStore.get(PersistentQueueKey, true) && player.mediaItemCount > 0) {',
+              '        try {\n            mediaSession.release()',
+              new_destroy_persistence,
+              'onDestroy persistence region',
+          )
 
-          old_task = '''                if (stopMusicOnTaskClearEnabled) {
-                      if (dataStore.get(PersistentQueueKey, true) && player.mediaItemCount > 0) {
-                          runBlocking { saveQueueToDisk() }
-                      }
-                      runCatching { stopAndClearPlayback() }
-                      runCatching {
-                          if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-                              stopForeground(STOP_FOREGROUND_REMOVE)
-                          } else {
-                              stopForeground(true)
-                          }
-                      }
-                      stopSelf()
-                      return
-                  }
-          '''
+          task_method = text.find('    override fun onTaskRemoved(rootIntent: Intent?) {')
+          if task_method < 0:
+              raise SystemExit('onTaskRemoved method not found')
 
           new_task = '''                if (stopMusicOnTaskClearEnabled) {
                       pendingPersistentQueueSaveJob?.cancel()
@@ -308,7 +226,13 @@ jobs:
                       return
                   }
           '''
-          replace_once(old_task, new_task, 'onTaskRemoved persistence')
+          replace_between(
+              '                if (stopMusicOnTaskClearEnabled) {',
+              '\n            }\n        } catch (_: Exception) {}\n    }\n\n    override fun onGetSession',
+              new_task,
+              'onTaskRemoved stop block',
+              task_method,
+          )
 
           path.write_text(text)
           PY
