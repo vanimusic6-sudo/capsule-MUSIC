@@ -31,15 +31,15 @@ enum class AudioStreamPolicy {
     WEB,
 
     /**
-     * Legacy migration tombstones. They are never exposed in normal settings
-     * and are normalized to AUTO_SAFE before playback.
+     * Migration tombstones. They are never exposed in normal settings and are
+     * normalized to AUTO_SAFE before playback. TVHTML5 remains here only so an
+     * older saved preference cannot reactivate a profile whose bounded-range
+     * transport Capsule does not implement yet.
      */
     MWEB,
     IOS,
     IOS_MUSIC,
     TV_DOWNGRADED,
-
-    /** Modern TV fallback maps to TVHTML5_SIMPLY in InnerTubeX. */
     TVHTML5,
     ;
 
@@ -51,19 +51,20 @@ enum class AudioStreamPolicy {
                 VISIONOS,
                 WEB_EMBEDDED,
                 WEB,
-                TVHTML5,
                 -> true
 
                 MWEB,
                 IOS,
                 IOS_MUSIC,
                 TV_DOWNGRADED,
+                TVHTML5,
                 -> false
             }
 
     /**
      * Never allow an obsolete persisted preference to reactivate a legacy or
-     * known-bad client. Old values become AUTO_SAFE at the AUDIO boundary.
+     * transport-incompatible client. Old values become AUTO_SAFE at the AUDIO
+     * boundary.
      */
     fun normalizedForPlayback(): AudioStreamPolicy =
         if (isUserSelectable) this else AUTO_SAFE
