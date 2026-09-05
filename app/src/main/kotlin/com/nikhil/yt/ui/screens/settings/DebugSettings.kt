@@ -428,8 +428,7 @@ private fun LogViewerPanel() {
                         entry.message.contains("DiscordPresenceManager") ||
                         entry.message.contains("DiscordRPC")
 
-                1 -> (entry.tag?.contains("YTPlayerUtils", true) == true) ||
-                        (entry.tag?.contains("Capsule", true) == true) ||
+                1 -> (entry.tag?.contains("Capsule", true) == true) ||
                         (entry.tag?.contains("YouTubeVideoResolver", true) == true) ||
                         (entry.tag?.contains("MusicService", true) == true)
 

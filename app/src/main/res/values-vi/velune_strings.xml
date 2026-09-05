@@ -95,9 +95,7 @@
     <string name="player_design_v3">Tối giản</string>
     <string name="player_design_v4">Điện ảnh</string>
     <string name="new_mini_player_design">Thiết kế trình phát mini mới</string>
-    <string name="player_background_blur">Làm mờ</string>
     <string name="coloring">Tô màu</string>
-    <string name="blur_gradient">Gradient làm mờ</string>
     <string name="glow">Phát sáng</string>
     <string name="player_buttons_style">Màu sắc nút trình phát</string>
     <string name="default_style">Mặc định</string>

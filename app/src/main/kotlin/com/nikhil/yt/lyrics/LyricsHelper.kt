@@ -20,14 +20,16 @@ import com.nikhil.yt.models.MediaMetadata
 import com.nikhil.yt.utils.dataStore
 import com.nikhil.yt.utils.reportException
 import com.nikhil.yt.utils.NetworkConnectivityObserver
+import com.nikhil.yt.betterlyrics.LyricsUnavailableException
 import dagger.hilt.android.qualifiers.ApplicationContext
-import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.async
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import javax.inject.Inject
 
 class LyricsHelper
@@ -73,38 +75,37 @@ constructor(
 
         val ordered = orderedProviders()
         val providers = if (preferredProviderOnly) listOf(ordered.first()) else ordered
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-        val deferred = scope.async {
-            for (provider in providers) {
-                val enabled = provider.isEnabled(context)
-                
-                if (enabled) {
-                    try {
-                        val result = provider.getLyrics(
-                            mediaMetadata.id,
-                            mediaMetadata.title,
-                            mediaMetadata.artists.joinToString { it.name },
-                            mediaMetadata.album?.title,
-                            mediaMetadata.duration,
-                        )
-                        result.onSuccess { lyrics ->
-                            if (isMeaningfulLyrics(lyrics)) {
-                                return@async lyrics
-                            }
-                        }.onFailure {
-                            reportException(it)
-                        }
-                    } catch (e: Exception) {
-                        reportException(e)
-                    }
+        for (provider in providers) {
+            currentCoroutineContext().ensureActive()
+            if (!provider.isEnabled(context)) continue
+
+            try {
+                val result =
+                    provider.getLyrics(
+                        mediaMetadata.id,
+                        mediaMetadata.title,
+                        mediaMetadata.artists.joinToString { it.name },
+                        mediaMetadata.album?.title,
+                        mediaMetadata.duration,
+                    )
+                currentCoroutineContext().ensureActive()
+                val lyrics = result.getOrNull()
+                if (lyrics != null && isMeaningfulLyrics(lyrics)) {
+                    cache.put(
+                        mediaMetadata.id,
+                        listOf(LyricsResult(provider.name, lyrics)),
+                    )
+                    return lyrics
                 }
+                result.exceptionOrNull()?.let { reportProviderFailure(provider, it) }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                reportProviderFailure(provider, e)
             }
-            return@async LYRICS_NOT_FOUND
         }
 
-        val lyrics = deferred.await()
-        scope.cancel()
-        return lyrics
+        return LYRICS_NOT_FOUND
     }
 
     suspend fun getAllLyrics(
@@ -137,25 +138,44 @@ constructor(
 
         val allResult = mutableListOf<LyricsResult>()
         val providers = orderedProviders()
-        currentLyricsJob = CoroutineScope(SupervisorJob() + Dispatchers.IO).async {
-            providers.forEach { provider ->
-                if (provider.isEnabled(context)) {
-                    try {
-                        provider.getAllLyrics(mediaId, songTitle, songArtists, songAlbum, duration) lyricsCallback@{ lyrics ->
-                            if (!isMeaningfulLyrics(lyrics)) return@lyricsCallback
-                            val result = LyricsResult(provider.name, lyrics)
-                            allResult += result
-                            callback(result)
+        withContext(Dispatchers.IO) {
+            val job = launch {
+                providers.forEach { provider ->
+                    currentCoroutineContext().ensureActive()
+                    if (provider.isEnabled(context)) {
+                        try {
+                            provider.getAllLyrics(mediaId, songTitle, songArtists, songAlbum, duration) lyricsCallback@{ lyrics ->
+                                if (!isMeaningfulLyrics(lyrics)) return@lyricsCallback
+                                val result = LyricsResult(provider.name, lyrics)
+                                allResult += result
+                                callback(result)
+                            }
+                            currentCoroutineContext().ensureActive()
+                        } catch (cancelled: CancellationException) {
+                            throw cancelled
+                        } catch (e: Exception) {
+                            reportProviderFailure(provider, e)
                         }
-                    } catch (e: Exception) {
-                        reportException(e)
                     }
                 }
+                cache.put(cacheKey, allResult)
             }
-            cache.put(cacheKey, allResult)
+            currentLyricsJob = job
+            try {
+                job.join()
+            } finally {
+                if (currentLyricsJob === job) currentLyricsJob = null
+            }
         }
+    }
 
-        currentLyricsJob?.join()
+    private fun reportProviderFailure(provider: LyricsProvider, failure: Throwable) {
+        when (failure) {
+            is CancellationException -> throw failure
+            is LyricsUnavailableException ->
+                GlobalLog.append(Log.DEBUG, "LyricsHelper", "No lyrics from ${provider.name}")
+            else -> reportException(failure)
+        }
     }
 
     private suspend fun orderedProviders(): List<LyricsProvider> {

@@ -75,11 +75,7 @@ data class PlaybackAuthState(
             return name == "WEB" ||
                     name == "WEB_REMIX" ||
                     name == "WEB_CREATOR" ||
-                    name == "MWEB" ||
-                    name == "WEB_EMBEDDED_PLAYER" ||
-                    name == "TVHTML5" ||
-                    name == "TVHTML5_SIMPLY_EMBEDDED_PLAYER" ||
-                    name == "TVHTML5_SIMPLY"
+                    name == "MWEB"
         }
     }
 }

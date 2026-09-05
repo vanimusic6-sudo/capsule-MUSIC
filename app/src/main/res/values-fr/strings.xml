@@ -304,7 +304,6 @@
     <string name="palette_spring">Printemps</string>
     <string name="palette_summer">Été</string>
     <string name="palette_twilight">Crépuscule</string>
-    <string name="palette_aurora">Aurore</string>
     <string name="palette_candy">Bonbon</string>
     <string name="palette_rainbow">Arc-en-ciel</string>
     <!-- Additional Palettes -->
@@ -332,8 +331,6 @@
     <string name="ok_button">OK</string>
     <string name="custom_radius">Personnaliser le rayon des coins des vignettes</string>
     <string name="custom">Personnalisation</string>
-    <string name="customized_background">Arrière-plan personnalisé</string>
-    <string name="customize_background_title">Personnaliser l\'arrière-plan</string>
     <string name="add_image">Ajouter une image</string>
     <string name="blur">Floue</string>
     <string name="contrast">Contraste</string>

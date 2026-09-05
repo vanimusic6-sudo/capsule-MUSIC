@@ -241,6 +241,11 @@
     <string name="error_no_internet">No network connection</string>
     <string name="error_timeout">Timeout</string>
     <string name="error_unknown">Unknown error</string>
+    <string name="error_youtube_network_restricted_title">YouTube временно ограничил подключение</string>
+    <string name="error_youtube_network_restricted_description">Для текущего сетевого адреса YouTube запросил проверку на бота. Обычно это временно и не означает повреждение приложения или аккаунта.</string>
+    <string name="error_youtube_network_restricted_recommendation_title">Что сделать</string>
+    <string name="error_youtube_network_restricted_recommendation">Если включён VPN, смените сервер или временно отключите его. Дождитесь подключения сети и нажмите «Повтор». Не переключайте много треков во время переподключения VPN.</string>
+    <string name="error_youtube_network_restricted_technical">Ответ антибот-системы YouTube</string>
     <!-- Player action -->
     <string name="action_like">Like</string>
     <string name="action_like_all">Like all</string>
@@ -351,7 +356,6 @@
     <string name="palette_spring">Spring</string>
     <string name="palette_summer">Summer</string>
     <string name="palette_twilight">Twilight</string>
-    <string name="palette_aurora">Aurora</string>
     <string name="palette_candy">Candy</string>
     <string name="palette_rainbow">Rainbow</string>
     <!-- Additional Palettes -->
@@ -378,15 +382,13 @@
     <string name="ok_button">OK</string>
     <string name="custom_radius">Customize thumbnail corner radius</string>
     <string name="custom">Custom</string>
-    <string name="customized_background">Customized background</string>
-    <string name="customize_background_title">Customize background</string>
     <string name="add_image">Add image</string>
     <string name="blur">Blur</string>
     <string name="contrast">Contrast</string>
     <string name="brightness">Brightness</string>
     <string name="custom_value">Custom value</string>
-    <string name="new_library_design">New library design</string>
-    <string name="new_library_design_description">Enable the new library design (may be unstable)</string>
+    <string name="new_library_design">Обновлённая библиотека</string>
+    <string name="new_library_design_description">Просторные карточки плейлистов с градиентами на основе обложек</string>
     <string name="velune_canvas">Velune Canvas</string>
     <string name="velune_canvas_desc">Animate album artwork while playing (Powered by BetterLyrics)</string>
     <string name="show_button1_description">Toggle visibility of button 1 in Discord Rich Presence</string>

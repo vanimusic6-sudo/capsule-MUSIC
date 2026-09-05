@@ -596,22 +596,6 @@ fun SettingsScreen(
         )
         add(
             PremiumSettingsItem(
-                icon = painterResource(R.drawable.image),
-                title = stringResource(R.string.customize_background_title),
-                subtitle = stringResource(R.string.appearance),
-                accentColor = MaterialTheme.colorScheme.secondary,
-                keywords = listOf(
-                    "background",
-                    "wallpaper",
-                    "image",
-                    "blur",
-                    "gradient",
-                ),
-                onClick = { navController.navigate("customize_background") },
-            ),
-        )
-        add(
-            PremiumSettingsItem(
                 icon = painterResource(R.drawable.discord),
                 title = stringResource(R.string.discord_integration),
                 subtitle = stringResource(R.string.integration),

@@ -55,7 +55,6 @@ import com.nikhil.yt.constants.NetworkMeteredKey
 import com.nikhil.yt.constants.PauseOnDeviceMuteKey
 import com.nikhil.yt.constants.PermanentShuffleKey
 import com.nikhil.yt.constants.PersistentQueueKey
-import com.nikhil.yt.constants.SeekExtraSeconds
 import com.nikhil.yt.constants.SkipSilenceKey
 import com.nikhil.yt.constants.StopMusicOnTaskClearKey
 import com.nikhil.yt.innertube.models.YouTubeClientUpstream
@@ -73,46 +72,73 @@ import com.nikhil.yt.ui.utils.backToMain
 import com.nikhil.yt.utils.rememberEnumPreference
 import com.nikhil.yt.utils.rememberPreference
 
-private fun AudioStreamPolicy.title(): String =
-    when (this) {
-        AudioStreamPolicy.AUTO_SAFE -> "Safe automatic"
-        AudioStreamPolicy.VISIONOS ->
-            "visionOS ${YouTubeClientUpstream.VISIONOS_VERSION}"
-        AudioStreamPolicy.WEB_EMBEDDED ->
-            "Web Embedded ${YouTubeClientUpstream.WEB_EMBEDDED_VERSION}"
-        AudioStreamPolicy.IOS ->
-            "iOS ${YouTubeClientUpstream.IOS_VERSION}"
-        AudioStreamPolicy.IOS_MUSIC -> "iOS Music"
-        AudioStreamPolicy.TV_DOWNGRADED ->
-            "TV compatibility ${YouTubeClientUpstream.TV_DOWNGRADED_VERSION}"
-        AudioStreamPolicy.TVHTML5 ->
-            "TV HTML5 ${YouTubeClientUpstream.TV_VERSION}"
-    }
-
-private fun AudioStreamPolicy.description(): String =
+@Composable
+private fun AudioStreamPolicy.localizedTitle(): String =
     when (this) {
         AudioStreamPolicy.AUTO_SAFE ->
-            "Recommended. visionOS → Web Embedded → TV compatibility → TV. " +
-                "Clients that currently require a GVS PO-token are skipped."
+            stringResource(R.string.audio_stream_policy_auto)
+        AudioStreamPolicy.VISIONOS ->
+            stringResource(
+                R.string.audio_stream_policy_visionos,
+                YouTubeClientUpstream.VISIONOS_VERSION,
+            )
+        AudioStreamPolicy.WEB_EMBEDDED ->
+            stringResource(R.string.audio_stream_policy_web_embedded)
+        AudioStreamPolicy.WEB ->
+            stringResource(R.string.audio_stream_policy_web)
+        AudioStreamPolicy.MWEB ->
+            stringResource(
+                R.string.audio_stream_policy_mweb,
+                YouTubeClientUpstream.MWEB_VERSION,
+            )
+        AudioStreamPolicy.IOS ->
+            stringResource(
+                R.string.audio_stream_policy_ios,
+                YouTubeClientUpstream.IOS_VERSION,
+            )
+        AudioStreamPolicy.IOS_MUSIC ->
+            stringResource(R.string.audio_stream_policy_ios_music)
+        AudioStreamPolicy.TV_DOWNGRADED ->
+            stringResource(
+                R.string.audio_stream_policy_tv_compatibility,
+                YouTubeClientUpstream.TV_DOWNGRADED_VERSION,
+            )
+        AudioStreamPolicy.TVHTML5 ->
+            stringResource(
+                R.string.audio_stream_policy_tv,
+                YouTubeClientUpstream.TV_VERSION,
+            )
+    }
+
+@Composable
+private fun AudioStreamPolicy.localizedDescription(): String =
+    when (this) {
+        AudioStreamPolicy.AUTO_SAFE ->
+            stringResource(R.string.audio_stream_policy_auto_description)
 
         AudioStreamPolicy.VISIONOS ->
-            "Prefer the current visionOS identity, then use the reviewed safe fallbacks. " +
-                "This is what field runs resolve fastest."
+            stringResource(R.string.audio_stream_policy_visionos_description)
 
         AudioStreamPolicy.WEB_EMBEDDED ->
-            "Prefer the anonymous Web Embedded identity, then use visionOS and TV fallbacks."
+            stringResource(R.string.audio_stream_policy_web_embedded_description)
+
+        AudioStreamPolicy.WEB ->
+            stringResource(R.string.audio_stream_policy_web_description)
+
+        AudioStreamPolicy.MWEB ->
+            stringResource(R.string.audio_stream_policy_mweb_description)
 
         AudioStreamPolicy.IOS ->
-            "Manual compatibility mode. Current iOS media URLs can require a real PO-token."
+            stringResource(R.string.audio_stream_policy_ios_description)
 
         AudioStreamPolicy.IOS_MUSIC ->
-            "Manual compatibility mode. The identity is pinned and can require a real PO-token."
+            stringResource(R.string.audio_stream_policy_ios_music_description)
 
         AudioStreamPolicy.TV_DOWNGRADED ->
-            "Prefer yt-dlp's downgraded TV compatibility identity, then use safe fallbacks."
+            stringResource(R.string.audio_stream_policy_tv_compatibility_description)
 
         AudioStreamPolicy.TVHTML5 ->
-            "Prefer the current TV HTML5 identity, then use safe fallbacks."
+            stringResource(R.string.audio_stream_policy_tv_description)
     }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -130,14 +156,14 @@ fun PlayerSettings(
     /*
      * This is intentionally a new setting key.
      *
-     * Old values such as ANDROID_VR / IOS / ANDROID_MUSIC are not migrated
-     * automatically because their upstream playback requirements changed.
-     * Everyone starts on AUTO_SAFE after the new core is installed.
+     * Old and retired client values are kept only as migration tombstones and
+     * normalize to AUTO_SAFE at the playback boundary. They are never shown to
+     * users again.
      */
     val (audioStreamPolicy, onAudioStreamPolicyChange) =
         rememberEnumPreference(
             AudioStreamPolicyKey,
-            defaultValue = AudioStreamPolicy.AUTO_SAFE,
+            defaultValue = AudioStreamPolicy.VISIONOS,
         )
 
     val (networkMetered, onNetworkMeteredChange) =
@@ -168,12 +194,7 @@ fun PlayerSettings(
     val (audioOffload, onAudioOffloadChange) =
         rememberPreference(
             AudioOffload,
-            defaultValue = false,
-        )
-    val (seekExtraSeconds, onSeekExtraSeconds) =
-        rememberPreference(
-            SeekExtraSeconds,
-            defaultValue = false,
+            defaultValue = true,
         )
     val (autoDownloadOnLike, onAutoDownloadOnLikeChange) =
         rememberPreference(
@@ -244,7 +265,7 @@ fun PlayerSettings(
             onDismiss = { showAudioStreamPolicyDialog = false },
             modifier = Modifier.padding(horizontal = 8.dp),
         ) {
-            items(AudioStreamPolicy.entries) { value ->
+            items(AudioStreamPolicy.entries.filter(AudioStreamPolicy::isUserSelectable)) { value ->
                 Row(
                     modifier =
                         Modifier
@@ -259,7 +280,7 @@ fun PlayerSettings(
                             ),
                 ) {
                     RadioButton(
-                        selected = value == audioStreamPolicy,
+                        selected = value == audioStreamPolicy.normalizedForPlayback(),
                         onClick = null,
                     )
 
@@ -267,12 +288,12 @@ fun PlayerSettings(
                         modifier = Modifier.padding(start = 16.dp),
                     ) {
                         Text(
-                            text = value.title(),
+                            text = value.localizedTitle(),
                             style = MaterialTheme.typography.bodyLarge,
                         )
                         Spacer(Modifier.height(4.dp))
                         Text(
-                            text = value.description(),
+                            text = value.localizedDescription(),
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.secondary,
                         )
@@ -329,10 +350,13 @@ fun PlayerSettings(
         )
 
         PreferenceEntry(
-            title = { Text("AUDIO stream policy") },
+            title = { Text(stringResource(R.string.audio_stream_policy)) },
             description =
-                "${audioStreamPolicy.title()} • " +
-                    "upstream ${YouTubeClientUpstream.SOURCE_SNAPSHOT}",
+                stringResource(
+                    R.string.audio_stream_policy_current,
+                    audioStreamPolicy.normalizedForPlayback().localizedTitle(),
+                    YouTubeClientUpstream.SOURCE_SNAPSHOT,
+                ),
             icon = {
                 Icon(
                     painterResource(R.drawable.integration),
@@ -345,11 +369,7 @@ fun PlayerSettings(
         )
 
         Text(
-            text =
-                "Capsule Safe AUDIO Core uses only the reviewed client allowlist. " +
-                    "Android VR and Android Music remain hidden because their current " +
-                    "upstream PO-token requirements are different. " +
-                    "Client identities are synchronized by CI, not changed live during playback.",
+            text = stringResource(R.string.audio_stream_policy_note),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.secondary,
             modifier =
@@ -446,28 +466,6 @@ fun PlayerSettings(
                     onSkipSilenceChange(false)
                 }
             },
-        )
-
-        SwitchPreference(
-            title = {
-                Text(
-                    stringResource(
-                        R.string.seek_seconds_addup,
-                    ),
-                )
-            },
-            description =
-                stringResource(
-                    R.string.seek_seconds_addup_description,
-                ),
-            icon = {
-                Icon(
-                    painterResource(R.drawable.arrow_forward),
-                    null,
-                )
-            },
-            checked = seekExtraSeconds,
-            onCheckedChange = onSeekExtraSeconds,
         )
 
         SwitchPreference(

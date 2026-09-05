@@ -172,7 +172,6 @@ import com.nikhil.yt.constants.SlimNavBarKey
 
 
 import com.nikhil.yt.constants.StopMusicOnTaskClearKey
-import com.nikhil.yt.constants.UseNewMiniPlayerDesignKey
 import com.nikhil.yt.constants.UseSystemFontKey
 import com.nikhil.yt.db.MusicDatabase
 import com.nikhil.yt.db.entities.SearchHistory
@@ -210,7 +209,6 @@ import com.nikhil.yt.ui.screens.settings.DiscordPresenceManager
 import com.nikhil.yt.ui.screens.settings.NavigationTab
 import com.nikhil.yt.ui.theme.VeluneTheme
 import com.nikhil.yt.ui.theme.CapsuleBottomBarEnabledKey
-import com.nikhil.yt.ui.theme.CapsuleMiniPlayerEnabledKey
 import com.nikhil.yt.ui.theme.ColorSaver
 import com.nikhil.yt.ui.theme.DefaultThemeColor
 import com.nikhil.yt.ui.theme.extractThemeColor
@@ -223,6 +221,7 @@ import com.nikhil.yt.utils.get
 import com.nikhil.yt.utils.rememberEnumPreference
 import com.nikhil.yt.utils.rememberPreference
 import com.nikhil.yt.utils.reportException
+import com.nikhil.yt.utils.reportRecoverableException
 import com.nikhil.yt.utils.setAppLocale
 import com.nikhil.yt.viewmodels.HomeViewModel
 import java.net.URLDecoder
@@ -379,7 +378,11 @@ class MainActivity : ComponentActivity() {
         // Only clear/stop presence when the activity is actually finishing (not on rotation)
         // and do not clear it for transient configuration changes.
         if (isFinishing && !isChangingConfigurations) {
-            try { DiscordPresenceManager.stop() } catch (_: Exception) {}
+            try {
+                DiscordPresenceManager.stop()
+            } catch (error: Exception) {
+                reportRecoverableException("MainActivity", "stop Discord presence", error)
+            }
         }
 
         val shouldStopOnTaskClear =
@@ -630,15 +633,9 @@ class MainActivity : ComponentActivity() {
 
                     val navigationItems = remember { Screens.MainScreens }
                     val (slimNav) = rememberPreference(SlimNavBarKey, defaultValue = false)
-                    val (useNewMiniPlayerDesign) = rememberPreference(UseNewMiniPlayerDesignKey, defaultValue = true)
                     val capsuleBottomBarEnabled by
                         rememberPreference(
                             CapsuleBottomBarEnabledKey,
-                            defaultValue = false,
-                        )
-                    val capsuleMiniPlayerEnabled by
-                        rememberPreference(
-                            CapsuleMiniPlayerEnabledKey,
                             defaultValue = false,
                         )
                     val defaultOpenTab by rememberEnumPreference(DefaultOpenTabKey, NavigationTab.HOME)
@@ -751,12 +748,8 @@ class MainActivity : ComponentActivity() {
                         label = "",
                     )
 
-                    val usesFloatingMiniPlayer =
-                        useNewMiniPlayerDesign || capsuleMiniPlayerEnabled
-
                     val capsuleConnected =
                         capsuleBottomBarEnabled &&
-                                capsuleMiniPlayerEnabled &&
                                 shouldShowNavigationBar &&
                                 !useRail
 
@@ -771,7 +764,7 @@ class MainActivity : ComponentActivity() {
                                             0.dp
                                         }) +
                                         getBottomNavPadding() +
-                                        (if (usesFloatingMiniPlayer && !capsuleConnected) {
+                                        (if (!capsuleConnected) {
                                             MiniPlayerBottomSpacing
                                         } else {
                                             0.dp
@@ -786,8 +779,7 @@ class MainActivity : ComponentActivity() {
                                 !useRail
 
                     val capsuleMiniPlayerActuallyVisible =
-                        capsuleMiniPlayerEnabled &&
-                                playerConnection != null &&
+                        playerConnection != null &&
                                 !playerBottomSheetState.isDismissed
 
                     var yearInMusicSavedPlayerAnchor by rememberSaveable { mutableIntStateOf(-1) }
@@ -896,21 +888,16 @@ class MainActivity : ComponentActivity() {
                         if (navBackStackEntry?.destination?.route?.startsWith("search/") == true) {
                             val searchQuery =
                                 withContext(Dispatchers.IO) {
-                                    if (navBackStackEntry
+                                    val encodedQuery =
+                                        navBackStackEntry
                                             ?.arguments
-                                            ?.getString(
-                                                "query",
-                                            )!!
-                                            .contains(
-                                                "%",
-                                            )
-                                    ) {
-                                        navBackStackEntry?.arguments?.getString(
-                                            "query",
-                                        )!!
+                                            ?.getString("query")
+                                            .orEmpty()
+                                    if (encodedQuery.contains("%")) {
+                                        encodedQuery
                                     } else {
                                         URLDecoder.decode(
-                                            navBackStackEntry?.arguments?.getString("query")!!,
+                                            encodedQuery,
                                             "UTF-8"
                                         )
                                     }
@@ -989,8 +976,9 @@ class MainActivity : ComponentActivity() {
                     }
 
                     LaunchedEffect(Unit) {
-                        if (pendingIntent != null) {
-                            handleDeepLinkIntent(pendingIntent!!, navController)
+                        val queuedIntent = pendingIntent
+                        if (queuedIntent != null) {
+                            handleDeepLinkIntent(queuedIntent, navController)
                             pendingIntent = null
                         } else {
                             handleDeepLinkIntent(intent, navController)
@@ -1662,7 +1650,8 @@ class MainActivity : ComponentActivity() {
                             try {
                                 delay(100)
                                 searchBarFocusRequester.requestFocus()
-                            } catch (_: Exception) {
+                            } catch (error: Exception) {
+                                reportRecoverableException("MainActivity", "focus search bar", error)
                             }
                             openSearchImmediately = false
                         }

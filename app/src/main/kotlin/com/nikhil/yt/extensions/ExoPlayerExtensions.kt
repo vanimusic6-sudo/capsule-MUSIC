@@ -1,35 +1,93 @@
+@file:Suppress("UnsafeOptInUsageError")
+
 /*
  * Velune - by Nikhil
  * Nikhil
  * Licensed Under GPL-3.0
  */
 
-
-
 package com.nikhil.yt.extensions
 
+import androidx.media3.common.C
+import androidx.media3.common.TrackSelectionParameters
 import androidx.media3.exoplayer.ExoPlayer
 import timber.log.Timber
+import java.util.WeakHashMap
 
-fun ExoPlayer.setOffloadEnabled(enabled: Boolean) {
-    val candidates =
-        listOf(
-            "experimentalSetOffloadSchedulingEnabled",
-            "setOffloadSchedulingEnabled",
-            "setOffloadEnabled",
-        )
+private val capsuleOffloadListeners =
+    WeakHashMap<ExoPlayer, ExoPlayer.AudioOffloadListener>()
 
-    for (name in candidates) {
-        try {
-            val method = this::class.java.getMethod(name, Boolean::class.javaPrimitiveType)
-            method.invoke(this, enabled)
-            return
-        } catch (_: NoSuchMethodException) {
-        } catch (t: Throwable) {
-            Timber.tag("ExoPlayerExtensions").v(t, "$name reflection failed")
-            return
-        }
+private fun ExoPlayer.ensureCapsuleOffloadDiagnostics(): Boolean {
+    synchronized(capsuleOffloadListeners) {
+        if (capsuleOffloadListeners.containsKey(this)) return false
+
+        val listener =
+            object : ExoPlayer.AudioOffloadListener {
+                override fun onOffloadedPlayback(isOffloadedPlayback: Boolean) {
+                    Timber.tag("AudioOffload").i(
+                        "offloadedPlayback=%s",
+                        isOffloadedPlayback,
+                    )
+                }
+
+                override fun onSleepingForOffloadChanged(isSleepingForOffload: Boolean) {
+                    Timber.tag("AudioOffload").i(
+                        "sleepingForOffload=%s",
+                        isSleepingForOffload,
+                    )
+                }
+            }
+
+        capsuleOffloadListeners[this] = listener
+        addAudioOffloadListener(listener)
+        return true
     }
+}
 
-    Timber.tag("ExoPlayerExtensions").v("No offload toggle method found")
+/**
+ * Applies Capsule's low-power audio playback policy to an ExoPlayer.
+ *
+ * Media3 1.9 moved offload configuration into
+ * TrackSelectionParameters.AudioOffloadPreferences and removed the old
+ * ExoPlayer offload-scheduling toggles. Using the old reflection names left
+ * Capsule on normal CPU decoding even when the setting said "enabled".
+ *
+ * Capsule used to build the music player with WAKE_MODE_NETWORK. That keeps a
+ * WifiLock in addition to the CPU wake lock while playback is READY/BUFFERING.
+ * Streaming music does not require low-latency Wi-Fi, so force WAKE_MODE_LOCAL
+ * on the already-created player. The foreground media service still keeps
+ * playback alive with the screen off, but Wi-Fi is free to use its normal
+ * power-saving behaviour between network reads.
+ */
+fun ExoPlayer.setOffloadEnabled(enabled: Boolean) {
+    val firstApplication = ensureCapsuleOffloadDiagnostics()
+
+    val mode =
+        if (enabled) {
+            TrackSelectionParameters.AudioOffloadPreferences.AUDIO_OFFLOAD_MODE_ENABLED
+        } else {
+            TrackSelectionParameters.AudioOffloadPreferences.AUDIO_OFFLOAD_MODE_DISABLED
+        }
+
+    val offloadPreferences =
+        TrackSelectionParameters.AudioOffloadPreferences
+            .Builder()
+            .setAudioOffloadMode(mode)
+            .setIsGaplessSupportRequired(false)
+            .setIsSpeedChangeSupportRequired(false)
+            .build()
+
+    if (!firstApplication && trackSelectionParameters.audioOffloadPreferences == offloadPreferences) return
+
+    setWakeMode(C.WAKE_MODE_LOCAL)
+    trackSelectionParameters =
+        trackSelectionParameters
+            .buildUpon()
+            .setAudioOffloadPreferences(offloadPreferences)
+            .build()
+
+    Timber.tag("AudioOffload").i(
+        "Media3 low-power audio policy offload=%s wakeMode=LOCAL",
+        enabled,
+    )
 }

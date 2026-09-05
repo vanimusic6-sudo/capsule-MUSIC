@@ -25,27 +25,11 @@ val UseSystemFontKey = booleanPreferencesKey("useSystemFont")
 val DefaultOpenTabKey = stringPreferencesKey("defaultOpenTab")
 val SlimNavBarKey = booleanPreferencesKey("slimNavBar")
 val GridItemsSizeKey = stringPreferencesKey("gridItemSize")
-val SliderStyleKey = stringPreferencesKey("sliderStyle")
 val SwipeToSongKey = booleanPreferencesKey("SwipeToSong")
-val PlayerDesignStyleKey = stringPreferencesKey("playerDesignStyle")
 val UseNewLibraryDesignKey = booleanPreferencesKey("useNewLibraryDesign")
-val UseNewMiniPlayerDesignKey = booleanPreferencesKey("useNewMiniPlayerDesign")
 val HidePlayerThumbnailKey = booleanPreferencesKey("hidePlayerThumbnail")
-val VeluneCanvasKey = booleanPreferencesKey("veluneCanvas")
-val ThumbnailCornerRadiusKey = floatPreferencesKey("thumbnailCornerRadius")
 val CropThumbnailToSquareKey = booleanPreferencesKey("cropThumbnailToSquare")
-val SeekExtraSeconds = booleanPreferencesKey("seekExtraSeconds")
 val DisableBlurKey = booleanPreferencesKey("disableBlur")
-val GlassNavigationBarKey = booleanPreferencesKey("glassNavigationBar")
-val GlassMiniPlayerKey = booleanPreferencesKey("glassMiniPlayer")
-
-enum class SliderStyle {
-    Standard,
-    Wavy,
-    Thick,
-    Circular,
-    Simple,
-}
 
 const val SYSTEM_DEFAULT = "SYSTEM_DEFAULT"
 val AppLanguageKey = stringPreferencesKey("appLanguage")
@@ -73,7 +57,7 @@ val TogetherAllowGuestsToControlPlaybackKey = booleanPreferencesKey("together_al
 val TogetherRequireHostApprovalToJoinKey = booleanPreferencesKey("together_require_host_approval_to_join")
 val TogetherLastJoinLinkKey = stringPreferencesKey("together_last_join_link")
 val TogetherWelcomeShownKey = booleanPreferencesKey("together_welcome_shown")
-    
+
 // ListenBrainz scrobbling
 val ListenBrainzEnabledKey = booleanPreferencesKey("listenbrainz_enabled")
 val ListenBrainzTokenKey = stringPreferencesKey("listenbrainz_token")
@@ -140,8 +124,6 @@ val EqualizerCustomProfilesJsonKey = stringPreferencesKey("equalizerCustomProfil
 val MaxImageCacheSizeKey = intPreferencesKey("maxImageCacheSize")
 val SmartTrimmerKey = booleanPreferencesKey("smartTrimmer")
 val MaxSongCacheSizeKey = intPreferencesKey("maxSongCacheSize")
-val MaxCanvasCacheSizeKey = intPreferencesKey("maxCanvasCacheSize")
-
 val PauseListenHistoryKey = booleanPreferencesKey("pauseListenHistory")
 val PauseSearchHistoryKey = booleanPreferencesKey("pauseSearchHistory")
 val DisableScreenshotKey = booleanPreferencesKey("disableScreenshot")
@@ -207,12 +189,6 @@ val MixSortDescendingKey = booleanPreferencesKey("albumSortDescending")
 val SongFilterKey = stringPreferencesKey("songFilter")
 val ArtistFilterKey = stringPreferencesKey("artistFilter")
 val AlbumFilterKey = stringPreferencesKey("albumFilter")
-
-val LastLikeSongSyncKey = longPreferencesKey("last_like_song_sync")
-val LastLibSongSyncKey = longPreferencesKey("last_library_song_sync")
-val LastAlbumSyncKey = longPreferencesKey("last_album_sync")
-val LastArtistSyncKey = longPreferencesKey("last_artist_sync")
-val LastPlaylistSyncKey = longPreferencesKey("last_playlist_sync")
 
 val ArtistViewTypeKey = stringPreferencesKey("artistViewType")
 val AlbumViewTypeKey = stringPreferencesKey("albumViewType")
@@ -376,35 +352,24 @@ enum class PreferredLyricsProvider {
     SIMPMUSIC,
 }
 
-enum class PlayerButtonsStyle {
-    DEFAULT,
-    SECONDARY,
-}
-
-enum class PlayerDesignStyle {
-    V1,
-    V2,
-    V3,
-    V4,
-    V5,
-}
-
 enum class PlayerBackgroundStyle {
+    CAPSULE_STAR,
+    GLOW_ANIMATED,
+    NEBULA,
     DEFAULT,
     GRADIENT,
-    CUSTOM,
-    BLUR,
     COLORING,
-    BLUR_GRADIENT,
     GLOW,
-    GLOW_ANIMATED,
 }
 
-// Keys for customized background
-val PlayerCustomImageUriKey = stringPreferencesKey("playerCustomImageUri")
-val PlayerCustomBlurKey = floatPreferencesKey("playerCustomBlur")
-val PlayerCustomContrastKey = floatPreferencesKey("playerCustomContrast")
-val PlayerCustomBrightnessKey = floatPreferencesKey("playerCustomBrightness")
+enum class MiniPlayerBackgroundStyle {
+    CAPSULE_STAR,
+    COLOR_FLOW,
+    NEBULA,
+    GRADIENT,
+    GLASS,
+    THEME,
+}
 
 
 val LyricsAnimationStyleKey = stringPreferencesKey("lyricsAnimationStyle")
@@ -423,16 +388,13 @@ val LyricsLineSpacingKey = floatPreferencesKey("lyricsLineSpacing")
 val TopSize = stringPreferencesKey("topSize")
 val HistoryDuration = floatPreferencesKey("historyDuration")
 
-val PlayerButtonsStyleKey = stringPreferencesKey("player_buttons_style")
 val PlayerBackgroundStyleKey = stringPreferencesKey("playerBackgroundStyle")
-val ShowLyricsKey = booleanPreferencesKey("showLyrics")
+val MiniPlayerBackgroundStyleKey = stringPreferencesKey("capsuleMiniPlayerBackgroundStyle")
 val LyricsTextPositionKey = stringPreferencesKey("lyricsTextPosition")
 val LyricsClickKey = booleanPreferencesKey("lyricsClick")
 val LyricsScrollKey = booleanPreferencesKey("lyricsScrollKey")
 val LyricsRomanizeJapaneseKey = booleanPreferencesKey("lyricsRomanizeJapanese")
 val LyricsRomanizeKoreanKey = booleanPreferencesKey("lyricsRomanizeKorean")
-val TranslateLyricsKey = booleanPreferencesKey("translateLyrics")
-val UseLyricsV2Key = booleanPreferencesKey("useLyricsV2")
 
 // Queue lyrics pre-load settings
 val PreloadQueueLyricsEnabledKey = booleanPreferencesKey("preload_queue_lyrics_enabled")
@@ -561,23 +523,5 @@ val RemindAfterKey = intPreferencesKey("remind_after")
 
 // Update settings
 val EnableUpdateNotificationKey = booleanPreferencesKey("enableUpdateNotification")
-val UpdateChannelKey = stringPreferencesKey("updateChannel")
 val LastUpdateCheckKey = longPreferencesKey("lastUpdateCheck")
 val LastNotifiedVersionKey = stringPreferencesKey("lastNotifiedVersion")
-
-val GitHubContributorsEtagKey = stringPreferencesKey("github_contributors_etag")
-val GitHubContributorsJsonKey = stringPreferencesKey("github_contributors_json")
-val GitHubContributorsLastCheckedAtKey = longPreferencesKey("github_contributors_last_checked_at")
-
-val GitHubReleasesEtagKey = stringPreferencesKey("github_releases_etag")
-val GitHubReleasesJsonKey = stringPreferencesKey("github_releases_json")
-val GitHubReleasesLastCheckedAtKey = longPreferencesKey("github_releases_last_checked_at")
-val GitHubReleasesFingerprintKey = stringPreferencesKey("github_releases_fingerprint")
-
-val TogetherOnlineEndpointCacheKey = stringPreferencesKey("together_online_endpoint_cache")
-val TogetherOnlineEndpointLastCheckedAtKey = longPreferencesKey("together_online_endpoint_last_checked_at")
-
-enum class UpdateChannel {
-    STABLE,
-    NIGHTLY,
-}

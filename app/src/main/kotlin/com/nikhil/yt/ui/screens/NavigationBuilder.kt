@@ -65,7 +65,6 @@ import com.nikhil.yt.ui.screens.playlist.CachePlaylistScreen
 import com.nikhil.yt.ui.screens.search.OnlineSearchResult
 import com.nikhil.yt.ui.screens.settings.AboutScreen
 import com.nikhil.yt.ui.screens.settings.AppearanceSettings
-import com.nikhil.yt.ui.screens.settings.CustomizeBackground
 import com.nikhil.yt.ui.screens.settings.BackupAndRestore
 import com.nikhil.yt.ui.screens.settings.VeluneSettingsScreen
 import com.nikhil.yt.ui.screens.settings.VeluneAccountSettingsScreen
@@ -363,9 +362,6 @@ fun NavGraphBuilder.navigationBuilder(
     }
     composable("settings/po_token") {
         PoTokenScreen(navController, scrollBehavior)
-    }
-    composable("customize_background") {
-        CustomizeBackground(navController)
     }
     composable("login") {
         LoginScreen(navController)

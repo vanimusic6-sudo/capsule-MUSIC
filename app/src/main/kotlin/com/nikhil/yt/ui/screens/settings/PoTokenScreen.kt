@@ -90,9 +90,7 @@ import com.nikhil.yt.viewmodels.PoTokenViewModel
 
 private const val DEFAULT_EXTRACT_URL = "https://youtube.com/account"
 
-private val SUPPORTED_CLIENTS = listOf(
-    "web", "mweb", "web_safari", "web_embedded", "web_creator", "web_music"
-)
+private val SUPPORTED_CLIENTS = listOf("WEB", "MWEB")
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
@@ -145,7 +143,7 @@ fun PoTokenScreen(
             val playerToken = data?.getStringExtra(PoTokenExtractionActivity.EXTRA_PLAYER_TOKEN).orEmpty()
             val visitorData = data?.getStringExtra(PoTokenExtractionActivity.EXTRA_VISITOR_DATA).orEmpty()
 
-            if (gvsToken.isNotBlank() && playerToken.isNotBlank() && visitorData.isNotBlank()) {
+            if (gvsToken.isNotBlank() && visitorData.isNotBlank()) {
                 viewModel.onTokensExtracted(
                     visitorData = visitorData,
                     poToken = gvsToken,

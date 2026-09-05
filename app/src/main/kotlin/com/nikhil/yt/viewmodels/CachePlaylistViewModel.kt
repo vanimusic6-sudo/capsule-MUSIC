@@ -26,6 +26,7 @@ import javax.inject.Inject
 import com.nikhil.yt.di.PlayerCache
 import com.nikhil.yt.di.DownloadCache
 import androidx.media3.datasource.cache.Cache
+import com.nikhil.yt.playback.audio.AudioCacheIdentity
 import java.time.LocalDateTime
 import kotlinx.coroutines.Dispatchers
 
@@ -44,8 +45,8 @@ class CachePlaylistViewModel @Inject constructor(
         viewModelScope.launch(Dispatchers.IO) {
             while (true) {
                 val hideExplicit = context.dataStore.get(HideExplicitKey, false)
-                val cachedIds = playerCache.keys.toSet()
-                val downloadedIds = downloadCache.keys.toSet()
+                val cachedIds = playerCache.keys.map(AudioCacheIdentity::mediaId).toSet()
+                val downloadedIds = downloadCache.keys.filter { AudioCacheIdentity.isComplete(downloadCache, it) }.toSet()
                 val pureCacheIds = cachedIds.subtract(downloadedIds)
 
                 val songs = if (pureCacheIds.isNotEmpty()) {
@@ -56,7 +57,7 @@ class CachePlaylistViewModel @Inject constructor(
 
                 val completeSongs = songs.filter {
                     val contentLength = it.format?.contentLength
-                    contentLength != null && contentLength > 0 && playerCache.isCached(it.song.id, 0, contentLength)
+                    AudioCacheIdentity.completeKey(playerCache, it.song.id, contentLength) != null
                 }
 
                 if (completeSongs.isNotEmpty()) {
@@ -80,6 +81,6 @@ class CachePlaylistViewModel @Inject constructor(
     }
 
     fun removeSongFromCache(songId: String) {
-        playerCache.removeResource(songId)
+        AudioCacheIdentity.remove(playerCache, songId)
     }
 }

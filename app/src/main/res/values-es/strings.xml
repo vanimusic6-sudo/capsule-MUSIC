@@ -299,7 +299,6 @@
     <string name="palette_spring">Primavera</string>
     <string name="palette_summer">Verano</string>
     <string name="palette_twilight">Crepúsculo</string>
-    <string name="palette_aurora">Aurora</string>
     <string name="palette_candy">Dulce</string>
     <string name="palette_rainbow">Arco Iris</string>
     <string name="palette_aquamarine">Aguamarina</string>
@@ -324,8 +323,6 @@
     <string name="ok_button">Aceptar</string>
     <string name="custom_radius">Personaliza el radio de las esquinas de la miniatura</string>
     <string name="custom">Personalizado</string>
-    <string name="customized_background">Fondo personalizado</string>
-    <string name="customize_background_title">Personalizar fondo</string>
     <string name="add_image">Añadir imagen</string>
     <string name="blur">Desenfoque</string>
     <string name="contrast">Contraste</string>

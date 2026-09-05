@@ -72,11 +72,11 @@ object DiscordImageResolver {
         var thumbnailResolved: String? = savedArtwork?.thumbnail?.takeIf { it.isNotBlank() && it.isResolvedId() }
         var artistResolved: String? = savedArtwork?.artist?.takeIf { it.isNotBlank() && it.isResolvedId() }
 
-        if (thumbnailResolved != null) {
-            thumbnailUrl?.let { repository.putToCache(it, thumbnailResolved!!) }
+        thumbnailResolved?.let { resolved ->
+            thumbnailUrl?.let { repository.putToCache(it, resolved) }
         }
-        if (artistResolved != null) {
-            artistUrl?.let { repository.putToCache(it, artistResolved!!) }
+        artistResolved?.let { resolved ->
+            artistUrl?.let { repository.putToCache(it, resolved) }
         }
 
         val result = withTimeoutOrNull(RESOLUTION_TIMEOUT_MS) {
@@ -179,7 +179,7 @@ object DiscordImageResolver {
                     ?: song.artists.firstOrNull()?.thumbnailUrl?.takeIf { it.isValidHttpUrl() }?.let { RpcImage.ExternalImage(it) }
             }
             "appicon" -> {
-                RpcImage.ExternalImage("https://raw.githubusercontent.com/nikhilvishwakarma00/Velune/main/fastlane/metadata/android/en-US/images/icon.png")
+                RpcImage.ExternalImage(CapsuleBrand.APP_ICON_URL)
             }
             "custom" -> {
                 val url = customUrl?.takeIf { it.isNotBlank() && it.isValidHttpUrl() }

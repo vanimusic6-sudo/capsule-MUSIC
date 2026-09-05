@@ -301,7 +301,6 @@
     <string name="palette_spring">スプリング</string>
     <string name="palette_summer">サマー</string>
     <string name="palette_twilight">トワイライト</string>
-    <string name="palette_aurora">オーロラ</string>
     <string name="palette_candy">キャンディ</string>
     <string name="palette_rainbow">レインボー</string>
     <!-- Additional Palettes -->
@@ -328,8 +327,6 @@
     <string name="cancel_button">キャンセル</string>
     <string name="ok_button">OK</string>
     <string name="custom_radius">サムネイルの角の半径をカスタマイズ</string>
-    <string name="customized_background">カスタマイズされた背景</string>
-    <string name="customize_background_title">背景をカスタマイズ</string>
     <string name="add_image">画像を追加</string>
     <string name="blur">ぼかし</string>
     <string name="contrast">コントラスト</string>

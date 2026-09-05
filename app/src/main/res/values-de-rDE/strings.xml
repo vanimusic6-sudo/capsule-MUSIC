@@ -333,7 +333,6 @@
     <string name="palette_spring">Frühling</string>
     <string name="palette_summer">Sommer</string>
     <string name="palette_twilight">Dämmerung</string>
-    <string name="palette_aurora">Aurora</string>
     <string name="palette_candy">Süßigkeiten</string>
     <string name="palette_rainbow">Regenbogen</string>
     <!-- Additional Palettes -->
@@ -360,8 +359,6 @@
     <string name="ok_button">OK</string>
     <string name="custom_radius">Passen Sie den Eckenradius der Miniaturansicht an</string>
     <string name="custom">Benutzerdefiniert</string>
-    <string name="customized_background">Angepasster Hintergrund</string>
-    <string name="customize_background_title">Hintergrund anpassen</string>
     <string name="add_image">Bild hinzufügen</string>
     <string name="blur">Unschärfe</string>
     <string name="contrast">Kontrast</string>

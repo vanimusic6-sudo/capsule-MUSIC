@@ -1,0 +1,116 @@
+name: Service Refactor Step 2
+
+on:
+  push:
+    branches:
+      - cleanup/capsule-player-only
+    paths:
+      - ".github/workflows/service-refactor-step2.yml"
+      - "tools/refactor/cleanup_legacy_audio_resolve.py"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: service-refactor-step2
+  cancel-in-progress: false
+
+jobs:
+  integrate:
+    name: Integrate coordinator and remove legacy audio routing
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+
+    steps:
+      - name: Checkout target branch
+        uses: actions/checkout@v6
+        with:
+          ref: cleanup/capsule-player-only
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Set up Gradle 9.5
+        uses: gradle/actions/setup-gradle@v6
+        with:
+          gradle-version: "9.5.0"
+
+      - name: Ensure locale metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! git ls-files --error-unmatch app/src/main/res/resources.properties >/dev/null 2>&1; then
+            mkdir -p app/src/main/res
+            cat > app/src/main/res/resources.properties <<'EOF'
+          unqualifiedResLocale=en-US
+          EOF
+          fi
+
+      - name: Integrate coordinator when still pending
+        shell: bash
+        run: |
+          set -euo pipefail
+          SERVICE="app/src/main/kotlin/com/nikhil/yt/playback/MusicService.kt"
+          if grep -Fq 'AudioResolveCoordinator<CapsuleAudioEngine.PlaybackData>' "$SERVICE"; then
+            echo "Audio resolve coordinator already integrated"
+          else
+            python3 tools/refactor/apply_audio_resolve_coordinator.py --check
+            python3 tools/refactor/apply_audio_resolve_coordinator.py
+          fi
+
+      - name: Verify legacy audio cleanup
+        run: python3 tools/refactor/cleanup_legacy_audio_resolve.py --check
+
+      - name: Remove legacy audio routing
+        run: python3 tools/refactor/cleanup_legacy_audio_resolve.py
+
+      - name: Verify only MusicService changed
+        shell: bash
+        run: |
+          set -euo pipefail
+          changed="$(git diff --name-only)"
+          test "$changed" = "app/src/main/kotlin/com/nikhil/yt/playback/MusicService.kt"
+          git diff --check
+
+      - name: Run unit tests, lint and debug build
+        run: |
+          gradle \
+            :innertube:test \
+            :betterlyrics:test \
+            :app:testUniversalDebugUnitTest \
+            :app:lintUniversalDebug \
+            :app:assembleUniversalDebug \
+            --stacktrace \
+            --no-daemon
+
+      - name: Refuse stale branch write
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin cleanup/capsule-player-only
+          remote_head="$(git rev-parse origin/cleanup/capsule-player-only)"
+          test "$remote_head" = "$GITHUB_SHA" || {
+            echo "Branch advanced during validation; refusing stale push."
+            echo "workflow head: $GITHUB_SHA"
+            echo "remote head:   $remote_head"
+            exit 1
+          }
+
+      - name: Commit validated cleanup
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clean -f app/src/main/res/resources.properties || true
+          changed="$(git diff --name-only)"
+          test "$changed" = "app/src/main/kotlin/com/nikhil/yt/playback/MusicService.kt"
+          git config user.name "capsule-refactor-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add app/src/main/kotlin/com/nikhil/yt/playback/MusicService.kt
+          git commit -m "Move audio resolve ownership and drop legacy routing"
+          git push origin HEAD:cleanup/capsule-player-only

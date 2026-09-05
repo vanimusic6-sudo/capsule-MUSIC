@@ -8,36 +8,18 @@ package com.nikhil.yt.ui.screens.settings
 
 import android.os.Build
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.Image
-import androidx.compose.foundation.background
-import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.isSystemInDarkTheme
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.AssistChip
-import androidx.compose.material3.AssistChipDefaults
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Slider
-import androidx.compose.material3.SuggestionChip
-import androidx.compose.material3.SuggestionChipDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -51,7 +33,6 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
@@ -75,12 +56,10 @@ import com.nikhil.yt.constants.LyricsLineSpacingKey
 import com.nikhil.yt.constants.LyricsScrollKey
 import com.nikhil.yt.constants.LyricsTextPositionKey
 import com.nikhil.yt.constants.LyricsTextSizeKey
+import com.nikhil.yt.constants.MiniPlayerBackgroundStyle
+import com.nikhil.yt.constants.MiniPlayerBackgroundStyleKey
 import com.nikhil.yt.constants.PlayerBackgroundStyle
 import com.nikhil.yt.constants.PlayerBackgroundStyleKey
-import com.nikhil.yt.constants.PlayerButtonsStyle
-import com.nikhil.yt.constants.PlayerButtonsStyleKey
-import com.nikhil.yt.constants.PlayerDesignStyle
-import com.nikhil.yt.constants.PlayerDesignStyleKey
 import com.nikhil.yt.constants.PureBlackKey
 import com.nikhil.yt.constants.RandomThemeOnStartupKey
 import com.nikhil.yt.constants.ShowCachedPlaylistKey
@@ -90,16 +69,10 @@ import com.nikhil.yt.constants.ShowLikedPlaylistKey
 import com.nikhil.yt.constants.ShowTagsInLibraryKey
 import com.nikhil.yt.constants.ShowTopPlaylistKey
 import com.nikhil.yt.constants.SlimNavBarKey
-import com.nikhil.yt.constants.SliderStyle
-import com.nikhil.yt.constants.SliderStyleKey
 import com.nikhil.yt.constants.SwipeSensitivityKey
 import com.nikhil.yt.constants.SwipeThumbnailKey
 import com.nikhil.yt.constants.SwipeToSongKey
-import com.nikhil.yt.constants.ThumbnailCornerRadiusKey
-import com.nikhil.yt.constants.UseLyricsV2Key
-import com.nikhil.yt.constants.UseNewMiniPlayerDesignKey
 import com.nikhil.yt.constants.UseSystemFontKey
-import com.nikhil.yt.constants.VeluneCanvasKey
 import com.nikhil.yt.ui.component.DefaultDialog
 import com.nikhil.yt.ui.component.EnumListPreference
 import com.nikhil.yt.ui.component.IconButton
@@ -107,18 +80,12 @@ import com.nikhil.yt.ui.component.ListPreference
 import com.nikhil.yt.ui.component.PreferenceEntry
 import com.nikhil.yt.ui.component.PreferenceGroupTitle
 import com.nikhil.yt.ui.component.SwitchPreference
-import com.nikhil.yt.ui.component.ThumbnailCornerRadiusSelectorButton
-import com.nikhil.yt.ui.player.StyledPlaybackSlider
 import com.nikhil.yt.ui.theme.CapsuleBottomBarEnabledKey
-import com.nikhil.yt.ui.theme.CapsuleLyricsEnabledKey
-import com.nikhil.yt.ui.theme.CapsuleMiniPlayerEnabledKey
-import com.nikhil.yt.ui.theme.CapsulePlayerEnabledKey
 import com.nikhil.yt.ui.theme.CapsuleThemeEnabledKey
 import com.nikhil.yt.ui.utils.backToMain
 import com.nikhil.yt.utils.rememberEnumPreference
 import com.nikhil.yt.utils.rememberPreference
 import kotlin.math.roundToInt
-import timber.log.Timber
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -149,61 +116,6 @@ fun AppearanceSettings(
             CapsuleBottomBarEnabledKey,
             defaultValue = false,
         )
-
-    val (
-        capsuleMiniPlayerEnabled,
-        onCapsuleMiniPlayerEnabledChange,
-    ) =
-        rememberPreference(
-            CapsuleMiniPlayerEnabledKey,
-            defaultValue = false,
-        )
-
-    val (
-        capsulePlayerEnabled,
-        onCapsulePlayerEnabledChange,
-    ) =
-        rememberPreference(
-            CapsulePlayerEnabledKey,
-            defaultValue = false,
-        )
-
-    val (
-        capsuleLyricsEnabled,
-        onCapsuleLyricsEnabledChange,
-    ) =
-        rememberPreference(
-            CapsuleLyricsEnabledKey,
-            defaultValue = false,
-        )
-
-    /*
-     * Full Immersion is derived from the real states.
-     *
-     * There is deliberately no second hidden master preference.
-     * This prevents the master switch from becoming out of sync
-     * with the individual Capsule modules.
-     */
-    val capsuleFullImmersionEnabled =
-        capsuleThemeEnabled &&
-            capsuleBottomBarEnabled &&
-            capsuleMiniPlayerEnabled &&
-            capsulePlayerEnabled &&
-            capsuleLyricsEnabled
-
-    val onCapsuleFullImmersionChange:
-        (Boolean) -> Unit = { enabled ->
-
-        onCapsuleThemeEnabledChange(enabled)
-
-        onCapsuleBottomBarEnabledChange(enabled)
-
-        onCapsuleMiniPlayerEnabledChange(enabled)
-
-        onCapsulePlayerEnabledChange(enabled)
-
-        onCapsuleLyricsEnabledChange(enabled)
-    }
 
     /*
      * =========================
@@ -239,24 +151,6 @@ fun AppearanceSettings(
         )
 
     val (
-        playerDesignStyle,
-        onPlayerDesignStyleChange,
-    ) =
-        rememberEnumPreference(
-            PlayerDesignStyleKey,
-            defaultValue = PlayerDesignStyle.V3,
-        )
-
-    val (
-        useNewMiniPlayerDesign,
-        onUseNewMiniPlayerDesignChange,
-    ) =
-        rememberPreference(
-            UseNewMiniPlayerDesignKey,
-            defaultValue = true,
-        )
-
-    val (
         useNewLibraryDesign,
         onUseNewLibraryDesignChange,
     ) =
@@ -264,7 +158,7 @@ fun AppearanceSettings(
             key =
                 com.nikhil.yt.constants
                     .UseNewLibraryDesignKey,
-            defaultValue = false,
+            defaultValue = true,
         )
 
     val (
@@ -274,24 +168,6 @@ fun AppearanceSettings(
         rememberPreference(
             HidePlayerThumbnailKey,
             defaultValue = false,
-        )
-
-    val (
-        veluneCanvasEnabled,
-        onVeluneCanvasEnabledChange,
-    ) =
-        rememberPreference(
-            VeluneCanvasKey,
-            defaultValue = false,
-        )
-
-    val (
-        thumbnailCornerRadius,
-        onThumbnailCornerRadiusChange,
-    ) =
-        rememberPreference(
-            key = ThumbnailCornerRadiusKey,
-            defaultValue = 16f,
         )
 
     val (
@@ -310,7 +186,16 @@ fun AppearanceSettings(
         rememberEnumPreference(
             PlayerBackgroundStyleKey,
             defaultValue =
-                PlayerBackgroundStyle.COLORING,
+                PlayerBackgroundStyle.CAPSULE_STAR,
+        )
+
+    val (
+        miniPlayerBackground,
+        onMiniPlayerBackgroundChange,
+    ) =
+        rememberEnumPreference(
+            MiniPlayerBackgroundStyleKey,
+            defaultValue = MiniPlayerBackgroundStyle.CAPSULE_STAR,
         )
 
     val (
@@ -347,16 +232,6 @@ fun AppearanceSettings(
         rememberEnumPreference(
             DefaultOpenTabKey,
             defaultValue = NavigationTab.HOME,
-        )
-
-    val (
-        playerButtonsStyle,
-        onPlayerButtonsStyleChange,
-    ) =
-        rememberEnumPreference(
-            PlayerButtonsStyleKey,
-            defaultValue =
-                PlayerButtonsStyle.DEFAULT,
         )
 
     val (
@@ -412,24 +287,6 @@ fun AppearanceSettings(
         rememberPreference(
             LyricsLineSpacingKey,
             defaultValue = 1.3f,
-        )
-
-    val (
-        useLyricsV2,
-        onUseLyricsV2Change,
-    ) =
-        rememberPreference(
-            UseLyricsV2Key,
-            defaultValue = false,
-        )
-
-    val (
-        sliderStyle,
-        onSliderStyleChange,
-    ) =
-        rememberEnumPreference(
-            SliderStyleKey,
-            defaultValue = SliderStyle.Circular,
         )
 
     val (
@@ -531,13 +388,6 @@ fun AppearanceSettings(
             defaultValue = true,
         )
 
-    val availableBackgroundStyles =
-        PlayerBackgroundStyle.entries.filter {
-            it != PlayerBackgroundStyle.BLUR ||
-                Build.VERSION.SDK_INT >=
-                Build.VERSION_CODES.S
-        }
-
     val isSystemInDarkTheme =
         isSystemInDarkTheme()
 
@@ -562,87 +412,6 @@ fun AppearanceSettings(
             defaultValue = LibraryFilter.LIBRARY,
         )
 
-    var showSliderOptionDialog by
-        rememberSaveable {
-            mutableStateOf(false)
-        }
-
-    if (showSliderOptionDialog) {
-        val sliderStyles =
-            remember {
-                listOf(
-                    SliderStyle.Standard,
-                    SliderStyle.Wavy,
-                    SliderStyle.Thick,
-                    SliderStyle.Circular,
-                    SliderStyle.Simple,
-                )
-            }
-
-        DefaultDialog(
-            buttons = {
-                TextButton(
-                    onClick = {
-                        showSliderOptionDialog = false
-                    },
-                ) {
-                    Text(
-                        text =
-                            stringResource(
-                                android.R.string.cancel,
-                            ),
-                    )
-                }
-            },
-            onDismiss = {
-                showSliderOptionDialog = false
-            },
-        ) {
-            Column(
-                verticalArrangement =
-                    Arrangement.spacedBy(8.dp),
-            ) {
-                sliderStyles
-                    .chunked(3)
-                    .forEach { styleRow ->
-                        Row(
-                            horizontalArrangement =
-                                Arrangement.spacedBy(8.dp),
-                            modifier =
-                                Modifier.fillMaxWidth(),
-                        ) {
-                            styleRow.forEach { style ->
-                                SliderStyleOptionCard(
-                                    sliderStyle = style,
-                                    selected =
-                                        sliderStyle == style,
-                                    onClick = {
-                                        onSliderStyleChange(
-                                            style,
-                                        )
-
-                                        showSliderOptionDialog =
-                                            false
-                                    },
-                                    modifier =
-                                        Modifier.weight(1f),
-                                )
-                            }
-
-                            repeat(
-                                3 - styleRow.size,
-                            ) {
-                                Spacer(
-                                    modifier =
-                                        Modifier.weight(1f),
-                                )
-                            }
-                        }
-                    }
-            }
-        }
-    }
-
     Column(
         Modifier
             .windowInsetsPadding(
@@ -659,40 +428,17 @@ fun AppearanceSettings(
          */
 
         PreferenceGroupTitle(
-            title = "Capsule",
+            title = stringResource(R.string.capsule_settings_group),
         )
 
         SwitchPreference(
             title = {
                 Text(
-                    "Full Immersion",
+                    stringResource(R.string.capsule_bottom_bar),
                 )
             },
             description =
-                "Enable or disable the complete Capsule interface.",
-            icon = {
-                Icon(
-                    painter =
-                        painterResource(
-                            R.drawable.contrast,
-                        ),
-                    contentDescription = null,
-                )
-            },
-            checked =
-                capsuleFullImmersionEnabled,
-            onCheckedChange =
-                onCapsuleFullImmersionChange,
-        )
-
-        SwitchPreference(
-            title = {
-                Text(
-                    "Capsule Bottom Bar",
-                )
-            },
-            description =
-                "Use the Capsule navigation dock.",
+                stringResource(R.string.capsule_bottom_bar_description),
             icon = {
                 Icon(
                     painter =
@@ -706,75 +452,6 @@ fun AppearanceSettings(
                 capsuleBottomBarEnabled,
             onCheckedChange =
                 onCapsuleBottomBarEnabledChange,
-        )
-
-        SwitchPreference(
-            title = {
-                Text(
-                    "Capsule Mini Player",
-                )
-            },
-            description =
-                "Use the Capsule mini player while preserving Velune swipe controls.",
-            icon = {
-                Icon(
-                    painter =
-                        painterResource(
-                            R.drawable.play,
-                        ),
-                    contentDescription = null,
-                )
-            },
-            checked =
-                capsuleMiniPlayerEnabled,
-            onCheckedChange =
-                onCapsuleMiniPlayerEnabledChange,
-        )
-
-        SwitchPreference(
-            title = {
-                Text(
-                    "Capsule Player",
-                )
-            },
-            description =
-                "Use the Capsule full player independently from the Velune player style.",
-            icon = {
-                Icon(
-                    painter =
-                        painterResource(
-                            R.drawable.play,
-                        ),
-                    contentDescription = null,
-                )
-            },
-            checked =
-                capsulePlayerEnabled,
-            onCheckedChange =
-                onCapsulePlayerEnabledChange,
-        )
-
-        SwitchPreference(
-            title = {
-                Text(
-                    "Capsule Lyrics",
-                )
-            },
-            description =
-                "Use the Capsule lyrics interface while preserving Velune lyrics providers.",
-            icon = {
-                Icon(
-                    painter =
-                        painterResource(
-                            R.drawable.lyrics,
-                        ),
-                    contentDescription = null,
-                )
-            },
-            checked =
-                capsuleLyricsEnabled,
-            onCheckedChange =
-                onCapsuleLyricsEnabledChange,
         )
 
         /*
@@ -793,12 +470,11 @@ fun AppearanceSettings(
         SwitchPreference(
             title = {
                 Text(
-                    "Capsule Theme",
+                    stringResource(R.string.capsule_theme),
                 )
             },
             description =
-                "Dark monochrome Capsule visual style. " +
-                    "Your existing Velune theme settings are preserved.",
+                stringResource(R.string.capsule_theme_description),
             icon = {
                 Icon(
                     painterResource(
@@ -1019,87 +695,15 @@ fun AppearanceSettings(
 
         /*
          * =========================
-         * Player
+         * Library
          * =========================
          */
 
         PreferenceGroupTitle(
             title =
                 stringResource(
-                    R.string.player,
+                    R.string.filter_library,
                 ),
-        )
-
-        EnumListPreference(
-            title = {
-                Text(
-                    stringResource(
-                        R.string.player_design_style,
-                    ),
-                )
-            },
-            icon = {
-                Icon(
-                    painterResource(
-                        R.drawable.palette,
-                    ),
-                    null,
-                )
-            },
-            selectedValue =
-                playerDesignStyle,
-            onValueSelected =
-                onPlayerDesignStyleChange,
-            valueText = {
-                when (it) {
-                    PlayerDesignStyle.V1 ->
-                        stringResource(
-                            R.string.player_design_v1,
-                        )
-
-                    PlayerDesignStyle.V2 ->
-                        stringResource(
-                            R.string.player_design_v2,
-                        )
-
-                    PlayerDesignStyle.V3 ->
-                        stringResource(
-                            R.string.player_design_v3,
-                        )
-
-                    PlayerDesignStyle.V4 ->
-                        stringResource(
-                            R.string.player_design_v4,
-                        )
-
-                    PlayerDesignStyle.V5 ->
-                        stringResource(
-                            R.string.player_design_v5,
-                        )
-                }
-            },
-        )
-
-        SwitchPreference(
-            title = {
-                Text(
-                    stringResource(
-                        R.string.new_mini_player_design,
-                    ),
-                )
-            },
-            icon = {
-                Icon(
-                    painterResource(
-                        R.drawable.nav_bar,
-                    ),
-                    null,
-                )
-            },
-            checked =
-                useNewMiniPlayerDesign,
-            onCheckedChange =
-                onUseNewMiniPlayerDesignChange,
         )
 
         SwitchPreference(
@@ -1128,6 +732,19 @@ fun AppearanceSettings(
                 onUseNewLibraryDesignChange,
         )
 
+        /*
+         * =========================
+         * Player
+         * =========================
+         */
+
+        PreferenceGroupTitle(
+            title =
+                stringResource(
+                    R.string.player,
+                ),
+        )
+
         EnumListPreference(
             title = {
                 Text(
@@ -1151,73 +768,58 @@ fun AppearanceSettings(
             valueText = {
                 when (it) {
                     PlayerBackgroundStyle.DEFAULT ->
-                        stringResource(
-                            R.string.follow_theme,
-                        )
+                        stringResource(R.string.background_theme_color)
 
                     PlayerBackgroundStyle.GRADIENT ->
-                        stringResource(
-                            R.string.gradient,
-                        )
-
-                    PlayerBackgroundStyle.CUSTOM ->
-                        stringResource(
-                            R.string.custom,
-                        )
-
-                    PlayerBackgroundStyle.BLUR ->
-                        stringResource(
-                            R.string.player_background_blur,
-                        )
+                        stringResource(R.string.background_artwork_gradient)
 
                     PlayerBackgroundStyle.COLORING ->
-                        stringResource(
-                            R.string.coloring,
-                        )
-
-                    PlayerBackgroundStyle.BLUR_GRADIENT ->
-                        stringResource(
-                            R.string.blur_gradient,
-                        )
+                        stringResource(R.string.background_artwork_color)
 
                     PlayerBackgroundStyle.GLOW ->
-                        stringResource(
-                            R.string.glow,
-                        )
+                        stringResource(R.string.glow)
 
                     PlayerBackgroundStyle.GLOW_ANIMATED ->
-                        "Glow Animated"
+                        stringResource(R.string.background_color_animation)
+
+                    PlayerBackgroundStyle.CAPSULE_STAR ->
+                        stringResource(R.string.background_capsule_star)
+
+                    PlayerBackgroundStyle.NEBULA ->
+                        stringResource(R.string.background_nebula)
                 }
             },
         )
 
-        if (
-            playerBackground ==
-            PlayerBackgroundStyle.CUSTOM
-        ) {
-            PreferenceEntry(
-                title = {
-                    Text(
-                        stringResource(
-                            R.string.customized_background,
-                        ),
-                    )
-                },
-                icon = {
-                    Icon(
-                        painterResource(
-                            R.drawable.image,
-                        ),
-                        null,
-                    )
-                },
-                onClick = {
-                    navController.navigate(
-                        "customize_background",
-                    )
-                },
-            )
-        }
+        EnumListPreference(
+            title = {
+                Text(stringResource(R.string.mini_player_background_style))
+            },
+            icon = {
+                Icon(
+                    painterResource(R.drawable.album),
+                    contentDescription = null,
+                )
+            },
+            selectedValue = miniPlayerBackground,
+            onValueSelected = onMiniPlayerBackgroundChange,
+            valueText = { style ->
+                when (style) {
+                    MiniPlayerBackgroundStyle.THEME ->
+                        stringResource(R.string.background_theme_color)
+                    MiniPlayerBackgroundStyle.GRADIENT ->
+                        stringResource(R.string.background_artwork_gradient)
+                    MiniPlayerBackgroundStyle.COLOR_FLOW ->
+                        stringResource(R.string.background_color_animation)
+                    MiniPlayerBackgroundStyle.CAPSULE_STAR ->
+                        stringResource(R.string.background_capsule_star)
+                    MiniPlayerBackgroundStyle.NEBULA ->
+                        stringResource(R.string.background_nebula)
+                    MiniPlayerBackgroundStyle.GLASS ->
+                        stringResource(R.string.background_glass)
+                }
+            },
+        )
 
         SwitchPreference(
             title = {
@@ -1249,44 +851,6 @@ fun AppearanceSettings(
             title = {
                 Text(
                     stringResource(
-                        R.string.velune_canvas,
-                    ),
-                )
-            },
-            description =
-                stringResource(
-                    R.string.velune_canvas_desc,
-                ),
-            icon = {
-                Icon(
-                    painterResource(
-                        R.drawable.motion_photos_on,
-                    ),
-                    null,
-                )
-            },
-            checked =
-                veluneCanvasEnabled,
-            onCheckedChange =
-                onVeluneCanvasEnabledChange,
-        )
-
-        ThumbnailCornerRadiusSelectorButton(
-            modifier =
-                Modifier.padding(16.dp),
-            onRadiusSelected = { selectedRadius ->
-                Timber
-                    .tag("Thumbnail")
-                    .d(
-                        "Radius Selector: $selectedRadius",
-                    )
-            },
-        )
-
-        SwitchPreference(
-            title = {
-                Text(
-                    stringResource(
                         R.string.crop_thumbnail_to_square,
                     ),
                 )
@@ -1307,66 +871,6 @@ fun AppearanceSettings(
                 cropThumbnailToSquare,
             onCheckedChange =
                 onCropThumbnailToSquareChange,
-        )
-
-        EnumListPreference(
-            title = {
-                Text(
-                    stringResource(
-                        R.string.player_buttons_style,
-                    ),
-                )
-            },
-            icon = {
-                Icon(
-                    painterResource(
-                        R.drawable.palette,
-                    ),
-                    null,
-                )
-            },
-            selectedValue =
-                playerButtonsStyle,
-            onValueSelected =
-                onPlayerButtonsStyleChange,
-            valueText = {
-                when (it) {
-                    PlayerButtonsStyle.DEFAULT ->
-                        stringResource(
-                            R.string.default_style,
-                        )
-
-                    PlayerButtonsStyle.SECONDARY ->
-                        stringResource(
-                            R.string.secondary_color_style,
-                        )
-                }
-            },
-        )
-
-        PreferenceEntry(
-            title = {
-                Text(
-                    stringResource(
-                        R.string.player_slider_style,
-                    ),
-                )
-            },
-            description =
-                sliderStyleLabel(
-                    sliderStyle,
-                ),
-            icon = {
-                Icon(
-                    painterResource(
-                        R.drawable.sliders,
-                    ),
-                    null,
-                )
-            },
-            onClick = {
-                showSliderOptionDialog = true
-            },
         )
 
         SwitchPreference(
@@ -1555,27 +1059,6 @@ fun AppearanceSettings(
                 stringResource(
                     R.string.lyrics,
                 ),
-        )
-
-        SwitchPreference(
-            title = {
-                Text(
-                    "Lyrics V2 (Experimental)",
-                )
-            },
-            description =
-                "Use the new fluid word-synced lyrics engine",
-            icon = {
-                Icon(
-                    painterResource(
-                        R.drawable.lyrics,
-                    ),
-                    null,
-                )
-            },
-            checked = useLyricsV2,
-            onCheckedChange =
-                onUseLyricsV2Change,
         )
 
         EnumListPreference(
@@ -2375,103 +1858,6 @@ fun AppearanceSettings(
     )
 }
 
-@Composable
-private fun SliderStyleOptionCard(
-    sliderStyle: SliderStyle,
-    selected: Boolean,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    var sliderValue by
-        remember {
-            mutableFloatStateOf(0.5f)
-        }
-
-    Column(
-        horizontalAlignment =
-            Alignment.CenterHorizontally,
-        verticalArrangement =
-            Arrangement.spacedBy(8.dp),
-        modifier =
-            modifier
-                .aspectRatio(1f)
-                .clip(
-                    RoundedCornerShape(16.dp),
-                )
-                .border(
-                    1.dp,
-                    if (selected) {
-                        MaterialTheme.colorScheme.primary
-                    } else {
-                        MaterialTheme.colorScheme
-                            .outlineVariant
-                    },
-                    RoundedCornerShape(16.dp),
-                )
-                .clickable(
-                    onClick = onClick,
-                )
-                .padding(16.dp),
-    ) {
-        StyledPlaybackSlider(
-            sliderStyle = sliderStyle,
-            value = sliderValue,
-            valueRange = 0f..1f,
-            onValueChange = {
-                sliderValue = it
-            },
-            onValueChangeFinished = {},
-            activeColor =
-                MaterialTheme.colorScheme.primary,
-            isPlaying = true,
-            modifier =
-                Modifier
-                    .weight(1f)
-                    .fillMaxWidth(),
-        )
-
-        Text(
-            text =
-                sliderStyleLabel(
-                    sliderStyle,
-                ),
-            style =
-                MaterialTheme.typography.labelLarge,
-        )
-    }
-}
-
-@Composable
-private fun sliderStyleLabel(
-    sliderStyle: SliderStyle,
-): String =
-    when (sliderStyle) {
-        SliderStyle.Standard ->
-            stringResource(
-                R.string.slider_style_standard,
-            )
-
-        SliderStyle.Wavy ->
-            stringResource(
-                R.string.slider_style_wavy,
-            )
-
-        SliderStyle.Thick ->
-            stringResource(
-                R.string.slider_style_thick,
-            )
-
-        SliderStyle.Circular ->
-            stringResource(
-                R.string.slider_style_circular,
-            )
-
-        SliderStyle.Simple ->
-            stringResource(
-                R.string.slider_style_simple,
-            )
-    }
-
 enum class DarkMode {
     ON,
     OFF,
@@ -2488,9 +1874,4 @@ enum class LyricsPosition {
     LEFT,
     CENTER,
     RIGHT,
-}
-
-enum class PlayerTextAlignment {
-    SIDED,
-    CENTER,
 }

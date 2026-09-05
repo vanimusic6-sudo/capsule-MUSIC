@@ -217,6 +217,12 @@
     <string name="error_no_internet">No network connection</string>
     <string name="error_timeout">Timeout</string>
     <string name="error_unknown">Unknown error</string>
+    <string name="error_too_many_failed_tracks">Several tracks failed to load. Playback was stopped to protect your queue.</string>
+    <string name="error_youtube_network_restricted_title">YouTube temporarily limited this connection</string>
+    <string name="error_youtube_network_restricted_description">YouTube requested an anti-bot check for the current network address. This is usually temporary and doesn’t mean the app or account was damaged.</string>
+    <string name="error_youtube_network_restricted_recommendation_title">What to do</string>
+    <string name="error_youtube_network_restricted_recommendation">If a VPN is active, change its server or turn it off. Wait for the connection to settle, then tap Retry. Avoid rapid track switching while the VPN is reconnecting.</string>
+    <string name="error_youtube_network_restricted_technical">YouTube anti-bot response</string>
     <!-- Player action -->
     <string name="action_like">Like</string>
     <string name="action_like_all">Like all</string>
@@ -327,7 +333,6 @@
     <string name="palette_spring">Spring</string>
     <string name="palette_summer">Summer</string>
     <string name="palette_twilight">Twilight</string>
-    <string name="palette_aurora">Aurora</string>
     <string name="palette_candy">Candy</string>
     <string name="palette_rainbow">Rainbow</string>
     <!-- Additional Palettes -->
@@ -355,15 +360,13 @@
     <string name="ok_button">OK</string>
     <string name="custom_radius">Customize thumbnail corner radius</string>
     <string name="custom">Custom</string>
-    <string name="customized_background">Customized background</string>
-    <string name="customize_background_title">Customize background</string>
     <string name="add_image">Add image</string>
     <string name="blur">Blur</string>
     <string name="contrast">Contrast</string>
     <string name="brightness">Brightness</string>
     <string name="custom_value">Custom value</string>
-    <string name="new_library_design">New library design</string>
-    <string name="new_library_design_description">Enable the new library design (may be unstable)</string>
+    <string name="new_library_design">Updated library</string>
+    <string name="new_library_design_description">Use spacious playlist cards with artwork-derived gradients</string>
     <string name="velune_canvas">Velune Canvas</string>
     <string name="velune_canvas_desc">Animate album artwork while playing (Powered by BetterLyrics)</string>
     <string name="show_button1_description">Toggle visibility of button 1 in Discord Rich Presence</string>
@@ -437,6 +440,27 @@
     <string name="auto_load_more_desc">Automatically add more songs when the end of the queue is reached. Disabled when repeat mode is active</string>
     <string name="skip_silence">Skip silence</string>
     <string name="audio_normalization">Audio normalization</string>
+    <string name="audio_stream_policy">Audio stream client</string>
+    <string name="audio_stream_policy_current">%1$s • client snapshot %2$s</string>
+    <string name="audio_stream_policy_note">visionOS is the default. You can select a Web client to test streaming. Changing the client reloads the current stream at the same position; downloaded or fully cached songs play locally. Playback uses the selected client only.</string>
+    <string name="audio_stream_policy_auto">Safe automatic</string>
+    <string name="audio_stream_policy_auto_description">Legacy setting. It now uses the stable direct visionOS client.</string>
+    <string name="audio_stream_policy_visionos">visionOS %1$s</string>
+    <string name="audio_stream_policy_visionos_description">Direct visionOS audio stream. Recommended for everyday playback.</string>
+    <string name="audio_stream_policy_web_embedded">WEB_EMBEDDED_PLAYER</string>
+    <string name="audio_stream_policy_web_embedded_description">Embedded web player. Select this to test playback through the embedded client.</string>
+    <string name="audio_stream_policy_web">WEB_REMIX</string>
+    <string name="audio_stream_policy_web_description">YouTube Music web client. Select this to test web playback; the required PO token is generated automatically.</string>
+    <string name="audio_stream_policy_mweb">Mobile WEB %1$s</string>
+    <string name="audio_stream_policy_mweb_description">Mobile web compatibility mode. Requires an enabled genuine Player/GVS PO token for reliable playback.</string>
+    <string name="audio_stream_policy_ios">iOS %1$s</string>
+    <string name="audio_stream_policy_ios_description">Manual compatibility mode. Current iOS media URLs can require a client-specific genuine PO token.</string>
+    <string name="audio_stream_policy_ios_music">iOS Music</string>
+    <string name="audio_stream_policy_ios_music_description">Manual compatibility mode. This pinned identity can require a client-specific genuine PO token.</string>
+    <string name="audio_stream_policy_tv_compatibility">TV compatibility %1$s</string>
+    <string name="audio_stream_policy_tv_compatibility_description">Prefer the downgraded TV compatibility identity, then use reviewed fallbacks.</string>
+    <string name="audio_stream_policy_tv">TV HTML5 %1$s</string>
+    <string name="audio_stream_policy_tv_description">Prefer the current TV HTML5 identity, then use reviewed fallbacks.</string>
     <string name="audio_offload">Audio offload</string>
     <string name="audio_offload_desc">Let supported devices play audio using low-power hardware decoding. Some audio processing features are disabled.</string>
     <string name="pause_on_device_mute">Pause when device volume is 0</string>
@@ -765,10 +789,10 @@ Velune will only extract your token, and everything else is stored locally.</str
     <string name="together_welcome_permissions_title">Permissions and safety</string>
     <string name="together_welcome_permissions_body">Hosts can decide whether guests can add songs, control playback, or require approval to join.</string>
 
-    <string name="po_token_generation">PO Token Generation</string>
-    <string name="po_token_generation_subtitle">Generate and manage web client PO tokens</string>
+    <string name="po_token_generation">Web PO token</string>
+    <string name="po_token_generation_subtitle">Extract and manage genuine web client PO tokens</string>
     <string name="web_client_po_token">Web Client PO Token</string>
-    <string name="web_client_po_token_desc">Enable PO token generation for web-based player clients</string>
+    <string name="web_client_po_token_desc">Allow WEB/MWEB playback to use genuine extracted PO tokens</string>
     <string name="po_token_gvs">PO Token (GVS)</string>
     <string name="po_token_player">PO Token (Player)</string>
     <string name="visitor_data">Visitor Data</string>
@@ -783,9 +807,9 @@ Velune will only extract your token, and everything else is stored locally.</str
     <string name="regenerate_desc">Refresh all tokens</string>
     <string name="source_url">Source URL</string>
     <string name="source_url_placeholder">https://youtube.com/account</string>
-    <string name="generating_tokens">Generating tokens…</string>
-    <string name="tokens_generated">Tokens generated successfully</string>
-    <string name="token_generation_failed">Token generation failed</string>
+    <string name="generating_tokens">Extracting tokens…</string>
+    <string name="tokens_generated">Tokens extracted successfully</string>
+    <string name="token_generation_failed">A genuine PO token was not found</string>
     <string name="open_account_before_extract">Open and sign in on youtube.com/account before extracting</string>
     <string name="token_copied">Token copied to clipboard</string>
     <string name="no_visitor_data">No visitor data available. Tokens cannot be generated.</string>

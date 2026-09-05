@@ -1163,6 +1163,19 @@ interface DatabaseDao {
     @Query("UPDATE song SET totalPlayTime = totalPlayTime + :playTime WHERE id = :songId")
     fun incrementTotalPlayTime(songId: String, playTime: Long)
 
+    /** Save the finished item's snapshot and history together, even if recovery was cancelled. */
+    @Transaction
+    fun recordPlayback(event: Event, metadata: MediaMetadata?): Boolean {
+        if (getSongByIdBlocking(event.songId) == null) {
+            val snapshot = metadata?.takeIf { it.id == event.songId } ?: return false
+            // Listening is not a download. Existing library/like/download state is left intact.
+            insert(snapshot) { it.copy(dateDownload = null) }
+        }
+        incrementTotalPlayTime(event.songId, event.playTime)
+        insert(event)
+        return true
+    }
+
     @Query("UPDATE playCount SET count = count + 1 WHERE song = :songId AND year = :year AND month = :month")
     suspend fun incrementPlayCount(songId: String, year: Int, month: Int)
 

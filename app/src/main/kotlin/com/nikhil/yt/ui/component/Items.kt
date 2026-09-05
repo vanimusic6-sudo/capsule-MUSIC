@@ -71,9 +71,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.blur
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
@@ -109,7 +109,6 @@ import com.nikhil.yt.LocalDatabase
 import com.nikhil.yt.LocalDownloadUtil
 import com.nikhil.yt.LocalPlayerConnection
 import com.nikhil.yt.R
-import com.nikhil.yt.constants.DisableBlurKey
 import com.nikhil.yt.constants.GridThumbnailCornerRadius
 import com.nikhil.yt.constants.HideExplicitKey
 import com.nikhil.yt.constants.ListItemHeight
@@ -125,6 +124,7 @@ import com.nikhil.yt.db.entities.Playlist
 import com.nikhil.yt.extensions.toMediaItem
 import com.nikhil.yt.models.MediaMetadata
 import com.nikhil.yt.playback.queues.LocalAlbumRadio
+import com.nikhil.yt.ui.player.rememberArtworkGradientColors
 import com.nikhil.yt.ui.theme.extractThemeColor
 import com.nikhil.yt.utils.joinByBullet
 import com.nikhil.yt.utils.makeTimeString
@@ -684,7 +684,20 @@ fun OverlayPlaylistListItem(
 ) {
     var showPreview by remember { mutableStateOf(false) }
     val backgroundUrl = playlist.thumbnails.getOrNull(0)
-    val (disableBlur) = rememberPreference(DisableBlurKey, true)
+    val surfaceColor = MaterialTheme.colorScheme.surface
+    val artworkGradientColors =
+        rememberArtworkGradientColors(
+            cacheKey = "playlist:${playlist.id}|${backgroundUrl.orEmpty()}",
+            thumbnailUrl = backgroundUrl,
+        )
+    val cardGradientColors =
+        remember(artworkGradientColors, surfaceColor) {
+            listOf(
+                lerp(surfaceColor, artworkGradientColors.getOrElse(0) { surfaceColor }, 0.72f),
+                lerp(surfaceColor, artworkGradientColors.getOrElse(1) { surfaceColor }, 0.58f),
+                lerp(surfaceColor, artworkGradientColors.getOrElse(2) { surfaceColor }, 0.42f),
+            )
+        }
 
     Card(
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
@@ -694,30 +707,23 @@ fun OverlayPlaylistListItem(
             .clickable { onClick?.invoke() }
     ) {
         Box(modifier = Modifier.height(120.dp)) {
-            if (!backgroundUrl.isNullOrBlank()) {
-                AsyncImage(
-                    model = backgroundUrl,
-                    contentDescription = null,
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier.fillMaxSize().let { 
-                        if (disableBlur) it else it.blur(8.dp)
-                    }
-                )
-                Box(modifier = Modifier
-                    .fillMaxSize()
-                    .background(
-                        Brush.verticalGradient(
-                            colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.45f)),
-                            startY = 40f
+            Box(
+                modifier =
+                    Modifier
+                        .fillMaxSize()
+                        .background(
+                            Brush.linearGradient(cardGradientColors),
                         )
-                    )
-                )
-            } else {
-                Box(modifier = Modifier
-                    .fillMaxSize()
-                    .background(MaterialTheme.colorScheme.surfaceContainer)
-                )
-            }
+                        .background(
+                            Brush.verticalGradient(
+                                colors =
+                                    listOf(
+                                        surfaceColor.copy(alpha = 0.04f),
+                                        surfaceColor.copy(alpha = 0.5f),
+                                    ),
+                            ),
+                        ),
+            )
 
             Row(
                 modifier = Modifier
@@ -1327,7 +1333,8 @@ fun LocalThumbnail(
                 if (isPlaying) {
                     PlayingIndicator(
                         color = Color.White,
-                        modifier = Modifier.height(24.dp)
+                        modifier = Modifier.height(24.dp),
+                        isPlaying = isPlaying,
                     )
                 } else {
                     Icon(

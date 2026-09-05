@@ -115,6 +115,8 @@ fun CapsulePlayerContent(
     sliderPosition: Long?,
     positionMs: Long,
     durationMs: Long,
+    onSeekPreview: (Long) -> Unit,
+    onSeekFinished: () -> Unit,
     textColor: Color,
     liked: Boolean,
     playerConnection: PlayerConnection,
@@ -131,6 +133,9 @@ fun CapsulePlayerContent(
 
     val playbackState by
         playerConnection.playbackState.collectAsState()
+
+    val playbackError by
+        playerConnection.error.collectAsState()
 
     val canSkipPrevious by
         playerConnection.canSkipPrevious.collectAsState()
@@ -217,15 +222,6 @@ fun CapsulePlayerContent(
     val swipeThresholdPx =
         with(density) {
             64.dp.toPx()
-        }
-
-    var localSliderPosition by
-        remember(
-            sliderPosition,
-        ) {
-            mutableStateOf<Long?>(
-                sliderPosition,
-            )
         }
 
     val navigableArtists =
@@ -519,91 +515,99 @@ fun CapsulePlayerContent(
                 } else {
                     CapsuleArtworkShape
                 }
+            val currentPlaybackError = playbackError
 
-            Box(
-                modifier =
-                    Modifier
-                        .fillMaxWidth()
-                        .aspectRatio(
-                            if (isCapsuleVideoPlaying) 16f / 9f else 1f,
-                        )
-                        .offset(
-                            y = if (isCapsuleVideoPlaying) 0.dp else (-5).dp,
-                        )
-                        .clip(mediaShape)
-                        .border(
-                            1.dp,
-                            outline,
-                            mediaShape,
-                        )
-                        .background(
-                            if (isCapsuleVideoPlaying) {
-                                Color.Black
-                            } else {
-                                textColor.copy(alpha = 0.045f)
+            if (currentPlaybackError != null) {
+                PlaybackError(
+                    error = currentPlaybackError,
+                    retry = playerConnection.service::retryCurrentFromFreshStream,
+                )
+            } else {
+                Box(
+                    modifier =
+                        Modifier
+                            .fillMaxWidth()
+                            .aspectRatio(
+                                if (isCapsuleVideoPlaying) 16f / 9f else 1f,
+                            )
+                            .offset(
+                                y = if (isCapsuleVideoPlaying) 0.dp else (-5).dp,
+                            )
+                            .clip(mediaShape)
+                            .border(
+                                1.dp,
+                                outline,
+                                mediaShape,
+                            )
+                            .background(
+                                if (isCapsuleVideoPlaying) {
+                                    Color.Black
+                                } else {
+                                    textColor.copy(alpha = 0.045f)
+                                },
+                            )
+                            .clickable(
+                                enabled = !isCapsuleVideoPlaying,
+                                onClick = onArtworkClick,
+                            ),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    if (isCapsuleVideoPlaying) {
+                        AndroidView(
+                            factory = { viewContext ->
+                                PlayerView(viewContext).apply {
+                                    player = playerConnection.player
+                                    useController = false
+
+                                    /*
+                                     * Capsule already shows its own VIDEO loading
+                                     * state in the player controls, so Media3's
+                                     * built-in buffering spinner is deliberately
+                                     * disabled to avoid a second indicator over
+                                     * the video surface.
+                                     */
+                                    setShowBuffering(PlayerView.SHOW_BUFFERING_NEVER)
+
+                                    /*
+                                     * Fill the entire Capsule video frame while
+                                     * preserving the source aspect ratio.
+                                     * ZOOM crops only the overflowing edges instead
+                                     * of stretching the image or leaving letterbox
+                                     * gaps above/below.
+                                     */
+                                    resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM
+
+                                    setShutterBackgroundColor(android.graphics.Color.BLACK)
+                                    keepScreenOn = true
+                                }
                             },
-                        )
-                        .clickable(
-                            enabled = !isCapsuleVideoPlaying,
-                            onClick = onArtworkClick,
-                        ),
-                contentAlignment = Alignment.Center,
-            ) {
-                if (isCapsuleVideoPlaying) {
-                    AndroidView(
-                        factory = { viewContext ->
-                            PlayerView(viewContext).apply {
-                                player = playerConnection.player
-                                useController = false
-
-                                /*
-                                 * Capsule already shows its own VIDEO loading
-                                 * state in the player controls, so Media3's
-                                 * built-in buffering spinner is deliberately
-                                 * disabled to avoid a second indicator over
-                                 * the video surface.
-                                 */
-                                setShowBuffering(PlayerView.SHOW_BUFFERING_NEVER)
-
-                                /*
-                                 * Fill the entire Capsule video frame while
-                                 * preserving the source aspect ratio.
-                                 * ZOOM crops only the overflowing edges instead
-                                 * of stretching the image or leaving letterbox
-                                 * gaps above/below.
-                                 */
-                                resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM
-
-                                setShutterBackgroundColor(android.graphics.Color.BLACK)
-                                keepScreenOn = true
-                            }
-                        },
-                        update = { playerView ->
-                            if (playerView.player !== playerConnection.player) {
-                                playerView.player = playerConnection.player
-                            }
-                        },
-                        modifier = Modifier.fillMaxSize(),
-                    )
-                } else if (hideArtwork) {
-                    Icon(
-                        painter = painterResource(R.drawable.album),
-                        contentDescription = mediaMetadata.title,
-                        tint = secondaryText,
-                        modifier = Modifier.size(72.dp),
-                    )
-                } else {
-                    AsyncImage(
-                        model = mediaMetadata.thumbnailUrl?.toHighResThumbnail(),
-                        contentDescription = mediaMetadata.title,
-                        contentScale =
-                            if (cropAlbumArt) {
-                                ContentScale.Crop
-                            } else {
-                                ContentScale.Fit
+                            update = { playerView ->
+                                if (playerView.player !== playerConnection.player) {
+                                    playerView.player = playerConnection.player
+                                }
                             },
-                        modifier = Modifier.fillMaxSize(),
-                    )
+                            modifier = Modifier.fillMaxSize(),
+                        )
+                    } else if (hideArtwork) {
+                        Icon(
+                            painter = painterResource(R.drawable.album),
+                            contentDescription = mediaMetadata.title,
+                            tint = secondaryText,
+                            modifier = Modifier.size(72.dp),
+                        )
+                    } else {
+                        AsyncImage(
+                            model = mediaMetadata.thumbnailUrl?.toHighResThumbnail(),
+                            contentDescription = mediaMetadata.title,
+                            contentScale =
+                                if (cropAlbumArt) {
+                                    ContentScale.Crop
+                                } else {
+                                    ContentScale.Fit
+                                },
+                            modifier = Modifier.fillMaxSize(),
+                        )
+                    }
                 }
             }
         }
@@ -765,10 +769,8 @@ fun CapsulePlayerContent(
 
             CapsuleThinSlider(
                 value =
-                    (
-                        localSliderPosition
-                            ?: displayPosition
-                    ).toFloat(),
+                    displayPosition
+                        .toFloat(),
                 valueRange =
                     0f..
                         safeDuration
@@ -789,20 +791,12 @@ fun CapsulePlayerContent(
                         alpha = 0.24f,
                     ),
                 onValueChange = {
-                    localSliderPosition =
-                        it.toLong()
+                    onSeekPreview(
+                        it.toLong(),
+                    )
                 },
-                onValueChangeFinished = {
-                    localSliderPosition
-                        ?.let {
-                            playerConnection
-                                .player
-                                .seekTo(it)
-                        }
-
-                    localSliderPosition =
-                        null
-                },
+                onValueChangeFinished =
+                    onSeekFinished,
                 trackHeight =
                     6.dp,
                 thumbRadius =
@@ -827,8 +821,7 @@ fun CapsulePlayerContent(
                 Text(
                     text =
                         makeTimeString(
-                            localSliderPosition
-                                ?: displayPosition,
+                            displayPosition,
                         ),
                     color =
                         secondaryText,

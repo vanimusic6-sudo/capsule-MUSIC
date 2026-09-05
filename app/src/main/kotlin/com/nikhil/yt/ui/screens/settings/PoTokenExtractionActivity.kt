@@ -40,7 +40,6 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import com.nikhil.yt.R
-import com.nikhil.yt.innertube.utils.PoTokenGenerator
 import com.nikhil.yt.ui.component.IconButton
 
 class PoTokenExtractionActivity : ComponentActivity() {
@@ -146,14 +145,11 @@ class PoTokenExtractionActivity : ComponentActivity() {
             val gvsToken = extractedGvsToken ?: return
             isExtracting = false
 
-            val playerToken = PoTokenGenerator.generateColdStartToken(visitorData, "player")
-
             setResult(
                 Activity.RESULT_OK,
                 Intent().apply {
                     putExtra(EXTRA_VISITOR_DATA, visitorData)
                     putExtra(EXTRA_GVS_TOKEN, gvsToken)
-                    putExtra(EXTRA_PLAYER_TOKEN, playerToken)
                 }
             )
             finish()
@@ -193,12 +189,6 @@ class PoTokenExtractionActivity : ComponentActivity() {
 
             webView?.postDelayed({
                 if (isFinishing) return@postDelayed
-                val visitor = extractedVisitorData
-                if (!visitor.isNullOrBlank() && extractedGvsToken.isNullOrBlank()) {
-                    extractedGvsToken = PoTokenGenerator.generateSessionToken(visitor)
-                    completeIfReady()
-                    return@postDelayed
-                }
                 if (extractedVisitorData.isNullOrBlank() || extractedGvsToken.isNullOrBlank()) {
                     isExtracting = false
                     Toast.makeText(context, R.string.token_generation_failed, Toast.LENGTH_SHORT).show()

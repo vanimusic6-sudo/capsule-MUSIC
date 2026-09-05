@@ -55,6 +55,7 @@ import java.time.LocalDateTime
 import java.time.ZoneOffset
 import java.util.Date
 import java.util.concurrent.Executor
+import java.io.File
 import kotlin.coroutines.resume
 
 private const val TAG = "MusicDatabase"
@@ -164,6 +165,12 @@ abstract class InternalDatabase : RoomDatabase() {
         const val DB_NAME = "song.db"
 
         fun newInstance(context: Context): MusicDatabase {
+            val databaseFile = context.getDatabasePath(DB_NAME)
+            val recoveryDirectory = File(context.noBackupFilesDir, "database-recovery")
+            var recoveryCopy =
+                if (DatabaseRecoveryBackup.needsMigration(databaseFile, CURRENT_VERSION)) {
+                    DatabaseRecoveryBackup.create(databaseFile, recoveryDirectory)
+                } else null
             val universalMigrations =
                 (2 until CURRENT_VERSION)
                     .map { from -> UniversalMigration(context, from, CURRENT_VERSION) }
@@ -177,14 +184,12 @@ abstract class InternalDatabase : RoomDatabase() {
                         *universalMigrations,
                     )
                     .addCallback(DatabaseCallback())
-                    .fallbackToDestructiveMigration()
-                    .fallbackToDestructiveMigrationOnDowngrade()
                     .setJournalMode(JournalMode.WRITE_AHEAD_LOGGING)
                     .setTransactionExecutor(java.util.concurrent.Executors.newFixedThreadPool(4))
                     .setQueryExecutor(java.util.concurrent.Executors.newFixedThreadPool(4))
                     .build()
 
-            fun shouldResetDb(t: Throwable): Boolean {
+            fun canRepairSchema(t: Throwable): Boolean {
                 val msg = (t.message ?: "").lowercase()
                 return msg.contains("room cannot verify the data integrity") ||
                     msg.contains("forgot to update the version number") ||
@@ -195,23 +200,24 @@ abstract class InternalDatabase : RoomDatabase() {
             var db = build()
             try {
                 db.openHelper.writableDatabase
-            } catch (t: Throwable) {
-                if (!shouldResetDb(t)) throw t
-                Log.e(TAG, "Database open failed, attempting schema repair", t)
+            } catch (t: Exception) {
                 runCatching { db.close() }
-
-                val repaired =
-                    runCatching { SchemaTools.repairDatabaseFile(context = context, name = DB_NAME) }
-                        .onFailure { Log.e(TAG, "Schema repair failed, recreating database", it) }
-                        .isSuccess
-
-                db = build()
-                runCatching { db.openHelper.writableDatabase }.getOrElse { openError ->
-                    Log.e(TAG, "Database still failed to open after schema repair=$repaired, recreating database", openError)
-                    runCatching { db.close() }
-                    runCatching { context.deleteDatabase(DB_NAME) }
+                if (!canRepairSchema(t)) throw t
+                Log.e(TAG, "Database open failed, attempting schema repair", t)
+                // Refuse to alter the only copy of a user's collection. If the
+                // backup fails (including disk full), propagate it before repair.
+                recoveryCopy = recoveryCopy ?: DatabaseRecoveryBackup.create(databaseFile, recoveryDirectory)
+                try {
+                    SchemaTools.repairDatabaseFile(context = context, name = DB_NAME)
                     db = build()
                     db.openHelper.writableDatabase
+                } catch (openError: Exception) {
+                    runCatching { db.close() }
+                    throw IllegalStateException(
+                        "Music library could not be opened. Your database was preserved" +
+                            recoveryCopy?.let { "; recovery copy: ${it.name}" }.orEmpty(),
+                        openError,
+                    )
                 }
             }
 
@@ -359,10 +365,17 @@ private object SchemaTools {
             val expected = expectedDb.openHelper.writableDatabase
             val identityHash = readIdentityHash(expected)
             val db = fileHelper.writableDatabase
-
-            reconcileDatabase(db = db, expectedDb = expected)
-            if (identityHash != null) {
-                updateIdentityHash(db = db, identityHash = identityHash)
+            db.setForeignKeyConstraintsEnabled(false)
+            db.beginTransaction()
+            try {
+                reconcileDatabase(db = db, expectedDb = expected)
+                if (identityHash != null) {
+                    updateIdentityHash(db = db, identityHash = identityHash)
+                }
+                db.setTransactionSuccessful()
+            } finally {
+                db.endTransaction()
+                db.setForeignKeyConstraintsEnabled(true)
             }
         } finally {
             runCatching { fileHelper.close() }
@@ -381,18 +394,33 @@ private object SchemaTools {
         val expectedViews = expectedMaster.filter { it.type == "view" && it.sql != null }
         val expectedTriggers = expectedMaster.filter { it.type == "trigger" && it.sql != null }
 
+        val foreignKeysEnabled = pragmaEnabled(db, "foreign_keys")
         db.execSQL("PRAGMA foreign_keys=OFF")
-        dropNonTableObjects(db)
-
-        expectedTables.forEach { table ->
-            ensureTableSchema(db = db, expectedDb = expectedDb, table = table, expectedIndices = expectedIndices)
+        check(!pragmaEnabled(db, "foreign_keys")) {
+            "Cannot safely rebuild library tables while foreign keys are active in a transaction"
         }
-
-        expectedViews.forEach { db.execSQL(it.sql!!) }
-        expectedTriggers.forEach { db.execSQL(it.sql!!) }
-
-        db.execSQL("PRAGMA foreign_keys=ON")
+        val legacyAlterTable = pragmaEnabled(db, "legacy_alter_table")
+        // SQLite 3.26+ otherwise rewrites child references to _old_song during
+        // RENAME even with foreign_keys=OFF, leaving them pointing at a dropped table.
+        db.execSQL("PRAGMA legacy_alter_table=ON")
+        try {
+            dropNonTableObjects(db)
+            expectedTables.forEach { table ->
+                ensureTableSchema(db = db, expectedDb = expectedDb, table = table, expectedIndices = expectedIndices)
+            }
+            expectedViews.forEach { db.execSQL(it.sql!!) }
+            expectedTriggers.forEach { db.execSQL(it.sql!!) }
+            db.query("PRAGMA foreign_key_check").use { violations ->
+                check(!violations.moveToFirst()) { "Schema repair would leave broken library references" }
+            }
+        } finally {
+            db.execSQL("PRAGMA legacy_alter_table=${if (legacyAlterTable) "ON" else "OFF"}")
+            db.execSQL("PRAGMA foreign_keys=${if (foreignKeysEnabled) "ON" else "OFF"}")
+        }
     }
+
+    private fun pragmaEnabled(db: SupportSQLiteDatabase, name: String): Boolean =
+        db.query("PRAGMA $name").use { it.moveToFirst() && it.getInt(0) != 0 }
 
     private fun readIdentityHash(db: SupportSQLiteDatabase): String? =
         runCatching {

@@ -29,6 +29,7 @@ import com.nikhil.yt.ui.component.ListItem
 import com.nikhil.yt.ui.component.PreferenceEntry
 import com.nikhil.yt.ui.component.SwitchPreference
 import com.nikhil.yt.utils.TranslatorLanguages
+import com.nikhil.yt.utils.CapsuleBrand
 import com.nikhil.yt.utils.rememberPreference
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -163,7 +164,7 @@ fun DiscordExperimental(
                     val (button2Label, onButton2LabelChange) =
                         rememberPreference(
                             key = DiscordActivityButton2LabelKey,
-                            defaultValue = "Go to Velune"
+                            defaultValue = CapsuleBrand.DEFAULT_DISCORD_BUTTON_LABEL
                         )
                     val (button2Enabled, onButton2EnabledChange) =
                         rememberPreference(
@@ -190,7 +191,7 @@ fun DiscordExperimental(
                     val (button2CustomUrl, onButton2CustomUrlChange) =
                         rememberPreference(
                             key = DiscordActivityButton2CustomUrlKey,
-                            defaultValue = "https://github.com/nikhilvishwakarma00/Velune"
+                            defaultValue = CapsuleBrand.REPOSITORY_URL
                         )
 
                     PreferenceEntry(
@@ -331,7 +332,7 @@ fun DiscordExperimental(
                             title = stringResource(R.string.discord_activity_button2_label),
                             iconRes = R.drawable.buttons,
                             value = button2Label,
-                            defaultValue = "Go to Velune",
+                            defaultValue = CapsuleBrand.DEFAULT_DISCORD_BUTTON_LABEL,
                             onValueChange = onButton2LabelChange
                         )
                         if (button2UrlSource == "custom") {

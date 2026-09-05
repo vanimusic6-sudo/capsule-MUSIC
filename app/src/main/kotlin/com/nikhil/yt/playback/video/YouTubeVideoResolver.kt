@@ -18,16 +18,28 @@ import com.nikhil.yt.App
 import com.nikhil.yt.constants.CapsuleVideoQuality
 import com.nikhil.yt.innertube.CapsuleVideoRequestGuard
 import com.nikhil.yt.innertube.YouTubeMusicVideoLinkResolver
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import timber.log.Timber
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.Executors
+import java.util.UUID
 
 object YouTubeVideoResolver {
     private const val TAG = "CapsuleVideo"
     private const val CACHE_SAFETY_MS = 45_000L
+    private val remoteExecutor = Executors.newFixedThreadPool(2) { task ->
+        Thread(task, "capsule-video-ipc").apply { isDaemon = true }
+    }
+    private val cancellationExecutor = Executors.newSingleThreadExecutor { task ->
+        Thread(task, "capsule-video-cancel").apply { isDaemon = true }
+    }
 
     data class StreamFormat(
         val itag: Int,
@@ -83,6 +95,22 @@ object YouTubeVideoResolver {
      */
     private val resolveMutex = Mutex()
 
+    /*
+     * Share the entire song -> official video -> extracted streams operation,
+     * not just the final extractor call. Without this, two quick VIDEO requests
+     * for the same track could both perform the YouTube Music linking request
+     * before they reached resolveMutex. That creates unnecessary traffic and
+     * makes rapid mode toggles more likely to trip upstream throttling.
+     *
+     * The owner is the only coroutine that performs work. Other callers await
+     * the same result. If the owner is cancelled because the user moved to a
+     * different track, all waiters are cancelled too and no stale result is
+     * published by this resolver.
+     */
+    private val songResolveMutex = Mutex()
+    private val inFlightSongResolves =
+        mutableMapOf<String, CompletableDeferred<Result<ResolvedVideo>>>()
+
     @Volatile
     private var initialized = false
 
@@ -115,29 +143,70 @@ object YouTubeVideoResolver {
         artists: List<String>,
         durationSeconds: Int?,
         quality: CapsuleVideoQuality,
-    ): Result<ResolvedVideo> = runCatching {
+    ): Result<ResolvedVideo> {
         ensureInitialized()
         val canonicalId = sourceMediaId.trim()
-        require(canonicalId.isNotBlank()) { "Missing YouTube Music track id" }
+        if (canonicalId.isBlank()) {
+            return Result.failure(IllegalArgumentException("Missing YouTube Music track id"))
+        }
 
-        val link =
-            YouTubeMusicVideoLinkResolver
-                .resolve(
-                    sourceMediaId = canonicalId,
-                    title = title,
-                    artists = artists,
-                    durationSeconds = durationSeconds,
-                )
-                .getOrThrow()
+        val requestKey = "$canonicalId:${quality.name}"
+        var isOwner = false
+        val sharedResult =
+            songResolveMutex.withLock {
+                inFlightSongResolves[requestKey]
+                    ?: CompletableDeferred<Result<ResolvedVideo>>()
+                        .also { created ->
+                            inFlightSongResolves[requestKey] = created
+                            isOwner = true
+                        }
+            }
 
-        resolveExact(
-            sourceMediaId = canonicalId,
-            videoId = link.videoId,
-            quality = quality,
-            muxedOnly = false,
-        ).also {
-            latestCacheKeyByVideoId[link.videoId] = cacheKey(link.videoId, quality, false)
-            CapsuleVideoRequestGuard.noteSuccess()
+        if (!isOwner) {
+            return sharedResult.await()
+        }
+
+        try {
+            val result =
+                try {
+                    withTimeoutOrNull(CapsuleVideoIpc.REQUEST_TIMEOUT_MS) {
+                        val link =
+                            YouTubeMusicVideoLinkResolver
+                                .resolve(
+                                    sourceMediaId = canonicalId,
+                                    title = title,
+                                    artists = artists,
+                                    durationSeconds = durationSeconds,
+                                )
+                                .getOrThrow()
+
+                        val resolved =
+                            resolveExact(
+                                sourceMediaId = canonicalId,
+                                videoId = link.videoId,
+                                quality = quality,
+                                muxedOnly = false,
+                            )
+                        latestCacheKeyByVideoId[link.videoId] =
+                            cacheKey(link.videoId, quality, false)
+                        CapsuleVideoRequestGuard.noteSuccess()
+                        Result.success(resolved)
+                    } ?: Result.failure(VideoBackendException(CapsuleVideoFailure.NETWORK, "VIDEO extraction timed out"))
+                } catch (cancelled: CancellationException) {
+                    sharedResult.cancel(cancelled)
+                    throw cancelled
+                } catch (throwable: Throwable) {
+                    Result.failure(throwable)
+                }
+
+            sharedResult.complete(result)
+            return result
+        } finally {
+            withContext(NonCancellable) {
+                songResolveMutex.withLock {
+                    inFlightSongResolves.remove(requestKey, sharedResult)
+                }
+            }
         }
     }
 
@@ -149,16 +218,20 @@ object YouTubeVideoResolver {
     suspend fun resolveMuxed(
         videoId: String,
         quality: CapsuleVideoQuality,
-    ): Result<ResolvedVideo> = runCatching {
+    ): Result<ResolvedVideo> = try {
         ensureInitialized()
         val id = videoId.trim()
         require(id.isNotBlank()) { "Missing linked YouTube video id" }
-        resolveExact(
+        Result.success(resolveExact(
             sourceMediaId = id,
             videoId = id,
             quality = quality,
             muxedOnly = true,
-        )
+        ))
+    } catch (cancelled: CancellationException) {
+        throw cancelled
+    } catch (failure: Exception) {
+        Result.failure(failure)
     }
 
     private suspend fun resolveExact(
@@ -205,8 +278,10 @@ object YouTubeVideoResolver {
         val context = App.instance.applicationContext
         val authority = "${context.packageName}.capsule.video.extractor"
         val uri = Uri.parse("content://$authority")
+        val requestId = UUID.randomUUID().toString()
         val extras =
             Bundle().apply {
+                putString(CapsuleVideoIpc.EXTRA_REQUEST_ID, requestId)
                 putString(CapsuleVideoIpc.EXTRA_VIDEO_ID, videoId)
                 putString(CapsuleVideoIpc.EXTRA_QUALITY, CapsuleVideoIpc.qualityToWire(quality))
                 putBoolean(CapsuleVideoIpc.EXTRA_MUXED_ONLY, muxedOnly)
@@ -214,12 +289,18 @@ object YouTubeVideoResolver {
 
         val bundle =
             try {
-                context.contentResolver.call(
-                    uri,
-                    CapsuleVideoIpc.METHOD_RESOLVE,
-                    null,
-                    extras,
-                )
+                withTimeoutOrNull(CapsuleVideoIpc.REQUEST_TIMEOUT_MS) {
+                    cancellableRemoteCall(
+                        executor = remoteExecutor,
+                        cancellationExecutor = cancellationExecutor,
+                        call = { context.contentResolver.call(uri, CapsuleVideoIpc.METHOD_RESOLVE, null, extras) },
+                        cancel = { context.contentResolver.call(uri, CapsuleVideoIpc.METHOD_CANCEL, null, extras) },
+                    )
+                } ?: throw VideoBackendException(CapsuleVideoFailure.NETWORK, "VIDEO extraction timed out")
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (failure: VideoBackendException) {
+                throw failure
             } catch (dead: DeadObjectException) {
                 throw VideoBackendException(
                     CapsuleVideoFailure.REMOTE_PROCESS_DIED,
@@ -238,10 +319,7 @@ object YouTubeVideoResolver {
                     throwable.message ?: "VIDEO extractor unavailable",
                     throwable,
                 )
-            } ?: throw VideoBackendException(
-                CapsuleVideoFailure.REMOTE_PROCESS_DIED,
-                "VIDEO extractor returned no result",
-            )
+            }
 
         if (!bundle.getBoolean(CapsuleVideoIpc.EXTRA_SUCCESS, false)) {
             val failure =

@@ -7,12 +7,8 @@
 package com.nikhil.yt.playback
 
 import android.content.Context
-import android.media.MediaCodecList
 import android.net.ConnectivityManager
 import androidx.core.content.getSystemService
-import androidx.core.net.toUri
-import javax.inject.Inject
-import javax.inject.Singleton
 import androidx.media3.common.C
 import androidx.media3.database.DatabaseProvider
 import androidx.media3.datasource.ResolvingDataSource
@@ -21,31 +17,43 @@ import androidx.media3.datasource.cache.CacheDataSource
 import androidx.media3.datasource.cache.CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR
 import androidx.media3.datasource.okhttp.OkHttpDataSource
 import androidx.media3.exoplayer.offline.Download
+import androidx.media3.exoplayer.offline.DefaultDownloadIndex
+import androidx.media3.exoplayer.offline.DownloaderFactory
+import com.nikhil.yt.playback.audio.CapsuleAudioRequestInterceptor
+import com.nikhil.yt.playback.audio.AudioCacheIdentity
+import com.nikhil.yt.playback.audio.AudioPlaybackContext
+import com.nikhil.yt.playback.audio.AudioResolvePriority
+import com.nikhil.yt.playback.audio.ResolvingAudioDownloader
 import androidx.media3.exoplayer.offline.DownloadManager
 import androidx.media3.exoplayer.offline.DownloadNotificationHelper
-import com.nikhil.yt.innertube.YouTube
 import com.nikhil.yt.constants.AudioQuality
 import com.nikhil.yt.constants.AudioQualityKey
-import com.nikhil.yt.constants.PlayerStreamClient
-import com.nikhil.yt.constants.PlayerStreamClientKey
+import com.nikhil.yt.constants.AudioStreamPolicy
+import com.nikhil.yt.constants.AudioStreamPolicyKey
 import com.nikhil.yt.db.MusicDatabase
 import com.nikhil.yt.db.entities.FormatEntity
 import com.nikhil.yt.db.entities.SongEntity
 import com.nikhil.yt.di.DownloadCache
 import com.nikhil.yt.di.PlayerCache
-import com.nikhil.yt.utils.YTPlayerUtils
+import com.nikhil.yt.innertube.YouTube
+import com.nikhil.yt.playback.audio.CapsuleAudioEngine
 import com.nikhil.yt.utils.StreamClientUtils
 import com.nikhil.yt.utils.enumPreference
-import com.nikhil.yt.constants.NetworkMeteredKey
-import com.nikhil.yt.utils.dataStore
-import com.nikhil.yt.utils.get
 import dagger.hilt.android.qualifiers.ApplicationContext
-import kotlinx.coroutines.*
-import kotlinx.coroutines.flow.*
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
 import okhttp3.OkHttpClient
 import java.time.LocalDateTime
-import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicInteger
+import javax.inject.Inject
+import javax.inject.Singleton
 
 @Singleton
 class DownloadUtil
@@ -59,141 +67,121 @@ constructor(
 ) {
     private val connectivityManager = context.getSystemService<ConnectivityManager>()!!
     private val audioQuality by enumPreference(context, AudioQualityKey, AudioQuality.AUTO)
-    private val preferredStreamClient by enumPreference(context, PlayerStreamClientKey, PlayerStreamClient.ANDROID_VR)
-    private val songUrlCache = HashMap<String, Pair<String, Long>>()
+    private val audioStreamPolicy by enumPreference(
+        context,
+        AudioStreamPolicyKey,
+        AudioStreamPolicy.VISIONOS,
+    )
+    private fun playbackContext() = AudioPlaybackContext(
+        audioQuality, audioStreamPolicy.normalizedForPlayback(), connectivityManager.isActiveNetworkMetered,
+    )
 
-    // Anti-Bot & Throttling Fields
-    private val downloadExecutor = Executors.newFixedThreadPool(3)
-    @Volatile private var currentMaxParallelDownloads = 3
+    // Download pressure protection. This reacts to transport failures without
+    // cycling YouTube client identities or bypassing an explicit challenge.
+    @Volatile private var currentMaxParallelDownloads = DEFAULT_MAX_PARALLEL_DOWNLOADS
     @Volatile private var cooldownUntilMs = 0L
     private val consecutiveThrottleSignals = AtomicInteger(0)
-
-    private val avoidStreamCodecs: Set<String> by lazy {
-        if (deviceSupportsMimeType("audio/opus")) emptySet() else setOf("opus")
-    }
 
     private val mediaOkHttpClient: OkHttpClient by lazy {
         OkHttpClient
             .Builder()
             .proxy(YouTube.streamProxy)
+            .retryOnConnectionFailure(false)
+            .addInterceptor(CapsuleAudioRequestInterceptor(guardStreams = true))
             .followRedirects(true)
             .followSslRedirects(true)
             .addInterceptor { chain ->
-                val request = chain.request()
-                val host = request.url.host
-                val isYouTubeMediaHost =
-                    host.endsWith("googlevideo.com") ||
-                            host.endsWith("googleusercontent.com") ||
-                            host.endsWith("youtube.com") ||
-                            host.endsWith("youtube-nocookie.com") ||
-                            host.endsWith("ytimg.com")
-
-                if (!isYouTubeMediaHost) return@addInterceptor chain.proceed(request)
-
-                // Force ANDROID_VR User-Agent to match download stream creation
-                val exactClientName = "ANDROID_VR"
-                val userAgent = StreamClientUtils.resolveUserAgent(exactClientName)
-                val originReferer = StreamClientUtils.resolveOriginReferer(exactClientName)
-
-                val builder = request.newBuilder().header("User-Agent", userAgent)
-                originReferer.origin?.let { builder.header("Origin", it) }
-                originReferer.referer?.let { builder.header("Referer", it) }
-
-                chain.proceed(builder.build())
+                chain.proceed(StreamClientUtils.withFallbackHeaders(chain.request()))
             }.build()
     }
 
     val downloads = MutableStateFlow<Map<String, Download>>(emptyMap())
 
-    private val dataSourceFactory =
-        ResolvingDataSource.Factory(
-            CacheDataSource
-                .Factory()
-                .setCache(downloadCache)
-                .setUpstreamDataSourceFactory(
-                    CacheDataSource
-                        .Factory()
-                        .setCache(playerCache)
-                        .setUpstreamDataSourceFactory(
-                            OkHttpDataSource.Factory(mediaOkHttpClient),
-                        )
-                        .setCacheWriteDataSinkFactory(null)
-                        .setFlags(FLAG_IGNORE_CACHE_ON_ERROR),
-                )
-                .setFlags(FLAG_IGNORE_CACHE_ON_ERROR),
-        ) { dataSpec ->
-            val mediaId = dataSpec.key ?: error("No media id")
-
-            if (dataSpec.length >= 0 && downloadCache.isCached(mediaId, dataSpec.position, dataSpec.length)) {
-                return@Factory dataSpec
-            }
-
-            val cachedUrl = songUrlCache[mediaId]
-            if (cachedUrl != null && cachedUrl.second > System.currentTimeMillis()) {
-                return@Factory dataSpec.withUri(cachedUrl.first.toUri())
-            }
-
-            val playbackData = runBlocking(Dispatchers.IO) {
+    private val downloaderFactory = DownloaderFactory { request ->
+        ResolvingAudioDownloader(
+            mediaId = request.id,
+            cache = downloadCache,
+            resolve = {
                 val remainingMs = cooldownUntilMs - System.currentTimeMillis()
                 if (remainingMs > 0) delay(remainingMs)
-
-                val networkMeteredPref = context.dataStore.get(NetworkMeteredKey, true)
-                YTPlayerUtils.playerResponseForPlayback(
-                    mediaId,
-                    audioQuality = audioQuality,
-                    preferredStreamClient = PlayerStreamClient.ANDROID_VR,
+                val selection = playbackContext()
+                val playbackData = CapsuleAudioEngine.playerResponseForPlayback(
+                    videoId = request.id,
+                    audioQuality = selection.quality,
                     connectivityManager = connectivityManager,
-                    networkMetered = networkMeteredPref,
-                    avoidCodecs = avoidStreamCodecs,
-                )
-            }.getOrThrow()
+                    streamPolicy = selection.policy,
+                    priority = AudioResolvePriority.DOWNLOAD,
+                ).getOrThrow()
+                if (selection != playbackContext()) throw java.io.IOException("Playback context changed during download resolve")
+                storeDownloadMetadata(request.id, playbackData)
+                playbackData
+            },
+            dataSource = { playback ->
+                CacheDataSource.Factory().setCache(downloadCache)
+                    .setUpstreamDataSourceFactory(
+                        ResolvingDataSource.Factory(
+                            CacheDataSource.Factory().setCache(playerCache)
+                                .setCacheWriteDataSinkFactory(null)
+                                .setUpstreamDataSourceFactory(OkHttpDataSource.Factory(mediaOkHttpClient))
+                                .setFlags(FLAG_IGNORE_CACHE_ON_ERROR),
+                        ) { spec ->
+                            spec.buildUpon()
+                                .setKey(AudioCacheIdentity.key(request.id, playback))
+                                .setHttpRequestHeaders(spec.httpRequestHeaders + playback.streamHeaders)
+                                .build()
+                        },
+                    )
+            },
+        )
+    }
 
-            val format = playbackData.format
+    private fun storeDownloadMetadata(mediaId: String, playbackData: CapsuleAudioEngine.PlaybackData) {
+        val format = playbackData.format
 
-            database.query {
-                upsert(
-                    FormatEntity(
-                        id = mediaId,
-                        itag = format.itag,
-                        mimeType = format.mimeType.split(";")[0],
-                        codecs = format.mimeType.split("codecs=")[1].removeSurrounding("\""),
-                        bitrate = format.bitrate,
-                        sampleRate = format.audioSampleRate,
-                        contentLength = format.contentLength ?: C.LENGTH_UNSET.toLong(),
-                        loudnessDb = playbackData.audioConfig?.loudnessDb,
-                        perceptualLoudnessDb = playbackData.audioConfig?.perceptualLoudnessDb,
-                        playbackUrl = playbackData.playbackTracking?.videostatsPlaybackUrl?.baseUrl
-                    ),
-                )
+        with(database) {
+            upsert(
+                FormatEntity(
+                    id = mediaId,
+                    itag = format.itag,
+                    mimeType = format.mimeType.substringBefore(';'),
+                    codecs =
+                        format.mimeType
+                            .substringAfter("codecs=", "")
+                            .removeSurrounding("\""),
+                    bitrate = format.bitrate,
+                    sampleRate = format.audioSampleRate,
+                    contentLength = format.contentLength ?: C.LENGTH_UNSET.toLong(),
+                    loudnessDb = playbackData.audioConfig?.loudnessDb ?: format.loudnessDb,
+                    perceptualLoudnessDb =
+                        playbackData.audioConfig?.perceptualLoudnessDb
+                            ?: format.perceptualLoudnessDb,
+                    playbackUrl = playbackData.playbackTracking?.videostatsPlaybackUrl?.baseUrl,
+                ),
+            )
 
-                val now = LocalDateTime.now()
-                val existing = getSongByIdBlocking(mediaId)?.song
+            val existing = getSongByIdBlocking(mediaId)?.song
 
-                val updatedSong = if (existing != null) {
-                    if (existing.dateDownload == null) existing.copy(dateDownload = now) else existing
+            val updatedSong =
+                if (existing != null) {
+                    existing
                 } else {
                     SongEntity(
                         id = mediaId,
                         title = playbackData.videoDetails?.title ?: "Unknown",
                         duration = playbackData.videoDetails?.lengthSeconds?.toIntOrNull() ?: 0,
-                        thumbnailUrl = playbackData.videoDetails?.thumbnail?.thumbnails?.lastOrNull()?.url,
-                        dateDownload = now
+                        thumbnailUrl =
+                            playbackData.videoDetails
+                                ?.thumbnail
+                                ?.thumbnails
+                                ?.lastOrNull()
+                                ?.url,
                     )
                 }
 
-                upsert(updatedSong)
-            }
-
-            val totalLength = format.contentLength ?: C.LENGTH_UNSET.toLong()
-            val streamUrlWithRange = if (totalLength > 0) {
-                "${playbackData.streamUrl}&range=0-$totalLength"
-            } else {
-                playbackData.streamUrl
-            }
-
-            songUrlCache[mediaId] = streamUrlWithRange to (System.currentTimeMillis() + (60 * 60 * 1000L))
-            dataSpec.withUri(streamUrlWithRange.toUri())
+            upsert(updatedSong)
         }
+
+    }
 
     val downloadNotificationHelper =
         DownloadNotificationHelper(context, ExoDownloadService.CHANNEL_ID)
@@ -201,10 +189,8 @@ constructor(
     val downloadManager: DownloadManager =
         DownloadManager(
             context,
-            databaseProvider,
-            downloadCache,
-            dataSourceFactory,
-            downloadExecutor
+            DefaultDownloadIndex(databaseProvider),
+            downloaderFactory,
         ).apply {
             maxParallelDownloads = currentMaxParallelDownloads
             addListener(
@@ -215,9 +201,18 @@ constructor(
                         finalException: Exception?,
                     ) {
                         if (download.state == Download.STATE_FAILED) {
+                            CapsuleAudioEngine.invalidateCachedStreamUrls(download.request.id)
+                            if (finalException != null && CapsuleAudioEngine.isRateLimitedException(finalException)) {
+                                CapsuleAudioEngine.markRateLimitedFailure()
+                            }
                             registerThrottleSignal(finalException)
                         } else if (download.state == Download.STATE_COMPLETED) {
                             clearThrottleSignal()
+                            database.query {
+                                getSongByIdBlocking(download.request.id)?.song?.let { song ->
+                                    if (song.dateDownload == null) update(song.copy(dateDownload = LocalDateTime.now()))
+                                }
+                            }
                         }
 
                         downloads.update { map ->
@@ -226,31 +221,28 @@ constructor(
                             }
                         }
                     }
-                }
+                },
             )
         }
 
     init {
         CoroutineScope(Dispatchers.IO).launch {
-            val result = mutableMapOf<String, Download>()
-            val cursor = downloadManager.downloadIndex.getDownloads()
-            while (cursor.moveToNext()) {
-                result[cursor.download.request.id] = cursor.download
+            try {
+                val result = mutableMapOf<String, Download>()
+                val cursor = downloadManager.downloadIndex.getDownloads()
+                cursor.use {
+                    while (it.moveToNext()) {
+                        result[it.download.request.id] = it.download
+                    }
+                }
+                downloads.update { result + it }
+            } catch (error: CancellationException) {
+                throw error
             }
-            downloads.value = result
         }
     }
 
     fun getDownload(songId: String): Flow<Download?> = downloads.map { it[songId] }
-
-    private fun deviceSupportsMimeType(mimeType: String): Boolean {
-        return runCatching {
-            val codecList = MediaCodecList(MediaCodecList.ALL_CODECS)
-            codecList.codecInfos.any { info ->
-                !info.isEncoder && info.supportedTypes.any { it.equals(mimeType, ignoreCase = true) }
-            }
-        }.getOrDefault(false)
-    }
 
     private fun registerThrottleSignal(exception: Throwable?) {
         val nextStrikeCount =
@@ -285,29 +277,41 @@ constructor(
     }
 
     private fun clearThrottleSignal() {
-        val remainingStrikes = consecutiveThrottleSignals.updateAndGet { strikes ->
-            if (strikes > 0) strikes - 1 else 0
-        }
+        val remainingStrikes =
+            consecutiveThrottleSignals.updateAndGet { strikes ->
+                if (strikes > 0) strikes - 1 else 0
+            }
 
-        if (remainingStrikes == 0 && currentMaxParallelDownloads != DEFAULT_MAX_PARALLEL_DOWNLOADS) {
+        if (
+            remainingStrikes == 0 &&
+            currentMaxParallelDownloads != DEFAULT_MAX_PARALLEL_DOWNLOADS
+        ) {
             currentMaxParallelDownloads = DEFAULT_MAX_PARALLEL_DOWNLOADS
             downloadManager.maxParallelDownloads = DEFAULT_MAX_PARALLEL_DOWNLOADS
         }
     }
 
     private fun isProbablyThrottleSignal(exception: Throwable): Boolean {
-        val message = buildString {
-            append(exception.message.orEmpty())
-            exception.cause?.message?.let {
-                if (isNotBlank()) append(' ')
-                append(it)
-            }
-        }.lowercase()
+        val message =
+            buildString {
+                append(exception.message.orEmpty())
+                exception.cause?.message?.let {
+                    if (isNotBlank()) append(' ')
+                    append(it)
+                }
+            }.lowercase()
 
         return listOf(
-            "429", "403", "quota", "rate", "too many",
-            "temporarily unavailable", "timed out", "timeout",
-            "unavailable", "reset by peer"
+            "429",
+            "403",
+            "quota",
+            "rate",
+            "too many",
+            "temporarily unavailable",
+            "timed out",
+            "timeout",
+            "unavailable",
+            "reset by peer",
         ).any(message::contains)
     }
 

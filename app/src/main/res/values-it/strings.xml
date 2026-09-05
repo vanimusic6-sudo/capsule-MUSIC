@@ -312,7 +312,6 @@
     <string name="palette_spring">Primavera</string>
     <string name="palette_summer">Estate</string>
     <string name="palette_twilight">Crepuscolo</string>
-    <string name="palette_aurora">Aurora</string>
     <string name="palette_candy">Caramella</string>
     <string name="palette_rainbow">Arcobaleno</string>
     <!-- Additional Palettes -->
@@ -340,8 +339,6 @@
     <string name="ok_button">Va bene</string>
     <string name="custom_radius">Personalizza il raggio dell\'angolo della miniatura</string>
     <string name="custom">Personalizzato</string>
-    <string name="customized_background">Sfondo personalizzato</string>
-    <string name="customize_background_title">Personalizza lo sfondo</string>
     <string name="add_image">Aggiungi immagine</string>
     <string name="blur">Sfocatura</string>
     <string name="contrast">Contrasto</string>
