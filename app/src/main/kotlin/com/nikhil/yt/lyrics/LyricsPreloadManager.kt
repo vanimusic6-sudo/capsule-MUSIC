@@ -13,6 +13,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import com.nikhil.yt.constants.PreloadQueueLyricsEnabledKey
@@ -40,10 +41,6 @@ class LyricsPreloadManager @Inject constructor(
     private var preloadJob: Job? = null
     private val preloadMissBlockedUntil = ConcurrentHashMap<String, Long>()
     
-    // Track current queue to detect changes
-    private var currentQueueIds: List<String> = emptyList()
-    private var currentIndex: Int = -1
-
     /**
      * Called when the current song changes in the player.
      * Triggers pre-loading of lyrics for the next N songs in the queue.
@@ -58,6 +55,8 @@ class LyricsPreloadManager @Inject constructor(
         // Check if pre-load is enabled
         preloadJob = scope.launch {
             try {
+                // A queue change cancels this wait before any provider is contacted.
+                delay(PRELOAD_STABILITY_DELAY_MS)
                 val preferences = context.dataStore.data.first()
                 val isEnabled = preferences[PreloadQueueLyricsEnabledKey] ?: true
                 
@@ -208,6 +207,7 @@ class LyricsPreloadManager @Inject constructor(
     companion object {
         private const val TAG = "LyricsPreloadManager"
         private const val DEFAULT_PRELOAD_COUNT = 1
+        private const val PRELOAD_STABILITY_DELAY_MS = 800L
         private const val PRELOAD_MISS_COOLDOWN_MS = 30 * 60 * 1_000L
     }
 }

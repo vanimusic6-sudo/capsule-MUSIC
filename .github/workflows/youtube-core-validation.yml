@@ -12,6 +12,8 @@ on:
       - "app/src/main/kotlin/com/nikhil/yt/ui/screens/settings/PlayerSettings.kt"
       - "app/src/main/kotlin/com/nikhil/yt/ui/screens/settings/StorageSettings.kt"
       - "app/src/test/**"
+      - "app/src/main/kotlin/com/nikhil/yt/lyrics/**"
+      - "betterlyrics/**"
       - "innertube/src/main/**"
       - "innertube/src/test/**"
       - "gradle/libs.versions.toml"
@@ -29,6 +31,8 @@ on:
       - "app/src/main/kotlin/com/nikhil/yt/ui/screens/settings/PlayerSettings.kt"
       - "app/src/main/kotlin/com/nikhil/yt/ui/screens/settings/StorageSettings.kt"
       - "app/src/test/**"
+      - "app/src/main/kotlin/com/nikhil/yt/lyrics/**"
+      - "betterlyrics/**"
       - "innertube/src/main/**"
       - "innertube/src/test/**"
       - "gradle/libs.versions.toml"
@@ -79,6 +83,7 @@ jobs:
         run: |
           gradle \
             :innertube:test \
+            :betterlyrics:test \
             :app:testUniversalDebugUnitTest \
             :app:assembleUniversalDebug \
             --stacktrace \

@@ -57,7 +57,7 @@ fun LyricsScreen(
     LaunchedEffect(mediaMetadata.id, currentLyrics) {
         if (currentLyrics != null) return@LaunchedEffect
 
-        delay(500)
+        delay(800)
 
         try {
             val lyrics =

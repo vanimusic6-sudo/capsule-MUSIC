@@ -328,6 +328,7 @@ class MusicService :
         ConcurrentHashMap<String, Deferred<Result<CapsuleAudioEngine.PlaybackData>>>()
 
     private val audioResolveLock = Any()
+    private val audioResolveStability = PlaybackStabilityGate()
 
     @Volatile
     private var audioPolicyGeneration = 0L
@@ -347,6 +348,12 @@ class MusicService :
             inFlightAudioResolves[mediaId]?.takeIf { !it.isCompleted }
                 ?: ioScope
                     .async {
+                        audioResolveStability.awaitStable {
+                            withContext(Dispatchers.Main.immediate) {
+                                mediaId == player.currentMediaItem?.mediaId ||
+                                    mediaId in upcomingAudioIds()
+                            }
+                        }
                         val startedAt = System.currentTimeMillis()
                         Timber.tag(CAPSULE_RESOLVE_TAG).i(
                             "resolve start id=%s",
@@ -383,26 +390,19 @@ class MusicService :
      * the part that actually keeps playback moving; the timeout further down is
      * only a floor for the cases prefetch cannot cover.
      */
+    private fun upcomingAudioIds(): List<String> {
+        // Media3's next index respects shuffle/repeat; index + 1 does not.
+        val nextIndex = player.nextMediaItemIndex
+        if (nextIndex == C.INDEX_UNSET) return emptyList()
+        return listOfNotNull(
+            player.getMediaItemAt(nextIndex).mediaId.trim().takeIf { it.isNotBlank() },
+        )
+    }
+
     private fun prefetchUpcomingAudio() {
         val prefetchGeneration = ++audioPrefetchGeneration
         val policyGeneration = audioPolicyGeneration
-        val upcoming =
-            runCatching {
-                buildList {
-                    val count = player.mediaItemCount
-                    val start = player.currentMediaItemIndex
-                    for (offset in 1..PREFETCH_AHEAD) {
-                        val index = start + offset
-                        if (index < 0 || index >= count) break
-                        player
-                            .getMediaItemAt(index)
-                            .mediaId
-                            .trim()
-                            .takeIf { it.isNotBlank() }
-                            ?.let { add(it) }
-                    }
-                }
-            }.getOrNull().orEmpty()
+        val upcoming = upcomingAudioIds()
 
         val now = System.currentTimeMillis()
 
@@ -443,7 +443,6 @@ class MusicService :
 
         upcoming.forEach { mediaId ->
             ioScope.launch {
-                delay(PREFETCH_STABILITY_DELAY_MS)
                 if (prefetchGeneration != audioPrefetchGeneration) {
                     Timber.tag(CAPSULE_RESOLVE_TAG).i(
                         "prefetch skip transient id=%s",
@@ -3755,6 +3754,7 @@ class MusicService :
 
         streamRetryJob?.cancel()
         streamRetryJob = null
+        audioResolveStability.onSelectionChanged()
         prefetchUpcomingAudio()
 
         val transitionedMediaId =
@@ -4828,6 +4828,12 @@ class MusicService :
                             mediaId,
                             waitedMs,
                             AUDIO_RESOLVE_TIMEOUT_MS,
+                        )
+                    } else if (failure is kotlinx.coroutines.CancellationException) {
+                        Timber.tag(CAPSULE_RESOLVE_TAG).d(
+                            "loader cancelled id=%s waitedMs=%d",
+                            mediaId,
+                            waitedMs,
                         )
                     } else {
                         Timber.tag(CAPSULE_RESOLVE_TAG).w(
@@ -6211,15 +6217,9 @@ class MusicService :
         const val ERROR_CODE_NO_STREAM = 1000001
         const val CHUNK_LENGTH = 512 * 1024L
 
-        /*
-         * How far ahead to resolve. One track covers a normal transition without
-         * turning rapid queue navigation into parallel extraction bursts.
-         */
         /* Single tag so a field run can be filtered down to the resolve path. */
         private const val CAPSULE_RESOLVE_TAG = "CapsuleResolve"
 
-        private const val PREFETCH_AHEAD = 1
-        private const val PREFETCH_STABILITY_DELAY_MS = 350L
         private const val STREAM_RETRY_DELAY_MS = 1_000L
         private const val MAX_STREAM_RETRIES_PER_TRACK = 3
         private const val NETWORK_SETTLE_RETRY_MS = 1_500L

@@ -21,6 +21,7 @@ import io.ktor.client.statement.bodyAsText
 import io.ktor.http.isSuccess
 import io.ktor.serialization.kotlinx.json.json
 import kotlinx.serialization.json.Json
+import kotlinx.coroutines.CancellationException
 import java.util.concurrent.ConcurrentHashMap
 
 object BetterLyrics {
@@ -63,6 +64,7 @@ object BetterLyrics {
         title: String,
         album: String?,
         durationSeconds: Int,
+        httpClient: HttpClient,
     ): String? {
         val cleanTitle = title.trim()
         val cleanArtist = artist.trim()
@@ -99,7 +101,7 @@ object BetterLyrics {
         )
         
         return try {
-            val response: HttpResponse = client.get(GET_LYRICS_PATH) {
+            val response: HttpResponse = httpClient.get(API_BASE_URL.trimEnd('/') + GET_LYRICS_PATH) {
                 parameter("s", cleanTitle)
                 parameter("a", cleanArtist)
                 if (cleanAlbum.isNotBlank()) parameter("al", cleanAlbum)
@@ -139,6 +141,8 @@ object BetterLyrics {
             }
             
             ttml.takeIf { it.isNotBlank() }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
         } catch (e: Exception) {
             logger?.invoke("Error fetching lyrics: ${e.stackTraceToString()}")
             null
@@ -150,16 +154,22 @@ object BetterLyrics {
         artist: String,
         album: String? = null,
         durationSeconds: Int = -1,
-    ) = runCatching {
+    ): Result<String> = getLyrics(title, artist, album, durationSeconds, client)
+
+    internal suspend fun getLyrics(
+        title: String,
+        artist: String,
+        album: String?,
+        durationSeconds: Int,
+        httpClient: HttpClient,
+    ): Result<String> = try {
         require(title.isNotBlank() && artist.isNotBlank()) { "Song title and artist are required" }
-        val ttml = fetchTTML(
-            artist = artist,
-            title = title,
-            album = album,
-            durationSeconds = durationSeconds,
-        )
-            ?: throw IllegalStateException("Lyrics unavailable")
-        ttml
+        val ttml = fetchTTML(artist, title, album, durationSeconds, httpClient)
+        if (ttml == null) Result.failure(LyricsUnavailableException()) else Result.success(ttml)
+    } catch (cancelled: CancellationException) {
+        throw cancelled
+    } catch (e: Exception) {
+        Result.failure(e)
     }
 
 
@@ -181,3 +191,6 @@ object BetterLyrics {
         }
     }
 }
+
+/** An expected miss, including songs the API will only serve with a key. */
+class LyricsUnavailableException : IllegalStateException("Lyrics unavailable")
