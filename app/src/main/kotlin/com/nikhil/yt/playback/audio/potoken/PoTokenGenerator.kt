@@ -4,6 +4,7 @@ import android.content.Context
 import android.webkit.CookieManager
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -93,13 +94,15 @@ class PoTokenGenerator(context: Context) {
     }
 
     private suspend fun clear() {
-        lock.withLock {
-            val old = generator
-            generator = null
-            streamingToken = null
-            sessionId = null
-            if (old != null) {
-                withContext(Dispatchers.Main) { old.close() }
+        withContext(NonCancellable) {
+            lock.withLock {
+                val old = generator
+                generator = null
+                streamingToken = null
+                sessionId = null
+                if (old != null) {
+                    withContext(Dispatchers.Main) { old.close() }
+                }
             }
         }
     }
@@ -130,7 +133,14 @@ class PoTokenGenerator(context: Context) {
                 sessionId = null
 
                 val fresh = PoTokenWebView.create(applicationContext)
-                val freshStreamingToken = fresh.generatePoToken(visitorData)
+                val freshStreamingToken = try {
+                    fresh.generatePoToken(visitorData)
+                } catch (failure: Throwable) {
+                    // A cancelled/expired prewarm must not leave an unpublished
+                    // WebView running after the owning coroutine has finished.
+                    withContext(NonCancellable + Dispatchers.Main) { fresh.close() }
+                    throw failure
+                }
                 generator = fresh
                 streamingToken = freshStreamingToken
                 sessionId = visitorData

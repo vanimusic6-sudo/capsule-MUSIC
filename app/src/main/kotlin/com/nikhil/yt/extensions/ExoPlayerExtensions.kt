@@ -17,9 +17,9 @@ import java.util.WeakHashMap
 private val capsuleOffloadListeners =
     WeakHashMap<ExoPlayer, ExoPlayer.AudioOffloadListener>()
 
-private fun ExoPlayer.ensureCapsuleOffloadDiagnostics() {
+private fun ExoPlayer.ensureCapsuleOffloadDiagnostics(): Boolean {
     synchronized(capsuleOffloadListeners) {
-        if (capsuleOffloadListeners.containsKey(this)) return
+        if (capsuleOffloadListeners.containsKey(this)) return false
 
         val listener =
             object : ExoPlayer.AudioOffloadListener {
@@ -40,6 +40,7 @@ private fun ExoPlayer.ensureCapsuleOffloadDiagnostics() {
 
         capsuleOffloadListeners[this] = listener
         addAudioOffloadListener(listener)
+        return true
     }
 }
 
@@ -59,8 +60,7 @@ private fun ExoPlayer.ensureCapsuleOffloadDiagnostics() {
  * power-saving behaviour between network reads.
  */
 fun ExoPlayer.setOffloadEnabled(enabled: Boolean) {
-    setWakeMode(C.WAKE_MODE_LOCAL)
-    ensureCapsuleOffloadDiagnostics()
+    val firstApplication = ensureCapsuleOffloadDiagnostics()
 
     val mode =
         if (enabled) {
@@ -77,6 +77,9 @@ fun ExoPlayer.setOffloadEnabled(enabled: Boolean) {
             .setIsSpeedChangeSupportRequired(false)
             .build()
 
+    if (!firstApplication && trackSelectionParameters.audioOffloadPreferences == offloadPreferences) return
+
+    setWakeMode(C.WAKE_MODE_LOCAL)
     trackSelectionParameters =
         trackSelectionParameters
             .buildUpon()

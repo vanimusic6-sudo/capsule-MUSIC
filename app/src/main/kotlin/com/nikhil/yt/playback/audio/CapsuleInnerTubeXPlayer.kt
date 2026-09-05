@@ -42,6 +42,11 @@ import io.ktor.client.plugins.HttpTimeout
 import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.serialization.kotlinx.json.json
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -76,6 +81,7 @@ object CapsuleInnerTubeXPlayer {
 
     private val bundleMutex = Mutex()
     private val resolveMutex = Mutex()
+    private val prewarmScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val streamClientFailures = ConcurrentHashMap<String, FailedStreamClients>()
 
     /**
@@ -152,10 +158,22 @@ object CapsuleInnerTubeXPlayer {
         val streamHeaders: Map<String, String>,
     )
 
-    suspend fun prewarm() = bundle().extractor.prewarm()
+    suspend fun prewarm() {
+        // Capture/create the bundle under the same lock as playback so a
+        // preference collector cannot close the transport during extraction.
+        val preparation = resolveMutex.withLock { bundle().prewarm.start() }
+        try {
+            preparation.await()
+        } catch (cancelled: CancellationException) {
+            currentCoroutineContext().ensureActive()
+            // Replacing a bundle cancels its warmup, not the application's
+            // visitor-data collector that happened to be waiting for it.
+            Timber.tag(TAG).d("Startup prewarm superseded by a new extraction session")
+        }
+    }
 
     suspend fun refreshAfterStreamRejection(): Boolean =
-        bundle().cipherService.refreshAfterStreamRejection()
+        resolveMutex.withLock { bundle().cipherService.refreshAfterStreamRejection() }
 
     suspend fun playerResponseForPlayback(
         videoId: String,
@@ -188,19 +206,30 @@ object CapsuleInnerTubeXPlayer {
                     resolveMutex.withLock {
                         // Check after waiting: an earlier queued web resolve may
                         // have opened the breaker while this request was waiting.
-                        cipherSessionFailure
-                            ?.takeIf { playbackClientOverrideId != "VISIONOS" }
-                            ?.let { failure ->
-                                throw IllegalStateException(
-                                    "Cipher playback is disabled for this session after EJS failure: $failure",
-                                )
-                            }
+                        checkCipherSession(playbackClientOverrideId)
+                        val extractionBundle = bundle()
+                        if (playbackClientOverrideId != "VISIONOS") {
+                            val waitStartedAt = System.nanoTime()
+                            val preparation = extractionBundle.prewarm.start()
+                            val reused = preparation.isCompleted
+                            val warmed = preparation.await()
+                            Timber.tag(TAG).i(
+                                "Web prewarm awaited id=%s selectedProfile=%s reused=%s ok=%s waitedMs=%d",
+                                videoId,
+                                playbackClientOverrideId,
+                                reused,
+                                warmed.isSuccess,
+                                (System.nanoTime() - waitStartedAt) / 1_000_000L,
+                            )
+                            checkCipherSession(playbackClientOverrideId)
+                        }
                         Timber.tag(TAG).i(
                             "Resolving audio id=%s selectedProfile=%s",
                             videoId,
                             playbackClientOverrideId,
                         )
                         extractDirectStream(
+                            extractionBundle = extractionBundle,
                             videoId = videoId,
                             hints = hints,
                             audioQuality = resolvedQuality,
@@ -236,7 +265,16 @@ object CapsuleInnerTubeXPlayer {
             Result.failure(error)
         }
 
+    private fun checkCipherSession(clientId: String) {
+        cipherSessionFailure?.takeIf { clientId != "VISIONOS" }?.let { failure ->
+            throw IllegalStateException(
+                "Cipher playback is disabled for this session after EJS failure: $failure",
+            )
+        }
+    }
+
     private suspend fun extractDirectStream(
+        extractionBundle: ExtractionBundle,
         videoId: String,
         hints: ContentHints,
         audioQuality: InnerTubeXAudioQuality,
@@ -247,7 +285,7 @@ object CapsuleInnerTubeXPlayer {
         while (true) {
             val extracted =
                 requireNotNull(
-                    bundle().extractor.extract(
+                    extractionBundle.extractor.extract(
                         videoId = videoId,
                         hints = hints,
                         excludedClients = excludedClients,
@@ -543,7 +581,29 @@ object CapsuleInnerTubeXPlayer {
         val cipherService: YouTubeCipherService,
         val extractor: InnerTubeExtractor,
     ) {
+        val prewarm = SharedPrewarm(prewarmScope) {
+            val startedAt = System.nanoTime()
+            try {
+                Timber.tag(TAG).i("Shared extractor prewarm started session=%s", key)
+                extractor.prewarm()
+                Timber.tag(TAG).i(
+                    "Shared extractor prewarm completed session=%s elapsedMs=%d",
+                    key,
+                    (System.nanoTime() - startedAt) / 1_000_000L,
+                )
+            } catch (cancelled: TimeoutCancellationException) {
+                Timber.tag(TAG).w("Shared extractor prewarm timed out; resolve will continue on demand")
+                throw cancelled
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (failure: Exception) {
+                Timber.tag(TAG).w(failure, "Shared extractor prewarm failed; resolve will continue on demand")
+                throw failure
+            }
+        }
+
         suspend fun closeSafely() {
+            prewarm.cancelAndJoin()
             try {
                 cipherService.dispose()
             } catch (error: CancellationException) {

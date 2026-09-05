@@ -22,12 +22,13 @@ import io.ktor.http.isSuccess
 import io.ktor.serialization.kotlinx.json.json
 import kotlinx.serialization.json.Json
 import kotlinx.coroutines.CancellationException
-import java.util.concurrent.ConcurrentHashMap
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 object BetterLyrics {
     private const val API_BASE_URL = "https://lyrics-api.boidu.dev/"
     private const val GET_LYRICS_PATH = "/getLyrics"
-    private val apiKeyRequiredQueries = ConcurrentHashMap.newKeySet<String>()
+    private val session = BetterLyricsSession()
     private val jsonFormat by lazy {
         Json {
             isLenient = true
@@ -65,6 +66,7 @@ object BetterLyrics {
         album: String?,
         durationSeconds: Int,
         httpClient: HttpClient,
+        session: BetterLyricsSession,
     ): String? {
         val cleanTitle = title.trim()
         val cleanArtist = artist.trim()
@@ -74,10 +76,8 @@ object BetterLyrics {
         val queryKey =
             listOf(cleanArtist.lowercase(), cleanTitle.lowercase(), cleanAlbum.lowercase(), durationSeconds)
                 .joinToString("\u0000")
-        if (queryKey in apiKeyRequiredQueries) {
-            logger?.invoke("Skipping query already rejected as API-key-only in this session")
-            return null
-        }
+        session.cachedLyrics[queryKey]?.let { return it }
+        if (session.apiKeyRequired) return null
 
         logger?.invoke(
             buildString {
@@ -117,8 +117,8 @@ object BetterLyrics {
                     response.status.value == 401 &&
                     responseText.contains("API key required", ignoreCase = true)
                 ) {
-                    apiKeyRequiredQueries += queryKey
-                    logger?.invoke("Query requires a BetterLyrics API key; suppressing session retries")
+                    session.apiKeyRequired = true
+                    logger?.invoke("BetterLyrics requires an API key; network queries disabled for this session")
                 }
                 logger?.invoke("Request failed with status: ${response.status}")
                 return null
@@ -140,7 +140,7 @@ object BetterLyrics {
                  logger?.invoke("Received empty TTML")
             }
             
-            ttml.takeIf { it.isNotBlank() }
+            ttml.takeIf { it.isNotBlank() }?.also { session.cachedLyrics[queryKey] = it }
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (e: Exception) {
@@ -162,9 +162,14 @@ object BetterLyrics {
         album: String?,
         durationSeconds: Int,
         httpClient: HttpClient,
+        session: BetterLyricsSession = this.session,
     ): Result<String> = try {
         require(title.isNotBlank() && artist.isNotBlank()) { "Song title and artist are required" }
-        val ttml = fetchTTML(artist, title, album, durationSeconds, httpClient)
+        // Serialize the flag check with the request: a queued song must observe
+        // the previous song's 401 before it can start another HTTP request.
+        val ttml = session.requestMutex.withLock {
+            fetchTTML(artist, title, album, durationSeconds, httpClient, session)
+        }
         if (ttml == null) Result.failure(LyricsUnavailableException()) else Result.success(ttml)
     } catch (cancelled: CancellationException) {
         throw cancelled
@@ -194,3 +199,11 @@ object BetterLyrics {
 
 /** An expected miss, including songs the API will only serve with a key. */
 class LyricsUnavailableException : IllegalStateException("Lyrics unavailable")
+
+internal class BetterLyricsSession {
+    val requestMutex = Mutex()
+    var apiKeyRequired = false
+    val cachedLyrics = object : LinkedHashMap<String, String>(32, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, String>?): Boolean = size > 32
+    }
+}

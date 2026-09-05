@@ -39,7 +39,6 @@ import com.nikhil.yt.innertube.models.YouTubeLocale
 import com.nikhil.yt.kugou.KuGou
 import com.nikhil.yt.lastfm.LastFM
 import com.nikhil.yt.playback.audio.CapsuleAudioEngine
-import com.nikhil.yt.playback.audio.potoken.PoTokenGenerator
 import dagger.hilt.android.HiltAndroidApp
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -62,7 +61,6 @@ import java.util.concurrent.atomic.AtomicBoolean
 @HiltAndroidApp
 class App : Application(), SingletonImageLoader.Factory {
     private val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
-    private val startupPoTokenGenerator by lazy { PoTokenGenerator(this) }
     @Volatile private var isInitialized = false
     private val didRunImageCacheTrim = AtomicBoolean(false)
 
@@ -102,23 +100,15 @@ class App : Application(), SingletonImageLoader.Factory {
 
         /*
          * PreferenceStore has already primed the first DataStore snapshot at
-         * this point. If visitorData exists from a previous launch, start the
-         * shared BotGuard/WebView session immediately instead of waiting for a
-         * later Flow collector. The first WEB_REMIX resolve can then reuse the
-         * warm visitor session and only mint its video-bound token.
-         *
-         * On a fresh install visitorData is not available yet; the collector in
-         * initializeDeferredAsync() obtains it and performs the same prewarm as
-         * soon as it arrives.
+         * this point. Seed the playback identity before any resolve can start.
+         * The visitor collector and the first Web resolve share the extractor's
+         * single prewarm job, which already includes BotGuard token preparation.
          */
         dataStore[VisitorDataKey]
             ?.trim()
             ?.takeIf { it.isNotBlank() && it != "null" }
             ?.let { storedVisitorData ->
                 YouTube.visitorData = storedVisitorData
-                applicationScope.launch(Dispatchers.IO) {
-                    startupPoTokenGenerator.prewarm(storedVisitorData)
-                }
             }
 
         applicationScope.launch(Dispatchers.IO) {
@@ -283,15 +273,6 @@ class App : Application(), SingletonImageLoader.Factory {
                         )
                     }
 
-                    /*
-                     * Modern playback may choose WEB_REMIX even when the legacy
-                     * web-client switch is disabled. Prewarm the shared BotGuard
-                     * visitor session as soon as visitorData exists so the first
-                     * WEB_REMIX song only has to mint its cheap per-video token.
-                     */
-                    if (resolvedVisitorData != null) {
-                        startupPoTokenGenerator.prewarm(resolvedVisitorData)
-                    }
                 }
         }
 
