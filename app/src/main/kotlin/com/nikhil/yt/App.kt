@@ -38,6 +38,7 @@ import com.nikhil.yt.innertube.YouTube
 import com.nikhil.yt.innertube.models.YouTubeLocale
 import com.nikhil.yt.kugou.KuGou
 import com.nikhil.yt.lastfm.LastFM
+import com.nikhil.yt.playback.audio.CapsuleAudioEngine
 import com.nikhil.yt.playback.audio.potoken.PoTokenGenerator
 import dagger.hilt.android.HiltAndroidApp
 import kotlinx.coroutines.CancellationException
@@ -270,6 +271,17 @@ class App : Application(), SingletonImageLoader.Factory {
                             }
 
                     YouTube.visitorData = resolvedVisitorData
+
+                    try {
+                        CapsuleAudioEngine.prewarm()
+                    } catch (cancelled: CancellationException) {
+                        throw cancelled
+                    } catch (error: Exception) {
+                        Timber.tag("CapsuleAudio").w(
+                            error,
+                            "InnerTubeX extractor prewarm failed",
+                        )
+                    }
 
                     /*
                      * Modern playback may choose WEB_REMIX even when the legacy

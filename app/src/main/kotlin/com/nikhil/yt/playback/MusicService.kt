@@ -383,6 +383,7 @@ class MusicService :
      * only a floor for the cases prefetch cannot cover.
      */
     private fun prefetchUpcomingAudio() {
+        val prefetchGeneration = ++audioPrefetchGeneration
         val upcoming =
             runCatching {
                 buildList {
@@ -439,17 +440,26 @@ class MusicService :
         )
 
         upcoming.forEach { mediaId ->
-            val cached = playbackUrlCache[mediaId]
-            if (cached != null && cached.second > now + PREFETCH_FRESHNESS_MS) {
-                Timber.tag(CAPSULE_RESOLVE_TAG).i("prefetch skip cached id=%s", mediaId)
-                return@forEach
-            }
-            if (inFlightAudioResolves.containsKey(mediaId)) {
-                Timber.tag(CAPSULE_RESOLVE_TAG).i("prefetch skip inflight id=%s", mediaId)
-                return@forEach
-            }
-
             ioScope.launch {
+                delay(PREFETCH_STABILITY_DELAY_MS)
+                if (prefetchGeneration != audioPrefetchGeneration) {
+                    Timber.tag(CAPSULE_RESOLVE_TAG).i(
+                        "prefetch skip transient id=%s",
+                        mediaId,
+                    )
+                    return@launch
+                }
+
+                val cached = playbackUrlCache[mediaId]
+                if (cached != null && cached.second > now + PREFETCH_FRESHNESS_MS) {
+                    Timber.tag(CAPSULE_RESOLVE_TAG).i("prefetch skip cached id=%s", mediaId)
+                    return@launch
+                }
+                if (inFlightAudioResolves.containsKey(mediaId)) {
+                    Timber.tag(CAPSULE_RESOLVE_TAG).i("prefetch skip inflight id=%s", mediaId)
+                    return@launch
+                }
+
                 val resolved =
                     runCatching { audioResolveJob(mediaId).await() }
                         .getOrNull()
@@ -510,6 +520,10 @@ class MusicService :
         }
 
     private val streamRecoveryState = ConcurrentHashMap<String, Pair<Int, Long>>()
+    private var streamRetryJob: Job? = null
+
+    @Volatile
+    private var audioPrefetchGeneration: Long = 0L
     @Volatile
     private var pendingStreamRefreshValidationMediaId: String? = null
     @Volatile
@@ -906,6 +920,8 @@ class MusicService :
                     previous,
                     networkId,
                 )
+                streamRetryJob?.cancel()
+                streamRetryJob = null
                 cancelInFlightAudioResolves()
                 playbackUrlCache.clear()
                 streamRecoveryState.clear()
@@ -3718,6 +3734,8 @@ class MusicService :
     override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
         super.onMediaItemTransition(mediaItem, reason)
 
+        streamRetryJob?.cancel()
+        streamRetryJob = null
         prefetchUpcomingAudio()
 
         val transitionedMediaId =
@@ -4524,9 +4542,11 @@ class MusicService :
                 return
             }
 
-            pendingStreamRefreshValidationMediaId = currentMediaId
-            player.prepare()
-            player.playWhenReady = true
+            scheduleStreamRefreshRetry(
+                mediaId = currentMediaId,
+                refreshCipherConfig = httpStatusCode in setOf(403, 410),
+                retryReason = "http=$httpStatusCode code=${error.errorCode}",
+            )
             return
         }
 
@@ -5460,6 +5480,8 @@ class MusicService :
 
     fun retryCurrentFromFreshStream() {
         val mediaId = player.currentMediaItem?.mediaId ?: return
+        streamRetryJob?.cancel()
+        streamRetryJob = null
         clearStreamRefreshGuards(mediaId)
         CapsuleAudioEngine.clearTrackClientFailures(mediaId)
         CapsuleAudioEngine.invalidateCachedStreamUrls(mediaId)
@@ -5467,6 +5489,65 @@ class MusicService :
         pendingStreamRefreshValidationMediaId = mediaId
         player.prepare()
         player.playWhenReady = true
+    }
+
+    private fun scheduleStreamRefreshRetry(
+        mediaId: String,
+        refreshCipherConfig: Boolean,
+        retryReason: String,
+    ) {
+        val retryPosition = player.currentPosition
+        val retryIndex = player.currentMediaItemIndex
+        val retryPlayWhenReady = player.playWhenReady
+
+        streamRetryJob?.cancel()
+        streamRetryJob =
+            scope.launch {
+                if (refreshCipherConfig) {
+                    val configChanged =
+                        try {
+                            withContext(Dispatchers.IO) {
+                                CapsuleAudioEngine.refreshAfterStreamRejection()
+                            }
+                        } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                            throw cancelled
+                        } catch (error: Exception) {
+                            Timber.tag("MusicService").w(
+                                error,
+                                "Player config refresh failed after $retryReason",
+                            )
+                            false
+                        }
+
+                    if (configChanged) {
+                        CapsuleAudioEngine.clearStreamClientFailures()
+                        Timber.tag("MusicService").i(
+                            "Player config changed after stream rejection; restored stream clients",
+                        )
+                    }
+                }
+
+                delay(STREAM_RETRY_DELAY_MS)
+                if (
+                    player.currentMediaItem?.mediaId != mediaId ||
+                    player.currentMediaItemIndex != retryIndex ||
+                    player.currentPosition != retryPosition ||
+                    player.playWhenReady != retryPlayWhenReady
+                ) {
+                    Timber.tag("MusicService").i(
+                        "Skipping stale stream retry for $mediaId after $retryReason",
+                    )
+                    return@launch
+                }
+
+                pendingStreamRefreshValidationMediaId = mediaId
+                player.seekTo(retryIndex, retryPosition)
+                player.prepare()
+                player.playWhenReady = retryPlayWhenReady
+                Timber.tag("MusicService").i(
+                    "Retrying playback for $mediaId after $retryReason",
+                )
+            }
     }
 
     private fun PlaybackException.httpStatusCodeOrNull(): Int? {
@@ -5501,7 +5582,7 @@ class MusicService :
         val now = System.currentTimeMillis()
         val (count, lastAt) = streamRecoveryState[mediaId] ?: (0 to 0L)
         val nextCount = if (now - lastAt > 45_000L) 1 else count + 1
-        if (nextCount > 2) return false
+        if (nextCount > MAX_STREAM_RETRIES_PER_TRACK) return false
         streamRecoveryState[mediaId] = nextCount to now
         return true
     }
@@ -6079,6 +6160,9 @@ class MusicService :
         private const val CAPSULE_RESOLVE_TAG = "CapsuleResolve"
 
         private const val PREFETCH_AHEAD = 1
+        private const val PREFETCH_STABILITY_DELAY_MS = 350L
+        private const val STREAM_RETRY_DELAY_MS = 1_000L
+        private const val MAX_STREAM_RETRIES_PER_TRACK = 3
         private const val NETWORK_SETTLE_RETRY_MS = 1_500L
         private const val HEALTHY_PLAYBACK_RESET_MS = 5_000L
 

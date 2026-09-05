@@ -153,6 +153,11 @@ object CapsuleInnerTubeXPlayer {
         val streamHeaders: Map<String, String>,
     )
 
+    suspend fun prewarm() = bundle().extractor.prewarm()
+
+    suspend fun refreshAfterStreamRejection(): Boolean =
+        bundle().cipherService.refreshAfterStreamRejection()
+
     suspend fun playerResponseForPlayback(
         videoId: String,
         playlistId: String?,
@@ -302,6 +307,10 @@ object CapsuleInnerTubeXPlayer {
 
     fun clearTrackClientFailures(videoId: String) {
         streamClientFailures.remove(videoId)
+    }
+
+    fun clearStreamClientFailures() {
+        streamClientFailures.clear()
     }
 
     fun clearPlaybackState() {

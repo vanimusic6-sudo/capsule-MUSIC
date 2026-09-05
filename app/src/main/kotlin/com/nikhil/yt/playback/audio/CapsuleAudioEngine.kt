@@ -35,6 +35,11 @@ object CapsuleAudioEngine {
         val streamHeaders: Map<String, String> = emptyMap(),
     )
 
+    suspend fun prewarm() = CapsuleInnerTubeXPlayer.prewarm()
+
+    suspend fun refreshAfterStreamRejection(): Boolean =
+        CapsuleInnerTubeXPlayer.refreshAfterStreamRejection()
+
     /**
      * Every normal AUDIO resolve goes through one maintained extraction stack.
      *
@@ -105,6 +110,11 @@ object CapsuleAudioEngine {
     fun clearTrackClientFailures(videoId: String) {
         lastResolvedClientByVideoId.remove(videoId)
         CapsuleInnerTubeXPlayer.clearTrackClientFailures(videoId)
+    }
+
+    fun clearStreamClientFailures() {
+        lastResolvedClientByVideoId.clear()
+        CapsuleInnerTubeXPlayer.clearStreamClientFailures()
     }
 
     fun clearPlaybackSafetyState() {
