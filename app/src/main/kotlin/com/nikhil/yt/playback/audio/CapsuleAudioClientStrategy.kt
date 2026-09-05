@@ -7,7 +7,14 @@ import com.metrolist.innertubex.extraction.strategy.ClientSelectionResult
 import com.metrolist.innertubex.extraction.strategy.ContentAwareFallbackStrategy
 import com.metrolist.innertubex.models.YouTubeClient
 
-/** Keep an explicit choice strict even when the library excludes that client. */
+/**
+ * Keep explicit playback choices strict without breaking generic InnerTubeX calls.
+ *
+ * Capsule playback always supplies [ContentHints.playbackClientOverrideId]. In that
+ * mode the selected profile is authoritative: if the library excludes it, return no
+ * candidates rather than silently rotating identities. Internal library/prewarm calls
+ * that do not carry an override keep the maintained content-aware fallback behavior.
+ */
 internal object CapsuleAudioClientStrategy : ClientFallbackStrategy {
     private val delegate = ContentAwareFallbackStrategy()
 
@@ -17,7 +24,7 @@ internal object CapsuleAudioClientStrategy : ClientFallbackStrategy {
 
     override fun selectClients(request: ClientSelectionRequest): ClientSelectionResult {
         val selection = delegate.selectClients(request)
-        val overrideId = request.hints.playbackClientOverrideId
+        val overrideId = request.hints.playbackClientOverrideId ?: return selection
         return selection.copy(
             candidates = selection.candidates.filter { it.manifest?.id == overrideId },
         )
