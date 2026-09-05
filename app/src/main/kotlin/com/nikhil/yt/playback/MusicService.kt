@@ -27,7 +27,6 @@ import android.content.pm.ServiceInfo
 import android.database.SQLException
 import android.media.AudioFocusRequest
 import android.media.AudioManager
-import android.media.MediaCodecList
 import android.media.audiofx.AudioEffect
 import android.media.audiofx.BassBoost
 import android.media.audiofx.Equalizer
@@ -203,6 +202,7 @@ import com.nikhil.yt.playback.audio.AudioCacheIdentity
 import com.nikhil.yt.playback.audio.AudioFormatChangedException
 import com.nikhil.yt.playback.audio.AudioStreamContract
 import com.nikhil.yt.playback.audio.AudioPlaybackContext
+import com.nikhil.yt.playback.audio.AudioResolveCoordinator
 import com.nikhil.yt.playback.audio.AudioResolvePriority
 import com.nikhil.yt.playback.audio.CapsuleAudioEngine
 import com.nikhil.yt.playback.audio.PlaybackDataCache
@@ -219,14 +219,11 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
-import kotlinx.coroutines.CompletableDeferred
-import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.TimeoutCancellationException
-import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -328,6 +325,11 @@ class MusicService :
         audioQuality, audioStreamPolicy, connectivityManager.isActiveNetworkMetered,
     )
     private val playbackUrlCache = PlaybackDataCache(currentContext = ::playbackContext)
+    private val audioResolveCoordinator =
+        AudioResolveCoordinator<CapsuleAudioEngine.PlaybackData>(
+            scopeProvider = { ioScope },
+            cachedValue = { mediaId -> playbackUrlCache.get(mediaId) },
+        )
 
     /*
      * One resolve per track, shared by everyone who wants it.
@@ -339,77 +341,52 @@ class MusicService :
      * and if the loader arrives before it finished, the loader simply awaits
      * the job that is already running instead of launching a second one.
      */
-    private val inFlightAudioResolves =
-        ConcurrentHashMap<String, Deferred<Result<CapsuleAudioEngine.PlaybackData>>>()
-
     private val songRecoveryJobs = ConcurrentHashMap<String, Job>()
-    private val audioResolveLock = Any()
+    private val songRecoveryLock = Any()
     private val audioResolveStability = PlaybackStabilityGate()
-
-    @Volatile
-    private var audioPolicyGeneration = 0L
-
-    private fun cancelInFlightAudioResolves() {
-        synchronized(audioResolveLock) {
-            inFlightAudioResolves.forEach { (mediaId, job) ->
-                if (inFlightAudioResolves.remove(mediaId, job)) {
-                    job.cancel()
-                }
-            }
-        }
-    }
 
     private fun audioResolveJob(
         mediaId: String,
-    ): Deferred<Result<CapsuleAudioEngine.PlaybackData>> =
-        synchronized(audioResolveLock) {
-            playbackUrlCache.get(mediaId)?.let { return@synchronized CompletableDeferred(Result.success(it)) }
-            val policyGeneration = audioPolicyGeneration
-            inFlightAudioResolves[mediaId]?.takeIf { !it.isCompleted }
-                ?: ioScope
-                    .async {
-                        audioResolveStability.awaitStable {
-                            withContext(Dispatchers.Main.immediate) {
-                                mediaId == player.currentMediaItem?.mediaId ||
-                                    mediaId in upcomingAudioIds()
-                            }
-                        }
-                        val selection = playbackContext()
-                        val priority = withContext(Dispatchers.Main.immediate) {
-                            if (mediaId == player.currentMediaItem?.mediaId) AudioResolvePriority.PLAYBACK
-                            else AudioResolvePriority.PREFETCH
-                        }
-                        val startedAt = System.currentTimeMillis()
-                        Timber.tag(CAPSULE_RESOLVE_TAG).i(
-                            "resolve start id=%s",
-                            mediaId,
-                        )
-                        CapsuleAudioEngine
-                            .playerResponseForPlayback(
-                                mediaId,
-                                audioQuality = selection.quality,
-                                connectivityManager = connectivityManager,
-                                streamPolicy = selection.policy,
-                                avoidCodecs = avoidStreamCodecs,
-                                priority = priority,
-                            )
-                            .also { result ->
-                                if (selection != playbackContext()) throw kotlinx.coroutines.CancellationException("Playback context changed")
-                                result.getOrNull()?.let { cacheResolvedPlayback(mediaId, it, policyGeneration, selection) }
-                                Timber.tag(CAPSULE_RESOLVE_TAG).i(
-                                    "resolve done id=%s ok=%s tookMs=%d",
-                                    mediaId,
-                                    result.isSuccess,
-                                    System.currentTimeMillis() - startedAt,
-                                )
-                            }
+    ) =
+        audioResolveCoordinator.resolve(mediaId) { policyGeneration ->
+            audioResolveStability.awaitStable {
+                withContext(Dispatchers.Main.immediate) {
+                    mediaId == player.currentMediaItem?.mediaId ||
+                        mediaId in upcomingAudioIds()
+                }
+            }
+            val selection = playbackContext()
+            val priority = withContext(Dispatchers.Main.immediate) {
+                if (mediaId == player.currentMediaItem?.mediaId) AudioResolvePriority.PLAYBACK
+                else AudioResolvePriority.PREFETCH
+            }
+            val startedAt = System.currentTimeMillis()
+            Timber.tag(CAPSULE_RESOLVE_TAG).i(
+                "resolve start id=%s",
+                mediaId,
+            )
+            CapsuleAudioEngine
+                .resolvePlayback(
+                    videoId = mediaId,
+                    audioQuality = selection.quality,
+                    connectivityManager = connectivityManager,
+                    streamPolicy = selection.policy,
+                    priority = priority,
+                )
+                .also { result ->
+                    if (selection != playbackContext()) {
+                        throw kotlinx.coroutines.CancellationException("Playback context changed")
                     }
-                    .also { job ->
-                        inFlightAudioResolves[mediaId] = job
-                        job.invokeOnCompletion {
-                            inFlightAudioResolves.remove(mediaId, job)
-                        }
+                    result.getOrNull()?.let {
+                        cacheResolvedPlayback(mediaId, it, policyGeneration, selection)
                     }
+                    Timber.tag(CAPSULE_RESOLVE_TAG).i(
+                        "resolve done id=%s ok=%s tookMs=%d",
+                        mediaId,
+                        result.isSuccess,
+                        System.currentTimeMillis() - startedAt,
+                    )
+                }
         }
 
     /*
@@ -428,7 +405,7 @@ class MusicService :
     }
 
     private fun prefetchUpcomingAudio() {
-        val prefetchGeneration = ++audioPrefetchGeneration
+        val prefetchGeneration = audioResolveCoordinator.nextPrefetchGeneration()
         val upcoming = upcomingAudioIds()
 
         val relevantIds =
@@ -447,17 +424,11 @@ class MusicService :
          * could keep contacting YouTube for tracks no longer near playback.
          * Keep only the current item and the one useful look-ahead item.
          */
-        inFlightAudioResolves.forEach { (mediaId, job) ->
-            if (
-                mediaId !in relevantIds &&
-                inFlightAudioResolves.remove(mediaId, job)
-            ) {
-                job.cancel()
-                Timber.tag(CAPSULE_RESOLVE_TAG).i(
-                    "prefetch cancel stale id=%s",
-                    mediaId,
-                )
-            }
+        audioResolveCoordinator.cancelStaleExcept(relevantIds).forEach { mediaId ->
+            Timber.tag(CAPSULE_RESOLVE_TAG).i(
+                "prefetch cancel stale id=%s",
+                mediaId,
+            )
         }
 
         Timber.tag(CAPSULE_RESOLVE_TAG).i(
@@ -468,7 +439,7 @@ class MusicService :
 
         upcoming.forEach { mediaId ->
             ioScope.launch {
-                if (prefetchGeneration != audioPrefetchGeneration) {
+                if (!audioResolveCoordinator.isPrefetchGenerationCurrent(prefetchGeneration)) {
                     Timber.tag(CAPSULE_RESOLVE_TAG).i(
                         "prefetch skip transient id=%s",
                         mediaId,
@@ -484,7 +455,7 @@ class MusicService :
                     Timber.tag(CAPSULE_RESOLVE_TAG).i("prefetch skip cached id=%s", mediaId)
                     return@launch
                 }
-                if (inFlightAudioResolves.containsKey(mediaId)) {
+                if (audioResolveCoordinator.hasInFlight(mediaId)) {
                     Timber.tag(CAPSULE_RESOLVE_TAG).i("prefetch skip inflight id=%s", mediaId)
                     return@launch
                 }
@@ -543,11 +514,6 @@ class MusicService :
     private val playbackRetryBudget = PlaybackRetryBudget()
     private var streamRetryJob: Job? = null
 
-    @Volatile
-    private var audioPrefetchGeneration: Long = 0L
-    private val avoidStreamCodecs: Set<String> by lazy {
-        if (deviceSupportsMimeType("audio/opus")) emptySet() else setOf("opus")
-    }
     private val mediaOkHttpClient: OkHttpClient by lazy {
         OkHttpClient
             .Builder()
@@ -930,12 +896,10 @@ class MusicService :
                 )
                 streamRetryJob?.cancel()
                 streamRetryJob = null
-                synchronized(audioResolveLock) {
-                    audioPolicyGeneration += 1L
-                    audioPrefetchGeneration += 1L
-                    cancelInFlightAudioResolves()
-                    playbackUrlCache.clear()
-                }
+                audioResolveCoordinator.invalidatePolicy(
+                    invalidatePrefetch = true,
+                    onInvalidate = playbackUrlCache::clear,
+                )
                 playbackRetryBudget.clear()
 
                 withContext(Dispatchers.IO) {
@@ -1716,7 +1680,7 @@ class MusicService :
     private fun scheduleSongRecovery(
         mediaId: String,
         playbackData: CapsuleAudioEngine.PlaybackData? = null,
-    ) = synchronized(audioResolveLock) {
+    ) = synchronized(songRecoveryLock) {
         if (songRecoveryJobs[mediaId]?.isActive == true) return@synchronized
         val job = ioScope.launch(start = CoroutineStart.LAZY) {
             try {
@@ -2341,7 +2305,7 @@ class MusicService :
         clearAutomix()
         currentQueue = EmptyQueue
         queueTitle = null
-        cancelInFlightAudioResolves()
+        audioResolveCoordinator.cancelAll()
         networkRecoveryJob?.cancel()
         networkRecoveryJob = null
         waitingForNetworkConnection.value = false
@@ -4509,7 +4473,7 @@ class MusicService :
             )
             CapsuleAudioEngine.invalidateCachedStreamUrls(currentMediaId)
             playbackUrlCache.remove(currentMediaId)
-            cancelInFlightAudioResolves()
+            audioResolveCoordinator.cancelAll()
             streamRetryJob?.cancel()
             networkRecoveryJob?.cancel()
             waitingForNetworkConnection.value = false
@@ -4531,7 +4495,7 @@ class MusicService :
             streamRetryJob?.cancel()
             networkRecoveryJob?.cancel()
             waitingForNetworkConnection.value = false
-            cancelInFlightAudioResolves()
+            audioResolveCoordinator.cancelAll()
             currentMediaId?.let(playbackUrlCache::remove)
             player.pause()
             return
@@ -4566,8 +4530,7 @@ class MusicService :
             // A rejected/expired URL does not mean the selected client is broken.
             // Refresh with that same explicit client, within the shared retry budget.
             CapsuleAudioEngine.clearTrackClientFailures(currentMediaId)
-            synchronized(audioResolveLock) {
-                inFlightAudioResolves.remove(currentMediaId)?.cancel()
+            audioResolveCoordinator.cancelMedia(currentMediaId) {
                 playbackUrlCache.remove(currentMediaId)
             }
             scheduleStreamRefreshRetry(
@@ -4791,7 +4754,7 @@ class MusicService :
                  * ceiling only catches a stuck job outside that engine.
                  */
                 val loaderWaitStartedAt = System.currentTimeMillis()
-                val alreadyRunning = inFlightAudioResolves.containsKey(mediaId)
+                val alreadyRunning = audioResolveCoordinator.hasInFlight(mediaId)
 
                 val playbackData = runBlocking {
                     runCatching {
@@ -4895,7 +4858,7 @@ class MusicService :
             playback.audioConfig?.loudnessDb ?: format.loudnessDb,
             playback.audioConfig?.perceptualLoudnessDb ?: format.perceptualLoudnessDb,
         )
-        if (generation != audioPolicyGeneration) return
+        if (!audioResolveCoordinator.isPolicyGenerationCurrent(generation)) return
         try {
             val stored = database.format(mediaId).first()
             loudness = TrackLoudness(
@@ -4922,12 +4885,10 @@ class MusicService :
             reportRecoverableException("MusicService", "store resolved audio metadata", failure)
         }
         val resolveContext = currentCoroutineContext()
-        synchronized(audioResolveLock) {
-            if (generation == audioPolicyGeneration) {
-                resolveContext.ensureActive()
-                publishResolvedLoudness(mediaId, loudness)
-                playbackUrlCache.put(mediaId, playback, selection)
-            }
+        audioResolveCoordinator.publishIfCurrent(generation) {
+            resolveContext.ensureActive()
+            publishResolvedLoudness(mediaId, loudness)
+            playbackUrlCache.put(mediaId, playback, selection)
         }
     }
 
@@ -5473,8 +5434,7 @@ class MusicService :
         waitingForNetworkConnection.value = false
         CapsuleAudioEngine.clearTrackClientFailures(mediaId)
         CapsuleAudioEngine.invalidateCachedStreamUrls(mediaId)
-        synchronized(audioResolveLock) {
-            inFlightAudioResolves.remove(mediaId)?.cancel()
+        audioResolveCoordinator.cancelMedia(mediaId) {
             playbackUrlCache.remove(mediaId)
         }
         player.prepare()
@@ -5491,14 +5451,13 @@ class MusicService :
         streamRetryJob = null
         networkRecoveryJob?.cancel()
         networkRecoveryJob = null
-        audioPrefetchGeneration += 1L
+        audioResolveCoordinator.invalidatePrefetches()
         if (reloadCurrentAudio) player.stop()
 
-        synchronized(audioResolveLock) {
-            audioPolicyGeneration += 1L
-            cancelInFlightAudioResolves()
-            playbackUrlCache.clear()
-        }
+        audioResolveCoordinator.invalidatePolicy(
+            invalidatePrefetch = false,
+            onInvalidate = playbackUrlCache::clear,
+        )
         playbackRetryBudget.clear()
         // An explicit selection resets per-track exclusions, not the global
         // bot/rate-limit cooldown or the deterministic QuickJS session breaker.
@@ -5620,14 +5579,6 @@ class MusicService :
             }
     }
 
-    private fun deviceSupportsMimeType(mimeType: String): Boolean {
-        return runCatching {
-            val codecList = MediaCodecList(MediaCodecList.ALL_CODECS)
-            codecList.codecInfos.any { info ->
-                !info.isEncoder && info.supportedTypes.any { it.equals(mimeType, ignoreCase = true) }
-            }
-        }.getOrDefault(false)
-    }
 
     private fun createMediaSourceFactory(): MediaSource.Factory {
         val dataSourceFactory = createDataSourceFactory()
