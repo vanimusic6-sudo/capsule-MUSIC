@@ -2,6 +2,7 @@ package com.nikhil.yt.playback.audio
 
 import com.metrolist.innertubex.extraction.ContentHints
 import com.metrolist.innertubex.extraction.strategy.ClientSelectionRequest
+import com.metrolist.innertubex.extraction.strategy.ContentAwareFallbackStrategy
 import com.metrolist.innertubex.extraction.strategy.PoTokenProviderKind
 import com.nikhil.yt.constants.AudioStreamPolicy
 import org.junit.Assert.assertEquals
@@ -35,6 +36,18 @@ class CapsuleAudioClientStrategyTest {
     }
 
     @Test
+    fun missingOverrideKeepsMaintainedContentAwareFallback() {
+        val request = requestWithoutOverride()
+        val expected = ContentAwareFallbackStrategy().selectClients(request)
+        val actual = CapsuleAudioClientStrategy.selectClients(request)
+
+        assertEquals(
+            expected.candidates.map { it.client.clientName },
+            actual.candidates.map { it.client.clientName },
+        )
+    }
+
+    @Test
     fun legacyPoliciesStillResolveToVisionOS() {
         AudioStreamPolicy.entries.filterNot { it.isUserSelectable }.forEach { policy ->
             val result = CapsuleAudioClientStrategy.selectClients(request(policy.normalizedForPlayback()))
@@ -44,6 +57,14 @@ class CapsuleAudioClientStrategyTest {
 
     private fun request(policy: AudioStreamPolicy) = ClientSelectionRequest(
         hints = ContentHints(playbackClientOverrideId = policy.playbackClientOverrideId),
+        authenticated = false,
+        availablePoTokenProviders = setOf(PoTokenProviderKind.WEB_BOTGUARD),
+        javaScriptRuntimeAvailable = true,
+        webViewAvailable = true,
+    )
+
+    private fun requestWithoutOverride() = ClientSelectionRequest(
+        hints = ContentHints(),
         authenticated = false,
         availablePoTokenProviders = setOf(PoTokenProviderKind.WEB_BOTGUARD),
         javaScriptRuntimeAvailable = true,
