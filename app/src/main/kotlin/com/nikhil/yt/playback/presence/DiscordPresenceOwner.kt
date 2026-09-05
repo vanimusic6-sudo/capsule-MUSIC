@@ -62,6 +62,26 @@ internal class DiscordPresenceOwner(
         }
     }
 
+    fun restart() {
+        scopeProvider().launch {
+            try {
+                reconcileMutex.withLock {
+                    val enabled = enabledProvider()
+                    val token = tokenProvider().trim()
+                    if (!enabled || token.isBlank()) {
+                        stopLocked()
+                        return@withLock
+                    }
+                    stopLocked()
+                    startLocked(token)
+                }
+            } catch (error: Throwable) {
+                if (error is kotlinx.coroutines.CancellationException) throw error
+                onFailure("restart Discord presence", error)
+            }
+        }
+    }
+
     suspend fun reconcile() {
         reconcile(
             enabled = enabledProvider(),
@@ -84,26 +104,10 @@ internal class DiscordPresenceOwner(
                 )
             ) {
                 DiscordPresenceReconcileAction.KEEP -> Unit
-
                 DiscordPresenceReconcileAction.STOP -> stopLocked()
-
                 DiscordPresenceReconcileAction.RESTART -> {
                     stopLocked()
-                    try {
-                        DiscordPresenceManager.start(
-                            context = appContext,
-                            token = normalizedToken,
-                            songProvider = songProvider,
-                            positionProvider = positionProvider,
-                            isPausedProvider = isPausedProvider,
-                            intervalProvider = intervalProvider,
-                        )
-                        activeToken = normalizedToken
-                    } catch (error: Throwable) {
-                        if (error is kotlinx.coroutines.CancellationException) throw error
-                        activeToken = null
-                        onFailure("start Discord presence", error)
-                    }
+                    startLocked(normalizedToken)
                 }
             }
         }
@@ -116,6 +120,24 @@ internal class DiscordPresenceOwner(
         } catch (error: Throwable) {
             if (error is kotlinx.coroutines.CancellationException) throw error
             onFailure("stop Discord presence", error)
+        }
+    }
+
+    private fun startLocked(token: String) {
+        try {
+            DiscordPresenceManager.start(
+                context = appContext,
+                token = token,
+                songProvider = songProvider,
+                positionProvider = positionProvider,
+                isPausedProvider = isPausedProvider,
+                intervalProvider = intervalProvider,
+            )
+            activeToken = token
+        } catch (error: Throwable) {
+            if (error is kotlinx.coroutines.CancellationException) throw error
+            activeToken = null
+            onFailure("start Discord presence", error)
         }
     }
 
