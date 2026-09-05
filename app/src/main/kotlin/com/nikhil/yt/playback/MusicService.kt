@@ -5743,18 +5743,26 @@ class MusicService :
             ) &&
             !dataStore.get(PauseListenHistoryKey, false)
         ) {
+            // Analytics describes the item that finished, which can already be absent
+            // from the current queue. Do not depend on its asynchronous metadata recovery.
+            val historyMetadata = mediaItem.metadata
+            val historyEvent = Event(
+                songId = mediaItem.mediaId,
+                timestamp = LocalDateTime.now(),
+                playTime = playbackStats.totalPlayTimeMs,
+            )
             database.query {
-                incrementTotalPlayTime(mediaItem.mediaId, playbackStats.totalPlayTimeMs)
                 try {
-                    insert(
-                        Event(
-                            songId = mediaItem.mediaId,
-                            timestamp = LocalDateTime.now(),
-                            playTime = playbackStats.totalPlayTimeMs,
-                        ),
-                    )
+                    if (!recordPlayback(historyEvent, historyMetadata)) {
+                        Timber.tag("MusicService").w(
+                            "Playback history skipped: no metadata for finished item id=%s",
+                            historyEvent.songId,
+                        )
+                    }
                 } catch (error: SQLException) {
-                    reportRecoverableException("MusicService", "insert playback-history event", error)
+                    reportRecoverableException(
+                        "MusicService", "insert playback-history event id=${historyEvent.songId}", error,
+                    )
                 }
             }
 

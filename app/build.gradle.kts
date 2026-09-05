@@ -242,6 +242,7 @@ dependencies {
 
     implementation(libs.timber)
     testImplementation(libs.junit)
+    testImplementation("org.robolectric:robolectric:4.16")
     testImplementation(libs.coroutines.test)
     implementation("com.github.therealbush:translator:1.1.1")
     implementation("androidx.lifecycle:lifecycle-process:2.10.0")
