@@ -101,7 +101,7 @@ fun LyricsScreen(
         while (isActive) {
             position = player.currentPosition.coerceAtLeast(0L)
             duration = player.duration.takeIf { it > 0L } ?: C.TIME_UNSET
-            delay(100)
+            delay(250)
         }
     }
 

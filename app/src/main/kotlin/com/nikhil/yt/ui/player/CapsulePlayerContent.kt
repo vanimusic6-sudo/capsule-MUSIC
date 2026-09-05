@@ -115,6 +115,8 @@ fun CapsulePlayerContent(
     sliderPosition: Long?,
     positionMs: Long,
     durationMs: Long,
+    onSeekPreview: (Long) -> Unit,
+    onSeekFinished: () -> Unit,
     textColor: Color,
     liked: Boolean,
     playerConnection: PlayerConnection,
@@ -220,15 +222,6 @@ fun CapsulePlayerContent(
     val swipeThresholdPx =
         with(density) {
             64.dp.toPx()
-        }
-
-    var localSliderPosition by
-        remember(
-            sliderPosition,
-        ) {
-            mutableStateOf<Long?>(
-                sliderPosition,
-            )
         }
 
     val navigableArtists =
@@ -776,10 +769,8 @@ fun CapsulePlayerContent(
 
             CapsuleThinSlider(
                 value =
-                    (
-                        localSliderPosition
-                            ?: displayPosition
-                    ).toFloat(),
+                    displayPosition
+                        .toFloat(),
                 valueRange =
                     0f..
                         safeDuration
@@ -800,20 +791,12 @@ fun CapsulePlayerContent(
                         alpha = 0.24f,
                     ),
                 onValueChange = {
-                    localSliderPosition =
-                        it.toLong()
+                    onSeekPreview(
+                        it.toLong(),
+                    )
                 },
-                onValueChangeFinished = {
-                    localSliderPosition
-                        ?.let {
-                            playerConnection
-                                .player
-                                .seekTo(it)
-                        }
-
-                    localSliderPosition =
-                        null
-                },
+                onValueChangeFinished =
+                    onSeekFinished,
                 trackHeight =
                     6.dp,
                 thumbRadius =
@@ -838,8 +821,7 @@ fun CapsulePlayerContent(
                 Text(
                     text =
                         makeTimeString(
-                            localSliderPosition
-                                ?: displayPosition,
+                            displayPosition,
                         ),
                     color =
                         secondaryText,

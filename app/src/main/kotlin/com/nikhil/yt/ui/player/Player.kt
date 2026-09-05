@@ -103,8 +103,13 @@ fun BottomSheetPlayer(
     var duration by remember(mediaMetadata?.id) {
         mutableLongStateOf(playerConnection.player.duration)
     }
+    var sliderPosition by remember(mediaMetadata?.id) {
+        mutableStateOf<Long?>(null)
+    }
 
-    LaunchedEffect(mediaMetadata?.id, playbackState, isPlaying) {
+    LaunchedEffect(mediaMetadata?.id, playbackState, isPlaying, sliderPosition) {
+        if (sliderPosition != null) return@LaunchedEffect
+
         while (isActive) {
             position = playerConnection.player.currentPosition.coerceAtLeast(0L)
             duration =
@@ -225,8 +230,19 @@ fun BottomSheetPlayer(
                 CapsulePlayerLyricsHost(
                     showLyrics = showInlineLyrics,
                     mediaMetadata = metadata,
+                    sliderPosition = sliderPosition,
                     position = position,
                     duration = duration,
+                    onSeekPreview = {
+                        sliderPosition = it
+                    },
+                    onSeekFinished = {
+                        sliderPosition?.let {
+                            playerConnection.player.seekTo(it)
+                            position = it
+                        }
+                        sliderPosition = null
+                    },
                     textColor = textColor,
                     liked = currentSongLiked,
                     playerConnection = playerConnection,
@@ -283,8 +299,11 @@ fun BottomSheetPlayer(
 private fun CapsulePlayerLyricsHost(
     showLyrics: Boolean,
     mediaMetadata: MediaMetadata,
+    sliderPosition: Long?,
     position: Long,
     duration: Long,
+    onSeekPreview: (Long) -> Unit,
+    onSeekFinished: () -> Unit,
     textColor: Color,
     liked: Boolean,
     playerConnection: com.nikhil.yt.playback.PlayerConnection,
@@ -362,9 +381,11 @@ private fun CapsulePlayerLyricsHost(
         } else {
             CapsulePlayerContent(
                 mediaMetadata = mediaMetadata,
-                sliderPosition = null,
+                sliderPosition = sliderPosition,
                 positionMs = position,
                 durationMs = duration,
+                onSeekPreview = onSeekPreview,
+                onSeekFinished = onSeekFinished,
                 textColor = textColor,
                 liked = liked,
                 playerConnection = playerConnection,
