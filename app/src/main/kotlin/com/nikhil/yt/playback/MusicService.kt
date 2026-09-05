@@ -165,9 +165,8 @@ import com.nikhil.yt.extensions.toMediaItem
 import com.nikhil.yt.extensions.toEnum
 import com.nikhil.yt.extensions.toPersistQueue
 import com.nikhil.yt.extensions.toQueue
+import com.nikhil.yt.innertube.CapsuleVideoRequestGuard
 import com.nikhil.yt.innertube.YouTube
-import com.nikhil.yt.innertube.YouTubeFailureClassifier
-import com.nikhil.yt.innertube.YouTubeFailureKind
 import com.nikhil.yt.innertube.models.SongItem
 import com.nikhil.yt.innertube.models.WatchEndpoint
 import com.nikhil.yt.lastfm.LastFM
@@ -187,6 +186,7 @@ import com.nikhil.yt.playback.video.CapsulePlaybackMode
 import com.nikhil.yt.playback.video.CapsuleVideoPhase
 import com.nikhil.yt.playback.video.CapsuleVideoPlaybackState
 import com.nikhil.yt.playback.video.CapsuleCacheRoutingDataSource
+import com.nikhil.yt.playback.video.CapsuleVideoStreamInterceptor
 import com.nikhil.yt.playback.video.YouTubeVideoResolver
 import com.nikhil.yt.ui.screens.settings.DiscordPresenceManager
 import com.nikhil.yt.ui.screens.settings.ListenBrainzManager
@@ -487,7 +487,6 @@ class MusicService :
     private var screenInteractive = true
     private var videoSuspendedForScreenOff = false
     private var screenStateReceiverRegistered = false
-    private var videoRequestBackoffUntilMs = 0L
 
     private val screenStateReceiver =
         object : BroadcastReceiver() {
@@ -1285,7 +1284,7 @@ class MusicService :
                     isPausedProvider = { !player.isPlaying },
                     intervalProvider = { getPresenceIntervalMillis(this@MusicService) }
                 )
-                Timber.tag("MusicService").d("Presence manager started with token=$key")
+                Timber.tag("MusicService").d("Presence manager started")
                 lastPresenceToken = key
             } catch (ex: Exception) {
                 Timber.tag("MusicService").e(ex, "Failed to start presence manager")
@@ -4620,17 +4619,25 @@ class MusicService :
         return DataSource.Factory { AudioCacheDataSource(streaming.createDataSource(), offline.createDataSource()) }
     }
 
-    private fun createVideoCacheDataSource(): CacheDataSource.Factory =
-        CacheDataSource
+    private fun createVideoCacheDataSource(): CacheDataSource.Factory {
+        val videoHttpClient =
+            mediaOkHttpClient
+                .newBuilder()
+                .retryOnConnectionFailure(false)
+                .addInterceptor(CapsuleVideoStreamInterceptor())
+                .build()
+
+        return CacheDataSource
             .Factory()
             .setCache(videoCache)
             .setUpstreamDataSourceFactory(
                 DefaultDataSource.Factory(
                     this,
-                    OkHttpDataSource.Factory(mediaOkHttpClient),
+                    OkHttpDataSource.Factory(videoHttpClient),
                 ),
             )
             .setFlags(FLAG_IGNORE_CACHE_ON_ERROR)
+    }
 
     private fun createDataSourceFactory(): DataSource.Factory {
         val routedCacheFactory =
@@ -4694,7 +4701,6 @@ class MusicService :
                                 }
                             }.getOrElse { Result.failure(it) }
                         }.getOrElse { throwable ->
-                            maybeOpenVideoCircuitBreaker(throwable)
                             videoPlaybackState.value =
                                 videoPlaybackState.value.copy(
                                     preferredMode = CapsulePlaybackMode.AUDIO,
@@ -4943,7 +4949,7 @@ class MusicService :
             return
         }
 
-        if (isVideoRequestBackoffActive()) {
+        if (CapsuleVideoRequestGuard.isBlocked()) {
             videoPlaybackState.value =
                 videoPlaybackState.value.copy(
                     preferredMode = CapsulePlaybackMode.VIDEO,
@@ -5028,10 +5034,6 @@ class MusicService :
 
                     val noMatchingVideo =
                         isDefiniteNoVideoMatch(throwable)
-
-                    if (!noMatchingVideo) {
-                        maybeOpenVideoCircuitBreaker(throwable)
-                    }
 
                     Timber.tag("CapsuleVideo").w(
                         throwable,
@@ -5149,9 +5151,6 @@ class MusicService :
     }
 
     private fun restoreAudioFromVideoFailure(message: String) {
-        maybeOpenVideoCircuitBreaker(
-            IllegalStateException(message),
-        )
         restoreOriginalAudioItem(
             failureMessage = message,
             preferredModeAfter = CapsulePlaybackMode.AUDIO,
@@ -5287,47 +5286,6 @@ class MusicService :
             getSystemService(Context.KEYGUARD_SERVICE) as? KeyguardManager
 
         return keyguardManager?.isKeyguardLocked != true
-    }
-
-    private fun canAttemptCapsuleVideoNow(): Boolean =
-        canUseCapsuleVideoForScreen() &&
-            !isVideoRequestBackoffActive()
-
-    private fun isVideoRequestBackoffActive(): Boolean {
-        val until = videoRequestBackoffUntilMs
-        if (until <= 0L) return false
-
-        if (until <= System.currentTimeMillis()) {
-            videoRequestBackoffUntilMs = 0L
-            return false
-        }
-
-        return true
-    }
-
-    private fun maybeOpenVideoCircuitBreaker(throwable: Throwable) {
-        val message =
-            generateSequence(throwable) { it.cause }
-                .mapNotNull { it?.message }
-                .joinToString(" ")
-                .lowercase()
-
-        val classifiedFailure =
-            YouTubeFailureClassifier.classify(text = message)
-        val looksRateLimitedOrBotBlocked =
-            classifiedFailure == YouTubeFailureKind.RATE_LIMITED ||
-                classifiedFailure == YouTubeFailureKind.BOT_CHECK ||
-                "429" in message ||
-                "403" in message
-
-        if (looksRateLimitedOrBotBlocked) {
-            videoRequestBackoffUntilMs =
-                System.currentTimeMillis() + 10 * 60 * 1000L
-
-            Timber.tag("CapsuleVideo").w(
-                "VIDEO request circuit breaker opened for 10 minutes",
-            )
-        }
     }
 
     private fun isDefiniteNoVideoMatch(throwable: Throwable): Boolean {
