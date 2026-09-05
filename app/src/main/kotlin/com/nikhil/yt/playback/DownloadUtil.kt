@@ -31,6 +31,7 @@ import com.nikhil.yt.di.DownloadCache
 import com.nikhil.yt.di.PlayerCache
 import com.nikhil.yt.innertube.YouTube
 import com.nikhil.yt.playback.audio.CapsuleAudioEngine
+import com.nikhil.yt.playback.audio.PlaybackDataCache
 import com.nikhil.yt.utils.StreamClientUtils
 import com.nikhil.yt.utils.enumPreference
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -68,7 +69,7 @@ constructor(
         AudioStreamPolicyKey,
         AudioStreamPolicy.VISIONOS,
     )
-    private val songUrlCache = HashMap<String, Pair<String, Long>>()
+    private val songUrlCache = PlaybackDataCache()
 
     // Download pressure protection. This reacts to transport failures without
     // cycling YouTube client identities or bypassing an explicit challenge.
@@ -84,32 +85,7 @@ constructor(
             .followRedirects(true)
             .followSslRedirects(true)
             .addInterceptor { chain ->
-                val request = chain.request()
-                val host = request.url.host
-                val isYouTubeMediaHost =
-                    host.endsWith("googlevideo.com") ||
-                        host.endsWith("googleusercontent.com") ||
-                        host.endsWith("youtube.com") ||
-                        host.endsWith("youtube-nocookie.com") ||
-                        host.endsWith("ytimg.com")
-
-                if (!isYouTubeMediaHost) return@addInterceptor chain.proceed(request)
-
-                /*
-                 * Downloads must use the headers of the client that actually
-                 * produced this URL. The previous code unconditionally sent an
-                 * ANDROID_VR identity even when the resolver used another
-                 * client, which could turn otherwise valid signed URLs into 403s.
-                 */
-                val clientParam = request.url.queryParameter("c")?.trim().orEmpty()
-                val userAgent = StreamClientUtils.resolveUserAgent(clientParam)
-                val originReferer = StreamClientUtils.resolveOriginReferer(clientParam)
-
-                val builder = request.newBuilder().header("User-Agent", userAgent)
-                originReferer.origin?.let { builder.header("Origin", it) }
-                originReferer.referer?.let { builder.header("Referer", it) }
-
-                chain.proceed(builder.build())
+                chain.proceed(StreamClientUtils.withFallbackHeaders(chain.request()))
             }.build()
     }
 
@@ -138,10 +114,11 @@ constructor(
                 return@Factory dataSpec
             }
 
-            val nowMs = System.currentTimeMillis()
-            val cachedUrl = songUrlCache[mediaId]
-            if (cachedUrl != null && cachedUrl.second > nowMs) {
-                return@Factory dataSpec.withUri(cachedUrl.first.toUri())
+            songUrlCache.get(mediaId)?.let { cached ->
+                return@Factory dataSpec.buildUpon()
+                    .setUri(cached.streamUrl.toUri())
+                    .setHttpRequestHeaders(dataSpec.httpRequestHeaders + cached.streamHeaders)
+                    .build()
             }
 
             val playbackData =
@@ -209,11 +186,11 @@ constructor(
              * owns byte ranges through DataSpec/HTTP Range; mutating a signed
              * GVS query here can invalidate an otherwise valid stream.
              */
-            val expiresAtMs =
-                System.currentTimeMillis() +
-                    playbackData.streamExpiresInSeconds.coerceAtLeast(1) * 1000L
-            songUrlCache[mediaId] = playbackData.streamUrl to expiresAtMs
-            dataSpec.withUri(playbackData.streamUrl.toUri())
+            songUrlCache.put(mediaId, playbackData)
+            dataSpec.buildUpon()
+                .setUri(playbackData.streamUrl.toUri())
+                .setHttpRequestHeaders(dataSpec.httpRequestHeaders + playbackData.streamHeaders)
+                .build()
         }
 
     val downloadNotificationHelper =
@@ -238,6 +215,9 @@ constructor(
                         if (download.state == Download.STATE_FAILED) {
                             songUrlCache.remove(download.request.id)
                             CapsuleAudioEngine.invalidateCachedStreamUrls(download.request.id)
+                            if (finalException != null && CapsuleAudioEngine.isRateLimitedException(finalException)) {
+                                CapsuleAudioEngine.markRateLimitedFailure()
+                            }
                             registerThrottleSignal(finalException)
                         } else if (download.state == Download.STATE_COMPLETED) {
                             clearThrottleSignal()

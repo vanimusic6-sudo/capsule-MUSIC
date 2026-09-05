@@ -37,6 +37,12 @@ object CapsuleAudioEngine {
 
     suspend fun prewarm() = CapsuleInnerTubeXPlayer.prewarm()
 
+    fun playbackBlockedExceptionOrNull(): PlaybackException? = CapsulePlaybackSafety.blockedExceptionOrNull()
+
+    fun markRateLimitedFailure() = CapsulePlaybackSafety.markHttpStatusFailure(429)
+
+    fun isRateLimitedException(error: Throwable): Boolean = CapsulePlaybackSafety.isRateLimitedException(error)
+
     suspend fun refreshAfterStreamRejection(): Boolean =
         CapsuleInnerTubeXPlayer.refreshAfterStreamRejection()
 
@@ -69,7 +75,6 @@ object CapsuleAudioEngine {
                 connectivityManager = connectivityManager,
                 streamPolicy = streamPolicy.normalizedForPlayback(),
             )
-            .onFailure(CapsulePlaybackSafety::observeFailure)
             .map { resolved ->
                 resolved.streamClient
                     .substringBefore('@')
@@ -88,18 +93,21 @@ object CapsuleAudioEngine {
                     streamHeaders = resolved.streamHeaders,
                 )
             }
+            .onFailure(CapsulePlaybackSafety::observeFailure)
     }
 
     /** Metadata-only compatibility request. This never resolves a stream URL. */
     suspend fun playerResponseForMetadata(
         videoId: String,
         playlistId: String? = null,
-    ): Result<PlayerResponse> =
-        CapsuleAnonymousSession.player(
+    ): Result<PlayerResponse> {
+        CapsulePlaybackSafety.blockedExceptionOrNull()?.let { return Result.failure(it) }
+        return CapsuleAnonymousSession.player(
             videoId = videoId,
             client = YouTubeClient.VISIONOS,
             signatureTimestamp = null,
-        )
+        ).onFailure(CapsulePlaybackSafety::observeFailure)
+    }
 
     /**
      * InnerTubeX does not keep Capsule's signed URL cache. The active URL cache

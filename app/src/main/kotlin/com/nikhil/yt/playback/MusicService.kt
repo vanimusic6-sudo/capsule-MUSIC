@@ -196,6 +196,7 @@ import com.nikhil.yt.utils.NetworkConnectivityObserver
 import com.nikhil.yt.utils.StreamClientUtils
 import com.nikhil.yt.utils.SyncUtils
 import com.nikhil.yt.playback.audio.CapsuleAudioEngine
+import com.nikhil.yt.playback.audio.PlaybackDataCache
 import com.nikhil.yt.utils.dataStore
 import com.nikhil.yt.utils.enumPreference
 import com.nikhil.yt.utils.get
@@ -206,6 +207,10 @@ import com.nikhil.yt.utils.reportRecoverableException
 import com.nikhil.yt.ui.widget.updateVeluneWidgetState
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -312,7 +317,7 @@ class MusicService :
         CapsuleVideoQualityKey,
         CapsuleVideoQuality.AUTO,
     )
-    private val playbackUrlCache = ConcurrentHashMap<String, Pair<String, Long>>()
+    private val playbackUrlCache = PlaybackDataCache()
 
     /*
      * One resolve per track, shared by everyone who wants it.
@@ -327,6 +332,7 @@ class MusicService :
     private val inFlightAudioResolves =
         ConcurrentHashMap<String, Deferred<Result<CapsuleAudioEngine.PlaybackData>>>()
 
+    private val songRecoveryJobs = ConcurrentHashMap<String, Job>()
     private val audioResolveLock = Any()
     private val audioResolveStability = PlaybackStabilityGate()
 
@@ -334,9 +340,11 @@ class MusicService :
     private var audioPolicyGeneration = 0L
 
     private fun cancelInFlightAudioResolves() {
-        inFlightAudioResolves.forEach { (mediaId, job) ->
-            if (inFlightAudioResolves.remove(mediaId, job)) {
-                job.cancel()
+        synchronized(audioResolveLock) {
+            inFlightAudioResolves.forEach { (mediaId, job) ->
+                if (inFlightAudioResolves.remove(mediaId, job)) {
+                    job.cancel()
+                }
             }
         }
     }
@@ -345,6 +353,8 @@ class MusicService :
         mediaId: String,
     ): Deferred<Result<CapsuleAudioEngine.PlaybackData>> =
         synchronized(audioResolveLock) {
+            playbackUrlCache.get(mediaId)?.let { return@synchronized CompletableDeferred(Result.success(it)) }
+            val policyGeneration = audioPolicyGeneration
             inFlightAudioResolves[mediaId]?.takeIf { !it.isCompleted }
                 ?: ioScope
                     .async {
@@ -368,6 +378,7 @@ class MusicService :
                                 avoidCodecs = avoidStreamCodecs,
                             )
                             .also { result ->
+                                result.getOrNull()?.let { cacheResolvedPlayback(mediaId, it, policyGeneration) }
                                 Timber.tag(CAPSULE_RESOLVE_TAG).i(
                                     "resolve done id=%s ok=%s tookMs=%d",
                                     mediaId,
@@ -401,10 +412,7 @@ class MusicService :
 
     private fun prefetchUpcomingAudio() {
         val prefetchGeneration = ++audioPrefetchGeneration
-        val policyGeneration = audioPolicyGeneration
         val upcoming = upcomingAudioIds()
-
-        val now = System.currentTimeMillis()
 
         val relevantIds =
             buildSet {
@@ -451,8 +459,7 @@ class MusicService :
                     return@launch
                 }
 
-                val cached = playbackUrlCache[mediaId]
-                if (cached != null && cached.second > now + PREFETCH_FRESHNESS_MS) {
+                if (playbackUrlCache.get(mediaId, PREFETCH_FRESHNESS_MS) != null) {
                     Timber.tag(CAPSULE_RESOLVE_TAG).i("prefetch skip cached id=%s", mediaId)
                     return@launch
                 }
@@ -461,20 +468,8 @@ class MusicService :
                     return@launch
                 }
 
-                val resolved =
-                    runCatching { audioResolveJob(mediaId).await() }
-                        .getOrNull()
-                        ?.getOrNull()
-                        ?: return@launch
-
-                synchronized(audioResolveLock) {
-                    if (policyGeneration == audioPolicyGeneration) {
-                        playbackUrlCache[mediaId] =
-                            resolved.streamUrl to
-                                System.currentTimeMillis() +
-                                (resolved.streamExpiresInSeconds * 1000L)
-                    }
-                }
+                // The shared job publishes the entire result before completing.
+                audioResolveJob(mediaId).await()
             }
         }
     }
@@ -524,15 +519,11 @@ class MusicService :
             }
         }
 
-    private val streamRecoveryState = ConcurrentHashMap<String, Pair<Int, Long>>()
+    private val playbackRetryBudget = PlaybackRetryBudget()
     private var streamRetryJob: Job? = null
 
     @Volatile
     private var audioPrefetchGeneration: Long = 0L
-    @Volatile
-    private var pendingStreamRefreshValidationMediaId: String? = null
-    @Volatile
-    private var refreshValidatedPlayingMediaId: String? = null
     private val avoidStreamCodecs: Set<String> by lazy {
         if (deviceSupportsMimeType("audio/opus")) emptySet() else setOf("opus")
     }
@@ -543,27 +534,7 @@ class MusicService :
             .followRedirects(true)
             .followSslRedirects(true)
             .addInterceptor { chain ->
-                val request = chain.request()
-                val host = request.url.host
-                val isYouTubeMediaHost =
-                    host.endsWith("googlevideo.com") ||
-                        host.endsWith("googleusercontent.com") ||
-                        host.endsWith("youtube.com") ||
-                        host.endsWith("youtube-nocookie.com") ||
-                        host.endsWith("ytimg.com")
-
-                if (!isYouTubeMediaHost) return@addInterceptor chain.proceed(request)
-
-                val clientParam = request.url.queryParameter("c")?.trim().orEmpty()
-
-                val userAgent = StreamClientUtils.resolveUserAgent(clientParam)
-                val originReferer = StreamClientUtils.resolveOriginReferer(clientParam)
-
-                val builder = request.newBuilder().header("User-Agent", userAgent)
-                originReferer.origin?.let { builder.header("Origin", it) }
-                originReferer.referer?.let { builder.header("Referer", it) }
-
-                chain.proceed(builder.build())
+                chain.proceed(StreamClientUtils.withFallbackHeaders(chain.request()))
             }.build()
     }
 
@@ -904,14 +875,7 @@ class MusicService :
             connectivityObserver.networkStatus.collect { isConnected ->
                 isNetworkConnected.value = isConnected
                 if (isConnected && waitingForNetworkConnection.value) {
-                    // Simple auto-play logic like OuterTune
-                    networkRecoveryJob?.cancel()
-                    networkRecoveryJob = null
-                    waitingForNetworkConnection.value = false
-                    if (player.currentMediaItem != null && player.playWhenReady) {
-                        player.prepare()
-                        player.play()
-                    }
+                    if (networkRecoveryJob?.isActive != true) waitOnNetworkError()
                 }
             }
         }
@@ -940,10 +904,13 @@ class MusicService :
                 )
                 streamRetryJob?.cancel()
                 streamRetryJob = null
-                cancelInFlightAudioResolves()
-                playbackUrlCache.clear()
-                streamRecoveryState.clear()
-                clearStreamRefreshGuards()
+                synchronized(audioResolveLock) {
+                    audioPolicyGeneration += 1L
+                    audioPrefetchGeneration += 1L
+                    cancelInFlightAudioResolves()
+                    playbackUrlCache.clear()
+                }
+                playbackRetryBudget.clear()
 
                 withContext(Dispatchers.IO) {
                     CapsuleAudioEngine.onNetworkChanged()
@@ -1569,32 +1536,41 @@ class MusicService :
     }
 
     private fun waitOnNetworkError() {
-        waitingForNetworkConnection.value = true
         networkRecoveryJob?.cancel()
-
+        networkRecoveryJob = null
+        waitingForNetworkConnection.value = false
         val mediaId = player.currentMediaItem?.mediaId ?: return
         if (!player.playWhenReady) return
+        waitingForNetworkConnection.value = true
+        if (!connectivityObserver.isCurrentlyConnected()) return
 
-        /*
-         * A VPN can replace its tunnel quickly enough that Android never
-         * leaves the validated-online state. In that case StateFlow has no
-         * later false -> true edge to wake the old recovery path. Perform one
-         * delayed, guarded retry after the route has had time to settle.
-         */
-        networkRecoveryJob =
-            scope.launch {
-                delay(NETWORK_SETTLE_RETRY_MS)
-                if (
-                    waitingForNetworkConnection.value &&
-                    player.playWhenReady &&
-                    player.currentMediaItem?.mediaId == mediaId &&
-                    connectivityObserver.isCurrentlyConnected()
-                ) {
-                    waitingForNetworkConnection.value = false
-                    player.prepare()
-                    player.play()
-                }
+        val retryDelay = playbackRetryBudget.nextDelayMs(mediaId)
+        if (retryDelay == null || CapsuleAudioEngine.playbackBlockedExceptionOrNull() != null) {
+            waitingForNetworkConnection.value = false
+            player.pause()
+            Timber.tag("MusicService").w("Network recovery stopped for %s; automatic retry budget exhausted or cooldown active", mediaId)
+            return
+        }
+        val index = player.currentMediaItemIndex
+        val position = player.currentPosition
+        networkRecoveryJob = scope.launch {
+            delay(retryDelay)
+            if (!player.playWhenReady || player.currentMediaItem?.mediaId != mediaId ||
+                player.currentMediaItemIndex != index || player.currentPosition != position
+            ) {
+                waitingForNetworkConnection.value = false
+                return@launch
             }
+            if (CapsuleAudioEngine.playbackBlockedExceptionOrNull() != null) {
+                waitingForNetworkConnection.value = false
+                player.pause()
+                return@launch
+            }
+            if (waitingForNetworkConnection.value && connectivityObserver.isCurrentlyConnected()) {
+                waitingForNetworkConnection.value = false
+                player.prepare()
+            }
+        }
     }
 
     private fun skipOnError() {
@@ -1711,6 +1687,44 @@ class MusicService :
             .onFailure { reportException(it) }
     }
 
+    private fun scheduleSongRecovery(
+        mediaId: String,
+        playbackData: CapsuleAudioEngine.PlaybackData? = null,
+    ) = synchronized(audioResolveLock) {
+        if (songRecoveryJobs[mediaId]?.isActive == true) return@synchronized
+        val job = ioScope.launch(start = CoroutineStart.LAZY) {
+            try {
+                audioResolveStability.awaitStable {
+                    withContext(Dispatchers.Main.immediate) { player.currentMediaItem?.mediaId == mediaId }
+                }
+                recoverSong(mediaId, playbackData)
+            } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                throw cancelled
+            } catch (failure: Exception) {
+                reportRecoverableException("MusicService", "recover song metadata", failure)
+            }
+        }
+        songRecoveryJobs[mediaId] = job
+        job.invokeOnCompletion { songRecoveryJobs.remove(mediaId, job) }
+        job.start()
+    }
+
+    private suspend fun cacheRelatedSongs(mediaId: String, songs: List<SongItem>) {
+        if (songs.isEmpty()) return
+        val seed = withContext(Dispatchers.Main.immediate) {
+            player.findNextMediaItemById(mediaId)?.metadata
+        }
+        database.withTransaction {
+            if (hasRelatedSongs(mediaId)) return@withTransaction
+            if (getSongByIdBlocking(mediaId) == null) {
+                insert(seed ?: return@withTransaction)
+            }
+            songs.map(SongItem::toMediaMetadata)
+                .onEach(::insert)
+                .forEach { insert(RelatedSongMap(songId = mediaId, relatedSongId = it.id)) }
+        }
+    }
+
     private suspend fun recoverSong(
         mediaId: String,
         playbackData: CapsuleAudioEngine.PlaybackData? = null
@@ -1722,29 +1736,27 @@ class MusicService :
         val duration = song?.song?.duration?.takeIf { it != -1 }
             ?: mediaMetadata.duration.takeIf { it != -1 }
             ?: (playbackData?.videoDetails ?: CapsuleAudioEngine.playerResponseForMetadata(mediaId)
-                .getOrNull()?.videoDetails)?.lengthSeconds?.toInt()
+                .getOrNull()?.videoDetails)?.lengthSeconds?.toIntOrNull()
             ?: -1
-        database.query {
-            if (song == null) insert(mediaMetadata.copy(duration = duration))
-            else if (song.song.duration == -1) update(song.song.copy(duration = duration))
+        database.withTransaction {
+            val existing = getSongByIdBlocking(mediaId)?.song
+            if (existing == null) insert(mediaMetadata.copy(duration = duration))
+            else if (existing.duration == -1) update(existing.copy(duration = duration))
         }
+        // Automix already fetches these songs. Let it populate the library
+        // before deciding whether a separate metadata request is necessary.
+        val currentAutomix = withContext(Dispatchers.Main.immediate) {
+            automixJob.takeIf { automixSeedMediaId == mediaId }
+        }
+        currentAutomix?.join()
         if (!database.hasRelatedSongs(mediaId)) {
+            CapsuleAudioEngine.playbackBlockedExceptionOrNull()?.let { throw it }
             val relatedEndpoint =
                 YouTube.next(WatchEndpoint(videoId = mediaId)).getOrNull()?.relatedEndpoint
                     ?: return
+            CapsuleAudioEngine.playbackBlockedExceptionOrNull()?.let { throw it }
             val relatedPage = YouTube.related(relatedEndpoint).getOrNull() ?: return
-            database.query {
-                relatedPage.songs
-                    .map(SongItem::toMediaMetadata)
-                    .onEach(::insert)
-                    .map {
-                        RelatedSongMap(
-                            songId = mediaId,
-                            relatedSongId = it.id
-                        )
-                    }
-                    .forEach(::insert)
-            }
+            cacheRelatedSongs(mediaId, relatedPage.songs)
         }
     }
 
@@ -2033,7 +2045,7 @@ class MusicService :
         automixSeedMediaId = null
     }
 
-    private fun refreshAutomixForCurrentMedia(force: Boolean) {
+    private fun refreshAutomixForCurrentMedia() {
         if (!dataStore.get(AutoLoadMoreKey, true)) return
         if (player.repeatMode != REPEAT_MODE_OFF) return
         if (suppressAutoPlayback) return
@@ -2042,7 +2054,7 @@ class MusicService :
         val currentMeta = player.currentMetadata ?: return
         val seedMediaId = currentMeta.id.trim().ifBlank { return }
 
-        if (!force && automixSeedMediaId == seedMediaId && automixItems.value.isNotEmpty() && automixJob?.isActive == true) return
+        if (automixSeedMediaId == seedMediaId && (automixItems.value.isNotEmpty() || automixJob?.isActive == true)) return
 
         automixJob?.cancel()
         automixJob = null
@@ -2056,6 +2068,11 @@ class MusicService :
 
         automixJob = scope.launch {
             try {
+                audioResolveStability.awaitStable {
+                    player.currentMediaItem?.mediaId == seedMediaId &&
+                        automixSeedMediaId == seedMediaId && !suppressAutoPlayback
+                }
+                CapsuleAudioEngine.playbackBlockedExceptionOrNull()?.let { throw it }
                 val nextResult = withContext(Dispatchers.IO) {
                     YouTube.next(WatchEndpoint(videoId = seedMediaId))
                 }
@@ -2088,6 +2105,8 @@ class MusicService :
                                         .orEmpty()
                                 }
                                 .orEmpty()
+
+                        withContext(Dispatchers.IO) { cacheRelatedSongs(seedMediaId, relatedCandidates) }
 
                         val related =
                             relatedCandidates
@@ -2297,7 +2316,6 @@ class MusicService :
         currentQueue = EmptyQueue
         queueTitle = null
         cancelInFlightAudioResolves()
-        clearStreamRefreshGuards()
         networkRecoveryJob?.cancel()
         networkRecoveryJob = null
         waitingForNetworkConnection.value = false
@@ -3754,7 +3772,13 @@ class MusicService :
 
         streamRetryJob?.cancel()
         streamRetryJob = null
+        networkRecoveryJob?.cancel()
+        networkRecoveryJob = null
+        waitingForNetworkConnection.value = false
         audioResolveStability.onSelectionChanged()
+        songRecoveryJobs.forEach { (id, job) ->
+            if (id != mediaItem?.mediaId && songRecoveryJobs.remove(id, job)) job.cancel()
+        }
         prefetchUpcomingAudio()
 
         val transitionedMediaId =
@@ -3842,12 +3866,6 @@ class MusicService :
                 )
         }
 
-    clearStreamRefreshGuards(
-        mediaItem?.mediaId
-            ?.trim()
-            ?.takeIf { it.isNotBlank() }
-            ?: player.currentMediaItem?.mediaId
-    )
 
     crossfadeAudio?.onMediaItemTransition(mediaItem, reason)
 
@@ -3908,7 +3926,7 @@ class MusicService :
 
             val currentId = (mediaItem?.metadata ?: player.currentMetadata)?.id?.trim().orEmpty()
             if (force || (currentId.isNotBlank() && automixSeedMediaId != currentId)) {
-                refreshAutomixForCurrentMedia(force = force)
+                refreshAutomixForCurrentMedia()
             }
         }
     }
@@ -3964,7 +3982,7 @@ class MusicService :
                 clearAutomix()
             } else {
                 if (currentMediaMetadata != null) {
-                    refreshAutomixForCurrentMedia(force = true)
+                    refreshAutomixForCurrentMedia()
                 }
             }
         }
@@ -3987,19 +4005,6 @@ class MusicService :
         trackFailureResetJob = null
     } else if (player.isPlaying && activeMediaId != null) {
         scheduleTrackFailureGuardReset(activeMediaId)
-    }
-    clearStreamRefreshGuards(activeMediaId)
-    if (
-        playbackState == Player.STATE_READY &&
-        player.playWhenReady &&
-        player.isPlaying &&
-        activeMediaId != null &&
-        pendingStreamRefreshValidationMediaId == activeMediaId
-    ) {
-        refreshValidatedPlayingMediaId = activeMediaId
-        pendingStreamRefreshValidationMediaId = null
-        streamRecoveryState.remove(activeMediaId)
-        Timber.tag("MusicService").i("Stream refresh validated and playback resumed for $activeMediaId")
     }
 
     if (playbackState == Player.STATE_IDLE || playbackState == Player.STATE_ENDED) {
@@ -4146,6 +4151,7 @@ class MusicService :
                     player.isPlaying
                 ) {
                     trackFailureGuard.onHealthyPlayback()
+                    playbackRetryBudget.reset(mediaId)
                     Timber.tag("MusicService").i(
                         "Playback failure circuit reset after healthy playback id=%s",
                         mediaId,
@@ -4470,13 +4476,30 @@ class MusicService :
             )
             CapsuleAudioEngine.invalidateCachedStreamUrls(currentMediaId)
             playbackUrlCache.remove(currentMediaId)
-            pendingStreamRefreshValidationMediaId = null
             cancelInFlightAudioResolves()
+            streamRetryJob?.cancel()
+            networkRecoveryJob?.cancel()
+            waitingForNetworkConnection.value = false
 
             Timber.tag("MusicService").w(
                 "YouTube bot-check for $currentMediaId — AUDIO requests cooling down",
             )
 
+            player.pause()
+            return
+        }
+
+        if (httpStatusCode == 429 || CapsuleAudioEngine.isRateLimitedException(error) ||
+            CapsuleAudioEngine.playbackBlockedExceptionOrNull() != null
+        ) {
+            if (httpStatusCode == 429 || CapsuleAudioEngine.isRateLimitedException(error)) {
+                CapsuleAudioEngine.markRateLimitedFailure()
+            }
+            streamRetryJob?.cancel()
+            networkRecoveryJob?.cancel()
+            waitingForNetworkConnection.value = false
+            cancelInFlightAudioResolves()
+            currentMediaId?.let(playbackUrlCache::remove)
             player.pause()
             return
         }
@@ -4501,70 +4524,24 @@ class MusicService :
             }
         }
 
-        if (shouldAttemptStreamRefresh && currentMediaId != null && shouldSkipRedundantStreamRefresh(currentMediaId)) {
-            Timber.tag("MusicService").w(
-                "Skipping redundant stream refresh for $currentMediaId after validated recovery; resuming playback without URL refresh"
-            )
-            player.prepare()
-            player.playWhenReady = true
-            return
-        }
-
-        if (
-            shouldAttemptStreamRefresh &&
-            currentMediaId != null &&
-            markAndCheckRecoveryAllowance(currentMediaId)
-        ) {
-            val failingHttpUrl =
-                playbackUrlCache[currentMediaId]
-                    ?.first
-                    ?.toHttpUrlOrNull()
-
-            val failingStreamClientKey =
-                failingHttpUrl
-                    ?.queryParameter("c")
-                    ?.trim()
-                    ?.takeIf { it.isNotBlank() }
-                    ?.let { clientName ->
-                        failingHttpUrl
-                            .queryParameter("cver")
-                            ?.trim()
-                            ?.takeIf { it.isNotBlank() }
-                            ?.let { clientVersion ->
-                                "$clientName@$clientVersion"
-                            }
-                            ?: clientName
-                    }
-
-            Timber.tag("MusicService").w(
-                "Attempting stream refresh for $currentMediaId " +
-                    "(http=$httpStatusCode, code=${error.errorCode}, " +
-                    "client=${failingStreamClientKey ?: "unknown"})",
-            )
-
-            /*
-             * 403 is scoped to this track + client. 429 opens CapsuleAudioEngine's
-             * global cooldown. Never poison the client for every song.
-             */
-            CapsuleAudioEngine.markStreamClientFailed(
-                videoId = currentMediaId,
-                clientKey = failingStreamClientKey,
-                httpStatusCode = httpStatusCode,
-            )
-            CapsuleAudioEngine.invalidateCachedStreamUrls(currentMediaId)
-            playbackUrlCache.remove(currentMediaId)
-            pendingStreamRefreshValidationMediaId = null
-
-            if (httpStatusCode == 429) {
-                cancelInFlightAudioResolves()
-                player.pause()
+        if (shouldAttemptStreamRefresh && currentMediaId != null) {
+            val retryDelay = playbackRetryBudget.nextDelayMs(currentMediaId)
+            if (retryDelay == null) {
+                handleTerminalPlaybackError()
                 return
             }
-
+            // A rejected/expired URL does not mean the selected client is broken.
+            // Refresh with that same explicit client, within the shared retry budget.
+            CapsuleAudioEngine.clearTrackClientFailures(currentMediaId)
+            synchronized(audioResolveLock) {
+                inFlightAudioResolves.remove(currentMediaId)?.cancel()
+                playbackUrlCache.remove(currentMediaId)
+            }
             scheduleStreamRefreshRetry(
                 mediaId = currentMediaId,
                 refreshCipherConfig = httpStatusCode in setOf(403, 410),
                 retryReason = "http=$httpStatusCode code=${error.errorCode}",
+                retryDelayMs = retryDelay,
             )
             return
         }
@@ -4761,8 +4738,6 @@ class MusicService :
             }
 
             val mediaId = dataSpec.key ?: error("No media id")
-            val policyGeneration = audioPolicyGeneration
-
             val requiredCachedLength =
                 if (dataSpec.length >= 0) {
                     dataSpec.length
@@ -4790,15 +4765,14 @@ class MusicService :
                     downloadCache.isCached(mediaId, dataSpec.position, requiredCachedLength) ||
                         playerCache.isCached(mediaId, dataSpec.position, requiredCachedLength)
                 if (isFullyCached) {
-                    scope.launch(Dispatchers.IO) { recoverSong(mediaId) }
+                    scheduleSongRecovery(mediaId)
                     return@Factory dataSpec
                 }
             }
 
-            playbackUrlCache[mediaId]?.takeIf { it.second > System.currentTimeMillis() }?.let {
-                scope.launch(Dispatchers.IO) { recoverSong(mediaId) }
-                val length = if (dataSpec.length >= 0) minOf(dataSpec.length, CHUNK_LENGTH) else CHUNK_LENGTH
-                return@Factory dataSpec.withUri(it.first.toUri()).subrange(dataSpec.uriPositionOffset, length)
+            playbackUrlCache.get(mediaId)?.let { cached ->
+                scheduleSongRecovery(mediaId, cached)
+                return@Factory resolvedAudioDataSpec(dataSpec, cached)
             }
 
             /*
@@ -4883,94 +4857,65 @@ class MusicService :
                 }
             }
 
-            val nonNullPlayback = requireNotNull(playbackData) {
-                getString(R.string.error_unknown)
-            }
-            run {
-                val format = nonNullPlayback.format
+            scheduleSongRecovery(mediaId, playbackData)
+            return@Factory resolvedAudioDataSpec(dataSpec, playbackData)
+        }
+    }
 
-                /*
-                 * Loudness arrives in two places and not every client fills
-                 * both. VISIONOS, which currently serves every track, omits
-                 * playerConfig.audioConfig entirely, so normalization was
-                 * silently doing nothing on every single song. The selected
-                 * format usually carries its own loudnessDb, so use that
-                 * whenever the player-level value is missing.
-                 */
-                val responseLoudnessDb =
-                    nonNullPlayback.audioConfig?.loudnessDb ?: format.loudnessDb
-                val responsePerceptualLoudnessDb =
-                    nonNullPlayback.audioConfig?.perceptualLoudnessDb
-                        ?: format.perceptualLoudnessDb
-                val storedLoudness =
-                    if (
-                        responseLoudnessDb == null &&
-                        responsePerceptualLoudnessDb == null
-                    ) {
-                        runBlocking(Dispatchers.IO) {
-                            database.format(mediaId).first()
-                        }
-                    } else {
-                        null
-                    }
-                val loudnessDb =
-                    responseLoudnessDb
-                        ?: freshlyResolvedLoudness[mediaId]?.loudnessDb
-                        ?: storedLoudness?.loudnessDb
-                val perceptualLoudnessDb =
-                    responsePerceptualLoudnessDb
-                        ?: freshlyResolvedLoudness[mediaId]?.perceptualLoudnessDb
-                        ?: storedLoudness?.perceptualLoudnessDb
+    private fun resolvedAudioDataSpec(
+        dataSpec: androidx.media3.datasource.DataSpec,
+        playback: CapsuleAudioEngine.PlaybackData,
+    ): androidx.media3.datasource.DataSpec {
+        val length = if (dataSpec.length >= 0) minOf(dataSpec.length, CHUNK_LENGTH) else CHUNK_LENGTH
+        return dataSpec.buildUpon()
+            .setUri(playback.streamUrl.toUri())
+            .setHttpRequestHeaders(dataSpec.httpRequestHeaders + playback.streamHeaders)
+            .build()
+            .subrange(0, length)
+    }
 
-                publishResolvedLoudness(
-                    mediaId = mediaId,
-                    loudness =
-                        TrackLoudness(
-                            loudnessDb = loudnessDb,
-                            perceptualLoudnessDb = perceptualLoudnessDb,
-                        ),
-                )
-
-                Timber.tag("AudioNormalization").d("Storing format for $mediaId with loudnessDb: $loudnessDb, perceptualLoudnessDb: $perceptualLoudnessDb")
-                if (
-                    loudnessDb == null &&
-                    perceptualLoudnessDb == null &&
-                    audioNormalizationEnabled.value
-                ) {
-                    Timber.tag("AudioNormalization").d(
-                        "No loudness metadata for %s; keeping unity gain without a second player request",
-                        mediaId,
-                    )
-                }
-
-                database.query {
-                    upsert(
-                        FormatEntity(
-                            id = mediaId,
-                            itag = format.itag,
-                            mimeType = format.mimeType.split(";")[0],
-                            codecs = format.mimeType.split("codecs=")[1].removeSurrounding("\""),
-                            bitrate = format.bitrate,
-                            sampleRate = format.audioSampleRate,
-                            contentLength = format.contentLength ?: C.LENGTH_UNSET.toLong(),
-                            loudnessDb = loudnessDb,
-                            perceptualLoudnessDb = perceptualLoudnessDb,
-                            playbackUrl = nonNullPlayback.playbackTracking?.videostatsPlaybackUrl?.baseUrl
-                        )
-                    )
-                }
-                scope.launch(Dispatchers.IO) { recoverSong(mediaId, nonNullPlayback) }
-
-                val streamUrl = nonNullPlayback.streamUrl
-
-                synchronized(audioResolveLock) {
-                    if (policyGeneration == audioPolicyGeneration) {
-                        playbackUrlCache[mediaId] =
-                            streamUrl to System.currentTimeMillis() + (nonNullPlayback.streamExpiresInSeconds * 1000L)
-                    }
-                }
-                val length = if (dataSpec.length >= 0) minOf(dataSpec.length, CHUNK_LENGTH) else CHUNK_LENGTH
-                return@Factory dataSpec.withUri(streamUrl.toUri()).subrange(dataSpec.uriPositionOffset, length)
+    private suspend fun cacheResolvedPlayback(
+        mediaId: String,
+        playback: CapsuleAudioEngine.PlaybackData,
+        generation: Long,
+    ) {
+        val format = playback.format
+        var loudness = TrackLoudness(
+            playback.audioConfig?.loudnessDb ?: format.loudnessDb,
+            playback.audioConfig?.perceptualLoudnessDb ?: format.perceptualLoudnessDb,
+        )
+        if (generation != audioPolicyGeneration) return
+        try {
+            val stored = database.format(mediaId).first()
+            loudness = TrackLoudness(
+                loudness.loudnessDb ?: stored?.loudnessDb,
+                loudness.perceptualLoudnessDb ?: stored?.perceptualLoudnessDb,
+            )
+            database.upsert(
+                FormatEntity(
+                    id = mediaId,
+                    itag = format.itag,
+                    mimeType = format.mimeType.substringBefore(';'),
+                    codecs = format.mimeType.substringAfter("codecs=", "").removeSurrounding("\""),
+                    bitrate = format.bitrate,
+                    sampleRate = format.audioSampleRate,
+                    contentLength = format.contentLength ?: C.LENGTH_UNSET.toLong(),
+                    loudnessDb = loudness.loudnessDb,
+                    perceptualLoudnessDb = loudness.perceptualLoudnessDb,
+                    playbackUrl = playback.playbackTracking?.videostatsPlaybackUrl?.baseUrl,
+                ),
+            )
+        } catch (cancelled: kotlinx.coroutines.CancellationException) {
+            throw cancelled
+        } catch (failure: Exception) {
+            reportRecoverableException("MusicService", "store resolved audio metadata", failure)
+        }
+        val resolveContext = currentCoroutineContext()
+        synchronized(audioResolveLock) {
+            if (generation == audioPolicyGeneration) {
+                resolveContext.ensureActive()
+                publishResolvedLoudness(mediaId, loudness)
+                playbackUrlCache.put(mediaId, playback)
             }
         }
     }
@@ -5512,11 +5457,15 @@ class MusicService :
         val mediaId = player.currentMediaItem?.mediaId ?: return
         streamRetryJob?.cancel()
         streamRetryJob = null
-        clearStreamRefreshGuards(mediaId)
+        playbackRetryBudget.reset(mediaId)
+        networkRecoveryJob?.cancel()
+        waitingForNetworkConnection.value = false
         CapsuleAudioEngine.clearTrackClientFailures(mediaId)
         CapsuleAudioEngine.invalidateCachedStreamUrls(mediaId)
-        playbackUrlCache.remove(mediaId)
-        pendingStreamRefreshValidationMediaId = mediaId
+        synchronized(audioResolveLock) {
+            inFlightAudioResolves.remove(mediaId)?.cancel()
+            playbackUrlCache.remove(mediaId)
+        }
         player.prepare()
         player.playWhenReady = true
     }
@@ -5539,8 +5488,7 @@ class MusicService :
             cancelInFlightAudioResolves()
             playbackUrlCache.clear()
         }
-        streamRecoveryState.clear()
-        clearStreamRefreshGuards()
+        playbackRetryBudget.clear()
         // An explicit selection resets per-track exclusions, not the global
         // bot/rate-limit cooldown or the deterministic QuickJS session breaker.
         CapsuleAudioEngine.clearStreamClientFailures()
@@ -5560,6 +5508,7 @@ class MusicService :
         mediaId: String,
         refreshCipherConfig: Boolean,
         retryReason: String,
+        retryDelayMs: Long,
     ) {
         val retryPosition = player.currentPosition
         val retryIndex = player.currentMediaItemIndex
@@ -5592,12 +5541,13 @@ class MusicService :
                     }
                 }
 
-                delay(STREAM_RETRY_DELAY_MS)
+                delay(retryDelayMs)
                 if (
                     player.currentMediaItem?.mediaId != mediaId ||
                     player.currentMediaItemIndex != retryIndex ||
                     player.currentPosition != retryPosition ||
-                    player.playWhenReady != retryPlayWhenReady
+                    player.playWhenReady != retryPlayWhenReady ||
+                    CapsuleAudioEngine.playbackBlockedExceptionOrNull() != null
                 ) {
                     Timber.tag("MusicService").i(
                         "Skipping stale stream retry for $mediaId after $retryReason",
@@ -5605,7 +5555,6 @@ class MusicService :
                     return@launch
                 }
 
-                pendingStreamRefreshValidationMediaId = mediaId
                 player.seekTo(retryIndex, retryPosition)
                 player.prepare()
                 player.playWhenReady = retryPlayWhenReady
@@ -5641,35 +5590,6 @@ class MusicService :
                     throwable is SocketTimeoutException ||
                     throwable is SocketException
             }
-    }
-
-    private fun markAndCheckRecoveryAllowance(mediaId: String): Boolean {
-        val now = System.currentTimeMillis()
-        val (count, lastAt) = streamRecoveryState[mediaId] ?: (0 to 0L)
-        val nextCount = if (now - lastAt > 45_000L) 1 else count + 1
-        if (nextCount > MAX_STREAM_RETRIES_PER_TRACK) return false
-        streamRecoveryState[mediaId] = nextCount to now
-        return true
-    }
-
-    private fun shouldSkipRedundantStreamRefresh(mediaId: String): Boolean {
-        if (refreshValidatedPlayingMediaId != mediaId) return false
-        val expiresAt = playbackUrlCache[mediaId]?.second ?: return false
-        if (expiresAt <= System.currentTimeMillis()) {
-            refreshValidatedPlayingMediaId = null
-            return false
-        }
-        return true
-    }
-
-    private fun clearStreamRefreshGuards(activeMediaId: String? = null) {
-        val normalizedActiveMediaId = activeMediaId?.trim()?.takeIf { it.isNotBlank() }
-        if (normalizedActiveMediaId == null || refreshValidatedPlayingMediaId != normalizedActiveMediaId) {
-            refreshValidatedPlayingMediaId = null
-        }
-        if (normalizedActiveMediaId == null || pendingStreamRefreshValidationMediaId != normalizedActiveMediaId) {
-            pendingStreamRefreshValidationMediaId = null
-        }
     }
 
     private fun deviceSupportsMimeType(mimeType: String): Boolean {
@@ -6220,9 +6140,6 @@ class MusicService :
         /* Single tag so a field run can be filtered down to the resolve path. */
         private const val CAPSULE_RESOLVE_TAG = "CapsuleResolve"
 
-        private const val STREAM_RETRY_DELAY_MS = 1_000L
-        private const val MAX_STREAM_RETRIES_PER_TRACK = 3
-        private const val NETWORK_SETTLE_RETRY_MS = 1_500L
         private const val HEALTHY_PLAYBACK_RESET_MS = 5_000L
 
         /* Do not re-resolve a URL that still has this much life left. */

@@ -1117,7 +1117,7 @@ object YouTube {
     }
 
 
-    suspend fun next(endpoint: WatchEndpoint, continuation: String? = null): Result<NextResult> = runCatching {
+    suspend fun next(endpoint: WatchEndpoint, continuation: String? = null): Result<NextResult> = runCatchingCancellable {
         val response = innerTube.next(
             WEB_REMIX,
             endpoint.videoId,
@@ -1143,7 +1143,7 @@ object YouTube {
 
         // load automix items
         playlistPanelRenderer.contents.lastOrNull()?.automixPreviewVideoRenderer?.content?.automixPlaylistVideoRenderer?.navigationEndpoint?.watchPlaylistEndpoint?.let { watchPlaylistEndpoint ->
-            return@runCatching next(watchPlaylistEndpoint).getOrThrow().let { result ->
+            return@runCatchingCancellable next(watchPlaylistEndpoint).getOrThrow().let { result ->
                 result.copy(
                     title = title,
                     items = songs + result.items,
@@ -1170,7 +1170,7 @@ object YouTube {
         response.contents?.sectionListRenderer?.contents?.firstOrNull()?.musicDescriptionShelfRenderer?.description?.runs?.firstOrNull()?.text
     }
 
-    suspend fun related(endpoint: BrowseEndpoint): Result<RelatedPage> = runCatching {
+    suspend fun related(endpoint: BrowseEndpoint): Result<RelatedPage> = runCatchingCancellable {
         val response = innerTube.browse(WEB_REMIX, endpoint.browseId).body<BrowseResponse>()
         val songs = mutableListOf<SongItem>()
         val albums = mutableListOf<AlbumItem>()
@@ -1282,3 +1282,9 @@ fun String.toHighResThumbnail(): String {
 
     return this
 }
+
+/** Cancellation must not become an ordinary empty recommendation result. */
+internal inline fun <T> runCatchingCancellable(block: () -> T): Result<T> =
+    try { Result.success(block()) }
+    catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
+    catch (failure: Exception) { Result.failure(failure) }

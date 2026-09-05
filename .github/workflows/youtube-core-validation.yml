@@ -8,6 +8,9 @@ on:
       - "app/src/main/kotlin/com/nikhil/yt/extensions/**"
       - "app/src/main/kotlin/com/nikhil/yt/utils/**"
       - "app/src/main/kotlin/com/nikhil/yt/di/**"
+      - "app/src/main/kotlin/com/nikhil/yt/db/**"
+      - "app/build.gradle.kts"
+      - "innertube/build.gradle.kts"
       - "app/src/main/kotlin/com/nikhil/yt/App.kt"
       - "app/src/main/kotlin/com/nikhil/yt/ui/screens/settings/PlayerSettings.kt"
       - "app/src/main/kotlin/com/nikhil/yt/ui/screens/settings/StorageSettings.kt"
@@ -22,11 +25,15 @@ on:
   push:
     branches:
       - main
+      - cleanup/capsule-player-only
     paths:
       - "app/src/main/kotlin/com/nikhil/yt/playback/**"
       - "app/src/main/kotlin/com/nikhil/yt/extensions/**"
       - "app/src/main/kotlin/com/nikhil/yt/utils/**"
       - "app/src/main/kotlin/com/nikhil/yt/di/**"
+      - "app/src/main/kotlin/com/nikhil/yt/db/**"
+      - "app/build.gradle.kts"
+      - "innertube/build.gradle.kts"
       - "app/src/main/kotlin/com/nikhil/yt/App.kt"
       - "app/src/main/kotlin/com/nikhil/yt/ui/screens/settings/PlayerSettings.kt"
       - "app/src/main/kotlin/com/nikhil/yt/ui/screens/settings/StorageSettings.kt"
@@ -88,3 +95,23 @@ jobs:
             :app:assembleUniversalDebug \
             --stacktrace \
             --no-daemon
+
+      - name: Upload test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: youtube-core-test-reports
+          path: |
+            innertube/build/reports/tests/
+            betterlyrics/build/reports/tests/
+            app/build/reports/tests/
+          if-no-files-found: ignore
+          retention-days: 14
+
+      - name: Upload validated debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: capsule-universal-debug
+          path: app/build/outputs/apk/universal/debug/*.apk
+          if-no-files-found: error
+          retention-days: 14

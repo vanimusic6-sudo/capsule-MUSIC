@@ -48,7 +48,7 @@ object CapsuleAnonymousSession {
         client: YouTubeClient,
         signatureTimestamp: Int? = null,
     ): Result<PlayerResponse> =
-        runCatching {
+        runCatchingCancellable {
             prepare()
 
             val playerPoToken =
@@ -127,7 +127,7 @@ object CapsuleAnonymousSession {
     }
 
     private suspend fun fetchVisitorData(): String? =
-        runCatching {
+        runCatchingCancellable {
             Json
                 .parseToJsonElement(
                     innerTube.getSwJsData().bodyAsText().substring(5),

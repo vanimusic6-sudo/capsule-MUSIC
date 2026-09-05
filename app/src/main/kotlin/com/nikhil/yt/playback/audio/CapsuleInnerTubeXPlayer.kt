@@ -161,7 +161,10 @@ object CapsuleInnerTubeXPlayer {
     suspend fun prewarm() {
         // Capture/create the bundle under the same lock as playback so a
         // preference collector cannot close the transport during extraction.
-        val preparation = resolveMutex.withLock { bundle().prewarm.start() }
+        val preparation = resolveMutex.withLock {
+            if (CapsulePlaybackSafety.blockedExceptionOrNull() != null) return
+            bundle().prewarm.start()
+        }
         try {
             preparation.await()
         } catch (cancelled: CancellationException) {
@@ -173,7 +176,10 @@ object CapsuleInnerTubeXPlayer {
     }
 
     suspend fun refreshAfterStreamRejection(): Boolean =
-        resolveMutex.withLock { bundle().cipherService.refreshAfterStreamRejection() }
+        resolveMutex.withLock {
+            CapsulePlaybackSafety.blockedExceptionOrNull()?.let { throw it }
+            bundle().cipherService.refreshAfterStreamRejection()
+        }
 
     suspend fun playerResponseForPlayback(
         videoId: String,
@@ -204,6 +210,7 @@ object CapsuleInnerTubeXPlayer {
             val stream =
                 withTimeout(ENGINE_RESOLVE_TIMEOUT_MS) {
                     resolveMutex.withLock {
+                        CapsulePlaybackSafety.blockedExceptionOrNull()?.let { throw it }
                         // Check after waiting: an earlier queued web resolve may
                         // have opened the breaker while this request was waiting.
                         checkCipherSession(playbackClientOverrideId)
@@ -228,12 +235,21 @@ object CapsuleInnerTubeXPlayer {
                             videoId,
                             playbackClientOverrideId,
                         )
-                        extractDirectStream(
-                            extractionBundle = extractionBundle,
-                            videoId = videoId,
-                            hints = hints,
-                            audioQuality = resolvedQuality,
-                        )
+                        try {
+                            extractDirectStream(
+                                extractionBundle = extractionBundle,
+                                videoId = videoId,
+                                hints = hints,
+                                audioQuality = resolvedQuality,
+                            )
+                        } catch (cancelled: CancellationException) {
+                            throw cancelled
+                        } catch (failure: Exception) {
+                            // Trip before releasing the lock so a queued download
+                            // or prefetch cannot start another player request.
+                            CapsulePlaybackSafety.observeFailure(failure)
+                            throw failure
+                        }
                     }
                 }
 

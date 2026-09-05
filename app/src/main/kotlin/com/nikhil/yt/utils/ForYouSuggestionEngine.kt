@@ -14,6 +14,9 @@ import com.nikhil.yt.innertube.models.filterExplicit
 import com.nikhil.yt.innertube.models.filterVideo
 import com.nikhil.yt.innertube.models.SongItem
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import java.time.LocalTime
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -35,11 +38,6 @@ class ForYouSuggestionEngine @Inject constructor(
 
     companion object {
         const val MAX_SUGGESTIONS = 50
-        private const val PLAY_WEIGHT = 2.0f
-        private const val SKIP_PENALTY = 3.0f
-        private const val LIKED_BONUS = 5.0f
-        private const val RECENCY_BONUS = 1.5f
-        private const val TIME_OF_DAY_BONUS = 1.3f
         private val MORNING = 6..11
         private val AFTERNOON = 12..17
         private val EVENING = 18..21
@@ -69,27 +67,14 @@ class ForYouSuggestionEngine @Inject constructor(
         recentIds: Set<String>,
         timeOfDay: String
     ): Float {
-        val playTime = song.song.totalPlayTime.toFloat()
-        val skipCount = skipMap[song.id]?.skipCount?.toFloat() ?: 0f
-        val isLiked = song.id in likedIds
-        val isRecent = song.id in recentIds
-
-        var score = playTime * PLAY_WEIGHT
-        score -= skipCount * SKIP_PENALTY
-        if (isLiked) score += LIKED_BONUS
-        if (isRecent) score += RECENCY_BONUS
-
-        // Time of day boost — morning = upbeat, night = chill
-        // We can't detect tempo from local data so we just boost
-        // recently discovered songs at certain times
-        val hourBonus = when (timeOfDay) {
-            "morning" -> if (isRecent) TIME_OF_DAY_BONUS else 1.0f
-            "night" -> if (isLiked) TIME_OF_DAY_BONUS else 1.0f
-            else -> 1.0f
-        }
-        score *= hourBonus
-
-        return score.coerceAtLeast(0f)
+        return RecommendationScore.calculate(
+            totalPlayTimeMs = song.song.totalPlayTime,
+            durationSeconds = song.song.duration,
+            skipCount = skipMap[song.id]?.skipCount ?: 0,
+            liked = song.id in likedIds,
+            recent = song.id in recentIds,
+            timeOfDay = timeOfDay,
+        )
     }
 
     /**
@@ -125,6 +110,7 @@ class ForYouSuggestionEngine @Inject constructor(
         val seenIds = mutableSetOf<String>()
 
         for (seed in seedSongs) {
+            currentCoroutineContext().ensureActive()
             if (suggestions.size >= MAX_SUGGESTIONS) break
             try {
                 val endpoint = YouTube.next(
@@ -142,6 +128,8 @@ class ForYouSuggestionEngine @Inject constructor(
 
                 suggestions.addAll(filtered)
                 seenIds.addAll(filtered.map { it.id })
+            } catch (cancelled: CancellationException) {
+                throw cancelled
             } catch (error: Exception) {
                 reportRecoverableException("ForYou", "load artist radio suggestions", error)
             }
@@ -168,6 +156,8 @@ class ForYouSuggestionEngine @Inject constructor(
 
                         suggestions.addAll(filtered)
                     }
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
                 } catch (error: Exception) {
                     reportRecoverableException("ForYou", "load liked-song radio suggestions", error)
                 }

@@ -10,6 +10,21 @@ import com.metrolist.innertubex.models.YouTubeClient as InnerTubeXClient
 import com.nikhil.yt.innertube.models.YouTubeClient
 
 object StreamClientUtils {
+    /** Preserve the extractor's authoritative headers; fill only missing compatibility defaults. */
+    fun withFallbackHeaders(request: okhttp3.Request): okhttp3.Request {
+        val host = request.url.host
+        val mediaHost = listOf("googlevideo.com", "googleusercontent.com", "youtube.com", "youtube-nocookie.com", "ytimg.com")
+            .any { host == it || host.endsWith(".$it") }
+        if (!mediaHost) return request
+        val client = request.url.queryParameter("c").orEmpty()
+        val defaults = resolveOriginReferer(client)
+        return request.newBuilder().apply {
+            if (request.header("User-Agent") == null) header("User-Agent", resolveUserAgent(client))
+            if (request.header("Origin") == null) defaults.origin?.let { header("Origin", it) }
+            if (request.header("Referer") == null) defaults.referer?.let { header("Referer", it) }
+        }.build()
+    }
+
     fun resolveUserAgent(clientParam: String): String {
         val c = clientParam.trim()
 

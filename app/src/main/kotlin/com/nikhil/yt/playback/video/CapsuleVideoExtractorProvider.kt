@@ -17,6 +17,7 @@ import android.os.Bundle
 import com.nikhil.yt.innertube.video.CapsuleNewPipeExtractor
 import com.nikhil.yt.innertube.video.CapsuleNewPipeFailure
 import com.nikhil.yt.innertube.video.CapsuleNewPipeQuality
+import com.nikhil.yt.innertube.video.VideoExtractionRequests
 
 class CapsuleVideoExtractorProvider : ContentProvider() {
     override fun onCreate(): Boolean {
@@ -29,6 +30,14 @@ class CapsuleVideoExtractorProvider : ContentProvider() {
         arg: String?,
         extras: Bundle?,
     ): Bundle {
+        val requestId = extras?.getString(CapsuleVideoIpc.EXTRA_REQUEST_ID).orEmpty()
+        if (!requestId.matches(Regex("[a-fA-F0-9-]{36}"))) {
+            return CapsuleVideoIpc.failureBundle(CapsuleVideoFailure.UNKNOWN, "Invalid VIDEO request id")
+        }
+        if (method == CapsuleVideoIpc.METHOD_CANCEL) {
+            VideoExtractionRequests.cancel(requestId)
+            return Bundle.EMPTY
+        }
         if (method != CapsuleVideoIpc.METHOD_RESOLVE) {
             return CapsuleVideoIpc.failureBundle(
                 CapsuleVideoFailure.UNKNOWN,
@@ -54,11 +63,13 @@ class CapsuleVideoExtractorProvider : ContentProvider() {
         }
 
         return runCatching {
-            CapsuleNewPipeExtractor.resolve(
-                videoId,
-                CapsuleNewPipeQuality.valueOf(quality.name),
-                muxedOnly,
-            )
+            VideoExtractionRequests.withRequest(requestId, CapsuleVideoIpc.REQUEST_TIMEOUT_MS) {
+                CapsuleNewPipeExtractor.resolve(
+                    videoId,
+                    CapsuleNewPipeQuality.valueOf(quality.name),
+                    muxedOnly,
+                )
+            }
         }.fold(
             onSuccess = { resolved ->
                 CapsuleVideoIpc.successBundle(

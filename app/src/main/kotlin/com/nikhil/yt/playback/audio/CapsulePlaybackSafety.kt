@@ -92,6 +92,9 @@ internal object CapsulePlaybackSafety {
         YouTubeFailureClassifier.classify(text = throwableText(error)) ==
             YouTubeFailureKind.BOT_CHECK
 
+    fun isRateLimitedException(error: Throwable): Boolean =
+        YouTubeFailureClassifier.classify(text = throwableText(error)) == YouTubeFailureKind.RATE_LIMITED
+
     fun clear() {
         breakerUntilMs = 0L
         breakerReason = null
