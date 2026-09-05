@@ -9,7 +9,15 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 
-enum class AudioResolvePriority { PLAYBACK, PREFETCH, DOWNLOAD }
+enum class AudioResolvePriority(internal val schedulingRank: Int) {
+    PLAYBACK(0),
+    PREFETCH(100),
+    DOWNLOAD(200),
+    ;
+
+    internal fun outranks(other: AudioResolvePriority): Boolean =
+        schedulingRank < other.schedulingRank
+}
 
 /** One extraction at a time. Foreground work can interrupt and requeue background work. */
 internal class AudioResolveScheduler {
@@ -67,7 +75,7 @@ internal class AudioResolveScheduler {
 
     private fun dispatch() {
         if (active != null) return
-        val next = waiting.minByOrNull { it.priority.ordinal } ?: return
+        val next = waiting.minByOrNull { it.priority.schedulingRank } ?: return
         waiting.remove(next)
         active = next
         next.turn.complete(Unit)
@@ -75,7 +83,7 @@ internal class AudioResolveScheduler {
 
     private fun preemptBackground() {
         val running = active ?: return
-        if (waiting.any { it.priority < running.priority }) {
+        if (waiting.any { it.priority.outranks(running.priority) }) {
             running.preempted = true
             running.worker?.cancel(Preempted())
         }
