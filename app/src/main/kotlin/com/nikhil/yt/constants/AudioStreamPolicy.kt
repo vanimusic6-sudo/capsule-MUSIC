@@ -2,10 +2,8 @@
  * Capsule MUSIC
  * Safe AUDIO stream policy.
  *
- * Playback is temporarily pinned to visionOS. Current WEB profiles require
- * signature/EJS work that can fail after a rapid-switch burst and leave every
- * following track without a playable URL. The old enum values remain only as
- * preference migration tombstones.
+ * visionOS is the default. Web profiles can be selected explicitly for
+ * playback and diagnostics without silently falling back to another client.
  *
  * GPL-3.0
  */
@@ -24,15 +22,15 @@ enum class AudioStreamPolicy {
     /** Fast direct visionOS compatibility profile. */
     VISIONOS,
 
-    /** Retired until its cipher path is reliable. */
+    /** Explicit embedded web profile. */
     WEB_EMBEDDED,
 
-    /** Retired until its PO-token and cipher path is reliable. */
+    /** YouTube Music web profile; keeps the existing WEB preference value. */
     WEB,
 
     /**
      * Migration tombstones. They are never exposed in normal settings and are
-     * normalized to AUTO_SAFE before playback. TVHTML5 remains here only so an
+     * normalized to VISIONOS before playback. TVHTML5 remains here only so an
      * older saved preference cannot reactivate a profile whose bounded-range
      * transport Capsule does not implement yet.
      */
@@ -43,14 +41,16 @@ enum class AudioStreamPolicy {
     TVHTML5,
     ;
 
-    /** Only the profile proven stable by the current device diagnostics. */
     val isUserSelectable: Boolean
-        get() = this == VISIONOS
+        get() = this == VISIONOS || this == WEB || this == WEB_EMBEDDED
 
-    /**
-     * Never let an existing saved WEB/AUTO preference reactivate the failing
-     * cipher path. A later InnerTubeX upgrade can deliberately reopen profiles
-     * after they pass the same rapid-switch test.
-     */
-    fun normalizedForPlayback(): AudioStreamPolicy = VISIONOS
+    fun normalizedForPlayback(): AudioStreamPolicy =
+        if (isUserSelectable) this else VISIONOS
+
+    val playbackClientOverrideId: String
+        get() = when (normalizedForPlayback()) {
+            WEB -> "WEB_REMIX"
+            WEB_EMBEDDED -> "WEB_EMBEDDED_PLAYER"
+            else -> "VISIONOS"
+        }
 }

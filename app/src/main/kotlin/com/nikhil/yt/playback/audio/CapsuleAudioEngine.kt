@@ -45,8 +45,8 @@ object CapsuleAudioEngine {
      *
      * The legacy parameters remain in the signature temporarily so older call
      * sites and diagnostics do not need a coordinated migration, but they can
-     * no longer route playback into the old resolver. Every stored policy is
-     * currently normalized to visionOS before it reaches InnerTubeX.
+     * no longer route playback into the old resolver. Explicit web choices
+     * reach InnerTubeX unchanged; retired policies normalize to visionOS.
      */
     @Suppress("UNUSED_PARAMETER")
     suspend fun playerResponseForPlayback(

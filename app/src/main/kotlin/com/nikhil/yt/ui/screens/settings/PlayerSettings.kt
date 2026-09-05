@@ -83,15 +83,9 @@ private fun AudioStreamPolicy.localizedTitle(): String =
                 YouTubeClientUpstream.VISIONOS_VERSION,
             )
         AudioStreamPolicy.WEB_EMBEDDED ->
-            stringResource(
-                R.string.audio_stream_policy_web_embedded,
-                YouTubeClientUpstream.WEB_EMBEDDED_VERSION,
-            )
+            stringResource(R.string.audio_stream_policy_web_embedded)
         AudioStreamPolicy.WEB ->
-            stringResource(
-                R.string.audio_stream_policy_web,
-                YouTubeClientUpstream.WEB_VERSION,
-            )
+            stringResource(R.string.audio_stream_policy_web)
         AudioStreamPolicy.MWEB ->
             stringResource(
                 R.string.audio_stream_policy_mweb,
@@ -286,7 +280,7 @@ fun PlayerSettings(
                             ),
                 ) {
                     RadioButton(
-                        selected = value == audioStreamPolicy,
+                        selected = value == audioStreamPolicy.normalizedForPlayback(),
                         onClick = null,
                     )
 

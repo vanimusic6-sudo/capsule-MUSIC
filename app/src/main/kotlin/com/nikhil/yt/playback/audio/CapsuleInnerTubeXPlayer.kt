@@ -56,9 +56,8 @@ import kotlin.time.Clock
  * Capsule's sole modern stream-extraction entry point.
  *
  * Important policy:
- * - every saved policy currently normalizes to the direct visionOS profile;
- * - cipher-dependent WEB profiles stay disabled after rapid switching proved
- *   capable of leaving the shared EJS solver in a repeated failure state;
+ * - visionOS is the default; explicit WEB choices use their own profiles;
+ * - a deterministic EJS failure retires cipher profiles for this session;
  * - only one extraction runs at a time, so swipe bursts cannot create a bank
  *   of simultaneous player requests;
  * - parser/source failures are remembered per song for five minutes, so a bad
@@ -166,15 +165,7 @@ object CapsuleInnerTubeXPlayer {
         streamPolicy: AudioStreamPolicy,
     ): Result<PlaybackData> =
         try {
-            val playbackClientOverrideId = profileOverride(streamPolicy)
-            cipherSessionFailure
-                ?.takeIf { playbackClientOverrideId != "VISIONOS" }
-                ?.let { failure ->
-                    throw IllegalStateException(
-                        "Cipher playback is disabled for this session after EJS failure: $failure",
-                    )
-                }
-
+            val playbackClientOverrideId = streamPolicy.playbackClientOverrideId
             val hints =
                 ContentHints(
                     isUploaded = playlistId == "MLPT" || playlistId?.contains("MLPT") == true,
@@ -195,6 +186,20 @@ object CapsuleInnerTubeXPlayer {
             val stream =
                 withTimeout(ENGINE_RESOLVE_TIMEOUT_MS) {
                     resolveMutex.withLock {
+                        // Check after waiting: an earlier queued web resolve may
+                        // have opened the breaker while this request was waiting.
+                        cipherSessionFailure
+                            ?.takeIf { playbackClientOverrideId != "VISIONOS" }
+                            ?.let { failure ->
+                                throw IllegalStateException(
+                                    "Cipher playback is disabled for this session after EJS failure: $failure",
+                                )
+                            }
+                        Timber.tag(TAG).i(
+                            "Resolving audio id=%s selectedProfile=%s",
+                            videoId,
+                            playbackClientOverrideId,
+                        )
                         extractDirectStream(
                             videoId = videoId,
                             hints = hints,
@@ -368,6 +373,7 @@ object CapsuleInnerTubeXPlayer {
                     configParser = YtConfigParserImpl(httpClient, innerTube, remoteStore, logger),
                     cipherService = cipherService,
                     innerTube = innerTube,
+                    fallbackStrategy = CapsuleAudioClientStrategy,
                     tokenProvider = tokenProvider,
                     logger = logger,
                 )
@@ -455,11 +461,6 @@ object CapsuleInnerTubeXPlayer {
                 InnerTubeLogLevel.ERROR -> Timber.tag(event.tag).e(message)
             }
         }
-
-    private fun profileOverride(policy: AudioStreamPolicy): String {
-        check(policy.normalizedForPlayback() == AudioStreamPolicy.VISIONOS)
-        return "VISIONOS"
-    }
 
     private fun AudioQuality.toInnerTubeX(
         connectivityManager: ConnectivityManager,
