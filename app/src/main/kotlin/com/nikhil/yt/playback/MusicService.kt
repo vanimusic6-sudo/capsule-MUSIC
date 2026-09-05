@@ -191,7 +191,6 @@ import com.nikhil.yt.playback.video.YouTubeVideoResolver
 import com.nikhil.yt.ui.screens.settings.DiscordPresenceManager
 import com.nikhil.yt.ui.screens.settings.ListenBrainzManager
 import com.nikhil.yt.utils.CoilBitmapLoader
-import com.nikhil.yt.utils.DiscordRPC
 import com.nikhil.yt.utils.NetworkConnectivityObserver
 import com.nikhil.yt.utils.StreamClientUtils
 import com.nikhil.yt.utils.SyncUtils
@@ -206,6 +205,7 @@ import com.nikhil.yt.playback.audio.AudioResolveCoordinator
 import com.nikhil.yt.playback.audio.AudioResolvePriority
 import com.nikhil.yt.playback.audio.CapsuleAudioEngine
 import com.nikhil.yt.playback.audio.PlaybackDataCache
+import com.nikhil.yt.playback.presence.DiscordPresenceOwner
 import com.nikhil.yt.utils.dataStore
 import com.nikhil.yt.utils.enumPreference
 import com.nikhil.yt.utils.get
@@ -538,7 +538,24 @@ class MusicService :
     }
     @Volatile
     private var suppressAutoPlayback = false
-    private var lastPresenceToken: String? = null
+    private val discordPresenceOwner by lazy(LazyThreadSafetyMode.NONE) {
+        DiscordPresenceOwner(
+            context = this,
+            scopeProvider = { scope },
+            enabledProvider = { dataStore.get(EnableDiscordRPCKey, true) },
+            tokenProvider = { dataStore.get(DiscordTokenKey, "") },
+            songProvider = {
+                player.currentMetadata?.let { createTransientSongFromMedia(it) }
+                    ?: currentSong.value
+            },
+            positionProvider = { player.currentPosition },
+            isPausedProvider = { !player.isPlaying },
+            intervalProvider = { getPresenceIntervalMillis(this@MusicService) },
+            onFailure = { operation, error ->
+                Timber.tag("MusicService").e(error, operation)
+            },
+        )
+    }
     @Volatile
     private var lastPresenceUpdateTime = 0L
 
@@ -606,9 +623,6 @@ class MusicService :
     private var bassBoost: BassBoost? = null
     private var virtualizer: Virtualizer? = null
     private var loudnessEnhancer: LoudnessEnhancer? = null
-
-    private var discordRpc: DiscordRPC? = null
-    private var lastDiscordUpdateTime = 0L
 
     private var scrobbleManager: com.nikhil.yt.utils.ScrobbleManager? = null
 
@@ -922,9 +936,9 @@ class MusicService :
         currentSong.debounce(300).collect(scope) { song ->
             updateNotification()
             if (song != null && player.playWhenReady && player.playbackState == Player.STATE_READY) {
-                ensurePresenceManager()
+                discordPresenceOwner.ensure()
             } else {
-                discordRpc?.closeRPC()
+                discordPresenceOwner.stop()
             }
         }
 
@@ -1074,43 +1088,14 @@ class MusicService :
         }
 
         dataStore.data
-            .map { it[DiscordTokenKey] to (it[EnableDiscordRPCKey] ?: true) }
+            .map { it[DiscordTokenKey].orEmpty() to (it[EnableDiscordRPCKey] ?: true) }
             .debounce(300)
             .distinctUntilChanged()
             .collectLatest(scope) { (key, enabled) ->
-                val newRpc =
-                    withContext(Dispatchers.IO) {
-                        if (!key.isNullOrBlank() && enabled) {
-                            runCatching { DiscordRPC(this@MusicService, key) }
-                                .onFailure { Timber.tag("MusicService").e(it, "failed to create DiscordRPC client") }
-                                .getOrNull()
-                        } else {
-                            null
-                        }
-                    }
-
-                try {
-                    if (discordRpc?.isRpcRunning() == true) {
-                        withContext(Dispatchers.IO) { discordRpc?.closeRPC() }
-                    }
-                } catch (error: Exception) {
-                    reportRecoverableException("MusicService", "close previous Discord RPC", error)
-                }
-                discordRpc = newRpc
-
-                if (discordRpc != null) {
-                    if (player.playbackState == Player.STATE_READY && player.playWhenReady) {
-                        currentSong.value?.let {
-                            ensurePresenceManager()
-                        }
-                    }
-                } else {
-                    try {
-                        DiscordPresenceManager.stop()
-                    } catch (error: Exception) {
-                        reportRecoverableException("MusicService", "stop disabled Discord presence", error)
-                    }
-                }
+                discordPresenceOwner.reconcile(
+                    enabled = enabled,
+                    configuredToken = key,
+                )
             }
 
         dataStore.data
@@ -1229,66 +1214,6 @@ class MusicService :
         }
         if (!ioScope.isActive) {
             ioScope = CoroutineScope(Dispatchers.IO + scopeJob)
-        }
-    }
-
-    private fun ensurePresenceManager() {
-        if (DiscordPresenceManager.isRunning() && lastPresenceToken != null) return
-
-        scope.launch {
-            if (!dataStore.get(EnableDiscordRPCKey, true)) {
-                if (DiscordPresenceManager.isRunning()) {
-                    Timber.tag("MusicService").d("Discord RPC disabled → stopping presence manager")
-                    try {
-                        DiscordPresenceManager.stop()
-                    } catch (error: Exception) {
-                        reportRecoverableException("MusicService", "stop disabled Discord presence manager", error)
-                    }
-                    lastPresenceToken = null
-                }
-                return@launch
-            }
-
-            val key: String = dataStore.get(DiscordTokenKey, "")
-            if (key.isNullOrBlank()) {
-                if (DiscordPresenceManager.isRunning()) {
-                    Timber.tag("MusicService").d("No Discord token → stopping presence manager")
-                    try {
-                        DiscordPresenceManager.stop()
-                    } catch (error: Exception) {
-                        reportRecoverableException("MusicService", "stop tokenless Discord presence manager", error)
-                    }
-                    lastPresenceToken = null
-                }
-                return@launch
-            }
-
-            if (DiscordPresenceManager.isRunning() && lastPresenceToken == key) {
-                // try {
-                //     if (DiscordPresenceManager.restart()) {
-                //         Timber.tag("MusicService").d("Presence manager restarted with same token")
-                //     }
-                // } catch (ex: Exception) {
-                //     Timber.tag("MusicService").e(ex, "Failed to restart presence manager")
-                // }
-                return@launch
-            }
-
-            try {
-                DiscordPresenceManager.stop()
-                DiscordPresenceManager.start(
-                    context = this@MusicService,
-                    token = key,
-                    songProvider = { player.currentMetadata?.let { createTransientSongFromMedia(it) } ?: currentSong.value },
-                    positionProvider = { player.currentPosition },
-                    isPausedProvider = { !player.isPlaying },
-                    intervalProvider = { getPresenceIntervalMillis(this@MusicService) }
-                )
-                Timber.tag("MusicService").d("Presence manager started")
-                lastPresenceToken = key
-            } catch (ex: Exception) {
-                Timber.tag("MusicService").e(ex, "Failed to start presence manager")
-            }
         }
     }
 
@@ -3934,7 +3859,7 @@ class MusicService :
             if (player.playbackState != STATE_IDLE) {
                 player.addMediaItems(mediaItems.drop(1))
             } else {
-                scope.launch { discordRpc?.stopActivity() }
+                discordPresenceOwner.stop()
             }
         }
     }
@@ -3982,7 +3907,7 @@ class MusicService :
     }
 
     playbackPersistence.scheduleQueueSave()
-    ensurePresenceManager()
+    discordPresenceOwner.ensure()
 }
 
     override fun onPlaybackStateChanged(@Player.State playbackState: Int) {
@@ -4059,7 +3984,7 @@ class MusicService :
         }
     }
 
-    ensurePresenceManager()
+    discordPresenceOwner.ensure()
     scope.launch {
         try {
             val token = withContext(Dispatchers.IO) { dataStore.get(DiscordTokenKey, "") }
@@ -4249,23 +4174,7 @@ class MusicService :
                             )
                             if (!success) {
                                 Timber.tag("MusicService").w("transition immediate presence update failed — attempting restart")
-                                try {
-                                    DiscordPresenceManager.stop()
-                                    DiscordPresenceManager.start(
-                                        this@MusicService,
-                                        dataStore.get(DiscordTokenKey, ""),
-                                        { song },
-                                        { player.currentPosition },
-                                        { !player.isPlaying },
-                                        { getPresenceIntervalMillis(this@MusicService) },
-                                    )
-                                } catch (error: Exception) {
-                                    reportRecoverableException(
-                                        "MusicService",
-                                        "restart Discord presence after transition",
-                                        error,
-                                    )
-                                }
+                                discordPresenceOwner.restart()
                             }
                             try {
                                 val lbEnabled = dataStore.get(ListenBrainzEnabledKey, false)
@@ -4335,18 +4244,7 @@ class MusicService :
                             }
                             if (!success) {
                                 Timber.tag("MusicService").w("isPlaying/mediaTransition immediate presence update failed — restarting manager")
-                                if (DiscordPresenceManager.isRunning()) {
-                                    try {
-                                        DiscordPresenceManager.stop()
-                                        DiscordPresenceManager.restart()
-                                    } catch (error: Exception) {
-                                        reportRecoverableException(
-                                            "MusicService",
-                                            "restart Discord presence after playback-state change",
-                                            error,
-                                        )
-                                    }
-                                }
+                                discordPresenceOwner.restart()
                             }
                             try {
                                 val lbEnabled = withContext(Dispatchers.IO) { dataStore.get(ListenBrainzEnabledKey, false) }
@@ -4378,12 +4276,12 @@ class MusicService :
 
    if (events.containsAny(Player.EVENT_IS_PLAYING_CHANGED)) {
         playbackPersistence.updateProgressCheckpoint(player.isPlaying)
-        ensurePresenceManager()
+        discordPresenceOwner.ensure()
         scrobbleManager?.onPlayerStateChanged(player.isPlaying, player.currentMetadata, duration = player.duration)
     } else if (events.contains(Player.EVENT_MEDIA_ITEM_TRANSITION)) {
-        ensurePresenceManager()
+        discordPresenceOwner.ensure()
     } else {
-        ensurePresenceManager()
+        discordPresenceOwner.ensure()
     }
   }
 
@@ -5854,17 +5752,7 @@ class MusicService :
         } catch (error: Exception) {
             reportRecoverableException("MusicService", "schedule Together shutdown", error)
         }
-        try {
-            DiscordPresenceManager.stop()
-        } catch (error: Exception) {
-            reportRecoverableException("MusicService", "stop Discord presence during destroy", error)
-        }
-        try {
-            discordRpc?.closeRPC()
-        } catch (error: Exception) {
-            reportRecoverableException("MusicService", "close Discord RPC during destroy", error)
-        }
-        discordRpc = null
+        discordPresenceOwner.stop()
         try {
             connectivityObserver.unregister()
         } catch (error: Exception) {
@@ -5925,36 +5813,7 @@ class MusicService :
 
     override fun onTaskRemoved(rootIntent: Intent?) {
         super.onTaskRemoved(rootIntent)
-        try {
-            scope.launch {
-                try {
-                    discordRpc?.stopActivity()
-                } catch (error: Exception) {
-                    reportRecoverableException("MusicService", "stop Discord activity after task removal", error)
-                }
-            }
-        } catch (error: Exception) {
-            reportRecoverableException("MusicService", "schedule Discord activity stop", error)
-        }
-
-        try {
-            if (discordRpc?.isRpcRunning() == true) {
-                try {
-                    discordRpc?.closeRPC()
-                } catch (error: Exception) {
-                    reportRecoverableException("MusicService", "close Discord RPC after task removal", error)
-                }
-            }
-        } catch (error: Exception) {
-            reportRecoverableException("MusicService", "inspect Discord RPC after task removal", error)
-        }
-        discordRpc = null
-        try {
-            DiscordPresenceManager.stop()
-        } catch (error: Exception) {
-            reportRecoverableException("MusicService", "stop Discord presence after task removal", error)
-        }
-        lastPresenceToken = null
+        discordPresenceOwner.stop()
 
         val stopMusicOnTaskClearEnabled = dataStore.get(StopMusicOnTaskClearKey, false)
 
