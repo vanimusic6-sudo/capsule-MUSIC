@@ -49,23 +49,18 @@ object CapsuleAudioEngine {
         CapsuleInnerTubeXPlayer.refreshAfterStreamRejection()
 
     /**
-     * Every normal AUDIO resolve goes through one maintained extraction stack.
+     * Resolve normal AUDIO through the single maintained InnerTubeX extraction stack.
      *
-     * The legacy parameters remain in the signature temporarily so older call
-     * sites and diagnostics do not need a coordinated migration, but they can
-     * no longer route playback into the old resolver. Explicit web choices
-     * reach InnerTubeX unchanged; retired policies normalize to visionOS.
+     * This is the canonical playback API. Only inputs that still affect modern
+     * extraction are accepted here; compatibility-only legacy routing knobs stay
+     * in [playerResponseForPlayback] until older callers have been migrated.
      */
-    @Suppress("UNUSED_PARAMETER")
-    suspend fun playerResponseForPlayback(
+    suspend fun resolvePlayback(
         videoId: String,
         playlistId: String? = null,
         audioQuality: AudioQuality,
         connectivityManager: ConnectivityManager,
-        preferredStreamClient: PlayerStreamClient = PlayerStreamClient.ANDROID_VR,
         streamPolicy: AudioStreamPolicy = AudioStreamPolicy.VISIONOS,
-        networkMetered: Boolean? = null,
-        avoidCodecs: Set<String> = emptySet(),
         priority: AudioResolvePriority = AudioResolvePriority.PLAYBACK,
     ): Result<PlaybackData> {
         CapsulePlaybackSafety.blockedExceptionOrNull()?.let { return Result.failure(it) }
@@ -99,6 +94,37 @@ object CapsuleAudioEngine {
             }
             .onFailure(CapsulePlaybackSafety::observeFailure)
     }
+
+    /**
+     * Source-compatibility wrapper for older call sites and diagnostics.
+     *
+     * [preferredStreamClient], [networkMetered], and [avoidCodecs] no longer
+     * route or alter modern AUDIO extraction. New code must call [resolvePlayback]
+     * so the API surface accurately describes the active playback contract.
+     */
+    @Deprecated(
+        message = "Use resolvePlayback(); legacy stream-client/network/codec routing parameters no longer affect modern AUDIO extraction.",
+    )
+    @Suppress("UNUSED_PARAMETER")
+    suspend fun playerResponseForPlayback(
+        videoId: String,
+        playlistId: String? = null,
+        audioQuality: AudioQuality,
+        connectivityManager: ConnectivityManager,
+        preferredStreamClient: PlayerStreamClient = PlayerStreamClient.ANDROID_VR,
+        streamPolicy: AudioStreamPolicy = AudioStreamPolicy.VISIONOS,
+        networkMetered: Boolean? = null,
+        avoidCodecs: Set<String> = emptySet(),
+        priority: AudioResolvePriority = AudioResolvePriority.PLAYBACK,
+    ): Result<PlaybackData> =
+        resolvePlayback(
+            videoId = videoId,
+            playlistId = playlistId,
+            audioQuality = audioQuality,
+            connectivityManager = connectivityManager,
+            streamPolicy = streamPolicy,
+            priority = priority,
+        )
 
     /** Metadata-only compatibility request. This never resolves a stream URL. */
     suspend fun playerResponseForMetadata(
