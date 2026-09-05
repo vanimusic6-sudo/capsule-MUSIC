@@ -42,4 +42,18 @@ class PlaybackDataCacheTest {
         assertNull(cache.get("one"))
         assertNull(cache.get("three"))
     }
+    @Test fun changedSessionQualityOrRouteCannotReuseAnOldUrl() {
+        var context = "account-a/high/wifi"
+        val cache = PlaybackDataCache(nowMs = { 0L }, currentContext = { context })
+        val startedIn = context
+        cache.put("track", playback(), startedIn)
+        context = "account-b/low/mobile"
+        assertNull(cache.get("track"))
+        // An obsolete request completing after the change must not relabel its URL as new.
+        cache.put("track", playback(), startedIn)
+        assertNull(cache.get("track"))
+        cache.put("track", playback(), context)
+        assertNotNull(cache.get("track"))
+    }
+
 }

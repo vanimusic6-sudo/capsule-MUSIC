@@ -21,7 +21,6 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import timber.log.Timber
-import java.io.FileOutputStream
 import java.io.ObjectInputStream
 import java.io.ObjectOutputStream
 import java.io.Serializable
@@ -178,29 +177,15 @@ internal class PlaybackPersistence(
         syncToDisk: Boolean,
     ) {
         val persistentFile = filesDir.resolve(fileName)
-        val tempFile = filesDir.resolve("$fileName.tmp")
-
         synchronized(stateLock) {
             runCatching {
-                FileOutputStream(tempFile).use { fileOutput ->
-                    ObjectOutputStream(fileOutput).use { output ->
-                        output.writeObject(payload)
-                        output.flush()
-                        if (syncToDisk) fileOutput.fd.sync()
-                    }
-                }
-
-                if (persistentFile.exists() && !persistentFile.delete()) {
-                    error("Could not replace $fileName")
-                }
-                if (!tempFile.renameTo(persistentFile)) {
-                    error("Could not atomically move $fileName")
+                writePlaybackFileAtomically(persistentFile, syncToDisk) { fileOutput ->
+                    // The atomic writer owns the stream and syncs before closing it.
+                    val output = ObjectOutputStream(fileOutput)
+                    output.writeObject(payload)
+                    output.flush()
                 }
             }.onFailure { error ->
-                runCatching { tempFile.delete() }
-                    .onFailure { deleteError ->
-                        Timber.tag(TAG).w(deleteError, "Failed to remove temp file: %s", fileName)
-                    }
                 reportException(error)
             }
         }

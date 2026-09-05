@@ -99,6 +99,8 @@ object PreferenceStore {
         }
     }
 
+    fun snapshot(): Preferences? = _prefs.value
+
     fun <T> get(key: Preferences.Key<T>): T? = _prefs.value?.get(key)
 
     fun launchEdit(

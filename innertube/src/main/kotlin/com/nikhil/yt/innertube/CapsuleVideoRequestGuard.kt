@@ -213,6 +213,9 @@ object CapsuleVideoRequestGuard {
 
         val waitMs = scheduledAtMs - System.currentTimeMillis()
         if (waitMs > 0L) delay(waitMs)
+        if (blockedUntilMs > System.currentTimeMillis()) {
+            throw RequestBlockedException("YouTube VIDEO requests paused after a ${blockReason ?: "block"}")
+        }
     }
 
     private fun refill(now: Long) {

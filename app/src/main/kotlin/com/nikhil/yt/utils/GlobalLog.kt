@@ -66,7 +66,7 @@ object GlobalLog {
     val isEnabled: Boolean
         get() = enabled
 
-    internal fun setEnabled(value: Boolean) {
+    internal fun setEnabled(value: Boolean) = synchronized(lock) {
         enabled = value
         if (!value) clear()
     }
@@ -77,36 +77,32 @@ object GlobalLog {
         val now = System.currentTimeMillis()
         val entry = LogEntry(now, level, tag, message)
 
-        val snapshot =
-            synchronized(lock) {
-                val isBurstDuplicate =
-                    level == lastAcceptedLevel &&
-                        tag == lastAcceptedTag &&
-                        message == lastAcceptedMessage &&
-                        now - lastAcceptedAtMs in 0..DUPLICATE_WINDOW_MS
+        synchronized(lock) {
+            if (!enabled) return
+            val isBurstDuplicate =
+                level == lastAcceptedLevel &&
+                    tag == lastAcceptedTag &&
+                    message == lastAcceptedMessage &&
+                    now - lastAcceptedAtMs in 0..DUPLICATE_WINDOW_MS
 
-                if (isBurstDuplicate) return@synchronized null
+            if (isBurstDuplicate) return
 
-                lastAcceptedLevel = level
-                lastAcceptedTag = tag
-                lastAcceptedMessage = message
-                lastAcceptedAtMs = now
+            lastAcceptedLevel = level
+            lastAcceptedTag = tag
+            lastAcceptedMessage = message
+            lastAcceptedAtMs = now
 
-                buffer.addLast(entry)
-                while (buffer.size > MAX_ENTRIES) {
-                    buffer.removeFirst()
-                }
-
-                val observed = _logs.subscriptionCount.value > 0
-                if (!observed || now - lastPublishedAtMs < PUBLISH_INTERVAL_MS) {
-                    null
-                } else {
-                    lastPublishedAtMs = now
-                    buffer.toList()
-                }
+            buffer.addLast(entry)
+            while (buffer.size > MAX_ENTRIES) {
+                buffer.removeFirst()
             }
 
-        if (snapshot != null) _logs.value = snapshot
+            val observed = _logs.subscriptionCount.value > 0
+            if (observed && now - lastPublishedAtMs >= PUBLISH_INTERVAL_MS) {
+                lastPublishedAtMs = now
+                _logs.value = buffer.toList()
+            }
+        }
     }
 
     /*
@@ -115,7 +111,7 @@ object GlobalLog {
      */
     fun snapshot(): List<LogEntry> {
         if (!enabled) return emptyList()
-        return synchronized(lock) { buffer.toList() }
+        return synchronized(lock) { if (enabled) buffer.toList() else emptyList() }
     }
 
     /*
@@ -123,17 +119,9 @@ object GlobalLog {
      * would show whatever snapshot happened to be current when the last
      * observer went away.
      */
-    fun refresh() {
-        if (!enabled) {
-            _logs.value = emptyList()
-            return
-        }
-
-        val snapshot = synchronized(lock) {
-            lastPublishedAtMs = System.currentTimeMillis()
-            buffer.toList()
-        }
-        _logs.value = snapshot
+    fun refresh() = synchronized(lock) {
+        lastPublishedAtMs = System.currentTimeMillis()
+        _logs.value = if (enabled) buffer.toList() else emptyList()
     }
 
     fun clear() {
@@ -144,12 +132,12 @@ object GlobalLog {
             lastAcceptedTag = null
             lastAcceptedMessage = null
             lastAcceptedAtMs = 0L
+            _logs.value = emptyList()
         }
-        _logs.value = emptyList()
     }
 
     fun format(entry: LogEntry): String {
-        val ts = timeFormat.format(Date(entry.time))
+        val ts = synchronized(timeFormat) { timeFormat.format(Date(entry.time)) }
         val lvl = when (entry.level) {
             android.util.Log.VERBOSE -> "V"
             android.util.Log.DEBUG -> "D"

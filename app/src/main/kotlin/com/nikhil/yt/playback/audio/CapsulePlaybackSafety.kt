@@ -28,6 +28,7 @@ internal object CapsulePlaybackSafety {
     @Volatile
     private var breakerReason: String? = null
 
+    @Synchronized
     fun blockedExceptionOrNull(nowMs: Long = System.currentTimeMillis()): PlaybackException? {
         val until = breakerUntilMs
         if (until <= 0L) return null
@@ -95,6 +96,7 @@ internal object CapsulePlaybackSafety {
     fun isRateLimitedException(error: Throwable): Boolean =
         YouTubeFailureClassifier.classify(text = throwableText(error)) == YouTubeFailureKind.RATE_LIMITED
 
+    @Synchronized
     fun clear() {
         breakerUntilMs = 0L
         breakerReason = null
@@ -104,7 +106,10 @@ internal object CapsulePlaybackSafety {
         trip(reason)
     }
 
+    @Synchronized
     private fun trip(reason: String) {
+        // A local retry during cooldown is not another response from YouTube.
+        if (breakerUntilMs > System.currentTimeMillis()) return
         val until = System.currentTimeMillis() + GLOBAL_BREAKER_MS
         if (until > breakerUntilMs) breakerUntilMs = until
         breakerReason = reason

@@ -13,6 +13,7 @@ import android.os.Build
 import android.widget.Toast
 import android.widget.Toast.LENGTH_SHORT
 import androidx.datastore.preferences.core.edit
+import com.nikhil.yt.playback.audio.playbackAuthState
 import coil3.ImageLoader
 import coil3.PlatformContext
 import coil3.SingletonImageLoader
@@ -38,7 +39,6 @@ import com.nikhil.yt.innertube.YouTube
 import com.nikhil.yt.innertube.models.YouTubeLocale
 import com.nikhil.yt.kugou.KuGou
 import com.nikhil.yt.lastfm.LastFM
-import com.nikhil.yt.playback.audio.CapsuleAudioEngine
 import dagger.hilt.android.HiltAndroidApp
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -98,18 +98,14 @@ class App : Application(), SingletonImageLoader.Factory {
         PreferenceStore.start(this)
         migrateLegacyBrandPreferences()
 
-        /*
-         * PreferenceStore has already primed the first DataStore snapshot at
-         * this point. Seed the playback identity before any resolve can start.
-         * The visitor collector and the first Web resolve share the extractor's
-         * single prewarm job, which already includes BotGuard token preparation.
-         */
-        dataStore[VisitorDataKey]
-            ?.trim()
-            ?.takeIf { it.isNotBlank() && it != "null" }
-            ?.let { storedVisitorData ->
-                YouTube.visitorData = storedVisitorData
+        // Seed all account fields from the same preference transaction before playback starts.
+        PreferenceStore.snapshot()?.let { YouTube.authState = it.playbackAuthState() }
+        applicationScope.launch(Dispatchers.IO) {
+            dataStore.data.map { it.playbackAuthState() }.distinctUntilChanged().collect { state ->
+                YouTube.authState = state
+                CapsuleAnonymousSession.reset()
             }
+        }
 
         applicationScope.launch(Dispatchers.IO) {
             dataStore.data
@@ -248,8 +244,7 @@ class App : Application(), SingletonImageLoader.Factory {
                 .map { it[VisitorDataKey] }
                 .distinctUntilChanged()
                 .collect { visitorData ->
-                    val resolvedVisitorData =
-                        visitorData
+                    visitorData
                             ?.trim()
                             ?.takeIf { it.isNotBlank() && it != "null" }
                             ?: YouTube.visitorData().onFailure {
@@ -260,18 +255,8 @@ class App : Application(), SingletonImageLoader.Factory {
                                 }
                             }
 
-                    YouTube.visitorData = resolvedVisitorData
-
-                    try {
-                        CapsuleAudioEngine.prewarm()
-                    } catch (cancelled: CancellationException) {
-                        throw cancelled
-                    } catch (error: Exception) {
-                        Timber.tag("CapsuleAudio").w(
-                            error,
-                            "InnerTubeX extractor prewarm failed",
-                        )
-                    }
+                    // Publishing through DataStore keeps visitor/account/token updates coherent.
+                    // Web extraction starts its shared prewarm on demand; visionOS needs none.
 
                 }
         }
@@ -300,65 +285,6 @@ class App : Application(), SingletonImageLoader.Factory {
         } catch (e: Exception) {
             reportException(e)
         }
-        applicationScope.launch(Dispatchers.IO) {
-            dataStore.data
-                .map { it[DataSyncIdKey] }
-                .distinctUntilChanged()
-                .collect { dataSyncId ->
-                    YouTube.dataSyncId = dataSyncId?.let {
-                        it.takeIf { !it.contains("||") }
-                            ?: it.takeIf { it.endsWith("||") }?.substringBefore("||")
-                            ?: it.substringAfter("||")
-                    }
-                }
-        }
-        applicationScope.launch(Dispatchers.IO) {
-            dataStore.data
-                .map { it[InnerTubeCookieKey] }
-                .distinctUntilChanged()
-                .collect { cookie ->
-                    try {
-                        YouTube.cookie = cookie
-                    } catch (e: Exception) {
-                        Timber.e("Could not parse cookie. Clearing existing cookie. %s", e.message)
-                        forgetAccount(this@App)
-                    }
-                }
-        }
-        applicationScope.launch(Dispatchers.IO) {
-            dataStore.data
-                .map { it[PoTokenKey] }
-                .distinctUntilChanged()
-                .collect { token ->
-                    YouTube.poToken = token?.takeIf { it.isNotBlank() }
-                }
-        }
-        applicationScope.launch(Dispatchers.IO) {
-            dataStore.data
-                .map { it[PoTokenGvsKey] }
-                .distinctUntilChanged()
-                .collect { token ->
-                    YouTube.poTokenGvs = token?.takeIf { it.isNotBlank() }
-                }
-        }
-        applicationScope.launch(Dispatchers.IO) {
-            dataStore.data
-                .map { it[PoTokenPlayerKey] }
-                .distinctUntilChanged()
-                .collect { token ->
-                    YouTube.poTokenPlayer = token?.takeIf { it.isNotBlank() }
-                }
-        }
-        applicationScope.launch(Dispatchers.IO) {
-            dataStore.data
-                .map { it[WebClientPoTokenEnabledKey] ?: false }
-                .distinctUntilChanged()
-                .collect { enabled ->
-                    YouTube.webClientPoTokenEnabled = enabled
-                    CapsuleAnonymousSession.reset()
-                }
-        }
-
         applicationScope.launch(Dispatchers.IO) {
             dataStore.data
                 .map { it[LastFMSessionKey] }

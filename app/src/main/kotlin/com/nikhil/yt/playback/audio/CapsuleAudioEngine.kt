@@ -35,6 +35,8 @@ object CapsuleAudioEngine {
         val streamHeaders: Map<String, String> = emptyMap(),
     )
 
+    fun prioritizePlayback(mediaId: String) = CapsuleInnerTubeXPlayer.prioritizePlayback(mediaId)
+
     suspend fun prewarm() = CapsuleInnerTubeXPlayer.prewarm()
 
     fun playbackBlockedExceptionOrNull(): PlaybackException? = CapsulePlaybackSafety.blockedExceptionOrNull()
@@ -64,6 +66,7 @@ object CapsuleAudioEngine {
         streamPolicy: AudioStreamPolicy = AudioStreamPolicy.VISIONOS,
         networkMetered: Boolean? = null,
         avoidCodecs: Set<String> = emptySet(),
+        priority: AudioResolvePriority = AudioResolvePriority.PLAYBACK,
     ): Result<PlaybackData> {
         CapsulePlaybackSafety.blockedExceptionOrNull()?.let { return Result.failure(it) }
 
@@ -74,6 +77,7 @@ object CapsuleAudioEngine {
                 audioQuality = audioQuality,
                 connectivityManager = connectivityManager,
                 streamPolicy = streamPolicy.normalizedForPlayback(),
+                priority = priority,
             )
             .map { resolved ->
                 resolved.streamClient

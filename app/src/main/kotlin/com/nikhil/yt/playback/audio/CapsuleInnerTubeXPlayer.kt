@@ -55,6 +55,11 @@ import kotlinx.serialization.json.Json
 import timber.log.Timber
 import java.net.SocketTimeoutException
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicLong
+import com.nikhil.yt.innertube.PlaybackAuthState
+import com.nikhil.yt.innertube.models.YouTubeLocale
+import com.nikhil.yt.utils.GlobalLog
+import java.net.Proxy
 import kotlin.time.Clock
 
 /**
@@ -81,6 +86,9 @@ object CapsuleInnerTubeXPlayer {
 
     private val bundleMutex = Mutex()
     private val resolveMutex = Mutex()
+    private val scheduler = AudioResolveScheduler()
+
+    fun prioritizePlayback(mediaId: String) = scheduler.promote(mediaId)
     private val prewarmScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val streamClientFailures = ConcurrentHashMap<String, FailedStreamClients>()
 
@@ -97,14 +105,13 @@ object CapsuleInnerTubeXPlayer {
     @Volatile
     private var currentBundle: ExtractionBundle? = null
 
-    @Volatile
-    private var networkGeneration: Long = 0L
+    private val networkGeneration = AtomicLong()
 
     private val poTokenGenerator: PoTokenGenerator by lazy {
         PoTokenGenerator(App.instance.applicationContext)
     }
 
-    private val tokenProvider =
+    private fun tokenProvider(auth: PlaybackAuthState) =
         object : TokenProvider {
             override val capabilities =
                 TokenProviderCapabilities(
@@ -117,8 +124,8 @@ object CapsuleInnerTubeXPlayer {
                 visitorData: String,
                 cookie: String?,
             ): PoTokenResult? {
-                val configuredPlayer = YouTube.poTokenPlayer?.trim().orEmpty()
-                val configuredGvs = YouTube.poTokenGvs?.trim().orEmpty()
+                val configuredPlayer = auth.poTokenPlayer?.trim().orEmpty()
+                val configuredGvs = auth.poTokenGvs?.trim().orEmpty()
 
                 if (configuredPlayer.isNotBlank() && configuredGvs.isNotBlank()) {
                     return PoTokenResult(
@@ -187,6 +194,7 @@ object CapsuleInnerTubeXPlayer {
         audioQuality: AudioQuality,
         connectivityManager: ConnectivityManager,
         streamPolicy: AudioStreamPolicy,
+        priority: AudioResolvePriority = AudioResolvePriority.PLAYBACK,
     ): Result<PlaybackData> =
         try {
             val playbackClientOverrideId = streamPolicy.playbackClientOverrideId
@@ -208,53 +216,57 @@ object CapsuleInnerTubeXPlayer {
 
             val resolvedQuality = audioQuality.toInnerTubeX(connectivityManager)
             val stream =
-                withTimeout(ENGINE_RESOLVE_TIMEOUT_MS) {
+                scheduler.run(videoId, priority) {
                     resolveMutex.withLock {
-                        CapsulePlaybackSafety.blockedExceptionOrNull()?.let { throw it }
-                        // Check after waiting: an earlier queued web resolve may
-                        // have opened the breaker while this request was waiting.
-                        checkCipherSession(playbackClientOverrideId)
-                        val extractionBundle = bundle()
-                        if (playbackClientOverrideId != "VISIONOS") {
-                            val waitStartedAt = System.nanoTime()
-                            val preparation = extractionBundle.prewarm.start()
-                            val reused = preparation.isCompleted
-                            val warmed = preparation.await()
+                        withTimeout(ENGINE_RESOLVE_TIMEOUT_MS) {
+                            CapsulePlaybackSafety.blockedExceptionOrNull()?.let { throw it }
+                            // Check after waiting: an earlier queued web resolve may
+                            // have opened the breaker while this request was waiting.
+                            checkCipherSession(playbackClientOverrideId)
+                            val extractionBundle = bundle()
+                            if (playbackClientOverrideId != "VISIONOS") {
+                                val waitStartedAt = System.nanoTime()
+                                val preparation = extractionBundle.prewarm.start()
+                                val reused = preparation.isCompleted
+                                val warmed = preparation.await()
+                                Timber.tag(TAG).i(
+                                    "Web prewarm awaited id=%s selectedProfile=%s reused=%s ok=%s waitedMs=%d",
+                                    videoId,
+                                    playbackClientOverrideId,
+                                    reused,
+                                    warmed.isSuccess,
+                                    (System.nanoTime() - waitStartedAt) / 1_000_000L,
+                                )
+                                checkCipherSession(playbackClientOverrideId)
+                            }
                             Timber.tag(TAG).i(
-                                "Web prewarm awaited id=%s selectedProfile=%s reused=%s ok=%s waitedMs=%d",
+                                "Resolving audio id=%s selectedProfile=%s",
                                 videoId,
                                 playbackClientOverrideId,
-                                reused,
-                                warmed.isSuccess,
-                                (System.nanoTime() - waitStartedAt) / 1_000_000L,
                             )
-                            checkCipherSession(playbackClientOverrideId)
-                        }
-                        Timber.tag(TAG).i(
-                            "Resolving audio id=%s selectedProfile=%s",
-                            videoId,
-                            playbackClientOverrideId,
-                        )
-                        try {
-                            extractDirectStream(
-                                extractionBundle = extractionBundle,
-                                videoId = videoId,
-                                hints = hints,
-                                audioQuality = resolvedQuality,
-                            )
-                        } catch (cancelled: CancellationException) {
-                            throw cancelled
-                        } catch (failure: Exception) {
-                            // Trip before releasing the lock so a queued download
-                            // or prefetch cannot start another player request.
-                            CapsulePlaybackSafety.observeFailure(failure)
-                            throw failure
+                            try {
+                                extractDirectStream(
+                                    extractionBundle = extractionBundle,
+                                    videoId = videoId,
+                                    hints = hints,
+                                    audioQuality = resolvedQuality,
+                                )
+                            } catch (cancelled: CancellationException) {
+                                throw cancelled
+                            } catch (failure: Exception) {
+                                // Trip before releasing the lock so a queued download
+                                // or prefetch cannot start another player request.
+                                CapsulePlaybackSafety.observeFailure(failure)
+                                throw failure
+                            }
                         }
                     }
                 }
 
+            CapsulePlaybackSafety.blockedExceptionOrNull()?.let { throw it }
             Result.success(stream.toPlaybackData())
         } catch (timeout: TimeoutCancellationException) {
+            currentCoroutineContext().ensureActive()
             Timber.tag(TAG).w(
                 timeout,
                 "engine resolve timeout id=%s budgetMs=%d",
@@ -271,7 +283,7 @@ object CapsuleInnerTubeXPlayer {
         } catch (error: StreamResolveException) {
             val cause = error.cause
             Result.failure(
-                if (error.reason == StreamResolveException.Reason.NETWORK && cause != null) {
+                CapsulePlaybackSafety.blockedExceptionOrNull() ?: if (error.reason == StreamResolveException.Reason.NETWORK && cause != null) {
                     cause
                 } else {
                     error
@@ -374,12 +386,12 @@ object CapsuleInnerTubeXPlayer {
 
     fun clearPlaybackState() {
         streamClientFailures.clear()
-        networkGeneration += 1L
+        networkGeneration.incrementAndGet()
     }
 
     fun onNetworkChanged() {
         streamClientFailures.clear()
-        networkGeneration += 1L
+        networkGeneration.incrementAndGet()
     }
 
     private fun failedStreamClients(
@@ -395,29 +407,29 @@ object CapsuleInnerTubeXPlayer {
     }
 
     private suspend fun bundle(): ExtractionBundle {
-        val key = bundleKey()
+        val key = sessionSnapshot()
         currentBundle?.takeIf { it.key == key }?.let { return it }
 
         return bundleMutex.withLock {
-            val lockedKey = bundleKey()
+            val lockedKey = sessionSnapshot()
             currentBundle?.takeIf { it.key == lockedKey }?.let { return@withLock it }
 
             currentBundle?.closeSafely()
 
-            val httpClient = createHttpClient()
+            val httpClient = createHttpClient(lockedKey.proxy)
             val innerTube =
                 InnerTube(httpClient = httpClient, logger = logger).also { playbackInnerTube ->
                     playbackInnerTube.locale =
                         InnerTubeXLocale(
-                            gl = YouTube.locale.gl,
-                            hl = YouTube.locale.hl,
+                            gl = lockedKey.locale.gl,
+                            hl = lockedKey.locale.hl,
                         )
                     playbackInnerTube.replaceSession(
-                        cookie = YouTube.cookie,
-                        visitorData = YouTube.visitorData,
-                        dataSyncId = YouTube.dataSyncId,
+                        cookie = lockedKey.auth.cookie,
+                        visitorData = lockedKey.auth.visitorData,
+                        dataSyncId = lockedKey.auth.dataSyncId,
                         authUser = "0",
-                        useLoginForBrowse = YouTube.useLoginForBrowse,
+                        useLoginForBrowse = lockedKey.useLoginForBrowse,
                     )
                 }
             val remoteStore = RemotePlayerConfigStore(httpClient, configRepository, logger)
@@ -428,7 +440,7 @@ object CapsuleInnerTubeXPlayer {
                     cipherService = cipherService,
                     innerTube = innerTube,
                     fallbackStrategy = CapsuleAudioClientStrategy,
-                    tokenProvider = tokenProvider,
+                    tokenProvider = tokenProvider(lockedKey.auth),
                     logger = logger,
                 )
 
@@ -442,26 +454,25 @@ object CapsuleInnerTubeXPlayer {
         }
     }
 
-    /**
-     * Only non-sensitive hashes are used as the identity key. If account,
-     * visitor, locale, proxy or token configuration changes, the extraction
-     * transport is rebuilt instead of reusing stale session state.
-     */
-    private fun bundleKey(): String =
-        listOf(
-            networkGeneration,
-            YouTube.proxy?.toString().orEmpty(),
-            YouTube.locale.gl,
-            YouTube.locale.hl,
-            YouTube.cookie?.hashCode() ?: 0,
-            YouTube.visitorData?.hashCode() ?: 0,
-            YouTube.dataSyncId?.hashCode() ?: 0,
-            YouTube.useLoginForBrowse,
-            !YouTube.poTokenGvs.isNullOrBlank(),
-            !YouTube.poTokenPlayer.isNullOrBlank(),
-        ).hashCode().toString()
+    // Compare the complete immutable context; never log credentials or use lossy hashCode keys.
+    private data class SessionSnapshot(
+        val generation: Long,
+        val proxy: Proxy?,
+        val locale: YouTubeLocale,
+        val auth: PlaybackAuthState,
+        val useLoginForBrowse: Boolean,
+    ) {
+        override fun toString(): String = "generation=$generation"
+    }
 
-    private fun createHttpClient(): HttpClient =
+    private fun sessionSnapshot() = SessionSnapshot(
+        networkGeneration.get(), YouTube.proxy, YouTube.locale,
+        YouTube.authState, YouTube.useLoginForBrowse,
+    )
+
+    fun sessionIdentity(): Any = sessionSnapshot()
+
+    private fun createHttpClient(selectedProxy: Proxy?): HttpClient =
         HttpClient(OkHttp) {
             expectSuccess = false
             install(ContentNegotiation) {
@@ -478,10 +489,12 @@ object CapsuleInnerTubeXPlayer {
                 connectTimeoutMillis = PER_REQUEST_TIMEOUT_MS
                 socketTimeoutMillis = PER_REQUEST_TIMEOUT_MS
             }
-            YouTube.proxy?.let { configuredProxy ->
-                engine {
-                    proxy = configuredProxy
+            engine {
+                config {
+                    retryOnConnectionFailure(false)
+                    addInterceptor(CapsuleAudioRequestInterceptor())
                 }
+                selectedProxy?.let { proxy = it }
             }
         }
 
@@ -491,6 +504,8 @@ object CapsuleInnerTubeXPlayer {
 
     private val logger =
         InnerTubeLogger { event ->
+            val cipherEvent = event.tag == "EjsChallengeSolver" && "EJS solve failed" in event.message
+            if (!GlobalLog.isEnabled && !cipherEvent) return@InnerTubeLogger
             val details =
                 event.details.entries.joinToString(prefix = " [", postfix = "]") {
                     "${it.key}=${it.value}"
@@ -547,7 +562,20 @@ object CapsuleInnerTubeXPlayer {
                 } else {
                     null
                 },
-            videoDetails = null,
+            videoDetails = mediaMetadata?.let { metadata ->
+                PlayerResponse.VideoDetails(
+                    videoId = videoId,
+                    title = metadata.title,
+                    author = metadata.author,
+                    channelId = metadata.channelId,
+                    lengthSeconds = metadata.durationSeconds?.toString(),
+                    musicVideoType = metadata.musicVideoType,
+                    viewCount = metadata.viewCount,
+                    thumbnail = com.nikhil.yt.innertube.models.Thumbnails(metadata.thumbnails.map {
+                        com.nikhil.yt.innertube.models.Thumbnail(it.url, it.width, it.height)
+                    }),
+                )
+            },
             playbackTracking =
                 playbackTracking?.let {
                     PlayerResponse.PlaybackTracking(
@@ -591,7 +619,7 @@ object CapsuleInnerTubeXPlayer {
     )
 
     private data class ExtractionBundle(
-        val key: String,
+        val key: SessionSnapshot,
         val httpClient: HttpClient,
         val innerTube: InnerTube,
         val cipherService: YouTubeCipherService,
