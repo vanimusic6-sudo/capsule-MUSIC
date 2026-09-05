@@ -14,6 +14,12 @@ internal enum class DiscordPresenceReconcileAction {
     RESTART,
 }
 
+internal enum class DiscordPresenceUpdateResult {
+    SKIPPED,
+    SUCCESS,
+    FAILED,
+}
+
 internal fun decideDiscordPresenceReconcileAction(
     enabled: Boolean,
     configuredToken: String,
@@ -79,6 +85,44 @@ internal class DiscordPresenceOwner(
                 if (error is kotlinx.coroutines.CancellationException) throw error
                 onFailure("restart Discord presence", error)
             }
+        }
+    }
+
+    suspend fun updateNow(
+        song: Song?,
+        positionMs: Long,
+        isPaused: Boolean,
+    ): DiscordPresenceUpdateResult {
+        val enabled = enabledProvider()
+        val token = tokenProvider().trim()
+        if (!enabled || token.isBlank()) {
+            reconcile(enabled = enabled, configuredToken = token)
+            return DiscordPresenceUpdateResult.SKIPPED
+        }
+
+        reconcile(enabled = true, configuredToken = token)
+        if (!DiscordPresenceManager.isRunning()) {
+            return DiscordPresenceUpdateResult.FAILED
+        }
+
+        return try {
+            if (
+                DiscordPresenceManager.updateNow(
+                    context = appContext,
+                    token = token,
+                    song = song,
+                    positionMs = positionMs,
+                    isPaused = isPaused,
+                )
+            ) {
+                DiscordPresenceUpdateResult.SUCCESS
+            } else {
+                DiscordPresenceUpdateResult.FAILED
+            }
+        } catch (error: Throwable) {
+            if (error is kotlinx.coroutines.CancellationException) throw error
+            onFailure("update Discord presence", error)
+            DiscordPresenceUpdateResult.FAILED
         }
     }
 
