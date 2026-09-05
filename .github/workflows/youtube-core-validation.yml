@@ -55,7 +55,7 @@ concurrency:
 
 jobs:
   validate:
-    name: Test and build YouTube core
+    name: Test, lint and build YouTube core
     runs-on: ubuntu-latest
     timeout-minutes: 45
 
@@ -86,25 +86,28 @@ jobs:
           unqualifiedResLocale=en-US
           EOF
 
-      - name: Run YouTube core tests and debug build
+      - name: Run YouTube core tests, lint and debug build
         run: |
           gradle \
             :innertube:test \
             :betterlyrics:test \
             :app:testUniversalDebugUnitTest \
+            :app:lintUniversalDebug \
             :app:assembleUniversalDebug \
             --stacktrace \
             --no-daemon
 
-      - name: Upload test reports
+      - name: Upload test and lint reports
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: youtube-core-test-reports
+          name: youtube-core-validation-reports
           path: |
             innertube/build/reports/tests/
             betterlyrics/build/reports/tests/
             app/build/reports/tests/
+            app/build/reports/lint-results-*.html
+            app/build/reports/lint-results-*.xml
           if-no-files-found: ignore
           retention-days: 14
 
