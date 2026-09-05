@@ -55,7 +55,7 @@ internal object PlaylistDeduplicator {
             it.getInt(0) + 1
         }
         for (index in missingPlaylistOccurrences(existing.map { it.second }, incoming.map { it.second })) {
-            db.execSQL("UPDATE playlist_song_map SET playlistId = ?, position = ? WHERE id = ?", arrayOf(target, position++, incoming[index].first))
+            db.execSQL("UPDATE playlist_song_map SET playlistId = ?, position = ? WHERE id = ?", arrayOf<Any>(target, position++, incoming[index].first))
         }
         db.execSQL(
             "INSERT OR IGNORE INTO playlist_tag_map (playlistId, tagId, createdAt) " +
