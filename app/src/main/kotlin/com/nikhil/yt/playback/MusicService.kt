@@ -63,7 +63,6 @@ import androidx.media3.datasource.cache.Cache
 import androidx.media3.datasource.cache.CacheDataSource
 import androidx.media3.datasource.cache.CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR
 import androidx.media3.datasource.cache.ContentMetadata
-import androidx.media3.datasource.okhttp.OkHttpDataSource
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.analytics.AnalyticsListener
@@ -193,8 +192,9 @@ import com.nikhil.yt.ui.screens.settings.ListenBrainzManager
 import com.nikhil.yt.utils.CoilBitmapLoader
 import com.nikhil.yt.utils.DiscordRPC
 import com.nikhil.yt.utils.NetworkConnectivityObserver
-import com.nikhil.yt.utils.StreamClientUtils
 import com.nikhil.yt.utils.SyncUtils
+import com.nikhil.yt.playback.audio.StreamDataSourceFactory
+import com.nikhil.yt.playback.audio.AudioRequestPriority
 import com.nikhil.yt.playback.audio.CapsuleAudioEngine
 import com.nikhil.yt.playback.audio.PlaybackDataCache
 import com.nikhil.yt.utils.dataStore
@@ -236,7 +236,6 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.withContext
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
-import okhttp3.OkHttpClient
 import timber.log.Timber
 import java.net.ConnectException
 import java.net.NoRouteToHostException
@@ -376,6 +375,10 @@ class MusicService :
                                 connectivityManager = connectivityManager,
                                 streamPolicy = audioStreamPolicy,
                                 avoidCodecs = avoidStreamCodecs,
+                                priority = withContext(Dispatchers.Main.immediate) {
+                                    if (player.currentMediaItem?.mediaId == mediaId) AudioRequestPriority.PLAYBACK
+                                    else AudioRequestPriority.PREFETCH
+                                },
                             )
                             .also { result ->
                                 result.getOrNull()?.let { cacheResolvedPlayback(mediaId, it, policyGeneration) }
@@ -449,6 +452,8 @@ class MusicService :
             upcoming.joinToString(","),
         )
 
+        // Cold foreground playback takes precedence over resolving the next song.
+        if (player.playbackState != Player.STATE_READY || !player.playWhenReady) return
         upcoming.forEach { mediaId ->
             ioScope.launch {
                 if (prefetchGeneration != audioPrefetchGeneration) {
@@ -527,16 +532,8 @@ class MusicService :
     private val avoidStreamCodecs: Set<String> by lazy {
         if (deviceSupportsMimeType("audio/opus")) emptySet() else setOf("opus")
     }
-    private val mediaOkHttpClient: OkHttpClient by lazy {
-        OkHttpClient
-            .Builder()
-            .proxy(YouTube.streamProxy)
-            .followRedirects(true)
-            .followSslRedirects(true)
-            .addInterceptor { chain ->
-                chain.proceed(StreamClientUtils.withFallbackHeaders(chain.request()))
-            }.build()
-    }
+    private val audioStreamDataSourceFactory = StreamDataSourceFactory()
+    private val videoStreamDataSourceFactory = StreamDataSourceFactory(audio = false)
 
     private var currentQueue: Queue = EmptyQueue
     var queueTitle: String? = null
@@ -913,7 +910,7 @@ class MusicService :
                 playbackRetryBudget.clear()
 
                 withContext(Dispatchers.IO) {
-                    CapsuleAudioEngine.onNetworkChanged()
+                    CapsuleAudioEngine.observeNetwork(networkId)
                 }
             }
         }
@@ -3776,6 +3773,7 @@ class MusicService :
         networkRecoveryJob = null
         waitingForNetworkConnection.value = false
         audioResolveStability.onSelectionChanged()
+        CapsuleAudioEngine.onMediaSelected(mediaItem?.mediaId)
         songRecoveryJobs.forEach { (id, job) ->
             if (id != mediaItem?.mediaId && songRecoveryJobs.remove(id, job)) job.cancel()
         }
@@ -4133,6 +4131,7 @@ class MusicService :
         super.onIsPlayingChanged(isPlaying)
         val activeMediaId = player.currentMediaItem?.mediaId
         if (isPlaying && player.playbackState == Player.STATE_READY && activeMediaId != null) {
+            prefetchUpcomingAudio()
             scheduleTrackFailureGuardReset(activeMediaId)
         } else {
             trackFailureResetJob?.cancel()
@@ -4625,9 +4624,7 @@ class MusicService :
                     .setUpstreamDataSourceFactory(
                         DefaultDataSource.Factory(
                             this,
-                            OkHttpDataSource.Factory(
-                                mediaOkHttpClient,
-                            ),
+                            audioStreamDataSourceFactory,
                         ),
                     )
                     .setFlags(FLAG_IGNORE_CACHE_ON_ERROR)
@@ -4641,7 +4638,7 @@ class MusicService :
             .setUpstreamDataSourceFactory(
                 DefaultDataSource.Factory(
                     this,
-                    OkHttpDataSource.Factory(mediaOkHttpClient),
+                    videoStreamDataSourceFactory,
                 ),
             )
             .setFlags(FLAG_IGNORE_CACHE_ON_ERROR)
@@ -4782,8 +4779,9 @@ class MusicService :
              * next track, while older abandoned prefetches are cancelled
              * to avoid request bursts during rapid skipping.
              *
-             * InnerTubeX owns an 18-second engine budget. This 20-second
-             * ceiling only catches a stuck job outside that engine.
+             * Allow one already-running extraction to finish, then give this
+             * request its own 18-second network budget. Queued background
+             * requests cannot take another turn ahead of foreground playback.
              */
             val loaderWaitStartedAt = System.currentTimeMillis()
             val alreadyRunning = inFlightAudioResolves.containsKey(mediaId)
@@ -6150,7 +6148,7 @@ class MusicService :
          * They exist so a stalled network cannot pin the loader thread; with
          * prefetch in place they should almost never be reached.
          */
-        private const val AUDIO_RESOLVE_TIMEOUT_MS = 20_000L
+        private const val AUDIO_RESOLVE_TIMEOUT_MS = 40_000L
         private const val VIDEO_RESOLVE_TIMEOUT_MS = 20_000L
         const val MAX_CONSECUTIVE_TRACK_FAILURES = 3
         const val MIN_PRESENCE_UPDATE_INTERVAL = 20_000L

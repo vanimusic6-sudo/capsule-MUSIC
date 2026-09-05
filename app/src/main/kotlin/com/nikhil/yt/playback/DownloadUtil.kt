@@ -16,7 +16,6 @@ import androidx.media3.datasource.ResolvingDataSource
 import androidx.media3.datasource.cache.Cache
 import androidx.media3.datasource.cache.CacheDataSource
 import androidx.media3.datasource.cache.CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR
-import androidx.media3.datasource.okhttp.OkHttpDataSource
 import androidx.media3.exoplayer.offline.Download
 import androidx.media3.exoplayer.offline.DownloadManager
 import androidx.media3.exoplayer.offline.DownloadNotificationHelper
@@ -30,9 +29,10 @@ import com.nikhil.yt.db.entities.SongEntity
 import com.nikhil.yt.di.DownloadCache
 import com.nikhil.yt.di.PlayerCache
 import com.nikhil.yt.innertube.YouTube
+import com.nikhil.yt.playback.audio.StreamDataSourceFactory
+import com.nikhil.yt.playback.audio.AudioRequestPriority
 import com.nikhil.yt.playback.audio.CapsuleAudioEngine
 import com.nikhil.yt.playback.audio.PlaybackDataCache
-import com.nikhil.yt.utils.StreamClientUtils
 import com.nikhil.yt.utils.enumPreference
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
@@ -45,7 +45,6 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
-import okhttp3.OkHttpClient
 import java.time.LocalDateTime
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicInteger
@@ -78,16 +77,16 @@ constructor(
     @Volatile private var cooldownUntilMs = 0L
     private val consecutiveThrottleSignals = AtomicInteger(0)
 
-    private val mediaOkHttpClient: OkHttpClient by lazy {
-        OkHttpClient
-            .Builder()
-            .proxy(YouTube.streamProxy)
-            .followRedirects(true)
-            .followSslRedirects(true)
-            .addInterceptor { chain ->
-                chain.proceed(StreamClientUtils.withFallbackHeaders(chain.request()))
-            }.build()
-    }
+    private val streamDataSourceFactory = StreamDataSourceFactory()
+
+    private fun downloadContext(): List<Any?> = listOf(
+        connectivityManager.activeNetwork?.networkHandle,
+        YouTube.streamProxy,
+        audioStreamPolicy.normalizedForPlayback(),
+        audioQuality,
+        YouTube.cookie,
+        YouTube.visitorData,
+    )
 
     val downloads = MutableStateFlow<Map<String, Download>>(emptyMap())
 
@@ -101,7 +100,7 @@ constructor(
                         .Factory()
                         .setCache(playerCache)
                         .setUpstreamDataSourceFactory(
-                            OkHttpDataSource.Factory(mediaOkHttpClient),
+                            streamDataSourceFactory,
                         )
                         .setCacheWriteDataSinkFactory(null)
                         .setFlags(FLAG_IGNORE_CACHE_ON_ERROR),
@@ -114,6 +113,10 @@ constructor(
                 return@Factory dataSpec
             }
 
+            CapsuleAudioEngine.observeNetwork(connectivityManager.activeNetwork?.networkHandle)
+            val context = downloadContext()
+            val generation = songUrlCache.useContext(context)
+            CapsuleAudioEngine.playbackBlockedExceptionOrNull()?.let { throw java.io.IOException(it.message, it) }
             songUrlCache.get(mediaId)?.let { cached ->
                 return@Factory dataSpec.buildUpon()
                     .setUri(cached.streamUrl.toUri())
@@ -131,9 +134,14 @@ constructor(
                         audioQuality = audioQuality,
                         connectivityManager = connectivityManager,
                         streamPolicy = audioStreamPolicy.normalizedForPlayback(),
+                        priority = AudioRequestPriority.DOWNLOAD,
                     )
                 }.getOrThrow()
 
+            if (downloadContext() != context) {
+                songUrlCache.useContext(downloadContext())
+                throw java.io.IOException("Download route or preferences changed while resolving")
+            }
             val format = playbackData.format
 
             database.query {
@@ -186,7 +194,7 @@ constructor(
              * owns byte ranges through DataSpec/HTTP Range; mutating a signed
              * GVS query here can invalidate an otherwise valid stream.
              */
-            songUrlCache.put(mediaId, playbackData)
+            songUrlCache.put(mediaId, playbackData, generation)
             dataSpec.buildUpon()
                 .setUri(playbackData.streamUrl.toUri())
                 .setHttpRequestHeaders(dataSpec.httpRequestHeaders + playbackData.streamHeaders)

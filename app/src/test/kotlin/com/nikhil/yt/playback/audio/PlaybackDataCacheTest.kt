@@ -5,6 +5,19 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class PlaybackDataCacheTest {
+    @Test fun routeOrClientChangesDiscardOldUrlsAndRejectLateResults() {
+        val cache = PlaybackDataCache(nowMs = { 0L })
+        val oldGeneration = cache.useContext("wifi:visionos")
+        cache.put("track", playback(), oldGeneration)
+        assertNotNull(cache.get("track"))
+        val newGeneration = cache.useContext("vpn:web")
+        assertNull(cache.get("track"))
+        cache.put("track", playback(), oldGeneration)
+        assertNull(cache.get("track"))
+        cache.put("track", playback(), newGeneration)
+        assertNotNull(cache.get("track"))
+    }
+
     private fun playback() = CapsuleAudioEngine.PlaybackData(
         audioConfig = PlayerResponse.PlayerConfig.AudioConfig(loudnessDb = 8.0),
         videoDetails = PlayerResponse.VideoDetails("track", title = "Track", lengthSeconds = "180"),

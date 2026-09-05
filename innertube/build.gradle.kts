@@ -18,4 +18,5 @@ dependencies {
     implementation(libs.re2j)
     implementation(libs.rhino)
     testImplementation(libs.junit)
+    testImplementation(libs.coroutines.test)
 }

@@ -20,6 +20,18 @@ import com.nikhil.yt.innertube.models.response.PlayerResponse
 import java.util.concurrent.ConcurrentHashMap
 
 object CapsuleAudioEngine {
+    private val routeLock = Any()
+    private var networkId: Long? = null
+
+    fun observeNetwork(id: Long?) {
+        if (id == null) return
+        synchronized(routeLock) {
+            val previous = networkId
+            networkId = id
+            if (previous != null && previous != id) onNetworkChanged()
+        }
+    }
+
     private val lastResolvedClientByVideoId = ConcurrentHashMap<String, String>()
 
     data class PlaybackData(
@@ -34,6 +46,8 @@ object CapsuleAudioEngine {
         /** Required GVS request headers returned by InnerTubeX. */
         val streamHeaders: Map<String, String> = emptyMap(),
     )
+
+    fun onMediaSelected(mediaId: String?) = CapsuleInnerTubeXPlayer.onMediaSelected(mediaId)
 
     suspend fun prewarm() = CapsuleInnerTubeXPlayer.prewarm()
 
@@ -64,7 +78,9 @@ object CapsuleAudioEngine {
         streamPolicy: AudioStreamPolicy = AudioStreamPolicy.VISIONOS,
         networkMetered: Boolean? = null,
         avoidCodecs: Set<String> = emptySet(),
+        priority: AudioRequestPriority = AudioRequestPriority.PLAYBACK,
     ): Result<PlaybackData> {
+        observeNetwork(connectivityManager.activeNetwork?.networkHandle)
         CapsulePlaybackSafety.blockedExceptionOrNull()?.let { return Result.failure(it) }
 
         return CapsuleInnerTubeXPlayer
@@ -74,6 +90,7 @@ object CapsuleAudioEngine {
                 audioQuality = audioQuality,
                 connectivityManager = connectivityManager,
                 streamPolicy = streamPolicy.normalizedForPlayback(),
+                priority = priority,
             )
             .map { resolved ->
                 resolved.streamClient

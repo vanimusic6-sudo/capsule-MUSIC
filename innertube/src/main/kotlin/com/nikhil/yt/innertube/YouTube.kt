@@ -148,7 +148,7 @@ object YouTube {
         return "$url${separator}pot=$token"
     }
 
-    suspend fun searchSuggestions(query: String): Result<SearchSuggestions> = runCatching {
+    suspend fun searchSuggestions(query: String): Result<SearchSuggestions> = runCatchingCancellable {
         val response = innerTube.getSearchSuggestions(WEB_REMIX, query).body<GetSearchSuggestionsResponse>()
         SearchSuggestions(
             queries = response.contents?.getOrNull(0)?.searchSuggestionsSectionRenderer?.contents?.mapNotNull { content ->
@@ -162,7 +162,7 @@ object YouTube {
         )
     }
 
-    suspend fun searchSummary(query: String): Result<SearchSummaryPage> = runCatching {
+    suspend fun searchSummary(query: String): Result<SearchSummaryPage> = runCatchingCancellable {
         val response = innerTube.search(WEB_REMIX, query).body<SearchResponse>()
 
         var parsedSummaries = response.contents?.tabbedSearchResultsRenderer?.tabs?.firstOrNull()
@@ -225,7 +225,7 @@ object YouTube {
 
         if (parsedSummaries.size <= 1) {
 
-            val songsFallback = runCatching {
+            val songsFallback = runCatchingCancellable {
                 search(query, SearchFilter.FILTER_SONG).getOrNull()?.items ?: emptyList()
             }.getOrDefault(emptyList())
 
@@ -233,7 +233,7 @@ object YouTube {
                 parsedSummaries = parsedSummaries + SearchSummary(title = "Songs", items = songsFallback.take(12))
             }
 
-            val albumsFallback = runCatching {
+            val albumsFallback = runCatchingCancellable {
                 search(query, SearchFilter.FILTER_ALBUM).getOrNull()?.items ?: emptyList()
             }.getOrDefault(emptyList())
 
@@ -248,7 +248,7 @@ object YouTube {
 
 
 
-    suspend fun search(query: String, filter: SearchFilter): Result<SearchResult> = runCatching {
+    suspend fun search(query: String, filter: SearchFilter): Result<SearchResult> = runCatchingCancellable {
         val response = innerTube.search(WEB_REMIX, query, filter.value).body<SearchResponse>()
         SearchResult(
             items = response.contents?.tabbedSearchResultsRenderer?.tabs?.firstOrNull()
@@ -262,7 +262,7 @@ object YouTube {
         )
     }
 
-    suspend fun searchContinuation(continuation: String): Result<SearchResult> = runCatching {
+    suspend fun searchContinuation(continuation: String): Result<SearchResult> = runCatchingCancellable {
         val response = innerTube.search(WEB_REMIX, continuation = continuation).body<SearchResponse>()
         val items = response.continuationContents?.musicShelfContinuation?.contents
             ?.mapNotNull {
@@ -274,7 +274,7 @@ object YouTube {
         )
     }
 
-    suspend fun album(browseId: String, withSongs: Boolean = true): Result<AlbumPage> = runCatching {
+    suspend fun album(browseId: String, withSongs: Boolean = true): Result<AlbumPage> = runCatchingCancellable {
         val response = innerTube.browse(WEB_REMIX, browseId).body<BrowseResponse>()
         val contents = response.contents ?: throw IllegalStateException("Missing browse contents for $browseId")
         val twoColumn = contents.twoColumnBrowseResultsRenderer
@@ -332,7 +332,7 @@ object YouTube {
         )
     }
 
-    suspend fun albumSongs(playlistId: String, album: AlbumItem? = null): Result<List<SongItem>> = runCatching {
+    suspend fun albumSongs(playlistId: String, album: AlbumItem? = null): Result<List<SongItem>> = runCatchingCancellable {
         var response = innerTube.browse(WEB_REMIX, "VL$playlistId").body<BrowseResponse>()
         val songs = response.contents?.twoColumnBrowseResultsRenderer
             ?.secondaryContents?.sectionListRenderer
@@ -378,7 +378,7 @@ object YouTube {
         songs
     }
 
-    suspend fun artist(browseId: String): Result<ArtistPage> = runCatching {
+    suspend fun artist(browseId: String): Result<ArtistPage> = runCatchingCancellable {
         val response = innerTube.browse(WEB_REMIX, browseId).body<BrowseResponse>()
 
         ArtistPage(
@@ -407,7 +407,7 @@ object YouTube {
         )
     }
 
-    suspend fun artistItems(endpoint: BrowseEndpoint): Result<ArtistItemsPage> = runCatching {
+    suspend fun artistItems(endpoint: BrowseEndpoint): Result<ArtistItemsPage> = runCatchingCancellable {
         val response = innerTube.browse(WEB_REMIX, endpoint.browseId, endpoint.params).body<BrowseResponse>()
         val gridRenderer = response.contents?.singleColumnBrowseResultsRenderer?.tabs?.firstOrNull()
             ?.tabRenderer?.content?.sectionListRenderer?.contents?.firstOrNull()
@@ -436,7 +436,7 @@ object YouTube {
         }
     }
 
-    suspend fun artistItemsContinuation(continuation: String): Result<ArtistItemsContinuationPage> = runCatching {
+    suspend fun artistItemsContinuation(continuation: String): Result<ArtistItemsContinuationPage> = runCatchingCancellable {
         val response = innerTube.browse(WEB_REMIX, continuation = continuation).body<BrowseResponse>()
 
         when {
@@ -484,7 +484,7 @@ object YouTube {
         client: YouTubeClient,
         signatureTimestamp: Int? = null,
         poToken: String? = null
-    ): Result<PlayerResponse> = runCatching {
+    ): Result<PlayerResponse> = runCatchingCancellable {
 
         val resolvedPoToken =
             authState.resolvePlayerPoToken(
@@ -495,7 +495,7 @@ object YouTube {
         innerTube.player(client, videoId, playlistId, signatureTimestamp, resolvedPoToken).body<PlayerResponse>()
     }
 
-    suspend fun playlist(playlistId: String): Result<PlaylistPage> = runCatching {
+    suspend fun playlist(playlistId: String): Result<PlaylistPage> = runCatchingCancellable {
         val response = innerTube.browse(
             client = WEB_REMIX,
             browseId = "VL$playlistId",
@@ -546,7 +546,7 @@ object YouTube {
     }
 
 
-    suspend fun playlistContinuation(continuation: String): Result<PlaylistContinuationPage> = runCatching {
+    suspend fun playlistContinuation(continuation: String): Result<PlaylistContinuationPage> = runCatchingCancellable {
         val response = innerTube.browse(
             client = WEB_REMIX,
             continuation = continuation,
@@ -600,9 +600,9 @@ object YouTube {
         )
     }
 
-    suspend fun home(continuation: String? = null, params: String? = null): Result<HomePage> = runCatching {
+    suspend fun home(continuation: String? = null, params: String? = null): Result<HomePage> = runCatchingCancellable {
         if (continuation != null) {
-            return@runCatching homeContinuation(continuation).getOrThrow()
+            return@runCatchingCancellable homeContinuation(continuation).getOrThrow()
         }
 
         val response = innerTube.browse(WEB_REMIX, browseId = "FEmusic_home", params = params, setLogin = true).body<BrowseResponse>()
@@ -619,7 +619,7 @@ object YouTube {
         HomePage(chips, sections, continuation)
     }
 
-    private suspend fun homeContinuation(continuation: String): Result<HomePage> = runCatching {
+    private suspend fun homeContinuation(continuation: String): Result<HomePage> = runCatchingCancellable {
         val response =
             innerTube.browse(WEB_REMIX, continuation = continuation).body<BrowseResponse>()
         val sections = response.continuationContents?.sectionListContinuation?.contents
@@ -637,7 +637,7 @@ object YouTube {
         )
     }
 
-    suspend fun explore(): Result<ExplorePage> = runCatching {
+    suspend fun explore(): Result<ExplorePage> = runCatchingCancellable {
         val response = innerTube.browse(WEB_REMIX, browseId = "FEmusic_explore").body<BrowseResponse>()
         ExplorePage(
             newReleaseAlbums = response.contents?.singleColumnBrowseResultsRenderer?.tabs?.firstOrNull()?.tabRenderer?.content?.sectionListRenderer?.contents?.find {
@@ -654,7 +654,7 @@ object YouTube {
         )
     }
 
-    suspend fun newReleaseAlbums(): Result<List<AlbumItem>> = runCatching {
+    suspend fun newReleaseAlbums(): Result<List<AlbumItem>> = runCatchingCancellable {
         val response = innerTube.browse(WEB_REMIX, browseId = "FEmusic_new_releases_albums").body<BrowseResponse>()
         val contents =
             response.contents
@@ -691,13 +691,13 @@ object YouTube {
             .toList()
     }
 
-    suspend fun moodAndGenres(): Result<List<MoodAndGenres>> = runCatching {
+    suspend fun moodAndGenres(): Result<List<MoodAndGenres>> = runCatchingCancellable {
         val response = innerTube.browse(WEB_REMIX, browseId = "FEmusic_moods_and_genres").body<BrowseResponse>()
         response.contents?.singleColumnBrowseResultsRenderer?.tabs?.firstOrNull()?.tabRenderer?.content?.sectionListRenderer?.contents!!
             .mapNotNull(MoodAndGenres.Companion::fromSectionListRendererContent)
     }
 
-    suspend fun browse(browseId: String, params: String?): Result<BrowseResult> = runCatching {
+    suspend fun browse(browseId: String, params: String?): Result<BrowseResult> = runCatchingCancellable {
         val response = innerTube.browse(WEB_REMIX, browseId = browseId, params = params).body<BrowseResponse>()
         BrowseResult(
             title = response.header?.musicHeaderRenderer?.title?.runs?.firstOrNull()?.text,
@@ -727,7 +727,7 @@ object YouTube {
         )
     }
 
-    suspend fun library(browseId: String, tabIndex: Int = 0) = runCatching {
+    suspend fun library(browseId: String, tabIndex: Int = 0) = runCatchingCancellable {
         val response = innerTube.browse(
             client = WEB_REMIX,
             browseId = browseId,
@@ -770,7 +770,7 @@ object YouTube {
         }
     }
 
-    suspend fun libraryContinuation(continuation: String) = runCatching {
+    suspend fun libraryContinuation(continuation: String) = runCatchingCancellable {
         val response = innerTube.browse(
             client = WEB_REMIX,
             continuation = continuation,
@@ -809,7 +809,7 @@ object YouTube {
         }
     }
 
-    suspend fun libraryRecentActivity(): Result<LibraryPage> = runCatching {
+    suspend fun libraryRecentActivity(): Result<LibraryPage> = runCatchingCancellable {
         val continuation = LibraryFilter.FILTER_RECENT_ACTIVITY.value
 
         val response = innerTube.browse(
@@ -822,7 +822,7 @@ object YouTube {
             ?.gridRenderer?.items
         
         if (gridItems == null) {
-            return@runCatching LibraryPage(
+            return@runCatchingCancellable LibraryPage(
                 items = emptyList(),
                 continuation = null
             )
@@ -856,7 +856,7 @@ object YouTube {
         )
     }
 
-    suspend fun getChartsPage(continuation: String? = null): Result<ChartsPage> = runCatching {
+    suspend fun getChartsPage(continuation: String? = null): Result<ChartsPage> = runCatchingCancellable {
         val response = innerTube.browse(
             client = WEB_REMIX,
             browseId = "FEmusic_charts",
@@ -1024,7 +1024,7 @@ object YouTube {
         }
     }
 
-    suspend fun musicHistory() = runCatching {
+    suspend fun musicHistory() = runCatchingCancellable {
         val response = innerTube.browse(
             client = WEB_REMIX,
             browseId = "FEmusic_history",
@@ -1042,21 +1042,21 @@ object YouTube {
         )
     }
 
-    suspend fun likeVideo(videoId: String, like: Boolean) = runCatching {
+    suspend fun likeVideo(videoId: String, like: Boolean) = runCatchingCancellable {
         if (like)
             innerTube.likeVideo(WEB_REMIX, videoId)
         else
             innerTube.unlikeVideo(WEB_REMIX, videoId)
     }
 
-    suspend fun likePlaylist(playlistId: String, like: Boolean) = runCatching {
+    suspend fun likePlaylist(playlistId: String, like: Boolean) = runCatchingCancellable {
         if (like)
             innerTube.likePlaylist(WEB_REMIX, playlistId)
         else
             innerTube.unlikePlaylist(WEB_REMIX, playlistId)
     }
 
-    suspend fun subscribeChannel(channelId: String, subscribe: Boolean) = runCatching {
+    suspend fun subscribeChannel(channelId: String, subscribe: Boolean) = runCatchingCancellable {
         if (subscribe)
             innerTube.subscribeChannel(WEB_REMIX, channelId)
         else
@@ -1070,35 +1070,35 @@ object YouTube {
         return ""
     }
 
-    suspend fun addToPlaylist(playlistId: String, videoId: String) = runCatching {
+    suspend fun addToPlaylist(playlistId: String, videoId: String) = runCatchingCancellable {
         innerTube.addToPlaylist(WEB_REMIX, playlistId, videoId)
     }
 
-    suspend fun addPlaylistToPlaylist(playlistId: String, addPlaylistId: String) = runCatching {
+    suspend fun addPlaylistToPlaylist(playlistId: String, addPlaylistId: String) = runCatchingCancellable {
         innerTube.addPlaylistToPlaylist(WEB_REMIX, playlistId, addPlaylistId)
     }
 
-    suspend fun removeFromPlaylist(playlistId: String, videoId: String, setVideoId: String) = runCatching {
+    suspend fun removeFromPlaylist(playlistId: String, videoId: String, setVideoId: String) = runCatchingCancellable {
         innerTube.removeFromPlaylist(WEB_REMIX, playlistId, videoId, setVideoId)
     }
 
-    suspend fun moveSongPlaylist(playlistId: String, setVideoId: String, successorSetVideoId: String?) = runCatching {
+    suspend fun moveSongPlaylist(playlistId: String, setVideoId: String, successorSetVideoId: String?) = runCatchingCancellable {
         innerTube.moveSongPlaylist(WEB_REMIX, playlistId, setVideoId, successorSetVideoId)
     }
 
-    suspend fun createPlaylist(title: String) = runCatching {
+    suspend fun createPlaylist(title: String) = runCatchingCancellable {
         innerTube.createPlaylist(WEB_REMIX, title).body<CreatePlaylistResponse>().playlistId
     }
 
-    suspend fun renamePlaylist(playlistId: String, name: String) = runCatching {
+    suspend fun renamePlaylist(playlistId: String, name: String) = runCatchingCancellable {
         innerTube.renamePlaylist(WEB_REMIX, playlistId, name)
     }
 
-    suspend fun deletePlaylist(playlistId: String) = runCatching {
+    suspend fun deletePlaylist(playlistId: String) = runCatchingCancellable {
         innerTube.deletePlaylist(WEB_REMIX, playlistId)
     }
 
-    suspend fun registerPlayback(playlistId: String? = null, playbackTracking: String) = runCatching {
+    suspend fun registerPlayback(playlistId: String? = null, playbackTracking: String) = runCatchingCancellable {
         val cpn = (1..16).map {
             "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_"[kotlin.random.Random.Default.nextInt(0, 64)]
         }.joinToString("")
@@ -1165,7 +1165,7 @@ object YouTube {
         )
     }
 
-    suspend fun lyrics(endpoint: BrowseEndpoint): Result<String?> = runCatching {
+    suspend fun lyrics(endpoint: BrowseEndpoint): Result<String?> = runCatchingCancellable {
         val response = innerTube.browse(WEB_REMIX, endpoint.browseId, endpoint.params).body<BrowseResponse>()
         response.contents?.sectionListRenderer?.contents?.firstOrNull()?.musicDescriptionShelfRenderer?.description?.runs?.firstOrNull()?.text
     }
@@ -1197,7 +1197,7 @@ object YouTube {
         RelatedPage(songs, albums, artists, playlists)
     }
 
-    suspend fun queue(videoIds: List<String>? = null, playlistId: String? = null): Result<List<SongItem>> = runCatching {
+    suspend fun queue(videoIds: List<String>? = null, playlistId: String? = null): Result<List<SongItem>> = runCatchingCancellable {
         if (videoIds != null) {
             assert(videoIds.size <= MAX_GET_QUEUE_SIZE) // Max video limit
         }
@@ -1209,7 +1209,7 @@ object YouTube {
             }
     }
 
-    suspend fun transcript(videoId: String): Result<String> = runCatching {
+    suspend fun transcript(videoId: String): Result<String> = runCatchingCancellable {
         val response = innerTube.getTranscript(WEB, videoId).body<GetTranscriptResponse>()
         response.actions?.firstOrNull()?.updateEngagementPanelAction?.content?.transcriptRenderer?.body?.transcriptBodyRenderer?.cueGroups?.joinToString(separator = "\n") { group ->
             val time = group.transcriptCueGroupRenderer.cues[0].transcriptCueRenderer.startOffsetMs
@@ -1220,7 +1220,7 @@ object YouTube {
         }!!
     }
 
-    suspend fun visitorData(): Result<String> = runCatching {
+    suspend fun visitorData(): Result<String> = runCatchingCancellable {
         Json.parseToJsonElement(innerTube.getSwJsData().bodyAsText().substring(5))
             .jsonArray[0]
             .jsonArray[2]
@@ -1232,7 +1232,7 @@ object YouTube {
             .jsonPrimitive.content
     }
 
-    suspend fun accountInfo(): Result<AccountInfo> = runCatching {
+    suspend fun accountInfo(): Result<AccountInfo> = runCatchingCancellable {
         val response = innerTube.accountMenu(WEB_REMIX).body<AccountMenuResponse>()
         val accountInfo = response.actions.firstOrNull()
             ?.openPopupAction?.popup?.multiPageMenuRenderer
@@ -1241,7 +1241,7 @@ object YouTube {
         accountInfo ?: throw IllegalStateException("Failed to get account info - user may not be logged in")
     }
 
-    suspend fun getMediaInfo(videoId: String): Result<MediaInfo> = runCatching {
+    suspend fun getMediaInfo(videoId: String): Result<MediaInfo> = runCatchingCancellable {
         return innerTube.getMediaInfo(videoId)
     }
 

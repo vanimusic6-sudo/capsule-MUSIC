@@ -17,6 +17,9 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import java.time.ZoneId
 import java.time.LocalTime
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -35,6 +38,21 @@ import javax.inject.Singleton
 class ForYouSuggestionEngine @Inject constructor(
     private val database: MusicDatabase
 ) {
+
+    private val lookupMutex = Mutex()
+    private data class RelatedCacheEntry(val songs: List<SongItem>, val expiresAt: Long)
+    private val relatedCache = LinkedHashMap<List<Any?>, RelatedCacheEntry>(16, 0.75f, true)
+
+    private suspend fun relatedSongs(seedId: String): List<SongItem> = lookupMutex.withLock {
+        val key = listOf(seedId, YouTube.cookie, YouTube.visitorData, YouTube.locale, YouTube.proxy)
+        relatedCache[key]?.takeIf { it.expiresAt > System.currentTimeMillis() }?.let { return@withLock it.songs }
+        val endpoint = YouTube.next(WatchEndpoint(videoId = seedId)).getOrNull()?.relatedEndpoint
+            ?: return@withLock emptyList()
+        val songs = YouTube.related(endpoint).getOrNull()?.songs ?: return@withLock emptyList()
+        relatedCache[key] = RelatedCacheEntry(songs, System.currentTimeMillis() + 5 * 60_000L)
+        while (relatedCache.size > 32) relatedCache.remove(relatedCache.keys.first())
+        songs
+    }
 
     companion object {
         const val MAX_SUGGESTIONS = 50
@@ -70,7 +88,13 @@ class ForYouSuggestionEngine @Inject constructor(
         return RecommendationScore.calculate(
             totalPlayTimeMs = song.song.totalPlayTime,
             durationSeconds = song.song.duration,
-            skipCount = skipMap[song.id]?.skipCount ?: 0,
+            skipCount = skipMap[song.id]?.let {
+                RecommendationFeedback.effectiveSkips(
+                    it.skipCount, it.lastSkippedAt,
+                    song.song.likedDate?.atZone(ZoneId.systemDefault())?.toInstant()?.toEpochMilli(),
+                    System.currentTimeMillis(),
+                )
+            } ?: 0,
             liked = song.id in likedIds,
             recent = song.id in recentIds,
             timeOfDay = timeOfDay,
@@ -97,8 +121,17 @@ class ForYouSuggestionEngine @Inject constructor(
         val recentIds = recentEvents.mapNotNull { it.song?.id }.toSet()
         val skipMap = skips.associateBy { it.songId }
 
+        val knownSongs = (allSongs + likedSongs).associateBy { it.id }
+        fun effectiveSkips(id: String): Int = skipMap[id]?.let {
+            RecommendationFeedback.effectiveSkips(
+                it.skipCount, it.lastSkippedAt,
+                knownSongs[id]?.song?.likedDate?.atZone(ZoneId.systemDefault())?.toInstant()?.toEpochMilli(),
+                System.currentTimeMillis(),
+            )
+        } ?: 0
+
         // Score and sort all songs
-        val scoredSongs = allSongs
+        val scoredSongs = allSongs.filter { effectiveSkips(it.id) < 2 }
             .map { song -> song to scoreSong(song, skipMap, likedIds, recentIds, timeOfDay) }
             .sortedByDescending { it.second }
             .map { it.first }
@@ -113,18 +146,11 @@ class ForYouSuggestionEngine @Inject constructor(
             currentCoroutineContext().ensureActive()
             if (suggestions.size >= MAX_SUGGESTIONS) break
             try {
-                val endpoint = YouTube.next(
-                    WatchEndpoint(videoId = seed.id)
-                ).getOrNull()?.relatedEndpoint ?: continue
-
-                val related = YouTube.related(endpoint).getOrNull() ?: continue
-
-                val filtered = related.songs
+                val filtered = relatedSongs(seed.id)
                     .filterExplicit(hideExplicit)
                     .filterVideo(hideVideo)
-                    .filter { it.id !in seenIds }
-                    .shuffled()
-                    .take(10)
+                    .filter { it.id !in seenIds && effectiveSkips(it.id) < 2 }
+                    .take(15)
 
                 suggestions.addAll(filtered)
                 seenIds.addAll(filtered.map { it.id })
@@ -135,52 +161,44 @@ class ForYouSuggestionEngine @Inject constructor(
             }
         }
 
-        // Fill remaining from liked songs radio if needed
-        if (suggestions.size < MAX_SUGGESTIONS && likedSongs.isNotEmpty()) {
-            val likedSeed = likedSongs.shuffled().firstOrNull()
+        if (suggestions.size < MAX_SUGGESTIONS) {
+            val seedIds = seedSongs.map { it.id }.toSet()
+            val likedSeed = likedSongs.firstOrNull { it.id !in seedIds && effectiveSkips(it.id) < 2 }
             if (likedSeed != null) {
-                try {
-                    val endpoint = YouTube.next(
-                        WatchEndpoint(videoId = likedSeed.id)
-                    ).getOrNull()?.relatedEndpoint
-
-                    if (endpoint != null) {
-                        val related = YouTube.related(endpoint).getOrNull()
-                        val filtered = related?.songs
-                            ?.filterExplicit(hideExplicit)
-                            ?.filterVideo(hideVideo)
-                            ?.filter { it.id !in seenIds }
-                            ?.shuffled()
-                            ?.take(MAX_SUGGESTIONS - suggestions.size)
-                            ?: emptyList()
-
-                        suggestions.addAll(filtered)
-                    }
-                } catch (cancelled: CancellationException) {
-                    throw cancelled
-                } catch (error: Exception) {
-                    reportRecoverableException("ForYou", "load liked-song radio suggestions", error)
-                }
+                suggestions += relatedSongs(likedSeed.id).filterExplicit(hideExplicit).filterVideo(hideVideo)
             }
         }
-
-        return suggestions.take(MAX_SUGGESTIONS)
+        return RecommendationFeedback.select(
+            candidates = suggestions,
+            limit = MAX_SUGGESTIONS,
+            id = { it.id },
+            artistIds = { song -> song.artists.map { it.id ?: it.name.lowercase() } },
+            rejected = { effectiveSkips(it.id) >= 2 },
+            score = { candidate ->
+                knownSongs[candidate.id]?.let { scoreSong(it, skipMap, likedIds, recentIds, timeOfDay) / 4f }
+                    ?: 0f
+            },
+        )
     }
 
     /**
      * Record a skip for a song
      */
-    suspend fun recordSkip(songId: String) {
+    suspend fun recordSkip(songId: String) = database.withTransaction {
+        val now = System.currentTimeMillis()
         val existing = database.getSkip(songId)
         if (existing != null) {
+            val likedAt = database.song(songId).first()?.song?.likedDate
+                ?.atZone(ZoneId.systemDefault())?.toInstant()?.toEpochMilli()
+            val remainingSkips = RecommendationFeedback.effectiveSkips(existing.skipCount, existing.lastSkippedAt, likedAt, now)
             database.upsertSkip(
                 existing.copy(
-                    skipCount = existing.skipCount + 1,
-                    lastSkippedAt = System.currentTimeMillis()
+                    skipCount = (remainingSkips + 1).coerceAtMost(20),
+                    lastSkippedAt = now,
                 )
             )
         } else {
-            database.upsertSkip(SongSkipEntity(songId = songId, skipCount = 1))
+            database.upsertSkip(SongSkipEntity(songId = songId, skipCount = 1, lastSkippedAt = now))
         }
     }
 }

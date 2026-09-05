@@ -80,7 +80,7 @@ object CapsuleInnerTubeXPlayer {
     private const val MAX_CIPHER_FAILURE_DETAIL_LENGTH = 180
 
     private val bundleMutex = Mutex()
-    private val resolveMutex = Mutex()
+    private val requests = AudioRequestScheduler()
     private val prewarmScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val streamClientFailures = ConcurrentHashMap<String, FailedStreamClients>()
 
@@ -161,10 +161,10 @@ object CapsuleInnerTubeXPlayer {
     suspend fun prewarm() {
         // Capture/create the bundle under the same lock as playback so a
         // preference collector cannot close the transport during extraction.
-        val preparation = resolveMutex.withLock {
-            if (CapsulePlaybackSafety.blockedExceptionOrNull() != null) return
+        val preparation = requests.run(priority = AudioRequestPriority.MAINTENANCE) {
+            if (CapsulePlaybackSafety.blockedExceptionOrNull() != null) return@run null
             bundle().prewarm.start()
-        }
+        } ?: return
         try {
             preparation.await()
         } catch (cancelled: CancellationException) {
@@ -176,10 +176,12 @@ object CapsuleInnerTubeXPlayer {
     }
 
     suspend fun refreshAfterStreamRejection(): Boolean =
-        resolveMutex.withLock {
+        requests.run {
             CapsulePlaybackSafety.blockedExceptionOrNull()?.let { throw it }
             bundle().cipherService.refreshAfterStreamRejection()
         }
+
+    fun onMediaSelected(mediaId: String?) = requests.select(mediaId)
 
     suspend fun playerResponseForPlayback(
         videoId: String,
@@ -187,6 +189,7 @@ object CapsuleInnerTubeXPlayer {
         audioQuality: AudioQuality,
         connectivityManager: ConnectivityManager,
         streamPolicy: AudioStreamPolicy,
+        priority: AudioRequestPriority = AudioRequestPriority.PLAYBACK,
     ): Result<PlaybackData> =
         try {
             val playbackClientOverrideId = streamPolicy.playbackClientOverrideId
@@ -208,8 +211,9 @@ object CapsuleInnerTubeXPlayer {
 
             val resolvedQuality = audioQuality.toInnerTubeX(connectivityManager)
             val stream =
-                withTimeout(ENGINE_RESOLVE_TIMEOUT_MS) {
-                    resolveMutex.withLock {
+                requests.run(videoId, priority) {
+                    // Waiting behind an active extraction is separate from this request's network budget.
+                    withTimeout(ENGINE_RESOLVE_TIMEOUT_MS) {
                         CapsulePlaybackSafety.blockedExceptionOrNull()?.let { throw it }
                         // Check after waiting: an earlier queued web resolve may
                         // have opened the breaker while this request was waiting.

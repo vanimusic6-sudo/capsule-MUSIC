@@ -33,7 +33,7 @@ object CapsuleAnonymousSession {
     private val VISITOR_DATA_REGEX = Regex("^Cg[t|s]")
 
     private val innerTube =
-        InnerTube().apply {
+        InnerTube(requestGuard = YouTubeRequestGuard()).apply {
             authState = PlaybackAuthState.EMPTY
             useLoginForBrowse = false
         }
