@@ -7,6 +7,15 @@ import org.junit.Test
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class AudioResolveSchedulerTest {
+    @Test fun priorityOrderingIsExplicitAndIndependentOfEnumOrdinal() {
+        assertTrue(AudioResolvePriority.PLAYBACK.outranks(AudioResolvePriority.PREFETCH))
+        assertTrue(AudioResolvePriority.PREFETCH.outranks(AudioResolvePriority.DOWNLOAD))
+        assertFalse(AudioResolvePriority.DOWNLOAD.outranks(AudioResolvePriority.PLAYBACK))
+        assertTrue(AudioResolvePriority.entries.zipWithNext().all { (left, right) ->
+            left.schedulingRank < right.schedulingRank
+        })
+    }
+
     @Test fun playbackOfTheDownloadingSongStillGetsForegroundPriority() = runTest {
         val scheduler = AudioResolveScheduler()
         val events = mutableListOf<String>()
