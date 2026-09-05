@@ -1,0 +1,119 @@
+name: Service Refactor Step 4
+
+on:
+  push:
+    branches:
+      - cleanup/capsule-player-only
+    paths:
+      - ".github/workflows/service-refactor-step4.yml"
+      - "tools/refactor/extract_discord_presence_owner.py"
+      - "app/src/main/kotlin/com/nikhil/yt/playback/presence/DiscordPresenceOwner.kt"
+      - "app/src/test/kotlin/com/nikhil/yt/playback/presence/DiscordPresenceOwnerTest.kt"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: service-refactor-step4
+  cancel-in-progress: false
+
+jobs:
+  integrate:
+    name: Give Discord presence one lifecycle owner
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+
+    steps:
+      - name: Checkout target branch
+        uses: actions/checkout@v6
+        with:
+          ref: cleanup/capsule-player-only
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Set up Gradle 9.5
+        uses: gradle/actions/setup-gradle@v6
+        with:
+          gradle-version: "9.5.0"
+
+      - name: Ensure locale metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! git ls-files --error-unmatch app/src/main/res/resources.properties >/dev/null 2>&1; then
+            mkdir -p app/src/main/res
+            cat > app/src/main/res/resources.properties <<'EOF'
+          unqualifiedResLocale=en-US
+          EOF
+          fi
+
+      - name: Verify Discord ownership extraction preconditions
+        run: python3 tools/refactor/extract_discord_presence_owner.py --check
+
+      - name: Extract Discord presence ownership
+        run: python3 tools/refactor/extract_discord_presence_owner.py
+
+      - name: Verify structural result
+        shell: bash
+        run: |
+          set -euo pipefail
+          SERVICE="app/src/main/kotlin/com/nikhil/yt/playback/MusicService.kt"
+          changed="$(git diff --name-only)"
+          test "$changed" = "$SERVICE"
+          ! grep -Fq 'import com.nikhil.yt.utils.DiscordRPC' "$SERVICE"
+          ! grep -Fq 'private var discordRpc' "$SERVICE"
+          ! grep -Fq 'discordRpc?' "$SERVICE"
+          ! grep -Fq 'lastPresenceToken' "$SERVICE"
+          ! grep -Fq 'lastDiscordUpdateTime' "$SERVICE"
+          ! grep -Fq 'private fun ensurePresenceManager' "$SERVICE"
+          ! grep -Fq 'DiscordPresenceManager.start(' "$SERVICE"
+          grep -Fq 'import com.nikhil.yt.playback.presence.DiscordPresenceOwner' "$SERVICE"
+          grep -Fq 'private val discordPresenceOwner by lazy' "$SERVICE"
+          grep -Fq 'discordPresenceOwner.reconcile(' "$SERVICE"
+          grep -Fq 'discordPresenceOwner.restart()' "$SERVICE"
+          git diff --check
+
+      - name: Run unit tests, lint and debug build
+        run: |
+          gradle \
+            :innertube:test \
+            :betterlyrics:test \
+            :app:testUniversalDebugUnitTest \
+            :app:lintUniversalDebug \
+            :app:assembleUniversalDebug \
+            --stacktrace \
+            --no-daemon
+
+      - name: Refuse stale branch write
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin cleanup/capsule-player-only
+          remote_head="$(git rev-parse origin/cleanup/capsule-player-only)"
+          test "$remote_head" = "$GITHUB_SHA" || {
+            echo "Branch advanced during validation; refusing stale push."
+            echo "workflow head: $GITHUB_SHA"
+            echo "remote head:   $remote_head"
+            exit 1
+          }
+
+      - name: Commit validated Discord ownership extraction
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clean -f app/src/main/res/resources.properties || true
+          SERVICE="app/src/main/kotlin/com/nikhil/yt/playback/MusicService.kt"
+          changed="$(git diff --name-only)"
+          test "$changed" = "$SERVICE"
+          git config user.name "capsule-refactor-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add "$SERVICE"
+          git commit -m "Use single Discord presence owner in MusicService"
+          git push origin HEAD:cleanup/capsule-player-only
