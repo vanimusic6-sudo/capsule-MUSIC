@@ -1,0 +1,119 @@
+name: Service Refactor Step 5
+
+on:
+  push:
+    branches:
+      - cleanup/capsule-player-only
+    paths:
+      - ".github/workflows/service-refactor-step5.yml"
+      - "tools/refactor/extract_playback_presence_coordinator.py"
+      - "app/src/main/kotlin/com/nikhil/yt/playback/presence/DiscordPresenceOwner.kt"
+      - "app/src/main/kotlin/com/nikhil/yt/playback/presence/PlaybackPresenceCoordinator.kt"
+      - "app/src/test/kotlin/com/nikhil/yt/playback/presence/PlaybackPresenceCoordinatorTest.kt"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: service-refactor-step5
+  cancel-in-progress: false
+
+jobs:
+  integrate:
+    name: Extract immediate playback presence callbacks
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+
+    steps:
+      - name: Checkout target branch
+        uses: actions/checkout@v6
+        with:
+          ref: cleanup/capsule-player-only
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Set up Gradle 9.5
+        uses: gradle/actions/setup-gradle@v6
+        with:
+          gradle-version: "9.5.0"
+
+      - name: Ensure locale metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! git ls-files --error-unmatch app/src/main/res/resources.properties >/dev/null 2>&1; then
+            mkdir -p app/src/main/res
+            cat > app/src/main/res/resources.properties <<'EOF'
+          unqualifiedResLocale=en-US
+          EOF
+          fi
+
+      - name: Verify playback presence extraction preconditions
+        run: python3 tools/refactor/extract_playback_presence_coordinator.py --check
+
+      - name: Extract playback presence callbacks
+        run: python3 tools/refactor/extract_playback_presence_coordinator.py
+
+      - name: Verify structural result
+        shell: bash
+        run: |
+          set -euo pipefail
+          SERVICE="app/src/main/kotlin/com/nikhil/yt/playback/MusicService.kt"
+          changed="$(git diff --name-only)"
+          test "$changed" = "$SERVICE"
+          ! grep -Fq 'import com.nikhil.yt.ui.screens.settings.DiscordPresenceManager' "$SERVICE"
+          ! grep -Fq 'DiscordPresenceManager.' "$SERVICE"
+          ! grep -Fq 'lastPresenceUpdateTime' "$SERVICE"
+          ! grep -Fq 'private fun canUpdatePresence' "$SERVICE"
+          ! grep -Fq 'ListenBrainzManager.submitPlayingNow' "$SERVICE"
+          ! grep -Fq 'MIN_PRESENCE_UPDATE_INTERVAL' "$SERVICE"
+          grep -Fq 'import com.nikhil.yt.playback.presence.PlaybackPresenceCoordinator' "$SERVICE"
+          grep -Fq 'private val playbackPresenceCoordinator by lazy' "$SERVICE"
+          test "$(grep -Fc 'playbackPresenceCoordinator.requestImmediateUpdate()' "$SERVICE")" = "3"
+          grep -Fq 'ListenBrainzManager.submitFinished' "$SERVICE"
+          git diff --check
+
+      - name: Run unit tests, lint and debug build
+        run: |
+          gradle \
+            :innertube:test \
+            :betterlyrics:test \
+            :app:testUniversalDebugUnitTest \
+            :app:lintUniversalDebug \
+            :app:assembleUniversalDebug \
+            --stacktrace \
+            --no-daemon
+
+      - name: Refuse stale branch write
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin cleanup/capsule-player-only
+          remote_head="$(git rev-parse origin/cleanup/capsule-player-only)"
+          test "$remote_head" = "$GITHUB_SHA" || {
+            echo "Branch advanced during validation; refusing stale push."
+            echo "workflow head: $GITHUB_SHA"
+            echo "remote head:   $remote_head"
+            exit 1
+          }
+
+      - name: Commit validated playback presence extraction
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clean -f app/src/main/res/resources.properties || true
+          SERVICE="app/src/main/kotlin/com/nikhil/yt/playback/MusicService.kt"
+          changed="$(git diff --name-only)"
+          test "$changed" = "$SERVICE"
+          git config user.name "capsule-refactor-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add "$SERVICE"
+          git commit -m "Move immediate presence callbacks out of MusicService"
+          git push origin HEAD:cleanup/capsule-player-only
