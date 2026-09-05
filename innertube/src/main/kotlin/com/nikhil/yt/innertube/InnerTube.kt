@@ -75,7 +75,7 @@ internal fun resolvePlayerRequestProfile(client: YouTubeClient): PlayerRequestPr
  * For making HTTP requests, not parsing response.
  */
 @OptIn(ExperimentalEncodingApi::class)
-class InnerTube {
+class InnerTube(private val requestGuard: YouTubeRequestGuard = YouTubeRequestGuard.shared) {
     private data class CachedPlayerBootstrap(
         val value: PlayerBootstrapConfig,
         val expiresAtMs: Long,
@@ -216,7 +216,7 @@ class InnerTube {
         var attempt = 0
         while (true) {
             try {
-                return block()
+                return requestGuard.execute(block)
             } catch (e: IOException) {
                 attempt++
                 if (attempt >= maxAttempts) throw e

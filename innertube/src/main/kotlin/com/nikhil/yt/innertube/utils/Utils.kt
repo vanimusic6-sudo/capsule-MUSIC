@@ -9,80 +9,29 @@
 package com.nikhil.yt.innertube.utils
 
 import com.nikhil.yt.innertube.YouTube
+import com.nikhil.yt.innertube.runCatchingCancellable
 import com.nikhil.yt.innertube.pages.LibraryPage
 import com.nikhil.yt.innertube.pages.PlaylistPage
 import java.security.MessageDigest
 
 @JvmName("completedLibrary")
-suspend fun Result<PlaylistPage>.completed(): Result<PlaylistPage> = runCatching {
+suspend fun Result<PlaylistPage>.completed(): Result<PlaylistPage> = runCatchingCancellable {
     val page = getOrThrow()
-    val songs = page.songs.toMutableList()
-    var continuation = page.songsContinuation
-    val seenContinuations = mutableSetOf<String>()
-    var requestCount = 0
-    val maxRequests = 50
-    var consecutiveEmptyResponses = 0
-    
-    while (continuation != null && requestCount < maxRequests) {
-        if (continuation in seenContinuations) {
-            break
-        }
-        seenContinuations.add(continuation)
-        requestCount++
-        
-        val continuationPage = YouTube.playlistContinuation(continuation).getOrNull() ?: break
-        
-        if (continuationPage.songs.isEmpty()) {
-            consecutiveEmptyResponses++
-            if (consecutiveEmptyResponses >= 2) break
-        } else {
-            consecutiveEmptyResponses = 0
-            songs += continuationPage.songs
-        }
-        
-        continuation = continuationPage.continuation
+    val songs = collectCompletePages(page.songs, page.songsContinuation) { token ->
+        val next = YouTube.playlistContinuation(token).getOrThrow()
+        next.songs to next.continuation
     }
-    PlaylistPage(
-        playlist = page.playlist,
-        songs = songs,
-        songsContinuation = null,
-        continuation = page.continuation
-    )
+    page.copy(songs = songs, songsContinuation = null)
 }
 
 @JvmName("completedPlaylist")
-suspend fun Result<LibraryPage>.completed(): Result<LibraryPage> = runCatching {
+suspend fun Result<LibraryPage>.completed(): Result<LibraryPage> = runCatchingCancellable {
     val page = getOrThrow()
-    val items = page.items.toMutableList()
-    var continuation = page.continuation
-    val seenContinuations = mutableSetOf<String>()
-    var requestCount = 0
-    val maxRequests = 50
-    var consecutiveEmptyResponses = 0
-    
-    while (continuation != null && requestCount < maxRequests) {
-        if (continuation in seenContinuations) {
-            break
-        }
-        seenContinuations.add(continuation)
-        requestCount++
-        
-        val continuationPage = YouTube.libraryContinuation(continuation).getOrNull() ?: break
-        
-        if (continuationPage.items.isEmpty()) {
-            consecutiveEmptyResponses++
-            if (consecutiveEmptyResponses >= 2) break
-        } else {
-            consecutiveEmptyResponses = 0
-            items += continuationPage.items
-        }
-        
-        continuation = continuationPage.continuation
+    val items = collectCompletePages(page.items, page.continuation) { token ->
+        val next = YouTube.libraryContinuation(token).getOrThrow()
+        next.items to next.continuation
     }
-    LibraryPage(
-        items = items,
-        continuation = null
-    )
+    page.copy(items = items, continuation = null)
 }
 
 fun ByteArray.toHex(): String = joinToString(separator = "") { eachByte -> "%02x".format(eachByte) }

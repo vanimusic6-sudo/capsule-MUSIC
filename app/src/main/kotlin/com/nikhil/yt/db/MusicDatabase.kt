@@ -95,6 +95,10 @@ class MusicDatabase(
         }
     }
 
+    fun mergeDuplicatePlaylists() = delegate.runInTransaction {
+        PlaylistDeduplicator.merge(delegate.openHelper.writableDatabase)
+    }
+
     fun close() = delegate.close()
 
     private suspend fun awaitExecutor(executor: Executor) {
@@ -238,69 +242,13 @@ private class DatabaseCallback : RoomDatabase.Callback() {
                 db.query("PRAGMA temp_store = MEMORY").close()
                 db.query("PRAGMA mmap_size = 268435456").close()
                 
-                cleanupDuplicatePlaylistsOnOpen(db)
-                ensurePlaylistBrowseIdIndex(db)
+                PlaylistDeduplicator.merge(db)
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to set PRAGMA settings", e)
             }
         }
     }
     
-    private fun cleanupDuplicatePlaylistsOnOpen(db: SupportSQLiteDatabase) {
-        try {
-            db.execSQL("""
-                DELETE FROM playlist_song_map WHERE playlistId IN (
-                    SELECT p1.id FROM playlist p1
-                    WHERE p1.browseId IS NOT NULL
-                    AND EXISTS (
-                        SELECT 1 FROM playlist p2 
-                        WHERE p2.browseId = p1.browseId 
-                        AND p2.id != p1.id
-                        AND (
-                            (SELECT COUNT(*) FROM playlist_song_map WHERE playlistId = p2.id) >
-                            (SELECT COUNT(*) FROM playlist_song_map WHERE playlistId = p1.id)
-                            OR (
-                                (SELECT COUNT(*) FROM playlist_song_map WHERE playlistId = p2.id) =
-                                (SELECT COUNT(*) FROM playlist_song_map WHERE playlistId = p1.id)
-                                AND p2.rowid < p1.rowid
-                            )
-                        )
-                    )
-                )
-            """)
-            
-            db.execSQL("""
-                DELETE FROM playlist WHERE id IN (
-                    SELECT p1.id FROM playlist p1
-                    WHERE p1.browseId IS NOT NULL
-                    AND EXISTS (
-                        SELECT 1 FROM playlist p2 
-                        WHERE p2.browseId = p1.browseId 
-                        AND p2.id != p1.id
-                        AND (
-                            (SELECT COUNT(*) FROM playlist_song_map WHERE playlistId = p2.id) >
-                            (SELECT COUNT(*) FROM playlist_song_map WHERE playlistId = p1.id)
-                            OR (
-                                (SELECT COUNT(*) FROM playlist_song_map WHERE playlistId = p2.id) =
-                                (SELECT COUNT(*) FROM playlist_song_map WHERE playlistId = p1.id)
-                                AND p2.rowid < p1.rowid
-                            )
-                        )
-                    )
-                )
-            """)
-        } catch (e: Exception) {
-            Log.w(TAG, "Duplicate playlist cleanup skipped", e)
-        }
-    }
-    
-    private fun ensurePlaylistBrowseIdIndex(db: SupportSQLiteDatabase) {
-        try {
-            db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS index_playlist_browseId ON playlist (browseId) WHERE browseId IS NOT NULL")
-        } catch (e: Exception) {
-            Log.w(TAG, "Failed to create browseId index", e)
-        }
-    }
 }
 
 // =============================================================================
@@ -473,7 +421,11 @@ private object SchemaTools {
             expectedOrdered.joinToString(",") { col ->
                 val old = actualColumns[col.name]
                 when {
-                    old != null -> "`${col.name}`"
+                    old != null -> if (col.notNull && !old.notNull) {
+                        "COALESCE(`${col.name}`, ${col.defaultValue ?: defaultLiteral(col.type)})"
+                    } else "`${col.name}`"
+                    legacyLibraryValue(table.name, col.name, actualColumns.keys) != null ->
+                        legacyLibraryValue(table.name, col.name, actualColumns.keys)!!
                     col.defaultValue != null -> col.defaultValue
                     col.notNull -> defaultLiteral(col.type)
                     else -> "NULL"

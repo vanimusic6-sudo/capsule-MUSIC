@@ -7,6 +7,19 @@ internal class PlaybackDataCache(
 ) {
     private data class Entry(val data: CapsuleAudioEngine.PlaybackData, val expiresAtMs: Long)
     private val entries = LinkedHashMap<String, Entry>(16, 0.75f, true)
+    private var context: Any? = null
+    private var generation = 0L
+
+    /** Route, account and extraction preferences are part of a signed URL's identity. */
+    @Synchronized
+    fun useContext(value: Any): Long {
+        if (context != value) {
+            context = value
+            generation++
+            entries.clear()
+        }
+        return generation
+    }
 
     @Synchronized
     fun get(mediaId: String, minimumRemainingMs: Long = 5_000L): CapsuleAudioEngine.PlaybackData? {
@@ -19,7 +32,8 @@ internal class PlaybackDataCache(
     }
 
     @Synchronized
-    fun put(mediaId: String, data: CapsuleAudioEngine.PlaybackData) {
+    fun put(mediaId: String, data: CapsuleAudioEngine.PlaybackData, expectedGeneration: Long? = null) {
+        if (expectedGeneration != null && expectedGeneration != generation) return
         entries[mediaId] = Entry(data, nowMs() + data.streamExpiresInSeconds.coerceAtLeast(1) * 1_000L)
         while (entries.size > capacity) entries.remove(entries.keys.first())
     }
@@ -28,5 +42,5 @@ internal class PlaybackDataCache(
     fun remove(mediaId: String) { entries.remove(mediaId) }
 
     @Synchronized
-    fun clear() { entries.clear() }
+    fun clear() { generation++; entries.clear() }
 }

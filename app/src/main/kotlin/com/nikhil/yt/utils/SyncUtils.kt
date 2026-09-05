@@ -26,6 +26,7 @@ import com.nikhil.yt.db.entities.PlaylistEntity
 import com.nikhil.yt.db.entities.PlaylistSongMap
 import com.nikhil.yt.db.entities.SongEntity
 import com.nikhil.yt.models.toMediaMetadata
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.coroutineScope
@@ -109,6 +110,8 @@ class SyncUtils @Inject constructor(
                     syncAutoSyncPlaylists()
                 }
             }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
         } catch (e: Exception) {
             Timber.e(e, "Error during full sync")
         } finally {
@@ -117,30 +120,9 @@ class SyncUtils @Inject constructor(
     }
     
     suspend fun cleanupDuplicatePlaylists() = withContext(Dispatchers.IO) {
-        try {
-            val allPlaylists = database.playlistsByNameAsc().first()
-            val browseIdGroups = allPlaylists
-                .filter { it.playlist.browseId != null }
-                .groupBy { it.playlist.browseId }
-            
-            for ((browseId, playlists) in browseIdGroups) {
-                if (playlists.size > 1) {
-                    Timber.w("Found ${playlists.size} duplicate playlists for browseId: $browseId")
-                    val toKeep = playlists.maxByOrNull { it.songCount }
-                        ?: playlists.first()
-                    
-                    playlists.filter { it.id != toKeep.id }.forEach { duplicate ->
-                        Timber.d("Removing duplicate playlist: ${duplicate.playlist.name} (${duplicate.id})")
-                        database.clearPlaylist(duplicate.id)
-                        database.delete(duplicate.playlist)
-                    }
-                }
-            }
-        } catch (e: Exception) {
-            Timber.e(e, "Error cleaning up duplicate playlists")
-        }
+        database.mergeDuplicatePlaylists()
     }
-    
+
     /**
      * Check if user is properly logged in with a valid SAPISID cookie
      */
@@ -213,7 +195,7 @@ class SyncUtils @Inject constructor(
                             if (!isSyncStillEnabled(gen)) return@withTransaction
                             if (dbSong == null) {
                                 insert(song.toMediaMetadata()) { it.copy(liked = true, likedDate = timestamp) }
-                            } else if (!dbSong.song.liked || dbSong.song.likedDate != timestamp) {
+                            } else if (!dbSong.song.liked || dbSong.song.likedDate == null) {
                                 update(dbSong.song.copy(liked = true, likedDate = timestamp))
                             }
                         }
@@ -309,6 +291,8 @@ class SyncUtils @Inject constructor(
                                     database.album(album.id).firstOrNull()?.let { newDbAlbum ->
                                         database.update(newDbAlbum.album.localToggleLike())
                                     }
+                                } catch (cancelled: CancellationException) {
+                                    throw cancelled
                                 } catch (e: Exception) {
                                     Timber.w("syncLikedAlbums: Failed to insert album ${album.id}", e)
                                 }
@@ -415,13 +399,14 @@ class SyncUtils @Inject constructor(
             val selectedIds = selectedCsv.split(',').map { it.trim() }.filter { it.isNotEmpty() }.toSet()
 
             val playlistsToSync = if (selectedIds.isNotEmpty()) remotePlaylists.filter { it.id in selectedIds } else remotePlaylists
-            val remoteIds = playlistsToSync.map { it.id }.toSet()
+            val remoteIds = remotePlaylists.map { it.id }.toSet()
 
             val localPlaylists = database.playlistsByNameAsc().first()
             if (!isSyncStillEnabled(gen)) return@onSuccess
-            localPlaylists.filterNot { it.playlist.browseId in remoteIds }
-                .filterNot { it.playlist.browseId == null }
-                .forEach { database.update(it.playlist.localToggleLike()) }
+            localPlaylists.filter { it.playlist.browseId != null && it.playlist.bookmarkedAt != null }
+                .filter { selectedIds.isEmpty() || it.playlist.browseId in selectedIds }
+                .filterNot { it.playlist.browseId in remoteIds }
+                .forEach { database.update(it.playlist.copy(bookmarkedAt = null)) }
 
             for (playlist in playlistsToSync) {
                 if (!isSyncStillEnabled(gen)) return@onSuccess
@@ -451,6 +436,8 @@ class SyncUtils @Inject constructor(
                     
                     if (!isSyncStillEnabled(gen)) return@onSuccess
                     syncPlaylist(playlist.id, playlistEntity.id)
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
                 } catch (e: Exception) {
                     Timber.e(e, "Failed to sync playlist ${playlist.title}")
                 }
@@ -473,6 +460,8 @@ class SyncUtils @Inject constructor(
         val autoSyncPlaylists = try {
             database.playlistsByNameAsc().first()
                 .filter { it.playlist.isAutoSync && it.playlist.browseId != null }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
         } catch (e: Exception) {
             Timber.e(e, "syncAutoSyncPlaylists: Failed to fetch auto-sync playlists")
             return@coroutineScope
@@ -492,6 +481,8 @@ class SyncUtils @Inject constructor(
                         }
                         syncPlaylist(browseId, playlist.playlist.id)
                     }
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
                 } catch (e: Exception) {
                     Timber.e(e, "Failed to sync playlist ${playlist.playlist.name}")
                 }
@@ -532,6 +523,8 @@ class SyncUtils @Inject constructor(
                 database.playlistSongs(playlistId).first()
                     .sortedBy { it.map.position }
                     .map { it.song.id }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
             } catch (e: Exception) {
                 Timber.w("syncPlaylist: Failed to fetch local songs", e)
                 emptyList()
@@ -546,25 +539,25 @@ class SyncUtils @Inject constructor(
 
             try {
                 database.withTransaction {
-                    if (!isSyncStillEnabled(gen)) return@withTransaction
-                    database.clearPlaylist(playlistId)
-                    songs.forEachIndexed { idx, song ->
-                        if (!isSyncStillEnabled(gen)) return@withTransaction
-                        if (song.id == null) return@forEachIndexed
-                        if (database.song(song.id).firstOrNull() == null) {
-                            database.insert(song)
-                        }
+                    replaceSyncedItems(
+                        items = songs,
+                        isSyncActive = { isSyncStillEnabled(gen) },
+                        clear = { database.clearPlaylist(playlistId) },
+                    ) { index, song ->
+                        if (database.song(song.id).firstOrNull() == null) database.insert(song)
                         database.insert(
                             PlaylistSongMap(
                                 songId = song.id,
                                 playlistId = playlistId,
-                                position = idx,
-                                setVideoId = song.setVideoId
-                            )
+                                position = index,
+                                setVideoId = song.setVideoId,
+                            ),
                         )
                     }
                 }
                 Timber.d("syncPlaylist: Successfully synced playlist")
+            } catch (cancelled: CancellationException) {
+                throw cancelled
             } catch (e: Exception) {
                 Timber.e(e, "syncPlaylist: Error during database transaction")
             }
