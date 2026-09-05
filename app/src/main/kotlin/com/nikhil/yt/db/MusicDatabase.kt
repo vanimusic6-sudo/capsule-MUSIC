@@ -394,18 +394,33 @@ private object SchemaTools {
         val expectedViews = expectedMaster.filter { it.type == "view" && it.sql != null }
         val expectedTriggers = expectedMaster.filter { it.type == "trigger" && it.sql != null }
 
+        val foreignKeysEnabled = pragmaEnabled(db, "foreign_keys")
         db.execSQL("PRAGMA foreign_keys=OFF")
-        dropNonTableObjects(db)
-
-        expectedTables.forEach { table ->
-            ensureTableSchema(db = db, expectedDb = expectedDb, table = table, expectedIndices = expectedIndices)
+        check(!pragmaEnabled(db, "foreign_keys")) {
+            "Cannot safely rebuild library tables while foreign keys are active in a transaction"
         }
-
-        expectedViews.forEach { db.execSQL(it.sql!!) }
-        expectedTriggers.forEach { db.execSQL(it.sql!!) }
-
-        db.execSQL("PRAGMA foreign_keys=ON")
+        val legacyAlterTable = pragmaEnabled(db, "legacy_alter_table")
+        // SQLite 3.26+ otherwise rewrites child references to _old_song during
+        // RENAME even with foreign_keys=OFF, leaving them pointing at a dropped table.
+        db.execSQL("PRAGMA legacy_alter_table=ON")
+        try {
+            dropNonTableObjects(db)
+            expectedTables.forEach { table ->
+                ensureTableSchema(db = db, expectedDb = expectedDb, table = table, expectedIndices = expectedIndices)
+            }
+            expectedViews.forEach { db.execSQL(it.sql!!) }
+            expectedTriggers.forEach { db.execSQL(it.sql!!) }
+            db.query("PRAGMA foreign_key_check").use { violations ->
+                check(!violations.moveToFirst()) { "Schema repair would leave broken library references" }
+            }
+        } finally {
+            db.execSQL("PRAGMA legacy_alter_table=${if (legacyAlterTable) "ON" else "OFF"}")
+            db.execSQL("PRAGMA foreign_keys=${if (foreignKeysEnabled) "ON" else "OFF"}")
+        }
     }
+
+    private fun pragmaEnabled(db: SupportSQLiteDatabase, name: String): Boolean =
+        db.query("PRAGMA $name").use { it.moveToFirst() && it.getInt(0) != 0 }
 
     private fun readIdentityHash(db: SupportSQLiteDatabase): String? =
         runCatching {
