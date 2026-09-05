@@ -25,7 +25,9 @@ internal class AudioResolveScheduler {
     private var active: Ticket? = null
 
     fun promote(mediaId: String) = synchronized(lock) {
-        (waiting + listOfNotNull(active)).filter { it.mediaId == mediaId }.forEach {
+        (waiting + listOfNotNull(active)).filter {
+            it.mediaId == mediaId && it.priority == AudioResolvePriority.PREFETCH
+        }.forEach {
             it.priority = AudioResolvePriority.PLAYBACK
         }
         preemptBackground()
@@ -73,7 +75,7 @@ internal class AudioResolveScheduler {
 
     private fun preemptBackground() {
         val running = active ?: return
-        if (waiting.any { it.priority < running.priority && it.mediaId != running.mediaId }) {
+        if (waiting.any { it.priority < running.priority }) {
             running.preempted = true
             running.worker?.cancel(Preempted())
         }

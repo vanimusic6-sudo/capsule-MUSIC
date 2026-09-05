@@ -7,6 +7,28 @@ import org.junit.Test
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class AudioResolveSchedulerTest {
+    @Test fun playbackOfTheDownloadingSongStillGetsForegroundPriority() = runTest {
+        val scheduler = AudioResolveScheduler()
+        val events = mutableListOf<String>()
+        val download = async {
+            scheduler.run("track", AudioResolvePriority.DOWNLOAD) {
+                delay(1_000)
+                events += "download"
+            }
+        }
+        runCurrent()
+        // MusicService promotes its shared prefetch before joining it. A download
+        // with the same id is a separate job and must not be promoted by this call.
+        scheduler.promote("track")
+        val playback = async {
+            scheduler.run("track", AudioResolvePriority.PLAYBACK) { events += "playback" }
+        }
+        advanceUntilIdle()
+        playback.await()
+        download.await()
+        assertEquals(listOf("playback", "download"), events)
+    }
+
     @Test fun playbackPreemptsDownloadAndDownloadResumesWithoutFailing() = runTest {
         val scheduler = AudioResolveScheduler()
         val events = mutableListOf<String>()
