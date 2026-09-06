@@ -2,6 +2,8 @@ package com.nikhil.yt.playback
 
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -104,6 +106,35 @@ class PlaybackRecoveryCoordinatorTest {
         assertTrue(coordinator.waitingForNetworkConnection.value)
 
         coordinator.cancelNetworkRecovery()
+        assertFalse(coordinator.waitingForNetworkConnection.value)
+    }
+
+    @Test
+    fun seekGenerationChangeCancelsDelayedNetworkPrepare() = runBlocking {
+        var positionGeneration = 0L
+        var prepareCalls = 0
+        val coordinator =
+            PlaybackRecoveryCoordinator(
+                scopeProvider = { this },
+                maxConsecutiveTrackFailures = 3,
+                currentMediaIdProvider = { "track" },
+                playWhenReadyProvider = { true },
+                currentIndexProvider = { 0 },
+                positionGenerationProvider = { positionGeneration },
+                connectedProvider = { true },
+                playbackBlockedProvider = { false },
+                healthyPlaybackProvider = { false },
+                pausePlayback = {},
+                preparePlayback = { prepareCalls += 1 },
+            )
+
+        coordinator.recoverFromNetworkError()
+        assertTrue(coordinator.waitingForNetworkConnection.value)
+
+        positionGeneration += 1L
+        delay(1_650L)
+
+        assertEquals(0, prepareCalls)
         assertFalse(coordinator.waitingForNetworkConnection.value)
     }
 }
