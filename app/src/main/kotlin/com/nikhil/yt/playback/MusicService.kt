@@ -180,6 +180,8 @@ import com.nikhil.yt.playback.video.CapsuleVideoPlaybackState
 import com.nikhil.yt.playback.video.CapsuleCacheRoutingDataSource
 import com.nikhil.yt.playback.video.CapsuleVideoStreamInterceptor
 import com.nikhil.yt.playback.video.YouTubeVideoResolver
+import com.nikhil.yt.playback.video.CapsuleVideoResolveCoordinator
+import com.nikhil.yt.playback.video.CapsuleVideoResolveRequest
 import com.nikhil.yt.utils.CoilBitmapLoader
 import com.nikhil.yt.utils.NetworkConnectivityObserver
 import com.nikhil.yt.utils.StreamClientUtils
@@ -474,7 +476,9 @@ class MusicService :
     val videoPlaybackState = MutableStateFlow(CapsuleVideoPlaybackState())
     private var videoOriginalMediaItem: MediaItem? = null
     private var videoOriginalMediaId: String? = null
-    private var videoResolveJob: Job? = null
+    private val videoResolveCoordinator by lazy(LazyThreadSafetyMode.NONE) {
+        CapsuleVideoResolveCoordinator(scopeProvider = { scope })
+    }
 
     /*
      * VIDEO power/request protection.
@@ -2539,8 +2543,7 @@ class MusicService :
             canonicalChanged &&
             !isCurrentCapsuleVideoItem()
         ) {
-            videoResolveJob?.cancel()
-            videoResolveJob = null
+            videoResolveCoordinator.cancel()
 
             /*
              * If the old queue slot was temporarily replaced by a
@@ -3493,7 +3496,7 @@ class MusicService :
                     ?.div(1000L)
                     ?.toInt()
 
-        videoResolveJob?.cancel()
+        videoResolveCoordinator.cancel()
         videoOriginalMediaItem = currentItem
         videoOriginalMediaId = canonicalMediaId
 
@@ -3507,29 +3510,22 @@ class MusicService :
                 message = null,
             )
 
-        videoResolveJob =
-            scope.launch {
-                val resolved =
-                    withContext(Dispatchers.IO) {
-                        YouTubeVideoResolver.resolveForSong(
-                            sourceMediaId = canonicalMediaId,
-                            title = sourceTitle,
-                            artists = sourceArtists,
-                            durationSeconds = sourceDurationSeconds,
-                            quality = capsuleVideoQuality,
-                        )
-                    }
-
-                if (
-                    player.currentMediaItem?.mediaId != canonicalMediaId ||
-                    videoPlaybackState.value.preferredMode != CapsulePlaybackMode.VIDEO ||
-                    videoPlaybackState.value.phase != CapsuleVideoPhase.RESOLVING
-                ) {
-                    return@launch
-                }
-
+        videoResolveCoordinator.resolve(
+            request =
+                CapsuleVideoResolveRequest(
+                    sourceMediaId = canonicalMediaId,
+                    title = sourceTitle,
+                    artists = sourceArtists,
+                    durationSeconds = sourceDurationSeconds,
+                    quality = capsuleVideoQuality,
+                ),
+            isRelevant = {
+                player.currentMediaItem?.mediaId == canonicalMediaId &&
+                    videoPlaybackState.value.preferredMode == CapsulePlaybackMode.VIDEO &&
+                    videoPlaybackState.value.phase == CapsuleVideoPhase.RESOLVING
+            },
+            onResult = { resolved ->
                 resolved.onFailure { throwable ->
-                    videoResolveJob = null
 
                     val noMatchingVideo =
                         isDefiniteNoVideoMatch(throwable)
@@ -3566,7 +3562,6 @@ class MusicService :
                                     },
                         )
                 }.onSuccess { video ->
-                    videoResolveJob = null
                     videoSuspendedForScreenOff = false
 
                     val position = player.currentPosition.coerceAtLeast(0L)
@@ -3615,12 +3610,12 @@ class MusicService :
                     player.prepare()
                     player.playWhenReady = wasPlaying
                 }
-            }
+            },
+        )
     }
 
     private fun leaveCapsuleVideoMode() {
-        videoResolveJob?.cancel()
-        videoResolveJob = null
+        videoResolveCoordinator.cancel()
 
         val currentItem = player.currentMediaItem ?: run {
             videoPlaybackState.value =
@@ -3664,8 +3659,7 @@ class MusicService :
         failurePhase: CapsuleVideoPhase = CapsuleVideoPhase.UNAVAILABLE,
         invalidateFailedVideo: Boolean = failureMessage != null,
     ) {
-        videoResolveJob?.cancel()
-        videoResolveJob = null
+        videoResolveCoordinator.cancel()
 
         val currentItem = player.currentMediaItem ?: return
         val canonicalMediaId =
@@ -3821,8 +3815,7 @@ class MusicService :
          * new extractor request by itself.
          */
         videoSuspendedForScreenOff = false
-        videoResolveJob?.cancel()
-        videoResolveJob = null
+        videoResolveCoordinator.cancel()
 
         if (isCurrentCapsuleVideoItem()) {
             restoreOriginalAudioItem(
