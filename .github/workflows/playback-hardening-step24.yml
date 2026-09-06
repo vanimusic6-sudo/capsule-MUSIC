@@ -1,0 +1,121 @@
+name: Playback Hardening Step 24
+
+on:
+  push:
+    branches:
+      - cleanup/capsule-player-only
+    paths:
+      - ".github/workflows/playback-hardening-step24.yml"
+      - "tools/refactor/harden_playback_retry_generation.py"
+      - "app/src/main/kotlin/com/nikhil/yt/playback/PlaybackPositionGeneration.kt"
+      - "app/src/test/kotlin/com/nikhil/yt/playback/PlaybackPositionGenerationTest.kt"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: playback-hardening-step24
+  cancel-in-progress: false
+
+jobs:
+  integrate:
+    name: Harden delayed playback retry relevance
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+
+    steps:
+      - name: Checkout target branch
+        uses: actions/checkout@v6
+        with:
+          ref: cleanup/capsule-player-only
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Set up Gradle 9.5
+        uses: gradle/actions/setup-gradle@v6
+        with:
+          gradle-version: "9.5.0"
+
+      - name: Ensure locale metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! git ls-files --error-unmatch app/src/main/res/resources.properties >/dev/null 2>&1; then
+            mkdir -p app/src/main/res
+            cat > app/src/main/res/resources.properties <<'EOF'
+          unqualifiedResLocale=en-US
+          EOF
+          fi
+
+      - name: Verify retry-generation preconditions
+        run: python3 tools/refactor/harden_playback_retry_generation.py --check
+
+      - name: Harden delayed playback retries
+        run: python3 tools/refactor/harden_playback_retry_generation.py
+
+      - name: Verify structural result
+        shell: bash
+        run: |
+          set -euo pipefail
+          SERVICE="app/src/main/kotlin/com/nikhil/yt/playback/MusicService.kt"
+          RECOVERY="app/src/main/kotlin/com/nikhil/yt/playback/PlaybackRecoveryCoordinator.kt"
+          RECOVERY_TEST="app/src/test/kotlin/com/nikhil/yt/playback/PlaybackRecoveryCoordinatorTest.kt"
+          test "$(git diff --name-only | wc -l | tr -d ' ')" = "3"
+          git diff --name-only | grep -Fxq "$SERVICE"
+          git diff --name-only | grep -Fxq "$RECOVERY"
+          git diff --name-only | grep -Fxq "$RECOVERY_TEST"
+          grep -Fq 'private val playbackPositionGeneration = PlaybackPositionGeneration()' "$SERVICE"
+          grep -Fq 'playbackPositionGeneration.markDiscontinuity()' "$SERVICE"
+          grep -Fq '!playbackPositionGeneration.isCurrent(retryPositionGeneration)' "$SERVICE"
+          ! grep -Fq 'player.currentPosition != retryPosition' "$SERVICE"
+          grep -Fq 'positionGenerationProvider() != positionGeneration' "$RECOVERY"
+          ! grep -Fq 'currentPositionProvider() != position' "$RECOVERY"
+          grep -Fq 'CapsuleAudioEngine' "$SERVICE"
+          grep -Fq 'ResolvingDataSource' "$SERVICE"
+          git diff --check
+
+      - name: Run unit tests, lint and debug build
+        run: |
+          gradle \
+            :innertube:test \
+            :betterlyrics:test \
+            :app:testUniversalDebugUnitTest \
+            :app:lintUniversalDebug \
+            :app:assembleUniversalDebug \
+            --stacktrace \
+            --no-daemon
+
+      - name: Refuse stale branch write
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin cleanup/capsule-player-only
+          remote_head="$(git rev-parse origin/cleanup/capsule-player-only)"
+          test "$remote_head" = "$GITHUB_SHA" || {
+            echo "Branch advanced during validation; refusing stale push."
+            echo "workflow head: $GITHUB_SHA"
+            echo "remote head:   $remote_head"
+            exit 1
+          }
+
+      - name: Commit validated retry-generation hardening
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clean -f app/src/main/res/resources.properties || true
+          SERVICE="app/src/main/kotlin/com/nikhil/yt/playback/MusicService.kt"
+          RECOVERY="app/src/main/kotlin/com/nikhil/yt/playback/PlaybackRecoveryCoordinator.kt"
+          RECOVERY_TEST="app/src/test/kotlin/com/nikhil/yt/playback/PlaybackRecoveryCoordinatorTest.kt"
+          test "$(git diff --name-only | wc -l | tr -d ' ')" = "3"
+          git config user.name "capsule-refactor-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add "$SERVICE" "$RECOVERY" "$RECOVERY_TEST"
+          git commit -m "Make delayed playback retries seek-aware"
+          git push origin HEAD:cleanup/capsule-player-only
