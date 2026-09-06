@@ -136,7 +136,6 @@ import com.nikhil.yt.db.entities.AlbumEntity
 import com.nikhil.yt.db.entities.ArtistEntity
 import com.nikhil.yt.db.entities.Event
 import com.nikhil.yt.db.entities.FormatEntity
-import com.nikhil.yt.db.entities.RelatedSongMap
 import com.nikhil.yt.db.entities.Song
 import com.nikhil.yt.db.entities.SongEntity
 import com.nikhil.yt.di.DownloadCache
@@ -156,7 +155,6 @@ import com.nikhil.yt.extensions.toPersistQueue
 import com.nikhil.yt.extensions.toQueue
 import com.nikhil.yt.innertube.CapsuleVideoRequestGuard
 import com.nikhil.yt.innertube.YouTube
-import com.nikhil.yt.innertube.models.SongItem
 import com.nikhil.yt.innertube.models.WatchEndpoint
 import com.nikhil.yt.together.TogetherSessionRuntime
 import com.nikhil.yt.together.TogetherSessionController
@@ -344,8 +342,6 @@ class MusicService :
      * and if the loader arrives before it finished, the loader simply awaits
      * the job that is already running instead of launching a second one.
      */
-    private val songRecoveryJobs = ConcurrentHashMap<String, Job>()
-    private val songRecoveryLock = Any()
     private val audioResolveStability = PlaybackStabilityGate()
 
     private fun audioResolveJob(
@@ -680,12 +676,47 @@ class MusicService :
     }
 
     private val automixRuntime = AutomixRuntime()
+    private val songMetadataRecoveryCoordinator by lazy(LazyThreadSafetyMode.NONE) {
+        SongMetadataRecoveryCoordinator(
+            scopeProvider = { ioScope },
+            database = database,
+            awaitStable = { mediaId ->
+                audioResolveStability.awaitStable {
+                    withContext(Dispatchers.Main.immediate) {
+                        player.currentMediaItem?.mediaId == mediaId
+                    }
+                }
+            },
+            mediaMetadataProvider = { mediaId ->
+                withContext(Dispatchers.Main.immediate) {
+                    player.findNextMediaItemById(mediaId)?.metadata
+                }
+            },
+            automixJobProvider = { mediaId ->
+                withContext(Dispatchers.Main.immediate) {
+                    automixRuntime.jobForSeed(mediaId)
+                }
+            },
+            playbackBlockedExceptionOrNull = {
+                CapsuleAudioEngine.playbackBlockedExceptionOrNull()
+            },
+            onFailure = { mediaId, failure ->
+                reportRecoverableException(
+                    "MusicService",
+                    "recover song metadata id=$mediaId",
+                    failure,
+                )
+            },
+        )
+    }
     private val automixCoordinator =
         AutomixCoordinator(
             runtime = automixRuntime,
             scopeProvider = { scope },
             stabilityGate = audioResolveStability,
-            cacheRelatedSongs = { mediaId, songs -> cacheRelatedSongs(mediaId, songs) },
+            cacheRelatedSongs = { mediaId, songs ->
+                songMetadataRecoveryCoordinator.cacheRelatedSongs(mediaId, songs)
+            },
             playbackBlockedExceptionOrNull = { CapsuleAudioEngine.playbackBlockedExceptionOrNull() },
         )
     val automixItems = automixCoordinator.items
@@ -1472,78 +1503,11 @@ class MusicService :
             .onFailure { reportException(it) }
     }
 
-    private fun scheduleSongRecovery(
-        mediaId: String,
-        playbackData: CapsuleAudioEngine.PlaybackData? = null,
-    ) = synchronized(songRecoveryLock) {
-        if (songRecoveryJobs[mediaId]?.isActive == true) return@synchronized
-        val job = ioScope.launch(start = CoroutineStart.LAZY) {
-            try {
-                audioResolveStability.awaitStable {
-                    withContext(Dispatchers.Main.immediate) { player.currentMediaItem?.mediaId == mediaId }
-                }
-                recoverSong(mediaId, playbackData)
-            } catch (cancelled: kotlinx.coroutines.CancellationException) {
-                throw cancelled
-            } catch (failure: Exception) {
-                reportRecoverableException("MusicService", "recover song metadata", failure)
-            }
-        }
-        songRecoveryJobs[mediaId] = job
-        job.invokeOnCompletion { songRecoveryJobs.remove(mediaId, job) }
-        job.start()
-    }
 
-    private suspend fun cacheRelatedSongs(mediaId: String, songs: List<SongItem>) {
-        if (songs.isEmpty()) return
-        val seed = withContext(Dispatchers.Main.immediate) {
-            player.findNextMediaItemById(mediaId)?.metadata
-        }
-        database.withTransaction {
-            if (hasRelatedSongs(mediaId)) return@withTransaction
-            if (getSongByIdBlocking(mediaId) == null) {
-                insert(seed ?: return@withTransaction)
-            }
-            songs.map(SongItem::toMediaMetadata)
-                .onEach(::insert)
-                .forEach { insert(RelatedSongMap(songId = mediaId, relatedSongId = it.id)) }
-        }
-    }
 
-    private suspend fun recoverSong(
-        mediaId: String,
-        playbackData: CapsuleAudioEngine.PlaybackData? = null
-    ) {
-        val song = database.song(mediaId).first()
-        val mediaMetadata = withContext(Dispatchers.Main) {
-            player.findNextMediaItemById(mediaId)?.metadata
-        } ?: return
-        val duration = song?.song?.duration?.takeIf { it != -1 }
-            ?: mediaMetadata.duration.takeIf { it != -1 }
-            ?: (playbackData?.videoDetails ?: CapsuleAudioEngine.playerResponseForMetadata(mediaId)
-                .getOrNull()?.videoDetails)?.lengthSeconds?.toIntOrNull()
-            ?: -1
-        database.withTransaction {
-            val existing = getSongByIdBlocking(mediaId)?.song
-            if (existing == null) insert(mediaMetadata.copy(duration = duration))
-            else if (existing.duration == -1) update(existing.copy(duration = duration))
-        }
-        // Automix already fetches these songs. Let it populate the library
-        // before deciding whether a separate metadata request is necessary.
-        val currentAutomix = withContext(Dispatchers.Main.immediate) {
-            automixRuntime.jobForSeed(mediaId)
-        }
-        currentAutomix?.join()
-        if (!database.hasRelatedSongs(mediaId)) {
-            CapsuleAudioEngine.playbackBlockedExceptionOrNull()?.let { throw it }
-            val relatedEndpoint =
-                YouTube.next(WatchEndpoint(videoId = mediaId)).getOrNull()?.relatedEndpoint
-                    ?: return
-            CapsuleAudioEngine.playbackBlockedExceptionOrNull()?.let { throw it }
-            val relatedPage = YouTube.related(relatedEndpoint).getOrNull() ?: return
-            cacheRelatedSongs(mediaId, relatedPage.songs)
-        }
-    }
+
+
+
 
     fun playQueue(
         queue: Queue,
@@ -2512,9 +2476,7 @@ class MusicService :
         streamRetryJob = null
         playbackRecoveryCoordinator.cancelNetworkRecovery()
         audioResolveStability.onSelectionChanged()
-        songRecoveryJobs.forEach { (id, job) ->
-            if (id != mediaItem?.mediaId && songRecoveryJobs.remove(id, job)) job.cancel()
-        }
+        songMetadataRecoveryCoordinator.cancelExcept(mediaItem?.mediaId)
         prefetchUpcomingAudio()
 
         val transitionedMediaId =
@@ -3240,14 +3202,14 @@ class MusicService :
                 val completeKey = downloadedKey ?: AudioCacheIdentity.completeKey(playerCache, mediaId, legacyLength)
                 if (completeKey != null) {
                     contract.bind(completeKey)
-                    scheduleSongRecovery(mediaId)
+                    songMetadataRecoveryCoordinator.schedule(mediaId)
                     return@ResolvingDataSource dataSpec.buildUpon().setKey(completeKey)
                         .setCustomData(if (downloadedKey != null) AudioCacheSource.DOWNLOAD else AudioCacheSource.PLAYER)
                         .build()
                 }
 
                 playbackUrlCache.get(mediaId)?.let { cached ->
-                    scheduleSongRecovery(mediaId, cached)
+                    songMetadataRecoveryCoordinator.schedule(mediaId, cached)
                     return@ResolvingDataSource resolvedAudioDataSpec(dataSpec, cached, contract)
                 }
 
@@ -3334,7 +3296,7 @@ class MusicService :
                     }
                 }
 
-                scheduleSongRecovery(mediaId, playbackData)
+                songMetadataRecoveryCoordinator.schedule(mediaId, playbackData)
                 return@ResolvingDataSource resolvedAudioDataSpec(dataSpec, playbackData, contract)
             }
         }
