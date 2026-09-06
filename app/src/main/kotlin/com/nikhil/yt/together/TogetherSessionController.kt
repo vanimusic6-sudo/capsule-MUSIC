@@ -1,22 +1,60 @@
 package com.nikhil.yt.together
 
+import android.os.SystemClock
 import com.nikhil.yt.extensions.SilentHandler
 import java.util.UUID
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
+import timber.log.Timber
 
 internal fun normalizedTogetherDisplayName(
     raw: String,
     fallback: String,
 ): String = raw.trim().ifBlank { fallback }
 
+internal fun initialGuestRoomState(
+    sessionId: String,
+    hostId: String,
+    participantId: String,
+    displayName: String,
+    isPending: Boolean,
+    settings: TogetherRoomSettings,
+    sentAtElapsedRealtimeMs: Long,
+): TogetherRoomState =
+    TogetherRoomState(
+        sessionId = sessionId,
+        hostId = hostId,
+        participants =
+            listOf(
+                TogetherParticipant(
+                    id = participantId,
+                    name = displayName,
+                    isHost = false,
+                    isPending = isPending,
+                    isConnected = true,
+                ),
+            ),
+        settings = settings,
+        queue = emptyList(),
+        queueHash = "",
+        currentIndex = 0,
+        isPlaying = false,
+        positionMs = 0L,
+        repeatMode = 0,
+        shuffleEnabled = false,
+        sentAtElapsedRealtimeMs = sentAtElapsedRealtimeMs,
+    )
+
 /**
- * Owns Together LAN/online host session lifecycle and network jobs.
+ * Owns Together transport/session lifecycle for LAN host, online host and guest.
  *
- * Player snapshots and host control mutations stay in MusicService through
- * narrow callbacks; this class never reaches into ExoPlayer.
+ * ExoPlayer snapshots and player mutations stay in MusicService through narrow
+ * callbacks; this class owns network clients, event collection, heartbeat and
+ * session-state transitions only.
  */
 internal class TogetherSessionController(
     private val runtime: TogetherSessionRuntime,
@@ -24,6 +62,7 @@ internal class TogetherSessionController(
     private val ioScopeProvider: () -> CoroutineScope,
     private val hostId: String,
     private val appNameProvider: () -> String,
+    private val guestNameProvider: () -> String = { "Guest" },
     private val localIpv4Provider: () -> String?,
     private val onlineBaseUrlProvider: () -> String?,
     private val onlineTokenProvider: () -> String?,
@@ -33,20 +72,37 @@ internal class TogetherSessionController(
     private val onlineNotConfiguredMessage: () -> String,
     private val tokenMissingMessage: () -> String,
     private val invalidWebSocketMessage: () -> String,
+    private val invalidLinkMessage: () -> String = { "Invalid link" },
+    private val invalidCodeMessage: () -> String = { "Invalid code" },
+    private val notAllowedMessage: () -> String = { "Not allowed" },
+    private val hostLeftMessage: () -> String = { "Host left the session" },
+    private val networkUnavailableMessage: () -> String = { "Network unavailable" },
     private val hostEventHandler: suspend (
         event: TogetherServerEvent,
         currentSettings: suspend () -> TogetherRoomSettings,
     ) -> Unit,
+    private val remoteStateApplier: suspend (TogetherRoomState) -> Unit = {},
+    private val guestControlReset: () -> Unit = {},
+    private val guestNotice: (message: String, key: String) -> Unit = { _, _ -> },
     private val stopCurrentSession: suspend () -> Unit,
     private val onOnlineFailure: (Throwable) -> Unit,
 ) {
+    private enum class GuestJoinMode {
+        LAN,
+        ONLINE,
+    }
+
     val sessionState = runtime.sessionState
+
+    @Volatile
+    private var guestTerminationRequested = false
 
     fun startLanHost(
         port: Int,
         displayName: String,
         settings: TogetherRoomSettings,
     ) {
+        guestTerminationRequested = true
         mainScopeProvider().launch(SilentHandler) {
             sessionState.value = TogetherSessionState.Idle
         }
@@ -127,6 +183,7 @@ internal class TogetherSessionController(
         displayName: String,
         settings: TogetherRoomSettings,
     ) {
+        guestTerminationRequested = true
         mainScopeProvider().launch(SilentHandler) {
             sessionState.value = TogetherSessionState.Idle
         }
@@ -137,25 +194,13 @@ internal class TogetherSessionController(
 
             val baseUrl = onlineBaseUrlProvider()
             if (baseUrl.isNullOrBlank()) {
-                mainScopeProvider().launch(SilentHandler) {
-                    sessionState.value =
-                        TogetherSessionState.Error(
-                            message = onlineNotConfiguredMessage(),
-                            recoverable = true,
-                        )
-                }
+                publishError(onlineNotConfiguredMessage())
                 return@launch
             }
 
             val token = onlineTokenProvider()
             if (token.isNullOrBlank()) {
-                mainScopeProvider().launch(SilentHandler) {
-                    sessionState.value =
-                        TogetherSessionState.Error(
-                            message = tokenMissingMessage(),
-                            recoverable = true,
-                        )
-                }
+                publishError(tokenMissingMessage())
                 return@launch
             }
 
@@ -170,13 +215,7 @@ internal class TogetherSessionController(
                 } catch (cancelled: CancellationException) {
                     throw cancelled
                 } catch (error: Throwable) {
-                    mainScopeProvider().launch(SilentHandler) {
-                        sessionState.value =
-                            TogetherSessionState.Error(
-                                message = onlineErrorMessage(error),
-                                recoverable = true,
-                            )
-                    }
+                    publishError(onlineErrorMessage(error))
                     onOnlineFailure(error)
                     return@launch
                 }
@@ -216,16 +255,8 @@ internal class TogetherSessionController(
                     baseUrl = baseUrl,
                 )
             if (wsUrl.isNullOrBlank()) {
-                mainScopeProvider().launch(SilentHandler) {
-                    sessionState.value =
-                        TogetherSessionState.Error(
-                            message = invalidWebSocketMessage(),
-                            recoverable = true,
-                        )
-                }
-                ioScopeProvider().launch(SilentHandler) {
-                    stopCurrentSession()
-                }
+                publishError(invalidWebSocketMessage())
+                ioScopeProvider().launch(SilentHandler) { stopCurrentSession() }
                 return@launch
             }
 
@@ -261,7 +292,302 @@ internal class TogetherSessionController(
         }
     }
 
+    fun joinLan(
+        rawLink: String,
+        displayName: String,
+    ) {
+        val joinInfo = TogetherLink.decode(rawLink)
+        if (joinInfo == null) {
+            publishError(invalidLinkMessage())
+            return
+        }
+
+        guestTerminationRequested = true
+        mainScopeProvider().launch(SilentHandler) {
+            sessionState.value = TogetherSessionState.Joining(joinInfo.toDeepLink())
+        }
+
+        ioScopeProvider().launch(SilentHandler) {
+            stopCurrentSession()
+            runtime.isOnlineSession = false
+
+            val guestName = normalizedTogetherDisplayName(displayName, guestNameProvider())
+            val client =
+                TogetherClient(
+                    externalScope = ioScopeProvider(),
+                    clientId = clientIdProvider(),
+                )
+            prepareGuestClient(
+                client = client,
+                sessionId = joinInfo.sessionId,
+                displayName = guestName,
+                mode = GuestJoinMode.LAN,
+            )
+            client.connect(joinInfo, guestName)
+        }
+    }
+
+    fun joinOnline(
+        code: String,
+        displayName: String,
+    ) {
+        val trimmedCode = code.trim()
+        if (trimmedCode.isBlank()) {
+            publishError(invalidCodeMessage())
+            return
+        }
+
+        guestTerminationRequested = true
+        mainScopeProvider().launch(SilentHandler) {
+            sessionState.value = TogetherSessionState.JoiningOnline(trimmedCode)
+        }
+
+        ioScopeProvider().launch(SilentHandler) {
+            stopCurrentSession()
+            runtime.isOnlineSession = true
+
+            val baseUrl = onlineBaseUrlProvider()
+            if (baseUrl.isNullOrBlank()) {
+                publishError(onlineNotConfiguredMessage())
+                return@launch
+            }
+
+            val token = onlineTokenProvider()
+            if (token.isNullOrBlank()) {
+                publishError(tokenMissingMessage())
+                return@launch
+            }
+
+            val api = TogetherOnlineApi(baseUrl = baseUrl, bearerToken = token)
+            val resolved =
+                try {
+                    api.resolveCode(trimmedCode)
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (error: Throwable) {
+                    publishError(onlineErrorMessage(error))
+                    onOnlineFailure(error)
+                    return@launch
+                }
+
+            val guestName = normalizedTogetherDisplayName(displayName, guestNameProvider())
+            val client =
+                TogetherClient(
+                    externalScope = ioScopeProvider(),
+                    clientId = clientIdProvider(),
+                    bearerToken = token,
+                )
+            prepareGuestClient(
+                client = client,
+                sessionId = resolved.sessionId,
+                displayName = guestName,
+                mode = GuestJoinMode.ONLINE,
+            )
+
+            val wsUrl =
+                TogetherOnlineEndpoint.onlineWebSocketUrlOrNull(
+                    rawWsUrl = resolved.wsUrl,
+                    baseUrl = baseUrl,
+                )
+            if (wsUrl.isNullOrBlank()) {
+                requestGuestTermination(invalidWebSocketMessage())
+                return@launch
+            }
+
+            client.connect(
+                wsUrl = wsUrl,
+                sessionId = resolved.sessionId,
+                sessionKey = resolved.guestKey,
+                displayName = guestName,
+            )
+        }
+    }
+
+    fun leave() {
+        guestTerminationRequested = true
+        mainScopeProvider().launch(SilentHandler) {
+            sessionState.value = TogetherSessionState.Idle
+        }
+        ioScopeProvider().launch(SilentHandler) {
+            stopCurrentSession()
+        }
+    }
+
+    private fun prepareGuestClient(
+        client: TogetherClient,
+        sessionId: String,
+        displayName: String,
+        mode: GuestJoinMode,
+    ) {
+        runtime.client = client
+        runtime.clock = TogetherClock()
+        runtime.selfParticipantId = null
+        runtime.lastAppliedQueueHash = null
+        guestTerminationRequested = false
+
+        runtime.clientEventsJob?.cancel()
+        runtime.clientEventsJob =
+            ioScopeProvider().launch(
+                context = SilentHandler,
+                start = CoroutineStart.UNDISPATCHED,
+            ) {
+                client.events.collect { event ->
+                    handleGuestEvent(
+                        event = event,
+                        sessionId = sessionId,
+                        displayName = displayName,
+                        mode = mode,
+                        client = client,
+                    )
+                }
+            }
+    }
+
+    private suspend fun handleGuestEvent(
+        event: TogetherClientEvent,
+        sessionId: String,
+        displayName: String,
+        mode: GuestJoinMode,
+        client: TogetherClient,
+    ) {
+        when (event) {
+            is TogetherClientEvent.Welcome -> {
+                runtime.selfParticipantId = event.welcome.participantId
+                mainScopeProvider().launch(SilentHandler) {
+                    val current = sessionState.value
+                    val stillJoining =
+                        when (mode) {
+                            GuestJoinMode.LAN -> current is TogetherSessionState.Joining
+                            GuestJoinMode.ONLINE -> current is TogetherSessionState.JoiningOnline
+                        }
+                    if (stillJoining) {
+                        sessionState.value =
+                            TogetherSessionState.Joined(
+                                role = TogetherRole.Guest,
+                                sessionId = sessionId,
+                                selfParticipantId = event.welcome.participantId,
+                                roomState =
+                                    initialGuestRoomState(
+                                        sessionId = sessionId,
+                                        hostId = hostId,
+                                        participantId = event.welcome.participantId,
+                                        displayName = displayName,
+                                        isPending = event.welcome.isPending,
+                                        settings = event.welcome.settings,
+                                        sentAtElapsedRealtimeMs = SystemClock.elapsedRealtime(),
+                                    ),
+                            )
+                    }
+                }
+                startHeartbeat(sessionId, client)
+            }
+
+            is TogetherClientEvent.RoomState -> {
+                remoteStateApplier(event.state)
+            }
+
+            is TogetherClientEvent.JoinDecision -> {
+                if (!event.decision.approved) {
+                    requestGuestTermination(notAllowedMessage())
+                }
+            }
+
+            is TogetherClientEvent.ServerIssue -> {
+                Timber.tag("Together").w(
+                    "server issue (${mode.name.lowercase()}) code=${event.code.orEmpty()} message=${event.message}",
+                )
+                when (event.code) {
+                    "GUEST_CONTROL_DISABLED" -> {
+                        guestNotice(event.message, "GUEST_CONTROL_DISABLED")
+                        val joined = sessionState.value as? TogetherSessionState.Joined
+                        if (joined?.role is TogetherRole.Guest) {
+                            guestControlReset()
+                            remoteStateApplier(joined.roomState)
+                        }
+                    }
+
+                    "GUEST_ADD_DISABLED" -> {
+                        guestNotice(event.message, "GUEST_ADD_DISABLED")
+                    }
+
+                    "HOST_OFFLINE" -> {
+                        guestNotice(event.message, "HOST_OFFLINE")
+                    }
+
+                    else -> requestGuestTermination(event.message)
+                }
+            }
+
+            is TogetherClientEvent.HeartbeatPong -> {
+                runtime.clock?.onPong(
+                    sentAtElapsedMs = event.pong.clientElapsedRealtimeMs,
+                    receivedAtElapsedMs = event.receivedAtElapsedRealtimeMs,
+                    serverElapsedMs = event.pong.serverElapsedRealtimeMs,
+                )
+            }
+
+            is TogetherClientEvent.Error -> {
+                requestGuestTermination(event.message)
+            }
+
+            TogetherClientEvent.Disconnected -> {
+                if (guestTerminationRequested) return
+                val current = sessionState.value
+                if (current is TogetherSessionState.Idle) return
+                val message =
+                    if (current is TogetherSessionState.Joined && current.role is TogetherRole.Guest) {
+                        hostLeftMessage()
+                    } else {
+                        networkUnavailableMessage()
+                    }
+                requestGuestTermination(message)
+            }
+        }
+    }
+
+    private fun requestGuestTermination(message: String) {
+        if (guestTerminationRequested) return
+        guestTerminationRequested = true
+        publishError(message)
+        // Never stop from the collector coroutine itself: stopConnections()
+        // cancels clientEventsJob and may otherwise cancel its own cleanup.
+        ioScopeProvider().launch(SilentHandler) {
+            stopCurrentSession()
+        }
+    }
+
+    private fun publishError(message: String) {
+        mainScopeProvider().launch(SilentHandler) {
+            sessionState.value =
+                TogetherSessionState.Error(
+                    message = message,
+                    recoverable = true,
+                )
+        }
+    }
+
+    private fun startHeartbeat(
+        sessionId: String,
+        client: TogetherClient,
+    ) {
+        runtime.heartbeatJob?.cancel()
+        runtime.heartbeatJob =
+            ioScopeProvider().launch(SilentHandler) {
+                var pingId = 0L
+                while (runtime.client === client) {
+                    val now = SystemClock.elapsedRealtime()
+                    client.sendHeartbeat(
+                        sessionId = sessionId,
+                        pingId = pingId++,
+                        clientElapsedRealtimeMs = now,
+                    )
+                    delay(GUEST_HEARTBEAT_INTERVAL_MS)
+                }
+            }
+    }
+
     companion object {
         internal const val HOST_BROADCAST_INTERVAL_MS = 750L
+        internal const val GUEST_HEARTBEAT_INTERVAL_MS = 2_000L
     }
 }
