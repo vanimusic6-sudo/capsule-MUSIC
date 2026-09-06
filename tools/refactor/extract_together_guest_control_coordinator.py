@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import re
 from pathlib import Path
 
 DEFAULT_PATH = Path("app/src/main/kotlin/com/nikhil/yt/playback/MusicService.kt")
@@ -14,11 +15,22 @@ def replace_once(text: str, old: str, new: str, label: str) -> str:
     return text.replace(old, new, 1)
 
 
-def replace_all_exact(text: str, old: str, new: str, expected: int, label: str) -> str:
-    count = text.count(old)
-    if count != expected:
-        raise RuntimeError(f"{label}: expected exactly {expected} matches, found {count}")
-    return text.replace(old, new)
+def replace_guest_control_disabled_resets(text: str) -> str:
+    pattern = re.compile(
+        r"(?m)^(?P<indent>[ \t]*)togetherPendingGuestControl = null\n"
+        r"(?P=indent)togetherLastSentControlAction = null$"
+    )
+
+    def replacement(match: re.Match[str]) -> str:
+        return f"{match.group('indent')}togetherGuestControl.reset()"
+
+    updated, count = pattern.subn(replacement, text)
+    if count != 2:
+        raise RuntimeError(
+            "replace guest-control-disabled resets: expected exactly 2 matches, "
+            f"found {count}"
+        )
+    return updated
 
 
 def replace_between(
@@ -83,16 +95,7 @@ def transform(text: str) -> str:
 """
     text = replace_once(text, pending_data_class, "", "remove pending guest-control data class")
 
-    disabled_reset = """                                        togetherPendingGuestControl = null
-                                        togetherLastSentControlAction = null
-"""
-    text = replace_all_exact(
-        text,
-        disabled_reset,
-        "                                        togetherGuestControl.reset()\n",
-        2,
-        "replace guest-control-disabled resets",
-    )
+    text = replace_guest_control_disabled_resets(text)
 
     request_signature = "    fun requestTogetherControl(action: com.nikhil.yt.together.ControlAction) {"
     request_start = text.find(request_signature)
