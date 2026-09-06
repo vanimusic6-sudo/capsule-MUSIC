@@ -170,6 +170,7 @@ import com.nikhil.yt.innertube.YouTube
 import com.nikhil.yt.innertube.models.SongItem
 import com.nikhil.yt.innertube.models.WatchEndpoint
 import com.nikhil.yt.together.TogetherSessionRuntime
+import com.nikhil.yt.together.TogetherOnlineCredentials
 import com.nikhil.yt.lastfm.LastFM
 import com.nikhil.yt.lyrics.LyricsPreloadManager
 import com.nikhil.yt.models.PersistPlayerState
@@ -2420,7 +2421,7 @@ class MusicService :
                 return@launch
             }
 
-            val togetherToken = "VeluneAdminToken"
+            val togetherToken = TogetherOnlineCredentials.bearerTokenOrNull()
             if (togetherToken == null) {
                 scope.launch(SilentHandler) {
                     togetherSessionState.value =
@@ -2755,7 +2756,7 @@ class MusicService :
                 return@launch
             }
 
-            val togetherToken ="velune_server_token"
+            val togetherToken = TogetherOnlineCredentials.bearerTokenOrNull()
             if (togetherToken == null) {
                 scope.launch(SilentHandler) {
                     togetherSessionState.value =
