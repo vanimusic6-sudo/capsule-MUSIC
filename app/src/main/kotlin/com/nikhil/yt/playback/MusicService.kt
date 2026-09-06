@@ -309,9 +309,9 @@ class MusicService :
 
     private lateinit var connectivityManager: ConnectivityManager
     lateinit var connectivityObserver: NetworkConnectivityObserver
-    val waitingForNetworkConnection = MutableStateFlow(false)
+    val waitingForNetworkConnection: MutableStateFlow<Boolean>
+        get() = playbackRecoveryCoordinator.waitingForNetworkConnection
     private val isNetworkConnected = MutableStateFlow(false)
-    private var networkRecoveryJob: Job? = null
 
     @Volatile
     private var audioQuality = AudioQuality.AUTO
@@ -512,7 +512,28 @@ class MusicService :
             }
         }
 
-    private val playbackRetryBudget = PlaybackRetryBudget()
+    private val playbackRecoveryCoordinator by lazy(LazyThreadSafetyMode.NONE) {
+        PlaybackRecoveryCoordinator(
+            scopeProvider = { scope },
+            maxConsecutiveTrackFailures = MAX_CONSECUTIVE_TRACK_FAILURES,
+            currentMediaIdProvider = { player.currentMediaItem?.mediaId },
+            playWhenReadyProvider = { player.playWhenReady },
+            currentIndexProvider = { player.currentMediaItemIndex },
+            currentPositionProvider = { player.currentPosition },
+            connectedProvider = { connectivityObserver.isCurrentlyConnected() },
+            playbackBlockedProvider = {
+                CapsuleAudioEngine.playbackBlockedExceptionOrNull() != null
+            },
+            healthyPlaybackProvider = { mediaId ->
+                player.currentMediaItem?.mediaId == mediaId &&
+                    player.playbackState == Player.STATE_READY &&
+                    player.isPlaying
+            },
+            pausePlayback = { player.pause() },
+            preparePlayback = { player.prepare() },
+            healthyPlaybackDelayMs = HEALTHY_PLAYBACK_RESET_MS,
+        )
+    }
     private var streamRetryJob: Job? = null
 
     private val mediaOkHttpClient: OkHttpClient by lazy {
@@ -662,10 +683,6 @@ class MusicService :
     val automixLoading = automixCoordinator.loading
     val automixError = automixCoordinator.error
     val autoAddedMediaIds = automixCoordinator.autoAddedMediaIds
-
-    private val trackFailureGuard =
-        ConsecutiveTrackFailureGuard(MAX_CONSECUTIVE_TRACK_FAILURES)
-    private var trackFailureResetJob: Job? = null
 
     val maxSafeGainFactor = 1.414f // +3 dB
     @Volatile
@@ -909,9 +926,7 @@ class MusicService :
         scope.launch {
             connectivityObserver.networkStatus.collect { isConnected ->
                 isNetworkConnected.value = isConnected
-                if (isConnected && waitingForNetworkConnection.value) {
-                    if (networkRecoveryJob?.isActive != true) waitOnNetworkError()
-                }
+                playbackRecoveryCoordinator.onConnectivityChanged(isConnected)
             }
         }
 
@@ -943,7 +958,7 @@ class MusicService :
                     invalidatePrefetch = true,
                     onInvalidate = playbackUrlCache::clear,
                 )
-                playbackRetryBudget.clear()
+                playbackRecoveryCoordinator.clearRetryBudget()
 
                 withContext(Dispatchers.IO) {
                     CapsuleAudioEngine.onNetworkChanged()
@@ -1334,43 +1349,7 @@ class MusicService :
         bluetoothReceiverRegistered = false
     }
 
-    private fun waitOnNetworkError() {
-        networkRecoveryJob?.cancel()
-        networkRecoveryJob = null
-        waitingForNetworkConnection.value = false
-        val mediaId = player.currentMediaItem?.mediaId ?: return
-        if (!player.playWhenReady) return
-        waitingForNetworkConnection.value = true
-        if (!connectivityObserver.isCurrentlyConnected()) return
 
-        val retryDelay = playbackRetryBudget.nextDelayMs(mediaId)
-        if (retryDelay == null || CapsuleAudioEngine.playbackBlockedExceptionOrNull() != null) {
-            waitingForNetworkConnection.value = false
-            player.pause()
-            Timber.tag("MusicService").w("Network recovery stopped for %s; automatic retry budget exhausted or cooldown active", mediaId)
-            return
-        }
-        val index = player.currentMediaItemIndex
-        val position = player.currentPosition
-        networkRecoveryJob = scope.launch {
-            delay(retryDelay)
-            if (!player.playWhenReady || player.currentMediaItem?.mediaId != mediaId ||
-                player.currentMediaItemIndex != index || player.currentPosition != position
-            ) {
-                waitingForNetworkConnection.value = false
-                return@launch
-            }
-            if (CapsuleAudioEngine.playbackBlockedExceptionOrNull() != null) {
-                waitingForNetworkConnection.value = false
-                player.pause()
-                return@launch
-            }
-            if (waitingForNetworkConnection.value && connectivityObserver.isCurrentlyConnected()) {
-                waitingForNetworkConnection.value = false
-                player.prepare()
-            }
-        }
-    }
 
     private fun skipOnError() {
         val nextWindowIndex = player.nextMediaItemIndex
@@ -1390,16 +1369,17 @@ class MusicService :
     }
 
     private fun handleTerminalPlaybackError() {
-        trackFailureResetJob?.cancel()
-        trackFailureResetJob = null
         val mediaId = player.currentMediaItem?.mediaId
-        val wasOpen = trackFailureGuard.isOpen
-        val mayAutoSkip = trackFailureGuard.recordFailure(mediaId)
+        val decision =
+            playbackRecoveryCoordinator.recordTerminalFailure(
+                mediaId = mediaId,
+                autoSkipEnabled = dataStore.get(AutoSkipNextOnErrorKey, false),
+            )
 
-        if (!wasOpen && trackFailureGuard.isOpen) {
+        if (decision.circuitOpenedNow) {
             Timber.tag("MusicService").e(
                 "Playback failure circuit opened after %d tracks; queue traversal stopped at id=%s",
-                trackFailureGuard.failureCount,
+                decision.failureCount,
                 mediaId,
             )
             Toast.makeText(
@@ -1407,19 +1387,18 @@ class MusicService :
                 getString(R.string.error_too_many_failed_tracks),
                 Toast.LENGTH_LONG,
             ).show()
-        } else if (!mayAutoSkip) {
+        } else if (!decision.mayAutoSkip) {
             Timber.tag("MusicService").w(
                 "Playback failure circuit suppressed another skip id=%s count=%d open=%s",
                 mediaId,
-                trackFailureGuard.failureCount,
-                trackFailureGuard.isOpen,
+                decision.failureCount,
+                decision.circuitOpen,
             )
         }
 
-        if (mayAutoSkip && dataStore.get(AutoSkipNextOnErrorKey, false)) {
-            skipOnError()
-        } else {
-            stopOnError()
+        when (decision.action) {
+            TerminalPlaybackAction.SKIP -> skipOnError()
+            TerminalPlaybackAction.STOP -> stopOnError()
         }
     }
 
@@ -1893,18 +1872,14 @@ class MusicService :
         currentQueue = EmptyQueue
         queueTitle = null
         audioResolveCoordinator.cancelAll()
-        networkRecoveryJob?.cancel()
-        networkRecoveryJob = null
-        waitingForNetworkConnection.value = false
+        playbackRecoveryCoordinator.cancelNetworkRecovery()
         currentMediaMetadata.value = null
         player.playWhenReady = false
         player.stop()
         player.clearMediaItems()
         playbackFocusController.abandonFocus()
         closeAudioEffectSession()
-        trackFailureResetJob?.cancel()
-        trackFailureResetJob = null
-        trackFailureGuard.reset()
+        playbackRecoveryCoordinator.resetFailureGuard()
     }
 
     fun playNext(items: List<MediaItem>) {
@@ -2528,9 +2503,7 @@ class MusicService :
 
         streamRetryJob?.cancel()
         streamRetryJob = null
-        networkRecoveryJob?.cancel()
-        networkRecoveryJob = null
-        waitingForNetworkConnection.value = false
+        playbackRecoveryCoordinator.cancelNetworkRecovery()
         audioResolveStability.onSelectionChanged()
         songRecoveryJobs.forEach { (id, job) ->
             if (id != mediaItem?.mediaId && songRecoveryJobs.remove(id, job)) job.cancel()
@@ -2756,12 +2729,11 @@ class MusicService :
     super.onPlaybackStateChanged(playbackState)
 
     val activeMediaId = player.currentMediaItem?.mediaId
-    if (playbackState != Player.STATE_READY) {
-        trackFailureResetJob?.cancel()
-        trackFailureResetJob = null
-    } else if (player.isPlaying && activeMediaId != null) {
-        scheduleTrackFailureGuardReset(activeMediaId)
-    }
+    playbackRecoveryCoordinator.onPlaybackActivity(
+        mediaId = activeMediaId,
+        ready = playbackState == Player.STATE_READY,
+        playing = player.isPlaying,
+    )
 
     if (playbackState == Player.STATE_IDLE || playbackState == Player.STATE_ENDED) {
         crossfadeAudio?.stop(resetMainFade = true)
@@ -2820,34 +2792,14 @@ class MusicService :
     override fun onIsPlayingChanged(isPlaying: Boolean) {
         super.onIsPlayingChanged(isPlaying)
         val activeMediaId = player.currentMediaItem?.mediaId
-        if (isPlaying && player.playbackState == Player.STATE_READY && activeMediaId != null) {
-            scheduleTrackFailureGuardReset(activeMediaId)
-        } else {
-            trackFailureResetJob?.cancel()
-            trackFailureResetJob = null
-        }
+        playbackRecoveryCoordinator.onPlaybackActivity(
+            mediaId = activeMediaId,
+            ready = player.playbackState == Player.STATE_READY,
+            playing = isPlaying,
+        )
     }
 
-    private fun scheduleTrackFailureGuardReset(mediaId: String) {
-        trackFailureResetJob?.cancel()
-        trackFailureResetJob =
-            scope.launch {
-                delay(HEALTHY_PLAYBACK_RESET_MS)
-                if (
-                    player.currentMediaItem?.mediaId == mediaId &&
-                    player.playbackState == Player.STATE_READY &&
-                    player.isPlaying
-                ) {
-                    trackFailureGuard.onHealthyPlayback()
-                    playbackRetryBudget.reset(mediaId)
-                    Timber.tag("MusicService").i(
-                        "Playback failure circuit reset after healthy playback id=%s",
-                        mediaId,
-                    )
-                }
-                trackFailureResetJob = null
-            }
-    }
+
 
 
     override fun onEvents(player: Player, events: Player.Events) {
@@ -3034,7 +2986,7 @@ class MusicService :
         val httpStatusCode = error.httpStatusCodeOrNull()
 
         if (generateSequence<Throwable>(error) { it.cause }.take(8).any { it is AudioFormatChangedException }) {
-            if (currentMediaId != null && playbackRetryBudget.nextDelayMs(currentMediaId) != null) {
+            if (currentMediaId != null && playbackRecoveryCoordinator.nextRetryDelayMs(currentMediaId) != null) {
                 recreateAudioSources()
             } else player.pause()
             return
@@ -3055,8 +3007,7 @@ class MusicService :
             playbackUrlCache.remove(currentMediaId)
             audioResolveCoordinator.cancelAll()
             streamRetryJob?.cancel()
-            networkRecoveryJob?.cancel()
-            waitingForNetworkConnection.value = false
+            playbackRecoveryCoordinator.cancelNetworkRecovery()
 
             Timber.tag("MusicService").w(
                 "YouTube bot-check for $currentMediaId — AUDIO requests cooling down",
@@ -3073,8 +3024,7 @@ class MusicService :
                 CapsuleAudioEngine.markRateLimitedFailure()
             }
             streamRetryJob?.cancel()
-            networkRecoveryJob?.cancel()
-            waitingForNetworkConnection.value = false
+            playbackRecoveryCoordinator.cancelNetworkRecovery()
             audioResolveCoordinator.cancelAll()
             currentMediaId?.let(playbackUrlCache::remove)
             player.pause()
@@ -3082,7 +3032,7 @@ class MusicService :
         }
 
         if (!isNetworkConnected.value || error.isTransientNetworkFailure()) {
-            waitOnNetworkError()
+            playbackRecoveryCoordinator.recoverFromNetworkError()
             return
         }
 
@@ -3102,7 +3052,7 @@ class MusicService :
         }
 
         if (shouldAttemptStreamRefresh && currentMediaId != null) {
-            val retryDelay = playbackRetryBudget.nextDelayMs(currentMediaId)
+            val retryDelay = playbackRecoveryCoordinator.nextRetryDelayMs(currentMediaId)
             if (retryDelay == null) {
                 handleTerminalPlaybackError()
                 return
@@ -3968,9 +3918,8 @@ class MusicService :
         val mediaId = player.currentMediaItem?.mediaId ?: return
         streamRetryJob?.cancel()
         streamRetryJob = null
-        playbackRetryBudget.reset(mediaId)
-        networkRecoveryJob?.cancel()
-        waitingForNetworkConnection.value = false
+        playbackRecoveryCoordinator.resetRetry(mediaId)
+        playbackRecoveryCoordinator.cancelNetworkRecovery()
         CapsuleAudioEngine.clearTrackClientFailures(mediaId)
         CapsuleAudioEngine.invalidateCachedStreamUrls(mediaId)
         audioResolveCoordinator.cancelMedia(mediaId) {
@@ -3988,8 +3937,7 @@ class MusicService :
 
         streamRetryJob?.cancel()
         streamRetryJob = null
-        networkRecoveryJob?.cancel()
-        networkRecoveryJob = null
+        playbackRecoveryCoordinator.cancelNetworkRecovery(clearWaiting = false)
         audioResolveCoordinator.invalidatePrefetches()
         if (reloadCurrentAudio) player.stop()
 
@@ -3997,7 +3945,7 @@ class MusicService :
             invalidatePrefetch = false,
             onInvalidate = playbackUrlCache::clear,
         )
-        playbackRetryBudget.clear()
+        playbackRecoveryCoordinator.clearRetryBudget()
         // An explicit selection resets per-track exclusions, not the global
         // bot/rate-limit cooldown or the deterministic QuickJS session breaker.
         CapsuleAudioEngine.clearStreamClientFailures()
