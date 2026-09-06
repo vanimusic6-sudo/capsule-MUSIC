@@ -28,10 +28,6 @@ import android.database.SQLException
 import android.media.AudioFocusRequest
 import android.media.AudioManager
 import android.media.audiofx.AudioEffect
-import android.media.audiofx.BassBoost
-import android.media.audiofx.Equalizer
-import android.media.audiofx.LoudnessEnhancer
-import android.media.audiofx.Virtualizer
 import android.net.ConnectivityManager
 import android.os.Binder
 import android.os.Build
@@ -631,26 +627,11 @@ class MusicService :
 
     private var isAudioEffectSessionOpened = false
     private var openedAudioSessionId: Int? = null
-    val eqCapabilities = MutableStateFlow<EqCapabilities?>(null)
-    private val desiredEqSettings =
-        MutableStateFlow(
-            EqSettings(
-                enabled = false,
-                bandLevelsMb = emptyList(),
-                outputGainEnabled = false,
-                outputGainMb = 0,
-                bassBoostEnabled = false,
-                bassBoostStrength = 0,
-                virtualizerEnabled = false,
-                virtualizerStrength = 0,
-            ),
-        )
-
-    private var audioEffectsSessionId: Int? = null
-    private var equalizer: Equalizer? = null
-    private var bassBoost: BassBoost? = null
-    private var virtualizer: Virtualizer? = null
-    private var loudnessEnhancer: LoudnessEnhancer? = null
+    private val audioEffectsController =
+        PlaybackAudioEffectsController { operation, error ->
+            reportRecoverableException("MusicService", operation, error)
+        }
+    val eqCapabilities = audioEffectsController.capabilities
 
     private var scrobbleManager: com.nikhil.yt.utils.ScrobbleManager? = null
 
@@ -1034,8 +1015,7 @@ class MusicService :
             .map(::readEqSettingsFromPrefs)
             .distinctUntilChanged()
             .collectLatest(scope) { settings ->
-                desiredEqSettings.value = settings
-                applyEqSettingsToEffects(settings)
+                audioEffectsController.applySettings(settings)
             }
 
         combine(
@@ -3397,8 +3377,7 @@ class MusicService :
 
     fun applyEqFlatPreset() {
         ioScope.launch {
-            val caps = eqCapabilities.value
-            val bandCount = caps?.bandCount ?: runCatching { equalizer?.numberOfBands?.toInt() }.getOrNull() ?: 0
+            val bandCount = audioEffectsController.currentBandCount()
             val encoded = encodeBandLevelsMb(List(bandCount.coerceAtLeast(0)) { 0 })
             dataStore.edit { prefs ->
                 prefs[EqualizerEnabledKey] = true
@@ -3410,18 +3389,11 @@ class MusicService :
 
     fun applySystemEqPreset(presetIndex: Int) {
         scope.launch {
-            ensureAudioEffects(player.audioSessionId)
-            val eq = equalizer ?: return@launch
-            val maxPreset = runCatching { eq.numberOfPresets.toInt() }.getOrNull() ?: 0
-            if (presetIndex !in 0 until maxPreset) return@launch
-
-            runCatching { eq.usePreset(presetIndex.toShort()) }.getOrNull() ?: return@launch
-
-            val bandCount = runCatching { eq.numberOfBands.toInt() }.getOrNull() ?: 0
             val levels =
-                (0 until bandCount).map { band ->
-                    runCatching { eq.getBandLevel(band.toShort()).toInt() }.getOrNull() ?: 0
-                }
+                audioEffectsController.applySystemPreset(
+                    sessionId = player.audioSessionId,
+                    presetIndex = presetIndex,
+                ) ?: return@launch
 
             val encoded = encodeBandLevelsMb(levels)
             if (encoded.isBlank()) return@launch
@@ -3436,131 +3408,13 @@ class MusicService :
         }
     }
 
-    private fun resampleLevelsByIndex(levelsMb: List<Int>, targetCount: Int): List<Int> {
-        if (targetCount <= 0) return emptyList()
-        if (levelsMb.isEmpty()) return List(targetCount) { 0 }
-        if (levelsMb.size == targetCount) return levelsMb
-        if (targetCount == 1) return listOf(levelsMb.sum() / levelsMb.size)
-
-        val lastIndex = levelsMb.lastIndex.toFloat().coerceAtLeast(1f)
-        return List(targetCount) { i ->
-            val pos = i.toFloat() * lastIndex / (targetCount - 1).toFloat()
-            val lo = kotlin.math.floor(pos).toInt().coerceIn(0, levelsMb.lastIndex)
-            val hi = kotlin.math.ceil(pos).toInt().coerceIn(0, levelsMb.lastIndex)
-            val t = (pos - lo.toFloat()).coerceIn(0f, 1f)
-            val a = levelsMb[lo]
-            val b = levelsMb[hi]
-            (a + ((b - a) * t)).toInt()
-        }
-    }
-
-    private fun updateEqCapabilitiesFromEffect(eq: Equalizer) {
-        val bandCount = eq.numberOfBands.toInt().coerceAtLeast(0)
-        val range = runCatching { eq.bandLevelRange }.getOrNull()
-        val minMb = range?.getOrNull(0)?.toInt() ?: -1500
-        val maxMb = range?.getOrNull(1)?.toInt() ?: 1500
-        val center =
-            (0 until bandCount).map { band ->
-                (runCatching { eq.getCenterFreq(band.toShort()) }.getOrNull() ?: 0) / 1000
-            }
-        val presets =
-            (0 until eq.numberOfPresets.toInt()).map { idx ->
-                runCatching { eq.getPresetName(idx.toShort()).toString() }.getOrNull() ?: "Preset ${idx + 1}"
-            }
-        eqCapabilities.value =
-            EqCapabilities(
-                bandCount = bandCount,
-                minBandLevelMb = minMb,
-                maxBandLevelMb = maxMb,
-                centerFreqHz = center,
-                systemPresets = presets,
-            )
-    }
-
-    private fun releaseAudioEffects() {
-        audioEffectsSessionId = null
-        try {
-            equalizer?.release()
-        } catch (error: Exception) {
-            reportRecoverableException("MusicService", "release equalizer", error)
-        }
-        try {
-            bassBoost?.release()
-        } catch (error: Exception) {
-            reportRecoverableException("MusicService", "release bass boost", error)
-        }
-        try {
-            virtualizer?.release()
-        } catch (error: Exception) {
-            reportRecoverableException("MusicService", "release virtualizer", error)
-        }
-        try {
-            loudnessEnhancer?.release()
-        } catch (error: Exception) {
-            reportRecoverableException("MusicService", "release loudness enhancer", error)
-        }
-        equalizer = null
-        bassBoost = null
-        virtualizer = null
-        loudnessEnhancer = null
-        eqCapabilities.value = null
-    }
-
-    private fun ensureAudioEffects(sessionId: Int) {
-        if (sessionId <= 0) return
-        if (audioEffectsSessionId == sessionId && equalizer != null) return
-
-        releaseAudioEffects()
-        audioEffectsSessionId = sessionId
-
-        equalizer = runCatching { Equalizer(0, sessionId) }.getOrNull()
-        bassBoost = runCatching { BassBoost(0, sessionId) }.getOrNull()
-        virtualizer = runCatching { Virtualizer(0, sessionId) }.getOrNull()
-        loudnessEnhancer = runCatching { LoudnessEnhancer(sessionId) }.getOrNull()
-
-        equalizer?.let(::updateEqCapabilitiesFromEffect)
-        applyEqSettingsToEffects(desiredEqSettings.value)
-    }
-
-    private fun applyEqSettingsToEffects(settings: EqSettings) {
-        val eq = equalizer ?: return
-        val caps = eqCapabilities.value
-        val bandCount = caps?.bandCount ?: eq.numberOfBands.toInt()
-        val minMb = caps?.minBandLevelMb ?: runCatching { eq.bandLevelRange.getOrNull(0)?.toInt() }.getOrNull() ?: -1500
-        val maxMb = caps?.maxBandLevelMb ?: runCatching { eq.bandLevelRange.getOrNull(1)?.toInt() }.getOrNull() ?: 1500
-
-        val levels = resampleLevelsByIndex(settings.bandLevelsMb, bandCount)
-        runCatching { eq.enabled = settings.enabled }
-
-        for (band in 0 until bandCount) {
-            val levelMb = levels.getOrNull(band)?.coerceIn(minMb, maxMb) ?: 0
-            runCatching { eq.setBandLevel(band.toShort(), levelMb.toShort()) }
-        }
-
-        bassBoost?.let { bb ->
-            runCatching { bb.enabled = settings.bassBoostEnabled }
-            runCatching { bb.setStrength(settings.bassBoostStrength.toShort()) }
-        }
-
-        virtualizer?.let { v ->
-            runCatching { v.enabled = settings.virtualizerEnabled }
-            runCatching { v.setStrength(settings.virtualizerStrength.toShort()) }
-        }
-
-        loudnessEnhancer?.let { le ->
-            val gainMb = if (settings.outputGainEnabled) settings.outputGainMb.coerceIn(-1500, 1500) else 0
-            runCatching { le.setTargetGain(gainMb) }
-            runCatching { le.enabled = settings.outputGainEnabled }
-        }
-    }
-
     private fun openAudioEffectSession() {
         if (isAudioEffectSessionOpened) return
         val sessionId = player.audioSessionId
         if (sessionId <= 0) return
         isAudioEffectSessionOpened = true
         openedAudioSessionId = sessionId
-        ensureAudioEffects(sessionId)
+        audioEffectsController.ensure(sessionId)
         sendBroadcast(
             Intent(AudioEffect.ACTION_OPEN_AUDIO_EFFECT_CONTROL_SESSION).apply {
                 putExtra(AudioEffect.EXTRA_AUDIO_SESSION, sessionId)
@@ -3575,7 +3429,7 @@ class MusicService :
         isAudioEffectSessionOpened = false
         val sessionId = openedAudioSessionId ?: player.audioSessionId
         openedAudioSessionId = null
-        releaseAudioEffects()
+        audioEffectsController.release()
         if (sessionId <= 0) return
         sendBroadcast(
             Intent(AudioEffect.ACTION_CLOSE_AUDIO_EFFECT_CONTROL_SESSION).apply {
@@ -3973,7 +3827,7 @@ class MusicService :
                 },
             )
             openedAudioSessionId = newSessionId
-            ensureAudioEffects(newSessionId)
+            audioEffectsController.ensure(newSessionId)
             sendBroadcast(
                 Intent(AudioEffect.ACTION_OPEN_AUDIO_EFFECT_CONTROL_SESSION).apply {
                     putExtra(AudioEffect.EXTRA_AUDIO_SESSION, newSessionId)
@@ -5518,7 +5372,7 @@ class MusicService :
         }
         abandonAudioFocus()
         try {
-            releaseAudioEffects()
+            audioEffectsController.release()
         } catch (error: Exception) {
             reportRecoverableException("MusicService", "release audio effects during destroy", error)
         }
