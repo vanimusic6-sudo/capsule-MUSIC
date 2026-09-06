@@ -635,13 +635,11 @@ class MusicService :
 
     private var scrobbleManager: com.nikhil.yt.utils.ScrobbleManager? = null
 
-    val automixItems = MutableStateFlow<List<MediaItem>>(emptyList())
-    val automixLoading = MutableStateFlow(false)
-    val automixError = MutableStateFlow<String?>(null)
-    private var automixJob: Job? = null
-    private var automixSeedMediaId: String? = null
-
-    val autoAddedMediaIds: MutableSet<String> = java.util.Collections.synchronizedSet(mutableSetOf())
+    private val automixRuntime = AutomixRuntime()
+    val automixItems = automixRuntime.items
+    val automixLoading = automixRuntime.loading
+    val automixError = automixRuntime.error
+    val autoAddedMediaIds = automixRuntime.autoAddedMediaIds
 
     private val trackFailureGuard =
         ConsecutiveTrackFailureGuard(MAX_CONSECUTIVE_TRACK_FAILURES)
@@ -1153,7 +1151,7 @@ class MusicService :
                     val items = persistedAutomix.items.map { it.toMediaItem() }
                     withContext(Dispatchers.Main) {
                         automixItems.value = items
-                        automixSeedMediaId = player.currentMetadata?.id?.trim()?.takeIf { it.isNotBlank() }
+                        automixRuntime.seedMediaId = player.currentMetadata?.id?.trim()?.takeIf { it.isNotBlank() }
                     }
                 }
                 
@@ -1626,7 +1624,7 @@ class MusicService :
         // Automix already fetches these songs. Let it populate the library
         // before deciding whether a separate metadata request is necessary.
         val currentAutomix = withContext(Dispatchers.Main.immediate) {
-            automixJob.takeIf { automixSeedMediaId == mediaId }
+            automixRuntime.jobForSeed(mediaId)
         }
         currentAutomix?.join()
         if (!database.hasRelatedSongs(mediaId)) {
@@ -1715,7 +1713,7 @@ class MusicService :
         }
         
         clearAutomix()
-        automixSeedMediaId = null
+        automixRuntime.seedMediaId = null
         autoAddedMediaIds.clear()
         queue.preloadItem?.let { preloadItem ->
             player.setMediaItem(preloadItem.toMediaItem())
@@ -1886,7 +1884,7 @@ class MusicService :
                                         player.currentMetadata?.id?.trim()?.takeIf { it.isNotBlank() }
                                     if (seedAtRequest != null && currentSeed != seedAtRequest) return@withContext
                                     automixItems.value = mediaItems
-                                    automixSeedMediaId = currentSeed
+                                    automixRuntime.seedMediaId = currentSeed
                                 }
                             }
                     }
@@ -1917,12 +1915,7 @@ class MusicService :
     }
 
     fun clearAutomix() {
-        automixJob?.cancel()
-        automixJob = null
-        automixItems.value = emptyList()
-        automixLoading.value = false
-        automixError.value = null
-        automixSeedMediaId = null
+        automixRuntime.clear()
     }
 
     private fun refreshAutomixForCurrentMedia() {
@@ -1934,23 +1927,23 @@ class MusicService :
         val currentMeta = player.currentMetadata ?: return
         val seedMediaId = currentMeta.id.trim().ifBlank { return }
 
-        if (automixSeedMediaId == seedMediaId && (automixItems.value.isNotEmpty() || automixJob?.isActive == true)) return
+        if (automixRuntime.hasItemsOrActiveJobFor(seedMediaId)) return
 
-        automixJob?.cancel()
-        automixJob = null
+        automixRuntime.job?.cancel()
+        automixRuntime.job = null
         automixItems.value = emptyList()
         automixLoading.value = true
         automixError.value = null
-        automixSeedMediaId = seedMediaId
+        automixRuntime.seedMediaId = seedMediaId
 
         val hideExplicit = dataStore.get(HideExplicitKey, false)
         val hideVideo = dataStore.get(HideVideoKey, false)
 
-        automixJob = scope.launch {
+        automixRuntime.job = scope.launch {
             try {
                 audioResolveStability.awaitStable {
                     player.currentMediaItem?.mediaId == seedMediaId &&
-                        automixSeedMediaId == seedMediaId && !suppressAutoPlayback
+                        automixRuntime.seedMediaId == seedMediaId && !suppressAutoPlayback
                 }
                 CapsuleAudioEngine.playbackBlockedExceptionOrNull()?.let { throw it }
                 val nextResult = withContext(Dispatchers.IO) {
@@ -1959,7 +1952,7 @@ class MusicService :
 
                 nextResult
                     .onSuccess { result ->
-                        if (automixSeedMediaId != seedMediaId) {
+                        if (automixRuntime.seedMediaId != seedMediaId) {
                             automixLoading.value = false
                             return@onSuccess
                         }
@@ -2025,7 +2018,7 @@ class MusicService :
                                     .toList()
                             }
 
-                        if (automixSeedMediaId != seedMediaId) {
+                        if (automixRuntime.seedMediaId != seedMediaId) {
                             automixLoading.value = false
                             return@onSuccess
                         }
@@ -2037,7 +2030,7 @@ class MusicService :
                         automixLoading.value = false
                     }
                     .onFailure { throwable ->
-                        if (automixSeedMediaId == seedMediaId) {
+                        if (automixRuntime.seedMediaId == seedMediaId) {
                             automixLoading.value = false
                             automixError.value =
                                 throwable.localizedMessage ?: getString(R.string.error_automix_failed)
@@ -2046,7 +2039,7 @@ class MusicService :
             } catch (e: kotlinx.coroutines.CancellationException) {
                 throw e
             } catch (e: Exception) {
-                if (automixSeedMediaId == seedMediaId) {
+                if (automixRuntime.seedMediaId == seedMediaId) {
                     automixLoading.value = false
                     automixError.value = e.localizedMessage ?: getString(R.string.error_automix_failed)
                 }
@@ -2055,8 +2048,8 @@ class MusicService :
     }
 
     fun onInfiniteQueueDisabled() {
-        automixJob?.cancel()
-        automixJob = null
+        automixRuntime.job?.cancel()
+        automixRuntime.job = null
         automixLoading.value = false
         automixError.value = null
         val currentIndex = player.currentMediaItemIndex
@@ -2083,16 +2076,16 @@ class MusicService :
             return
         }
 
-        automixJob?.cancel()
+        automixRuntime.job?.cancel()
         automixLoading.value = true
         automixError.value = null
         automixItems.value = emptyList()
-        automixSeedMediaId = currentMeta.id.trim().ifBlank { null }
+        automixRuntime.seedMediaId = currentMeta.id.trim().ifBlank { null }
 
         val hideExplicit = dataStore.get(HideExplicitKey, false)
         val hideVideo = dataStore.get(HideVideoKey, false)
 
-        automixJob = scope.launch {
+        automixRuntime.job = scope.launch {
             try {
                 val nextResult = withContext(Dispatchers.IO) {
                     YouTube.next(WatchEndpoint(videoId = currentMeta.id))
@@ -3597,7 +3590,7 @@ class MusicService :
                     reason == Player.MEDIA_ITEM_TRANSITION_REASON_PLAYLIST_CHANGED
 
             val currentId = (mediaItem?.metadata ?: player.currentMetadata)?.id?.trim().orEmpty()
-            if (force || (currentId.isNotBlank() && automixSeedMediaId != currentId)) {
+            if (force || (currentId.isNotBlank() && automixRuntime.seedMediaId != currentId)) {
                 refreshAutomixForCurrentMedia()
             }
         }
@@ -3635,7 +3628,7 @@ class MusicService :
             val queueIds = (0 until player.mediaItemCount).map { player.getMediaItemAt(it).mediaId }.toSet()
             val currentMediaMetadata = player.currentMetadata
             val currentMediaId = currentMediaMetadata?.id?.trim().orEmpty()
-            val existingSeed = automixSeedMediaId?.trim().orEmpty()
+            val existingSeed = automixRuntime.seedMediaId?.trim().orEmpty()
             val existingAutomix =
                 if (currentMediaId.isNotBlank() && existingSeed == currentMediaId) {
                     automixItems.value
