@@ -169,6 +169,7 @@ import com.nikhil.yt.innertube.CapsuleVideoRequestGuard
 import com.nikhil.yt.innertube.YouTube
 import com.nikhil.yt.innertube.models.SongItem
 import com.nikhil.yt.innertube.models.WatchEndpoint
+import com.nikhil.yt.together.TogetherSessionRuntime
 import com.nikhil.yt.lastfm.LastFM
 import com.nikhil.yt.lyrics.LyricsPreloadManager
 import com.nikhil.yt.models.PersistPlayerState
@@ -667,30 +668,11 @@ class MusicService :
     @Volatile
     private var hasCalledStartForeground = false
 
-    val togetherSessionState = MutableStateFlow<com.nikhil.yt.together.TogetherSessionState>(
-        com.nikhil.yt.together.TogetherSessionState.Idle,
-    )
-    private var togetherServer: com.nikhil.yt.together.TogetherServer? = null
-    private var togetherOnlineHost: com.nikhil.yt.together.TogetherOnlineHost? = null
-    private var togetherClient: com.nikhil.yt.together.TogetherClient? = null
-    private var togetherBroadcastJob: Job? = null
-    private var togetherOnlineConnectJob: Job? = null
-    private var togetherClientEventsJob: Job? = null
-    private var togetherHeartbeatJob: Job? = null
-    private var togetherClock: com.nikhil.yt.together.TogetherClock? = null
-    private var togetherSelfParticipantId: String? = null
-    private var togetherLastAppliedQueueHash: String? = null
-    private var togetherIsOnlineSession: Boolean = false
-    @Volatile
-    private var togetherApplyingRemote: Boolean = false
-    @Volatile
-    private var togetherSuppressEchoUntilElapsedMs: Long = 0L
-    @Volatile
-    private var togetherLastAppliedRoomStateSentAtElapsedMs: Long = 0L
-    @Volatile
-    private var togetherLastRemoteAppliedPlayWhenReady: Boolean? = null
-    @Volatile
-    private var togetherLastRemoteAppliedIndex: Int = -1
+    private val togetherRuntime =
+        TogetherSessionRuntime { operation, error ->
+            reportRecoverableException("MusicService", operation, error)
+        }
+    val togetherSessionState = togetherRuntime.sessionState
     @Volatile
     private var togetherLastSentControlAtElapsedMs: Long = 0L
     @Volatile
@@ -698,7 +680,7 @@ class MusicService :
     @Volatile
     private var togetherPendingGuestControl: TogetherPendingGuestControl? = null
 
-    private fun isTogetherApplyingRemote(): Boolean = togetherApplyingRemote
+    private fun isTogetherApplyingRemote(): Boolean = togetherRuntime.applyingRemote
     private val togetherHostId: String = "host"
     private var lastTogetherNoticeAtElapsedMs: Long = 0L
     private var lastTogetherNoticeKey: String? = null
@@ -2326,7 +2308,7 @@ class MusicService :
 
         ioScope.launch(SilentHandler) {
             stopTogetherInternal()
-            togetherIsOnlineSession = false
+            togetherRuntime.isOnlineSession = false
 
             val localIp = getLocalIpv4Address()
             val sessionId = java.util.UUID.randomUUID().toString()
@@ -2356,7 +2338,7 @@ class MusicService :
             }
 
             server.start(port)
-            togetherServer = server
+            togetherRuntime.server = server
 
             scope.launch(SilentHandler) {
                 togetherSessionState.value =
@@ -2370,9 +2352,9 @@ class MusicService :
                     )
             }
 
-            togetherBroadcastJob =
+            togetherRuntime.broadcastJob =
                 ioScope.launch(SilentHandler) {
-                    while (togetherServer === server) {
+                    while (togetherRuntime.server === server) {
                         val state = buildTogetherRoomState(sessionId = sessionId, hostId = togetherHostId)
                         server.broadcastRoomState(state)
                         scope.launch(SilentHandler) {
@@ -2424,7 +2406,7 @@ class MusicService :
 
         ioScope.launch(SilentHandler) {
             stopTogetherInternal()
-            togetherIsOnlineSession = true
+            togetherRuntime.isOnlineSession = true
 
             val baseUrl = com.nikhil.yt.together.TogetherOnlineEndpoint.baseUrlOrNull(dataStore)
             if (baseUrl == null) {
@@ -2489,7 +2471,7 @@ class MusicService :
                 }
             }
 
-            togetherOnlineHost = onlineHost
+            togetherRuntime.onlineHost = onlineHost
 
             scope.launch(SilentHandler) {
                 togetherSessionState.value =
@@ -2518,15 +2500,15 @@ class MusicService :
                 return@launch
             }
 
-            togetherOnlineConnectJob?.cancel()
-            togetherOnlineConnectJob =
+            togetherRuntime.onlineConnectJob?.cancel()
+            togetherRuntime.onlineConnectJob =
                 ioScope.launch(SilentHandler) {
                     onlineHost.connect(wsUrl)
                 }
 
-            togetherBroadcastJob =
+            togetherRuntime.broadcastJob =
                 ioScope.launch(SilentHandler) {
-                    while (togetherOnlineHost === onlineHost) {
+                    while (togetherRuntime.onlineHost === onlineHost) {
                         val state =
                             buildTogetherRoomState(
                                 sessionId = created.sessionId,
@@ -2578,24 +2560,24 @@ class MusicService :
 
         ioScope.launch(SilentHandler) {
             stopTogetherInternal()
-            togetherIsOnlineSession = false
+            togetherRuntime.isOnlineSession = false
             val client =
                 com.nikhil.yt.together.TogetherClient(
                     ioScope,
                     clientId = getOrCreateTogetherClientId(),
                 )
-            togetherClient = client
-            togetherClock = com.nikhil.yt.together.TogetherClock()
-            togetherSelfParticipantId = null
-            togetherLastAppliedQueueHash = null
+            togetherRuntime.client = client
+            togetherRuntime.clock = com.nikhil.yt.together.TogetherClock()
+            togetherRuntime.selfParticipantId = null
+            togetherRuntime.lastAppliedQueueHash = null
 
-            togetherClientEventsJob?.cancel()
-            togetherClientEventsJob =
+            togetherRuntime.clientEventsJob?.cancel()
+            togetherRuntime.clientEventsJob =
                 ioScope.launch(SilentHandler) {
                 client.events.collect { event ->
                     when (event) {
                         is com.nikhil.yt.together.TogetherClientEvent.Welcome -> {
-                            togetherSelfParticipantId = event.welcome.participantId
+                            togetherRuntime.selfParticipantId = event.welcome.participantId
                             scope.launch(SilentHandler) {
                                 val state = togetherSessionState.value
                                 if (state is com.nikhil.yt.together.TogetherSessionState.Joining) {
@@ -2689,7 +2671,7 @@ class MusicService :
                         }
 
                         is com.nikhil.yt.together.TogetherClientEvent.HeartbeatPong -> {
-                            val clock = togetherClock ?: return@collect
+                            val clock = togetherRuntime.clock ?: return@collect
                             clock.onPong(
                                 sentAtElapsedMs = event.pong.clientElapsedRealtimeMs,
                                 receivedAtElapsedMs = event.receivedAtElapsedRealtimeMs,
@@ -2759,7 +2741,7 @@ class MusicService :
 
         ioScope.launch(SilentHandler) {
             stopTogetherInternal()
-            togetherIsOnlineSession = true
+            togetherRuntime.isOnlineSession = true
 
             val baseUrl = com.nikhil.yt.together.TogetherOnlineEndpoint.baseUrlOrNull(dataStore)
             if (baseUrl == null) {
@@ -2806,18 +2788,18 @@ class MusicService :
                     clientId = getOrCreateTogetherClientId(),
                     bearerToken = togetherToken,
                 )
-            togetherClient = client
-            togetherClock = com.nikhil.yt.together.TogetherClock()
-            togetherSelfParticipantId = null
-            togetherLastAppliedQueueHash = null
+            togetherRuntime.client = client
+            togetherRuntime.clock = com.nikhil.yt.together.TogetherClock()
+            togetherRuntime.selfParticipantId = null
+            togetherRuntime.lastAppliedQueueHash = null
 
-            togetherClientEventsJob?.cancel()
-            togetherClientEventsJob =
+            togetherRuntime.clientEventsJob?.cancel()
+            togetherRuntime.clientEventsJob =
                 ioScope.launch(SilentHandler) {
                     client.events.collect { event ->
                         when (event) {
                             is com.nikhil.yt.together.TogetherClientEvent.Welcome -> {
-                                togetherSelfParticipantId = event.welcome.participantId
+                                togetherRuntime.selfParticipantId = event.welcome.participantId
                                 scope.launch(SilentHandler) {
                                     val state = togetherSessionState.value
                                     if (state is com.nikhil.yt.together.TogetherSessionState.JoiningOnline) {
@@ -2911,7 +2893,7 @@ class MusicService :
                             }
 
                             is com.nikhil.yt.together.TogetherClientEvent.HeartbeatPong -> {
-                                val clock = togetherClock ?: return@collect
+                                val clock = togetherRuntime.clock ?: return@collect
                                 clock.onPong(
                                     sentAtElapsedMs = event.pong.clientElapsedRealtimeMs,
                                     receivedAtElapsedMs = event.receivedAtElapsedRealtimeMs,
@@ -2989,8 +2971,8 @@ class MusicService :
     }
 
     fun updateTogetherSettings(settings: com.nikhil.yt.together.TogetherRoomSettings) {
-        val server = togetherServer
-        val onlineHost = togetherOnlineHost
+        val server = togetherRuntime.server
+        val onlineHost = togetherRuntime.onlineHost
         if (server == null && onlineHost == null) return
         ioScope.launch(SilentHandler) {
             server?.updateSettings(settings)
@@ -2999,8 +2981,8 @@ class MusicService :
     }
 
     fun approveTogetherParticipant(participantId: String, approved: Boolean) {
-        val server = togetherServer
-        val onlineHost = togetherOnlineHost
+        val server = togetherRuntime.server
+        val onlineHost = togetherRuntime.onlineHost
         if (server == null && onlineHost == null) return
         ioScope.launch(SilentHandler) {
             server?.approveParticipant(participantId, approved)
@@ -3009,14 +2991,14 @@ class MusicService :
     }
 
     fun kickTogetherParticipant(participantId: String, reason: String? = null) {
-        val onlineHost = togetherOnlineHost ?: return
+        val onlineHost = togetherRuntime.onlineHost ?: return
         ioScope.launch(SilentHandler) {
             onlineHost.kickParticipant(participantId, reason)
         }
     }
 
     fun banTogetherParticipant(participantId: String, reason: String? = null) {
-        val onlineHost = togetherOnlineHost ?: return
+        val onlineHost = togetherRuntime.onlineHost ?: return
         ioScope.launch(SilentHandler) {
             onlineHost.banParticipant(participantId, reason)
         }
@@ -3024,7 +3006,7 @@ class MusicService :
 
     fun requestTogetherControl(action: com.nikhil.yt.together.ControlAction) {
         val client =
-            togetherClient ?: run {
+            togetherRuntime.client ?: run {
                 showTogetherNotice(getString(R.string.network_unavailable), key = "TOGETHER_CLIENT_MISSING")
                 return
             }
@@ -3042,7 +3024,7 @@ class MusicService :
         togetherLastSentControlAction = action
         togetherLastSentControlAtElapsedMs = now
 
-        val timeout = if (togetherIsOnlineSession) 5000L else 2000L
+        val timeout = if (togetherRuntime.isOnlineSession) 5000L else 2000L
         togetherPendingGuestControl =
             when (action) {
                 com.nikhil.yt.together.ControlAction.Play ->
@@ -3066,7 +3048,7 @@ class MusicService :
         track: com.nikhil.yt.together.TogetherTrack,
         mode: com.nikhil.yt.together.AddTrackMode,
     ) {
-        val client = togetherClient ?: return
+        val client = togetherRuntime.client ?: return
         val state = togetherSessionState.value as? com.nikhil.yt.together.TogetherSessionState.Joined ?: return
         if (state.role !is com.nikhil.yt.together.TogetherRole.Guest) return
         if (!state.roomState.settings.allowGuestsToAddTracks) {
@@ -3233,7 +3215,7 @@ class MusicService :
     }
 
     private suspend fun applyRemoteRoomState(state: com.nikhil.yt.together.TogetherRoomState) {
-        val pid = togetherSelfParticipantId ?: return
+        val pid = togetherRuntime.selfParticipantId ?: return
         val now = android.os.SystemClock.elapsedRealtime()
 
         val pending = togetherPendingGuestControl
@@ -3257,20 +3239,19 @@ class MusicService :
             }
         }
 
-        val lastSentAt = togetherLastAppliedRoomStateSentAtElapsedMs
+        val lastSentAt = togetherRuntime.lastAppliedRoomStateSentAtElapsedMs
         val sentAt = state.sentAtElapsedRealtimeMs
         if (sentAt > 0L && lastSentAt > 0L && sentAt <= lastSentAt) return
 
-        val offset = if (togetherIsOnlineSession) 0L else (togetherClock?.snapshot()?.estimatedOffsetMs ?: 0L)
+        val offset = if (togetherRuntime.isOnlineSession) 0L else (togetherRuntime.clock?.snapshot()?.estimatedOffsetMs ?: 0L)
         val correctedSentAt = sentAt + offset
-        val estimatedOnlineLatency = if (togetherIsOnlineSession) 1200L else 0L
-        val delta = if (togetherIsOnlineSession) estimatedOnlineLatency else (now - correctedSentAt).coerceAtLeast(0L)
+        val estimatedOnlineLatency = if (togetherRuntime.isOnlineSession) 1200L else 0L
+        val delta = if (togetherRuntime.isOnlineSession) estimatedOnlineLatency else (now - correctedSentAt).coerceAtLeast(0L)
         val targetPos =
             if (state.isPlaying) (state.positionMs + delta).coerceAtLeast(0L) else state.positionMs.coerceAtLeast(0L)
 
         withContext(Dispatchers.Main) {
-            togetherApplyingRemote = true
-            togetherSuppressEchoUntilElapsedMs = android.os.SystemClock.elapsedRealtime() + 450L
+            togetherRuntime.beginRemoteApply(android.os.SystemClock.elapsedRealtime())
             try {
                 val desiredItems = state.queue.map { it.toMediaMetadata().toMediaItem() }
                 val desiredIds = state.queue.map { it.id }
@@ -3285,7 +3266,7 @@ class MusicService :
                         )
 
                 if (desiredItems.isNotEmpty() && needsRebuild) {
-                    togetherLastAppliedQueueHash = desiredHash.ifBlank { localHash }
+                    togetherRuntime.lastAppliedQueueHash = desiredHash.ifBlank { localHash }
                     val startIndex = state.currentIndex.coerceIn(0, desiredItems.lastIndex)
                     suppressAutoPlayback = false
                     currentQueue =
@@ -3301,7 +3282,7 @@ class MusicService :
                     player.repeatMode = state.repeatMode
                     player.shuffleModeEnabled = state.shuffleEnabled
                     player.playWhenReady = state.isPlaying
-                    togetherLastRemoteAppliedIndex = startIndex
+                    togetherRuntime.lastRemoteAppliedIndex = startIndex
                 } else {
                     val index = state.currentIndex.coerceAtLeast(0)
                     val indexChanged = player.mediaItemCount > 0 && index != player.currentMediaItemIndex
@@ -3327,7 +3308,7 @@ class MusicService :
                         }
                     } else {
                         val drift = kotlin.math.abs(player.currentPosition - targetPos)
-                        val seekThreshold = if (togetherIsOnlineSession) 4000L else 2000L
+                        val seekThreshold = if (togetherRuntime.isOnlineSession) 4000L else 2000L
                         val threshold = if (state.isPlaying) seekThreshold else 200L
                         
                         if (drift > threshold) {
@@ -3335,10 +3316,10 @@ class MusicService :
                             player.prepare()
                         }
                     }
-                    togetherLastRemoteAppliedIndex = index
+                    togetherRuntime.lastRemoteAppliedIndex = index
                 }
-                togetherLastRemoteAppliedPlayWhenReady = state.isPlaying
-                togetherLastAppliedRoomStateSentAtElapsedMs = sentAt
+                togetherRuntime.lastRemoteAppliedPlayWhenReady = state.isPlaying
+                togetherRuntime.lastAppliedRoomStateSentAtElapsedMs = sentAt
 
                 togetherSessionState.value =
                     com.nikhil.yt.together.TogetherSessionState.Joined(
@@ -3348,17 +3329,17 @@ class MusicService :
                         roomState = state,
                     )
             } finally {
-                togetherApplyingRemote = false
+                togetherRuntime.finishRemoteApply()
             }
         }
     }
 
     private fun startTogetherHeartbeat(sessionId: String, client: com.nikhil.yt.together.TogetherClient) {
-        togetherHeartbeatJob?.cancel()
-        togetherHeartbeatJob =
+        togetherRuntime.heartbeatJob?.cancel()
+        togetherRuntime.heartbeatJob =
             ioScope.launch(SilentHandler) {
                 var pingId = 0L
-                while (togetherClient === client) {
+                while (togetherRuntime.client === client) {
                     val now = android.os.SystemClock.elapsedRealtime()
                     client.sendHeartbeat(sessionId = sessionId, pingId = pingId++, clientElapsedRealtimeMs = now)
                     kotlinx.coroutines.delay(2000)
@@ -3367,51 +3348,10 @@ class MusicService :
     }
 
     private suspend fun stopTogetherInternal() {
-        togetherBroadcastJob?.cancel()
-        togetherBroadcastJob = null
-
-        togetherOnlineConnectJob?.cancel()
-        togetherOnlineConnectJob = null
-
-        togetherClientEventsJob?.cancel()
-        togetherClientEventsJob = null
-
-        togetherHeartbeatJob?.cancel()
-        togetherHeartbeatJob = null
-
-        togetherClock = null
-        togetherSelfParticipantId = null
-        togetherLastAppliedQueueHash = null
-        togetherIsOnlineSession = false
-        togetherApplyingRemote = false
-        togetherSuppressEchoUntilElapsedMs = 0L
-        togetherLastAppliedRoomStateSentAtElapsedMs = 0L
-        togetherLastRemoteAppliedPlayWhenReady = null
-        togetherLastRemoteAppliedIndex = -1
         togetherLastSentControlAtElapsedMs = 0L
         togetherLastSentControlAction = null
         togetherPendingGuestControl = null
-
-        try {
-            togetherClient?.disconnect()
-        } catch (error: Exception) {
-            reportRecoverableException("MusicService", "disconnect Together client", error)
-        }
-        togetherClient = null
-
-        try {
-            togetherOnlineHost?.disconnect()
-        } catch (error: Exception) {
-            reportRecoverableException("MusicService", "disconnect Together host", error)
-        }
-        togetherOnlineHost = null
-
-        try {
-            togetherServer?.stop()
-        } catch (error: Exception) {
-            reportRecoverableException("MusicService", "stop Together server", error)
-        }
-        togetherServer = null
+        togetherRuntime.stopConnections()
     }
 
     private fun com.nikhil.yt.together.TogetherTrack.toMediaMetadata(): com.nikhil.yt.models.MediaMetadata {
@@ -3816,7 +3756,7 @@ class MusicService :
         val index = player.currentMediaItemIndex.coerceAtLeast(0)
         val isEcho =
             isTogetherApplyingRemote() ||
-                (now < togetherSuppressEchoUntilElapsedMs && togetherLastRemoteAppliedIndex == index)
+                (now < togetherRuntime.suppressEchoUntilElapsedMs && togetherRuntime.lastRemoteAppliedIndex == index)
         if (!isEcho) {
             val trackId = (mediaItem?.metadata ?: player.currentMetadata)?.id?.trim().orEmpty()
             requestTogetherControl(
@@ -4048,9 +3988,9 @@ class MusicService :
             val playWhenReady = this.player.playWhenReady
             val isEcho =
                 isTogetherApplyingRemote() ||
-                    (now < togetherSuppressEchoUntilElapsedMs &&
-                        togetherLastRemoteAppliedPlayWhenReady != null &&
-                        togetherLastRemoteAppliedPlayWhenReady == playWhenReady)
+                    (now < togetherRuntime.suppressEchoUntilElapsedMs &&
+                        togetherRuntime.lastRemoteAppliedPlayWhenReady != null &&
+                        togetherRuntime.lastRemoteAppliedPlayWhenReady == playWhenReady)
             if (!isEcho) {
                 val action =
                     if (playWhenReady) {
