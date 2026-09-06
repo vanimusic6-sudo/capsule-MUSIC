@@ -125,8 +125,11 @@ def transformed(source: str) -> str:
     if result_start < 0:
         raise ValueError("VIDEO resolve result chain not found")
     result_chain = launch_body[result_start:].rstrip()
+    # Both failure and success branches clear the old Job reference, but one
+    # has a blank line afterwards and the other does not. The coordinator owns
+    # that state now, so strip either form before validating the callback body.
     result_chain = result_chain.replace(
-        "                    videoResolveJob = null\n\n",
+        "                    videoResolveJob = null\n",
         "",
     )
     if "videoResolveJob" in result_chain:
