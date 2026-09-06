@@ -161,6 +161,7 @@ import com.nikhil.yt.innertube.YouTube
 import com.nikhil.yt.innertube.models.SongItem
 import com.nikhil.yt.innertube.models.WatchEndpoint
 import com.nikhil.yt.together.TogetherSessionRuntime
+import com.nikhil.yt.together.TogetherSessionController
 import com.nikhil.yt.together.TogetherOnlineCredentials
 import com.nikhil.yt.together.TogetherGuestControlCoordinator
 import com.nikhil.yt.lyrics.LyricsPreloadManager
@@ -667,6 +668,30 @@ class MusicService :
         }
     val togetherSessionState = togetherRuntime.sessionState
     private val togetherGuestControl = TogetherGuestControlCoordinator()
+
+    private val togetherSessionController by lazy(LazyThreadSafetyMode.NONE) {
+        TogetherSessionController(
+            runtime = togetherRuntime,
+            mainScopeProvider = { scope },
+            ioScopeProvider = { ioScope },
+            hostId = togetherHostId,
+            appNameProvider = { getString(R.string.app_name) },
+            localIpv4Provider = ::getLocalIpv4Address,
+            onlineBaseUrlProvider = {
+                com.nikhil.yt.together.TogetherOnlineEndpoint.baseUrlOrNull(dataStore)
+            },
+            onlineTokenProvider = { TogetherOnlineCredentials.bearerTokenOrNull() },
+            clientIdProvider = ::getOrCreateTogetherClientId,
+            roomStateProvider = ::buildTogetherRoomState,
+            onlineErrorMessage = ::togetherOnlineErrorMessage,
+            onlineNotConfiguredMessage = { getString(R.string.together_online_not_configured) },
+            tokenMissingMessage = { getString(R.string.together_token_missing) },
+            invalidWebSocketMessage = { "Connection failed: Invalid server websocket URL" },
+            hostEventHandler = ::handleTogetherHostEvent,
+            stopCurrentSession = ::stopTogetherInternal,
+            onOnlineFailure = ::reportException,
+        )
+    }
 
     private fun isTogetherApplyingRemote(): Boolean = togetherRuntime.applyingRemote
     private val togetherHostId: String = "host"
@@ -2025,78 +2050,11 @@ class MusicService :
         settings: com.nikhil.yt.together.TogetherRoomSettings,
     ) {
         ensureScopesActive()
-        scope.launch(SilentHandler) {
-            togetherSessionState.value = com.nikhil.yt.together.TogetherSessionState.Idle
-        }
-
-        ioScope.launch(SilentHandler) {
-            stopTogetherInternal()
-            togetherRuntime.isOnlineSession = false
-
-            val localIp = getLocalIpv4Address()
-            val sessionId = java.util.UUID.randomUUID().toString()
-            val sessionKey = java.util.UUID.randomUUID().toString()
-            val joinInfo =
-                com.nikhil.yt.together.TogetherJoinInfo(
-                    host = localIp ?: "127.0.0.1",
-                    port = port,
-                    sessionId = sessionId,
-                    sessionKey = sessionKey,
-                )
-            val joinLink = com.nikhil.yt.together.TogetherLink.encode(joinInfo)
-
-            val server =
-                com.nikhil.yt.together.TogetherServer(
-                    scope = ioScope,
-                    sessionId = sessionId,
-                    sessionKey = sessionKey,
-                    hostDisplayName = displayName.trim().ifBlank { getString(R.string.app_name) },
-                    initialSettings = settings,
-                )
-
-            server.onEvent = { event ->
-                ioScope.launch(SilentHandler) {
-                    handleTogetherHostEvent(event) { server.currentSettings() }
-                }
-            }
-
-            server.start(port)
-            togetherRuntime.server = server
-
-            scope.launch(SilentHandler) {
-                togetherSessionState.value =
-                    com.nikhil.yt.together.TogetherSessionState.Hosting(
-                        sessionId = sessionId,
-                        joinLink = joinLink,
-                        localAddressHint = localIp,
-                        port = port,
-                        settings = settings,
-                        roomState = null,
-                    )
-            }
-
-            togetherRuntime.broadcastJob =
-                ioScope.launch(SilentHandler) {
-                    while (togetherRuntime.server === server) {
-                        val state = buildTogetherRoomState(sessionId = sessionId, hostId = togetherHostId)
-                        server.broadcastRoomState(state)
-                        scope.launch(SilentHandler) {
-                            val hosting = togetherSessionState.value as? com.nikhil.yt.together.TogetherSessionState.Hosting
-                            if (hosting?.sessionId == sessionId) {
-                                togetherSessionState.value =
-                                    hosting.copy(
-                                        settings = server.currentSettings(),
-                                        roomState = state.copy(
-                                            participants = server.currentParticipants(),
-                                            settings = server.currentSettings(),
-                                        ),
-                                    )
-                            }
-                        }
-                        kotlinx.coroutines.delay(750)
-                    }
-                }
-        }
+        togetherSessionController.startLanHost(
+            port = port,
+            displayName = displayName,
+            settings = settings,
+        )
     }
 
     private fun togetherOnlineErrorMessage(t: Throwable): String {
@@ -2123,141 +2081,10 @@ class MusicService :
         settings: com.nikhil.yt.together.TogetherRoomSettings,
     ) {
         ensureScopesActive()
-        scope.launch(SilentHandler) {
-            togetherSessionState.value = com.nikhil.yt.together.TogetherSessionState.Idle
-        }
-
-        ioScope.launch(SilentHandler) {
-            stopTogetherInternal()
-            togetherRuntime.isOnlineSession = true
-
-            val baseUrl = com.nikhil.yt.together.TogetherOnlineEndpoint.baseUrlOrNull(dataStore)
-            if (baseUrl == null) {
-                scope.launch(SilentHandler) {
-                    togetherSessionState.value =
-                        com.nikhil.yt.together.TogetherSessionState.Error(
-                            message = getString(R.string.together_online_not_configured),
-                            recoverable = true,
-                        )
-                }
-                return@launch
-            }
-
-            val togetherToken = TogetherOnlineCredentials.bearerTokenOrNull()
-            if (togetherToken == null) {
-                scope.launch(SilentHandler) {
-                    togetherSessionState.value =
-                        com.nikhil.yt.together.TogetherSessionState.Error(
-                            message = getString(R.string.together_token_missing),
-                            recoverable = true,
-                        )
-                }
-                return@launch
-            }
-
-            val api = com.nikhil.yt.together.TogetherOnlineApi(baseUrl = baseUrl, bearerToken = togetherToken)
-            val hostName = displayName.trim().ifBlank { getString(R.string.app_name) }
-
-            val created =
-                runCatching {
-                    api.createSession(
-                        hostDisplayName = hostName,
-                        settings = settings,
-                    )
-                }.getOrElse { t ->
-                    scope.launch(SilentHandler) {
-                        togetherSessionState.value =
-                            com.nikhil.yt.together.TogetherSessionState.Error(
-                                message = togetherOnlineErrorMessage(t),
-                                recoverable = true,
-                            )
-                    }
-                    reportException(t)
-                    return@launch
-                }
-
-            val onlineHost =
-                com.nikhil.yt.together.TogetherOnlineHost(
-                    externalScope = ioScope,
-                    sessionId = created.sessionId,
-                    sessionKey = created.hostKey,
-                    hostId = togetherHostId,
-                    hostDisplayName = hostName,
-                    initialSettings = created.settings,
-                    clientId = getOrCreateTogetherClientId(),
-                    bearerToken = togetherToken,
-                )
-
-            onlineHost.onEvent = { event ->
-                ioScope.launch(SilentHandler) {
-                    handleTogetherHostEvent(event) { onlineHost.currentSettings() }
-                }
-            }
-
-            togetherRuntime.onlineHost = onlineHost
-
-            scope.launch(SilentHandler) {
-                togetherSessionState.value =
-                    com.nikhil.yt.together.TogetherSessionState.HostingOnline(
-                        sessionId = created.sessionId,
-                        code = created.code,
-                        settings = created.settings,
-                        roomState = null,
-                    )
-            }
-
-            val wsUrl =
-                com.nikhil.yt.together.TogetherOnlineEndpoint.onlineWebSocketUrlOrNull(
-                    rawWsUrl = created.wsUrl,
-                    baseUrl = baseUrl,
-                )
-            if (wsUrl == null) {
-                scope.launch(SilentHandler) {
-                    togetherSessionState.value =
-                        com.nikhil.yt.together.TogetherSessionState.Error(
-                            message = "Connection failed: Invalid server websocket URL",
-                            recoverable = true,
-                        )
-                }
-                ioScope.launch(SilentHandler) { stopTogetherInternal() }
-                return@launch
-            }
-
-            togetherRuntime.onlineConnectJob?.cancel()
-            togetherRuntime.onlineConnectJob =
-                ioScope.launch(SilentHandler) {
-                    onlineHost.connect(wsUrl)
-                }
-
-            togetherRuntime.broadcastJob =
-                ioScope.launch(SilentHandler) {
-                    while (togetherRuntime.onlineHost === onlineHost) {
-                        val state =
-                            buildTogetherRoomState(
-                                sessionId = created.sessionId,
-                                hostId = togetherHostId,
-                            )
-                        onlineHost.broadcastRoomState(state)
-                        scope.launch(SilentHandler) {
-                            val hosting =
-                                togetherSessionState.value as? com.nikhil.yt.together.TogetherSessionState.HostingOnline
-                            if (hosting?.sessionId == created.sessionId) {
-                                val currentSettings = onlineHost.currentSettings()
-                                togetherSessionState.value =
-                                    hosting.copy(
-                                        settings = currentSettings,
-                                        roomState =
-                                            state.copy(
-                                                participants = onlineHost.currentParticipants(),
-                                                settings = currentSettings,
-                                            ),
-                                    )
-                            }
-                        }
-                        kotlinx.coroutines.delay(750)
-                    }
-                }
-        }
+        togetherSessionController.startOnlineHost(
+            displayName = displayName,
+            settings = settings,
+        )
     }
 
     fun joinTogether(
