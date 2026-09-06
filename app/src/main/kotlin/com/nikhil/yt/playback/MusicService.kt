@@ -146,7 +146,6 @@ import com.nikhil.yt.extensions.SilentHandler
 import com.nikhil.yt.extensions.collect
 import com.nikhil.yt.extensions.collectLatest
 import com.nikhil.yt.extensions.currentMetadata
-import com.nikhil.yt.extensions.directorySizeBytes
 import com.nikhil.yt.extensions.findNextMediaItemById
 import com.nikhil.yt.extensions.mediaItems
 import com.nikhil.yt.extensions.metadata
@@ -637,6 +636,12 @@ class MusicService :
     @Inject
     @PlayerCache
     lateinit var playerCache: Cache
+    private val playbackCacheManager by lazy(LazyThreadSafetyMode.NONE) {
+        PlaybackCacheManager(
+            cache = playerCache,
+            cacheDirectory = filesDir.resolve("exoplayer"),
+        )
+    }
 
     @Inject
     @VideoCache
@@ -1149,12 +1154,10 @@ class MusicService :
             .debounce(300)
             .distinctUntilChanged()
             .collectLatest(ioScope) { (enabled, maxSongCacheSizeMb) ->
-                if (!enabled) return@collectLatest
-                if (maxSongCacheSizeMb <= 0 || maxSongCacheSizeMb == -1) return@collectLatest
-                val bytesPerMb = 1024L * 1024L
-                val safeSizeMb = maxSongCacheSizeMb.toLong().coerceAtMost(Long.MAX_VALUE / bytesPerMb)
-                val limitBytes = safeSizeMb * bytesPerMb
-                trimPlayerCacheToBytes(limitBytes)
+                playbackCacheManager.trimToConfiguredLimit(
+                    enabled = enabled,
+                    maxSongCacheSizeMb = maxSongCacheSizeMb,
+                )
             }
 
         scrobbleCoordinator.start()
@@ -3103,42 +3106,7 @@ class MusicService :
         handleTerminalPlaybackError()
     }
 
-    private suspend fun trimPlayerCacheToBytes(limitBytes: Long) {
-        if (limitBytes <= 0L) return
 
-        withContext(Dispatchers.IO) {
-            val cacheDir = filesDir.resolve("exoplayer")
-            val currentSpace = runCatching { playerCache.cacheSpace }.getOrNull() ?: 0L
-            var totalBytes = if (currentSpace > 0L) currentSpace else cacheDir.directorySizeBytes()
-            if (totalBytes <= limitBytes) return@withContext
-
-            data class Candidate(
-                val key: String,
-                val lastTouchTimestamp: Long,
-                val sizeBytes: Long,
-            )
-
-            val candidates =
-                runCatching {
-                    playerCache.keys.mapNotNull { key ->
-                        runCatching {
-                            val spans = playerCache.getCachedSpans(key)
-                            if (spans.isEmpty()) return@runCatching null
-                            val oldestTouch = spans.minOf { it.lastTouchTimestamp }
-                            val sizeBytes = spans.sumOf { it.length }
-                            Candidate(key = key, lastTouchTimestamp = oldestTouch, sizeBytes = sizeBytes)
-                        }.getOrNull()
-                    }.sortedBy { it.lastTouchTimestamp }
-                }.getOrNull().orEmpty()
-
-            for (candidate in candidates) {
-                if (totalBytes <= limitBytes) break
-                val removedSize = candidate.sizeBytes.coerceAtLeast(0L)
-                runCatching { playerCache.removeResource(candidate.key) }
-                totalBytes -= removedSize
-            }
-        }
-    }
 
     private fun createCacheDataSource(): DataSource.Factory {
         val audioHttpClient = mediaOkHttpClient.newBuilder().retryOnConnectionFailure(false)
