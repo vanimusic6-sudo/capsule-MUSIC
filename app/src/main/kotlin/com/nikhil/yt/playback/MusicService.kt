@@ -307,6 +307,7 @@ class MusicService :
     private var ioScope = CoroutineScope(Dispatchers.IO + scopeJob)
     private val binder = MusicBinder()
     private val togetherShutdownGate = TogetherShutdownGate()
+    private val playbackPositionGeneration = PlaybackPositionGeneration()
 
     private lateinit var connectivityManager: ConnectivityManager
     lateinit var connectivityObserver: NetworkConnectivityObserver
@@ -520,7 +521,7 @@ class MusicService :
             currentMediaIdProvider = { player.currentMediaItem?.mediaId },
             playWhenReadyProvider = { player.playWhenReady },
             currentIndexProvider = { player.currentMediaItemIndex },
-            currentPositionProvider = { player.currentPosition },
+            positionGenerationProvider = playbackPositionGeneration::snapshot,
             connectedProvider = { connectivityObserver.isCurrentlyConnected() },
             playbackBlockedProvider = {
                 CapsuleAudioEngine.playbackBlockedExceptionOrNull() != null
@@ -2773,6 +2774,9 @@ class MusicService :
 
 
     override fun onEvents(player: Player, events: Player.Events) {
+        if (events.contains(EVENT_POSITION_DISCONTINUITY)) {
+            playbackPositionGeneration.markDiscontinuity()
+        }
     val joined = togetherSessionState.value as? com.nikhil.yt.together.TogetherSessionState.Joined
     if (joined?.role is com.nikhil.yt.together.TogetherRole.Guest &&
         events.contains(Player.EVENT_PLAY_WHEN_READY_CHANGED)
@@ -3912,6 +3916,7 @@ class MusicService :
         val retryPosition = player.currentPosition
         val retryIndex = player.currentMediaItemIndex
         val retryPlayWhenReady = player.playWhenReady
+        val retryPositionGeneration = playbackPositionGeneration.snapshot()
 
         streamRetryJob?.cancel()
         streamRetryJob =
@@ -3944,7 +3949,7 @@ class MusicService :
                 if (
                     player.currentMediaItem?.mediaId != mediaId ||
                     player.currentMediaItemIndex != retryIndex ||
-                    player.currentPosition != retryPosition ||
+                    !playbackPositionGeneration.isCurrent(retryPositionGeneration) ||
                     player.playWhenReady != retryPlayWhenReady ||
                     CapsuleAudioEngine.playbackBlockedExceptionOrNull() != null
                 ) {

@@ -32,7 +32,7 @@ internal class PlaybackRecoveryCoordinator(
     private val currentMediaIdProvider: () -> String?,
     private val playWhenReadyProvider: () -> Boolean,
     private val currentIndexProvider: () -> Int,
-    private val currentPositionProvider: () -> Long,
+    private val positionGenerationProvider: () -> Long,
     private val connectedProvider: () -> Boolean,
     private val playbackBlockedProvider: () -> Boolean,
     private val healthyPlaybackProvider: (String) -> Boolean,
@@ -95,7 +95,7 @@ internal class PlaybackRecoveryCoordinator(
         }
 
         val index = currentIndexProvider()
-        val position = currentPositionProvider()
+        val positionGeneration = positionGenerationProvider()
         networkRecoveryJob =
             scopeProvider().launch {
                 delay(retryDelay)
@@ -103,7 +103,7 @@ internal class PlaybackRecoveryCoordinator(
                     !playWhenReadyProvider() ||
                     currentMediaIdProvider() != mediaId ||
                     currentIndexProvider() != index ||
-                    currentPositionProvider() != position
+                    positionGenerationProvider() != positionGeneration
                 ) {
                     waitingForNetworkConnection.value = false
                     networkRecoveryJob = null
