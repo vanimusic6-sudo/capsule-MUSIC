@@ -171,6 +171,7 @@ import com.nikhil.yt.innertube.models.SongItem
 import com.nikhil.yt.innertube.models.WatchEndpoint
 import com.nikhil.yt.together.TogetherSessionRuntime
 import com.nikhil.yt.together.TogetherOnlineCredentials
+import com.nikhil.yt.together.TogetherGuestControlCoordinator
 import com.nikhil.yt.lastfm.LastFM
 import com.nikhil.yt.lyrics.LyricsPreloadManager
 import com.nikhil.yt.models.PersistPlayerState
@@ -674,25 +675,12 @@ class MusicService :
             reportRecoverableException("MusicService", operation, error)
         }
     val togetherSessionState = togetherRuntime.sessionState
-    @Volatile
-    private var togetherLastSentControlAtElapsedMs: Long = 0L
-    @Volatile
-    private var togetherLastSentControlAction: com.nikhil.yt.together.ControlAction? = null
-    @Volatile
-    private var togetherPendingGuestControl: TogetherPendingGuestControl? = null
+    private val togetherGuestControl = TogetherGuestControlCoordinator()
 
     private fun isTogetherApplyingRemote(): Boolean = togetherRuntime.applyingRemote
     private val togetherHostId: String = "host"
     private var lastTogetherNoticeAtElapsedMs: Long = 0L
     private var lastTogetherNoticeKey: String? = null
-
-    private data class TogetherPendingGuestControl(
-        val desiredIsPlaying: Boolean? = null,
-        val desiredIndex: Int? = null,
-        val desiredTrackId: String? = null,
-        val requestedAtElapsedMs: Long,
-        val expiresAtElapsedMs: Long,
-    )
 
     private fun showTogetherNotice(message: String, key: String? = null) {
         val now = android.os.SystemClock.elapsedRealtime()
@@ -2644,8 +2632,7 @@ class MusicService :
                                     val joined =
                                         togetherSessionState.value as? com.nikhil.yt.together.TogetherSessionState.Joined
                                     if (joined?.role is com.nikhil.yt.together.TogetherRole.Guest) {
-                                        togetherPendingGuestControl = null
-                                        togetherLastSentControlAction = null
+                                        togetherGuestControl.reset()
                                         scope.launch(SilentHandler) { applyRemoteRoomState(joined.roomState) }
                                     }
                                 }
@@ -2866,8 +2853,7 @@ class MusicService :
                                         val joined =
                                             togetherSessionState.value as? com.nikhil.yt.together.TogetherSessionState.Joined
                                         if (joined?.role is com.nikhil.yt.together.TogetherRole.Guest) {
-                                            togetherPendingGuestControl = null
-                                            togetherLastSentControlAction = null
+                                            togetherGuestControl.reset()
                                             scope.launch(SilentHandler) { applyRemoteRoomState(joined.roomState) }
                                         }
                                     }
@@ -3019,29 +3005,8 @@ class MusicService :
             return
         }
         val now = android.os.SystemClock.elapsedRealtime()
-        val lastAction = togetherLastSentControlAction
-        val lastAt = togetherLastSentControlAtElapsedMs
-        if (lastAction == action && now - lastAt < 350L) return
-        togetherLastSentControlAction = action
-        togetherLastSentControlAtElapsedMs = now
+        if (!togetherGuestControl.registerOutgoing(action, now, togetherRuntime.isOnlineSession)) return
 
-        val timeout = if (togetherRuntime.isOnlineSession) 5000L else 2000L
-        togetherPendingGuestControl =
-            when (action) {
-                com.nikhil.yt.together.ControlAction.Play ->
-                    TogetherPendingGuestControl(desiredIsPlaying = true, requestedAtElapsedMs = now, expiresAtElapsedMs = now + timeout)
-                com.nikhil.yt.together.ControlAction.Pause ->
-                    TogetherPendingGuestControl(desiredIsPlaying = false, requestedAtElapsedMs = now, expiresAtElapsedMs = now + timeout)
-                is com.nikhil.yt.together.ControlAction.SeekToIndex ->
-                    TogetherPendingGuestControl(desiredIndex = action.index.coerceAtLeast(0), requestedAtElapsedMs = now, expiresAtElapsedMs = now + timeout)
-                is com.nikhil.yt.together.ControlAction.SeekToTrack ->
-                    TogetherPendingGuestControl(
-                        desiredTrackId = action.trackId.trim().ifBlank { null },
-                        requestedAtElapsedMs = now,
-                        expiresAtElapsedMs = now + timeout,
-                    )
-                else -> togetherPendingGuestControl
-            }
         client.requestControl(state.sessionId, action)
     }
 
@@ -3219,26 +3184,11 @@ class MusicService :
         val pid = togetherRuntime.selfParticipantId ?: return
         val now = android.os.SystemClock.elapsedRealtime()
 
-        val pending = togetherPendingGuestControl
-        if (pending != null) {
-            val currentTrackId = state.queue.getOrNull(state.currentIndex.coerceAtLeast(0))?.id
-            val mismatch =
-                (pending.desiredIsPlaying != null && state.isPlaying != pending.desiredIsPlaying) ||
-                    (pending.desiredIndex != null && state.currentIndex != pending.desiredIndex) ||
-                    (pending.desiredTrackId != null && currentTrackId != pending.desiredTrackId)
-            if (now >= pending.expiresAtElapsedMs) {
-                if ((pending.desiredIndex != null || pending.desiredTrackId != null) &&
-                    now - pending.requestedAtElapsedMs >= 1200L &&
-                    mismatch
-                ) {
-                    showTogetherNotice(getString(R.string.together_song_change_failed), key = "GUEST_SEEK_TIMEOUT")
-                }
-                togetherPendingGuestControl = null
-            } else {
-                if (mismatch) return
-                togetherPendingGuestControl = null
-            }
+        val reconcileDecision = togetherGuestControl.reconcile(state, now)
+        if (reconcileDecision.notifySongChangeFailure) {
+            showTogetherNotice(getString(R.string.together_song_change_failed), key = "GUEST_SEEK_TIMEOUT")
         }
+        if (!reconcileDecision.applyRemoteState) return
 
         val lastSentAt = togetherRuntime.lastAppliedRoomStateSentAtElapsedMs
         val sentAt = state.sentAtElapsedRealtimeMs
@@ -3349,9 +3299,7 @@ class MusicService :
     }
 
     private suspend fun stopTogetherInternal() {
-        togetherLastSentControlAtElapsedMs = 0L
-        togetherLastSentControlAction = null
-        togetherPendingGuestControl = null
+        togetherGuestControl.reset()
         togetherRuntime.stopConnections()
     }
 
