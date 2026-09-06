@@ -4467,9 +4467,12 @@ class MusicService :
                 player.seekTo(newPos)
             }
             "com.nikhil.yt.ACTION_FORWARD" -> {
-                // Jumps forward 10 seconds, but won't go past the end of the song
-                val newPos = (player.currentPosition + 10000).coerceAtMost(player.duration)
-                player.seekTo(newPos)
+                player.seekTo(
+                    forwardSeekPositionMs(
+                        currentPositionMs = player.currentPosition,
+                        durationMs = player.duration,
+                    ),
+                )
             }
         }
 
