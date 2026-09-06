@@ -35,10 +35,8 @@ RECOVERY_CAPTURE_OLD = "        val position = currentPositionProvider()\n"
 RECOVERY_CAPTURE_NEW = "        val positionGeneration = positionGenerationProvider()\n"
 RECOVERY_STALE_OLD = "                    currentPositionProvider() != position\n"
 RECOVERY_STALE_NEW = "                    positionGenerationProvider() != positionGeneration\n"
-TEST_ARG_OLD = "                currentPositionProvider = { 0L },\n"
-TEST_ARG_NEW = "                positionGenerationProvider = { 0L },\n"
-TEST_HELPER_ARG_OLD = "            currentPositionProvider = { 0L },\n"
-TEST_HELPER_ARG_NEW = "            positionGenerationProvider = { 0L },\n"
+TEST_ARG_OLD = "currentPositionProvider = { 0L },"
+TEST_ARG_NEW = "positionGenerationProvider = { 0L },"
 
 
 def require_count(source: str, needle: str, count: int, label: str) -> None:
@@ -56,8 +54,7 @@ def validate_before(service: str, recovery: str, test: str) -> None:
     require_count(recovery, RECOVERY_PARAM_OLD, 1, "recovery position provider parameter")
     require_count(recovery, RECOVERY_CAPTURE_OLD, 1, "recovery captured position")
     require_count(recovery, RECOVERY_STALE_OLD, 1, "recovery stale position check")
-    require_count(test, TEST_HELPER_ARG_OLD, 1, "test helper position provider")
-    require_count(test, TEST_ARG_OLD, 1, "offline test position provider")
+    require_count(test, TEST_ARG_OLD, 2, "recovery test position providers")
 
     forbidden = [
         "private val playbackPositionGeneration = PlaybackPositionGeneration()",
@@ -84,8 +81,7 @@ def transform(service: str, recovery: str, test: str) -> tuple[str, str, str]:
     recovery = recovery.replace(RECOVERY_CAPTURE_OLD, RECOVERY_CAPTURE_NEW, 1)
     recovery = recovery.replace(RECOVERY_STALE_OLD, RECOVERY_STALE_NEW, 1)
 
-    test = test.replace(TEST_HELPER_ARG_OLD, TEST_HELPER_ARG_NEW, 1)
-    test = test.replace(TEST_ARG_OLD, TEST_ARG_NEW, 1)
+    test = test.replace(TEST_ARG_OLD, TEST_ARG_NEW)
     return service, recovery, test
 
 
@@ -114,8 +110,9 @@ def validate_after(service: str, recovery: str, test: str) -> None:
         raise SystemExit("stream retry still uses exact currentPosition equality")
     if "currentPositionProvider() != position" in recovery:
         raise SystemExit("network recovery still uses exact currentPosition equality")
-    if "currentPositionProvider = { 0L }" in test:
+    if TEST_ARG_OLD in test:
         raise SystemExit("recovery tests still use removed position provider")
+    require_count(test, TEST_ARG_NEW, 2, "transformed recovery test generation providers")
 
 
 def main() -> None:
