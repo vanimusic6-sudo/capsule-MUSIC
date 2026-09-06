@@ -25,7 +25,6 @@ import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.content.pm.ServiceInfo
 import android.database.SQLException
-import android.media.AudioFocusRequest
 import android.media.AudioManager
 import android.media.audiofx.AudioEffect
 import android.net.ConnectivityManager
@@ -284,12 +283,22 @@ class MusicService :
     lateinit var mediaLibrarySessionCallback: MediaLibrarySessionCallback
 
     private lateinit var audioManager: AudioManager
-    private var audioFocusRequest: AudioFocusRequest? = null
-    private var lastAudioFocusState = AudioManager.AUDIOFOCUS_NONE
-    private var wasPlayingBeforeAudioFocusLoss = false
+    private val playbackFocusController by lazy(LazyThreadSafetyMode.NONE) {
+        PlaybackFocusController(
+            audioManager = audioManager,
+            isPlayingProvider = { player.isPlaying },
+            onDecision = { decision ->
+                audioFocusVolumeFactor.value = decision.volumeFactor
+                when (decision.playbackAction) {
+                    PlaybackFocusPlaybackAction.NONE -> Unit
+                    PlaybackFocusPlaybackAction.PAUSE -> if (player.isPlaying) player.pause()
+                    PlaybackFocusPlaybackAction.RESUME -> player.play()
+                }
+            },
+        )
+    }
     private var pauseOnDeviceMuteEnabled = false
     private var wasAutoPausedByDeviceMute = false
-    private var hasAudioFocus = false
     private var autoStartOnBluetoothEnabled = false
     private var bluetoothReceiverRegistered = false
 
@@ -832,7 +841,7 @@ class MusicService :
         registerCapsuleScreenStateReceiver()
 
         audioManager = getSystemService(Context.AUDIO_SERVICE) as AudioManager
-        setupAudioFocusRequest()
+        playbackFocusController.initialize()
 
         mediaLibrarySessionCallback.apply {
             toggleLike = { source -> this@MusicService.toggleLike(source) }
@@ -1203,116 +1212,16 @@ class MusicService :
         }
     }
 
-    private fun setupAudioFocusRequest() {
-        audioFocusRequest = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN)
-            .setAudioAttributes(
-                android.media.AudioAttributes.Builder()
-                    .setUsage(android.media.AudioAttributes.USAGE_MEDIA)
-                    .setContentType(android.media.AudioAttributes.CONTENT_TYPE_MUSIC)
-                    .build()
-            )
-            .setOnAudioFocusChangeListener { focusChange ->
-                handleAudioFocusChange(focusChange)
-            }
-            .setAcceptsDelayedFocusGain(true)
-            .build()
-    }
 
-    private fun handleAudioFocusChange(focusChange: Int) {
-        when (focusChange) {
-            AudioManager.AUDIOFOCUS_GAIN -> {
-                hasAudioFocus = true
-                audioFocusVolumeFactor.value = 1f
 
-                if (wasPlayingBeforeAudioFocusLoss) {
-                    player.play()
-                    wasPlayingBeforeAudioFocusLoss = false
-                }
 
-                lastAudioFocusState = focusChange
-            }
 
-            AudioManager.AUDIOFOCUS_LOSS -> {
-                hasAudioFocus = false
-                audioFocusVolumeFactor.value = 1f
-                wasPlayingBeforeAudioFocusLoss = false
 
-                if (player.isPlaying) {
-                    player.pause()
-                }
 
-                abandonAudioFocus()
 
-                lastAudioFocusState = focusChange
-            }
-
-            AudioManager.AUDIOFOCUS_LOSS_TRANSIENT -> {
-                hasAudioFocus = false
-                audioFocusVolumeFactor.value = 1f
-                wasPlayingBeforeAudioFocusLoss = player.isPlaying
-
-                if (player.isPlaying) {
-                    player.pause()
-                }
-
-                lastAudioFocusState = focusChange
-            }
-
-            AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK -> {
-
-                hasAudioFocus = false
-
-                wasPlayingBeforeAudioFocusLoss = player.isPlaying
-
-                audioFocusVolumeFactor.value = 0.2f
-
-                lastAudioFocusState = focusChange
-            }
-
-            AudioManager.AUDIOFOCUS_GAIN_TRANSIENT -> {
-
-                hasAudioFocus = true
-                audioFocusVolumeFactor.value = 1f
-
-                if (wasPlayingBeforeAudioFocusLoss) {
-                    player.play()
-                    wasPlayingBeforeAudioFocusLoss = false
-                }
-        
-                lastAudioFocusState = focusChange
-            }
-
-            AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK -> {
-                hasAudioFocus = true
-                audioFocusVolumeFactor.value = 1f
-
-                lastAudioFocusState = focusChange
-            }
-        }
-    }
-
-    private fun requestAudioFocus(): Boolean {
-        if (hasAudioFocus) return true
-    
-        audioFocusRequest?.let { request ->
-            val result = audioManager.requestAudioFocus(request)
-            hasAudioFocus = result == AudioManager.AUDIOFOCUS_REQUEST_GRANTED
-            return hasAudioFocus
-        }
-        return false
-    }
-
-    private fun abandonAudioFocus() {
-        if (hasAudioFocus) {
-            audioFocusRequest?.let { request ->
-                audioManager.abandonAudioFocusRequest(request)
-                hasAudioFocus = false
-            }
-        }
-    }
 
     fun hasAudioFocusForPlayback(): Boolean {
-        return hasAudioFocus
+        return playbackFocusController.hasFocus
     }
 
     private fun isDeviceMutedNow(): Boolean {
@@ -1991,7 +1900,7 @@ class MusicService :
         player.playWhenReady = false
         player.stop()
         player.clearMediaItems()
-        abandonAudioFocus()
+        playbackFocusController.abandonFocus()
         closeAudioEffectSession()
         trackFailureResetJob?.cancel()
         trackFailureResetJob = null
@@ -3012,7 +2921,7 @@ class MusicService :
         val isBufferingOrReady =
             player.playbackState == Player.STATE_BUFFERING || player.playbackState == Player.STATE_READY
         if (isBufferingOrReady && player.playWhenReady) {
-            val focusGranted = requestAudioFocus()
+            val focusGranted = playbackFocusController.requestFocus()
             if (focusGranted) openAudioEffectSession()
         } else {
             closeAudioEffectSession()
@@ -4524,7 +4433,7 @@ class MusicService :
         } catch (error: Exception) {
             reportRecoverableException("MusicService", "unregister connectivity observer", error)
         }
-        abandonAudioFocus()
+        playbackFocusController.abandonFocus()
         try {
             audioEffectsController.release()
         } catch (error: Exception) {
