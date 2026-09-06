@@ -676,6 +676,7 @@ class MusicService :
             ioScopeProvider = { ioScope },
             hostId = togetherHostId,
             appNameProvider = { getString(R.string.app_name) },
+            guestNameProvider = { getString(R.string.together_role_guest) },
             localIpv4Provider = ::getLocalIpv4Address,
             onlineBaseUrlProvider = {
                 com.nikhil.yt.together.TogetherOnlineEndpoint.baseUrlOrNull(dataStore)
@@ -687,7 +688,15 @@ class MusicService :
             onlineNotConfiguredMessage = { getString(R.string.together_online_not_configured) },
             tokenMissingMessage = { getString(R.string.together_token_missing) },
             invalidWebSocketMessage = { "Connection failed: Invalid server websocket URL" },
+            invalidLinkMessage = { getString(R.string.invalid_link) },
+            invalidCodeMessage = { getString(R.string.invalid_code) },
+            notAllowedMessage = { getString(R.string.not_allowed) },
+            hostLeftMessage = { getString(R.string.together_host_left_session) },
+            networkUnavailableMessage = { getString(R.string.network_unavailable) },
             hostEventHandler = ::handleTogetherHostEvent,
+            remoteStateApplier = ::applyRemoteRoomState,
+            guestControlReset = { togetherGuestControl.reset() },
+            guestNotice = { message, key -> showTogetherNotice(message, key) },
             stopCurrentSession = ::stopTogetherInternal,
             onOnlineFailure = ::reportException,
         )
@@ -2092,179 +2101,10 @@ class MusicService :
         displayName: String,
     ) {
         ensureScopesActive()
-        val joinInfo = com.nikhil.yt.together.TogetherLink.decode(rawLink)
-        if (joinInfo == null) {
-            scope.launch(SilentHandler) {
-                togetherSessionState.value =
-                    com.nikhil.yt.together.TogetherSessionState.Error(
-                        message = getString(R.string.invalid_link),
-                        recoverable = true,
-                    )
-            }
-            return
-        }
-
-        scope.launch(SilentHandler) {
-            togetherSessionState.value = com.nikhil.yt.together.TogetherSessionState.Joining(joinInfo.toDeepLink())
-        }
-
-        ioScope.launch(SilentHandler) {
-            stopTogetherInternal()
-            togetherRuntime.isOnlineSession = false
-            val client =
-                com.nikhil.yt.together.TogetherClient(
-                    ioScope,
-                    clientId = getOrCreateTogetherClientId(),
-                )
-            togetherRuntime.client = client
-            togetherRuntime.clock = com.nikhil.yt.together.TogetherClock()
-            togetherRuntime.selfParticipantId = null
-            togetherRuntime.lastAppliedQueueHash = null
-
-            togetherRuntime.clientEventsJob?.cancel()
-            togetherRuntime.clientEventsJob =
-                ioScope.launch(SilentHandler) {
-                client.events.collect { event ->
-                    when (event) {
-                        is com.nikhil.yt.together.TogetherClientEvent.Welcome -> {
-                            togetherRuntime.selfParticipantId = event.welcome.participantId
-                            scope.launch(SilentHandler) {
-                                val state = togetherSessionState.value
-                                if (state is com.nikhil.yt.together.TogetherSessionState.Joining) {
-                                    val selfName = displayName.trim().ifBlank { getString(R.string.together_role_guest) }
-                                    val initial =
-                                        com.nikhil.yt.together.TogetherRoomState(
-                                            sessionId = joinInfo.sessionId,
-                                            hostId = togetherHostId,
-                                            participants =
-                                                listOf(
-                                                    com.nikhil.yt.together.TogetherParticipant(
-                                                        id = event.welcome.participantId,
-                                                        name = selfName,
-                                                        isHost = false,
-                                                        isPending = event.welcome.isPending,
-                                                        isConnected = true,
-                                                    ),
-                                                ),
-                                            settings = event.welcome.settings,
-                                            queue = emptyList(),
-                                            queueHash = "",
-                                            currentIndex = 0,
-                                            isPlaying = false,
-                                            positionMs = 0L,
-                                            repeatMode = 0,
-                                            shuffleEnabled = false,
-                                            sentAtElapsedRealtimeMs = android.os.SystemClock.elapsedRealtime(),
-                                        )
-                                    togetherSessionState.value =
-                                        com.nikhil.yt.together.TogetherSessionState.Joined(
-                                            role = com.nikhil.yt.together.TogetherRole.Guest,
-                                            sessionId = joinInfo.sessionId,
-                                            selfParticipantId = event.welcome.participantId,
-                                            roomState = initial,
-                                        )
-                                }
-                            }
-                            startTogetherHeartbeat(joinInfo.sessionId, client)
-                        }
-
-                        is com.nikhil.yt.together.TogetherClientEvent.RoomState -> {
-                            applyRemoteRoomState(event.state)
-                        }
-
-                        is com.nikhil.yt.together.TogetherClientEvent.JoinDecision -> {
-                            if (!event.decision.approved) {
-                                scope.launch(SilentHandler) {
-                                    togetherSessionState.value =
-                                        com.nikhil.yt.together.TogetherSessionState.Error(
-                                            message = getString(R.string.not_allowed),
-                                            recoverable = true,
-                                        )
-                                }
-                                ioScope.launch(SilentHandler) { stopTogetherInternal() }
-                            }
-                        }
-
-                        is com.nikhil.yt.together.TogetherClientEvent.ServerIssue -> {
-                            Timber.tag("Together").w("server issue (lan) code=${event.code.orEmpty()} message=${event.message}")
-                            when (event.code) {
-                                "GUEST_CONTROL_DISABLED" -> {
-                                    showTogetherNotice(event.message, key = "GUEST_CONTROL_DISABLED")
-                                    val joined =
-                                        togetherSessionState.value as? com.nikhil.yt.together.TogetherSessionState.Joined
-                                    if (joined?.role is com.nikhil.yt.together.TogetherRole.Guest) {
-                                        togetherGuestControl.reset()
-                                        scope.launch(SilentHandler) { applyRemoteRoomState(joined.roomState) }
-                                    }
-                                }
-
-                                "GUEST_ADD_DISABLED" -> {
-                                    showTogetherNotice(event.message, key = "GUEST_ADD_DISABLED")
-                                }
-
-                                "HOST_OFFLINE" -> {
-                                    showTogetherNotice(event.message, key = "HOST_OFFLINE")
-                                }
-
-                                else -> {
-                                    scope.launch(SilentHandler) {
-                                        togetherSessionState.value =
-                                            com.nikhil.yt.together.TogetherSessionState.Error(
-                                                message = event.message,
-                                                recoverable = true,
-                                            )
-                                    }
-                                    ioScope.launch(SilentHandler) { stopTogetherInternal() }
-                                }
-                            }
-                        }
-
-                        is com.nikhil.yt.together.TogetherClientEvent.HeartbeatPong -> {
-                            val clock = togetherRuntime.clock ?: return@collect
-                            clock.onPong(
-                                sentAtElapsedMs = event.pong.clientElapsedRealtimeMs,
-                                receivedAtElapsedMs = event.receivedAtElapsedRealtimeMs,
-                                serverElapsedMs = event.pong.serverElapsedRealtimeMs,
-                            )
-                        }
-
-                        is com.nikhil.yt.together.TogetherClientEvent.Error -> {
-                            scope.launch(SilentHandler) {
-                                togetherSessionState.value =
-                                    com.nikhil.yt.together.TogetherSessionState.Error(
-                                        message = event.message,
-                                        recoverable = true,
-                                    )
-                            }
-                            ioScope.launch(SilentHandler) { stopTogetherInternal() }
-                        }
-
-                        com.nikhil.yt.together.TogetherClientEvent.Disconnected -> {
-                            val current = togetherSessionState.value
-                            if (current is com.nikhil.yt.together.TogetherSessionState.Idle) return@collect
-                            scope.launch(SilentHandler) {
-                                val currentState = togetherSessionState.value
-                                togetherSessionState.value =
-                                    com.nikhil.yt.together.TogetherSessionState.Error(
-                                        message =
-                                            if (currentState is com.nikhil.yt.together.TogetherSessionState.Joined &&
-                                                currentState.role is com.nikhil.yt.together.TogetherRole.Guest
-                                            ) {
-                                                getString(R.string.together_host_left_session)
-                                            } else {
-                                                getString(R.string.network_unavailable)
-                                            },
-                                        recoverable = true,
-                                    )
-                            }
-                            ioScope.launch(SilentHandler) { stopTogetherInternal() }
-                        }
-                    }
-                }
-            }
-
-            client.connect(joinInfo, displayName.trim().ifBlank { getString(R.string.together_role_guest) })
-        }
+        togetherSessionController.joinLan(
+            rawLink = rawLink,
+            displayName = displayName,
+        )
     }
 
     fun joinTogetherOnline(
@@ -2272,250 +2112,15 @@ class MusicService :
         displayName: String,
     ) {
         ensureScopesActive()
-        val trimmedCode = code.trim()
-        if (trimmedCode.isBlank()) {
-            scope.launch(SilentHandler) {
-                togetherSessionState.value =
-                    com.nikhil.yt.together.TogetherSessionState.Error(
-                        message = getString(R.string.invalid_code),
-                        recoverable = true,
-                    )
-            }
-            return
-        }
-
-        scope.launch(SilentHandler) {
-            togetherSessionState.value = com.nikhil.yt.together.TogetherSessionState.JoiningOnline(trimmedCode)
-        }
-
-        ioScope.launch(SilentHandler) {
-            stopTogetherInternal()
-            togetherRuntime.isOnlineSession = true
-
-            val baseUrl = com.nikhil.yt.together.TogetherOnlineEndpoint.baseUrlOrNull(dataStore)
-            if (baseUrl == null) {
-                scope.launch(SilentHandler) {
-                    togetherSessionState.value =
-                        com.nikhil.yt.together.TogetherSessionState.Error(
-                            message = getString(R.string.together_online_not_configured),
-                            recoverable = true,
-                        )
-                }
-                return@launch
-            }
-
-            val togetherToken = TogetherOnlineCredentials.bearerTokenOrNull()
-            if (togetherToken == null) {
-                scope.launch(SilentHandler) {
-                    togetherSessionState.value =
-                        com.nikhil.yt.together.TogetherSessionState.Error(
-                            message = getString(R.string.together_token_missing),
-                            recoverable = true,
-                        )
-                }
-                return@launch
-            }
-
-            val api = com.nikhil.yt.together.TogetherOnlineApi(baseUrl = baseUrl, bearerToken = togetherToken)
-            val resolved =
-                runCatching { api.resolveCode(trimmedCode) }
-                    .getOrElse { t ->
-                        scope.launch(SilentHandler) {
-                            togetherSessionState.value =
-                                com.nikhil.yt.together.TogetherSessionState.Error(
-                                    message = togetherOnlineErrorMessage(t),
-                                    recoverable = true,
-                                )
-                        }
-                        reportException(t)
-                        return@launch
-                    }
-
-            val client =
-                com.nikhil.yt.together.TogetherClient(
-                    ioScope,
-                    clientId = getOrCreateTogetherClientId(),
-                    bearerToken = togetherToken,
-                )
-            togetherRuntime.client = client
-            togetherRuntime.clock = com.nikhil.yt.together.TogetherClock()
-            togetherRuntime.selfParticipantId = null
-            togetherRuntime.lastAppliedQueueHash = null
-
-            togetherRuntime.clientEventsJob?.cancel()
-            togetherRuntime.clientEventsJob =
-                ioScope.launch(SilentHandler) {
-                    client.events.collect { event ->
-                        when (event) {
-                            is com.nikhil.yt.together.TogetherClientEvent.Welcome -> {
-                                togetherRuntime.selfParticipantId = event.welcome.participantId
-                                scope.launch(SilentHandler) {
-                                    val state = togetherSessionState.value
-                                    if (state is com.nikhil.yt.together.TogetherSessionState.JoiningOnline) {
-                                        val selfName = displayName.trim().ifBlank { getString(R.string.together_role_guest) }
-                                        val initial =
-                                            com.nikhil.yt.together.TogetherRoomState(
-                                                sessionId = resolved.sessionId,
-                                                hostId = togetherHostId,
-                                                participants =
-                                                    listOf(
-                                                        com.nikhil.yt.together.TogetherParticipant(
-                                                            id = event.welcome.participantId,
-                                                            name = selfName,
-                                                            isHost = false,
-                                                            isPending = event.welcome.isPending,
-                                                            isConnected = true,
-                                                        ),
-                                                    ),
-                                                settings = event.welcome.settings,
-                                                queue = emptyList(),
-                                                queueHash = "",
-                                                currentIndex = 0,
-                                                isPlaying = false,
-                                                positionMs = 0L,
-                                                repeatMode = 0,
-                                                shuffleEnabled = false,
-                                                sentAtElapsedRealtimeMs = android.os.SystemClock.elapsedRealtime(),
-                                            )
-                                        togetherSessionState.value =
-                                            com.nikhil.yt.together.TogetherSessionState.Joined(
-                                                role = com.nikhil.yt.together.TogetherRole.Guest,
-                                                sessionId = resolved.sessionId,
-                                                selfParticipantId = event.welcome.participantId,
-                                                roomState = initial,
-                                            )
-                                    }
-                                }
-                                startTogetherHeartbeat(resolved.sessionId, client)
-                            }
-
-                            is com.nikhil.yt.together.TogetherClientEvent.RoomState -> {
-                                applyRemoteRoomState(event.state)
-                            }
-
-                            is com.nikhil.yt.together.TogetherClientEvent.JoinDecision -> {
-                                if (!event.decision.approved) {
-                                    scope.launch(SilentHandler) {
-                                        togetherSessionState.value =
-                                            com.nikhil.yt.together.TogetherSessionState.Error(
-                                                message = getString(R.string.not_allowed),
-                                                recoverable = true,
-                                            )
-                                    }
-                                    ioScope.launch(SilentHandler) { stopTogetherInternal() }
-                                }
-                            }
-
-                            is com.nikhil.yt.together.TogetherClientEvent.ServerIssue -> {
-                                Timber.tag("Together").w("server issue (online) code=${event.code.orEmpty()} message=${event.message}")
-                                when (event.code) {
-                                    "GUEST_CONTROL_DISABLED" -> {
-                                        showTogetherNotice(event.message, key = "GUEST_CONTROL_DISABLED")
-                                        val joined =
-                                            togetherSessionState.value as? com.nikhil.yt.together.TogetherSessionState.Joined
-                                        if (joined?.role is com.nikhil.yt.together.TogetherRole.Guest) {
-                                            togetherGuestControl.reset()
-                                            scope.launch(SilentHandler) { applyRemoteRoomState(joined.roomState) }
-                                        }
-                                    }
-
-                                    "GUEST_ADD_DISABLED" -> {
-                                        showTogetherNotice(event.message, key = "GUEST_ADD_DISABLED")
-                                    }
-
-                                    "HOST_OFFLINE" -> {
-                                        showTogetherNotice(event.message, key = "HOST_OFFLINE")
-                                    }
-
-                                    else -> {
-                                        scope.launch(SilentHandler) {
-                                            togetherSessionState.value =
-                                                com.nikhil.yt.together.TogetherSessionState.Error(
-                                                    message = event.message,
-                                                    recoverable = true,
-                                                )
-                                        }
-                                        ioScope.launch(SilentHandler) { stopTogetherInternal() }
-                                    }
-                                }
-                            }
-
-                            is com.nikhil.yt.together.TogetherClientEvent.HeartbeatPong -> {
-                                val clock = togetherRuntime.clock ?: return@collect
-                                clock.onPong(
-                                    sentAtElapsedMs = event.pong.clientElapsedRealtimeMs,
-                                    receivedAtElapsedMs = event.receivedAtElapsedRealtimeMs,
-                                    serverElapsedMs = event.pong.serverElapsedRealtimeMs,
-                                )
-                            }
-
-                            is com.nikhil.yt.together.TogetherClientEvent.Error -> {
-                                scope.launch(SilentHandler) {
-                                    togetherSessionState.value =
-                                        com.nikhil.yt.together.TogetherSessionState.Error(
-                                            message = event.message,
-                                            recoverable = true,
-                                        )
-                                }
-                                ioScope.launch(SilentHandler) { stopTogetherInternal() }
-                            }
-
-                            com.nikhil.yt.together.TogetherClientEvent.Disconnected -> {
-                                val current = togetherSessionState.value
-                                if (current is com.nikhil.yt.together.TogetherSessionState.Idle) return@collect
-                                scope.launch(SilentHandler) {
-                                    val currentState = togetherSessionState.value
-                                    togetherSessionState.value =
-                                        com.nikhil.yt.together.TogetherSessionState.Error(
-                                            message =
-                                                if (currentState is com.nikhil.yt.together.TogetherSessionState.Joined &&
-                                                    currentState.role is com.nikhil.yt.together.TogetherRole.Guest
-                                                ) {
-                                                    getString(R.string.together_host_left_session)
-                                                } else {
-                                                    getString(R.string.network_unavailable)
-                                                },
-                                            recoverable = true,
-                                        )
-                                }
-                                ioScope.launch(SilentHandler) { stopTogetherInternal() }
-                            }
-                        }
-                    }
-                }
-
-            val wsUrl =
-                com.nikhil.yt.together.TogetherOnlineEndpoint.onlineWebSocketUrlOrNull(
-                    rawWsUrl = resolved.wsUrl,
-                    baseUrl = baseUrl,
-                )
-            if (wsUrl == null) {
-                scope.launch(SilentHandler) {
-                    togetherSessionState.value =
-                        com.nikhil.yt.together.TogetherSessionState.Error(
-                            message = "Connection failed: Invalid server websocket URL",
-                            recoverable = true,
-                        )
-                }
-                ioScope.launch(SilentHandler) { stopTogetherInternal() }
-                return@launch
-            }
-
-            client.connect(
-                wsUrl = wsUrl,
-                sessionId = resolved.sessionId,
-                sessionKey = resolved.guestKey,
-                displayName = displayName.trim().ifBlank { getString(R.string.together_role_guest) },
-            )
-        }
+        togetherSessionController.joinOnline(
+            code = code,
+            displayName = displayName,
+        )
     }
 
     fun leaveTogether() {
         ensureScopesActive()
-        scope.launch(SilentHandler) {
-            togetherSessionState.value = com.nikhil.yt.together.TogetherSessionState.Idle
-        }
-        ioScope.launch(SilentHandler) { stopTogetherInternal() }
+        togetherSessionController.leave()
     }
 
     fun updateTogetherSettings(settings: com.nikhil.yt.together.TogetherRoomSettings) {
@@ -2846,18 +2451,7 @@ class MusicService :
         }
     }
 
-    private fun startTogetherHeartbeat(sessionId: String, client: com.nikhil.yt.together.TogetherClient) {
-        togetherRuntime.heartbeatJob?.cancel()
-        togetherRuntime.heartbeatJob =
-            ioScope.launch(SilentHandler) {
-                var pingId = 0L
-                while (togetherRuntime.client === client) {
-                    val now = android.os.SystemClock.elapsedRealtime()
-                    client.sendHeartbeat(sessionId = sessionId, pingId = pingId++, clientElapsedRealtimeMs = now)
-                    kotlinx.coroutines.delay(2000)
-                }
-            }
-    }
+
 
     private suspend fun stopTogetherInternal() {
         togetherGuestControl.reset()
