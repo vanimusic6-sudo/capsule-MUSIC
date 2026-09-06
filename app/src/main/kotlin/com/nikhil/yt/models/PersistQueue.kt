@@ -15,6 +15,14 @@ data class PersistQueue(
     val position: Long,
     val queueType: QueueType = QueueType.LIST,
     val queueData: QueueData? = null,
+    /**
+     * Automix snapshots historically reused PersistQueue. Keep the additional
+     * metadata nullable so Java-serialized snapshots created before these
+     * fields existed remain readable with serialVersionUID = 1L.
+     * Normal queue snapshots leave both fields null.
+     */
+    val automixSeedMediaId: String? = null,
+    val automixAutoAddedMediaIds: List<String>? = null,
 ) : Serializable {
     companion object {
         private const val serialVersionUID = 1L

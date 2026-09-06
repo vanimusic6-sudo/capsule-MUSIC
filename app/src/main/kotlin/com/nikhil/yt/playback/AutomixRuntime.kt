@@ -8,10 +8,9 @@ import kotlinx.coroutines.flow.MutableStateFlow
 /**
  * Owns mutable Automix runtime state independently from [MusicService].
  *
- * This intentionally does not decide what to fetch or when to extend the
- * player queue. Those policies stay unchanged in MusicService for this
- * extraction step; only their mutable runtime resources move behind one
- * ownership boundary.
+ * Fetch policy and player queue mutations deliberately stay outside this
+ * class. The runtime only owns state, cancellation resources and persisted
+ * Automix identity so stale work can be reasoned about in one place.
  */
 internal class AutomixRuntime {
     val items = MutableStateFlow<List<MediaItem>>(emptyList())
@@ -36,6 +35,32 @@ internal class AutomixRuntime {
         seedMediaId == mediaId &&
             (items.value.isNotEmpty() || job?.isActive == true)
 
+    /**
+     * Restores process-persistent Automix state without depending on ExoPlayer
+     * having finished its asynchronous queue restore first.
+     */
+    fun restore(
+        restoredItems: List<MediaItem>,
+        persistedSeedMediaId: String?,
+        fallbackSeedMediaId: String?,
+        restoredAutoAddedMediaIds: Collection<String>? = null,
+    ) {
+        job?.cancel()
+        job = null
+        items.value = restoredItems
+        loading.value = false
+        error.value = null
+        seedMediaId = normalizeMediaId(persistedSeedMediaId) ?: normalizeMediaId(fallbackSeedMediaId)
+
+        synchronized(autoAddedMediaIds) {
+            autoAddedMediaIds.clear()
+            restoredAutoAddedMediaIds
+                .orEmpty()
+                .mapNotNull(::normalizeMediaId)
+                .forEach(autoAddedMediaIds::add)
+        }
+    }
+
     fun clear() {
         job?.cancel()
         job = null
@@ -44,4 +69,7 @@ internal class AutomixRuntime {
         error.value = null
         seedMediaId = null
     }
+
+    private fun normalizeMediaId(value: String?): String? =
+        value?.trim()?.takeIf { it.isNotEmpty() }
 }
