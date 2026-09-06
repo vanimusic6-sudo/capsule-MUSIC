@@ -1136,8 +1136,15 @@ class MusicService :
 
         scope.launch(Dispatchers.IO) {
             if (dataStore.get(PersistentQueueKey, true)) {
+                var restoredQueueSeedMediaId: String? = null
                 playbackPersistence.read(PERSISTENT_QUEUE_FILE, PersistQueue::class.java)
                     ?.let { persistedQueue ->
+                    restoredQueueSeedMediaId =
+                        persistedQueue.items
+                            .getOrNull(persistedQueue.mediaItemIndex)
+                            ?.id
+                            ?.trim()
+                            ?.takeIf { it.isNotBlank() }
                     val restoredQueue = persistedQueue.toQueue()
                     withContext(Dispatchers.Main) {
                         playQueue(
@@ -1150,8 +1157,12 @@ class MusicService :
                     ?.let { persistedAutomix ->
                     val items = persistedAutomix.items.map { it.toMediaItem() }
                     withContext(Dispatchers.Main) {
-                        automixItems.value = items
-                        automixRuntime.seedMediaId = player.currentMetadata?.id?.trim()?.takeIf { it.isNotBlank() }
+                        automixRuntime.restore(
+                            restoredItems = items,
+                            persistedSeedMediaId = persistedAutomix.automixSeedMediaId,
+                            fallbackSeedMediaId = restoredQueueSeedMediaId,
+                            restoredAutoAddedMediaIds = persistedAutomix.automixAutoAddedMediaIds,
+                        )
                     }
                 }
                 
@@ -5300,6 +5311,8 @@ class MusicService :
         val currentMediaItemIndex = player.currentMediaItemIndex
         val currentPosition = player.currentPosition
         val automixSnapshot = automixItems.value.mapNotNull { it.metadata }
+        val automixAutoAddedSnapshot =
+            synchronized(autoAddedMediaIds) { autoAddedMediaIds.toList() }
         val playerState = capturePersistentPlayerState() ?: return null
 
         return PersistentPlaybackSnapshot(
@@ -5316,6 +5329,11 @@ class MusicService :
                     items = automixSnapshot,
                     mediaItemIndex = 0,
                     position = 0,
+                    automixSeedMediaId =
+                        automixRuntime.seedMediaId
+                            ?.trim()
+                            ?.takeIf { it.isNotBlank() },
+                    automixAutoAddedMediaIds = automixAutoAddedSnapshot,
                 ),
             playerState = playerState,
         )
