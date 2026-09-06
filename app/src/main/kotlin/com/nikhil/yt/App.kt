@@ -61,6 +61,9 @@ import java.util.concurrent.atomic.AtomicBoolean
 @HiltAndroidApp
 class App : Application(), SingletonImageLoader.Factory {
     private val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+
+    internal fun launchLifecycleCleanup(block: suspend () -> Unit) =
+        applicationScope.launch(Dispatchers.IO) { block() }
     @Volatile private var isInitialized = false
     private val didRunImageCacheTrim = AtomicBoolean(false)
 

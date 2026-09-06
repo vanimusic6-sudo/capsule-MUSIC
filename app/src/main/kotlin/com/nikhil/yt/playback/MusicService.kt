@@ -83,6 +83,7 @@ import androidx.media3.session.MediaLibraryService
 import androidx.media3.session.MediaSession
 import androidx.media3.session.SessionToken
 import com.google.common.util.concurrent.MoreExecutors
+import com.nikhil.yt.App
 import com.nikhil.yt.MainActivity
 import com.nikhil.yt.R
 import com.nikhil.yt.constants.AudioCrossfadeDurationKey
@@ -305,6 +306,7 @@ class MusicService :
     private var scope = CoroutineScope(Dispatchers.Main + scopeJob)
     private var ioScope = CoroutineScope(Dispatchers.IO + scopeJob)
     private val binder = MusicBinder()
+    private val togetherShutdownGate = TogetherShutdownGate()
 
     private lateinit var connectivityManager: ConnectivityManager
     lateinit var connectivityObserver: NetworkConnectivityObserver
@@ -4287,16 +4289,34 @@ class MusicService :
     }
 
 
+    private fun scheduleTogetherShutdown() {
+        if (!togetherShutdownGate.tryBegin()) return
+
+        try {
+            App.instance.launchLifecycleCleanup {
+                try {
+                    stopTogetherInternal()
+                } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                    throw cancelled
+                } catch (error: Exception) {
+                    reportRecoverableException(
+                        "MusicService",
+                        "complete Together shutdown",
+                        error,
+                    )
+                }
+            }
+        } catch (error: Exception) {
+            reportRecoverableException("MusicService", "schedule Together shutdown", error)
+        }
+    }
+
     override fun onDestroy() {
         super.onDestroy()
         playbackPersistence.cancelPending()
         unregisterCapsuleScreenStateReceiver()
         unregisterBluetoothReceiver()
-        try {
-            scope.launch { stopTogetherInternal() }
-        } catch (error: Exception) {
-            reportRecoverableException("MusicService", "schedule Together shutdown", error)
-        }
+        scheduleTogetherShutdown()
         discordPresenceOwner.stop()
         scrobbleCoordinator.destroy()
         try {
@@ -4375,7 +4395,7 @@ class MusicService :
 
             if (shouldStopServiceOnTaskRemoved(stopMusicOnTaskClearEnabled, isHostSessionActive, isPlaybackInactive)) {
                 if (isHostSessionActive && isPlaybackInactive) {
-                    runCatching { scope.launch { stopTogetherInternal() } }
+                    scheduleTogetherShutdown()
                     runCatching { togetherSessionState.value = com.nikhil.yt.together.TogetherSessionState.Idle }
                     stopSelf()
                     return
