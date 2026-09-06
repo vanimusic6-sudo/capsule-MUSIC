@@ -6,6 +6,15 @@ import java.io.File
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
+internal fun accountedCacheBytesAfterRemoval(
+    totalBytes: Long,
+    removedSizeBytes: Long,
+    removalSucceeded: Boolean,
+): Long {
+    if (!removalSucceeded) return totalBytes.coerceAtLeast(0L)
+    return (totalBytes - removedSizeBytes.coerceAtLeast(0L)).coerceAtLeast(0L)
+}
+
 internal fun configuredPlayerCacheLimitBytes(
     enabled: Boolean,
     maxSongCacheSizeMb: Int,
@@ -76,8 +85,14 @@ internal class PlaybackCacheManager(
             for (candidate in candidates) {
                 if (totalBytes <= limitBytes) break
                 val removedSize = candidate.sizeBytes.coerceAtLeast(0L)
-                runCatching { cache.removeResource(candidate.key) }
-                totalBytes -= removedSize
+                val removalSucceeded =
+                    runCatching { cache.removeResource(candidate.key) }.isSuccess
+                totalBytes =
+                    accountedCacheBytesAfterRemoval(
+                        totalBytes = totalBytes,
+                        removedSizeBytes = removedSize,
+                        removalSucceeded = removalSucceeded,
+                    )
             }
         }
     }
