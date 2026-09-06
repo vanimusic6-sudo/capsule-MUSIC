@@ -101,7 +101,6 @@ import com.nikhil.yt.constants.AutoSkipNextOnErrorKey
 import com.nikhil.yt.constants.AutoStartOnBluetoothKey
 import com.nikhil.yt.constants.DiscordTokenKey
 import com.nikhil.yt.constants.EnableDiscordRPCKey
-import com.nikhil.yt.constants.EnableLastFMScrobblingKey
 import com.nikhil.yt.constants.EqualizerBandLevelsMbKey
 import com.nikhil.yt.constants.EqualizerBassBoostEnabledKey
 import com.nikhil.yt.constants.EqualizerBassBoostStrengthKey
@@ -115,7 +114,6 @@ import com.nikhil.yt.constants.HideExplicitKey
 import com.nikhil.yt.constants.HideVideoKey
 import com.nikhil.yt.constants.HistoryDuration
 import com.nikhil.yt.constants.InnerTubeCookieKey
-import com.nikhil.yt.constants.LastFMUseNowPlaying
 import com.nikhil.yt.constants.ListenBrainzEnabledKey
 import com.nikhil.yt.constants.ListenBrainzTokenKey
 import com.nikhil.yt.constants.MaxSongCacheSizeKey
@@ -129,9 +127,6 @@ import com.nikhil.yt.constants.PermanentShuffleKey
 import com.nikhil.yt.constants.PersistentQueueKey
 import com.nikhil.yt.constants.PlayerVolumeKey
 import com.nikhil.yt.constants.RepeatModeKey
-import com.nikhil.yt.constants.ScrobbleDelayPercentKey
-import com.nikhil.yt.constants.ScrobbleDelaySecondsKey
-import com.nikhil.yt.constants.ScrobbleMinSongDurationKey
 import com.nikhil.yt.constants.SkipSilenceKey
 import com.nikhil.yt.constants.SmartTrimmerKey
 import com.nikhil.yt.constants.StopMusicOnTaskClearKey
@@ -168,7 +163,6 @@ import com.nikhil.yt.innertube.models.WatchEndpoint
 import com.nikhil.yt.together.TogetherSessionRuntime
 import com.nikhil.yt.together.TogetherOnlineCredentials
 import com.nikhil.yt.together.TogetherGuestControlCoordinator
-import com.nikhil.yt.lastfm.LastFM
 import com.nikhil.yt.lyrics.LyricsPreloadManager
 import com.nikhil.yt.models.PersistPlayerState
 import com.nikhil.yt.models.PersistQueue
@@ -187,7 +181,6 @@ import com.nikhil.yt.playback.video.CapsuleVideoPlaybackState
 import com.nikhil.yt.playback.video.CapsuleCacheRoutingDataSource
 import com.nikhil.yt.playback.video.CapsuleVideoStreamInterceptor
 import com.nikhil.yt.playback.video.YouTubeVideoResolver
-import com.nikhil.yt.ui.screens.settings.ListenBrainzManager
 import com.nikhil.yt.utils.CoilBitmapLoader
 import com.nikhil.yt.utils.NetworkConnectivityObserver
 import com.nikhil.yt.utils.StreamClientUtils
@@ -633,7 +626,18 @@ class MusicService :
         }
     val eqCapabilities = audioEffectsController.capabilities
 
-    private var scrobbleManager: com.nikhil.yt.utils.ScrobbleManager? = null
+    private val scrobbleCoordinator by lazy(LazyThreadSafetyMode.NONE) {
+        ScrobbleCoordinator(
+            context = this,
+            dataStore = dataStore,
+            scopeProvider = { scope },
+            ioScopeProvider = { ioScope },
+            songProvider = { mediaId -> database.song(mediaId).first() },
+            onFailure = { operation, error ->
+                reportRecoverableException("MusicService", operation, error)
+            },
+        )
+    }
 
     private val automixRuntime = AutomixRuntime()
     private val automixCoordinator =
@@ -1095,52 +1099,7 @@ class MusicService :
                 trimPlayerCacheToBytes(limitBytes)
             }
 
-        dataStore.data
-            .map { it[EnableLastFMScrobblingKey] ?: false }
-            .debounce(300)
-            .distinctUntilChanged()
-            .collect(scope) { enabled ->
-                if (enabled && scrobbleManager == null) {
-                    val delayPercent = dataStore.get(ScrobbleDelayPercentKey, LastFM.DEFAULT_SCROBBLE_DELAY_PERCENT)
-                    val minSongDuration = dataStore.get(ScrobbleMinSongDurationKey, LastFM.DEFAULT_SCROBBLE_MIN_SONG_DURATION)
-                    val delaySeconds = dataStore.get(ScrobbleDelaySecondsKey, LastFM.DEFAULT_SCROBBLE_DELAY_SECONDS)
-                    
-                    scrobbleManager = com.nikhil.yt.utils.ScrobbleManager(
-                        ioScope,
-                        minSongDuration = minSongDuration,
-                        scrobbleDelayPercent = delayPercent,
-                        scrobbleDelaySeconds = delaySeconds
-                    )
-                    scrobbleManager?.useNowPlaying = dataStore.get(LastFMUseNowPlaying, false)
-                } else if (!enabled && scrobbleManager != null) {
-                    scrobbleManager?.destroy()
-                    scrobbleManager = null
-                }
-            }
-
-        dataStore.data
-            .map { it[LastFMUseNowPlaying] ?: false }
-            .distinctUntilChanged()
-            .collectLatest(scope) {
-                scrobbleManager?.useNowPlaying = it
-            }
-
-        dataStore.data
-            .map { prefs ->
-                Triple(
-                    prefs[ScrobbleDelayPercentKey] ?: LastFM.DEFAULT_SCROBBLE_DELAY_PERCENT,
-                    prefs[ScrobbleMinSongDurationKey] ?: LastFM.DEFAULT_SCROBBLE_MIN_SONG_DURATION,
-                    prefs[ScrobbleDelaySecondsKey] ?: LastFM.DEFAULT_SCROBBLE_DELAY_SECONDS
-                )
-            }
-            .distinctUntilChanged()
-            .collect(scope) { (delayPercent, minSongDuration, delaySeconds) ->
-                scrobbleManager?.let {
-                    it.scrobbleDelayPercent = delayPercent
-                    it.minSongDuration = minSongDuration
-                    it.scrobbleDelaySeconds = delaySeconds
-                }
-            }
+        scrobbleCoordinator.start()
 
         scope.launch(Dispatchers.IO) {
             if (dataStore.get(PersistentQueueKey, true)) {
@@ -3376,7 +3335,7 @@ class MusicService :
     val timelineEmpty = player.currentTimeline.isEmpty || player.mediaItemCount == 0 || player.currentMediaItem == null
     currentMediaMetadata.value = if (timelineEmpty) null else (mediaItem?.metadata ?: player.currentMetadata)
 
-    scrobbleManager?.onSongStop()
+    scrobbleCoordinator.onSongStop()
 
     if (!timelineEmpty &&
         dataStore.get(AutoLoadMoreKey, true) &&
@@ -3456,7 +3415,7 @@ class MusicService :
     }
 
     if (player.playWhenReady && player.playbackState == Player.STATE_READY) {
-        scrobbleManager?.onSongStart(player.currentMetadata, duration = player.duration)
+        scrobbleCoordinator.onSongStart(player.currentMetadata, duration = player.duration)
     }
 
     playbackPersistence.scheduleQueueSave()
@@ -3476,7 +3435,7 @@ class MusicService :
 
     if (playbackState == Player.STATE_IDLE || playbackState == Player.STATE_ENDED) {
         crossfadeAudio?.stop(resetMainFade = true)
-        scrobbleManager?.onSongStop()
+        scrobbleCoordinator.onSongStop()
     }
 
     if (!suppressAutoPlayback &&
@@ -3671,7 +3630,7 @@ class MusicService :
    if (events.containsAny(Player.EVENT_IS_PLAYING_CHANGED)) {
         playbackPersistence.updateProgressCheckpoint(player.isPlaying)
         discordPresenceOwner.ensure()
-        scrobbleManager?.onPlayerStateChanged(player.isPlaying, player.currentMetadata, duration = player.duration)
+        scrobbleCoordinator.onPlayerStateChanged(player.isPlaying, player.currentMetadata, duration = player.duration)
     } else if (events.contains(Player.EVENT_MEDIA_ITEM_TRANSITION)) {
         discordPresenceOwner.ensure()
     } else {
@@ -4967,26 +4926,10 @@ class MusicService :
                 }
             }
 
-            ioScope.launch {
-                try {
-                    val song = database.song(mediaItem.mediaId).first()
-                        ?: return@launch
-
-                    val lbEnabled = dataStore.get(ListenBrainzEnabledKey, false)
-                    val lbToken = dataStore.get(ListenBrainzTokenKey, "")
-                    if (lbEnabled && !lbToken.isNullOrBlank()) {
-                        val endMs = System.currentTimeMillis()
-                        val startMs = endMs - playbackStats.totalPlayTimeMs
-                        try {
-                            ListenBrainzManager.submitFinished(this@MusicService, lbToken, song, startMs, endMs)
-                        } catch (ie: Exception) {
-                            Timber.tag("MusicService").v(ie, "ListenBrainz finished submit failed")
-                        }
-                    }
-                } catch (error: Exception) {
-                    reportRecoverableException("MusicService", "submit finished ListenBrainz event", error)
-                }
-            }
+            scrobbleCoordinator.onPlaybackFinished(
+                mediaId = mediaItem.mediaId,
+                totalPlayTimeMs = playbackStats.totalPlayTimeMs,
+            )
 
             ioScope.launch {
                 try {
@@ -5154,6 +5097,7 @@ class MusicService :
             reportRecoverableException("MusicService", "schedule Together shutdown", error)
         }
         discordPresenceOwner.stop()
+        scrobbleCoordinator.destroy()
         try {
             connectivityObserver.unregister()
         } catch (error: Exception) {
