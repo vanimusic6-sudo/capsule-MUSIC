@@ -125,3 +125,5 @@ jobs:
           git add "$SERVICE"
           git commit -m "Move audio effects runtime out of MusicService"
           git push origin HEAD:cleanup/capsule-player-only
+
+# Re-run after branch housekeeping; no validation semantics changed.
