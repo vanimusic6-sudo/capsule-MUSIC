@@ -141,7 +141,9 @@ LOGIN_IMPORT_ANCHOR = 'import androidx.navigation.NavController\n'
 LOGIN_IMPORT_NEW = LOGIN_IMPORT_ANCHOR + 'import androidx.datastore.preferences.core.edit\n'
 LOGIN_COROUTINE_IMPORT = 'import kotlinx.coroutines.launch\n'
 LOGIN_COROUTINE_NEW = LOGIN_COROUTINE_IMPORT + 'import kotlinx.coroutines.flow.first\nimport kotlinx.coroutines.withTimeoutOrNull\n'
-LOGIN_UTIL_IMPORT = 'import com.nikhil.yt.utils.dataStore\n'
+LOGIN_UTIL_ANCHOR = 'import com.nikhil.yt.utils.rememberPreference\n'
+LOGIN_UTIL_NEW = 'import com.nikhil.yt.utils.dataStore\n' + LOGIN_UTIL_ANCHOR
+LOGIN_COOKIE_PREF = '    var innerTubeCookie by rememberPreference(InnerTubeCookieKey, "")\n'
 LOGIN_OLD = '''                        if (url?.startsWith("https://music.youtube.com") == true) {
                             innerTubeCookie = CookieManager.getInstance().getCookie(url)
                             coroutineScope.launch {
@@ -313,7 +315,10 @@ def validate_before(files: dict[Path, str]) -> None:
 
     require_count(files[LOGIN], LOGIN_IMPORT_ANCHOR, 1, 'login import anchor')
     require_count(files[LOGIN], LOGIN_COROUTINE_IMPORT, 1, 'login coroutine import')
-    require_count(files[LOGIN], LOGIN_UTIL_IMPORT, 1, 'login dataStore import')
+    require_count(files[LOGIN], LOGIN_UTIL_ANCHOR, 1, 'login utils import anchor')
+    if 'import com.nikhil.yt.utils.dataStore\n' in files[LOGIN]:
+        raise SystemExit('login dataStore import already present')
+    require_count(files[LOGIN], LOGIN_COOKIE_PREF, 1, 'login cookie preference state')
     require_count(files[LOGIN], LOGIN_OLD, 1, 'login race block')
 
     require_count(files[SERVICE], SERVICE_OLD, 1, 'auth-triggered audio reload collector')
@@ -339,6 +344,8 @@ def transform(files: dict[Path, str]) -> dict[Path, str]:
     login = files[LOGIN]
     login = login.replace(LOGIN_IMPORT_ANCHOR, LOGIN_IMPORT_NEW, 1)
     login = login.replace(LOGIN_COROUTINE_IMPORT, LOGIN_COROUTINE_NEW, 1)
+    login = login.replace(LOGIN_UTIL_ANCHOR, LOGIN_UTIL_NEW, 1)
+    login = login.replace(LOGIN_COOKIE_PREF, '', 1)
     login = login.replace(LOGIN_OLD, LOGIN_NEW, 1)
     files[LOGIN] = login
 
@@ -358,7 +365,7 @@ def validate_after(files: dict[Path, str]) -> None:
         PLAYER_TEST: [PLAYER_TEST_MARKER, 'assertTrue(header.buttons.isEmpty())'],
         PREWARM: ['private val timeoutMs: Long = 15_000L', 'CoroutineStart.LAZY', 'if (result.isFailure)', 'job = null'],
         PREWARM_TEST: ['timeoutIsBoundedAndNextRequestCanRetryWarmup', 'ordinaryFailureIsNotCachedAfterItCompletes'],
-        LOGIN: ['settings[InnerTubeCookieKey] = loginCookie', 'YouTube.authStates.first', 'state.cookie == loginCookie && state.hasLoginCookie'],
+        LOGIN: ['import com.nikhil.yt.utils.dataStore', 'settings[InnerTubeCookieKey] = loginCookie', 'YouTube.authStates.first', 'state.cookie == loginCookie && state.hasLoginCookie'],
         SERVICE: ['.collect(scope) { (policy, quality) ->', 'if (policy != audioStreamPolicy || quality != audioQuality)'],
         INNER: ['priority=%s selectedProfile=%s', '"Resolving audio id=%s priority=%s selectedProfile=%s"', '"engine resolve timeout id=%s priority=%s budgetMs=%d"'],
     }
@@ -367,6 +374,8 @@ def validate_after(files: dict[Path, str]) -> None:
             if marker not in files[path]:
                 raise SystemExit(f'missing transformed marker in {path}: {marker}')
 
+    if LOGIN_COOKIE_PREF in files[LOGIN] or 'innerTubeCookie = CookieManager' in files[LOGIN]:
+        raise SystemExit('login still uses asynchronous cookie preference state')
     if '.combine(YouTube.authStates)' in files[SERVICE]:
         raise SystemExit('auth changes still trigger audio reload')
     if 'timeoutIsBoundedAndDoesNotStartAnotherWarmupForEveryTrack' in files[PREWARM_TEST]:
