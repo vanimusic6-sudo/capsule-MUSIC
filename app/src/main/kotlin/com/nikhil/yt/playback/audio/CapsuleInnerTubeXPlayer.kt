@@ -230,8 +230,9 @@ object CapsuleInnerTubeXPlayer {
                                 val reused = preparation.isCompleted
                                 val warmed = preparation.await()
                                 Timber.tag(TAG).i(
-                                    "Web prewarm awaited id=%s selectedProfile=%s reused=%s ok=%s waitedMs=%d",
+                                    "Web prewarm awaited id=%s priority=%s selectedProfile=%s reused=%s ok=%s waitedMs=%d",
                                     videoId,
+                                    priority,
                                     playbackClientOverrideId,
                                     reused,
                                     warmed.isSuccess,
@@ -240,8 +241,9 @@ object CapsuleInnerTubeXPlayer {
                                 checkCipherSession(playbackClientOverrideId)
                             }
                             Timber.tag(TAG).i(
-                                "Resolving audio id=%s selectedProfile=%s",
+                                "Resolving audio id=%s priority=%s selectedProfile=%s",
                                 videoId,
+                                priority,
                                 playbackClientOverrideId,
                             )
                             try {
@@ -269,8 +271,9 @@ object CapsuleInnerTubeXPlayer {
             currentCoroutineContext().ensureActive()
             Timber.tag(TAG).w(
                 timeout,
-                "engine resolve timeout id=%s budgetMs=%d",
+                "engine resolve timeout id=%s priority=%s budgetMs=%d",
                 videoId,
+                priority,
                 ENGINE_RESOLVE_TIMEOUT_MS,
             )
             Result.failure(

@@ -28,6 +28,7 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.navigation.NavController
+import androidx.datastore.preferences.core.edit
 import com.nikhil.yt.LocalPlayerAwareWindowInsets
 import com.nikhil.yt.R
 import com.nikhil.yt.constants.AccountChannelHandleKey
@@ -39,6 +40,7 @@ import com.nikhil.yt.constants.PoTokenKey
 import com.nikhil.yt.constants.VisitorDataKey
 import com.nikhil.yt.ui.component.IconButton
 import com.nikhil.yt.ui.utils.backToMain
+import com.nikhil.yt.utils.dataStore
 import com.nikhil.yt.utils.rememberPreference
 import com.nikhil.yt.utils.reportException
 import com.nikhil.yt.innertube.YouTube
@@ -46,6 +48,8 @@ import androidx.compose.runtime.rememberCoroutineScope
 import kotlinx.coroutines.DelicateCoroutinesApi
 import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.withTimeoutOrNull
 
 @SuppressLint("SetJavaScriptEnabled")
 @OptIn(ExperimentalMaterial3Api::class, DelicateCoroutinesApi::class)
@@ -56,7 +60,6 @@ fun LoginScreen(
     val coroutineScope = rememberCoroutineScope()
     var visitorData by rememberPreference(VisitorDataKey, "")
     var dataSyncId by rememberPreference(DataSyncIdKey, "")
-    var innerTubeCookie by rememberPreference(InnerTubeCookieKey, "")
     var poToken by rememberPreference(PoTokenKey, "")
     var accountName by rememberPreference(AccountNameKey, "")
     var accountEmail by rememberPreference(AccountEmailKey, "")
@@ -77,8 +80,28 @@ fun LoginScreen(
                         loadUrl("javascript:void((function(){try{var c=window.ytcfg;if(c&&c.get){var t=c.get('PO_TOKEN');if(t){Android.onRetrievePoToken(t);return}}var s=document.querySelectorAll('script');for(var i=0;i<s.length;i++){var m=s[i].textContent.match(/\"PO_TOKEN\":\"([^\"]+)\"/);if(m){Android.onRetrievePoToken(m[1]);return}}}catch(e){}})())")
 
                         if (url?.startsWith("https://music.youtube.com") == true) {
-                            innerTubeCookie = CookieManager.getInstance().getCookie(url)
+                            val loginCookie = CookieManager.getInstance().getCookie(url).orEmpty()
+                            if (loginCookie.isBlank()) return
+
                             coroutineScope.launch {
+                                context.dataStore.edit { settings ->
+                                    settings[InnerTubeCookieKey] = loginCookie
+                                }
+
+                                val published =
+                                    withTimeoutOrNull(5_000L) {
+                                        YouTube.authStates.first { state ->
+                                            state.cookie == loginCookie && state.hasLoginCookie
+                                        }
+                                    } != null
+
+                                // DataStore is the source of truth. This fallback only covers an
+                                // unexpectedly stalled application collector after the edit has
+                                // already committed the same cookie to disk.
+                                if (!published) {
+                                    YouTube.cookie = loginCookie
+                                }
+
                                 YouTube.accountInfo().onSuccess {
                                     accountName = it.name
                                     accountEmail = it.email.orEmpty()

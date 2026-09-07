@@ -959,11 +959,12 @@ class MusicService :
                 )
             }
             .distinctUntilChanged()
-            .combine(YouTube.authStates) { selection, auth -> Triple(selection.first, selection.second, auth) }
-            .collect(scope) { (policy, quality, _) ->
-                audioStreamPolicy = policy
-                audioQuality = quality
-                reloadAudioForClientChange(policy)
+            .collect(scope) { (policy, quality) ->
+                if (policy != audioStreamPolicy || quality != audioQuality) {
+                    audioStreamPolicy = policy
+                    audioQuality = quality
+                    reloadAudioForClientChange(policy)
+                }
             }
 
         scope.launch {

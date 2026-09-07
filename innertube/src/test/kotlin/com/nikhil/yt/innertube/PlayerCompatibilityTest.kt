@@ -2,6 +2,7 @@ package com.nikhil.yt.innertube
 
 import com.nikhil.yt.innertube.models.YouTubeClient
 import com.nikhil.yt.innertube.models.YouTubeLocale
+import com.nikhil.yt.innertube.models.MusicResponsiveHeaderRenderer
 import com.nikhil.yt.innertube.models.response.PlayerResponse
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonObject
@@ -225,5 +226,23 @@ class PlayerCompatibilityTest {
         assertEquals("session-visitor", client["visitorData"]!!.jsonPrimitive.content)
         assertFalse("appInstallData" in configInfo)
         assertEquals("hot-config", configInfo["hotHashData"]!!.jsonPrimitive.content)
+    }
+
+    @Test
+    fun responsiveHeaderToleratesMissingButtons() {
+        val header =
+            Json.decodeFromString<MusicResponsiveHeaderRenderer>(
+                """
+                {
+                  "thumbnail": null,
+                  "title": { "runs": [] },
+                  "subtitle": { "runs": [] },
+                  "secondSubtitle": null,
+                  "straplineTextOne": null
+                }
+                """.trimIndent(),
+            )
+
+        assertTrue(header.buttons.isEmpty())
     }
 }

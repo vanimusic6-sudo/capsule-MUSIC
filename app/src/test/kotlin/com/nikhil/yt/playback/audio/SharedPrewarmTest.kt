@@ -56,16 +56,34 @@ class SharedPrewarmTest {
     }
 
     @Test
-    fun timeoutIsBoundedAndDoesNotStartAnotherWarmupForEveryTrack() = runTest {
+    fun timeoutIsBoundedAndNextRequestCanRetryWarmup() = runTest {
         var initializations = 0
         val warmup = SharedPrewarm(backgroundScope, timeoutMs = 800) {
             initializations++
             awaitCancellation()
         }
-        assertTrue(warmup.start().await().exceptionOrNull() is SocketTimeoutException)
+        val first = warmup.start()
+        assertTrue(first.await().exceptionOrNull() is SocketTimeoutException)
         assertEquals(800L, currentTime)
+
+        val second = warmup.start()
+        assertFalse(first === second)
+        assertTrue(second.await().exceptionOrNull() is SocketTimeoutException)
+        assertEquals(1_600L, currentTime)
+        assertEquals(2, initializations)
+    }
+
+    @Test
+    fun ordinaryFailureIsNotCachedAfterItCompletes() = runTest {
+        var initializations = 0
+        val warmup = SharedPrewarm(backgroundScope) {
+            initializations++
+            if (initializations == 1) error("first attempt failed")
+        }
+
         assertTrue(warmup.start().await().isFailure)
-        assertEquals(1, initializations)
+        assertTrue(warmup.start().await().isSuccess)
+        assertEquals(2, initializations)
     }
 
     @Test
