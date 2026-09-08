@@ -1,0 +1,152 @@
+name: Final Review Hardening Step 26
+
+on:
+  push:
+    branches:
+      - cleanup/capsule-player-only
+    paths:
+      - ".github/workflows/final-review-step26.yml"
+      - "tools/refactor/harden_final_review_step26.py"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: final-review-step26
+  cancel-in-progress: false
+
+jobs:
+  harden:
+    name: Harden downloads, auth sync and library refresh
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout target branch
+        uses: actions/checkout@v6
+        with:
+          ref: cleanup/capsule-player-only
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Set up Gradle 9.5
+        uses: gradle/actions/setup-gradle@v6
+        with:
+          gradle-version: "9.5.0"
+
+      - name: Ensure locale metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! git ls-files --error-unmatch app/src/main/res/resources.properties >/dev/null 2>&1; then
+            mkdir -p app/src/main/res
+            cat > app/src/main/res/resources.properties <<'EOF'
+          unqualifiedResLocale=en-US
+          EOF
+          fi
+
+      - name: Verify final-review preconditions
+        run: python3 tools/refactor/harden_final_review_step26.py --check
+
+      - name: Apply final-review hardening
+        run: python3 tools/refactor/harden_final_review_step26.py
+
+      - name: Verify structural result
+        shell: bash
+        run: |
+          set -euo pipefail
+          SAFETY="app/src/main/kotlin/com/nikhil/yt/playback/audio/CapsulePlaybackSafety.kt"
+          SAFETY_TEST="app/src/test/kotlin/com/nikhil/yt/playback/audio/CapsulePlaybackSafetyTest.kt"
+          DOWNLOAD="app/src/main/kotlin/com/nikhil/yt/playback/DownloadUtil.kt"
+          SYNC="app/src/main/kotlin/com/nikhil/yt/utils/SyncUtils.kt"
+          VM="app/src/main/kotlin/com/nikhil/yt/viewmodels/LibraryViewModels.kt"
+          SONGS="app/src/main/kotlin/com/nikhil/yt/ui/screens/library/LibrarySongsScreen.kt"
+          ALBUMS="app/src/main/kotlin/com/nikhil/yt/ui/screens/library/LibraryAlbumsScreen.kt"
+          ARTISTS="app/src/main/kotlin/com/nikhil/yt/ui/screens/library/LibraryArtistsScreen.kt"
+          PLAYLISTS="app/src/main/kotlin/com/nikhil/yt/ui/screens/library/LibraryPlaylistsScreen.kt"
+          APP="app/src/main/kotlin/com/nikhil/yt/App.kt"
+
+          test "$(git diff --name-only | wc -l | tr -d ' ')" = "10"
+          for file in "$SAFETY" "$SAFETY_TEST" "$DOWNLOAD" "$SYNC" "$VM" "$SONGS" "$ALBUMS" "$ARTISTS" "$PLAYLISTS" "$APP"; do
+            git diff --name-only | grep -Fxq "$file"
+          done
+
+          grep -Fq 'fun remainingBlockMs(' "$SAFETY"
+          grep -Fq 'remainingCooldownReportsOpenBreaker' "$SAFETY_TEST"
+          grep -Fq 'DOWNLOAD_RESOLVE_SPACING_MS = 4_000L' "$DOWNLOAD"
+          grep -Fq 'CapsulePlaybackSafety.remainingBlockMs' "$DOWNLOAD"
+          grep -Fq 'no playable clients' "$DOWNLOAD"
+          grep -Fq 'client response unavailable' "$DOWNLOAD"
+          grep -Fq 'YouTube.authStates.first' "$SYNC"
+          grep -Fq 'AUTH_PUBLICATION_TIMEOUT_MS = 1_500L' "$SYNC"
+          grep -Fq 'AUTO_SYNC_MIN_INTERVAL_MS = 60_000L' "$SYNC"
+          grep -Fq 'PLAYLIST_PRIVATE' "$SYNC"
+          grep -Fq 'automatic: Boolean = false' "$VM"
+          grep -Fq 'automatic = true' "$SONGS"
+          grep -Fq 'automatic = true' "$ALBUMS"
+          grep -Fq 'automatic = true' "$ARTISTS"
+          grep -Fq 'automatic = true' "$PLAYLISTS"
+          grep -Fq 'Startup WEB prewarm' "$APP"
+          grep -Fq 'CapsuleInnerTubeXPlayer.prewarm()' "$APP"
+
+          # Preserve the already hardened playback architecture.
+          grep -Fq 'AudioResolvePriority.DOWNLOAD' "$DOWNLOAD"
+          grep -Fq 'CapsuleAudioEngine' app/src/main/kotlin/com/nikhil/yt/playback/MusicService.kt
+          grep -Fq 'PlaybackStabilityGate' app/src/main/kotlin/com/nikhil/yt/playback/MusicService.kt
+          grep -Fq 'CapsuleAnonymousSession.player' app/src/main/kotlin/com/nikhil/yt/playback/audio/CapsuleAudioEngine.kt
+          git diff --check
+
+      - name: Run unit tests, lint and debug build
+        run: |
+          gradle \
+            :innertube:test \
+            :betterlyrics:test \
+            :app:testUniversalDebugUnitTest \
+            :app:lintUniversalDebug \
+            :app:assembleUniversalDebug \
+            --stacktrace \
+            --no-daemon
+
+      - name: Refuse stale branch write
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin cleanup/capsule-player-only
+          remote_head="$(git rev-parse origin/cleanup/capsule-player-only)"
+          test "$remote_head" = "$GITHUB_SHA" || {
+            echo "Branch advanced during validation; refusing stale push."
+            echo "workflow head: $GITHUB_SHA"
+            echo "remote head:   $remote_head"
+            exit 1
+          }
+
+      - name: Commit validated final-review fixes
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clean -f app/src/main/res/resources.properties || true
+          FILES=(
+            app/src/main/kotlin/com/nikhil/yt/playback/audio/CapsulePlaybackSafety.kt
+            app/src/test/kotlin/com/nikhil/yt/playback/audio/CapsulePlaybackSafetyTest.kt
+            app/src/main/kotlin/com/nikhil/yt/playback/DownloadUtil.kt
+            app/src/main/kotlin/com/nikhil/yt/utils/SyncUtils.kt
+            app/src/main/kotlin/com/nikhil/yt/viewmodels/LibraryViewModels.kt
+            app/src/main/kotlin/com/nikhil/yt/ui/screens/library/LibrarySongsScreen.kt
+            app/src/main/kotlin/com/nikhil/yt/ui/screens/library/LibraryAlbumsScreen.kt
+            app/src/main/kotlin/com/nikhil/yt/ui/screens/library/LibraryArtistsScreen.kt
+            app/src/main/kotlin/com/nikhil/yt/ui/screens/library/LibraryPlaylistsScreen.kt
+            app/src/main/kotlin/com/nikhil/yt/App.kt
+          )
+          test "$(git diff --name-only | wc -l | tr -d ' ')" = "${#FILES[@]}"
+          git config user.name "capsule-refactor-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add "${FILES[@]}"
+          git commit -m "Harden final download and sync review gaps"
+          git push origin HEAD:cleanup/capsule-player-only
