@@ -7,6 +7,7 @@ on:
     paths:
       - ".github/workflows/final-review-step26.yml"
       - "tools/refactor/harden_final_review_step26.py"
+      - "tools/refactor/harden_final_review_step26_v2.py"
   workflow_dispatch:
 
 permissions:
@@ -53,10 +54,10 @@ jobs:
           fi
 
       - name: Verify final-review preconditions
-        run: python3 tools/refactor/harden_final_review_step26.py --check
+        run: python3 tools/refactor/harden_final_review_step26_v2.py --check
 
       - name: Apply final-review hardening
-        run: python3 tools/refactor/harden_final_review_step26.py
+        run: python3 tools/refactor/harden_final_review_step26_v2.py
 
       - name: Verify structural result
         shell: bash
@@ -93,6 +94,7 @@ jobs:
           grep -Fq 'automatic = true' "$ALBUMS"
           grep -Fq 'automatic = true' "$ARTISTS"
           grep -Fq 'automatic = true' "$PLAYLISTS"
+          grep -Fq 'onRefresh = { if (ytmSync) viewModel.sync() }' "$PLAYLISTS"
           grep -Fq 'Startup WEB prewarm' "$APP"
           grep -Fq 'CapsuleInnerTubeXPlayer.prewarm()' "$APP"
 
