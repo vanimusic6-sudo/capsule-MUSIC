@@ -41,6 +41,7 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.async
 import kotlinx.coroutines.supervisorScope
@@ -64,6 +65,8 @@ class SyncUtils @Inject constructor(
     private val playlistSyncMutex = Mutex()
     private val dbWriteSemaphore = Semaphore(2)
     private val isSyncing = AtomicBoolean(false)
+    private val automaticSyncTimes = mutableMapOf<String, Long>()
+    private val automaticSyncLock = Any()
 
     init {
         syncScope.launch {
@@ -145,10 +148,31 @@ class SyncUtils @Inject constructor(
      * Check if user is properly logged in with a valid SAPISID cookie
      */
     private suspend fun isLoggedIn(): Boolean {
-        val cookie = context.dataStore.data
-            .map { it[InnerTubeCookieKey] }
-            .first()
-        return cookie?.let { "SAPISID" in parseCookieString(it) } ?: false
+        val cookie =
+            context.dataStore.data
+                .map { it[InnerTubeCookieKey] }
+                .first()
+                ?.trim()
+                .orEmpty()
+
+        if (cookie.isBlank() || "SAPISID" !in parseCookieString(cookie)) return false
+
+        if (YouTube.authState.cookie == cookie && YouTube.authState.hasLoginCookie) return true
+
+        val published =
+            withTimeoutOrNull(AUTH_PUBLICATION_TIMEOUT_MS) {
+                YouTube.authStates.first { state ->
+                    state.cookie == cookie && state.hasLoginCookie
+                }
+            } != null
+
+        if (!published) {
+            // DataStore already committed this exact cookie. This only heals a
+            // stalled application collector; it never invents or replaces auth.
+            YouTube.cookie = cookie
+        }
+
+        return YouTube.authState.cookie == cookie && YouTube.authState.hasLoginCookie
     }
 
     private suspend fun isYtmSyncEnabled(): Boolean {
@@ -167,6 +191,30 @@ class SyncUtils @Inject constructor(
         return syncEnabled.value && syncGeneration.get() == gen
     }
 
+    private fun claimAutomaticSync(key: String): Boolean =
+        synchronized(automaticSyncLock) {
+            val nowMs = System.currentTimeMillis()
+            val lastMs = automaticSyncTimes[key]
+            if (lastMs != null && nowMs - lastMs in 0 until AUTO_SYNC_MIN_INTERVAL_MS) {
+                false
+            } else {
+                automaticSyncTimes[key] = nowMs
+                true
+            }
+        }
+
+    private fun isExpectedPrivatePlaylistFailure(error: Throwable): Boolean {
+        val text =
+            generateSequence(error as Throwable?) { it?.cause }
+                .take(8)
+                .mapNotNull { it?.message }
+                .joinToString(" ")
+                .uppercase()
+        return "PLAYLIST_PRIVATE" in text ||
+            "PRIVATE PLAYLIST" in text ||
+            "PLAYLIST IS PRIVATE" in text
+    }
+
     fun likeSong(s: SongEntity) {
         syncScope.launch {
             if (!isLoggedIn()) {
@@ -183,13 +231,17 @@ class SyncUtils @Inject constructor(
         }
     }
 
-    suspend fun syncLikedSongs() = coroutineScope {
+    suspend fun syncLikedSongs(automatic: Boolean = false) = coroutineScope {
         if (!isLoggedIn()) {
             Timber.w("Skipping syncLikedSongs - user not logged in")
             return@coroutineScope
         }
         if (!isYtmSyncEnabled()) {
             Timber.w("Skipping syncLikedSongs - sync disabled")
+            return@coroutineScope
+        }
+        if (automatic && !claimAutomaticSync(AUTO_SYNC_LIKED_SONGS)) {
+            Timber.d("syncLikedSongs: automatic refresh skipped inside cooldown")
             return@coroutineScope
         }
         val gen = syncGeneration.get()
@@ -225,13 +277,17 @@ class SyncUtils @Inject constructor(
         }
     }
 
-    suspend fun syncLibrarySongs() = coroutineScope {
+    suspend fun syncLibrarySongs(automatic: Boolean = false) = coroutineScope {
         if (!isLoggedIn()) {
             Timber.w("Skipping syncLibrarySongs - user not logged in")
             return@coroutineScope
         }
         if (!isYtmSyncEnabled()) {
             Timber.w("Skipping syncLibrarySongs - sync disabled")
+            return@coroutineScope
+        }
+        if (automatic && !claimAutomaticSync(AUTO_SYNC_LIBRARY_SONGS)) {
+            Timber.d("syncLibrarySongs: automatic refresh skipped inside cooldown")
             return@coroutineScope
         }
         val gen = syncGeneration.get()
@@ -271,13 +327,17 @@ class SyncUtils @Inject constructor(
         }
     }
 
-    suspend fun syncLikedAlbums() = coroutineScope {
+    suspend fun syncLikedAlbums(automatic: Boolean = false) = coroutineScope {
         if (!isLoggedIn()) {
             Timber.w("Skipping syncLikedAlbums - user not logged in")
             return@coroutineScope
         }
         if (!isYtmSyncEnabled()) {
             Timber.w("Skipping syncLikedAlbums - sync disabled")
+            return@coroutineScope
+        }
+        if (automatic && !claimAutomaticSync(AUTO_SYNC_LIKED_ALBUMS)) {
+            Timber.d("syncLikedAlbums: automatic refresh skipped inside cooldown")
             return@coroutineScope
         }
         val gen = syncGeneration.get()
@@ -326,13 +386,17 @@ class SyncUtils @Inject constructor(
         }
     }
 
-    suspend fun syncArtistsSubscriptions() = coroutineScope {
+    suspend fun syncArtistsSubscriptions(automatic: Boolean = false) = coroutineScope {
         if (!isLoggedIn()) {
             Timber.w("Skipping syncArtistsSubscriptions - user not logged in")
             return@coroutineScope
         }
         if (!isYtmSyncEnabled()) {
             Timber.w("Skipping syncArtistsSubscriptions - sync disabled")
+            return@coroutineScope
+        }
+        if (automatic && !claimAutomaticSync(AUTO_SYNC_ARTISTS)) {
+            Timber.d("syncArtistsSubscriptions: automatic refresh skipped inside cooldown")
             return@coroutineScope
         }
         val gen = syncGeneration.get()
@@ -389,13 +453,17 @@ class SyncUtils @Inject constructor(
         }
     }
 
-    suspend fun syncSavedPlaylists() = playlistSyncMutex.withLock {
+    suspend fun syncSavedPlaylists(automatic: Boolean = false) = playlistSyncMutex.withLock {
         if (!isLoggedIn()) {
             Timber.w("Skipping syncSavedPlaylists - user not logged in")
             return@withLock
         }
         if (!isYtmSyncEnabled()) {
             Timber.w("Skipping syncSavedPlaylists - sync disabled")
+            return@withLock
+        }
+        if (automatic && !claimAutomaticSync(AUTO_SYNC_SAVED_PLAYLISTS)) {
+            Timber.d("syncSavedPlaylists: automatic refresh skipped inside cooldown")
             return@withLock
         }
         val gen = syncGeneration.get()
@@ -460,13 +528,17 @@ class SyncUtils @Inject constructor(
         }
     }
 
-    suspend fun syncAutoSyncPlaylists() = coroutineScope {
+    suspend fun syncAutoSyncPlaylists(automatic: Boolean = false) = coroutineScope {
         if (!isLoggedIn()) {
             Timber.w("Skipping syncAutoSyncPlaylists - user not logged in")
             return@coroutineScope
         }
         if (!isYtmSyncEnabled()) {
             Timber.w("Skipping syncAutoSyncPlaylists - sync disabled")
+            return@coroutineScope
+        }
+        if (automatic && !claimAutomaticSync(AUTO_SYNC_AUTO_PLAYLISTS)) {
+            Timber.d("syncAutoSyncPlaylists: automatic refresh skipped inside cooldown")
             return@coroutineScope
         }
         val gen = syncGeneration.get()
@@ -569,8 +641,23 @@ class SyncUtils @Inject constructor(
                 Timber.e(e, "syncPlaylist: Error during database transaction")
             }
         }.onFailure { e ->
-            Timber.e(e, "syncPlaylist: Failed to fetch playlist from YouTube")
+            if (isExpectedPrivatePlaylistFailure(e)) {
+                Timber.w("syncPlaylist: Skipping private/inaccessible playlist browseId=$browseId")
+            } else {
+                Timber.e(e, "syncPlaylist: Failed to fetch playlist from YouTube")
+            }
         }
+    }
+
+    private companion object {
+        const val AUTH_PUBLICATION_TIMEOUT_MS = 1_500L
+        const val AUTO_SYNC_MIN_INTERVAL_MS = 60_000L
+        const val AUTO_SYNC_LIKED_SONGS = "liked-songs"
+        const val AUTO_SYNC_LIBRARY_SONGS = "library-songs"
+        const val AUTO_SYNC_LIKED_ALBUMS = "liked-albums"
+        const val AUTO_SYNC_ARTISTS = "artists"
+        const val AUTO_SYNC_SAVED_PLAYLISTS = "saved-playlists"
+        const val AUTO_SYNC_AUTO_PLAYLISTS = "auto-playlists"
     }
 }
 

@@ -29,6 +29,17 @@ internal object CapsulePlaybackSafety {
     private var breakerReason: String? = null
 
     @Synchronized
+    fun remainingBlockMs(nowMs: Long = System.currentTimeMillis()): Long {
+        val until = breakerUntilMs
+        if (until <= 0L) return 0L
+        if (until <= nowMs) {
+            clear()
+            return 0L
+        }
+        return until - nowMs
+    }
+
+    @Synchronized
     fun blockedExceptionOrNull(nowMs: Long = System.currentTimeMillis()): PlaybackException? {
         val until = breakerUntilMs
         if (until <= 0L) return null

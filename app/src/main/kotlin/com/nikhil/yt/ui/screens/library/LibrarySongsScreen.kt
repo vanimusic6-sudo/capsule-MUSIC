@@ -109,8 +109,8 @@ fun LibrarySongsScreen(
     LaunchedEffect(Unit) {
         if (ytmSync) {
             when (filter) {
-                SongFilter.LIKED -> viewModel.syncLikedSongs()
-                SongFilter.LIBRARY -> viewModel.syncLibrarySongs()
+                SongFilter.LIKED -> viewModel.syncLikedSongs(automatic = true)
+                SongFilter.LIBRARY -> viewModel.syncLibrarySongs(automatic = true)
                 else -> return@LaunchedEffect
             }
         }

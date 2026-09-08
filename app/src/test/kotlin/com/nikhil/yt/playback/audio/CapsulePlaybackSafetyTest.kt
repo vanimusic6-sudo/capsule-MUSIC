@@ -58,4 +58,15 @@ class CapsulePlaybackSafetyTest {
         CapsulePlaybackSafety.observeFailure(IllegalStateException("player request failed: HTTP 429"))
         assertNotNull(CapsulePlaybackSafety.blockedExceptionOrNull())
     }
+
+    @Test
+    fun remainingCooldownReportsOpenBreaker() {
+        val beforeTrip = System.currentTimeMillis()
+        CapsulePlaybackSafety.markHttpStatusFailure(429)
+
+        val remainingMs = CapsulePlaybackSafety.remainingBlockMs(beforeTrip)
+
+        assertTrue(remainingMs >= 9 * 60 * 1000L)
+        assertTrue(remainingMs <= 10 * 60 * 1000L + 1_000L)
+    }
 }

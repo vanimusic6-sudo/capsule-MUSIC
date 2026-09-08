@@ -37,6 +37,7 @@ import com.nikhil.yt.di.DownloadCache
 import com.nikhil.yt.di.PlayerCache
 import com.nikhil.yt.innertube.YouTube
 import com.nikhil.yt.playback.audio.CapsuleAudioEngine
+import com.nikhil.yt.playback.audio.CapsulePlaybackSafety
 import com.nikhil.yt.utils.StreamClientUtils
 import com.nikhil.yt.utils.enumPreference
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -49,6 +50,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import okhttp3.OkHttpClient
 import java.time.LocalDateTime
 import java.util.concurrent.atomic.AtomicInteger
@@ -81,6 +84,8 @@ constructor(
     @Volatile private var currentMaxParallelDownloads = DEFAULT_MAX_PARALLEL_DOWNLOADS
     @Volatile private var cooldownUntilMs = 0L
     private val consecutiveThrottleSignals = AtomicInteger(0)
+    private val downloadResolveMutex = Mutex()
+    @Volatile private var lastDownloadResolveStartMs = 0L
 
     private val mediaOkHttpClient: OkHttpClient by lazy {
         OkHttpClient
@@ -97,25 +102,75 @@ constructor(
 
     val downloads = MutableStateFlow<Map<String, Download>>(emptyMap())
 
-    private val downloaderFactory = DownloaderFactory { request ->
-        ResolvingAudioDownloader(
-            mediaId = request.id,
-            cache = downloadCache,
-            resolve = {
-                val remainingMs = cooldownUntilMs - System.currentTimeMillis()
-                if (remainingMs > 0) delay(remainingMs)
-                val selection = playbackContext()
-                val playbackData = CapsuleAudioEngine.playerResponseForPlayback(
-                    videoId = request.id,
+    private suspend fun awaitDownloadResolveWindow() {
+        downloadResolveMutex.withLock {
+            while (true) {
+                val nowMs = System.currentTimeMillis()
+                val waitMs =
+                    maxOf(
+                        CapsulePlaybackSafety.remainingBlockMs(nowMs),
+                        (cooldownUntilMs - nowMs).coerceAtLeast(0L),
+                        (lastDownloadResolveStartMs + DOWNLOAD_RESOLVE_SPACING_MS - nowMs)
+                            .coerceAtLeast(0L),
+                    )
+
+                if (waitMs <= 0L) {
+                    lastDownloadResolveStartMs = System.currentTimeMillis()
+                    return@withLock
+                }
+
+                // Re-check periodically so a network change / explicit breaker reset
+                // can resume the queue without waiting for the old full deadline.
+                delay(minOf(waitMs, DOWNLOAD_WAIT_SLICE_MS))
+            }
+        }
+    }
+
+    private suspend fun resolveDownloadPlayback(
+        mediaId: String,
+    ): CapsuleAudioEngine.PlaybackData {
+        while (true) {
+            awaitDownloadResolveWindow()
+            val selection = playbackContext()
+            val result =
+                CapsuleAudioEngine.playerResponseForPlayback(
+                    videoId = mediaId,
                     audioQuality = selection.quality,
                     connectivityManager = connectivityManager,
                     streamPolicy = selection.policy,
                     priority = AudioResolvePriority.DOWNLOAD,
-                ).getOrThrow()
-                if (selection != playbackContext()) throw java.io.IOException("Playback context changed during download resolve")
-                storeDownloadMetadata(request.id, playbackData)
-                playbackData
-            },
+                )
+
+            if (selection != playbackContext()) {
+                throw java.io.IOException("Playback context changed during download resolve")
+            }
+
+            result.getOrNull()?.let { playbackData ->
+                storeDownloadMetadata(mediaId, playbackData)
+                return playbackData
+            }
+
+            val failure =
+                result.exceptionOrNull()
+                    ?: java.io.IOException("Download audio resolve failed without an exception")
+
+            // A global 429/bot-check breaker is a queue pause, not a reason to
+            // permanently fail the user's download. The next iteration waits at
+            // the shared gate and retries only after the breaker becomes safe.
+            if (CapsulePlaybackSafety.remainingBlockMs() > 0L) {
+                registerThrottleSignal(failure)
+                continue
+            }
+
+            throw failure
+        }
+    }
+
+    private val downloaderFactory = DownloaderFactory { request ->
+        ResolvingAudioDownloader(
+            mediaId = request.id,
+            cache = downloadCache,
+            resolve = { resolveDownloadPlayback(request.id) },
             dataSource = { playback ->
                 CacheDataSource.Factory().setCache(downloadCache)
                     .setUpstreamDataSourceFactory(
@@ -312,6 +367,9 @@ constructor(
             "timeout",
             "unavailable",
             "reset by peer",
+            "no playable clients",
+            "no playable audio stream",
+            "client response unavailable",
         ).any(message::contains)
     }
 
@@ -320,5 +378,7 @@ constructor(
         private const val MIN_PARALLEL_DOWNLOADS = 1
         private const val SHORT_COOLDOWN_MS = 2_500L
         private const val LONG_COOLDOWN_MS = 8_000L
+        private const val DOWNLOAD_RESOLVE_SPACING_MS = 4_000L
+        private const val DOWNLOAD_WAIT_SLICE_MS = 2_000L
     }
 }

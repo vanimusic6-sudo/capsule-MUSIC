@@ -37,6 +37,7 @@ import com.nikhil.yt.utils.reportException
 import com.nikhil.yt.innertube.CapsuleAnonymousSession
 import com.nikhil.yt.innertube.YouTube
 import com.nikhil.yt.innertube.models.YouTubeLocale
+import com.nikhil.yt.playback.audio.CapsuleInnerTubeXPlayer
 import com.nikhil.yt.kugou.KuGou
 import com.nikhil.yt.lastfm.LastFM
 import dagger.hilt.android.HiltAndroidApp
@@ -49,6 +50,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import android.content.Intent
 import java.io.PrintWriter
 import java.io.StringWriter
@@ -239,6 +241,33 @@ class App : Application(), SingletonImageLoader.Factory {
             } catch (e: Exception) {
                 Timber.e(e, "Error during deferred initialization")
                 reportException(e)
+            }
+        }
+
+        // Startup WEB prewarm is useful only for profiles that need the
+        // extractor/cipher stack. VisionOS stays completely cold and direct.
+        applicationScope.launch(Dispatchers.IO) {
+            try {
+                val prefs = dataStore.data.first()
+                val startupPolicy =
+                    prefs[AudioStreamPolicyKey]
+                        .toEnum(AudioStreamPolicy.VISIONOS)
+                        .normalizedForPlayback()
+                if (startupPolicy != AudioStreamPolicy.VISIONOS) {
+                    val hasVisitorData =
+                        withTimeoutOrNull(20_000L) {
+                            YouTube.authStates.first { state ->
+                                !state.visitorData.isNullOrBlank()
+                            }
+                        } != null
+                    if (hasVisitorData) {
+                        CapsuleInnerTubeXPlayer.prewarm()
+                    }
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                reportRecoverableException("App", "startup audio prewarm", error)
             }
         }
 

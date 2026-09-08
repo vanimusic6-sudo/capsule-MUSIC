@@ -293,7 +293,7 @@ fun LibraryPlaylistsScreen(
     LaunchedEffect(Unit) {
         if (ytmSync) {
             withContext(Dispatchers.IO) {
-                viewModel.sync()
+                viewModel.sync(automatic = true)
             }
         }
     }
