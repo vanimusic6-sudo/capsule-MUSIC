@@ -1,0 +1,219 @@
+name: Final Playback Polish Step 28
+
+on:
+  push:
+    branches:
+      - cleanup/capsule-player-only
+    paths:
+      - ".github/workflows/final-polish-step28.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: final-playback-polish-step28
+  cancel-in-progress: false
+
+jobs:
+  polish:
+    name: Guard offload during crossfade and validate final branch
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout target branch
+        uses: actions/checkout@v6
+        with:
+          ref: cleanup/capsule-player-only
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Set up Gradle 9.5
+        uses: gradle/actions/setup-gradle@v6
+        with:
+          gradle-version: "9.5.0"
+
+      - name: Ensure locale metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! git ls-files --error-unmatch app/src/main/res/resources.properties >/dev/null 2>&1; then
+            mkdir -p app/src/main/res
+            cat > app/src/main/res/resources.properties <<'EOF'
+          unqualifiedResLocale=en-US
+          EOF
+          fi
+
+      - name: Verify final-polish preconditions
+        shell: bash
+        run: |
+          set -euo pipefail
+          SERVICE="app/src/main/kotlin/com/nikhil/yt/playback/MusicService.kt"
+          SYNC="app/src/main/kotlin/com/nikhil/yt/utils/SyncUtils.kt"
+          SONGS="app/src/main/kotlin/com/nikhil/yt/ui/screens/library/LibrarySongsScreen.kt"
+          ALBUMS="app/src/main/kotlin/com/nikhil/yt/ui/screens/library/LibraryAlbumsScreen.kt"
+          ARTISTS="app/src/main/kotlin/com/nikhil/yt/ui/screens/library/LibraryArtistsScreen.kt"
+
+          grep -Fq 'player.setOffloadEnabled(enabled)' "$SERVICE"
+          grep -Fq 'crossfadeDurationMs.value = it' "$SERVICE"
+          ! grep -Fq 'shouldEnableAudioOffload(' "$SERVICE"
+
+          # N-2 is already closed on the current branch; assert it instead of duplicating it.
+          grep -Fq 'const val AUTO_SYNC_MIN_INTERVAL_MS = 60_000L' "$SYNC"
+          grep -Fq 'claimAutomaticSync(AUTO_SYNC_LIKED_SONGS)' "$SYNC"
+          grep -Fq 'claimAutomaticSync(AUTO_SYNC_LIBRARY_SONGS)' "$SYNC"
+          grep -Fq 'claimAutomaticSync(AUTO_SYNC_LIKED_ALBUMS)' "$SYNC"
+          grep -Fq 'claimAutomaticSync(AUTO_SYNC_ARTISTS)' "$SYNC"
+          grep -Fq 'syncLikedSongs(automatic = true)' "$SONGS"
+          grep -Fq 'syncLibrarySongs(automatic = true)' "$SONGS"
+          grep -Fq 'viewModel.sync(automatic = true)' "$ALBUMS"
+          grep -Fq 'viewModel.sync(automatic = true)' "$ARTISTS"
+
+      - name: Apply offload-crossfade guard and test
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          service_path = Path("app/src/main/kotlin/com/nikhil/yt/playback/MusicService.kt")
+          service = service_path.read_text()
+
+          helper_anchor = '''internal fun calculateNormalizationFactor(
+              loudness: TrackLoudness?,
+              maxSafeGainFactor: Float,
+          ): Float {
+              val loudnessDb = loudness?.preferredValue ?: return 1f
+              val rawFactor = 10f.pow(-loudnessDb.toFloat() / 20f)
+              if (!rawFactor.isFinite() || rawFactor <= 0f) return 1f
+              return if (rawFactor > 1f) min(rawFactor, maxSafeGainFactor) else rawFactor
+          }
+          '''
+          helper_replacement = helper_anchor + '''
+          internal fun shouldEnableAudioOffload(
+              requested: Boolean,
+              crossfadeDurationMs: Int,
+          ): Boolean = requested && crossfadeDurationMs == 0
+          '''
+          if service.count(helper_anchor) != 1:
+              raise SystemExit("normalization helper anchor changed")
+          service = service.replace(helper_anchor, helper_replacement, 1)
+
+          crossfade_old = '''        dataStore.data
+              .map { (it[AudioCrossfadeDurationKey] ?: 0) * 1000 }
+              .distinctUntilChanged()
+              .collectLatest(scope) {
+                  crossfadeDurationMs.value = it
+              }
+          '''
+          crossfade_new = '''        dataStore.data
+              .map { (it[AudioCrossfadeDurationKey] ?: 0) * 1000 }
+              .distinctUntilChanged()
+              .collectLatest(scope) {
+                  crossfadeDurationMs.value = it
+                  // Crossfade mixes two decoders, so hardware offload must be disabled
+                  // immediately. Re-enable it automatically when crossfade returns to zero.
+                  updateAudioOffload(dataStore.get(AudioOffload, true))
+              }
+          '''
+          if service.count(crossfade_old) != 1:
+              raise SystemExit("crossfade collector anchor changed")
+          service = service.replace(crossfade_old, crossfade_new, 1)
+
+          offload_old = '''    private fun updateAudioOffload(enabled: Boolean) {
+              player.setOffloadEnabled(enabled)
+          }
+          '''
+          offload_new = '''    private fun updateAudioOffload(enabled: Boolean) {
+              player.setOffloadEnabled(
+                  shouldEnableAudioOffload(
+                      requested = enabled,
+                      crossfadeDurationMs = crossfadeDurationMs.value,
+                  ),
+              )
+          }
+          '''
+          if service.count(offload_old) != 1:
+              raise SystemExit("offload method anchor changed")
+          service = service.replace(offload_old, offload_new, 1)
+          service_path.write_text(service)
+
+          test_path = Path("app/src/test/kotlin/com/nikhil/yt/playback/AudioNormalizationTest.kt")
+          test = test_path.read_text()
+          if "offloadIsDisabledWhileCrossfadeIsActive" in test:
+              raise SystemExit("offload policy test already exists")
+          test = test.replace(
+              "import org.junit.Assert.assertEquals\n",
+              "import org.junit.Assert.assertEquals\nimport org.junit.Assert.assertFalse\nimport org.junit.Assert.assertTrue\n",
+              1,
+          )
+          addition = '''
+
+              @Test
+              fun offloadIsDisabledWhileCrossfadeIsActive() {
+                  assertTrue(shouldEnableAudioOffload(requested = true, crossfadeDurationMs = 0))
+                  assertFalse(shouldEnableAudioOffload(requested = true, crossfadeDurationMs = 1_000))
+                  assertFalse(shouldEnableAudioOffload(requested = false, crossfadeDurationMs = 0))
+              }
+          '''
+          closing = test.rfind("\n}")
+          if closing < 0:
+              raise SystemExit("test class closing brace not found")
+          test = test[:closing] + addition + test[closing:]
+          test_path.write_text(test)
+          PY
+
+      - name: Verify structural result
+        shell: bash
+        run: |
+          set -euo pipefail
+          SERVICE="app/src/main/kotlin/com/nikhil/yt/playback/MusicService.kt"
+          TEST="app/src/test/kotlin/com/nikhil/yt/playback/AudioNormalizationTest.kt"
+          grep -Fq 'internal fun shouldEnableAudioOffload(' "$SERVICE"
+          grep -Fq 'requested && crossfadeDurationMs == 0' "$SERVICE"
+          grep -Fq 'updateAudioOffload(dataStore.get(AudioOffload, true))' "$SERVICE"
+          grep -Fq 'offloadIsDisabledWhileCrossfadeIsActive' "$TEST"
+          git diff --check
+
+      - name: Run unit tests, lint and debug build
+        run: |
+          gradle \
+            :app:testUniversalDebugUnitTest \
+            :app:lintUniversalDebug \
+            :app:assembleUniversalDebug \
+            --stacktrace \
+            --no-daemon
+
+      - name: Refuse stale branch write
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin cleanup/capsule-player-only
+          remote_head="$(git rev-parse origin/cleanup/capsule-player-only)"
+          test "$remote_head" = "$GITHUB_SHA" || {
+            echo "Branch advanced during validation; refusing stale push."
+            echo "workflow head: $GITHUB_SHA"
+            echo "remote head:   $remote_head"
+            exit 1
+          }
+
+      - name: Commit validated final polish and remove temporary workflow
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clean -f app/src/main/res/resources.properties || true
+          git config user.name "capsule-refactor-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git rm .github/workflows/final-polish-step28.yml
+          git add \
+            app/src/main/kotlin/com/nikhil/yt/playback/MusicService.kt \
+            app/src/test/kotlin/com/nikhil/yt/playback/AudioNormalizationTest.kt
+          git commit -m "Guard audio offload during crossfade"
+          git push origin HEAD:cleanup/capsule-player-only
