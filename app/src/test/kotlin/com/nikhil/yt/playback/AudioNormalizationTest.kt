@@ -1,5 +1,6 @@
 package com.nikhil.yt.playback
 
+import com.nikhil.yt.constants.AudioQuality
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -55,6 +56,14 @@ class AudioNormalizationTest {
     fun rawZeroIsNotSilence() {
         val factor = calculateNormalizationFactor(TrackLoudness(0.0, null), 1.414f)
         assertEquals(0.4466836f, factor, 0.0001f)
+    }
+
+    @Test
+    fun retiredHighestQualityNormalizesToHigh() {
+        assertEquals(AudioQuality.HIGH, AudioQuality.HIGHEST.normalizedPlaybackQuality())
+        assertEquals(AudioQuality.HIGH, AudioQuality.HIGH.normalizedPlaybackQuality())
+        assertEquals(AudioQuality.AUTO, AudioQuality.AUTO.normalizedPlaybackQuality())
+        assertEquals(AudioQuality.LOW, AudioQuality.LOW.normalizedPlaybackQuality())
     }
 
     @Test

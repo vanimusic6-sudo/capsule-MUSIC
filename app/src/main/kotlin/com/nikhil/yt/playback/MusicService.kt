@@ -301,6 +301,10 @@ internal fun shouldEnableAudioOffload(
     crossfadeDurationMs: Int,
 ): Boolean = requested && crossfadeDurationMs == 0
 
+/** HIGHEST is a retired alias: InnerTubeX maps it to the same stream tier as HIGH. */
+internal fun AudioQuality.normalizedPlaybackQuality(): AudioQuality =
+    if (this == AudioQuality.HIGHEST) AudioQuality.HIGH else this
+
 @OptIn(ExperimentalCoroutinesApi::class, FlowPreview::class)
 @AndroidEntryPoint
 class MusicService :
@@ -360,7 +364,9 @@ class MusicService :
         CapsuleVideoQuality.AUTO,
     )
     private fun playbackContext() = AudioPlaybackContext(
-        audioQuality, audioStreamPolicy, connectivityManager.isActiveNetworkMetered,
+        audioQuality.normalizedPlaybackQuality(),
+        audioStreamPolicy,
+        connectivityManager.isActiveNetworkMetered,
     )
     private val playbackUrlCache = PlaybackDataCache(currentContext = ::playbackContext)
     private val audioResolveCoordinator =
@@ -876,7 +882,10 @@ class MusicService :
 
     override fun onCreate() {
         super.onCreate()
-        audioQuality = dataStore[AudioQualityKey].toEnum(AudioQuality.AUTO)
+        audioQuality =
+            dataStore[AudioQualityKey]
+                .toEnum(AudioQuality.AUTO)
+                .normalizedPlaybackQuality()
         audioStreamPolicy = dataStore[AudioStreamPolicyKey].toEnum(AudioStreamPolicy.VISIONOS).normalizedForPlayback()
         connectivityManager = requireNotNull(getSystemService()) { "ConnectivityManager is unavailable" }
         ensureScopesActive()
@@ -989,7 +998,9 @@ class MusicService :
             .map { prefs ->
                 Pair(
                     prefs[AudioStreamPolicyKey].toEnum(AudioStreamPolicy.VISIONOS).normalizedForPlayback(),
-                    prefs[AudioQualityKey].toEnum(AudioQuality.AUTO),
+                    prefs[AudioQualityKey]
+                        .toEnum(AudioQuality.AUTO)
+                        .normalizedPlaybackQuality(),
                 )
             }
             .distinctUntilChanged()

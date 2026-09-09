@@ -60,7 +60,7 @@ import com.nikhil.yt.constants.StopMusicOnTaskClearKey
 import com.nikhil.yt.innertube.models.YouTubeClientUpstream
 import com.nikhil.yt.ui.component.ArtistSeparatorsDialog
 import com.nikhil.yt.ui.component.CrossfadeSliderPreference
-import com.nikhil.yt.ui.component.EnumListPreference
+import com.nikhil.yt.ui.component.ListPreference
 import com.nikhil.yt.ui.component.IconButton
 import com.nikhil.yt.ui.component.ListDialog
 import com.nikhil.yt.ui.component.PreferenceEntry
@@ -152,6 +152,11 @@ fun PlayerSettings(
             AudioQualityKey,
             defaultValue = AudioQuality.AUTO,
         )
+    // HIGHEST used to be exposed as “maximum”, but the playback backend maps
+    // it to exactly the same InnerTubeX tier as HIGH. Keep the enum only as a
+    // migration tombstone so existing installs do not break.
+    val effectiveAudioQuality =
+        if (audioQuality == AudioQuality.HIGHEST) AudioQuality.HIGH else audioQuality
 
     /*
      * This is intentionally a new setting key.
@@ -325,7 +330,7 @@ fun PlayerSettings(
             title = stringResource(R.string.player),
         )
 
-        EnumListPreference(
+        ListPreference(
             title = { Text(stringResource(R.string.audio_quality)) },
             icon = {
                 Icon(
@@ -333,14 +338,19 @@ fun PlayerSettings(
                     null,
                 )
             },
-            selectedValue = audioQuality,
+            selectedValue = effectiveAudioQuality,
+            values =
+                listOf(
+                    AudioQuality.AUTO,
+                    AudioQuality.HIGH,
+                    AudioQuality.LOW,
+                ),
             onValueSelected = onAudioQualityChange,
             valueText = {
                 when (it) {
-                    AudioQuality.HIGHEST ->
-                        stringResource(R.string.audio_quality_max)
-                    AudioQuality.HIGH ->
-                        stringResource(R.string.audio_quality_high)
+                    AudioQuality.HIGHEST,
+                    AudioQuality.HIGH,
+                    -> stringResource(R.string.audio_quality_high)
                     AudioQuality.AUTO ->
                         stringResource(R.string.audio_quality_auto)
                     AudioQuality.LOW ->

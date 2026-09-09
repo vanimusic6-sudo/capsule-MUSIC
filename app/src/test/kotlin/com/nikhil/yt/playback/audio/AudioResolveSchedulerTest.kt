@@ -116,6 +116,35 @@ class AudioResolveSchedulerTest {
         assertEquals(1, calls)
     }
 
+    @Test fun stalePrefetchPromotionRestartsAsForeground() = runTest {
+        val scheduler =
+            AudioResolveScheduler(
+                monotonicNowMs = { testScheduler.currentTime },
+                promotedPrefetchRestartAfterMs = 4_000L,
+            )
+        var calls = 0
+        val prefetch = async {
+            scheduler.run("next", AudioResolvePriority.PREFETCH) {
+                calls += 1
+                if (calls == 1) {
+                    delay(10_000)
+                    1
+                } else {
+                    7
+                }
+            }
+        }
+        runCurrent()
+        assertEquals(1, calls)
+
+        advanceTimeBy(4_000)
+        scheduler.promote("next")
+        runCurrent()
+
+        assertEquals(7, prefetch.await())
+        assertEquals(2, calls)
+    }
+
     @Test fun parentCancellationIsNeverTreatedAsPreemption() = runTest {
         val scheduler = AudioResolveScheduler()
         var calls = 0

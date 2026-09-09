@@ -24,11 +24,13 @@ enum class AudioResolvePriority(internal val schedulingRank: Int) {
 internal class AudioResolveScheduler(
     private val monotonicNowMs: () -> Long = { System.nanoTime() / 1_000_000L },
     private val downloadStartSpacingMs: Long = DOWNLOAD_START_SPACING_MS,
+    private val promotedPrefetchRestartAfterMs: Long = PROMOTED_PREFETCH_RESTART_AFTER_MS,
 ) {
     private class Preempted : CancellationException("Foreground playback needs the resolver")
     private class Ticket(val mediaId: String, var priority: AudioResolvePriority) {
         val turn = CompletableDeferred<Unit>()
         var worker: Deferred<*>? = null
+        var workerStartedAtMs: Long? = null
         var preempted = false
     }
 
@@ -38,18 +40,33 @@ internal class AudioResolveScheduler(
     private var lastDownloadStartMs: Long? = null
 
     fun promote(mediaId: String) = synchronized(lock) {
+        val nowMs = monotonicNowMs()
         (waiting + listOfNotNull(active)).filter {
             it.mediaId == mediaId && it.priority == AudioResolvePriority.PREFETCH
-        }.forEach {
-            it.priority = AudioResolvePriority.PLAYBACK
+        }.forEach { ticket ->
+            ticket.priority = AudioResolvePriority.PLAYBACK
+            val startedAtMs = ticket.workerStartedAtMs
+            if (
+                active === ticket &&
+                startedAtMs != null &&
+                promotedPrefetchRestartAfterMs >= 0L &&
+                nowMs - startedAtMs >= promotedPrefetchRestartAfterMs
+            ) {
+                // A prefetch that has already spent several seconds inside the
+                // extractor must not hold foreground playback hostage. Restart
+                // only this stale request; young prefetches are still reused.
+                ticket.preempted = true
+                ticket.worker?.cancel(Preempted())
+            }
         }
         preemptBackground()
     }
 
     suspend fun <T> run(mediaId: String, priority: AudioResolvePriority, block: suspend () -> T): T {
+        var effectivePriority = priority
         while (true) {
             currentCoroutineContext().ensureActive()
-            val ticket = Ticket(mediaId, priority)
+            val ticket = Ticket(mediaId, effectivePriority)
             synchronized(lock) {
                 waiting.add(ticket)
                 dispatch()
@@ -60,6 +77,9 @@ internal class AudioResolveScheduler(
                 return coroutineScope {
                     val work = async(start = CoroutineStart.LAZY) {
                         awaitDownloadStartWindow(ticket.priority)
+                        synchronized(lock) {
+                            ticket.workerStartedAtMs = monotonicNowMs()
+                        }
                         block()
                     }
                     synchronized(lock) {
@@ -70,6 +90,8 @@ internal class AudioResolveScheduler(
                 }
             } catch (_: Preempted) {
                 // Only our own preemption is retried. Parent cancellation always propagates.
+                // A stale PREFETCH promoted by the loader retries as PLAYBACK.
+                effectivePriority = ticket.priority
                 currentCoroutineContext().ensureActive()
             } finally {
                 synchronized(lock) {
@@ -118,5 +140,6 @@ internal class AudioResolveScheduler(
 
     private companion object {
         const val DOWNLOAD_START_SPACING_MS = 4_000L
+        const val PROMOTED_PREFETCH_RESTART_AFTER_MS = 4_000L
     }
 }
