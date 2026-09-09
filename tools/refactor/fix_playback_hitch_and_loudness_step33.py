@@ -1,41 +1,35 @@
 from pathlib import Path
-import re
 
 ROOT = Path(__file__).resolve().parents[2]
-MUSIC_SERVICE = ROOT / "app/src/main/kotlin/com/nikhil/yt/playback/MusicService.kt"
-SHOW_MEDIA_INFO = ROOT / "app/src/main/kotlin/com/nikhil/yt/ui/utils/ShowMediaInfo.kt"
-TEST_FILE = ROOT / "app/src/test/kotlin/com/nikhil/yt/playback/AudioNormalizationTest.kt"
+MUSIC = ROOT / "app/src/main/kotlin/com/nikhil/yt/playback/MusicService.kt"
+MEDIA_INFO = ROOT / "app/src/main/kotlin/com/nikhil/yt/ui/utils/ShowMediaInfo.kt"
+TEST = ROOT / "app/src/test/kotlin/com/nikhil/yt/playback/AudioNormalizationTest.kt"
 
 
-def replace_braced_function(text: str, signature: str, replacement: str) -> str:
+def replace_function(text: str, signature: str, replacement: str) -> str:
     start = text.find(signature)
     if start < 0:
-        raise SystemExit(f"Missing function signature: {signature}")
+        raise SystemExit(f"Missing function: {signature}")
     brace = text.find("{", start)
     if brace < 0:
-        raise SystemExit(f"Missing opening brace for: {signature}")
+        raise SystemExit(f"Missing opening brace: {signature}")
     depth = 0
-    end = None
     for i in range(brace, len(text)):
-        ch = text[i]
-        if ch == "{":
+        if text[i] == "{":
             depth += 1
-        elif ch == "}":
+        elif text[i] == "}":
             depth -= 1
             if depth == 0:
-                end = i + 1
-                break
-    if end is None:
-        raise SystemExit(f"Unbalanced braces for: {signature}")
-    return text[:start] + replacement + text[end:]
+                return text[:start] + replacement + text[i + 1 :]
+    raise SystemExit(f"Unbalanced braces: {signature}")
 
 
-music = MUSIC_SERVICE.read_text(encoding="utf-8")
+music = MUSIC.read_text(encoding="utf-8")
 
-# Changing the selected playback identity must not tear down the source that is
-# already feeding the AudioTrack. Invalidate only future resolves/prefetches;
-# the currently open stream is allowed to finish uninterrupted.
-new_reload = '''private fun reloadAudioForClientChange(policy: AudioStreamPolicy) {
+music = replace_function(
+    music,
+    "private fun reloadAudioForClientChange(policy: AudioStreamPolicy)",
+    '''private fun reloadAudioForClientChange(policy: AudioStreamPolicy) {
         streamRetryJob?.cancel()
         streamRetryJob = null
         playbackRecoveryCoordinator.cancelNetworkRecovery(clearWaiting = false)
@@ -45,20 +39,15 @@ new_reload = '''private fun reloadAudioForClientChange(policy: AudioStreamPolicy
             onInvalidate = playbackUrlCache::clear,
         )
         playbackRecoveryCoordinator.clearRetryBudget()
-        // An explicit selection resets per-track exclusions, not the global
-        // bot/rate-limit cooldown. The current already-open stream is preserved;
-        // only future resolves use the newly selected profile.
+        // Explicit client changes affect future resolves only. The current
+        // already-open stream must keep feeding AudioTrack without a reprepare.
         CapsuleAudioEngine.clearStreamClientFailures()
         Timber.tag(CAPSULE_RESOLVE_TAG).i(
             "Audio client selected profile=%s; future resolves updated, current playback preserved",
             policy.playbackClientOverrideId,
         )
         prefetchUpcomingAudio()
-    }'''
-music = replace_braced_function(
-    music,
-    "private fun reloadAudioForClientChange(policy: AudioStreamPolicy)",
-    new_reload,
+    }''',
 )
 
 old_preferred = '''            loudnessDb?.takeIf { it.isFinite() }
@@ -69,19 +58,21 @@ if old_preferred not in music:
     raise SystemExit("TrackLoudness preferred-value block not found")
 music = music.replace(old_preferred, new_preferred, 1)
 
-helper_marker = "internal data class TrackLoudness("
-if helper_marker not in music:
+marker = "internal data class TrackLoudness("
+if marker not in music:
     raise SystemExit("TrackLoudness declaration not found")
-helpers = '''internal const val YOUTUBE_LOUDNESS_REFERENCE_LUFS = -7.0
+if "YOUTUBE_LOUDNESS_REFERENCE_LUFS" in music:
+    raise SystemExit("Loudness helpers already present")
+music = music.replace(
+    marker,
+    '''internal const val YOUTUBE_LOUDNESS_REFERENCE_LUFS = -7.0
 internal const val NORMALIZATION_TARGET_LUFS = -14.0
 internal const val MIN_NORMALIZATION_GAIN_DB = -12.0
 
 /**
  * YouTube's legacy loudnessDb is an offset around a -7 LUFS reference, not a
- * measured loudness value and definitely not a volume percentage. Prefer the
- * perceptual measurement when the player response provides one, matching the
- * semantics used by Metrolist. A raw value of 0 dB therefore means about
- * -7 LUFS, not silence.
+ * measured loudness value. Prefer perceptual loudness when available, matching
+ * Metrolist semantics. A raw 0 dB therefore represents about -7 LUFS.
  */
 internal fun measuredLoudnessLufs(
     loudnessDb: Double?,
@@ -93,13 +84,14 @@ internal fun measuredLoudnessLufs(
         ?.plus(YOUTUBE_LOUDNESS_REFERENCE_LUFS)
 }
 
-'''
-if "YOUTUBE_LOUDNESS_REFERENCE_LUFS" not in music:
-    music = music.replace(helper_marker, helpers + helper_marker, 1)
-else:
-    raise SystemExit("Loudness helpers already exist; refusing ambiguous re-run")
+''' + marker,
+    1,
+)
 
-new_calculate = '''internal fun calculateNormalizationFactor(
+music = replace_function(
+    music,
+    "internal fun calculateNormalizationFactor(",
+    '''internal fun calculateNormalizationFactor(
     loudness: TrackLoudness?,
     maxSafeGainFactor: Float,
 ): Float {
@@ -109,39 +101,33 @@ new_calculate = '''internal fun calculateNormalizationFactor(
             perceptualLoudnessDb = loudness?.perceptualLoudnessDb,
         ) ?: return 1f
 
-    // Balanced normalization: target -14 LUFS, attenuate at most 12 dB and
-    // retain Capsule's existing +3 dB safety ceiling for unusually quiet audio.
+    // Balanced target follows Metrolist's normal music setting: -14 LUFS.
+    // Keep the existing +3 dB boost ceiling and cap attenuation at -12 dB.
     val gainDb =
         (NORMALIZATION_TARGET_LUFS - measuredLufs)
             .coerceAtLeast(MIN_NORMALIZATION_GAIN_DB)
     val rawFactor = 10f.pow(gainDb.toFloat() / 20f)
     if (!rawFactor.isFinite() || rawFactor <= 0f) return 1f
     return if (rawFactor > 1f) min(rawFactor, maxSafeGainFactor) else rawFactor
-}'''
-music = replace_braced_function(
-    music,
-    "internal fun calculateNormalizationFactor(",
-    new_calculate,
+}''',
 )
+MUSIC.write_text(music, encoding="utf-8")
 
-MUSIC_SERVICE.write_text(music, encoding="utf-8")
-
-ui = SHOW_MEDIA_INFO.read_text(encoding="utf-8")
-import_anchor = "import com.nikhil.yt.db.entities.Song\n"
-if import_anchor not in ui:
-    raise SystemExit("ShowMediaInfo Song import anchor not found")
+ui = MEDIA_INFO.read_text(encoding="utf-8")
+song_import = "import com.nikhil.yt.db.entities.Song\n"
+if song_import not in ui:
+    raise SystemExit("ShowMediaInfo Song import not found")
 ui = ui.replace(
-    import_anchor,
-    import_anchor + "import com.nikhil.yt.playback.measuredLoudnessLufs\n",
+    song_import,
+    song_import + "import com.nikhil.yt.playback.measuredLoudnessLufs\n",
     1,
 )
-locale_anchor = "import android.content.ClipboardManager\n"
-if locale_anchor not in ui:
-    raise SystemExit("ShowMediaInfo ClipboardManager import anchor not found")
-ui = ui.replace(locale_anchor, locale_anchor + "import java.util.Locale\n", 1)
-
-old_loudness_row = 'stringResource(R.string.loudness) to currentFormat?.loudnessDb?.let { "$it dB" },'
-new_loudness_row = '''stringResource(R.string.loudness) to currentFormat?.let { format ->
+clipboard_import = "import android.content.ClipboardManager\n"
+if clipboard_import not in ui:
+    raise SystemExit("ShowMediaInfo ClipboardManager import not found")
+ui = ui.replace(clipboard_import, clipboard_import + "import java.util.Locale\n", 1)
+old_row = 'stringResource(R.string.loudness) to currentFormat?.loudnessDb?.let { "$it dB" },'
+new_row = '''stringResource(R.string.loudness) to currentFormat?.let { format ->
                                 measuredLoudnessLufs(
                                     loudnessDb = format.loudnessDb,
                                     perceptualLoudnessDb = format.perceptualLoudnessDb,
@@ -149,21 +135,31 @@ new_loudness_row = '''stringResource(R.string.loudness) to currentFormat?.let { 
                                     String.format(Locale.getDefault(), "%.2f LUFS", measured)
                                 }
                             },'''
-if old_loudness_row not in ui:
+if old_row not in ui:
     raise SystemExit("ShowMediaInfo loudness row not found")
-ui = ui.replace(old_loudness_row, new_loudness_row, 1)
-SHOW_MEDIA_INFO.write_text(ui, encoding="utf-8")
+MEDIA_INFO.write_text(ui.replace(old_row, new_row, 1), encoding="utf-8")
 
-TEST_FILE.parent.mkdir(parents=True, exist_ok=True)
-if TEST_FILE.exists():
-    raise SystemExit(f"Refusing to overwrite existing test: {TEST_FILE}")
-TEST_FILE.write_text(
+# Replace the existing normalization regression tests; preserve the offload guard
+# test that already shares this small playback-policy test file.
+TEST.write_text(
     '''package com.nikhil.yt.playback
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class AudioNormalizationTest {
+    @Test
+    fun missingOrInvalidMetadataKeepsUnityGain() {
+        assertEquals(1f, calculateNormalizationFactor(null, 1.414f), 0.0001f)
+        assertEquals(
+            1f,
+            calculateNormalizationFactor(TrackLoudness(Double.NaN, null), 1.414f),
+            0.0001f,
+        )
+    }
+
     @Test
     fun rawYoutubeLoudnessUsesMinusSevenLufsReference() {
         assertEquals(-12.0, measuredLoudnessLufs(-5.0, null)!!, 0.0001)
@@ -177,79 +173,56 @@ class AudioNormalizationTest {
 
     @Test
     fun balancedTargetAttenuatesTypicalLegacyYoutubeValue() {
-        val factor =
-            calculateNormalizationFactor(
-                TrackLoudness(loudnessDb = -5.0, perceptualLoudnessDb = null),
-                maxSafeGainFactor = 1.414f,
-            )
-        assertEquals(0.7943282, factor.toDouble(), 0.0001)
+        val factor = calculateNormalizationFactor(TrackLoudness(-5.0, null), 1.414f)
+        assertEquals(0.7943282f, factor, 0.0001f)
     }
 
     @Test
     fun perceptualQuietTrackGetsModerateGain() {
-        val factor =
-            calculateNormalizationFactor(
-                TrackLoudness(loudnessDb = null, perceptualLoudnessDb = -16.0),
-                maxSafeGainFactor = 1.414f,
-            )
-        assertEquals(1.2589254, factor.toDouble(), 0.0001)
+        val factor = calculateNormalizationFactor(TrackLoudness(null, -16.0), 1.414f)
+        assertEquals(1.2589254f, factor, 0.0001f)
     }
 
     @Test
-    fun veryQuietTrackStillRespectsExistingSafetyCeiling() {
-        val factor =
-            calculateNormalizationFactor(
-                TrackLoudness(loudnessDb = null, perceptualLoudnessDb = -30.0),
-                maxSafeGainFactor = 1.414f,
-            )
-        assertEquals(1.414, factor.toDouble(), 0.0001)
+    fun excessiveBoostStillUsesExistingThreeDbCeiling() {
+        val factor = calculateNormalizationFactor(TrackLoudness(null, -30.0), 1.414f)
+        assertEquals(1.414f, factor, 0.0001f)
     }
 
     @Test
-    fun veryLoudTrackAttenuationIsLimitedToTwelveDb() {
-        val factor =
-            calculateNormalizationFactor(
-                TrackLoudness(loudnessDb = null, perceptualLoudnessDb = 0.0),
-                maxSafeGainFactor = 1.414f,
-            )
-        assertEquals(0.2511886, factor.toDouble(), 0.0001)
+    fun attenuationIsLimitedToTwelveDb() {
+        val factor = calculateNormalizationFactor(TrackLoudness(null, 0.0), 1.414f)
+        assertEquals(0.2511886f, factor, 0.0001f)
     }
 
     @Test
-    fun missingLoudnessKeepsUnityGain() {
-        assertEquals(
-            1.0,
-            calculateNormalizationFactor(null, maxSafeGainFactor = 1.414f).toDouble(),
-            0.0001,
-        )
+    fun rawZeroIsNotSilence() {
+        val factor = calculateNormalizationFactor(TrackLoudness(0.0, null), 1.414f)
+        assertEquals(0.4466836f, factor, 0.0001f)
     }
 
     @Test
-    fun rawZeroIsNotSilenceAndIsAttenuatedForBalancedTarget() {
-        val factor =
-            calculateNormalizationFactor(
-                TrackLoudness(loudnessDb = 0.0, perceptualLoudnessDb = null),
-                maxSafeGainFactor = 1.414f,
-            )
-        assertEquals(0.4466836, factor.toDouble(), 0.0001)
+    fun offloadIsDisabledWhileCrossfadeIsActive() {
+        assertTrue(shouldEnableAudioOffload(requested = true, crossfadeDurationMs = 0))
+        assertFalse(shouldEnableAudioOffload(requested = true, crossfadeDurationMs = 1_000))
+        assertFalse(shouldEnableAudioOffload(requested = false, crossfadeDurationMs = 0))
     }
 }
 ''',
     encoding="utf-8",
 )
 
-# Structural safety checks before Gradle gets involved.
-updated_music = MUSIC_SERVICE.read_text(encoding="utf-8")
-start = updated_music.index("private fun reloadAudioForClientChange(policy: AudioStreamPolicy)")
-end = updated_music.index("private fun recreateAudioSources", start)
-reload_block = updated_music[start:end]
-assert "player.stop()" not in reload_block
-assert "recreateAudioSources" not in reload_block
-assert "current playback preserved" in reload_block
-assert "prefetchUpcomingAudio()" in reload_block
-assert "NORMALIZATION_TARGET_LUFS = -14.0" in updated_music
-assert "perceptualLoudnessDb?.takeIf" in updated_music
-updated_ui = SHOW_MEDIA_INFO.read_text(encoding="utf-8")
+updated = MUSIC.read_text(encoding="utf-8")
+start = updated.index("private fun reloadAudioForClientChange(policy: AudioStreamPolicy)")
+end = updated.index("private fun recreateAudioSources", start)
+block = updated[start:end]
+assert "player.stop()" not in block
+assert "recreateAudioSources" not in block
+assert "current playback preserved" in block
+assert "prefetchUpcomingAudio()" in block
+assert "NORMALIZATION_TARGET_LUFS = -14.0" in updated
+assert "perceptualLoudnessDb?.takeIf" in updated
+updated_ui = MEDIA_INFO.read_text(encoding="utf-8")
 assert "%.2f LUFS" in updated_ui
 assert "measuredLoudnessLufs" in updated_ui
 print("step33 patch applied successfully")
