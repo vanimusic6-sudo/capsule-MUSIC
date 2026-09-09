@@ -1,6 +1,8 @@
 package com.nikhil.yt.playback
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class AudioNormalizationTest {
@@ -40,4 +42,12 @@ class AudioNormalizationTest {
             0.001f,
         )
     }
+
+    @Test
+    fun offloadIsDisabledWhileCrossfadeIsActive() {
+        assertTrue(shouldEnableAudioOffload(requested = true, crossfadeDurationMs = 0))
+        assertFalse(shouldEnableAudioOffload(requested = true, crossfadeDurationMs = 1_000))
+        assertFalse(shouldEnableAudioOffload(requested = false, crossfadeDurationMs = 0))
+    }
+
 }

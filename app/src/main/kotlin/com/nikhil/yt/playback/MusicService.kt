@@ -267,6 +267,12 @@ internal fun calculateNormalizationFactor(
     return if (rawFactor > 1f) min(rawFactor, maxSafeGainFactor) else rawFactor
 }
 
+
+internal fun shouldEnableAudioOffload(
+    requested: Boolean,
+    crossfadeDurationMs: Int,
+): Boolean = requested && crossfadeDurationMs == 0
+
 @OptIn(ExperimentalCoroutinesApi::class, FlowPreview::class)
 @AndroidEntryPoint
 class MusicService :
@@ -1085,6 +1091,8 @@ class MusicService :
             .distinctUntilChanged()
             .collectLatest(scope) {
                 crossfadeDurationMs.value = it
+                // Crossfade requires software mixing, so offload must stop immediately.
+                updateAudioOffload(dataStore.get(AudioOffload, true))
             }
 
         crossfadeAudio =
@@ -4095,7 +4103,12 @@ class MusicService :
     }
 
     private fun updateAudioOffload(enabled: Boolean) {
-        player.setOffloadEnabled(enabled)
+        player.setOffloadEnabled(
+    shouldEnableAudioOffload(
+        requested = enabled,
+        crossfadeDurationMs = crossfadeDurationMs.value,
+    ),
+)
     }
 
     private fun createRenderersFactory() = DefaultRenderersFactory(this)
