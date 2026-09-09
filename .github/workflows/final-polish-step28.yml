@@ -62,7 +62,7 @@ jobs:
           ARTISTS="app/src/main/kotlin/com/nikhil/yt/ui/screens/library/LibraryArtistsScreen.kt"
 
           grep -Fq 'player.setOffloadEnabled(enabled)' "$SERVICE"
-          grep -Fq 'crossfadeDurationMs.value = it' "$SERVICE"
+          test "$(grep -Fc 'crossfadeDurationMs.value = it' "$SERVICE")" = "1"
           ! grep -Fq 'shouldEnableAudioOffload(' "$SERVICE"
 
           # N-2 is already closed on the current branch; assert it instead of duplicating it.
@@ -106,26 +106,17 @@ jobs:
               raise SystemExit("normalization helper anchor changed")
           service = service.replace(helper_anchor, helper_replacement, 1)
 
-          crossfade_old = '''        dataStore.data
-              .map { (it[AudioCrossfadeDurationKey] ?: 0) * 1000 }
-              .distinctUntilChanged()
-              .collectLatest(scope) {
-                  crossfadeDurationMs.value = it
-              }
-          '''
-          crossfade_new = '''        dataStore.data
-              .map { (it[AudioCrossfadeDurationKey] ?: 0) * 1000 }
-              .distinctUntilChanged()
-              .collectLatest(scope) {
-                  crossfadeDurationMs.value = it
-                  // Crossfade mixes two decoders, so hardware offload must be disabled
-                  // immediately. Re-enable it automatically when crossfade returns to zero.
-                  updateAudioOffload(dataStore.get(AudioOffload, true))
-              }
-          '''
-          if service.count(crossfade_old) != 1:
-              raise SystemExit("crossfade collector anchor changed")
-          service = service.replace(crossfade_old, crossfade_new, 1)
+          crossfade_line = "                crossfadeDurationMs.value = it\n"
+          if service.count(crossfade_line) != 1:
+              raise SystemExit("crossfade assignment is not unique")
+          service = service.replace(
+              crossfade_line,
+              crossfade_line
+              + "                // Crossfade mixes two decoders, so hardware offload must be disabled\n"
+              + "                // immediately. Re-enable it automatically when crossfade returns to zero.\n"
+              + "                updateAudioOffload(dataStore.get(AudioOffload, true))\n",
+              1,
+          )
 
           offload_old = '''    private fun updateAudioOffload(enabled: Boolean) {
               player.setOffloadEnabled(enabled)
@@ -149,9 +140,12 @@ jobs:
           test = test_path.read_text()
           if "offloadIsDisabledWhileCrossfadeIsActive" in test:
               raise SystemExit("offload policy test already exists")
+          import_line = "import org.junit.Assert.assertEquals\n"
+          if test.count(import_line) != 1:
+              raise SystemExit("JUnit import anchor changed")
           test = test.replace(
-              "import org.junit.Assert.assertEquals\n",
-              "import org.junit.Assert.assertEquals\nimport org.junit.Assert.assertFalse\nimport org.junit.Assert.assertTrue\n",
+              import_line,
+              import_line + "import org.junit.Assert.assertFalse\nimport org.junit.Assert.assertTrue\n",
               1,
           )
           addition = '''
