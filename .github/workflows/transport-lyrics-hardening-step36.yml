@@ -6,6 +6,8 @@ on:
       - cleanup/capsule-player-only
     paths:
       - ".github/workflows/transport-lyrics-hardening-step36.yml"
+      - "tools/refactor/harden_transport_and_lyrics_step36.py"
+      - "tools/refactor/finalize_transport_root_fix_step36.py"
   workflow_dispatch:
 
 permissions:
@@ -57,10 +59,18 @@ jobs:
           set -euo pipefail
           python3 tools/refactor/harden_transport_and_lyrics_step36.py --check
           python3 tools/refactor/harden_transport_and_lyrics_step36.py
+          python3 tools/refactor/finalize_transport_root_fix_step36.py --check
+          python3 tools/refactor/finalize_transport_root_fix_step36.py
           git diff --check
+
           grep -Fq 'Same-stream transport retry made no progress' app/src/main/kotlin/com/nikhil/yt/playback/PlaybackRecoveryCoordinator.kt
           grep -Fq 'claimNoPlayableFreshResolve' app/src/main/kotlin/com/nikhil/yt/playback/PlaybackRecoveryCoordinator.kt
+          grep -Fq 'recoveryProgressProvider: (String) -> Boolean = healthyPlaybackProvider' app/src/main/kotlin/com/nikhil/yt/playback/PlaybackRecoveryCoordinator.kt
+          grep -Fq 'resetRetry(mediaId)' app/src/main/kotlin/com/nikhil/yt/playback/PlaybackRecoveryCoordinator.kt
           grep -Fq 'scheduling one clean same-policy resolve' app/src/main/kotlin/com/nikhil/yt/playback/MusicService.kt
+          grep -Fq 'internal fun PlaybackException.isNoPlayableStreamFailure' app/src/main/kotlin/com/nikhil/yt/playback/MusicService.kt
+          grep -Fq '.retryOnConnectionFailure(true)' app/src/main/kotlin/com/nikhil/yt/playback/MusicService.kt
+          ! grep -Fq 'retryOnConnectionFailure(false)' app/src/main/kotlin/com/nikhil/yt/playback/MusicService.kt
           grep -Fq 'val duration: Double? = null' lrclib/src/main/kotlin/com/nikhil/yt/lrclib/models/Track.kt
           grep -Fq 'durationDelta != null' lrclib/src/main/kotlin/com/nikhil/yt/lrclib/LrcLib.kt
 
@@ -105,6 +115,7 @@ jobs:
           set -euo pipefail
           git clean -f app/src/main/res/resources.properties || true
           rm -f tools/refactor/harden_transport_and_lyrics_step36.py
+          rm -f tools/refactor/finalize_transport_root_fix_step36.py
           rm -f .github/workflows/transport-lyrics-hardening-step36.yml
           git diff --check
           git config user.name "capsule-refactor-bot"
