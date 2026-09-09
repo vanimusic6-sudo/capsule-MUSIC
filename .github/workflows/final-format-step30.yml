@@ -1,0 +1,43 @@
+name: Final Format Step 30
+
+on:
+  push:
+    branches:
+      - cleanup/capsule-player-only
+    paths:
+      - ".github/workflows/final-format-step30.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  format:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: cleanup/capsule-player-only
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Apply whitespace-only cleanup
+        shell: bash
+        run: |
+          set -euo pipefail
+          FILE=app/src/main/kotlin/com/nikhil/yt/playback/MusicService.kt
+          perl -0pi -e 's/\}\n\n\ninternal fun shouldEnableAudioOffload/\}\n\ninternal fun shouldEnableAudioOffload/' "$FILE"
+          perl -0pi -e 's/    private fun updateAudioOffload\(enabled: Boolean\) \{\n        player\.setOffloadEnabled\(\n    shouldEnableAudioOffload\(\n        requested = enabled,\n        crossfadeDurationMs = crossfadeDurationMs\.value,\n    \),\n\)\n    \}/    private fun updateAudioOffload(enabled: Boolean) {\n        player.setOffloadEnabled(\n            shouldEnableAudioOffload(\n                requested = enabled,\n                crossfadeDurationMs = crossfadeDurationMs.value,\n            ),\n        )\n    }/' "$FILE"
+          grep -Fq '            shouldEnableAudioOffload(' "$FILE"
+          git diff --check
+          git diff -w --exit-code -- "$FILE"
+
+      - name: Commit formatting and remove workflow
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "capsule-refactor-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git rm .github/workflows/final-format-step30.yml
+          git add app/src/main/kotlin/com/nikhil/yt/playback/MusicService.kt
+          git commit -m "Polish offload guard formatting"
+          git push origin HEAD:cleanup/capsule-player-only
