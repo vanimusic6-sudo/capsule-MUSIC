@@ -267,7 +267,6 @@ internal fun calculateNormalizationFactor(
     return if (rawFactor > 1f) min(rawFactor, maxSafeGainFactor) else rawFactor
 }
 
-
 internal fun shouldEnableAudioOffload(
     requested: Boolean,
     crossfadeDurationMs: Int,
@@ -4104,11 +4103,11 @@ class MusicService :
 
     private fun updateAudioOffload(enabled: Boolean) {
         player.setOffloadEnabled(
-    shouldEnableAudioOffload(
-        requested = enabled,
-        crossfadeDurationMs = crossfadeDurationMs.value,
-    ),
-)
+            shouldEnableAudioOffload(
+                requested = enabled,
+                crossfadeDurationMs = crossfadeDurationMs.value,
+            ),
+        )
     }
 
     private fun createRenderersFactory() = DefaultRenderersFactory(this)
