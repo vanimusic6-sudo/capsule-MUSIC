@@ -1,0 +1,53 @@
+name: WEB_REMIX Fast Apply Step 27
+
+on:
+  push:
+    branches:
+      - cleanup/capsule-player-only
+    paths:
+      - ".github/workflows/web-remix-fast-apply-step27.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: web-remix-fast-apply-step27
+  cancel-in-progress: false
+
+jobs:
+  apply:
+    name: Apply validated WEB_REMIX recovery patch
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout target branch
+        uses: actions/checkout@v6
+        with:
+          ref: cleanup/capsule-player-only
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Apply recovery patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 tools/refactor/fix_web_remix_step27.py --check
+          python3 tools/refactor/fix_web_remix_step27.py
+          git diff --check
+          grep -Fq 'withEmbeddedConfigFallback()' app/src/main/kotlin/com/nikhil/yt/playback/audio/CapsuleInnerTubeXPlayer.kt
+          ! grep -Fq 'cipherSessionFailure' app/src/main/kotlin/com/nikhil/yt/playback/audio/CapsuleInnerTubeXPlayer.kt
+          ! grep -Fq 'Web prewarm awaited' app/src/main/kotlin/com/nikhil/yt/playback/audio/CapsuleInnerTubeXPlayer.kt
+
+      - name: Commit WEB_REMIX fix
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "capsule-refactor-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add \
+            app/src/main/kotlin/com/nikhil/yt/playback/audio/CapsuleInnerTubeXPlayer.kt \
+            app/src/main/kotlin/com/nikhil/yt/playback/MusicService.kt \
+            app/src/test/kotlin/com/nikhil/yt/playback/audio/CapsuleInnerTubeXPlayerTest.kt
+          git commit -m "Fix WEB_REMIX cipher recovery and startup path"
+          git push origin HEAD:cleanup/capsule-player-only
