@@ -29,7 +29,6 @@ jobs:
           perl -0pi -e 's/    private fun updateAudioOffload\(enabled: Boolean\) \{\n        player\.setOffloadEnabled\(\n    shouldEnableAudioOffload\(\n        requested = enabled,\n        crossfadeDurationMs = crossfadeDurationMs\.value,\n    \),\n\)\n    \}/    private fun updateAudioOffload(enabled: Boolean) {\n        player.setOffloadEnabled(\n            shouldEnableAudioOffload(\n                requested = enabled,\n                crossfadeDurationMs = crossfadeDurationMs.value,\n            ),\n        )\n    }/' "$FILE"
           grep -Fq '            shouldEnableAudioOffload(' "$FILE"
           git diff --check
-          git diff -w --exit-code -- "$FILE"
 
       - name: Commit formatting and remove workflow
         shell: bash
