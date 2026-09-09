@@ -2,8 +2,10 @@ name: Final Formatting Cleanup Step 29
 
 on:
   push:
-    branches: [cleanup/capsule-player-only]
-    paths: [".github/workflows/final-format-cleanup-step29.yml"]
+    branches:
+      - cleanup/capsule-player-only
+    paths:
+      - ".github/workflows/final-format-cleanup-step29.yml"
   workflow_dispatch:
 
 permissions:
@@ -11,21 +13,26 @@ permissions:
 
 jobs:
   cleanup:
+    name: Polish final offload formatting
     runs-on: ubuntu-latest
     timeout-minutes: 30
+
     steps:
-      - uses: actions/checkout@v6
+      - name: Checkout target branch
+        uses: actions/checkout@v6
         with:
           ref: cleanup/capsule-player-only
           fetch-depth: 0
           persist-credentials: true
 
-      - uses: actions/setup-java@v5
+      - name: Set up JDK 21
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: "21"
 
-      - uses: gradle/actions/setup-gradle@v6
+      - name: Set up Gradle 9.5
+        uses: gradle/actions/setup-gradle@v6
         with:
           gradle-version: "9.5.0"
 
@@ -35,7 +42,9 @@ jobs:
           set -euo pipefail
           if ! git ls-files --error-unmatch app/src/main/res/resources.properties >/dev/null 2>&1; then
             mkdir -p app/src/main/res
-            printf 'unqualifiedResLocale=en-US\n' > app/src/main/res/resources.properties
+            cat > app/src/main/res/resources.properties <<'EOF'
+          unqualifiedResLocale=en-US
+          EOF
           fi
 
       - name: Clean formatting only
@@ -44,16 +53,17 @@ jobs:
           set -euo pipefail
           python3 - <<'PY'
           from pathlib import Path
-          path = Path('app/src/main/kotlin/com/nikhil/yt/playback/MusicService.kt')
+
+          path = Path("app/src/main/kotlin/com/nikhil/yt/playback/MusicService.kt")
           text = path.read_text()
 
-          old_blank = '}\n\n\ninternal fun shouldEnableAudioOffload('
-          new_blank = '}\n\ninternal fun shouldEnableAudioOffload('
+          old_blank = "}\n\n\ninternal fun shouldEnableAudioOffload("
+          new_blank = "}\n\ninternal fun shouldEnableAudioOffload("
           if text.count(old_blank) != 1:
-              raise SystemExit('helper blank-line anchor changed')
+              raise SystemExit("helper blank-line anchor changed")
           text = text.replace(old_blank, new_blank, 1)
 
-          old_block = '''    private fun updateAudioOffload(enabled: Boolean) {
+          old_block = """    private fun updateAudioOffload(enabled: Boolean) {
               player.setOffloadEnabled(
           shouldEnableAudioOffload(
               requested = enabled,
@@ -61,8 +71,8 @@ jobs:
           ),
       )
           }
-          '''
-          new_block = '''    private fun updateAudioOffload(enabled: Boolean) {
+          """
+          new_block = """    private fun updateAudioOffload(enabled: Boolean) {
               player.setOffloadEnabled(
                   shouldEnableAudioOffload(
                       requested = enabled,
@@ -70,9 +80,9 @@ jobs:
                   ),
               )
           }
-          '''
+          """
           if text.count(old_block) != 1:
-              raise SystemExit('offload formatting anchor changed')
+              raise SystemExit("offload formatting anchor changed")
           text = text.replace(old_block, new_block, 1)
           path.write_text(text)
           PY
@@ -81,21 +91,22 @@ jobs:
       - name: Compile Kotlin
         run: gradle :app:compileUniversalDebugKotlin --stacktrace --no-daemon
 
-      - name: Refuse stale write
+      - name: Refuse stale branch write
         shell: bash
         run: |
           set -euo pipefail
           git fetch origin cleanup/capsule-player-only
-          test "$(git rev-parse origin/cleanup/capsule-player-only)" = "$GITHUB_SHA"
+          remote_head="$(git rev-parse origin/cleanup/capsule-player-only)"
+          test "$remote_head" = "$GITHUB_SHA"
 
-      - name: Commit cleanup and remove workflow
+      - name: Commit cleanup and remove temporary workflow
         shell: bash
         run: |
           set -euo pipefail
           git clean -f app/src/main/res/resources.properties || true
-          git config user.name capsule-refactor-bot
-          git config user.email actions@users.noreply.github.com
+          git config user.name "capsule-refactor-bot"
+          git config user.email "actions@users.noreply.github.com"
           git rm .github/workflows/final-format-cleanup-step29.yml
           git add app/src/main/kotlin/com/nikhil/yt/playback/MusicService.kt
-          git commit -m 'Polish offload guard formatting'
+          git commit -m "Polish offload guard formatting"
           git push origin HEAD:cleanup/capsule-player-only
