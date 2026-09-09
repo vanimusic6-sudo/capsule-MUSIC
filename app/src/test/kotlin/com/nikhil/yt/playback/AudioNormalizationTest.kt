@@ -11,36 +11,50 @@ class AudioNormalizationTest {
         assertEquals(1f, calculateNormalizationFactor(null, 1.414f), 0.0001f)
         assertEquals(
             1f,
-            calculateNormalizationFactor(
-                TrackLoudness(Double.NaN, null),
-                1.414f,
-            ),
+            calculateNormalizationFactor(TrackLoudness(Double.NaN, null), 1.414f),
             0.0001f,
         )
     }
 
     @Test
-    fun excessiveBoostIsCappedAtThreeDb() {
-        assertEquals(
-            1.414f,
-            calculateNormalizationFactor(
-                TrackLoudness(loudnessDb = -12.0, perceptualLoudnessDb = null),
-                maxSafeGainFactor = 1.414f,
-            ),
-            0.0001f,
-        )
+    fun rawYoutubeLoudnessUsesMinusSevenLufsReference() {
+        assertEquals(-12.0, measuredLoudnessLufs(-5.0, null)!!, 0.0001)
+        assertEquals(-7.0, measuredLoudnessLufs(0.0, null)!!, 0.0001)
     }
 
     @Test
-    fun perceptualValueIsUsedWhenRegularLoudnessIsMissing() {
-        assertEquals(
-            0.5012f,
-            calculateNormalizationFactor(
-                TrackLoudness(loudnessDb = null, perceptualLoudnessDb = 6.0),
-                maxSafeGainFactor = 1.414f,
-            ),
-            0.001f,
-        )
+    fun perceptualMeasurementWinsOverLegacyRawValue() {
+        assertEquals(-16.0, measuredLoudnessLufs(-5.0, -16.0)!!, 0.0001)
+    }
+
+    @Test
+    fun balancedTargetAttenuatesTypicalLegacyYoutubeValue() {
+        val factor = calculateNormalizationFactor(TrackLoudness(-5.0, null), 1.414f)
+        assertEquals(0.7943282f, factor, 0.0001f)
+    }
+
+    @Test
+    fun perceptualQuietTrackGetsModerateGain() {
+        val factor = calculateNormalizationFactor(TrackLoudness(null, -16.0), 1.414f)
+        assertEquals(1.2589254f, factor, 0.0001f)
+    }
+
+    @Test
+    fun excessiveBoostStillUsesExistingThreeDbCeiling() {
+        val factor = calculateNormalizationFactor(TrackLoudness(null, -30.0), 1.414f)
+        assertEquals(1.414f, factor, 0.0001f)
+    }
+
+    @Test
+    fun attenuationIsLimitedToTwelveDb() {
+        val factor = calculateNormalizationFactor(TrackLoudness(null, 0.0), 1.414f)
+        assertEquals(0.2511886f, factor, 0.0001f)
+    }
+
+    @Test
+    fun rawZeroIsNotSilence() {
+        val factor = calculateNormalizationFactor(TrackLoudness(0.0, null), 1.414f)
+        assertEquals(0.4466836f, factor, 0.0001f)
     }
 
     @Test
@@ -49,5 +63,4 @@ class AudioNormalizationTest {
         assertFalse(shouldEnableAudioOffload(requested = true, crossfadeDurationMs = 1_000))
         assertFalse(shouldEnableAudioOffload(requested = false, crossfadeDurationMs = 0))
     }
-
 }

@@ -247,22 +247,51 @@ import javax.inject.Inject
 import kotlin.math.min
 import kotlin.math.pow
 
+internal const val YOUTUBE_LOUDNESS_REFERENCE_LUFS = -7.0
+internal const val NORMALIZATION_TARGET_LUFS = -14.0
+internal const val MIN_NORMALIZATION_GAIN_DB = -12.0
+
+/**
+ * YouTube's legacy loudnessDb is an offset around a -7 LUFS reference, not a
+ * measured loudness value. Prefer perceptual loudness when available, matching
+ * Metrolist semantics. A raw 0 dB therefore represents about -7 LUFS.
+ */
+internal fun measuredLoudnessLufs(
+    loudnessDb: Double?,
+    perceptualLoudnessDb: Double?,
+): Double? {
+    perceptualLoudnessDb?.takeIf { it.isFinite() }?.let { return it }
+    return loudnessDb
+        ?.takeIf { it.isFinite() }
+        ?.plus(YOUTUBE_LOUDNESS_REFERENCE_LUFS)
+}
+
 internal data class TrackLoudness(
     val loudnessDb: Double?,
     val perceptualLoudnessDb: Double?,
 ) {
     val preferredValue: Double?
         get() =
-            loudnessDb?.takeIf { it.isFinite() }
-                ?: perceptualLoudnessDb?.takeIf { it.isFinite() }
+            perceptualLoudnessDb?.takeIf { it.isFinite() }
+                ?: loudnessDb?.takeIf { it.isFinite() }
 }
 
 internal fun calculateNormalizationFactor(
     loudness: TrackLoudness?,
     maxSafeGainFactor: Float,
 ): Float {
-    val loudnessDb = loudness?.preferredValue ?: return 1f
-    val rawFactor = 10f.pow(-loudnessDb.toFloat() / 20f)
+    val measuredLufs =
+        measuredLoudnessLufs(
+            loudnessDb = loudness?.loudnessDb,
+            perceptualLoudnessDb = loudness?.perceptualLoudnessDb,
+        ) ?: return 1f
+
+    // Balanced target follows Metrolist's normal music setting: -14 LUFS.
+    // Keep the existing +3 dB boost ceiling and cap attenuation at -12 dB.
+    val gainDb =
+        (NORMALIZATION_TARGET_LUFS - measuredLufs)
+            .coerceAtLeast(MIN_NORMALIZATION_GAIN_DB)
+    val rawFactor = 10f.pow(gainDb.toFloat() / 20f)
     if (!rawFactor.isFinite() || rawFactor <= 0f) return 1f
     return if (rawFactor > 1f) min(rawFactor, maxSafeGainFactor) else rawFactor
 }
@@ -3867,33 +3896,23 @@ class MusicService :
     }
 
     private fun reloadAudioForClientChange(policy: AudioStreamPolicy) {
-        val reloadCurrentAudio = player.currentMediaItem != null && !isCurrentCapsuleVideoItem()
-        val index = player.currentMediaItemIndex
-        val position = player.currentPosition.coerceAtLeast(0L)
-        val playWhenReady = player.playWhenReady
-
         streamRetryJob?.cancel()
         streamRetryJob = null
         playbackRecoveryCoordinator.cancelNetworkRecovery(clearWaiting = false)
         audioResolveCoordinator.invalidatePrefetches()
-        if (reloadCurrentAudio) player.stop()
-
         audioResolveCoordinator.invalidatePolicy(
             invalidatePrefetch = false,
             onInvalidate = playbackUrlCache::clear,
         )
         playbackRecoveryCoordinator.clearRetryBudget()
-        // An explicit selection resets per-track exclusions, not the global
-        // bot/rate-limit cooldown.
+        // Explicit client changes affect future resolves only. The current
+        // already-open stream must keep feeding AudioTrack without a reprepare.
         CapsuleAudioEngine.clearStreamClientFailures()
         Timber.tag(CAPSULE_RESOLVE_TAG).i(
-            "Audio client selected profile=%s; cleared cached stream URLs",
+            "Audio client selected profile=%s; future resolves updated, current playback preserved",
             policy.playbackClientOverrideId,
         )
-
-        if (reloadCurrentAudio) {
-            recreateAudioSources(index, position, playWhenReady)
-        }
+        prefetchUpcomingAudio()
     }
 
     private fun recreateAudioSources(
