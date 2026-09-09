@@ -46,6 +46,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          chmod +x gradlew
           ./gradlew \
             :innertube:test \
             :betterlyrics:test \
