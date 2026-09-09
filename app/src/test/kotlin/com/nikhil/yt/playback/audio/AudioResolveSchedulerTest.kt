@@ -57,6 +57,40 @@ class AudioResolveSchedulerTest {
         assertEquals(listOf("download-start", "playback", "download-start", "download-end"), events)
     }
 
+    @Test fun downloadRestartAfterPreemptionKeepsActualStartSpacing() = runTest {
+        val scheduler =
+            AudioResolveScheduler(
+                monotonicNowMs = { testScheduler.currentTime },
+                downloadStartSpacingMs = 4_000L,
+            )
+        val starts = mutableListOf<Long>()
+        val download = async {
+            scheduler.run("download", AudioResolvePriority.DOWNLOAD) {
+                starts += testScheduler.currentTime
+                delay(10_000)
+                42
+            }
+        }
+        runCurrent()
+        assertEquals(listOf(0L), starts)
+
+        advanceTimeBy(500)
+        val playback = async {
+            scheduler.run("current", AudioResolvePriority.PLAYBACK) { 7 }
+        }
+        runCurrent()
+        assertEquals(7, playback.await())
+
+        advanceTimeBy(3_499)
+        runCurrent()
+        assertEquals(listOf(0L), starts)
+
+        advanceTimeBy(1)
+        runCurrent()
+        assertEquals(listOf(0L, 4_000L), starts)
+        download.cancelAndJoin()
+    }
+
     @Test fun cancelledQueuedTrackNeverContactsTheTransport() = runTest {
         val scheduler = AudioResolveScheduler()
         val active = launch { scheduler.run("active", AudioResolvePriority.PLAYBACK) { delay(100) } }

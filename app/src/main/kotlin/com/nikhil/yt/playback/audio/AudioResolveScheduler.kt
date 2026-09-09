@@ -7,6 +7,7 @@ import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
 
 enum class AudioResolvePriority(internal val schedulingRank: Int) {
@@ -20,7 +21,10 @@ enum class AudioResolvePriority(internal val schedulingRank: Int) {
 }
 
 /** One extraction at a time. Foreground work can interrupt and requeue background work. */
-internal class AudioResolveScheduler {
+internal class AudioResolveScheduler(
+    private val monotonicNowMs: () -> Long = { System.nanoTime() / 1_000_000L },
+    private val downloadStartSpacingMs: Long = DOWNLOAD_START_SPACING_MS,
+) {
     private class Preempted : CancellationException("Foreground playback needs the resolver")
     private class Ticket(val mediaId: String, var priority: AudioResolvePriority) {
         val turn = CompletableDeferred<Unit>()
@@ -31,6 +35,7 @@ internal class AudioResolveScheduler {
     private val lock = Any()
     private val waiting = mutableListOf<Ticket>()
     private var active: Ticket? = null
+    private var lastDownloadStartMs: Long? = null
 
     fun promote(mediaId: String) = synchronized(lock) {
         (waiting + listOfNotNull(active)).filter {
@@ -53,7 +58,10 @@ internal class AudioResolveScheduler {
             try {
                 ticket.turn.await()
                 return coroutineScope {
-                    val work = async(start = CoroutineStart.LAZY) { block() }
+                    val work = async(start = CoroutineStart.LAZY) {
+                        awaitDownloadStartWindow(ticket.priority)
+                        block()
+                    }
                     synchronized(lock) {
                         ticket.worker = work
                         if (ticket.preempted) work.cancel(Preempted())
@@ -73,6 +81,25 @@ internal class AudioResolveScheduler {
         }
     }
 
+    private suspend fun awaitDownloadStartWindow(priority: AudioResolvePriority) {
+        if (priority != AudioResolvePriority.DOWNLOAD || downloadStartSpacingMs <= 0L) return
+
+        val waitMs =
+            synchronized(lock) {
+                lastDownloadStartMs
+                    ?.let { lastStart ->
+                        (lastStart + downloadStartSpacingMs - monotonicNowMs()).coerceAtLeast(0L)
+                    }
+                    ?: 0L
+            }
+
+        if (waitMs > 0L) delay(waitMs)
+        currentCoroutineContext().ensureActive()
+        synchronized(lock) {
+            lastDownloadStartMs = monotonicNowMs()
+        }
+    }
+
     private fun dispatch() {
         if (active != null) return
         val next = waiting.minByOrNull { it.priority.schedulingRank } ?: return
@@ -87,5 +114,9 @@ internal class AudioResolveScheduler {
             running.preempted = true
             running.worker?.cancel(Preempted())
         }
+    }
+
+    private companion object {
+        const val DOWNLOAD_START_SPACING_MS = 4_000L
     }
 }

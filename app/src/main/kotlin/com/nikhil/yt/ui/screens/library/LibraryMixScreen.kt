@@ -355,7 +355,7 @@ fun LibraryMixScreen(
     LaunchedEffect(Unit) {
          if (ytmSync) {
              withContext(Dispatchers.IO) {
-                 viewModel.syncAllLibrary()
+                 viewModel.syncAllLibrary(automatic = true)
              }
          }
     }

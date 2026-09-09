@@ -85,7 +85,6 @@ constructor(
     @Volatile private var cooldownUntilMs = 0L
     private val consecutiveThrottleSignals = AtomicInteger(0)
     private val downloadResolveMutex = Mutex()
-    @Volatile private var lastDownloadResolveStartMs = 0L
 
     private val mediaOkHttpClient: OkHttpClient by lazy {
         OkHttpClient
@@ -110,12 +109,9 @@ constructor(
                     maxOf(
                         CapsulePlaybackSafety.remainingBlockMs(nowMs),
                         (cooldownUntilMs - nowMs).coerceAtLeast(0L),
-                        (lastDownloadResolveStartMs + DOWNLOAD_RESOLVE_SPACING_MS - nowMs)
-                            .coerceAtLeast(0L),
                     )
 
                 if (waitMs <= 0L) {
-                    lastDownloadResolveStartMs = System.currentTimeMillis()
                     return@withLock
                 }
 
@@ -378,7 +374,6 @@ constructor(
         private const val MIN_PARALLEL_DOWNLOADS = 1
         private const val SHORT_COOLDOWN_MS = 2_500L
         private const val LONG_COOLDOWN_MS = 8_000L
-        private const val DOWNLOAD_RESOLVE_SPACING_MS = 4_000L
         private const val DOWNLOAD_WAIT_SLICE_MS = 2_000L
     }
 }

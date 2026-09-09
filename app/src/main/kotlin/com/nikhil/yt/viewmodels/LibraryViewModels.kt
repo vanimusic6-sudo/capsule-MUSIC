@@ -434,14 +434,14 @@ constructor(
     database: MusicDatabase,
     private val syncUtils: SyncUtils,
 ) : ViewModel() {
-    val syncAllLibrary = {
-         viewModelScope.launch(Dispatchers.IO) {
-             try {
-                 syncUtils.performFullSync()
-             } catch (e: Exception) {
-                 timber.log.Timber.e(e, "Error during manual sync")
-             }
-         }
+    fun syncAllLibrary(automatic: Boolean = false) {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                syncUtils.performFullSync(automatic = automatic)
+            } catch (e: Exception) {
+                timber.log.Timber.e(e, "Error during library sync")
+            }
+        }
     }
     val topValue =
         context.dataStore.data

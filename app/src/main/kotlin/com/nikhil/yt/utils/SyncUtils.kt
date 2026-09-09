@@ -82,7 +82,7 @@ class SyncUtils @Inject constructor(
         }
     }
     
-    suspend fun performFullSync() = withContext(Dispatchers.IO) {
+    suspend fun performFullSync(automatic: Boolean = false) = withContext(Dispatchers.IO) {
         if (!isSyncing.compareAndSet(false, true)) {
             Timber.d("Sync already in progress, skipping")
             return@withContext
@@ -100,16 +100,16 @@ class SyncUtils @Inject constructor(
                 }
                 
                 supervisorScope {
-                    syncLikedSongs()
-                    syncLibrarySongs()
+                    syncLikedSongs(automatic = automatic)
+                    syncLibrarySongs(automatic = automatic)
 
                     listOf(
-                        async { syncLikedAlbums() },
-                        async { syncArtistsSubscriptions() },
+                        async { syncLikedAlbums(automatic = automatic) },
+                        async { syncArtistsSubscriptions(automatic = automatic) },
                     ).awaitAll()
                     
-                    syncSavedPlaylists()
-                    syncAutoSyncPlaylists()
+                    syncSavedPlaylists(automatic = automatic)
+                    syncAutoSyncPlaylists(automatic = automatic)
                 }
             }
         } catch (e: Exception) {
