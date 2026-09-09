@@ -3877,7 +3877,7 @@ class MusicService :
         )
         playbackRecoveryCoordinator.clearRetryBudget()
         // An explicit selection resets per-track exclusions, not the global
-        // bot/rate-limit cooldown or the deterministic QuickJS session breaker.
+        // bot/rate-limit cooldown.
         CapsuleAudioEngine.clearStreamClientFailures()
         Timber.tag(CAPSULE_RESOLVE_TAG).i(
             "Audio client selected profile=%s; cleared cached stream URLs",

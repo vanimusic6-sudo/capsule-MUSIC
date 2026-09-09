@@ -26,6 +26,7 @@ import com.metrolist.innertubex.extraction.PoTokenResult
 import com.metrolist.innertubex.extraction.StreamResolveException
 import com.metrolist.innertubex.extraction.TokenProvider
 import com.metrolist.innertubex.extraction.TokenProviderCapabilities
+import com.metrolist.innertubex.extraction.YtConfigParser
 import com.metrolist.innertubex.extraction.YtConfigParserImpl
 import com.metrolist.innertubex.extraction.generateClientPlaybackNonce
 import com.metrolist.innertubex.extraction.strategy.PoTokenProviderKind
@@ -67,7 +68,7 @@ import kotlin.time.Clock
  *
  * Important policy:
  * - visionOS is the default; explicit WEB choices use their own profiles;
- * - a deterministic EJS failure retires cipher profiles for this session;
+ * - EJS is best-effort: library Faraday/parser fallbacks remain available after QuickJS failures;
  * - only one extraction runs at a time, so swipe bursts cannot create a bank
  *   of simultaneous player requests;
  * - parser/source failures are remembered per song for five minutes, so a bad
@@ -82,7 +83,6 @@ object CapsuleInnerTubeXPlayer {
     private const val ENGINE_RESOLVE_TIMEOUT_MS = 18_000L
     private const val DEFAULT_STREAM_TTL_SECONDS = 5 * 60
     private const val MAX_SABR_ROLLOVERS = 1
-    private const val MAX_CIPHER_FAILURE_DETAIL_LENGTH = 180
 
     private val bundleMutex = Mutex()
     private val resolveMutex = Mutex()
@@ -91,16 +91,6 @@ object CapsuleInnerTubeXPlayer {
     fun prioritizePlayback(mediaId: String) = scheduler.promote(mediaId)
     private val prewarmScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val streamClientFailures = ConcurrentHashMap<String, FailedStreamClients>()
-
-    /**
-     * InnerTubeX deliberately converts QuickJsException into an empty cipher
-     * result, so it never reaches the Result failure returned to this class.
-     * Observe that library event and retire cipher profiles for the rest of
-     * this process session. Network changes must not clear a deterministic
-     * player-JS failure.
-     */
-    @Volatile
-    private var cipherSessionFailure: String? = null
 
     @Volatile
     private var currentBundle: ExtractionBundle? = null
@@ -220,26 +210,10 @@ object CapsuleInnerTubeXPlayer {
                     resolveMutex.withLock {
                         withTimeout(ENGINE_RESOLVE_TIMEOUT_MS) {
                             CapsulePlaybackSafety.blockedExceptionOrNull()?.let { throw it }
-                            // Check after waiting: an earlier queued web resolve may
-                            // have opened the breaker while this request was waiting.
-                            checkCipherSession(playbackClientOverrideId)
+                            // Do not await extractor prewarm on the playback critical path.
+                            // InnerTubeX coordinates config/cipher state internally and can resolve
+                            // on demand while the optional app-level warmup runs independently.
                             val extractionBundle = bundle()
-                            if (playbackClientOverrideId != "VISIONOS") {
-                                val waitStartedAt = System.nanoTime()
-                                val preparation = extractionBundle.prewarm.start()
-                                val reused = preparation.isCompleted
-                                val warmed = preparation.await()
-                                Timber.tag(TAG).i(
-                                    "Web prewarm awaited id=%s priority=%s selectedProfile=%s reused=%s ok=%s waitedMs=%d",
-                                    videoId,
-                                    priority,
-                                    playbackClientOverrideId,
-                                    reused,
-                                    warmed.isSuccess,
-                                    (System.nanoTime() - waitStartedAt) / 1_000_000L,
-                                )
-                                checkCipherSession(playbackClientOverrideId)
-                            }
                             Timber.tag(TAG).i(
                                 "Resolving audio id=%s priority=%s selectedProfile=%s",
                                 videoId,
@@ -295,14 +269,6 @@ object CapsuleInnerTubeXPlayer {
         } catch (error: Exception) {
             Result.failure(error)
         }
-
-    private fun checkCipherSession(clientId: String) {
-        cipherSessionFailure?.takeIf { clientId != "VISIONOS" }?.let { failure ->
-            throw IllegalStateException(
-                "Cipher playback is disabled for this session after EJS failure: $failure",
-            )
-        }
-    }
 
     private suspend fun extractDirectStream(
         extractionBundle: ExtractionBundle,
@@ -439,7 +405,9 @@ object CapsuleInnerTubeXPlayer {
             val cipherService = YouTubeCipherService(httpClient, remoteStore, logger)
             val extractor =
                 InnerTubeExtractor(
-                    configParser = YtConfigParserImpl(httpClient, innerTube, remoteStore, logger),
+                    configParser =
+                        YtConfigParserImpl(httpClient, innerTube, remoteStore, logger)
+                            .withEmbeddedConfigFallback(),
                     cipherService = cipherService,
                     innerTube = innerTube,
                     fallbackStrategy = CapsuleAudioClientStrategy,
@@ -507,31 +475,39 @@ object CapsuleInnerTubeXPlayer {
 
     private val logger =
         InnerTubeLogger { event ->
-            val cipherEvent = event.tag == "EjsChallengeSolver" && "EJS solve failed" in event.message
-            if (!GlobalLog.isEnabled && !cipherEvent) return@InnerTubeLogger
+            if (!GlobalLog.isEnabled) return@InnerTubeLogger
             val details =
                 event.details.entries.joinToString(prefix = " [", postfix = "]") {
                     "${it.key}=${it.value}"
                 }
             val message = event.message + details.takeUnless { event.details.isEmpty() }.orEmpty()
-            if (
-                event.tag == "EjsChallengeSolver" &&
-                "EJS solve failed" in message &&
-                "QuickJsException" in message
-            ) {
-                if (cipherSessionFailure == null) {
-                    cipherSessionFailure = message.take(MAX_CIPHER_FAILURE_DETAIL_LENGTH)
-                    Timber.tag(TAG).e(
-                        "Cipher session breaker opened after deterministic QuickJS failure",
-                    )
-                }
-            }
             when (event.level) {
                 InnerTubeLogLevel.DEBUG -> Timber.tag(event.tag).d(message)
                 InnerTubeLogLevel.INFO -> Timber.tag(event.tag).i(message)
                 InnerTubeLogLevel.WARN -> Timber.tag(event.tag).w(message)
                 InnerTubeLogLevel.ERROR -> Timber.tag(event.tag).e(message)
             }
+        }
+
+    /**
+     * Match Metrolist's recovery path: a failed regular watch-page config is
+     * retried through the anonymous embedded config instead of poisoning WEB
+     * playback. The embedded request intentionally never carries login cookies.
+     */
+    internal fun YtConfigParser.withEmbeddedConfigFallback(): YtConfigParser =
+        object : YtConfigParser by this {
+            override suspend fun fetchConfig(
+                videoId: String,
+                useLoginCookies: Boolean,
+            ) =
+                try {
+                    this@withEmbeddedConfigFallback.fetchConfig(videoId, useLoginCookies)
+                } catch (_: IllegalStateException) {
+                    this@withEmbeddedConfigFallback.fetchEmbeddedConfig(
+                        videoId,
+                        useLoginCookies = false,
+                    )
+                }
         }
 
     private fun AudioQuality.toInnerTubeX(
