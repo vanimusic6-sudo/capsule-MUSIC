@@ -11,6 +11,9 @@ package com.nikhil.yt.ui.screens.settings
 import android.content.Intent
 import android.text.format.DateFormat
 import android.util.Log
+import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateFloatAsState
@@ -409,6 +412,28 @@ private fun LogViewerPanel() {
     val coroutineScope = rememberCoroutineScope()
     val context = LocalContext.current
     val clipboard = LocalClipboardManager.current
+    var pendingLogExportText by remember { mutableStateOf("") }
+    val saveLogsLauncher =
+        rememberLauncherForActivityResult(
+            contract = ActivityResultContracts.CreateDocument("text/plain")
+        ) { uri ->
+            if (uri != null) {
+                val saved =
+                    runCatching {
+                        context.contentResolver.openOutputStream(uri)
+                            ?.bufferedWriter(Charsets.UTF_8)
+                            ?.use { writer -> writer.write(pendingLogExportText) }
+                            ?: error("Unable to open selected log export destination")
+                    }.isSuccess
+                Toast.makeText(
+                    context,
+                    context.getString(
+                        if (saved) R.string.logs_saved_to_file else R.string.logs_save_failed
+                    ),
+                    Toast.LENGTH_SHORT
+                ).show()
+            }
+        }
 
     /*
      * 0 = Discord, 1 = YouTube core, 2 = everything.
@@ -679,6 +704,34 @@ private fun LogViewerPanel() {
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(stringResource(R.string.share))
                 }
+            }
+
+            FilledTonalButton(
+                onClick = {
+                    if (filtered.isEmpty()) return@FilledTonalButton
+                    val exportedAt = System.currentTimeMillis()
+                    pendingLogExportText =
+                        buildString {
+                            appendLine("=== Capsule Debug Logs ===")
+                            appendLine(
+                                "Exported: ${DateFormat.format("yyyy-MM-dd HH:mm:ss", exportedAt)}"
+                            )
+                            appendLine(
+                                "Filter: ${when (filterMode) { 0 -> "Discord"; 1 -> "YouTube core"; else -> "All" }}"
+                            )
+                            appendLine("Count: ${filtered.size}")
+                            appendLine("==========================")
+                            appendLine()
+                            filtered.forEach { entry -> appendLine(GlobalLog.format(entry)) }
+                        }
+                    val fileStamp =
+                        DateFormat.format("yyyy-MM-dd_HH-mm-ss", exportedAt).toString()
+                    saveLogsLauncher.launch("capsule-logs-$fileStamp.txt")
+                },
+                enabled = filtered.isNotEmpty(),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(stringResource(R.string.save_logs_to_file))
             }
         }
     }
