@@ -8,13 +8,16 @@
 
 package com.nikhil.yt.extensions
 
+import android.os.SystemClock
 import androidx.media3.common.C
 import androidx.media3.common.Player
 import androidx.media3.common.TrackSelectionParameters
 import androidx.media3.common.Tracks
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.analytics.AnalyticsListener
 import androidx.media3.exoplayer.audio.DefaultAudioOffloadSupportProvider
 import com.nikhil.yt.App
+import com.nikhil.yt.utils.GlobalLog
 import timber.log.Timber
 import java.lang.ref.WeakReference
 import java.util.WeakHashMap
@@ -22,6 +25,7 @@ import java.util.WeakHashMap
 private data class CapsuleOffloadDiagnostics(
     val audioOffloadListener: ExoPlayer.AudioOffloadListener,
     val playerListener: Player.Listener,
+    val analyticsListener: AnalyticsListener,
 )
 
 private val capsuleOffloadDiagnostics =
@@ -29,6 +33,24 @@ private val capsuleOffloadDiagnostics =
 
 private val capsuleOffloadSupportProvider by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
     DefaultAudioOffloadSupportProvider(App.instance.applicationContext)
+}
+
+private fun ExoPlayer.bufferedAheadMs(): Long =
+    (bufferedPosition - currentPosition).coerceAtLeast(0L)
+
+private fun ExoPlayer.logPlaybackHealth(prefix: String) {
+    if (!GlobalLog.isEnabled) return
+    Timber.tag("PlaybackHealth").w(
+        "%s id=%s posMs=%d bufferedAheadMs=%d totalBufferedMs=%d isLoading=%s playWhenReady=%s state=%d",
+        prefix,
+        currentMediaItem?.mediaId,
+        currentPosition,
+        bufferedAheadMs(),
+        totalBufferedDuration,
+        isLoading,
+        playWhenReady,
+        playbackState,
+    )
 }
 
 private fun ExoPlayer.logSelectedAudioOffloadCapability(trigger: String) {
@@ -139,10 +161,77 @@ private fun ExoPlayer.ensureCapsuleOffloadDiagnostics(): Boolean {
                     )
                 }
             }
+
+        var bufferingStartedAtElapsedMs: Long? = null
         val playerListener =
             object : Player.Listener {
                 override fun onTracksChanged(tracks: Tracks) {
                     playerReference.get()?.logSelectedAudioOffloadCapability("tracksChanged")
+                }
+
+                override fun onPlaybackStateChanged(playbackState: Int) {
+                    if (!GlobalLog.isEnabled) return
+                    val player = playerReference.get() ?: return
+                    when (playbackState) {
+                        Player.STATE_BUFFERING -> {
+                            bufferingStartedAtElapsedMs = SystemClock.elapsedRealtime()
+                            player.logPlaybackHealth("buffering-start")
+                        }
+
+                        Player.STATE_READY -> {
+                            val startedAt = bufferingStartedAtElapsedMs ?: return
+                            bufferingStartedAtElapsedMs = null
+                            val durationMs =
+                                (SystemClock.elapsedRealtime() - startedAt).coerceAtLeast(0L)
+                            player.logPlaybackHealth("buffering-end durationMs=$durationMs")
+                        }
+
+                        else -> bufferingStartedAtElapsedMs = null
+                    }
+                }
+            }
+
+        val analyticsListener =
+            object : AnalyticsListener {
+                override fun onAudioUnderrun(
+                    eventTime: AnalyticsListener.EventTime,
+                    bufferSize: Int,
+                    bufferSizeMs: Long,
+                    elapsedSinceLastFeedMs: Long,
+                ) {
+                    if (!GlobalLog.isEnabled) return
+                    val player = playerReference.get() ?: return
+                    val outputBufferMs =
+                        if (bufferSizeMs == C.TIME_UNSET) "unset" else bufferSizeMs.toString()
+                    Timber.tag("PlaybackHealth").e(
+                        "AUDIO UNDERRUN id=%s posMs=%d bufferedAheadMs=%d totalBufferedMs=%d " +
+                            "isLoading=%s bufferBytes=%d outputBufferMs=%s elapsedSinceLastFeedMs=%d",
+                        player.currentMediaItem?.mediaId,
+                        player.currentPosition,
+                        player.bufferedAheadMs(),
+                        player.totalBufferedDuration,
+                        player.isLoading,
+                        bufferSize,
+                        outputBufferMs,
+                        elapsedSinceLastFeedMs,
+                    )
+                }
+
+                override fun onAudioSinkError(
+                    eventTime: AnalyticsListener.EventTime,
+                    audioSinkError: Exception,
+                ) {
+                    if (!GlobalLog.isEnabled) return
+                    val player = playerReference.get()
+                    Timber.tag("PlaybackHealth").e(
+                        audioSinkError,
+                        "audio-sink-error id=%s posMs=%d bufferedAheadMs=%d totalBufferedMs=%d isLoading=%s",
+                        player?.currentMediaItem?.mediaId,
+                        player?.currentPosition ?: C.TIME_UNSET,
+                        player?.bufferedAheadMs() ?: C.TIME_UNSET,
+                        player?.totalBufferedDuration ?: C.TIME_UNSET,
+                        player?.isLoading ?: false,
+                    )
                 }
             }
 
@@ -150,9 +239,11 @@ private fun ExoPlayer.ensureCapsuleOffloadDiagnostics(): Boolean {
             CapsuleOffloadDiagnostics(
                 audioOffloadListener = audioOffloadListener,
                 playerListener = playerListener,
+                analyticsListener = analyticsListener,
             )
         addAudioOffloadListener(audioOffloadListener)
         addListener(playerListener)
+        addAnalyticsListener(analyticsListener)
         return true
     }
 }
