@@ -112,7 +112,12 @@ object LrcLib {
                 }
             }
             else -> {
-                tracks.sortedBy { abs(it.duration.toInt() - duration) }
+                tracks.sortedBy { track ->
+                    track.duration
+                        ?.takeIf { it.isFinite() }
+                        ?.let { value -> abs(value.toInt() - duration) }
+                        ?: Int.MAX_VALUE
+                }
             }
         }
 
@@ -123,11 +128,15 @@ object LrcLib {
                     count++
                     track.syncedLyrics.let(callback)
                 } else {
-                    if (track.syncedLyrics != null && abs(track.duration.toInt() - duration) <= 2) {
+                    val durationDelta =
+                        track.duration
+                            ?.takeIf { it.isFinite() }
+                            ?.let { value -> abs(value.toInt() - duration) }
+                    if (track.syncedLyrics != null && durationDelta != null && durationDelta <= 2) {
                         count++
                         track.syncedLyrics.let(callback)
                     }
-                    if (track.plainLyrics != null && abs(track.duration.toInt() - duration) <= 2 && plain == 0) {
+                    if (track.plainLyrics != null && durationDelta != null && durationDelta <= 2 && plain == 0) {
                         count++
                         plain++
                         track.plainLyrics.let(callback)

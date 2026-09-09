@@ -25,7 +25,17 @@ object LrcLibLyricsProvider : LyricsProvider {
         artist: String,
         album: String?,
         duration: Int,
-    ): Result<String> = LrcLib.getLyrics(title, artist, duration)
+    ): Result<String> =
+        LrcLib.getLyrics(title, artist, duration).fold(
+            onSuccess = { Result.success(it) },
+            onFailure = { failure ->
+                if (failure is IllegalStateException && failure.message == "Lyrics unavailable") {
+                    Result.failure(com.nikhil.yt.betterlyrics.LyricsUnavailableException())
+                } else {
+                    Result.failure(failure)
+                }
+            },
+        )
 
     override suspend fun getAllLyrics(
         id: String,

@@ -305,6 +305,20 @@ internal fun shouldEnableAudioOffload(
 internal fun AudioQuality.normalizedPlaybackQuality(): AudioQuality =
     if (this == AudioQuality.HIGHEST) AudioQuality.HIGH else this
 
+/**
+ * A deterministic extractor miss is recoverable once with a clean same-policy
+ * resolve. Keep this classification narrow: generic REMOTE_ERROR must not turn
+ * into an automatic request loop.
+ */
+internal fun PlaybackException.isNoPlayableStreamFailure(): Boolean =
+    generateSequence(this as Throwable?) { it?.cause }
+        .take(8)
+        .any { throwable ->
+            val message = throwable?.message.orEmpty()
+            message.contains("No playable stream found for this track", ignoreCase = true) ||
+                message.contains("InnerTubeX returned no playable AUDIO stream", ignoreCase = true)
+        }
+
 @OptIn(ExperimentalCoroutinesApi::class, FlowPreview::class)
 @AndroidEntryPoint
 class MusicService :
@@ -570,6 +584,10 @@ class MusicService :
                 player.currentMediaItem?.mediaId == mediaId &&
                     player.playbackState == Player.STATE_READY &&
                     player.isPlaying
+            },
+            recoveryProgressProvider = { mediaId ->
+                player.currentMediaItem?.mediaId == mediaId &&
+                    player.playbackState == Player.STATE_READY
             },
             pausePlayback = { player.pause() },
             preparePlayback = { player.prepare() },
@@ -3053,6 +3071,38 @@ class MusicService :
             return
         }
 
+        if (currentMediaId != null && error.isNoPlayableStreamFailure()) {
+            val claimed = playbackRecoveryCoordinator.claimNoPlayableFreshResolve(currentMediaId)
+            val retryDelay = if (claimed) playbackRecoveryCoordinator.nextRetryDelayMs(currentMediaId) else null
+            if (retryDelay != null && CapsuleAudioEngine.playbackBlockedExceptionOrNull() == null) {
+                // Clear only song-local extraction state. Keep the user's selected
+                // client/profile and every global anti-bot/rate-limit guard intact.
+                CapsuleAudioEngine.clearTrackClientFailures(currentMediaId)
+                CapsuleAudioEngine.invalidateCachedStreamUrls(currentMediaId)
+                audioResolveCoordinator.cancelMedia(currentMediaId) {
+                    playbackUrlCache.remove(currentMediaId)
+                }
+                Timber.tag(CAPSULE_RESOLVE_TAG).w(
+                    "No playable stream id=%s; scheduling one clean same-policy resolve",
+                    currentMediaId,
+                )
+                scheduleStreamRefreshRetry(
+                    mediaId = currentMediaId,
+                    refreshCipherConfig = false,
+                    retryReason = "no playable stream",
+                    retryDelayMs = retryDelay,
+                )
+                return
+            }
+
+            Timber.tag(CAPSULE_RESOLVE_TAG).w(
+                "No playable stream id=%s; bounded fresh-resolve retry unavailable",
+                currentMediaId,
+            )
+            handleTerminalPlaybackError()
+            return
+        }
+
         if (!isNetworkConnected.value || error.isTransientNetworkFailure()) {
             playbackRecoveryCoordinator.recoverFromNetworkError()
             return
@@ -3128,8 +3178,14 @@ class MusicService :
 
 
     private fun createCacheDataSource(): DataSource.Factory {
-        val audioHttpClient = mediaOkHttpClient.newBuilder().retryOnConnectionFailure(false)
-            .addInterceptor(CapsuleAudioRequestInterceptor(guardStreams = true)).build()
+        val audioHttpClient =
+            mediaOkHttpClient
+                .newBuilder()
+                // Safe transport-level reconnect for an already-resolved CDN GET.
+                // No player/InnerTube request or client rotation happens here.
+                .retryOnConnectionFailure(true)
+                .addInterceptor(CapsuleAudioRequestInterceptor(guardStreams = true))
+                .build()
         val streaming = CacheDataSource.Factory().setCache(playerCache)
             .setUpstreamDataSourceFactory(DefaultDataSource.Factory(this, OkHttpDataSource.Factory(audioHttpClient)))
             .setFlags(FLAG_IGNORE_CACHE_ON_ERROR)
