@@ -66,6 +66,8 @@ jobs:
           SERVICE="app/src/main/kotlin/com/nikhil/yt/playback/MusicService.kt"
           TEST="app/src/test/kotlin/com/nikhil/yt/playback/audio/CapsuleInnerTubeXPlayerTest.kt"
 
+          # Make the newly created regression test visible to git diff without staging its contents.
+          git add -N "$TEST"
           test "$(git diff --name-only | wc -l | tr -d ' ')" = "3"
           for file in "$PLAYER" "$SERVICE" "$TEST"; do
             git diff --name-only | grep -Fxq "$file"
