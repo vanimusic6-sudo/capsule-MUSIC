@@ -1,0 +1,102 @@
+name: Fix WEB startup prewarm
+
+on:
+  push:
+    branches:
+      - cleanup/capsule-player-only
+    paths:
+      - .github/workflows/fix-web-startup-prewarm.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout triggering revision
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+
+      - name: Remove eager WEB prewarm and ignore normal cancellation errors
+        shell: python
+        run: |
+          from pathlib import Path
+
+          app = Path("app/src/main/kotlin/com/nikhil/yt/App.kt")
+          text = app.read_text(encoding="utf-8")
+          old = '''        // Startup WEB prewarm is useful only for profiles that need the
+        // extractor/cipher stack. VisionOS stays completely cold and direct.
+        applicationScope.launch(Dispatchers.IO) {
+            try {
+                val prefs = dataStore.data.first()
+                val startupPolicy =
+                    prefs[AudioStreamPolicyKey]
+                        .toEnum(AudioStreamPolicy.VISIONOS)
+                        .normalizedForPlayback()
+                if (startupPolicy != AudioStreamPolicy.VISIONOS) {
+                    val hasVisitorData =
+                        withTimeoutOrNull(20_000L) {
+                            YouTube.authStates.first { state ->
+                                !state.visitorData.isNullOrBlank()
+                            }
+                        } != null
+                    if (hasVisitorData) {
+                        CapsuleInnerTubeXPlayer.prewarm(
+                            prewarmWebPoToken = startupPolicy == AudioStreamPolicy.WEB,
+                        )
+                    }
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                reportRecoverableException("App", "startup audio prewarm", error)
+            }
+        }
+
+'''
+          if text.count(old) != 1:
+              raise SystemExit(f"expected one eager WEB prewarm block, found {text.count(old)}")
+          app.write_text(text.replace(old, ""), encoding="utf-8")
+
+          utils = Path("app/src/main/kotlin/com/nikhil/yt/utils/Utils.kt")
+          text = utils.read_text(encoding="utf-8")
+          old = '''fun reportException(throwable: Throwable) {
+    /* Honors the runtime debug-logging switch instead of always writing stderr. */
+    Timber.e(throwable)
+}
+'''
+          new = '''fun reportException(throwable: Throwable) {
+    // Coroutine cancellation is normal control flow (track switch, stale prefetch, shutdown),
+    // not an application error. Do not pollute diagnostics with an E/ stack trace for it.
+    if (throwable is CancellationException) return
+    /* Honors the runtime debug-logging switch instead of always writing stderr. */
+    Timber.e(throwable)
+}
+'''
+          if text.count(old) != 1:
+              raise SystemExit(f"expected reportException block once, found {text.count(old)}")
+          utils.write_text(text.replace(old, new), encoding="utf-8")
+
+      - name: Verify production patch
+        run: |
+          ! grep -q 'startup audio prewarm' app/src/main/kotlin/com/nikhil/yt/App.kt
+          ! grep -q 'CapsuleInnerTubeXPlayer.prewarm' app/src/main/kotlin/com/nikhil/yt/App.kt
+          grep -q 'if (throwable is CancellationException) return' app/src/main/kotlin/com/nikhil/yt/utils/Utils.kt
+          grep -q 'CapsuleInnerTubeXPlayer' app/src/main/kotlin/com/nikhil/yt/playback/audio/CapsuleInnerTubeXPlayer.kt
+
+      - name: Compile both debug variants
+        run: ./gradlew :app:compileUniversalDebugKotlin :app:compileArmeabiDebugKotlin --stacktrace
+
+      - name: Commit production changes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add \
+            app/src/main/kotlin/com/nikhil/yt/App.kt \
+            app/src/main/kotlin/com/nikhil/yt/utils/Utils.kt
+          git diff --cached --check
+          git commit -m "Remove eager WEB auth prewarm from playback startup"
+          git push origin HEAD:cleanup/capsule-player-only
