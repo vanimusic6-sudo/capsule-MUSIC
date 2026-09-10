@@ -29,56 +29,29 @@ jobs:
         run: |
           python3 - <<'PY'
           from pathlib import Path
+          import re
 
           path = Path('app/src/main/kotlin/com/nikhil/yt/ui/screens/settings/PlayerSettings.kt')
           text = path.read_text(encoding='utf-8')
-          old = '''    if (showAudioClientPriorityDialog) {
-              AudioClientPriorityDialog(
-                  currentOrder = audioClientOrder,
-                  resetOrder = AudioClientOrder.legacyOrder(audioStreamPolicy),
-                  onDismiss = { showAudioClientPriorityDialog = false },
-                  onSave = { newOrder ->
-                      onAudioClientOrderChange(AudioClientOrder.encode(newOrder))
-                      showAudioClientPriorityDialog = false
-                  },
+          pattern = re.compile(
+              r'(?m)^(?P<indent>\s*)onSave = \{ newOrder ->\n'
+              r'(?P=indent)    onAudioClientOrderChange\(AudioClientOrder\.encode\(newOrder\)\)\n'
+              r'(?P=indent)    showAudioClientPriorityDialog = false\n'
+              r'(?P=indent)\},$'
+          )
+
+          def replace(match):
+              indent = match.group('indent')
+              return (
+                  indent + 'onOrderChange = { newOrder ->\n' +
+                  indent + '    onAudioClientOrderChange(AudioClientOrder.encode(newOrder))\n' +
+                  indent + '},'
               )
-          }
-          '''
-          # Source indentation is conventional 4/8 spaces; keep a second exact form so
-          # this workflow fails rather than silently patching an unexpected block.
-          old = old.replace('              AudioClientPriorityDialog', '        AudioClientPriorityDialog') \
-                   .replace('                  currentOrder', '            currentOrder') \
-                   .replace('                  resetOrder', '            resetOrder') \
-                   .replace('                  onDismiss', '            onDismiss') \
-                   .replace('                  onSave', '            onSave') \
-                   .replace('                      onAudio', '                onAudio') \
-                   .replace('                      showAudio', '                showAudio') \
-                   .replace('                  },', '            },') \
-                   .replace('              )', '        )') \
-                   .replace('          }', '    }')
-          new = '''    if (showAudioClientPriorityDialog) {
-              AudioClientPriorityDialog(
-                  currentOrder = audioClientOrder,
-                  resetOrder = AudioClientOrder.legacyOrder(audioStreamPolicy),
-                  onDismiss = { showAudioClientPriorityDialog = false },
-                  onOrderChange = { newOrder ->
-                      onAudioClientOrderChange(AudioClientOrder.encode(newOrder))
-                  },
-              )
-          }
-          '''
-          new = new.replace('              AudioClientPriorityDialog', '        AudioClientPriorityDialog') \
-                   .replace('                  currentOrder', '            currentOrder') \
-                   .replace('                  resetOrder', '            resetOrder') \
-                   .replace('                  onDismiss', '            onDismiss') \
-                   .replace('                  onOrderChange', '            onOrderChange') \
-                   .replace('                      onAudio', '                onAudio') \
-                   .replace('                  },', '            },') \
-                   .replace('              )', '        )') \
-                   .replace('          }', '    }')
-          if text.count(old) != 1:
-              raise SystemExit('unexpected AudioClientPriorityDialog call site; refusing to patch')
-          path.write_text(text.replace(old, new), encoding='utf-8')
+
+          patched, count = pattern.subn(replace, text)
+          if count != 1:
+              raise SystemExit(f'expected one priority save block, found {count}')
+          path.write_text(patched, encoding='utf-8')
           PY
 
       - name: Verify source diff
