@@ -2,8 +2,10 @@ name: Apply adaptive resolve gate
 
 on:
   push:
-    branches: [cleanup/capsule-player-only]
-    paths: [.github/workflows/apply-adaptive-resolve-gate.yml]
+    branches:
+      - cleanup/capsule-player-only
+    paths:
+      - .github/workflows/apply-adaptive-resolve-gate.yml
 
 permissions:
   contents: write
@@ -19,7 +21,7 @@ jobs:
 
       - name: Patch MusicService
         run: |
-          python3 <<'PY'
+          python3 - <<'PY'
           from pathlib import Path
           path = Path('app/src/main/kotlin/com/nikhil/yt/playback/MusicService.kt')
           text = path.read_text(encoding='utf-8')
@@ -29,23 +31,25 @@ jobs:
           old = text[start:end]
           if 'mediaId in upcomingAudioIds()' not in old or old.count('audioResolveStability.awaitStable') != 1:
               raise SystemExit('unexpected audio resolve gate block')
-          new = '''            audioResolveStability.awaitStable(
-                requiredDelayMs = {
-                    withContext(Dispatchers.Main.immediate) {
-                        if (mediaId == player.currentMediaItem?.mediaId) {
-                            PLAYBACK_RESOLVE_STABILITY_DELAY_MS
-                        } else {
-                            PREFETCH_RESOLVE_STABILITY_DELAY_MS
-                        }
-                    }
-                },
-            ) {
-                withContext(Dispatchers.Main.immediate) {
-                    mediaId == player.currentMediaItem?.mediaId ||
-                        mediaId in upcomingAudioIds()
-                }
-            }
-'''
+          lines = [
+              '            audioResolveStability.awaitStable(',
+              '                requiredDelayMs = {',
+              '                    withContext(Dispatchers.Main.immediate) {',
+              '                        if (mediaId == player.currentMediaItem?.mediaId) {',
+              '                            PLAYBACK_RESOLVE_STABILITY_DELAY_MS',
+              '                        } else {',
+              '                            PREFETCH_RESOLVE_STABILITY_DELAY_MS',
+              '                        }',
+              '                    }',
+              '                },',
+              '            ) {',
+              '                withContext(Dispatchers.Main.immediate) {',
+              '                    mediaId == player.currentMediaItem?.mediaId ||',
+              '                        mediaId in upcomingAudioIds()',
+              '                }',
+              '            }',
+          ]
+          new = '\n'.join(lines) + '\n'
           path.write_text(text[:start] + new + text[end:], encoding='utf-8')
           PY
 
@@ -63,9 +67,9 @@ jobs:
 
       - name: Commit production wiring
         run: |
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add app/src/main/kotlin/com/nikhil/yt/playback/MusicService.kt
           git diff --cached --check
-          git commit -m 'Shorten debounce for current audio playback'
+          git commit -m "Shorten debounce for current audio playback"
           git push origin HEAD:cleanup/capsule-player-only
