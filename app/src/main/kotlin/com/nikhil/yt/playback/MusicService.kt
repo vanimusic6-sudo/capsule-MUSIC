@@ -4131,6 +4131,9 @@ class MusicService :
                 dataSourceFactory,
                 extractorsFactory,
             )
+        val loadErrorHandlingPolicy = CapsuleLoadErrorHandlingPolicy()
+        delegate.setLoadErrorHandlingPolicy(loadErrorHandlingPolicy)
+        progressive.setLoadErrorHandlingPolicy(loadErrorHandlingPolicy)
 
         return object : MediaSource.Factory {
             override fun createMediaSource(mediaItem: MediaItem): MediaSource {
