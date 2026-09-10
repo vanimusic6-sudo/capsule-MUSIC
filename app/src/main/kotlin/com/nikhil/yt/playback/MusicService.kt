@@ -4201,7 +4201,7 @@ class MusicService :
         )
     }
 
-    private fun createRenderersFactory() = DefaultRenderersFactory(this)
+    private fun createRenderersFactory() = CapsuleAudioRenderersFactory(this)
 
     override fun onPlaybackStatsReady(
         eventTime: AnalyticsListener.EventTime,
