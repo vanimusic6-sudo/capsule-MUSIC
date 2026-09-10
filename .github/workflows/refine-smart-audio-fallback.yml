@@ -31,164 +31,153 @@ jobs:
           python3 <<'PY'
           from pathlib import Path
 
+          def replace_block(text, start_marker, end_marker, replacement):
+              start = text.index(start_marker)
+              end = text.index(end_marker, start)
+              return text[:start] + replacement + text[end:]
+
           policy = Path('app/src/main/kotlin/com/nikhil/yt/playback/audio/CapsuleAudioFallbackPolicy.kt')
           text = policy.read_text(encoding='utf-8')
-          old = '    private const val MAX_FOREGROUND_ATTEMPTS = 4\n'
-          new = '    private const val MAX_FOREGROUND_ATTEMPTS = 5\n'
-          if text.count(old) != 1:
+          budget = '    private const val MAX_FOREGROUND_ATTEMPTS = 4\n'
+          if text.count(budget) != 1:
               raise SystemExit('foreground attempt budget anchor not found exactly once')
-          text = text.replace(old, new, 1)
-
-          anchor = '''    /** After a bot-check use at most one fallback and prefer another client family. */
-          '''
-          addition = '''    /**
-           * A bot challenge belongs to a client identity family, not just one version/profile.
-           * Do not immediately retry a sibling identity that is likely to share the same signal.
-           */
-          fun botQuarantineProfiles(profileId: String): Set<String> {
-              val normalized = normalize(profileId)
-              if (normalized.isBlank()) return emptySet()
-              return when (familyOf(normalized)) {
-                  "VISION" -> setOf(VISIONOS, VISIONOS_0_1)
-                  "WEB_MUSIC" -> setOf(WEB_REMIX, WEB_CREATOR)
-                  "WEB_EMBEDDED" -> setOf(WEB_EMBEDDED)
-                  "TV" -> setOf(TVHTML5_SIMPLY)
-                  else -> setOf(normalized)
-              }
-          }
-
-              /** After a bot-check use at most one fallback and prefer another client family. */
-          '''
+          text = text.replace(budget, '    private const val MAX_FOREGROUND_ATTEMPTS = 5\n', 1)
+          anchor = '    /** After a bot-check use at most one fallback and prefer another client family. */\n'
           if text.count(anchor) != 1:
               raise SystemExit('bot quarantine insertion anchor not found exactly once')
-          text = text.replace(anchor, addition, 1)
+          addition = '\n'.join([
+              '    /**',
+              '     * A bot challenge belongs to a client identity family, not just one version/profile.',
+              '     * Do not immediately retry a sibling identity that is likely to share the same signal.',
+              '     */',
+              '    fun botQuarantineProfiles(profileId: String): Set<String> {',
+              '        val normalized = normalize(profileId)',
+              '        if (normalized.isBlank()) return emptySet()',
+              '        return when (familyOf(normalized)) {',
+              '            "VISION" -> setOf(VISIONOS, VISIONOS_0_1)',
+              '            "WEB_MUSIC" -> setOf(WEB_REMIX, WEB_CREATOR)',
+              '            "WEB_EMBEDDED" -> setOf(WEB_EMBEDDED)',
+              '            "TV" -> setOf(TVHTML5_SIMPLY)',
+              '            else -> setOf(normalized)',
+              '        }',
+              '    }',
+              '',
+          ])
+          text = text.replace(anchor, addition + anchor, 1)
           policy.write_text(text, encoding='utf-8')
 
           safety = Path('app/src/main/kotlin/com/nikhil/yt/playback/audio/CapsulePlaybackSafety.kt')
           text = safety.read_text(encoding='utf-8')
-          old = '''    fun markProfileBotCheck(
-              profileId: String,
-              nowMs: Long = System.currentTimeMillis(),
-          ) {
-              val normalized = normalizeProfileId(profileId)
-              if (normalized.isBlank()) return
-              botProfileQuarantineUntilMs[normalized] = nowMs + PROFILE_BOT_QUARANTINE_MS
-              Timber.tag(TAG).w(
-                  "AUDIO profile quarantined after bot-check profile=%s durationMs=%d",
-                  normalized,
-                  PROFILE_BOT_QUARANTINE_MS,
-              )
-          }
-          '''
-          new = '''    fun markProfileBotCheck(
-              profileId: String,
-              nowMs: Long = System.currentTimeMillis(),
-          ) {
-              val normalized = normalizeProfileId(profileId)
-              val profiles = CapsuleAudioFallbackPolicy.botQuarantineProfiles(normalized)
-              if (profiles.isEmpty()) return
-              val untilMs = nowMs + PROFILE_BOT_QUARANTINE_MS
-              profiles.forEach { profile ->
-                  botProfileQuarantineUntilMs[profile] = untilMs
-              }
-              Timber.tag(TAG).w(
-                  "AUDIO client family quarantined after bot-check triggerProfile=%s profiles=%s durationMs=%d",
-                  normalized,
-                  profiles.joinToString(","),
-                  PROFILE_BOT_QUARANTINE_MS,
-              )
-          }
-          '''
-          if text.count(old) != 1:
-              raise SystemExit('markProfileBotCheck anchor not found exactly once')
-          safety.write_text(text.replace(old, new, 1), encoding='utf-8')
+          replacement = '\n'.join([
+              '    fun markProfileBotCheck(',
+              '        profileId: String,',
+              '        nowMs: Long = System.currentTimeMillis(),',
+              '    ) {',
+              '        val normalized = normalizeProfileId(profileId)',
+              '        val profiles = CapsuleAudioFallbackPolicy.botQuarantineProfiles(normalized)',
+              '        if (profiles.isEmpty()) return',
+              '        val untilMs = nowMs + PROFILE_BOT_QUARANTINE_MS',
+              '        profiles.forEach { profile ->',
+              '            botProfileQuarantineUntilMs[profile] = untilMs',
+              '        }',
+              '        Timber.tag(TAG).w(',
+              '            "AUDIO client family quarantined after bot-check triggerProfile=%s profiles=%s durationMs=%d",',
+              '            normalized,',
+              '            profiles.joinToString(","),',
+              '            PROFILE_BOT_QUARANTINE_MS,',
+              '        )',
+              '    }',
+              '',
+          ])
+          text = replace_block(
+              text,
+              '    fun markProfileBotCheck(',
+              '    fun quarantinedProfileIds(',
+              replacement,
+          )
+          safety.write_text(text, encoding='utf-8')
 
           fallback_test = Path('app/src/test/kotlin/com/nikhil/yt/playback/audio/CapsuleAudioFallbackPolicyTest.kt')
           text = fallback_test.read_text(encoding='utf-8')
-          anchor = '''    @Test
-              fun backgroundResolveNeverRotatesProfiles() {
-          '''
-          addition = '''    @Test
-              fun authenticatedPlaybackKeepsTvAsRareLastFallback() {
-                  val plan =
-                      CapsuleAudioFallbackPolicy.profilePlan(
-                          primaryProfileId = CapsuleAudioFallbackPolicy.WEB_REMIX,
-                          priority = AudioResolvePriority.PLAYBACK,
-                          authenticated = true,
-                          isUploaded = false,
-                          excludedProfiles = emptySet(),
-                      )
-
-                  assertEquals(
-                      listOf(
-                          "WEB_REMIX",
-                          "VISIONOS_0_1",
-                          "WEB_EMBEDDED_PLAYER",
-                          "WEB_CREATOR",
-                          "TVHTML5_SIMPLY",
-                      ),
-                      plan,
-                  )
-              }
-
-              @Test
-              fun botQuarantineCoversSiblingIdentityProfiles() {
-                  assertEquals(
-                      setOf("WEB_REMIX", "WEB_CREATOR"),
-                      CapsuleAudioFallbackPolicy.botQuarantineProfiles("WEB_REMIX"),
-                  )
-                  assertEquals(
-                      setOf("VISIONOS", "VISIONOS_0_1"),
-                      CapsuleAudioFallbackPolicy.botQuarantineProfiles("VISIONOS_0_1"),
-                  )
-                  assertEquals(
-                      setOf("TVHTML5_SIMPLY"),
-                      CapsuleAudioFallbackPolicy.botQuarantineProfiles("TVHTML5_SIMPLY"),
-                  )
-              }
-
-              @Test
-              fun backgroundResolveNeverRotatesProfiles() {
-          '''
-          if text.count(anchor) != 1:
+          marker = '    @Test\n    fun backgroundResolveNeverRotatesProfiles() {'
+          if text.count(marker) != 1:
               raise SystemExit('fallback test insertion anchor not found exactly once')
-          fallback_test.write_text(text.replace(anchor, addition, 1), encoding='utf-8')
+          tests = '\n'.join([
+              '    @Test',
+              '    fun authenticatedPlaybackKeepsTvAsRareLastFallback() {',
+              '        val plan =',
+              '            CapsuleAudioFallbackPolicy.profilePlan(',
+              '                primaryProfileId = CapsuleAudioFallbackPolicy.WEB_REMIX,',
+              '                priority = AudioResolvePriority.PLAYBACK,',
+              '                authenticated = true,',
+              '                isUploaded = false,',
+              '                excludedProfiles = emptySet(),',
+              '            )',
+              '',
+              '        assertEquals(',
+              '            listOf(',
+              '                "WEB_REMIX",',
+              '                "VISIONOS_0_1",',
+              '                "WEB_EMBEDDED_PLAYER",',
+              '                "WEB_CREATOR",',
+              '                "TVHTML5_SIMPLY",',
+              '            ),',
+              '            plan,',
+              '        )',
+              '    }',
+              '',
+              '    @Test',
+              '    fun botQuarantineCoversSiblingIdentityProfiles() {',
+              '        assertEquals(',
+              '            setOf("WEB_REMIX", "WEB_CREATOR"),',
+              '            CapsuleAudioFallbackPolicy.botQuarantineProfiles("WEB_REMIX"),',
+              '        )',
+              '        assertEquals(',
+              '            setOf("VISIONOS", "VISIONOS_0_1"),',
+              '            CapsuleAudioFallbackPolicy.botQuarantineProfiles("VISIONOS_0_1"),',
+              '        )',
+              '        assertEquals(',
+              '            setOf("TVHTML5_SIMPLY"),',
+              '            CapsuleAudioFallbackPolicy.botQuarantineProfiles("TVHTML5_SIMPLY"),',
+              '        )',
+              '    }',
+              '',
+          ])
+          fallback_test.write_text(text.replace(marker, tests + marker, 1), encoding='utf-8')
 
           safety_test = Path('app/src/test/kotlin/com/nikhil/yt/playback/audio/CapsulePlaybackSafetyTest.kt')
           text = safety_test.read_text(encoding='utf-8')
-          old = '''    @Test
-              fun profileBotCheckQuarantinesOnlyProfile() {
-                  CapsulePlaybackSafety.markProfileBotCheck("web_remix")
-
-                  assertEquals(setOf("WEB_REMIX"), CapsulePlaybackSafety.quarantinedProfileIds())
-                  assertNull(CapsulePlaybackSafety.blockedExceptionOrNull())
-              }
-          '''
-          new = '''    @Test
-              fun profileBotCheckQuarantinesWholeIdentityFamilyOnly() {
-                  CapsulePlaybackSafety.markProfileBotCheck("web_remix")
-
-                  assertEquals(
-                      setOf("WEB_REMIX", "WEB_CREATOR"),
-                      CapsulePlaybackSafety.quarantinedProfileIds(),
-                  )
-                  assertNull(CapsulePlaybackSafety.blockedExceptionOrNull())
-              }
-
-              @Test
-              fun visionBotCheckQuarantinesBothVisionProfilesWithoutGlobalBreaker() {
-                  CapsulePlaybackSafety.markProfileBotCheck("visionos_0_1")
-
-                  assertEquals(
-                      setOf("VISIONOS", "VISIONOS_0_1"),
-                      CapsulePlaybackSafety.quarantinedProfileIds(),
-                  )
-                  assertNull(CapsulePlaybackSafety.blockedExceptionOrNull())
-              }
-          '''
-          if text.count(old) != 1:
-              raise SystemExit('safety test replacement anchor not found exactly once')
-          safety_test.write_text(text.replace(old, new, 1), encoding='utf-8')
+          replacement = '\n'.join([
+              '    @Test',
+              '    fun profileBotCheckQuarantinesWholeIdentityFamilyOnly() {',
+              '        CapsulePlaybackSafety.markProfileBotCheck("web_remix")',
+              '',
+              '        assertEquals(',
+              '            setOf("WEB_REMIX", "WEB_CREATOR"),',
+              '            CapsulePlaybackSafety.quarantinedProfileIds(),',
+              '        )',
+              '        assertNull(CapsulePlaybackSafety.blockedExceptionOrNull())',
+              '    }',
+              '',
+              '    @Test',
+              '    fun visionBotCheckQuarantinesBothVisionProfilesWithoutGlobalBreaker() {',
+              '        CapsulePlaybackSafety.markProfileBotCheck("visionos_0_1")',
+              '',
+              '        assertEquals(',
+              '            setOf("VISIONOS", "VISIONOS_0_1"),',
+              '            CapsulePlaybackSafety.quarantinedProfileIds(),',
+              '        )',
+              '        assertNull(CapsulePlaybackSafety.blockedExceptionOrNull())',
+              '    }',
+              '',
+          ])
+          text = replace_block(
+              text,
+              '    @Test\n    fun profileBotCheckQuarantinesOnlyProfile() {',
+              '    @Test\n    fun ageRestrictionDoesNotLookLikeBotCheck() {',
+              replacement,
+          )
+          safety_test.write_text(text, encoding='utf-8')
           PY
 
           git diff --check
