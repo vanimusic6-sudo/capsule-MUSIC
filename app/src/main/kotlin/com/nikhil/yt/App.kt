@@ -244,35 +244,6 @@ class App : Application(), SingletonImageLoader.Factory {
             }
         }
 
-        // Startup WEB prewarm is useful only for profiles that need the
-        // extractor/cipher stack. VisionOS stays completely cold and direct.
-        applicationScope.launch(Dispatchers.IO) {
-            try {
-                val prefs = dataStore.data.first()
-                val startupPolicy =
-                    prefs[AudioStreamPolicyKey]
-                        .toEnum(AudioStreamPolicy.VISIONOS)
-                        .normalizedForPlayback()
-                if (startupPolicy != AudioStreamPolicy.VISIONOS) {
-                    val hasVisitorData =
-                        withTimeoutOrNull(20_000L) {
-                            YouTube.authStates.first { state ->
-                                !state.visitorData.isNullOrBlank()
-                            }
-                        } != null
-                    if (hasVisitorData) {
-                        CapsuleInnerTubeXPlayer.prewarm(
-                            prewarmWebPoToken = startupPolicy == AudioStreamPolicy.WEB,
-                        )
-                    }
-                }
-            } catch (cancelled: CancellationException) {
-                throw cancelled
-            } catch (error: Exception) {
-                reportRecoverableException("App", "startup audio prewarm", error)
-            }
-        }
-
         applicationScope.launch(Dispatchers.IO) {
             dataStore.data
                 .map { it[VisitorDataKey] }

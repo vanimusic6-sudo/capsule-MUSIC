@@ -15,6 +15,9 @@ import timber.log.Timber
 import java.util.Locale
 
 fun reportException(throwable: Throwable) {
+    // Coroutine cancellation is normal control flow (track switch, stale prefetch, shutdown),
+    // not an application error. Do not pollute diagnostics with an E/ stack trace for it.
+    if (throwable is CancellationException) return
     /* Honors the runtime debug-logging switch instead of always writing stderr. */
     Timber.e(throwable)
 }
