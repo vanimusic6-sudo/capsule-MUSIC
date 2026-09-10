@@ -24,58 +24,20 @@ jobs:
         shell: python
         run: |
           from pathlib import Path
+          import re
 
           app = Path("app/src/main/kotlin/com/nikhil/yt/App.kt")
           text = app.read_text(encoding="utf-8")
-          old = '''        // Startup WEB prewarm is useful only for profiles that need the
-        // extractor/cipher stack. VisionOS stays completely cold and direct.
-        applicationScope.launch(Dispatchers.IO) {
-            try {
-                val prefs = dataStore.data.first()
-                val startupPolicy =
-                    prefs[AudioStreamPolicyKey]
-                        .toEnum(AudioStreamPolicy.VISIONOS)
-                        .normalizedForPlayback()
-                if (startupPolicy != AudioStreamPolicy.VISIONOS) {
-                    val hasVisitorData =
-                        withTimeoutOrNull(20_000L) {
-                            YouTube.authStates.first { state ->
-                                !state.visitorData.isNullOrBlank()
-                            }
-                        } != null
-                    if (hasVisitorData) {
-                        CapsuleInnerTubeXPlayer.prewarm(
-                            prewarmWebPoToken = startupPolicy == AudioStreamPolicy.WEB,
-                        )
-                    }
-                }
-            } catch (cancelled: CancellationException) {
-                throw cancelled
-            } catch (error: Exception) {
-                reportRecoverableException("App", "startup audio prewarm", error)
-            }
-        }
-
-'''
-          if text.count(old) != 1:
-              raise SystemExit(f"expected one eager WEB prewarm block, found {text.count(old)}")
-          app.write_text(text.replace(old, ""), encoding="utf-8")
+          pattern = r"        // Startup WEB prewarm is useful only for profiles that need the\n        // extractor/cipher stack\. VisionOS stays completely cold and direct\.\n        applicationScope\.launch\(Dispatchers\.IO\) \{.*?\n        \}\n\n(?=        applicationScope\.launch\(Dispatchers\.IO\) \{\n            dataStore\.data)"
+          text, count = re.subn(pattern, "", text, count=1, flags=re.DOTALL)
+          if count != 1:
+              raise SystemExit(f"expected one eager WEB prewarm block, found {count}")
+          app.write_text(text, encoding="utf-8")
 
           utils = Path("app/src/main/kotlin/com/nikhil/yt/utils/Utils.kt")
           text = utils.read_text(encoding="utf-8")
-          old = '''fun reportException(throwable: Throwable) {
-    /* Honors the runtime debug-logging switch instead of always writing stderr. */
-    Timber.e(throwable)
-}
-'''
-          new = '''fun reportException(throwable: Throwable) {
-    // Coroutine cancellation is normal control flow (track switch, stale prefetch, shutdown),
-    // not an application error. Do not pollute diagnostics with an E/ stack trace for it.
-    if (throwable is CancellationException) return
-    /* Honors the runtime debug-logging switch instead of always writing stderr. */
-    Timber.e(throwable)
-}
-'''
+          old = "fun reportException(throwable: Throwable) {\n    /* Honors the runtime debug-logging switch instead of always writing stderr. */\n    Timber.e(throwable)\n}\n"
+          new = "fun reportException(throwable: Throwable) {\n    // Coroutine cancellation is normal control flow (track switch, stale prefetch, shutdown),\n    // not an application error. Do not pollute diagnostics with an E/ stack trace for it.\n    if (throwable is CancellationException) return\n    /* Honors the runtime debug-logging switch instead of always writing stderr. */\n    Timber.e(throwable)\n}\n"
           if text.count(old) != 1:
               raise SystemExit(f"expected reportException block once, found {text.count(old)}")
           utils.write_text(text.replace(old, new), encoding="utf-8")
@@ -85,7 +47,6 @@ jobs:
           ! grep -q 'startup audio prewarm' app/src/main/kotlin/com/nikhil/yt/App.kt
           ! grep -q 'CapsuleInnerTubeXPlayer.prewarm' app/src/main/kotlin/com/nikhil/yt/App.kt
           grep -q 'if (throwable is CancellationException) return' app/src/main/kotlin/com/nikhil/yt/utils/Utils.kt
-          grep -q 'CapsuleInnerTubeXPlayer' app/src/main/kotlin/com/nikhil/yt/playback/audio/CapsuleInnerTubeXPlayer.kt
 
       - name: Compile both debug variants
         run: ./gradlew :app:compileUniversalDebugKotlin :app:compileArmeabiDebugKotlin --stacktrace
@@ -94,9 +55,7 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add \
-            app/src/main/kotlin/com/nikhil/yt/App.kt \
-            app/src/main/kotlin/com/nikhil/yt/utils/Utils.kt
+          git add app/src/main/kotlin/com/nikhil/yt/App.kt app/src/main/kotlin/com/nikhil/yt/utils/Utils.kt
           git diff --cached --check
           git commit -m "Remove eager WEB auth prewarm from playback startup"
           git push origin HEAD:cleanup/capsule-player-only
