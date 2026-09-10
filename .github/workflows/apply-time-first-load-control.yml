@@ -42,10 +42,14 @@ jobs:
       - name: Verify patch
         run: |
           test "$(grep -c 'setLoadControl(createCapsuleLoadControl())' app/src/main/kotlin/com/nikhil/yt/playback/MusicService.kt)" -eq 2
-          grep -q 'setPrioritizeTimeOverSizeThresholds(true)' app/src/main/kotlin/com/nikhil/yt/playback/CapsuleLoadControl.kt
+          grep -q 'CAPSULE_MIN_BUFFER_MS = 50_000' app/src/main/kotlin/com/nikhil/yt/playback/CapsuleLoadControl.kt
+          grep -q 'CAPSULE_MAX_BUFFER_MS = 50_000' app/src/main/kotlin/com/nikhil/yt/playback/CapsuleLoadControl.kt
+          grep -q 'CAPSULE_BUFFER_FOR_PLAYBACK_MS = 750' app/src/main/kotlin/com/nikhil/yt/playback/CapsuleLoadControl.kt
+          grep -q 'CAPSULE_BUFFER_FOR_PLAYBACK_AFTER_REBUFFER_MS = 2_000' app/src/main/kotlin/com/nikhil/yt/playback/CapsuleLoadControl.kt
+          ! grep -q 'setPrioritizeTimeOverSizeThresholds' app/src/main/kotlin/com/nikhil/yt/playback/CapsuleLoadControl.kt
 
-      - name: Compile app Kotlin
-        run: ./gradlew :app:compileDebugKotlin --stacktrace
+      - name: Compile both debug variants
+        run: ./gradlew :app:compileUniversalDebugKotlin :app:compileArmeabiDebugKotlin --stacktrace
 
       - name: Commit production wiring
         run: |
