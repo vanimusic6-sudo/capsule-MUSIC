@@ -29,29 +29,20 @@ jobs:
         run: |
           set -euo pipefail
           python3 - <<'PY'
+          import re
           from pathlib import Path
 
           path = Path('app/src/main/kotlin/com/nikhil/yt/playback/MusicService.kt')
           text = path.read_text()
-          old = '''    private fun playbackContext() = AudioPlaybackContext(
-              audioQuality.normalizedPlaybackQuality(),
-              audioStreamPolicy,
-              connectivityManager.isActiveNetworkMetered,
-              audioClientOrder,
-          )'''
-          new = '''    private fun playbackContext() = AudioPlaybackContext(
-              quality = audioQuality.normalizedPlaybackQuality(),
-              policy = audioStreamPolicy,
-              metered = connectivityManager.isActiveNetworkMetered,
-              clientOrder = audioClientOrder,
-          )'''
-          count = text.count(old)
+          pattern = re.compile(r'    private fun playbackContext\(\) = AudioPlaybackContext\(\s*audioQuality\.normalizedPlaybackQuality\(\),\s*audioStreamPolicy,\s*connectivityManager\.isActiveNetworkMetered,\s*audioClientOrder,\s*\)')
+          replacement = "    private fun playbackContext() = AudioPlaybackContext(\n        quality = audioQuality.normalizedPlaybackQuality(),\n        policy = audioStreamPolicy,\n        metered = connectivityManager.isActiveNetworkMetered,\n        clientOrder = audioClientOrder,\n    )"
+          updated, count = pattern.subn(replacement, text)
           if count != 1:
               raise SystemExit(f'Expected exactly one positional AudioPlaybackContext block, found {count}')
-          text = text.replace(old, new)
-          path.write_text(text)
+          path.write_text(updated)
           PY
           git diff --check
+          grep -q 'quality = audioQuality.normalizedPlaybackQuality()' app/src/main/kotlin/com/nikhil/yt/playback/MusicService.kt
           grep -q 'clientOrder = audioClientOrder' app/src/main/kotlin/com/nikhil/yt/playback/MusicService.kt
 
       - name: Verify priority tests
