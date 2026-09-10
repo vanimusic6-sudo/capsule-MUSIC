@@ -19,6 +19,12 @@ jobs:
           ref: ${{ github.sha }}
           fetch-depth: 0
 
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
       - name: Patch MusicService
         run: |
           python3 - <<'PY'
