@@ -39,7 +39,8 @@ jobs:
           python3 tools/refactor/fix_audio_underrun_step39.py
           grep -q 'CapsuleAudioRenderersFactory(this)' app/src/main/kotlin/com/nikhil/yt/playback/MusicService.kt
           grep -q 'CAPSULE_PCM_AUDIO_TRACK_BUFFER_DURATION_US = 1_500_000' app/src/main/kotlin/com/nikhil/yt/playback/CapsuleAudioRenderersFactory.kt
-          grep -q 'setTargetPcmBufferDurationUs(CAPSULE_PCM_AUDIO_TRACK_BUFFER_DURATION_US)' app/src/main/kotlin/com/nikhil/yt/playback/CapsuleAudioRenderersFactory.kt
+          grep -q 'setMinPcmBufferDurationUs(CAPSULE_PCM_AUDIO_TRACK_BUFFER_DURATION_US)' app/src/main/kotlin/com/nikhil/yt/playback/CapsuleAudioRenderersFactory.kt
+          grep -q 'setMaxPcmBufferDurationUs(CAPSULE_PCM_AUDIO_TRACK_BUFFER_DURATION_US)' app/src/main/kotlin/com/nikhil/yt/playback/CapsuleAudioRenderersFactory.kt
           grep -q 'AudioNetworkDiagnosticDataSource.Factory' app/src/main/kotlin/com/nikhil/yt/playback/MusicService.kt
           grep -q 'retryOnConnectionFailure(true)' app/src/main/kotlin/com/nikhil/yt/playback/MusicService.kt
 
