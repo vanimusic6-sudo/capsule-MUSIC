@@ -1168,7 +1168,7 @@ class MusicService :
                     ExoPlayer
                         .Builder(this)
                         .setMediaSourceFactory(createMediaSourceFactory())
-                .setLoadControl(createCapsuleLoadControl())
+                        .setLoadControl(createCapsuleLoadControl())
                         .setRenderersFactory(createRenderersFactory())
                         .setHandleAudioBecomingNoisy(false)
                         .setWakeMode(C.WAKE_MODE_LOCAL)
