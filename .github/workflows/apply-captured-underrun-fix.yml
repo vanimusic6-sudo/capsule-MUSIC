@@ -1,0 +1,47 @@
+name: Apply Captured Audio Underrun Fix
+
+on:
+  push:
+    branches:
+      - cleanup/capsule-player-only
+    paths:
+      - .github/workflows/apply-captured-underrun-fix.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout exact source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+
+      - name: Apply validated PCM buffer patch
+        run: python tools/refactor/fix_audio_underrun_step39.py
+
+      - name: Verify source patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -F 'CapsuleAudioRenderersFactory(this)' app/src/main/kotlin/com/nikhil/yt/playback/MusicService.kt
+          grep -F 'CAPSULE_PCM_AUDIO_TRACK_BUFFER_DURATION_US = 1_500_000' app/src/main/kotlin/com/nikhil/yt/playback/CapsuleAudioRenderersFactory.kt
+          grep -F 'SLOW_READ_THRESHOLD_MS = 250L' app/src/main/kotlin/com/nikhil/yt/playback/audio/AudioNetworkDiagnosticDataSource.kt
+
+      - name: Commit source fix
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add app/src/main/kotlin/com/nikhil/yt/playback/MusicService.kt \
+                  app/src/main/kotlin/com/nikhil/yt/playback/CapsuleAudioRenderersFactory.kt
+          if git diff --cached --quiet; then
+            echo 'Source fix is already applied.'
+            exit 0
+          fi
+          git commit -m 'Fix captured AudioTrack underrun'
+          git push origin HEAD:cleanup/capsule-player-only
