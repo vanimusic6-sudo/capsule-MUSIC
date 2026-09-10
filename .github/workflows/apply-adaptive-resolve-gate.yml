@@ -1,0 +1,83 @@
+name: Apply adaptive playback resolve gate
+
+on:
+  push:
+    branches:
+      - cleanup/capsule-player-only
+    paths:
+      - .github/workflows/apply-adaptive-resolve-gate.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout triggering revision
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+
+      - name: Wire adaptive delay into audio resolve
+        shell: python
+        run: |
+          from pathlib import Path
+
+          path = Path("app/src/main/kotlin/com/nikhil/yt/playback/MusicService.kt")
+          text = path.read_text(encoding="utf-8")
+          old = '''        audioResolveCoordinator.resolve(mediaId) { policyGeneration ->
+            audioResolveStability.awaitStable {
+                withContext(Dispatchers.Main.immediate) {
+                    mediaId == player.currentMediaItem?.mediaId ||
+                        mediaId in upcomingAudioIds()
+                }
+            }
+            val selection = playbackContext()
+'''
+          new = '''        audioResolveCoordinator.resolve(mediaId) { policyGeneration ->
+            audioResolveStability.awaitStable(
+                requiredDelayMs = {
+                    withContext(Dispatchers.Main.immediate) {
+                        if (mediaId == player.currentMediaItem?.mediaId) {
+                            PLAYBACK_RESOLVE_STABILITY_DELAY_MS
+                        } else {
+                            PREFETCH_RESOLVE_STABILITY_DELAY_MS
+                        }
+                    }
+                },
+            ) {
+                withContext(Dispatchers.Main.immediate) {
+                    mediaId == player.currentMediaItem?.mediaId ||
+                        mediaId in upcomingAudioIds()
+                }
+            }
+            val selection = playbackContext()
+'''
+          if text.count(old) != 1:
+              raise SystemExit(f"expected one audio resolve gate block, found {text.count(old)}")
+          path.write_text(text.replace(old, new), encoding="utf-8")
+
+      - name: Verify patch scope
+        run: |
+          test "$(grep -c 'requiredDelayMs = {' app/src/main/kotlin/com/nikhil/yt/playback/MusicService.kt)" -eq 1
+          grep -q 'PLAYBACK_RESOLVE_STABILITY_DELAY_MS' app/src/main/kotlin/com/nikhil/yt/playback/MusicService.kt
+          grep -q 'PREFETCH_RESOLVE_STABILITY_DELAY_MS' app/src/main/kotlin/com/nikhil/yt/playback/MusicService.kt
+          test "$(grep -c 'audioResolveStability.awaitStable' app/src/main/kotlin/com/nikhil/yt/playback/MusicService.kt)" -eq 2
+          git diff --check
+
+      - name: Run stability gate tests
+        run: ./gradlew :app:testUniversalDebugUnitTest --tests com.nikhil.yt.playback.PlaybackStabilityGateTest --stacktrace
+
+      - name: Compile both debug variants
+        run: ./gradlew :app:compileUniversalDebugKotlin :app:compileArmeabiDebugKotlin --stacktrace
+
+      - name: Commit production wiring
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app/src/main/kotlin/com/nikhil/yt/playback/MusicService.kt
+          git diff --cached --check
+          git commit -m "Shorten debounce for current audio playback"
+          git push origin HEAD:cleanup/capsule-player-only
