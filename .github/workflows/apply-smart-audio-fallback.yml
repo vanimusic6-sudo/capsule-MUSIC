@@ -22,6 +22,20 @@ jobs:
       - name: Apply production patch
         run: python3 .github/scripts/apply_smart_audio_fallback.py
 
+      - name: Fix generated Kotlin regex escaping
+        shell: bash
+        run: |
+          python3 <<'PY'
+          from pathlib import Path
+          path = Path('app/src/main/kotlin/com/nikhil/yt/playback/audio/CapsulePlaybackSafety.kt')
+          text = path.read_text(encoding='utf-8')
+          text = text.replace(
+              r'Regex("(^|\D)429(\D|$)")',
+              r'Regex("""(^|\D)429(\D|$)""")',
+          )
+          path.write_text(text, encoding='utf-8')
+          PY
+
       - name: Run targeted unit tests
         run: >-
           ./gradlew :app:testUniversalDebugUnitTest
