@@ -1,3 +1,4 @@
+# Re-trigger Step39 after adding slow-read CDN diagnostics from the captured field underrun.
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
