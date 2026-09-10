@@ -977,7 +977,7 @@ class MusicService :
                     sleepTimer = SleepTimer(scope, this)
                     addListener(sleepTimer)
                     addAnalyticsListener(PlaybackStatsListener(false, this@MusicService))
-                    setOffloadEnabled(dataStore.get(AudioOffload, true))
+                    setOffloadEnabled(dataStore.get(AudioOffload, false))
                 }
 
         screenInteractive =
@@ -1027,7 +1027,7 @@ class MusicService :
             val prefs = dataStore.data.first()
             val repeatMode = prefs[RepeatModeKey] ?: REPEAT_MODE_OFF
             val volume = (prefs[PlayerVolumeKey] ?: 1f).coerceIn(0f, 1f)
-            val offload = prefs[AudioOffload] ?: true
+            val offload = prefs[AudioOffload] ?: false
             withContext(Dispatchers.Main) {
                 player.repeatMode = repeatMode
                 playerVolume.value = volume
@@ -1166,7 +1166,7 @@ class MusicService :
             }
 
         dataStore.data
-            .map { it[AudioOffload] ?: true }
+            .map { it[AudioOffload] ?: false }
             .distinctUntilChanged()
             .collectLatest(scope) { enabled ->
                 updateAudioOffload(enabled)
@@ -1189,7 +1189,7 @@ class MusicService :
             .collectLatest(scope) {
                 crossfadeDurationMs.value = it
                 // Crossfade requires software mixing, so offload must stop immediately.
-                updateAudioOffload(dataStore.get(AudioOffload, true))
+                updateAudioOffload(dataStore.get(AudioOffload, false))
             }
 
         crossfadeAudio =

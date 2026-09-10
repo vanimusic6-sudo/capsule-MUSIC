@@ -462,7 +462,10 @@
     <string name="audio_stream_policy_tv">TV HTML5 %1$s</string>
     <string name="audio_stream_policy_tv_description">Prefer the current TV HTML5 identity, then use reviewed fallbacks.</string>
     <string name="audio_offload">Audio offload</string>
-    <string name="audio_offload_desc">Let supported devices play audio using low-power hardware decoding. Some audio processing features are disabled.</string>
+    <string name="audio_offload_desc">Use low-power hardware decoding when the current audio format and output support it. Enabling this checks compatibility; crossfade and silence skipping are disabled.</string>
+    <string name="audio_offload_supported">Audio offload is supported on the current audio output.</string>
+    <string name="audio_offload_unsupported">Audio offload is not supported for the current track and audio output. It remains off.</string>
+    <string name="audio_offload_unknown">Start a track, then enable audio offload so Capsule can verify support.</string>
     <string name="pause_on_device_mute">Pause when device volume is 0</string>
     <string name="pause_on_device_mute_desc">Automatically pause music when muted and resume when unmuted</string>
     <string name="auto_skip_next_on_error">Auto skip to next song when error occurs</string>

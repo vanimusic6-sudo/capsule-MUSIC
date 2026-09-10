@@ -35,6 +35,49 @@ private val capsuleOffloadSupportProvider by lazy(LazyThreadSafetyMode.SYNCHRONI
     DefaultAudioOffloadSupportProvider(App.instance.applicationContext)
 }
 
+internal enum class CapsuleAudioOffloadAvailability {
+    SUPPORTED,
+    UNSUPPORTED,
+    UNKNOWN,
+}
+
+/**
+ * Returns platform capability for the currently selected audio format and
+ * current audio route. This is deliberately tri-state: before Media3 has a
+ * selected audio track, Capsule must not pretend that support is known.
+ *
+ * SUPPORTED means the platform reports this format/route as offload-capable;
+ * actual renderer engagement is still confirmed by onOffloadedPlayback(true).
+ */
+internal fun ExoPlayer.currentAudioOffloadAvailability(): CapsuleAudioOffloadAvailability {
+    val selectedFormats =
+        currentTracks.groups.flatMap { group ->
+            if (group.type != C.TRACK_TYPE_AUDIO) {
+                emptyList()
+            } else {
+                (0 until group.length)
+                    .filter(group::isTrackSelected)
+                    .map(group::getTrackFormat)
+            }
+        }
+
+    if (selectedFormats.size != 1) return CapsuleAudioOffloadAvailability.UNKNOWN
+
+    val support =
+        runCatching {
+            capsuleOffloadSupportProvider.getAudioOffloadSupport(
+                selectedFormats.single(),
+                audioAttributes,
+            )
+        }.getOrNull() ?: return CapsuleAudioOffloadAvailability.UNKNOWN
+
+    return if (support.isFormatSupported) {
+        CapsuleAudioOffloadAvailability.SUPPORTED
+    } else {
+        CapsuleAudioOffloadAvailability.UNSUPPORTED
+    }
+}
+
 private fun ExoPlayer.bufferedAheadMs(): Long =
     (bufferedPosition - currentPosition).coerceAtLeast(0L)
 

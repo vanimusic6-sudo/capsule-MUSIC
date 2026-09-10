@@ -6,6 +6,7 @@
 
 package com.nikhil.yt.ui.screens.settings
 
+import android.widget.Toast
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -32,11 +33,13 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
 import com.nikhil.yt.LocalDatabase
+import com.nikhil.yt.LocalPlayerConnection
 import com.nikhil.yt.LocalPlayerAwareWindowInsets
 import com.nikhil.yt.R
 import com.nikhil.yt.constants.ArtistSeparatorsKey
@@ -60,6 +63,8 @@ import com.nikhil.yt.constants.PersistentQueueKey
 import com.nikhil.yt.constants.SkipSilenceKey
 import com.nikhil.yt.constants.StopMusicOnTaskClearKey
 import com.nikhil.yt.innertube.models.YouTubeClientUpstream
+import com.nikhil.yt.extensions.CapsuleAudioOffloadAvailability
+import com.nikhil.yt.extensions.currentAudioOffloadAvailability
 import com.nikhil.yt.ui.component.ArtistSeparatorsDialog
 import com.nikhil.yt.ui.component.CrossfadeSliderPreference
 import com.nikhil.yt.ui.component.ListPreference
@@ -212,7 +217,7 @@ fun PlayerSettings(
     val (audioOffload, onAudioOffloadChange) =
         rememberPreference(
             AudioOffload,
-            defaultValue = true,
+            defaultValue = false,
         )
     val (autoDownloadOnLike, onAutoDownloadOnLikeChange) =
         rememberPreference(
@@ -259,6 +264,8 @@ fun PlayerSettings(
     var showTagsManagementDialog by remember { mutableStateOf(false) }
     var showAudioClientPriorityDialog by remember { mutableStateOf(false) }
     val database = LocalDatabase.current
+    val context = LocalContext.current
+    val playerConnection = LocalPlayerConnection.current
 
     if (showArtistSeparatorsDialog) {
         ArtistSeparatorsDialog(
@@ -452,9 +459,45 @@ fun PlayerSettings(
             },
             checked = audioOffload,
             onCheckedChange = { enabled ->
-                onAudioOffloadChange(enabled)
-                if (enabled) {
-                    onSkipSilenceChange(false)
+                if (!enabled) {
+                    onAudioOffloadChange(false)
+                    return@SwitchPreference
+                }
+
+                val availability =
+                    playerConnection?.player?.currentAudioOffloadAvailability()
+                        ?: CapsuleAudioOffloadAvailability.UNKNOWN
+
+                when (availability) {
+                    CapsuleAudioOffloadAvailability.SUPPORTED -> {
+                        // Both features require software processing. Do not let
+                        // the UI say offload is enabled while runtime policy has
+                        // silently disabled it because of an old crossfade value.
+                        onAudioCrossfadeSecondsChange(0)
+                        onSkipSilenceChange(false)
+                        onAudioOffloadChange(true)
+                        Toast.makeText(
+                            context,
+                            context.getString(R.string.audio_offload_supported),
+                            Toast.LENGTH_SHORT,
+                        ).show()
+                    }
+                    CapsuleAudioOffloadAvailability.UNSUPPORTED -> {
+                        onAudioOffloadChange(false)
+                        Toast.makeText(
+                            context,
+                            context.getString(R.string.audio_offload_unsupported),
+                            Toast.LENGTH_LONG,
+                        ).show()
+                    }
+                    CapsuleAudioOffloadAvailability.UNKNOWN -> {
+                        onAudioOffloadChange(false)
+                        Toast.makeText(
+                            context,
+                            context.getString(R.string.audio_offload_unknown),
+                            Toast.LENGTH_LONG,
+                        ).show()
+                    }
                 }
             },
         )

@@ -6,6 +6,32 @@ import androidx.media3.datasource.DataSpec
 import androidx.media3.datasource.TransferListener
 import com.nikhil.yt.utils.GlobalLog
 import timber.log.Timber
+import java.io.IOException
+import java.io.InterruptedIOException
+import java.net.SocketTimeoutException
+
+internal fun Throwable.isExpectedAudioCdnInterruption(): Boolean {
+    val causes = generateSequence(this as Throwable?) { it.cause }
+        .take(8)
+        .toList()
+
+    // Socket/read timeouts are real network failures even though
+    // SocketTimeoutException derives from InterruptedIOException.
+    if (causes.any { it is SocketTimeoutException }) return false
+
+    return causes.any { cause ->
+        when (cause) {
+            is InterruptedIOException ->
+                !cause.message.orEmpty().contains("timeout", ignoreCase = true)
+            is IOException -> {
+                val message = cause.message?.trim().orEmpty()
+                message.equals("Canceled", ignoreCase = true) ||
+                    message.equals("Cancelled", ignoreCase = true)
+            }
+            else -> false
+        }
+    }
+}
 
 /**
  * Debug-only timing around the real AUDIO network upstream.
@@ -71,13 +97,23 @@ internal class AudioNetworkDiagnosticDataSource(
                 )
             }
         } catch (failure: Throwable) {
-            Timber.tag(TAG).w(
-                failure,
-                "cdn-open-failed id=%s host=%s elapsedMs=%d",
-                mediaKey ?: "none",
-                host ?: "unknown",
-                elapsedMs(startedAtNs, System.nanoTime()),
-            )
+            val now = System.nanoTime()
+            if (failure.isExpectedAudioCdnInterruption()) {
+                Timber.tag(TAG).d(
+                    "cdn-open-interrupted id=%s host=%s elapsedMs=%d",
+                    mediaKey ?: "none",
+                    host ?: "unknown",
+                    elapsedMs(startedAtNs, now),
+                )
+            } else {
+                Timber.tag(TAG).w(
+                    failure,
+                    "cdn-open-failed id=%s host=%s elapsedMs=%d",
+                    mediaKey ?: "none",
+                    host ?: "unknown",
+                    elapsedMs(startedAtNs, now),
+                )
+            }
             throw failure
         }
     }
@@ -132,15 +168,26 @@ internal class AudioNetworkDiagnosticDataSource(
             }
         } catch (failure: Throwable) {
             val now = System.nanoTime()
-            Timber.tag(TAG).w(
-                failure,
-                "cdn-read-failed id=%s host=%s readMs=%d bytes=%d elapsedMs=%d",
-                mediaKey ?: "none",
-                host ?: "unknown",
-                elapsedMs(readStartedAtNs, now),
-                bytesRead,
-                elapsedMs(startedAtNs, now),
-            )
+            if (failure.isExpectedAudioCdnInterruption()) {
+                Timber.tag(TAG).d(
+                    "cdn-read-interrupted id=%s host=%s readMs=%d bytes=%d elapsedMs=%d",
+                    mediaKey ?: "none",
+                    host ?: "unknown",
+                    elapsedMs(readStartedAtNs, now),
+                    bytesRead,
+                    elapsedMs(startedAtNs, now),
+                )
+            } else {
+                Timber.tag(TAG).w(
+                    failure,
+                    "cdn-read-failed id=%s host=%s readMs=%d bytes=%d elapsedMs=%d",
+                    mediaKey ?: "none",
+                    host ?: "unknown",
+                    elapsedMs(readStartedAtNs, now),
+                    bytesRead,
+                    elapsedMs(startedAtNs, now),
+                )
+            }
             throw failure
         }
     }
