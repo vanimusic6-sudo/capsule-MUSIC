@@ -35,6 +35,7 @@ import com.nikhil.yt.App
 import com.nikhil.yt.constants.AudioQuality
 import com.nikhil.yt.constants.AudioStreamPolicy
 import com.nikhil.yt.innertube.YouTube
+import com.nikhil.yt.innertube.YouTubeFailureKind
 import com.nikhil.yt.innertube.models.response.PlayerResponse
 import com.nikhil.yt.playback.audio.potoken.PoTokenGenerator
 import io.ktor.client.HttpClient
@@ -212,20 +213,16 @@ object CapsuleInnerTubeXPlayer {
         priority: AudioResolvePriority = AudioResolvePriority.PLAYBACK,
     ): Result<PlaybackData> =
         try {
-            val playbackClientOverrideId = streamPolicy.playbackClientOverrideId
-            val hints =
+            val primaryProfileId = streamPolicy.playbackClientOverrideId
+            val baseHints =
                 ContentHints(
                     isUploaded = playlistId == "MLPT" || playlistId?.contains("MLPT") == true,
                     wantVideo = false,
-                    playbackClientOverrideId = playbackClientOverrideId,
+                    playbackClientOverrideId = null,
                 ).withStreamCapabilities(
                     allowHls = false,
                     allowSabr = false,
-                    /*
-                     * Capsule's existing Media3 source does not yet implement
-                     * InnerTubeX's explicit chunk scheduler. Do not advertise a
-                     * transport feature the consumer cannot honour.
-                     */
+                    /* Capsule Media3 does not yet consume InnerTubeX chunk scheduling. */
                     allowBoundedRange = false,
                 )
 
@@ -235,31 +232,21 @@ object CapsuleInnerTubeXPlayer {
                     resolveMutex.withLock {
                         withTimeout(ENGINE_RESOLVE_TIMEOUT_MS) {
                             CapsulePlaybackSafety.blockedExceptionOrNull()?.let { throw it }
-                            // Do not await extractor prewarm on the playback critical path.
-                            // InnerTubeX coordinates config/cipher state internally and can resolve
-                            // on demand while the optional app-level warmup runs independently.
                             val extractionBundle = bundle()
                             Timber.tag(TAG).i(
-                                "Resolving audio id=%s priority=%s selectedProfile=%s",
+                                "Resolving audio id=%s priority=%s primaryProfile=%s",
                                 videoId,
                                 priority,
-                                playbackClientOverrideId,
+                                primaryProfileId,
                             )
-                            try {
-                                extractDirectStream(
-                                    extractionBundle = extractionBundle,
-                                    videoId = videoId,
-                                    hints = hints,
-                                    audioQuality = resolvedQuality,
-                                )
-                            } catch (cancelled: CancellationException) {
-                                throw cancelled
-                            } catch (failure: Exception) {
-                                // Trip before releasing the lock so a queued download
-                                // or prefetch cannot start another player request.
-                                CapsulePlaybackSafety.observeFailure(failure)
-                                throw failure
-                            }
+                            resolveWithSafeClientFallbacks(
+                                extractionBundle = extractionBundle,
+                                videoId = videoId,
+                                baseHints = baseHints,
+                                audioQuality = resolvedQuality,
+                                primaryProfileId = primaryProfileId,
+                                priority = priority,
+                            )
                         }
                     }
                 }
@@ -292,8 +279,138 @@ object CapsuleInnerTubeXPlayer {
                 },
             )
         } catch (error: Exception) {
-            Result.failure(error)
+            Result.failure(CapsulePlaybackSafety.blockedExceptionOrNull() ?: error)
         }
+
+    /**
+     * Metrolist-style client resilience with a Capsule-sized request budget.
+     * Background work never rotates clients. Foreground playback uses a short vetted chain;
+     * after a bot-check exactly one different family may be tried before escalation.
+     */
+    private suspend fun resolveWithSafeClientFallbacks(
+        extractionBundle: ExtractionBundle,
+        videoId: String,
+        baseHints: ContentHints,
+        audioQuality: InnerTubeXAudioQuality,
+        primaryProfileId: String,
+        priority: AudioResolvePriority,
+    ): ExtractedStream {
+        val quarantinedAtStart = CapsulePlaybackSafety.quarantinedProfileIds()
+        val perSongExcluded = failedStreamClients(videoId)
+        val plan =
+            CapsuleAudioFallbackPolicy.profilePlan(
+                primaryProfileId = primaryProfileId,
+                priority = priority,
+                authenticated = extractionBundle.innerTube.hasSapCookieAuth(),
+                isUploaded = baseHints.isUploaded == true,
+                excludedProfiles = quarantinedAtStart + perSongExcluded,
+            )
+
+        if (plan.isEmpty()) {
+            throw IllegalStateException(
+                if (priority == AudioResolvePriority.PLAYBACK) {
+                    "No safe AUDIO client profile is currently available"
+                } else {
+                    "AUDIO background resolve suppressed while its primary profile is quarantined"
+                },
+            )
+        }
+
+        var lastFailure: Exception? = null
+        var botSignalAlreadySeen = quarantinedAtStart.isNotEmpty()
+        var onlyPostBotProfile: String? = null
+
+        for (profileId in plan) {
+            if (onlyPostBotProfile != null && profileId != onlyPostBotProfile) continue
+            CapsulePlaybackSafety.blockedExceptionOrNull()?.let { throw it }
+
+            val wireGeneration = CapsulePlaybackSafety.wireBotSignalGeneration()
+            Timber.tag(TAG).i(
+                "AUDIO profile attempt id=%s priority=%s profile=%s",
+                videoId,
+                priority,
+                profileId,
+            )
+
+            try {
+                val stream =
+                    extractDirectStream(
+                        extractionBundle = extractionBundle,
+                        videoId = videoId,
+                        hints = baseHints.copy(playbackClientOverrideId = profileId),
+                        audioQuality = audioQuality,
+                    )
+                if (profileId != primaryProfileId) {
+                    Timber.tag(TAG).i(
+                        "AUDIO fallback recovered id=%s primary=%s selected=%s",
+                        videoId,
+                        primaryProfileId,
+                        profileId,
+                    )
+                }
+                return stream
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (failure: Exception) {
+                val kind =
+                    CapsulePlaybackSafety.classifyFailureSince(
+                        error = failure,
+                        wireGenerationBeforeAttempt = wireGeneration,
+                    )
+
+                if (kind == YouTubeFailureKind.RATE_LIMITED) {
+                    CapsulePlaybackSafety.observeFailure(failure)
+                    throw failure
+                }
+
+                if (kind == YouTubeFailureKind.BOT_CHECK) {
+                    CapsulePlaybackSafety.markProfileBotCheck(profileId)
+                    markStreamClientFailed(videoId, profileId)
+                    Timber.tag(TAG).w(
+                        "AUDIO bot-check isolated id=%s priority=%s profile=%s",
+                        videoId,
+                        priority,
+                        profileId,
+                    )
+
+                    if (priority != AudioResolvePriority.PLAYBACK) throw failure
+
+                    if (botSignalAlreadySeen) {
+                        CapsulePlaybackSafety.markBotDetectionFailure(
+                            "confirmed across multiple AUDIO client profiles",
+                        )
+                        throw failure
+                    }
+
+                    val crossFamily =
+                        CapsuleAudioFallbackPolicy.crossFamilyFallback(plan, profileId)
+                            ?: throw failure
+                    botSignalAlreadySeen = true
+                    onlyPostBotProfile = crossFamily
+                    lastFailure = failure
+                    continue
+                }
+
+                val canFallback = CapsuleAudioFallbackPolicy.canFallbackAfter(kind)
+                if (canFallback) {
+                    markStreamClientFailed(videoId, profileId)
+                }
+
+                // After one bot-check, the single cross-family recovery gets one chance only.
+                if (onlyPostBotProfile != null || !canFallback) throw failure
+
+                Timber.tag(TAG).w(
+                    "AUDIO client-local failure id=%s profile=%s kind=%s; trying bounded fallback",
+                    videoId,
+                    profileId,
+                    kind,
+                )
+                lastFailure = failure
+            }
+        }
+
+        throw lastFailure ?: IllegalStateException("No safe AUDIO client profile produced a stream")
+    }
 
     private suspend fun extractDirectStream(
         extractionBundle: ExtractionBundle,

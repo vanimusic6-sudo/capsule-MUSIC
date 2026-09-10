@@ -1,7 +1,9 @@
 package com.nikhil.yt.playback.audio
 
 import androidx.media3.common.PlaybackException
+import com.nikhil.yt.innertube.YouTubeFailureKind
 import org.junit.After
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
@@ -21,7 +23,7 @@ class CapsulePlaybackSafetyTest {
     }
 
     @Test
-    fun explicitBotCheckOpensModernSafetyClassification() {
+    fun explicitBotCheckDoesNotImmediatelyOpenGlobalBreaker() {
         val error =
             PlaybackException(
                 "Sign in to confirm you're not a bot",
@@ -30,6 +32,30 @@ class CapsulePlaybackSafetyTest {
             )
 
         assertTrue(CapsulePlaybackSafety.isBotDetectionException(error))
+        CapsulePlaybackSafety.observeFailure(error)
+        assertNull(CapsulePlaybackSafety.blockedExceptionOrNull())
+    }
+
+    @Test
+    fun wireBotSignalSurvivesOpaqueExtractorFailure() {
+        val before = CapsulePlaybackSafety.wireBotSignalGeneration()
+        CapsulePlaybackSafety.noteWireBotCheck()
+
+        assertEquals(
+            YouTubeFailureKind.BOT_CHECK,
+            CapsulePlaybackSafety.classifyFailureSince(
+                IllegalStateException("Unable to resolve stream data"),
+                before,
+            ),
+        )
+    }
+
+    @Test
+    fun profileBotCheckQuarantinesOnlyProfile() {
+        CapsulePlaybackSafety.markProfileBotCheck("web_remix")
+
+        assertEquals(setOf("WEB_REMIX"), CapsulePlaybackSafety.quarantinedProfileIds())
+        assertNull(CapsulePlaybackSafety.blockedExceptionOrNull())
     }
 
     @Test

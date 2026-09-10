@@ -35,12 +35,12 @@ internal class CapsuleAudioRequestInterceptor(private val guardStreams: Boolean 
 
         when (signal) {
             YouTubeFailureKind.RATE_LIMITED -> CapsulePlaybackSafety.markHttpStatusFailure(429)
-            YouTubeFailureKind.BOT_CHECK -> CapsulePlaybackSafety.markBotDetectionFailure()
+            // Preserve the challenge even if InnerTubeX later summarizes it as NO_PLAYABLE_STREAM.
+            // The serialized resolver knows which profile caused it and owns safe escalation.
+            YouTubeFailureKind.BOT_CHECK -> CapsulePlaybackSafety.noteWireBotCheck()
             else -> Unit
         }
-        // Return the original, unconsumed response. Every nested library retry passes the
-        // gate above, so a challenge permits no further HTTP requests, even if its reason
-        // is later converted to NO_PLAYABLE_STREAM by the pinned library.
+        // HTTP 429 has already opened the global gate. Bot-check escalation is profile-aware.
         return response
     }
 
