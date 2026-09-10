@@ -1,0 +1,85 @@
+name: Fix audio client context
+
+on:
+  push:
+    branches:
+      - cleanup/capsule-player-only
+    paths:
+      - .github/workflows/fix-audio-client-context.yml
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: cleanup/capsule-player-only
+          fetch-depth: 0
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Fix playback context client order binding
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path('app/src/main/kotlin/com/nikhil/yt/playback/MusicService.kt')
+          text = path.read_text()
+          old = '''    private fun playbackContext() = AudioPlaybackContext(
+              audioQuality.normalizedPlaybackQuality(),
+              audioStreamPolicy,
+              connectivityManager.isActiveNetworkMetered,
+              audioClientOrder,
+          )'''
+          new = '''    private fun playbackContext() = AudioPlaybackContext(
+              quality = audioQuality.normalizedPlaybackQuality(),
+              policy = audioStreamPolicy,
+              metered = connectivityManager.isActiveNetworkMetered,
+              clientOrder = audioClientOrder,
+          )'''
+          count = text.count(old)
+          if count != 1:
+              raise SystemExit(f'Expected exactly one positional AudioPlaybackContext block, found {count}')
+          text = text.replace(old, new)
+          path.write_text(text)
+          PY
+          git diff --check
+          grep -q 'clientOrder = audioClientOrder' app/src/main/kotlin/com/nikhil/yt/playback/MusicService.kt
+
+      - name: Verify priority tests
+        run: >-
+          ./gradlew :app:testUniversalDebugUnitTest
+          --tests "com.nikhil.yt.constants.AudioClientOrderTest"
+          --tests "com.nikhil.yt.playback.audio.CapsuleAudioFallbackPolicyTest"
+          --tests "com.nikhil.yt.playback.audio.CapsulePlaybackSafetyTest"
+          --tests "com.nikhil.yt.playback.audio.CapsuleAudioClientStrategyTest"
+
+      - name: Compile production variants
+        run: ./gradlew :app:compileUniversalDebugKotlin :app:compileArmeabiDebugKotlin
+
+      - name: Commit context fix
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'capsule-ci'
+          git config user.email 'capsule-ci@users.noreply.github.com'
+          git add app/src/main/kotlin/com/nikhil/yt/playback/MusicService.kt
+          git diff --cached --quiet && { echo 'No production changes to commit'; exit 1; }
+          git commit -m 'Fix audio client priority playback context'
+          git push origin HEAD:cleanup/capsule-player-only
+
+      - name: Remove temporary context workflow
+        shell: bash
+        run: |
+          set -euo pipefail
+          git rm .github/workflows/fix-audio-client-context.yml
+          git commit -m 'Remove temporary audio client context workflow'
+          git push origin HEAD:cleanup/capsule-player-only
