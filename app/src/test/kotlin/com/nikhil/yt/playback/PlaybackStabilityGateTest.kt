@@ -46,6 +46,39 @@ class PlaybackStabilityGateTest {
     }
 
     @Test
+    fun promotedPrefetchAdoptsShortPlaybackDelayImmediately() = runTest {
+        val gate = PlaybackStabilityGate(nowMs = { currentTime })
+        var current = 0
+        var requestedAt: Long? = null
+
+        val job = launch {
+            gate.awaitStable(
+                requiredDelayMs = {
+                    if (current == 1) PLAYBACK_RESOLVE_STABILITY_DELAY_MS
+                    else PREFETCH_RESOLVE_STABILITY_DELAY_MS
+                },
+            ) { current == 1 }
+            requestedAt = currentTime
+        }
+        runCurrent()
+
+        // Track 1 starts as PREFETCH, so it would normally wait 800 ms.
+        advanceTimeBy(300)
+        current = 1
+        gate.onSelectionChanged()
+        runCurrent()
+
+        advanceTimeBy(PLAYBACK_RESOLVE_STABILITY_DELAY_MS - 1)
+        runCurrent()
+        assertEquals(null, requestedAt)
+
+        advanceTimeBy(1)
+        runCurrent()
+        assertEquals(550L, requestedAt)
+        assertTrue(job.isCompleted)
+    }
+
+    @Test
     fun cancelledLoaderNeverStartsNetworkWork() = runTest {
         val gate = PlaybackStabilityGate(nowMs = { currentTime })
         var requested = false
