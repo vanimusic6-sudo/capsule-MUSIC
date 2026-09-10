@@ -1,0 +1,202 @@
+name: Apply audio CDN 403 recovery
+
+on:
+  push:
+    branches:
+      - cleanup/capsule-player-only
+    paths:
+      - .github/workflows/apply-audio-cdn-403-recovery.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Install guarded audio CDN retry policy
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          cat > app/src/main/kotlin/com/nikhil/yt/playback/CapsuleLoadErrorHandlingPolicy.kt <<'EOF'
+          @file:Suppress("UnsafeOptInUsageError")
+
+          package com.nikhil.yt.playback
+
+          import androidx.media3.common.C
+          import androidx.media3.datasource.HttpDataSource
+          import androidx.media3.exoplayer.upstream.DefaultLoadErrorHandlingPolicy
+          import androidx.media3.exoplayer.upstream.LoadErrorHandlingPolicy
+
+          private const val CAPSULE_AUDIO_CACHE_PREFIX = "capsule:audio:"
+          private val REJECTED_SIGNED_URL_STATUS_CODES = setOf(403, 410)
+
+          /**
+           * Audio CDN URLs are signed and can occasionally be rejected even after a successful
+           * WEB_REMIX resolve. Keep exactly one immediate same-URL retry because captures show
+           * that a transient 403 can succeed on the next open. A second rejection is treated as
+           * fatal for this load so MusicService can invalidate the URL and do its bounded fresh
+           * resolve instead of letting Media3 hammer the same rejected URL many times.
+           *
+           * null means: use Media3's normal policy for this load.
+           */
+          internal fun audioCdnRejectedRetryDelayMs(
+              cacheKey: String?,
+              httpStatusCode: Int?,
+              errorCount: Int,
+          ): Long? {
+              if (cacheKey?.startsWith(CAPSULE_AUDIO_CACHE_PREFIX) != true) return null
+              if (httpStatusCode !in REJECTED_SIGNED_URL_STATUS_CODES) return null
+              return if (errorCount <= 1) 0L else C.TIME_UNSET
+          }
+
+          internal class CapsuleLoadErrorHandlingPolicy : DefaultLoadErrorHandlingPolicy() {
+              override fun getRetryDelayMsFor(
+                  loadErrorInfo: LoadErrorHandlingPolicy.LoadErrorInfo,
+              ): Long {
+                  val statusCode =
+                      generateSequence(loadErrorInfo.exception as Throwable?) { it.cause }
+                          .take(8)
+                          .filterIsInstance<HttpDataSource.InvalidResponseCodeException>()
+                          .firstOrNull()
+                          ?.responseCode
+
+                  val capsuleDecision =
+                      audioCdnRejectedRetryDelayMs(
+                          cacheKey = loadErrorInfo.loadEventInfo.dataSpec.key,
+                          httpStatusCode = statusCode,
+                          errorCount = loadErrorInfo.errorCount,
+                      )
+                  return capsuleDecision ?: super.getRetryDelayMsFor(loadErrorInfo)
+              }
+          }
+          EOF
+
+          cat > app/src/test/kotlin/com/nikhil/yt/playback/CapsuleLoadErrorHandlingPolicyTest.kt <<'EOF'
+          package com.nikhil.yt.playback
+
+          import androidx.media3.common.C
+          import org.junit.Assert.assertEquals
+          import org.junit.Assert.assertNull
+          import org.junit.Test
+
+          class CapsuleLoadErrorHandlingPolicyTest {
+              @Test
+              fun firstAudio403GetsOneImmediateSameUrlRetry() {
+                  assertEquals(
+                      0L,
+                      audioCdnRejectedRetryDelayMs(
+                          cacheKey = "capsule:audio:track:251:1234",
+                          httpStatusCode = 403,
+                          errorCount = 1,
+                      ),
+                  )
+              }
+
+              @Test
+              fun secondAudio403FailsFastToFreshResolveRecovery() {
+                  assertEquals(
+                      C.TIME_UNSET,
+                      audioCdnRejectedRetryDelayMs(
+                          cacheKey = "capsule:audio:track:251:1234",
+                          httpStatusCode = 403,
+                          errorCount = 2,
+                      ),
+                  )
+              }
+
+              @Test
+              fun rejected410UsesTheSameBoundedRule() {
+                  assertEquals(
+                      C.TIME_UNSET,
+                      audioCdnRejectedRetryDelayMs(
+                          cacheKey = "capsule:audio:track:251:1234",
+                          httpStatusCode = 410,
+                          errorCount = 3,
+                      ),
+                  )
+              }
+
+              @Test
+              fun rateLimitAndNonAudioLoadsKeepMedia3DefaultPolicy() {
+                  assertNull(
+                      audioCdnRejectedRetryDelayMs(
+                          cacheKey = "capsule:audio:track:251:1234",
+                          httpStatusCode = 429,
+                          errorCount = 2,
+                      ),
+                  )
+                  assertNull(
+                      audioCdnRejectedRetryDelayMs(
+                          cacheKey = "capsule:video:track",
+                          httpStatusCode = 403,
+                          errorCount = 2,
+                      ),
+                  )
+              }
+          }
+          EOF
+
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path("app/src/main/kotlin/com/nikhil/yt/playback/MusicService.kt")
+          text = path.read_text()
+          old = "\n".join([
+              "        val progressive =",
+              "            ProgressiveMediaSource.Factory(",
+              "                dataSourceFactory,",
+              "                extractorsFactory,",
+              "            )",
+              "",
+              "        return object : MediaSource.Factory {",
+          ])
+          new = "\n".join([
+              "        val progressive =",
+              "            ProgressiveMediaSource.Factory(",
+              "                dataSourceFactory,",
+              "                extractorsFactory,",
+              "            )",
+              "        val loadErrorHandlingPolicy = CapsuleLoadErrorHandlingPolicy()",
+              "        delegate.setLoadErrorHandlingPolicy(loadErrorHandlingPolicy)",
+              "        progressive.setLoadErrorHandlingPolicy(loadErrorHandlingPolicy)",
+              "",
+              "        return object : MediaSource.Factory {",
+          ])
+          count = text.count(old)
+          if count != 1:
+              raise SystemExit(f"expected one media-source factory insertion point, found {count}")
+          path.write_text(text.replace(old, new, 1))
+          PY
+
+          git diff --check
+          grep -q 'CapsuleLoadErrorHandlingPolicy()' app/src/main/kotlin/com/nikhil/yt/playback/MusicService.kt
+
+      - name: Verify targeted tests and both debug Kotlin variants
+        run: |
+          ./gradlew :app:testUniversalDebugUnitTest --tests 'com.nikhil.yt.playback.CapsuleLoadErrorHandlingPolicyTest'
+          ./gradlew :app:compileUniversalDebugKotlin :app:compileArmeabiDebugKotlin
+
+      - name: Commit production fix
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add \
+            app/src/main/kotlin/com/nikhil/yt/playback/MusicService.kt \
+            app/src/main/kotlin/com/nikhil/yt/playback/CapsuleLoadErrorHandlingPolicy.kt \
+            app/src/test/kotlin/com/nikhil/yt/playback/CapsuleLoadErrorHandlingPolicyTest.kt
+          git diff --cached --quiet && { echo 'No production changes to commit'; exit 1; }
+          git commit -m 'Bound rejected audio CDN URL retries'
+          git push origin HEAD:cleanup/capsule-player-only
