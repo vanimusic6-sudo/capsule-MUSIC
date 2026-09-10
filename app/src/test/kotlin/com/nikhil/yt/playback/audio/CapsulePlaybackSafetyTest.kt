@@ -51,13 +51,26 @@ class CapsulePlaybackSafetyTest {
     }
 
     @Test
-    fun profileBotCheckQuarantinesOnlyProfile() {
+    fun profileBotCheckQuarantinesWholeIdentityFamilyOnly() {
         CapsulePlaybackSafety.markProfileBotCheck("web_remix")
 
-        assertEquals(setOf("WEB_REMIX"), CapsulePlaybackSafety.quarantinedProfileIds())
+        assertEquals(
+            setOf("WEB_REMIX", "WEB_CREATOR"),
+            CapsulePlaybackSafety.quarantinedProfileIds(),
+        )
         assertNull(CapsulePlaybackSafety.blockedExceptionOrNull())
     }
 
+    @Test
+    fun visionBotCheckQuarantinesBothVisionProfilesWithoutGlobalBreaker() {
+        CapsulePlaybackSafety.markProfileBotCheck("visionos_0_1")
+
+        assertEquals(
+            setOf("VISIONOS", "VISIONOS_0_1"),
+            CapsulePlaybackSafety.quarantinedProfileIds(),
+        )
+        assertNull(CapsulePlaybackSafety.blockedExceptionOrNull())
+    }
     @Test
     fun ageRestrictionDoesNotLookLikeBotCheck() {
         val error =

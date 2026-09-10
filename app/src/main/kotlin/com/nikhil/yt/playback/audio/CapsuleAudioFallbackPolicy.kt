@@ -18,7 +18,7 @@ internal object CapsuleAudioFallbackPolicy {
     const val WEB_CREATOR = "WEB_CREATOR"
     const val TVHTML5_SIMPLY = "TVHTML5_SIMPLY"
 
-    private const val MAX_FOREGROUND_ATTEMPTS = 4
+    private const val MAX_FOREGROUND_ATTEMPTS = 5
 
     fun profilePlan(
         primaryProfileId: String,
@@ -81,6 +81,21 @@ internal object CapsuleAudioFallbackPolicy {
             -> false
         }
 
+    /**
+     * A bot challenge belongs to a client identity family, not just one version/profile.
+     * Do not immediately retry a sibling identity that is likely to share the same signal.
+     */
+    fun botQuarantineProfiles(profileId: String): Set<String> {
+        val normalized = normalize(profileId)
+        if (normalized.isBlank()) return emptySet()
+        return when (familyOf(normalized)) {
+            "VISION" -> setOf(VISIONOS, VISIONOS_0_1)
+            "WEB_MUSIC" -> setOf(WEB_REMIX, WEB_CREATOR)
+            "WEB_EMBEDDED" -> setOf(WEB_EMBEDDED)
+            "TV" -> setOf(TVHTML5_SIMPLY)
+            else -> setOf(normalized)
+        }
+    }
     /** After a bot-check use at most one fallback and prefer another client family. */
     fun crossFamilyFallback(
         plan: List<String>,

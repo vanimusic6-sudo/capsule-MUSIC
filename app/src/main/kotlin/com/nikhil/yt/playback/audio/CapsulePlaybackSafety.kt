@@ -127,15 +127,19 @@ internal object CapsulePlaybackSafety {
         nowMs: Long = System.currentTimeMillis(),
     ) {
         val normalized = normalizeProfileId(profileId)
-        if (normalized.isBlank()) return
-        botProfileQuarantineUntilMs[normalized] = nowMs + PROFILE_BOT_QUARANTINE_MS
+        val profiles = CapsuleAudioFallbackPolicy.botQuarantineProfiles(normalized)
+        if (profiles.isEmpty()) return
+        val untilMs = nowMs + PROFILE_BOT_QUARANTINE_MS
+        profiles.forEach { profile ->
+            botProfileQuarantineUntilMs[profile] = untilMs
+        }
         Timber.tag(TAG).w(
-            "AUDIO profile quarantined after bot-check profile=%s durationMs=%d",
+            "AUDIO client family quarantined after bot-check triggerProfile=%s profiles=%s durationMs=%d",
             normalized,
+            profiles.joinToString(","),
             PROFILE_BOT_QUARANTINE_MS,
         )
     }
-
     fun quarantinedProfileIds(nowMs: Long = System.currentTimeMillis()): Set<String> {
         botProfileQuarantineUntilMs.forEach { (profileId, untilMs) ->
             if (untilMs <= nowMs) {

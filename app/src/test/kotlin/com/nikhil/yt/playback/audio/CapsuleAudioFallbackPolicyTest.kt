@@ -32,6 +32,44 @@ class CapsuleAudioFallbackPolicyTest {
     }
 
     @Test
+    fun authenticatedPlaybackKeepsTvAsRareLastFallback() {
+        val plan =
+            CapsuleAudioFallbackPolicy.profilePlan(
+                primaryProfileId = CapsuleAudioFallbackPolicy.WEB_REMIX,
+                priority = AudioResolvePriority.PLAYBACK,
+                authenticated = true,
+                isUploaded = false,
+                excludedProfiles = emptySet(),
+            )
+
+        assertEquals(
+            listOf(
+                "WEB_REMIX",
+                "VISIONOS_0_1",
+                "WEB_EMBEDDED_PLAYER",
+                "WEB_CREATOR",
+                "TVHTML5_SIMPLY",
+            ),
+            plan,
+        )
+    }
+
+    @Test
+    fun botQuarantineCoversSiblingIdentityProfiles() {
+        assertEquals(
+            setOf("WEB_REMIX", "WEB_CREATOR"),
+            CapsuleAudioFallbackPolicy.botQuarantineProfiles("WEB_REMIX"),
+        )
+        assertEquals(
+            setOf("VISIONOS", "VISIONOS_0_1"),
+            CapsuleAudioFallbackPolicy.botQuarantineProfiles("VISIONOS_0_1"),
+        )
+        assertEquals(
+            setOf("TVHTML5_SIMPLY"),
+            CapsuleAudioFallbackPolicy.botQuarantineProfiles("TVHTML5_SIMPLY"),
+        )
+    }
+    @Test
     fun backgroundResolveNeverRotatesProfiles() {
         val plan =
             CapsuleAudioFallbackPolicy.profilePlan(
