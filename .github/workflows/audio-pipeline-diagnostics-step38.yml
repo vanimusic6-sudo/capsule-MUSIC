@@ -1,0 +1,89 @@
+name: Audio Pipeline Diagnostics Step 38
+
+on:
+  push:
+    branches:
+      - cleanup/capsule-player-only
+    paths:
+      - tools/refactor/diagnose_audio_pipeline_step38.py
+      - .github/workflows/audio-pipeline-diagnostics-step38.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: audio-pipeline-diagnostics-step38-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  validate-and-finalize:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout exact source
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Apply guarded Step38 patch
+        run: |
+          python3 tools/refactor/diagnose_audio_pipeline_step38.py
+          grep -q 'AudioNetworkDiagnosticDataSource.Factory' app/src/main/kotlin/com/nikhil/yt/playback/MusicService.kt
+          grep -q 'setUpstreamDataSourceFactory(networkUpstream)' app/src/main/kotlin/com/nikhil/yt/playback/MusicService.kt
+          grep -q 'retryOnConnectionFailure(true)' app/src/main/kotlin/com/nikhil/yt/playback/MusicService.kt
+          grep -q 'DiagnosticYtConfigParser' app/src/main/kotlin/com/nikhil/yt/playback/audio/CapsuleInnerTubeXPlayer.kt
+          grep -q 'cdn-first-byte' app/src/main/kotlin/com/nikhil/yt/playback/audio/AudioNetworkDiagnosticDataSource.kt
+          grep -q 'config-fetch-ready' app/src/main/kotlin/com/nikhil/yt/playback/audio/DiagnosticYtConfigParser.kt
+
+      - name: Full validation
+        run: |
+          ./gradlew \
+            :innertube:test \
+            :betterlyrics:test \
+            :lrclib:test \
+            :app:testUniversalDebugUnitTest \
+            :app:lintUniversalDebug \
+            :app:assembleUniversalDebug \
+            --stacktrace \
+            --no-daemon
+
+      - name: Upload debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: capsule-step38-debug
+          path: app/build/outputs/apk/universal/debug/*.apk
+          if-no-files-found: error
+
+      - name: Verify branch did not move
+        shell: bash
+        run: |
+          git fetch origin cleanup/capsule-player-only
+          remote_head="$(git rev-parse origin/cleanup/capsule-player-only)"
+          if [ "$remote_head" != "$GITHUB_SHA" ]; then
+            echo "Branch moved while Step38 was validating: $remote_head != $GITHUB_SHA"
+            exit 1
+          fi
+
+      - name: Commit validated production changes
+        shell: bash
+        run: |
+          rm -f tools/refactor/diagnose_audio_pipeline_step38.py
+          rm -f .github/workflows/audio-pipeline-diagnostics-step38.yml
+          git config user.name capsule-refactor-bot
+          git config user.email actions@users.noreply.github.com
+          git add -A
+          if git diff --cached --quiet; then
+            echo "No Step38 changes to commit"
+            exit 1
+          fi
+          git commit -m 'Instrument audio pipeline safely [step38-final]'
+          git push origin HEAD:cleanup/capsule-player-only
