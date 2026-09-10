@@ -1,0 +1,420 @@
+name: Apply offload and CDN diagnostics
+
+on:
+  push:
+    branches:
+      - cleanup/capsule-player-only
+    paths:
+      - .github/workflows/apply-offload-cdn-diagnostics.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Apply guarded production patch
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          def replace_once(path, old, new, label):
+              text = path.read_text(encoding='utf-8')
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f'{label}: expected exactly one match, found {count}')
+              path.write_text(text.replace(old, new, 1), encoding='utf-8')
+
+          # 1) Expected Media3/OkHttp cancellation must not look like a CDN failure.
+          path = Path('app/src/main/kotlin/com/nikhil/yt/playback/audio/AudioNetworkDiagnosticDataSource.kt')
+          replace_once(
+              path,
+              'import timber.log.Timber\n',
+              '''import timber.log.Timber
+import java.io.IOException
+import java.io.InterruptedIOException
+import java.net.SocketTimeoutException
+
+internal fun Throwable.isExpectedAudioCdnInterruption(): Boolean {
+    val causes = generateSequence(this as Throwable?) { it.cause }
+        .take(8)
+        .toList()
+
+    // Socket/read timeouts are real network failures even though
+    // SocketTimeoutException derives from InterruptedIOException.
+    if (causes.any { it is SocketTimeoutException }) return false
+
+    return causes.any { cause ->
+        when (cause) {
+            is InterruptedIOException ->
+                !cause.message.orEmpty().contains("timeout", ignoreCase = true)
+            is IOException -> {
+                val message = cause.message?.trim().orEmpty()
+                message.equals("Canceled", ignoreCase = true) ||
+                    message.equals("Cancelled", ignoreCase = true)
+            }
+            else -> false
+        }
+    }
+}
+''',
+              'AudioNetworkDiagnosticDataSource imports/helper',
+          )
+          replace_once(
+              path,
+              '''        } catch (failure: Throwable) {
+            Timber.tag(TAG).w(
+                failure,
+                "cdn-open-failed id=%s host=%s elapsedMs=%d",
+                mediaKey ?: "none",
+                host ?: "unknown",
+                elapsedMs(startedAtNs, System.nanoTime()),
+            )
+            throw failure
+        }
+''',
+              '''        } catch (failure: Throwable) {
+            val now = System.nanoTime()
+            if (failure.isExpectedAudioCdnInterruption()) {
+                Timber.tag(TAG).d(
+                    "cdn-open-interrupted id=%s host=%s elapsedMs=%d",
+                    mediaKey ?: "none",
+                    host ?: "unknown",
+                    elapsedMs(startedAtNs, now),
+                )
+            } else {
+                Timber.tag(TAG).w(
+                    failure,
+                    "cdn-open-failed id=%s host=%s elapsedMs=%d",
+                    mediaKey ?: "none",
+                    host ?: "unknown",
+                    elapsedMs(startedAtNs, now),
+                )
+            }
+            throw failure
+        }
+''',
+              'AudioNetworkDiagnosticDataSource open classification',
+          )
+          replace_once(
+              path,
+              '''        } catch (failure: Throwable) {
+            val now = System.nanoTime()
+            Timber.tag(TAG).w(
+                failure,
+                "cdn-read-failed id=%s host=%s readMs=%d bytes=%d elapsedMs=%d",
+                mediaKey ?: "none",
+                host ?: "unknown",
+                elapsedMs(readStartedAtNs, now),
+                bytesRead,
+                elapsedMs(startedAtNs, now),
+            )
+            throw failure
+        }
+''',
+              '''        } catch (failure: Throwable) {
+            val now = System.nanoTime()
+            if (failure.isExpectedAudioCdnInterruption()) {
+                Timber.tag(TAG).d(
+                    "cdn-read-interrupted id=%s host=%s readMs=%d bytes=%d elapsedMs=%d",
+                    mediaKey ?: "none",
+                    host ?: "unknown",
+                    elapsedMs(readStartedAtNs, now),
+                    bytesRead,
+                    elapsedMs(startedAtNs, now),
+                )
+            } else {
+                Timber.tag(TAG).w(
+                    failure,
+                    "cdn-read-failed id=%s host=%s readMs=%d bytes=%d elapsedMs=%d",
+                    mediaKey ?: "none",
+                    host ?: "unknown",
+                    elapsedMs(readStartedAtNs, now),
+                    bytesRead,
+                    elapsedMs(startedAtNs, now),
+                )
+            }
+            throw failure
+        }
+''',
+              'AudioNetworkDiagnosticDataSource read classification',
+          )
+
+          # 2) Expose an honest tri-state capability query for the currently selected audio format/output.
+          path = Path('app/src/main/kotlin/com/nikhil/yt/extensions/ExoPlayerExtensions.kt')
+          marker = '''private val capsuleOffloadSupportProvider by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
+    DefaultAudioOffloadSupportProvider(App.instance.applicationContext)
+}
+'''
+          addition = marker + '''
+internal enum class CapsuleAudioOffloadAvailability {
+    SUPPORTED,
+    UNSUPPORTED,
+    UNKNOWN,
+}
+
+/**
+ * Returns platform capability for the currently selected audio format and
+ * current audio route. This is deliberately tri-state: before Media3 has a
+ * selected audio track, Capsule must not pretend that support is known.
+ *
+ * SUPPORTED means the platform reports this format/route as offload-capable;
+ * actual renderer engagement is still confirmed by onOffloadedPlayback(true).
+ */
+internal fun ExoPlayer.currentAudioOffloadAvailability(): CapsuleAudioOffloadAvailability {
+    val selectedFormats =
+        currentTracks.groups.flatMap { group ->
+            if (group.type != C.TRACK_TYPE_AUDIO) {
+                emptyList()
+            } else {
+                (0 until group.length)
+                    .filter(group::isTrackSelected)
+                    .map(group::getTrackFormat)
+            }
+        }
+
+    if (selectedFormats.size != 1) return CapsuleAudioOffloadAvailability.UNKNOWN
+
+    val support =
+        runCatching {
+            capsuleOffloadSupportProvider.getAudioOffloadSupport(
+                selectedFormats.single(),
+                audioAttributes,
+            )
+        }.getOrNull() ?: return CapsuleAudioOffloadAvailability.UNKNOWN
+
+    return if (support.isFormatSupported) {
+        CapsuleAudioOffloadAvailability.SUPPORTED
+    } else {
+        CapsuleAudioOffloadAvailability.UNSUPPORTED
+    }
+}
+'''
+          replace_once(path, marker, addition, 'ExoPlayerExtensions offload capability')
+
+          # 3) User-facing toggle validates capability before persisting ON.
+          path = Path('app/src/main/kotlin/com/nikhil/yt/ui/screens/settings/PlayerSettings.kt')
+          replace_once(
+              path,
+              'package com.nikhil.yt.ui.screens.settings\n\n',
+              'package com.nikhil.yt.ui.screens.settings\n\nimport android.widget.Toast\n',
+              'PlayerSettings Toast import',
+          )
+          replace_once(
+              path,
+              'import androidx.compose.ui.Modifier\n',
+              'import androidx.compose.ui.Modifier\nimport androidx.compose.ui.platform.LocalContext\n',
+              'PlayerSettings LocalContext import',
+          )
+          replace_once(
+              path,
+              'import com.nikhil.yt.LocalDatabase\n',
+              'import com.nikhil.yt.LocalDatabase\nimport com.nikhil.yt.LocalPlayerConnection\n',
+              'PlayerSettings LocalPlayerConnection import',
+          )
+          replace_once(
+              path,
+              'import com.nikhil.yt.innertube.models.YouTubeClientUpstream\n',
+              '''import com.nikhil.yt.innertube.models.YouTubeClientUpstream
+import com.nikhil.yt.extensions.CapsuleAudioOffloadAvailability
+import com.nikhil.yt.extensions.currentAudioOffloadAvailability
+''',
+              'PlayerSettings offload capability imports',
+          )
+          replace_once(
+              path,
+              '''    val (audioOffload, onAudioOffloadChange) =
+        rememberPreference(
+            AudioOffload,
+            defaultValue = true,
+        )
+''',
+              '''    val (audioOffload, onAudioOffloadChange) =
+        rememberPreference(
+            AudioOffload,
+            defaultValue = false,
+        )
+''',
+              'PlayerSettings offload default',
+          )
+          replace_once(
+              path,
+              '''    var showAudioClientPriorityDialog by remember { mutableStateOf(false) }
+    val database = LocalDatabase.current
+''',
+              '''    var showAudioClientPriorityDialog by remember { mutableStateOf(false) }
+    val database = LocalDatabase.current
+    val context = LocalContext.current
+    val playerConnection = LocalPlayerConnection.current
+''',
+              'PlayerSettings context/player access',
+          )
+          replace_once(
+              path,
+              '''            checked = audioOffload,
+            onCheckedChange = { enabled ->
+                onAudioOffloadChange(enabled)
+                if (enabled) {
+                    onSkipSilenceChange(false)
+                }
+            },
+''',
+              '''            checked = audioOffload,
+            onCheckedChange = { enabled ->
+                if (!enabled) {
+                    onAudioOffloadChange(false)
+                    return@SwitchPreference
+                }
+
+                val availability =
+                    playerConnection?.player?.currentAudioOffloadAvailability()
+                        ?: CapsuleAudioOffloadAvailability.UNKNOWN
+
+                when (availability) {
+                    CapsuleAudioOffloadAvailability.SUPPORTED -> {
+                        // Both features require software processing. Do not let
+                        // the UI say offload is enabled while runtime policy has
+                        // silently disabled it because of an old crossfade value.
+                        onAudioCrossfadeSecondsChange(0)
+                        onSkipSilenceChange(false)
+                        onAudioOffloadChange(true)
+                        Toast.makeText(
+                            context,
+                            context.getString(R.string.audio_offload_supported),
+                            Toast.LENGTH_SHORT,
+                        ).show()
+                    }
+                    CapsuleAudioOffloadAvailability.UNSUPPORTED -> {
+                        onAudioOffloadChange(false)
+                        Toast.makeText(
+                            context,
+                            context.getString(R.string.audio_offload_unsupported),
+                            Toast.LENGTH_LONG,
+                        ).show()
+                    }
+                    CapsuleAudioOffloadAvailability.UNKNOWN -> {
+                        onAudioOffloadChange(false)
+                        Toast.makeText(
+                            context,
+                            context.getString(R.string.audio_offload_unknown),
+                            Toast.LENGTH_LONG,
+                        ).show()
+                    }
+                }
+            },
+''',
+              'PlayerSettings validated offload toggle',
+          )
+
+          # 4) New installs start with an honest OFF state until capability is checked.
+          path = Path('app/src/main/kotlin/com/nikhil/yt/playback/MusicService.kt')
+          text = path.read_text(encoding='utf-8')
+          replacements = [
+              ('setOffloadEnabled(dataStore.get(AudioOffload, true))', 'setOffloadEnabled(dataStore.get(AudioOffload, false))'),
+              ('val offload = prefs[AudioOffload] ?: true', 'val offload = prefs[AudioOffload] ?: false'),
+              ('.map { it[AudioOffload] ?: true }', '.map { it[AudioOffload] ?: false }'),
+              ('updateAudioOffload(dataStore.get(AudioOffload, true))', 'updateAudioOffload(dataStore.get(AudioOffload, false))'),
+          ]
+          for old, new in replacements:
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f'MusicService offload default: expected one {old!r}, found {count}')
+              text = text.replace(old, new, 1)
+          path.write_text(text, encoding='utf-8')
+
+          # 5) Explain the behavior and the three validation outcomes.
+          path = Path('app/src/main/res/values/strings.xml')
+          replace_once(
+              path,
+              '''    <string name="audio_offload">Audio offload</string>
+    <string name="audio_offload_desc">Let supported devices play audio using low-power hardware decoding. Some audio processing features are disabled.</string>
+''',
+              '''    <string name="audio_offload">Audio offload</string>
+    <string name="audio_offload_desc">Use low-power hardware decoding when the current audio format and output support it. Enabling this checks compatibility; crossfade and silence skipping are disabled.</string>
+    <string name="audio_offload_supported">Audio offload is supported on the current audio output.</string>
+    <string name="audio_offload_unsupported">Audio offload is not supported for the current track and audio output. It remains off.</string>
+    <string name="audio_offload_unknown">Start a track, then enable audio offload so Capsule can verify support.</string>
+''',
+              'offload strings',
+          )
+
+          # 6) Regression tests for cancellation-vs-network-failure classification.
+          test_path = Path('app/src/test/kotlin/com/nikhil/yt/playback/audio/AudioNetworkDiagnosticDataSourceTest.kt')
+          if test_path.exists():
+              raise SystemExit('AudioNetworkDiagnosticDataSourceTest.kt already exists unexpectedly')
+          test_path.parent.mkdir(parents=True, exist_ok=True)
+          test_path.write_text('''package com.nikhil.yt.playback.audio
+
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
+import org.junit.Test
+import java.io.IOException
+import java.io.InterruptedIOException
+import java.net.SocketTimeoutException
+
+class AudioNetworkDiagnosticDataSourceTest {
+    @Test
+    fun wrappedInterruptedIoIsExpectedInterruption() {
+        val failure = IOException("Media3 wrapper", InterruptedIOException())
+        assertTrue(failure.isExpectedAudioCdnInterruption())
+    }
+
+    @Test
+    fun socketTimeoutRemainsARealFailure() {
+        assertFalse(SocketTimeoutException("timeout").isExpectedAudioCdnInterruption())
+    }
+
+    @Test
+    fun genericIoRemainsARealFailure() {
+        assertFalse(IOException("connection reset").isExpectedAudioCdnInterruption())
+    }
+
+    @Test
+    fun explicitOkHttpCancellationIsExpectedInterruption() {
+        assertTrue(IOException("Canceled").isExpectedAudioCdnInterruption())
+    }
+}
+''', encoding='utf-8')
+          PY
+
+      - name: Verify patch shape
+        run: |
+          grep -q 'cdn-open-interrupted' app/src/main/kotlin/com/nikhil/yt/playback/audio/AudioNetworkDiagnosticDataSource.kt
+          grep -q 'cdn-read-interrupted' app/src/main/kotlin/com/nikhil/yt/playback/audio/AudioNetworkDiagnosticDataSource.kt
+          grep -q 'currentAudioOffloadAvailability' app/src/main/kotlin/com/nikhil/yt/extensions/ExoPlayerExtensions.kt
+          grep -q 'audio_offload_unsupported' app/src/main/res/values/strings.xml
+          test "$(grep -c 'AudioOffload, true' app/src/main/kotlin/com/nikhil/yt/playback/MusicService.kt)" -eq 0
+          git diff --check
+
+      - name: Test CDN diagnostic classification
+        run: ./gradlew :app:testUniversalDebugUnitTest --tests com.nikhil.yt.playback.audio.AudioNetworkDiagnosticDataSourceTest --stacktrace
+
+      - name: Compile debug variants
+        run: ./gradlew :app:compileUniversalDebugKotlin :app:compileArmeabiDebugKotlin --stacktrace
+
+      - name: Commit validated production changes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add \
+            app/src/main/kotlin/com/nikhil/yt/playback/audio/AudioNetworkDiagnosticDataSource.kt \
+            app/src/main/kotlin/com/nikhil/yt/extensions/ExoPlayerExtensions.kt \
+            app/src/main/kotlin/com/nikhil/yt/ui/screens/settings/PlayerSettings.kt \
+            app/src/main/kotlin/com/nikhil/yt/playback/MusicService.kt \
+            app/src/main/res/values/strings.xml \
+            app/src/test/kotlin/com/nikhil/yt/playback/audio/AudioNetworkDiagnosticDataSourceTest.kt
+          git diff --cached --check
+          git commit -m "Validate audio offload and clean CDN interruption logs"
+          git push origin HEAD:cleanup/capsule-player-only
