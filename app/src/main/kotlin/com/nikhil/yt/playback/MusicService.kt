@@ -406,7 +406,17 @@ class MusicService :
         mediaId: String,
     ) =
         audioResolveCoordinator.resolve(mediaId) { policyGeneration ->
-            audioResolveStability.awaitStable {
+            audioResolveStability.awaitStable(
+                requiredDelayMs = {
+                    withContext(Dispatchers.Main.immediate) {
+                        if (mediaId == player.currentMediaItem?.mediaId) {
+                            PLAYBACK_RESOLVE_STABILITY_DELAY_MS
+                        } else {
+                            PREFETCH_RESOLVE_STABILITY_DELAY_MS
+                        }
+                    }
+                },
+            ) {
                 withContext(Dispatchers.Main.immediate) {
                     mediaId == player.currentMediaItem?.mediaId ||
                         mediaId in upcomingAudioIds()
