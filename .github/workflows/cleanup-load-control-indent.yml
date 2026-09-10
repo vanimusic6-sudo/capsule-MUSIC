@@ -1,0 +1,41 @@
+name: Cleanup load control indent
+
+on:
+  push:
+    branches:
+      - cleanup/capsule-player-only
+    paths:
+      - .github/workflows/cleanup-load-control-indent.yml
+
+permissions:
+  contents: write
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+
+      - name: Fix crossfade builder indentation
+        shell: python
+        run: |
+          from pathlib import Path
+          path = Path("app/src/main/kotlin/com/nikhil/yt/playback/MusicService.kt")
+          text = path.read_text(encoding="utf-8")
+          old = "                        .setMediaSourceFactory(createMediaSourceFactory())\n                .setLoadControl(createCapsuleLoadControl())\n                        .setRenderersFactory(createRenderersFactory())"
+          new = "                        .setMediaSourceFactory(createMediaSourceFactory())\n                        .setLoadControl(createCapsuleLoadControl())\n                        .setRenderersFactory(createRenderersFactory())"
+          if text.count(old) != 1:
+              raise SystemExit(f"expected one crossfade indentation match, found {text.count(old)}")
+          path.write_text(text.replace(old, new), encoding="utf-8")
+
+      - name: Commit cleanup
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app/src/main/kotlin/com/nikhil/yt/playback/MusicService.kt
+          git diff --cached --check
+          git commit -m "Align crossfade load-control wiring"
+          git push origin HEAD:cleanup/capsule-player-only
