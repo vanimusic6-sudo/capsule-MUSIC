@@ -187,6 +187,7 @@ import com.nikhil.yt.utils.StreamClientUtils
 import com.nikhil.yt.utils.SyncUtils
 import com.nikhil.yt.playback.audio.AudioCacheDataSource
 import com.nikhil.yt.playback.audio.AudioCacheSource
+import com.nikhil.yt.playback.audio.AudioNetworkDiagnosticDataSource
 import com.nikhil.yt.playback.audio.CapsuleAudioRequestInterceptor
 import com.nikhil.yt.playback.audio.AudioCacheIdentity
 import com.nikhil.yt.playback.audio.AudioFormatChangedException
@@ -3186,8 +3187,12 @@ class MusicService :
                 .retryOnConnectionFailure(true)
                 .addInterceptor(CapsuleAudioRequestInterceptor(guardStreams = true))
                 .build()
+        val networkUpstream =
+            AudioNetworkDiagnosticDataSource.Factory(
+                DefaultDataSource.Factory(this, OkHttpDataSource.Factory(audioHttpClient)),
+            )
         val streaming = CacheDataSource.Factory().setCache(playerCache)
-            .setUpstreamDataSourceFactory(DefaultDataSource.Factory(this, OkHttpDataSource.Factory(audioHttpClient)))
+            .setUpstreamDataSourceFactory(networkUpstream)
             .setFlags(FLAG_IGNORE_CACHE_ON_ERROR)
         val offline = CacheDataSource.Factory().setCache(downloadCache).setCacheWriteDataSinkFactory(null)
         return DataSource.Factory { AudioCacheDataSource(streaming.createDataSource(), offline.createDataSource()) }

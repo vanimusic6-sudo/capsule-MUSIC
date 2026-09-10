@@ -431,8 +431,10 @@ object CapsuleInnerTubeXPlayer {
             val extractor =
                 InnerTubeExtractor(
                     configParser =
-                        YtConfigParserImpl(httpClient, innerTube, remoteStore, logger)
-                            .withEmbeddedConfigFallback(),
+                        DiagnosticYtConfigParser(
+                            YtConfigParserImpl(httpClient, innerTube, remoteStore, logger)
+                                .withEmbeddedConfigFallback(),
+                        ),
                     cipherService = cipherService,
                     innerTube = innerTube,
                     fallbackStrategy = CapsuleAudioClientStrategy,
