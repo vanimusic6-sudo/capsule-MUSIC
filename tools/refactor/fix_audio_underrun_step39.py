@@ -31,11 +31,11 @@ import androidx.media3.exoplayer.audio.DefaultAudioTrackBufferSizeProvider
 /**
  * Capsule's main renderer factory with a modest PCM AudioTrack safety margin.
  *
- * Media3 1.9.x defaults to a relatively small fixed PCM AudioTrack buffer on
- * the affected playback path. A real field underrun showed a 750 ms output
- * buffer being starved for 1214 ms. We intentionally change only the local PCM
- * sink target to 1.5 s; compressed passthrough/offload buffers, Media3 source
- * buffering, CDN transport and YouTube request pacing remain at their defaults.
+ * Media3 1.9.2 clamps the 1x PCM AudioTrack buffer between 250 ms and 750 ms.
+ * A real field underrun showed that 750 ms output buffer being starved for
+ * 1214 ms. We intentionally set the 1x PCM min/max to 1.5 s and leave the
+ * PCM multiplier, compressed passthrough/offload buffers, Media3 source
+ * buffering, CDN transport and YouTube request pacing at their defaults.
  */
 internal const val CAPSULE_PCM_AUDIO_TRACK_BUFFER_DURATION_US = 1_500_000
 
@@ -49,7 +49,8 @@ internal class CapsuleAudioRenderersFactory(
     ): AudioSink? {
         val pcmBufferSizeProvider =
             DefaultAudioTrackBufferSizeProvider.Builder()
-                .setTargetPcmBufferDurationUs(CAPSULE_PCM_AUDIO_TRACK_BUFFER_DURATION_US)
+                .setMinPcmBufferDurationUs(CAPSULE_PCM_AUDIO_TRACK_BUFFER_DURATION_US)
+                .setMaxPcmBufferDurationUs(CAPSULE_PCM_AUDIO_TRACK_BUFFER_DURATION_US)
                 .build()
 
         return DefaultAudioSink.Builder(context)
