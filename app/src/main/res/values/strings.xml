@@ -814,4 +814,25 @@ Velune will only extract your token, and everything else is stored locally.</str
     <string name="token_copied">Token copied to clipboard</string>
     <string name="no_visitor_data">No visitor data available. Tokens cannot be generated.</string>
     <string name="extracting_from_url">Extracting tokens from URL…</string>
+
+    <string name="audio_client_priority_title">Audio client priority</string>
+    <string name="audio_client_priority_summary">First: %1$s • %2$d clients</string>
+    <string name="audio_client_priority_description">Drag clients by the handle. Higher clients are queried earlier when Capsule needs a new audio stream.</string>
+    <string name="audio_client_priority_note">The order controls real playback resolves, not only the settings screen.</string>
+    <string name="audio_client_priority_safety_note">Safety rules still apply: quarantined and incompatible clients are skipped, background prefetch uses only position #1, and a bot-check may cross to only one different client family.</string>
+    <string name="audio_client_priority_reset">Reset</string>
+    <string name="audio_client_priority_cancel">Cancel</string>
+    <string name="audio_client_priority_done">Done</string>
+    <string name="audio_client_visionos">visionOS</string>
+    <string name="audio_client_visionos_description">Stable visionOS playback profile.</string>
+    <string name="audio_client_visionos_compat">visionOS compatibility</string>
+    <string name="audio_client_visionos_compat_description">Alternative maintained profile from the Vision family.</string>
+    <string name="audio_client_web_remix">YouTube Music Web</string>
+    <string name="audio_client_web_remix_description">Music web profile with the modern PoToken path.</string>
+    <string name="audio_client_web_embedded">Embedded Web</string>
+    <string name="audio_client_web_embedded_description">Independent embedded-web fallback profile.</string>
+    <string name="audio_client_web_creator">Web Creator</string>
+    <string name="audio_client_web_creator_description">Authenticated web profile; skipped automatically while signed out.</string>
+    <string name="audio_client_tv">TV HTML5</string>
+    <string name="audio_client_tv_description">Maintained TVHTML5_SIMPLY profile. The broken legacy TVHTML5 profile is not exposed.</string>
 </resources>

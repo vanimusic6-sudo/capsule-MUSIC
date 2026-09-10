@@ -19,4 +19,5 @@ internal data class AudioPlaybackContext(
     val policy: AudioStreamPolicy,
     val metered: Boolean,
     val session: Any = CapsuleInnerTubeXPlayer.sessionIdentity(),
+    val clientOrder: List<String> = emptyList(),
 )

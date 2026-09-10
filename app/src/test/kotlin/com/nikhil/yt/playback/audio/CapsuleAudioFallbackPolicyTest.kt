@@ -9,7 +9,7 @@ import org.junit.Test
 
 class CapsuleAudioFallbackPolicyTest {
     @Test
-    fun signedOutWebPlaybackUsesOnlyVettedBoundedFallbacks() {
+    fun legacySignedOutWebPlaybackKeepsBoundedFallbacks() {
         val plan =
             CapsuleAudioFallbackPolicy.profilePlan(
                 primaryProfileId = CapsuleAudioFallbackPolicy.WEB_REMIX,
@@ -32,26 +32,147 @@ class CapsuleAudioFallbackPolicyTest {
     }
 
     @Test
-    fun authenticatedPlaybackKeepsTvAsRareLastFallback() {
+    fun manualOrderDrivesForegroundResolveOrder() {
+        val custom =
+            listOf(
+                "TVHTML5_SIMPLY",
+                "WEB_REMIX",
+                "VISIONOS_0_1",
+                "WEB_EMBEDDED_PLAYER",
+                "VISIONOS",
+                "WEB_CREATOR",
+            )
+
         val plan =
             CapsuleAudioFallbackPolicy.profilePlan(
-                primaryProfileId = CapsuleAudioFallbackPolicy.WEB_REMIX,
+                primaryProfileId = "VISIONOS",
+                priority = AudioResolvePriority.PLAYBACK,
+                authenticated = false,
+                isUploaded = false,
+                excludedProfiles = emptySet(),
+                preferredProfiles = custom,
+            )
+
+        assertEquals(custom.dropLast(1), plan)
+    }
+
+    @Test
+    fun authenticatedManualOrderCanReachAllSixMaintainedProfiles() {
+        val custom =
+            listOf(
+                "WEB_CREATOR",
+                "TVHTML5_SIMPLY",
+                "WEB_EMBEDDED_PLAYER",
+                "VISIONOS_0_1",
+                "VISIONOS",
+                "WEB_REMIX",
+            )
+
+        val plan =
+            CapsuleAudioFallbackPolicy.profilePlan(
+                primaryProfileId = "VISIONOS",
                 priority = AudioResolvePriority.PLAYBACK,
                 authenticated = true,
                 isUploaded = false,
                 excludedProfiles = emptySet(),
+                preferredProfiles = custom,
+            )
+
+        assertEquals(custom, plan)
+    }
+
+    @Test
+    fun backgroundUsesOnlyConfiguredFirstProfile() {
+        val custom = listOf("WEB_REMIX", "VISIONOS_0_1", "TVHTML5_SIMPLY")
+        val plan =
+            CapsuleAudioFallbackPolicy.profilePlan(
+                primaryProfileId = "VISIONOS",
+                priority = AudioResolvePriority.PREFETCH,
+                authenticated = false,
+                isUploaded = false,
+                excludedProfiles = emptySet(),
+                preferredProfiles = custom,
+            )
+        assertEquals(listOf("WEB_REMIX"), plan)
+
+        val quarantined =
+            CapsuleAudioFallbackPolicy.profilePlan(
+                primaryProfileId = "VISIONOS",
+                priority = AudioResolvePriority.PREFETCH,
+                authenticated = false,
+                isUploaded = false,
+                excludedProfiles = setOf("WEB_REMIX"),
+                preferredProfiles = custom,
+            )
+        assertTrue(quarantined.isEmpty())
+    }
+
+    @Test
+    fun foregroundSkipsQuarantinedClientsWithoutReorderingTheRest() {
+        val plan =
+            CapsuleAudioFallbackPolicy.profilePlan(
+                primaryProfileId = "VISIONOS",
+                priority = AudioResolvePriority.PLAYBACK,
+                authenticated = false,
+                isUploaded = false,
+                excludedProfiles = setOf("WEB_REMIX", "WEB_CREATOR"),
+                preferredProfiles =
+                    listOf(
+                        "WEB_REMIX",
+                        "WEB_CREATOR",
+                        "TVHTML5_SIMPLY",
+                        "VISIONOS_0_1",
+                        "WEB_EMBEDDED_PLAYER",
+                    ),
             )
 
         assertEquals(
-            listOf(
-                "WEB_REMIX",
-                "VISIONOS_0_1",
-                "WEB_EMBEDDED_PLAYER",
-                "WEB_CREATOR",
-                "TVHTML5_SIMPLY",
-            ),
+            listOf("TVHTML5_SIMPLY", "VISIONOS_0_1", "WEB_EMBEDDED_PLAYER"),
             plan,
         )
+    }
+
+    @Test
+    fun botFallbackFollowsUserOrderButCrossesFamily() {
+        val plan =
+            listOf(
+                "WEB_REMIX",
+                "WEB_CREATOR",
+                "TVHTML5_SIMPLY",
+                "VISIONOS_0_1",
+                "WEB_EMBEDDED_PLAYER",
+            )
+        assertEquals(
+            "TVHTML5_SIMPLY",
+            CapsuleAudioFallbackPolicy.crossFamilyFallback(plan, "WEB_REMIX"),
+        )
+        assertNull(
+            CapsuleAudioFallbackPolicy.crossFamilyFallback(
+                listOf("WEB_REMIX", "WEB_CREATOR"),
+                "WEB_REMIX",
+            ),
+        )
+    }
+
+    @Test
+    fun uploadedPlaybackKeepsOnlyUploadCompatibleProfilesInUserOrder() {
+        val plan =
+            CapsuleAudioFallbackPolicy.profilePlan(
+                primaryProfileId = "VISIONOS",
+                priority = AudioResolvePriority.PLAYBACK,
+                authenticated = true,
+                isUploaded = true,
+                excludedProfiles = emptySet(),
+                preferredProfiles =
+                    listOf(
+                        "TVHTML5_SIMPLY",
+                        "WEB_CREATOR",
+                        "VISIONOS",
+                        "WEB_REMIX",
+                    ),
+            )
+
+        assertEquals(listOf("WEB_CREATOR", "WEB_REMIX"), plan)
     }
 
     @Test
@@ -68,74 +189,6 @@ class CapsuleAudioFallbackPolicyTest {
             setOf("TVHTML5_SIMPLY"),
             CapsuleAudioFallbackPolicy.botQuarantineProfiles("TVHTML5_SIMPLY"),
         )
-    }
-    @Test
-    fun backgroundResolveNeverRotatesProfiles() {
-        val plan =
-            CapsuleAudioFallbackPolicy.profilePlan(
-                primaryProfileId = CapsuleAudioFallbackPolicy.WEB_REMIX,
-                priority = AudioResolvePriority.PREFETCH,
-                authenticated = false,
-                isUploaded = false,
-                excludedProfiles = emptySet(),
-            )
-        assertEquals(listOf("WEB_REMIX"), plan)
-
-        val quarantined =
-            CapsuleAudioFallbackPolicy.profilePlan(
-                primaryProfileId = CapsuleAudioFallbackPolicy.WEB_REMIX,
-                priority = AudioResolvePriority.PREFETCH,
-                authenticated = false,
-                isUploaded = false,
-                excludedProfiles = setOf("WEB_REMIX"),
-            )
-        assertTrue(quarantined.isEmpty())
-    }
-
-    @Test
-    fun foregroundSkipsQuarantinedPrimary() {
-        val plan =
-            CapsuleAudioFallbackPolicy.profilePlan(
-                primaryProfileId = CapsuleAudioFallbackPolicy.WEB_REMIX,
-                priority = AudioResolvePriority.PLAYBACK,
-                authenticated = false,
-                isUploaded = false,
-                excludedProfiles = setOf("WEB_REMIX"),
-            )
-
-        assertEquals(
-            listOf("VISIONOS_0_1", "WEB_EMBEDDED_PLAYER", "TVHTML5_SIMPLY"),
-            plan,
-        )
-    }
-
-    @Test
-    fun botFallbackCrossesClientFamily() {
-        val plan = listOf("WEB_REMIX", "WEB_CREATOR", "VISIONOS_0_1", "WEB_EMBEDDED_PLAYER")
-        assertEquals(
-            "VISIONOS_0_1",
-            CapsuleAudioFallbackPolicy.crossFamilyFallback(plan, "WEB_REMIX"),
-        )
-        assertNull(
-            CapsuleAudioFallbackPolicy.crossFamilyFallback(
-                listOf("WEB_REMIX", "WEB_CREATOR"),
-                "WEB_REMIX",
-            ),
-        )
-    }
-
-    @Test
-    fun uploadedPlaybackAvoidsUnsupportedProfiles() {
-        val plan =
-            CapsuleAudioFallbackPolicy.profilePlan(
-                primaryProfileId = CapsuleAudioFallbackPolicy.WEB_REMIX,
-                priority = AudioResolvePriority.PLAYBACK,
-                authenticated = true,
-                isUploaded = true,
-                excludedProfiles = emptySet(),
-            )
-
-        assertEquals(listOf("WEB_REMIX", "WEB_CREATOR"), plan)
     }
 
     @Test

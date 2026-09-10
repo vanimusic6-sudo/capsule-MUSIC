@@ -40,6 +40,8 @@ import com.nikhil.yt.LocalDatabase
 import com.nikhil.yt.LocalPlayerAwareWindowInsets
 import com.nikhil.yt.R
 import com.nikhil.yt.constants.ArtistSeparatorsKey
+import com.nikhil.yt.constants.AudioClientOrder
+import com.nikhil.yt.constants.AudioClientOrderKey
 import com.nikhil.yt.constants.AudioCrossfadeDurationKey
 import com.nikhil.yt.constants.AudioNormalizationKey
 import com.nikhil.yt.constants.AudioOffload
@@ -165,10 +167,21 @@ fun PlayerSettings(
      * normalize to AUTO_SAFE at the playback boundary. They are never shown to
      * users again.
      */
-    val (audioStreamPolicy, onAudioStreamPolicyChange) =
+    val (audioStreamPolicy, _) =
         rememberEnumPreference(
             AudioStreamPolicyKey,
             defaultValue = AudioStreamPolicy.VISIONOS,
+        )
+
+    val (rawAudioClientOrder, onAudioClientOrderChange) =
+        rememberPreference(
+            AudioClientOrderKey,
+            defaultValue = "",
+        )
+    val audioClientOrder =
+        AudioClientOrder.resolve(
+            raw = rawAudioClientOrder,
+            legacyPolicy = audioStreamPolicy,
         )
 
     val (networkMetered, onNetworkMeteredChange) =
@@ -244,7 +257,7 @@ fun PlayerSettings(
 
     var showArtistSeparatorsDialog by remember { mutableStateOf(false) }
     var showTagsManagementDialog by remember { mutableStateOf(false) }
-    var showAudioStreamPolicyDialog by remember { mutableStateOf(false) }
+    var showAudioClientPriorityDialog by remember { mutableStateOf(false) }
     val database = LocalDatabase.current
 
     if (showArtistSeparatorsDialog) {
@@ -265,47 +278,16 @@ fun PlayerSettings(
         )
     }
 
-    if (showAudioStreamPolicyDialog) {
-        ListDialog(
-            onDismiss = { showAudioStreamPolicyDialog = false },
-            modifier = Modifier.padding(horizontal = 8.dp),
-        ) {
-            items(AudioStreamPolicy.entries.filter(AudioStreamPolicy::isUserSelectable)) { value ->
-                Row(
-                    modifier =
-                        Modifier
-                            .fillMaxWidth()
-                            .clickable {
-                                onAudioStreamPolicyChange(value)
-                                showAudioStreamPolicyDialog = false
-                            }
-                            .padding(
-                                horizontal = 16.dp,
-                                vertical = 12.dp,
-                            ),
-                ) {
-                    RadioButton(
-                        selected = value == audioStreamPolicy.normalizedForPlayback(),
-                        onClick = null,
-                    )
-
-                    Column(
-                        modifier = Modifier.padding(start = 16.dp),
-                    ) {
-                        Text(
-                            text = value.localizedTitle(),
-                            style = MaterialTheme.typography.bodyLarge,
-                        )
-                        Spacer(Modifier.height(4.dp))
-                        Text(
-                            text = value.localizedDescription(),
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.secondary,
-                        )
-                    }
-                }
-            }
-        }
+    if (showAudioClientPriorityDialog) {
+        AudioClientPriorityDialog(
+            currentOrder = audioClientOrder,
+            resetOrder = AudioClientOrder.legacyOrder(audioStreamPolicy),
+            onDismiss = { showAudioClientPriorityDialog = false },
+            onSave = { newOrder ->
+                onAudioClientOrderChange(AudioClientOrder.encode(newOrder))
+                showAudioClientPriorityDialog = false
+            },
+        )
     }
 
     Column(
@@ -360,12 +342,12 @@ fun PlayerSettings(
         )
 
         PreferenceEntry(
-            title = { Text(stringResource(R.string.audio_stream_policy)) },
+            title = { Text(stringResource(R.string.audio_client_priority_title)) },
             description =
                 stringResource(
-                    R.string.audio_stream_policy_current,
-                    audioStreamPolicy.normalizedForPlayback().localizedTitle(),
-                    YouTubeClientUpstream.SOURCE_SNAPSHOT,
+                    R.string.audio_client_priority_summary,
+                    audioClientOrder.firstOrNull() ?: AudioClientOrder.VISIONOS,
+                    audioClientOrder.size,
                 ),
             icon = {
                 Icon(
@@ -374,12 +356,12 @@ fun PlayerSettings(
                 )
             },
             onClick = {
-                showAudioStreamPolicyDialog = true
+                showAudioClientPriorityDialog = true
             },
         )
 
         Text(
-            text = stringResource(R.string.audio_stream_policy_note),
+            text = stringResource(R.string.audio_client_priority_note),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.secondary,
             modifier =

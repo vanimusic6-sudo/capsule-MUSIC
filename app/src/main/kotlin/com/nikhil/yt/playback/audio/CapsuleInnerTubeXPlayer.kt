@@ -210,10 +210,11 @@ object CapsuleInnerTubeXPlayer {
         audioQuality: AudioQuality,
         connectivityManager: ConnectivityManager,
         streamPolicy: AudioStreamPolicy,
+        clientOrder: List<String> = emptyList(),
         priority: AudioResolvePriority = AudioResolvePriority.PLAYBACK,
     ): Result<PlaybackData> =
         try {
-            val primaryProfileId = streamPolicy.playbackClientOverrideId
+            val primaryProfileId = clientOrder.firstOrNull() ?: streamPolicy.playbackClientOverrideId
             val baseHints =
                 ContentHints(
                     isUploaded = playlistId == "MLPT" || playlistId?.contains("MLPT") == true,
@@ -245,6 +246,7 @@ object CapsuleInnerTubeXPlayer {
                                 baseHints = baseHints,
                                 audioQuality = resolvedQuality,
                                 primaryProfileId = primaryProfileId,
+                                preferredProfiles = clientOrder,
                                 priority = priority,
                             )
                         }
@@ -293,6 +295,7 @@ object CapsuleInnerTubeXPlayer {
         baseHints: ContentHints,
         audioQuality: InnerTubeXAudioQuality,
         primaryProfileId: String,
+        preferredProfiles: List<String>,
         priority: AudioResolvePriority,
     ): ExtractedStream {
         val quarantinedAtStart = CapsulePlaybackSafety.quarantinedProfileIds()
@@ -304,6 +307,7 @@ object CapsuleInnerTubeXPlayer {
                 authenticated = extractionBundle.innerTube.hasSapCookieAuth(),
                 isUploaded = baseHints.isUploaded == true,
                 excludedProfiles = quarantinedAtStart + perSongExcluded,
+                preferredProfiles = preferredProfiles,
             )
 
         if (plan.isEmpty()) {

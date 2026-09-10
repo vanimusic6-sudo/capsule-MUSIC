@@ -61,6 +61,7 @@ object CapsuleAudioEngine {
         audioQuality: AudioQuality,
         connectivityManager: ConnectivityManager,
         streamPolicy: AudioStreamPolicy = AudioStreamPolicy.VISIONOS,
+        clientOrder: List<String> = emptyList(),
         priority: AudioResolvePriority = AudioResolvePriority.PLAYBACK,
     ): Result<PlaybackData> {
         CapsulePlaybackSafety.blockedExceptionOrNull()?.let { return Result.failure(it) }
@@ -72,6 +73,7 @@ object CapsuleAudioEngine {
                 audioQuality = audioQuality,
                 connectivityManager = connectivityManager,
                 streamPolicy = streamPolicy.normalizedForPlayback(),
+                clientOrder = clientOrder,
                 priority = priority,
             )
             .map { resolved ->

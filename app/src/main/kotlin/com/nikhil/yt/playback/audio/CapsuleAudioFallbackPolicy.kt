@@ -1,24 +1,26 @@
 package com.nikhil.yt.playback.audio
 
+import com.nikhil.yt.constants.AudioClientOrder
 import com.nikhil.yt.innertube.YouTubeFailureKind
 import java.util.Locale
 
 /**
  * Small, bounded client plan layered on top of InnerTubeX.
  *
- * We deliberately do not expose every catalog entry. These are the profiles that the
- * pinned InnerTubeX v0.5.2 playback matrix still considers useful for automatic/direct
- * audio work. Broken Android VR / legacy TV profiles are intentionally absent.
+ * User order controls foreground priority, while Capsule still owns the safety envelope:
+ * background work never rotates identities, quarantined families are skipped, authenticated
+ * profiles are filtered when unavailable, and bot recovery may cross client families once.
  */
 internal object CapsuleAudioFallbackPolicy {
-    const val VISIONOS = "VISIONOS"
-    const val VISIONOS_0_1 = "VISIONOS_0_1"
-    const val WEB_REMIX = "WEB_REMIX"
-    const val WEB_EMBEDDED = "WEB_EMBEDDED_PLAYER"
-    const val WEB_CREATOR = "WEB_CREATOR"
-    const val TVHTML5_SIMPLY = "TVHTML5_SIMPLY"
+    const val VISIONOS = AudioClientOrder.VISIONOS
+    const val VISIONOS_0_1 = AudioClientOrder.VISIONOS_0_1
+    const val WEB_REMIX = AudioClientOrder.WEB_REMIX
+    const val WEB_EMBEDDED = AudioClientOrder.WEB_EMBEDDED
+    const val WEB_CREATOR = AudioClientOrder.WEB_CREATOR
+    const val TVHTML5_SIMPLY = AudioClientOrder.TVHTML5_SIMPLY
 
-    private const val MAX_FOREGROUND_ATTEMPTS = 5
+    private val supportedProfiles = AudioClientOrder.supportedProfiles.toSet()
+    private const val MAX_FOREGROUND_ATTEMPTS = 6
 
     fun profilePlan(
         primaryProfileId: String,
@@ -26,45 +28,54 @@ internal object CapsuleAudioFallbackPolicy {
         authenticated: Boolean,
         isUploaded: Boolean,
         excludedProfiles: Set<String>,
+        preferredProfiles: List<String> = emptyList(),
     ): List<String> {
         val primary = normalize(primaryProfileId)
         val excluded = excludedProfiles.map(::normalize).toSet()
+        val configured =
+            preferredProfiles
+                .map(::normalize)
+                .filter { it in supportedProfiles }
+                .distinct()
 
-        // Background work never rotates identities. If its primary was recently
-        // challenged, skip the optimization and let foreground playback decide.
+        // PREFETCH/DOWNLOAD never walk down the user list after a failure. They use only
+        // position #1. If that profile cannot safely run right now, background work is skipped.
         if (priority != AudioResolvePriority.PLAYBACK) {
-            return listOf(primary).filter { it.isNotBlank() && it !in excluded }
+            val first = configured.firstOrNull() ?: primary
+            return listOf(first)
+                .filter { it.isNotBlank() }
+                .filter { it !in excluded }
+                .filter { profileEligible(it, authenticated, isUploaded) }
         }
 
-        val ordered = buildList {
-            add(primary)
-            when (primary) {
-                WEB_REMIX -> addAll(listOf(VISIONOS_0_1, WEB_EMBEDDED))
-                VISIONOS, VISIONOS_0_1 -> addAll(listOf(WEB_REMIX, WEB_EMBEDDED))
-                WEB_EMBEDDED -> addAll(listOf(VISIONOS_0_1, WEB_REMIX))
-                WEB_CREATOR -> addAll(listOf(VISIONOS_0_1, WEB_EMBEDDED, WEB_REMIX))
-                TVHTML5_SIMPLY -> addAll(listOf(VISIONOS_0_1, WEB_REMIX, WEB_EMBEDDED))
-                else -> addAll(listOf(VISIONOS_0_1, WEB_REMIX, WEB_EMBEDDED))
+        val ordered =
+            if (configured.isNotEmpty()) {
+                configured
+            } else {
+                buildList {
+                    add(primary)
+                    when (primary) {
+                        WEB_REMIX -> addAll(listOf(VISIONOS_0_1, WEB_EMBEDDED))
+                        VISIONOS, VISIONOS_0_1 -> addAll(listOf(WEB_REMIX, WEB_EMBEDDED))
+                        WEB_EMBEDDED -> addAll(listOf(VISIONOS_0_1, WEB_REMIX))
+                        WEB_CREATOR -> addAll(listOf(VISIONOS_0_1, WEB_EMBEDDED, WEB_REMIX))
+                        TVHTML5_SIMPLY -> addAll(listOf(VISIONOS_0_1, WEB_REMIX, WEB_EMBEDDED))
+                        else -> addAll(listOf(VISIONOS_0_1, WEB_REMIX, WEB_EMBEDDED))
+                    }
+                    if (authenticated) add(WEB_CREATOR)
+                    add(TVHTML5_SIMPLY)
+                }
             }
-            if (authenticated) add(WEB_CREATOR)
-            // Plain TVHTML5 is BROKEN in the v0.5.2 matrix. TVHTML5_SIMPLY is the
-            // maintained TV-family candidate, so keep it as the final rare fallback.
-            add(TVHTML5_SIMPLY)
-        }
 
         return ordered
             .filter { it.isNotBlank() }
             .distinct()
+            .filter { it in supportedProfiles }
             .filter { it !in excluded }
-            .filter { profile ->
-                !isUploaded ||
-                    profile == WEB_REMIX ||
-                    (authenticated && profile == WEB_CREATOR)
-            }
+            .filter { profileEligible(it, authenticated, isUploaded) }
             .take(MAX_FOREGROUND_ATTEMPTS)
     }
 
-    /** Network/rate/permanent failures should not trigger identity rotation. */
     fun canFallbackAfter(kind: YouTubeFailureKind): Boolean =
         when (kind) {
             YouTubeFailureKind.FORBIDDEN,
@@ -81,10 +92,6 @@ internal object CapsuleAudioFallbackPolicy {
             -> false
         }
 
-    /**
-     * A bot challenge belongs to a client identity family, not just one version/profile.
-     * Do not immediately retry a sibling identity that is likely to share the same signal.
-     */
     fun botQuarantineProfiles(profileId: String): Set<String> {
         val normalized = normalize(profileId)
         if (normalized.isBlank()) return emptySet()
@@ -96,7 +103,8 @@ internal object CapsuleAudioFallbackPolicy {
             else -> setOf(normalized)
         }
     }
-    /** After a bot-check use at most one fallback and prefer another client family. */
+
+    /** After a bot-check use the first later profile from a different user-ordered family. */
     fun crossFamilyFallback(
         plan: List<String>,
         failedProfileId: String,
@@ -108,6 +116,16 @@ internal object CapsuleAudioFallbackPolicy {
         return plan
             .drop(failedIndex + 1)
             .firstOrNull { familyOf(normalize(it)) != family }
+    }
+
+    private fun profileEligible(
+        profileId: String,
+        authenticated: Boolean,
+        isUploaded: Boolean,
+    ): Boolean {
+        if (profileId == WEB_CREATOR && !authenticated) return false
+        if (!isUploaded) return true
+        return profileId == WEB_REMIX || (authenticated && profileId == WEB_CREATOR)
     }
 
     private fun familyOf(profileId: String): String =

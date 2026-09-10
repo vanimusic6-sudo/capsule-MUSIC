@@ -86,6 +86,8 @@ import com.google.common.util.concurrent.MoreExecutors
 import com.nikhil.yt.App
 import com.nikhil.yt.MainActivity
 import com.nikhil.yt.R
+import com.nikhil.yt.constants.AudioClientOrder
+import com.nikhil.yt.constants.AudioClientOrderKey
 import com.nikhil.yt.constants.AudioCrossfadeDurationKey
 import com.nikhil.yt.constants.AudioNormalizationKey
 import com.nikhil.yt.constants.AudioOffload
@@ -373,6 +375,10 @@ class MusicService :
 
     @Volatile
     private var audioStreamPolicy = AudioStreamPolicy.VISIONOS
+
+    @Volatile
+    private var audioClientOrder: List<String> =
+        AudioClientOrder.legacyOrder(AudioStreamPolicy.VISIONOS)
     private val capsuleVideoQuality by enumPreference(
         this,
         CapsuleVideoQualityKey,
@@ -382,6 +388,7 @@ class MusicService :
         audioQuality.normalizedPlaybackQuality(),
         audioStreamPolicy,
         connectivityManager.isActiveNetworkMetered,
+        audioClientOrder,
     )
     private val playbackUrlCache = PlaybackDataCache(currentContext = ::playbackContext)
     private val audioResolveCoordinator =
@@ -438,6 +445,7 @@ class MusicService :
                     audioQuality = selection.quality,
                     connectivityManager = connectivityManager,
                     streamPolicy = selection.policy,
+                    clientOrder = selection.clientOrder,
                     priority = priority,
                 )
                 .also { result ->
@@ -921,6 +929,11 @@ class MusicService :
         audioStreamPolicy = dataStore[AudioStreamPolicyKey]
             .toEnum(AudioStreamPolicy.VISIONOS)
             .normalizedForPlayback()
+        audioClientOrder =
+            AudioClientOrder.resolve(
+                raw = dataStore[AudioClientOrderKey],
+                legacyPolicy = audioStreamPolicy,
+            )
 
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -1026,19 +1039,34 @@ class MusicService :
 
         dataStore.data
             .map { prefs ->
-                Pair(
-                    prefs[AudioStreamPolicyKey].toEnum(AudioStreamPolicy.VISIONOS).normalizedForPlayback(),
+                val policy =
+                    prefs[AudioStreamPolicyKey]
+                        .toEnum(AudioStreamPolicy.VISIONOS)
+                        .normalizedForPlayback()
+                val quality =
                     prefs[AudioQualityKey]
                         .toEnum(AudioQuality.AUTO)
-                        .normalizedPlaybackQuality(),
-                )
+                        .normalizedPlaybackQuality()
+                val clientOrder =
+                    AudioClientOrder.resolve(
+                        raw = prefs[AudioClientOrderKey],
+                        legacyPolicy = policy,
+                    )
+                Triple(policy, quality, clientOrder)
             }
             .distinctUntilChanged()
-            .collect(scope) { (policy, quality) ->
-                if (policy != audioStreamPolicy || quality != audioQuality) {
+            .collect(scope) { (policy, quality, clientOrder) ->
+                if (
+                    policy != audioStreamPolicy ||
+                    quality != audioQuality ||
+                    clientOrder != audioClientOrder
+                ) {
                     audioStreamPolicy = policy
                     audioQuality = quality
-                    reloadAudioForClientChange(policy)
+                    audioClientOrder = clientOrder
+                    reloadAudioResolveConfig(
+                        clientOrder.firstOrNull() ?: policy.playbackClientOverrideId,
+                    )
                 }
             }
 
@@ -3979,7 +4007,7 @@ class MusicService :
         player.playWhenReady = true
     }
 
-    private fun reloadAudioForClientChange(policy: AudioStreamPolicy) {
+    private fun reloadAudioResolveConfig(primaryProfileId: String) {
         streamRetryJob?.cancel()
         streamRetryJob = null
         playbackRecoveryCoordinator.cancelNetworkRecovery(clearWaiting = false)
@@ -3993,8 +4021,8 @@ class MusicService :
         // already-open stream must keep feeding AudioTrack without a reprepare.
         CapsuleAudioEngine.clearStreamClientFailures()
         Timber.tag(CAPSULE_RESOLVE_TAG).i(
-            "Audio client selected profile=%s; future resolves updated, current playback preserved",
-            policy.playbackClientOverrideId,
+            "Audio client priority updated first=%s; future resolves updated, current playback preserved",
+            primaryProfileId,
         )
         prefetchUpcomingAudio()
     }

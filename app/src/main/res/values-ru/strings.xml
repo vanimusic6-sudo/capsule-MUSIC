@@ -756,4 +756,25 @@
     <string name="token_copied">Токен скопирован</string>
     <string name="no_visitor_data">Данные посетителя недоступны. Извлечь токен невозможно.</string>
     <string name="extracting_from_url">Извлечение токена</string>
+
+    <string name="audio_client_priority_title">Приоритет аудиоклиентов</string>
+    <string name="audio_client_priority_summary">Первый: %1$s • клиентов: %2$d</string>
+    <string name="audio_client_priority_description">Перетаскивай клиентов за ручку. Чем выше клиент, тем раньше Capsule опрашивает его при получении нового аудиопотока.</string>
+    <string name="audio_client_priority_note">Порядок реально управляет резолвом воспроизведения, а не только отображением в настройках.</string>
+    <string name="audio_client_priority_safety_note">Защита остаётся активной: карантинные и несовместимые клиенты пропускаются, фоновый PREFETCH использует только позицию №1, а после bot-check разрешён только один переход в другое семейство клиентов.</string>
+    <string name="audio_client_priority_reset">Сбросить</string>
+    <string name="audio_client_priority_cancel">Отмена</string>
+    <string name="audio_client_priority_done">Готово</string>
+    <string name="audio_client_visionos">visionOS</string>
+    <string name="audio_client_visionos_description">Стабильный профиль воспроизведения visionOS.</string>
+    <string name="audio_client_visionos_compat">visionOS совместимый</string>
+    <string name="audio_client_visionos_compat_description">Альтернативный поддерживаемый профиль семейства Vision.</string>
+    <string name="audio_client_web_remix">YouTube Music Web</string>
+    <string name="audio_client_web_remix_description">Музыкальный web-профиль с современным PoToken-путём.</string>
+    <string name="audio_client_web_embedded">Embedded Web</string>
+    <string name="audio_client_web_embedded_description">Независимый встроенный web-профиль для fallback.</string>
+    <string name="audio_client_web_creator">Web Creator</string>
+    <string name="audio_client_web_creator_description">Авторизованный web-профиль; без входа в аккаунт автоматически пропускается.</string>
+    <string name="audio_client_tv">TV HTML5</string>
+    <string name="audio_client_tv_description">Поддерживаемый TVHTML5_SIMPLY. Сломанный старый TVHTML5 в список не добавляется.</string>
 </resources>
