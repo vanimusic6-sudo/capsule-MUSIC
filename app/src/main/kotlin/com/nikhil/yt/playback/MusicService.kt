@@ -385,10 +385,10 @@ class MusicService :
         CapsuleVideoQuality.AUTO,
     )
     private fun playbackContext() = AudioPlaybackContext(
-        audioQuality.normalizedPlaybackQuality(),
-        audioStreamPolicy,
-        connectivityManager.isActiveNetworkMetered,
-        audioClientOrder,
+        quality = audioQuality.normalizedPlaybackQuality(),
+        policy = audioStreamPolicy,
+        metered = connectivityManager.isActiveNetworkMetered,
+        clientOrder = audioClientOrder,
     )
     private val playbackUrlCache = PlaybackDataCache(currentContext = ::playbackContext)
     private val audioResolveCoordinator =
