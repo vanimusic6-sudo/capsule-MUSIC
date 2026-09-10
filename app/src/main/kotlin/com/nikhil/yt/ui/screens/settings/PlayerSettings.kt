@@ -283,9 +283,8 @@ fun PlayerSettings(
             currentOrder = audioClientOrder,
             resetOrder = AudioClientOrder.legacyOrder(audioStreamPolicy),
             onDismiss = { showAudioClientPriorityDialog = false },
-            onSave = { newOrder ->
+            onOrderChange = { newOrder ->
                 onAudioClientOrderChange(AudioClientOrder.encode(newOrder))
-                showAudioClientPriorityDialog = false
             },
         )
     }
