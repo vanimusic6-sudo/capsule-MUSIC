@@ -1,6 +1,5 @@
 package com.nikhil.yt.ui.screens.settings
 
-import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -13,6 +12,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -25,23 +25,40 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.window.Dialog
 import com.nikhil.yt.R
 import com.nikhil.yt.constants.AudioClientOrder
-import kotlin.math.abs
+import sh.calvin.reorderable.ReorderableItem
+import sh.calvin.reorderable.rememberReorderableLazyListState
 
 @Composable
 internal fun AudioClientPriorityDialog(
     currentOrder: List<String>,
     resetOrder: List<String>,
     onDismiss: () -> Unit,
-    onSave: (List<String>) -> Unit,
+    onOrderChange: (List<String>) -> Unit,
 ) {
-    var draftOrder by remember(currentOrder) { mutableStateOf(currentOrder) }
+    // Keep the in-dialog list stable while DataStore publishes live updates back to the parent.
+    // Re-keying this state from currentOrder would interrupt an active drag on every persisted move.
+    var orderedIds by remember { mutableStateOf(currentOrder) }
+    val lazyListState = rememberLazyListState()
+    val reorderableState =
+        rememberReorderableLazyListState(lazyListState) { from, to ->
+            val fromIndex = orderedIds.indexOfFirst { it == from.key }
+            val toIndex = orderedIds.indexOfFirst { it == to.key }
+            if (fromIndex >= 0 && toIndex >= 0 && fromIndex != toIndex) {
+                val reordered =
+                    orderedIds.toMutableList().apply {
+                        add(toIndex, removeAt(fromIndex))
+                    }
+                // The reorder library requires the backing list to change synchronously.
+                // Persist only after that local move so the dragged row never flickers or jumps.
+                orderedIds = reordered
+                onOrderChange(reordered)
+            }
+        }
 
     Dialog(onDismissRequest = onDismiss) {
         Surface(
@@ -72,28 +89,24 @@ internal fun AudioClientPriorityDialog(
                         Modifier
                             .fillMaxWidth()
                             .heightIn(max = 430.dp),
+                    state = lazyListState,
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     itemsIndexed(
-                        items = draftOrder,
+                        items = orderedIds,
                         key = { _, profileId -> profileId },
                     ) { index, profileId ->
-                        AudioClientPriorityRow(
-                            position = index + 1,
-                            profileId = profileId,
-                            onMove = { direction ->
-                                val from = draftOrder.indexOf(profileId)
-                                if (from >= 0) {
-                                    val to = (from + direction).coerceIn(draftOrder.indices)
-                                    if (to != from) {
-                                        draftOrder =
-                                            draftOrder.toMutableList().apply {
-                                                add(to, removeAt(from))
-                                            }
-                                    }
-                                }
-                            },
-                        )
+                        ReorderableItem(
+                            state = reorderableState,
+                            key = profileId,
+                        ) { isDragging ->
+                            AudioClientPriorityRow(
+                                position = index + 1,
+                                profileId = profileId,
+                                isDragging = isDragging,
+                                dragHandleModifier = Modifier.draggableHandle(),
+                            )
+                        }
                     }
                 }
 
@@ -111,19 +124,18 @@ internal fun AudioClientPriorityDialog(
                 ) {
                     TextButton(
                         onClick = {
-                            draftOrder =
+                            val reset =
                                 AudioClientOrder.resolve(
                                     raw = resetOrder.joinToString(","),
                                     legacyPolicy = com.nikhil.yt.constants.AudioStreamPolicy.VISIONOS,
                                 )
+                            orderedIds = reset
+                            onOrderChange(reset)
                         },
                     ) {
                         Text(stringResource(R.string.audio_client_priority_reset))
                     }
                     TextButton(onClick = onDismiss) {
-                        Text(stringResource(R.string.audio_client_priority_cancel))
-                    }
-                    TextButton(onClick = { onSave(draftOrder) }) {
                         Text(stringResource(R.string.audio_client_priority_done))
                     }
                 }
@@ -136,15 +148,14 @@ internal fun AudioClientPriorityDialog(
 private fun AudioClientPriorityRow(
     position: Int,
     profileId: String,
-    onMove: (Int) -> Unit,
+    isDragging: Boolean,
+    dragHandleModifier: Modifier,
 ) {
-    var dragDistance by remember(profileId) { mutableStateOf(0f) }
-    val moveThresholdPx = with(LocalDensity.current) { 44.dp.toPx() }
-
     Surface(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(16.dp),
         color = MaterialTheme.colorScheme.surfaceVariant,
+        shadowElevation = if (isDragging) 8.dp else 0.dp,
     ) {
         Row(
             modifier =
@@ -188,20 +199,7 @@ private fun AudioClientPriorityRow(
                     Modifier
                         .padding(start = 12.dp)
                         .width(36.dp)
-                        .pointerInput(profileId, position) {
-                            detectDragGesturesAfterLongPress(
-                                onDragStart = { dragDistance = 0f },
-                                onDragCancel = { dragDistance = 0f },
-                                onDragEnd = { dragDistance = 0f },
-                                onDrag = { _, dragAmount ->
-                                    dragDistance += dragAmount.y
-                                    if (abs(dragDistance) >= moveThresholdPx) {
-                                        onMove(if (dragDistance > 0f) 1 else -1)
-                                        dragDistance = 0f
-                                    }
-                                },
-                            )
-                        },
+                        .then(dragHandleModifier),
             )
         }
     }
