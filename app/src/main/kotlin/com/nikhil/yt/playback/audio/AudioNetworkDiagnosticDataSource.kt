@@ -14,6 +14,10 @@ import timber.log.Timber
  * googlevideo URL, query string, signatures, cookies, or PoTokens. When field
  * logging is disabled it becomes a thin pass-through: no timestamps, strings,
  * counters, or diagnostic allocations are produced.
+ *
+ * Successful reads that block for at least [SLOW_READ_THRESHOLD_MS] are also
+ * reported. A CDN can stall long enough to starve AudioTrack and still return
+ * bytes successfully, so relying only on exceptions would miss the real stall.
  */
 internal class AudioNetworkDiagnosticDataSource(
     private val upstream: DataSource,
@@ -24,6 +28,8 @@ internal class AudioNetworkDiagnosticDataSource(
     private var firstByteLogged = false
     private var endLogged = false
     private var bytesRead = 0L
+    private var slowReadCount = 0
+    private var worstReadMs = 0L
     private var mediaKey: String? = null
     private var host: String? = null
 
@@ -40,6 +46,8 @@ internal class AudioNetworkDiagnosticDataSource(
         firstByteLogged = false
         endLogged = false
         bytesRead = 0L
+        slowReadCount = 0
+        worstReadMs = 0L
         mediaKey = dataSpec.key?.take(64)
         host = dataSpec.uri.host?.take(96)
 
@@ -77,13 +85,16 @@ internal class AudioNetworkDiagnosticDataSource(
     override fun read(buffer: ByteArray, offset: Int, length: Int): Int {
         if (!diagnosticsEnabled) return upstream.read(buffer, offset, length)
 
+        val readStartedAtNs = System.nanoTime()
         return try {
             upstream.read(buffer, offset, length).also { count ->
+                val now = System.nanoTime()
+                val readMs = elapsedMs(readStartedAtNs, now)
+
                 if (count > 0) {
                     bytesRead += count.toLong()
                     if (!firstByteLogged) {
                         firstByteLogged = true
-                        val now = System.nanoTime()
                         Timber.tag(TAG).i(
                             "cdn-first-byte id=%s host=%s fromOpenStartMs=%d afterOpenMs=%d firstReadBytes=%d",
                             mediaKey ?: "none",
@@ -100,18 +111,35 @@ internal class AudioNetworkDiagnosticDataSource(
                         mediaKey ?: "none",
                         host ?: "unknown",
                         bytesRead,
-                        elapsedMs(startedAtNs, System.nanoTime()),
+                        elapsedMs(startedAtNs, now),
+                    )
+                }
+
+                if (readMs >= SLOW_READ_THRESHOLD_MS) {
+                    slowReadCount += 1
+                    worstReadMs = maxOf(worstReadMs, readMs)
+                    Timber.tag(TAG).w(
+                        "cdn-slow-read id=%s host=%s readMs=%d requestedBytes=%d returnedBytes=%d totalBytes=%d slowReads=%d",
+                        mediaKey ?: "none",
+                        host ?: "unknown",
+                        readMs,
+                        length,
+                        count,
+                        bytesRead,
+                        slowReadCount,
                     )
                 }
             }
         } catch (failure: Throwable) {
+            val now = System.nanoTime()
             Timber.tag(TAG).w(
                 failure,
-                "cdn-read-failed id=%s host=%s bytes=%d elapsedMs=%d",
+                "cdn-read-failed id=%s host=%s readMs=%d bytes=%d elapsedMs=%d",
                 mediaKey ?: "none",
                 host ?: "unknown",
+                elapsedMs(readStartedAtNs, now),
                 bytesRead,
-                elapsedMs(startedAtNs, System.nanoTime()),
+                elapsedMs(startedAtNs, now),
             )
             throw failure
         }
@@ -127,12 +155,14 @@ internal class AudioNetworkDiagnosticDataSource(
         } finally {
             if (diagnosticsEnabled && startedAtNs != 0L) {
                 Timber.tag(TAG).d(
-                    "cdn-close id=%s host=%s bytes=%d firstByte=%s elapsedMs=%d",
+                    "cdn-close id=%s host=%s bytes=%d firstByte=%s elapsedMs=%d slowReads=%d worstReadMs=%d",
                     mediaKey ?: "none",
                     host ?: "unknown",
                     bytesRead,
                     firstByteLogged,
                     elapsedMs(startedAtNs, System.nanoTime()),
+                    slowReadCount,
+                    worstReadMs,
                 )
             }
             diagnosticsEnabled = false
@@ -141,6 +171,8 @@ internal class AudioNetworkDiagnosticDataSource(
             firstByteLogged = false
             endLogged = false
             bytesRead = 0L
+            slowReadCount = 0
+            worstReadMs = 0L
             mediaKey = null
             host = null
         }
@@ -155,6 +187,7 @@ internal class AudioNetworkDiagnosticDataSource(
 
     private companion object {
         const val TAG = "AudioCDN"
+        const val SLOW_READ_THRESHOLD_MS = 250L
 
         fun elapsedMs(startNs: Long, endNs: Long): Long =
             if (startNs == 0L || endNs < startNs) -1L else (endNs - startNs) / 1_000_000L
