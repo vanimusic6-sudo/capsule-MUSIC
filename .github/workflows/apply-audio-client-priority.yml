@@ -1,0 +1,75 @@
+name: Apply audio client priority
+
+on:
+  push:
+    branches:
+      - cleanup/capsule-player-only
+    paths:
+      - .github/workflows/apply-audio-client-priority.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: cleanup/capsule-player-only
+          fetch-depth: 0
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Apply audio client priority patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 .github/tmp/apply_audio_client_priority.py
+          git diff --check
+          grep -q 'AudioClientPriorityDialog' app/src/main/kotlin/com/nikhil/yt/ui/screens/settings/PlayerSettings.kt
+          grep -q 'clientOrder = selection.clientOrder' app/src/main/kotlin/com/nikhil/yt/playback/MusicService.kt
+          grep -q 'preferredProfiles = preferredProfiles' app/src/main/kotlin/com/nikhil/yt/playback/audio/CapsuleInnerTubeXPlayer.kt
+          grep -q 'TVHTML5_SIMPLY' app/src/main/kotlin/com/nikhil/yt/constants/AudioClientOrder.kt
+
+      - name: Run targeted unit tests
+        run: >-
+          ./gradlew :app:testUniversalDebugUnitTest
+          --tests "com.nikhil.yt.constants.AudioClientOrderTest"
+          --tests "com.nikhil.yt.playback.audio.CapsuleAudioFallbackPolicyTest"
+          --tests "com.nikhil.yt.playback.audio.CapsulePlaybackSafetyTest"
+          --tests "com.nikhil.yt.playback.audio.CapsuleAudioClientStrategyTest"
+
+      - name: Compile production variants
+        run: ./gradlew :app:compileUniversalDebugKotlin :app:compileArmeabiDebugKotlin
+
+      - name: Commit production changes
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'capsule-ci'
+          git config user.email 'capsule-ci@users.noreply.github.com'
+          git add \
+            app/src/main/kotlin/com/nikhil/yt/constants/AudioClientOrder.kt \
+            app/src/main/kotlin/com/nikhil/yt/playback/MusicService.kt \
+            app/src/main/kotlin/com/nikhil/yt/playback/audio \
+            app/src/main/kotlin/com/nikhil/yt/ui/screens/settings/AudioClientPriorityDialog.kt \
+            app/src/main/kotlin/com/nikhil/yt/ui/screens/settings/PlayerSettings.kt \
+            app/src/main/res/values/strings.xml \
+            app/src/main/res/values-ru/strings.xml \
+            app/src/test/kotlin/com/nikhil/yt/constants/AudioClientOrderTest.kt \
+            app/src/test/kotlin/com/nikhil/yt/playback/audio/CapsuleAudioFallbackPolicyTest.kt
+          git diff --cached --quiet && { echo 'No production changes to commit'; exit 1; }
+          git commit -m 'Add draggable audio client priority'
+          git push origin HEAD:cleanup/capsule-player-only
+
+      - name: Remove temporary audio client priority tooling
+        shell: bash
+        run: |
+          set -euo pipefail
+          git rm -rf .github/tmp .github/workflows/apply-audio-client-priority.yml
+          git commit -m 'Remove temporary audio client priority tooling'
+          git push origin HEAD:cleanup/capsule-player-only
