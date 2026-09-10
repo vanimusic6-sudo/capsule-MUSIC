@@ -155,13 +155,38 @@ object CapsuleInnerTubeXPlayer {
         val streamHeaders: Map<String, String>,
     )
 
-    suspend fun prewarm() {
+    suspend fun prewarm(prewarmWebPoToken: Boolean = false) {
         // Capture/create the bundle under the same lock as playback so a
         // preference collector cannot close the transport during extraction.
-        val preparation = resolveMutex.withLock {
+        // Start extractor warmup first; the optional visitor-bound BotGuard
+        // warmup then runs concurrently outside resolveMutex.
+        val (preparation, webPoTokenVisitorData) = resolveMutex.withLock {
             if (CapsulePlaybackSafety.blockedExceptionOrNull() != null) return
-            bundle().prewarm.start()
+            val extractionBundle = bundle()
+            val auth = extractionBundle.key.auth
+            val hasConfiguredPoTokens =
+                auth.poTokenPlayer?.trim().orEmpty().isNotBlank() &&
+                    auth.poTokenGvs?.trim().orEmpty().isNotBlank()
+            val visitorData =
+                auth.visitorData
+                    ?.trim()
+                    ?.takeIf {
+                        prewarmWebPoToken &&
+                            !hasConfiguredPoTokens &&
+                            it.isNotBlank() &&
+                            it != "null"
+                    }
+            extractionBundle.prewarm.start() to visitorData
         }
+
+        // This prepares only the reusable WebView/BotGuard session. It does not
+        // issue a YouTube /player request, rotate clients, or bypass the global
+        // anti-bot/rate-limit breaker. Playback shares the same PoToken mutex,
+        // so an early first track joins this work instead of creating another session.
+        webPoTokenVisitorData?.let { visitorData ->
+            poTokenGenerator.prewarm(visitorData)
+        }
+
         try {
             preparation.await()
         } catch (cancelled: CancellationException) {

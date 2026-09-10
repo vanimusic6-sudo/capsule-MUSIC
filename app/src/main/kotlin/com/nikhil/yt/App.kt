@@ -261,7 +261,9 @@ class App : Application(), SingletonImageLoader.Factory {
                             }
                         } != null
                     if (hasVisitorData) {
-                        CapsuleInnerTubeXPlayer.prewarm()
+                        CapsuleInnerTubeXPlayer.prewarm(
+                            prewarmWebPoToken = startupPolicy == AudioStreamPolicy.WEB,
+                        )
                     }
                 }
             } catch (cancelled: CancellationException) {
