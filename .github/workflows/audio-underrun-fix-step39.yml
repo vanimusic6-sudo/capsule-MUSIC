@@ -1,0 +1,89 @@
+name: Audio Underrun Fix Step 39
+
+on:
+  push:
+    branches:
+      - cleanup/capsule-player-only
+    paths:
+      - tools/refactor/fix_audio_underrun_step39.py
+      - .github/workflows/audio-underrun-fix-step39.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: audio-underrun-fix-step39-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  validate-and-finalize:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout exact source
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Apply guarded Step39 patch
+        run: |
+          python3 tools/refactor/fix_audio_underrun_step39.py
+          grep -q 'CapsuleAudioRenderersFactory(this)' app/src/main/kotlin/com/nikhil/yt/playback/MusicService.kt
+          grep -q 'CAPSULE_PCM_AUDIO_TRACK_BUFFER_DURATION_US = 1_500_000' app/src/main/kotlin/com/nikhil/yt/playback/CapsuleAudioRenderersFactory.kt
+          grep -q 'setTargetPcmBufferDurationUs(CAPSULE_PCM_AUDIO_TRACK_BUFFER_DURATION_US)' app/src/main/kotlin/com/nikhil/yt/playback/CapsuleAudioRenderersFactory.kt
+          grep -q 'AudioNetworkDiagnosticDataSource.Factory' app/src/main/kotlin/com/nikhil/yt/playback/MusicService.kt
+          grep -q 'retryOnConnectionFailure(true)' app/src/main/kotlin/com/nikhil/yt/playback/MusicService.kt
+
+      - name: Full validation
+        run: |
+          chmod +x gradlew
+          ./gradlew \
+            :innertube:test \
+            :betterlyrics:test \
+            :lrclib:test \
+            :app:testUniversalDebugUnitTest \
+            :app:lintUniversalDebug \
+            :app:assembleUniversalDebug \
+            --stacktrace \
+            --no-daemon
+
+      - name: Upload debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: capsule-step39-debug
+          path: app/build/outputs/apk/universal/debug/*.apk
+          if-no-files-found: error
+
+      - name: Verify branch did not move
+        shell: bash
+        run: |
+          git fetch origin cleanup/capsule-player-only
+          remote_head="$(git rev-parse origin/cleanup/capsule-player-only)"
+          if [ "$remote_head" != "$GITHUB_SHA" ]; then
+            echo "Branch moved while Step39 was validating: $remote_head != $GITHUB_SHA"
+            exit 1
+          fi
+
+      - name: Commit validated production changes
+        shell: bash
+        run: |
+          rm -f tools/refactor/fix_audio_underrun_step39.py
+          rm -f .github/workflows/audio-underrun-fix-step39.yml
+          git config user.name capsule-refactor-bot
+          git config user.email actions@users.noreply.github.com
+          git add -A
+          if git diff --cached --quiet; then
+            echo "No Step39 changes to commit"
+            exit 1
+          fi
+          git commit -m 'Increase PCM AudioTrack safety margin [step39-final]'
+          git push origin HEAD:cleanup/capsule-player-only
