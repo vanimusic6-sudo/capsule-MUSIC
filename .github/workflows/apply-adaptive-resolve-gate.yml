@@ -23,37 +23,30 @@ jobs:
           from pathlib import Path
           path = Path('app/src/main/kotlin/com/nikhil/yt/playback/MusicService.kt')
           text = path.read_text(encoding='utf-8')
-          old = """        audioResolveCoordinator.resolve(mediaId) { policyGeneration ->
-              audioResolveStability.awaitStable {
-                  withContext(Dispatchers.Main.immediate) {
-                      mediaId == player.currentMediaItem?.mediaId ||
-                          mediaId in upcomingAudioIds()
-                  }
-              }
-              val selection = playbackContext()
-          """
-          new = """        audioResolveCoordinator.resolve(mediaId) { policyGeneration ->
-              audioResolveStability.awaitStable(
-                  requiredDelayMs = {
-                      withContext(Dispatchers.Main.immediate) {
-                          if (mediaId == player.currentMediaItem?.mediaId) {
-                              PLAYBACK_RESOLVE_STABILITY_DELAY_MS
-                          } else {
-                              PREFETCH_RESOLVE_STABILITY_DELAY_MS
-                          }
-                      }
-                  },
-              ) {
-                  withContext(Dispatchers.Main.immediate) {
-                      mediaId == player.currentMediaItem?.mediaId ||
-                          mediaId in upcomingAudioIds()
-                  }
-              }
-              val selection = playbackContext()
-          """
-          if text.count(old) != 1:
-              raise SystemExit(f'expected one audio resolve gate block, found {text.count(old)}')
-          path.write_text(text.replace(old, new), encoding='utf-8')
+          owner = text.index('    private fun audioResolveJob(')
+          start = text.index('            audioResolveStability.awaitStable {', owner)
+          end = text.index('            val selection = playbackContext()', start)
+          old = text[start:end]
+          if 'mediaId in upcomingAudioIds()' not in old or old.count('audioResolveStability.awaitStable') != 1:
+              raise SystemExit('unexpected audio resolve gate block')
+          new = '''            audioResolveStability.awaitStable(
+                requiredDelayMs = {
+                    withContext(Dispatchers.Main.immediate) {
+                        if (mediaId == player.currentMediaItem?.mediaId) {
+                            PLAYBACK_RESOLVE_STABILITY_DELAY_MS
+                        } else {
+                            PREFETCH_RESOLVE_STABILITY_DELAY_MS
+                        }
+                    }
+                },
+            ) {
+                withContext(Dispatchers.Main.immediate) {
+                    mediaId == player.currentMediaItem?.mediaId ||
+                        mediaId in upcomingAudioIds()
+                }
+            }
+'''
+          path.write_text(text[:start] + new + text[end:], encoding='utf-8')
           PY
 
       - name: Verify patch
