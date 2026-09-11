@@ -2,6 +2,10 @@ package com.nikhil.yt.ui
 
 import android.app.Application
 import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.view.View
+import androidx.activity.ComponentActivity
+import kotlin.math.roundToInt
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
@@ -14,11 +18,9 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.assertIsSelected
-import androidx.compose.ui.test.captureToImage
-import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
@@ -44,7 +46,7 @@ import org.robolectric.annotation.GraphicsMode
 @Config(sdk = [35], application = Application::class, qualifiers = "w393dp-h851dp-xhdpi")
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class StandardChromeTest {
-    @get:Rule val compose = createComposeRule()
+    @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
 
     @Test fun standardHeaderChipsAndNavigationRemainInteractive() {
         var route by mutableStateOf(Screens.Home.route)
@@ -69,9 +71,20 @@ class StandardChromeTest {
         compose.onNodeWithText(history).performClick().assertIsSelected()
         assertEquals(Screens.History.route, route)
         compose.waitForIdle()
-        val screenshot = compose.onNodeWithTag("standardChrome").captureToImage().asAndroidBitmap()
-        val output = File("build/reports/ui-previews/standard-chrome.png")
-        output.parentFile.mkdirs()
-        output.outputStream().use { screenshot.compress(Bitmap.CompressFormat.PNG, 100, it) }
+        val bounds = compose.onNodeWithTag("standardChrome").fetchSemanticsNode().boundsInRoot
+        compose.runOnIdle {
+            // Robolectric has no real Window redraw callback for PixelCopy.
+            // Render the measured Android view through its native Canvas instead.
+            val content = compose.activity.findViewById<View>(android.R.id.content)
+            val screenshot = Bitmap.createBitmap(bounds.width.roundToInt(), bounds.height.roundToInt(), Bitmap.Config.ARGB_8888)
+            val canvas = Canvas(screenshot)
+            canvas.translate(-bounds.left, -bounds.top)
+            content.draw(canvas)
+            assertEquals(android.graphics.Color.rgb(16, 16, 16), screenshot.getPixel(0, 0))
+            assertEquals(android.graphics.Color.rgb(28, 28, 28), screenshot.getPixel(screenshot.width / 2, screenshot.height - 2))
+            val output = File("build/reports/ui-previews/standard-chrome.png")
+            output.parentFile.mkdirs()
+            output.outputStream().use { screenshot.compress(Bitmap.CompressFormat.PNG, 100, it) }
+        }
     }
 }
