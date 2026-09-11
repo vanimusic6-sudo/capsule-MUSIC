@@ -63,6 +63,10 @@ class CapsuleBrandingTest {
     }
 
     @Test fun notificationAliasesRemainAlphaOnlyVectors() {
+        val metadata = context.packageManager.getApplicationInfo(
+            context.packageName, android.content.pm.PackageManager.GET_META_DATA,
+        ).metaData
+        assertEquals(R.drawable.ic_capsule_monochrome, metadata.getInt("androidx.media3.session.default_notification_icon"))
         for (resource in listOf(R.drawable.small_icon, R.drawable.media3_notification_small_icon, R.drawable.ic_capsule_monochrome)) {
             assertTrue(context.getDrawable(resource) is VectorDrawable)
         }

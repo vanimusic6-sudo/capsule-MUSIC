@@ -38,7 +38,7 @@
         tools:targetApi="tiramisu">
         <meta-data
             android:name="androidx.media3.session.default_notification_icon"
-            android:resource="@drawable/ic_velune_concept" />
+            android:resource="@drawable/ic_capsule_monochrome" />
 
         <uses-library
             android:name="org.apache.http.legacy"
