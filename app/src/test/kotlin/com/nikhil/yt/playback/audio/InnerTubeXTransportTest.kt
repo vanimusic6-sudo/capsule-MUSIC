@@ -22,12 +22,23 @@ class InnerTubeXTransportTest {
     @Before fun before() = CapsulePlaybackSafety.clear()
     @After fun after() = CapsulePlaybackSafety.clear()
 
-    @Test fun rawHttp200BotCheckIsPreservedAndFurtherRequestsNeverReachTheServer() = runBlocking {
+    @Test fun rawHttp200BotCheckIsPreservedForOwningResolverWithoutGlobalBreaker() = runBlocking {
         withFixture(200, """{"playabilityStatus":{"status":"LOGIN_REQUIRED","reason":"Sign in to confirm you're not a bot"}}""") { extractor, requests ->
+            val wireGenerationBefore = CapsulePlaybackSafety.wireBotSignalGeneration()
+
             assertTrue(runCatching { extractor.extract("one", hints()) }.isFailure)
-            assertNotNull(CapsulePlaybackSafety.blockedExceptionOrNull())
+            assertTrue(CapsulePlaybackSafety.wireBotSignalGeneration() > wireGenerationBefore)
+            // A single profile challenge is intentionally not global. The owning
+            // Capsule resolver quarantines that profile and permits one reviewed
+            // cross-family fallback before escalating to the global breaker.
+            assertNull(CapsulePlaybackSafety.blockedExceptionOrNull())
+
+            // This raw extractor fixture has no owning profile-aware resolver, so a
+            // second direct call is allowed onto the wire and records another signal.
+            // The production CapsuleInnerTubeXPlayer does not do this blindly: it
+            // consumes the first signal and controls the one permitted fallback.
             assertTrue(runCatching { extractor.extract("two", hints()) }.isFailure)
-            assertEquals(1, requests.get())
+            assertEquals(2, requests.get())
         }
     }
 
