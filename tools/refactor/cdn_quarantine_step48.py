@@ -30,9 +30,8 @@ source = source.replace(old_helper, new_helper)
 pattern = re.compile(
     r"(?m)^(?P<indent>[ \t]*)if \(configChanged\) \{\n"
     r"(?P=indent)[ \t]+CapsuleAudioEngine\.clearStreamClientFailures\(\)\n"
-    r"(?P=indent)[ \t]+Timber\.w\(\n"
-    r"(?P=indent)[ \t]+\"Player config changed during stream recovery; restored stream clients id=%s\",\n"
-    r"(?P=indent)[ \t]+mediaId,\n"
+    r"(?P=indent)[ \t]+Timber\.tag\(\"MusicService\"\)\.i\(\n"
+    r"(?P=indent)[ \t]+\"Player config changed after stream rejection; restored stream clients\",\n"
     r"(?P=indent)[ \t]+\)\n"
     r"(?P=indent)\}"
 )
@@ -47,8 +46,8 @@ replacement = (
     f"{indent}    // Keep step47's song-local 403/410 evidence through the fresh resolve.\n"
     f"{indent}    // Refreshing player/cipher config can repair signature generation, but it\n"
     f"{indent}    // must not make the just-rejected extraction profile immediately eligible.\n"
-    f"{indent}    Timber.w(\n"
-    f"{indent}        \"Player config changed during stream recovery; preserving per-song rejected-client quarantine id=%s\",\n"
+    f"{indent}    Timber.tag(\"MusicService\").i(\n"
+    f"{indent}        \"Player config changed after stream rejection; preserving per-song rejected-client quarantine id=%s\",\n"
     f"{indent}        mediaId,\n"
     f"{indent}    )\n"
     f"{indent}}}"
