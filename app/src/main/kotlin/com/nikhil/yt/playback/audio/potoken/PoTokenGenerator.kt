@@ -89,37 +89,6 @@ class PoTokenGenerator(context: Context) {
         }
     }
 
-    suspend fun refreshSameVisitorSession(visitorData: String): Boolean {
-        val normalizedVisitorData = visitorData.trim()
-        if (normalizedVisitorData.isBlank() || !webViewSupported || brokenWebView) return false
-
-        return try {
-            withTimeout(OVERALL_TIMEOUT_MS) {
-                prepareSession(
-                    visitorData = normalizedVisitorData,
-                    forceRecreate = true,
-                )
-            }
-            Timber.tag(TAG).i("Web PoToken session refreshed after repeated stream rejection")
-            true
-        } catch (timeout: TimeoutCancellationException) {
-            Timber.tag(TAG).w("Web PoToken session refresh timed out")
-            clear()
-            false
-        } catch (cancelled: CancellationException) {
-            throw cancelled
-        } catch (badWebView: BadWebViewException) {
-            Timber.tag(TAG).w(badWebView, "System WebView cannot refresh BotGuard")
-            brokenWebView = true
-            clear()
-            false
-        } catch (error: Exception) {
-            Timber.tag(TAG).w(error, "Web PoToken session refresh failed")
-            clear()
-            false
-        }
-    }
-
     suspend fun close() {
         clear()
     }

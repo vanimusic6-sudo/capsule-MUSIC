@@ -231,4 +231,25 @@ class CapsuleAudioFallbackPolicyTest {
         assertTrue(CapsuleAudioFallbackPolicy.canFallbackAfter(YouTubeFailureKind.FORBIDDEN))
         assertTrue(CapsuleAudioFallbackPolicy.canFallbackAfter(YouTubeFailureKind.UNPLAYABLE))
     }
+    @Test
+    fun rejectedPrimaryIsSkippedForOnlyThatTracksFreshResolve() {
+        val plan =
+            CapsuleAudioFallbackPolicy.profilePlan(
+                primaryProfileId = CapsuleAudioFallbackPolicy.WEB_REMIX,
+                priority = AudioResolvePriority.PLAYBACK,
+                authenticated = false,
+                isUploaded = false,
+                excludedProfiles = setOf(CapsuleAudioFallbackPolicy.WEB_REMIX),
+            )
+
+        assertEquals(
+            listOf(
+                CapsuleAudioFallbackPolicy.VISIONOS_0_1,
+                CapsuleAudioFallbackPolicy.WEB_EMBEDDED,
+                CapsuleAudioFallbackPolicy.TVHTML5_SIMPLY,
+            ),
+            plan,
+        )
+    }
+
 }

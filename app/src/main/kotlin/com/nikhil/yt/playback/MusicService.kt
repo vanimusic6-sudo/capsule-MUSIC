@@ -3474,12 +3474,21 @@ class MusicService :
                 handleTerminalPlaybackError()
                 return
             }
-            // A rejected/expired URL does not mean the selected client is broken.
-            // Keep the same client and identity, but do not burn through fresh
-            // generations in a 250 ms loop. After a second signed-URL rejection,
-            // refresh the same visitor-bound streaming session once before the
-            // final bounded fresh resolve.
-            CapsuleAudioEngine.clearTrackClientFailures(currentMediaId)
+            // A CDN 403/410 is attached to the stream generation and the
+            // extraction profile that produced it. Match Metrolist's recovery
+            // model: quarantine only that profile for this mediaId, then let the
+            // existing bounded foreground plan try the next maintained profile.
+            // Never rotate visitorData/account identity here, and never use this
+            // path for rate limits or bot-checks (handled above as hard stops).
+            if (httpStatusCode in setOf(403, 410)) {
+                CapsuleAudioEngine.markStreamClientFailed(
+                    videoId = currentMediaId,
+                    clientKey = null,
+                    httpStatusCode = httpStatusCode,
+                )
+            } else {
+                CapsuleAudioEngine.clearTrackClientFailures(currentMediaId)
+            }
             audioResolveCoordinator.cancelMedia(currentMediaId) {
                 playbackUrlCache.remove(currentMediaId)
             }
