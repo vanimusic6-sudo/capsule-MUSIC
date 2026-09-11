@@ -46,6 +46,89 @@ class PlaybackStabilityGateTest {
     }
 
     @Test
+    fun singlePlaybackSelectionKeepsFastDelay() = runTest {
+        val gate = PlaybackStabilityGate(nowMs = { currentTime })
+        var requestedAt: Long? = null
+
+        gate.onSelectionChanged()
+        val job = launch {
+            gate.awaitStable(
+                requiredDelayMs = { PLAYBACK_RESOLVE_STABILITY_DELAY_MS },
+            ) { true }
+            requestedAt = currentTime
+        }
+        runCurrent()
+
+        advanceTimeBy(PLAYBACK_RESOLVE_STABILITY_DELAY_MS - 1)
+        runCurrent()
+        assertEquals(null, requestedAt)
+
+        advanceTimeBy(1)
+        runCurrent()
+        assertEquals(PLAYBACK_RESOLVE_STABILITY_DELAY_MS, requestedAt)
+        assertTrue(job.isCompleted)
+    }
+
+    @Test
+    fun rapidPlaybackSkipsUseLongerSettleWindow() = runTest {
+        val gate = PlaybackStabilityGate(nowMs = { currentTime })
+        var requestedAt: Long? = null
+
+        gate.onSelectionChanged()
+        val job = launch {
+            gate.awaitStable(
+                requiredDelayMs = { PLAYBACK_RESOLVE_STABILITY_DELAY_MS },
+            ) { true }
+            requestedAt = currentTime
+        }
+        runCurrent()
+
+        advanceTimeBy(150)
+        gate.onSelectionChanged()
+        runCurrent()
+        advanceTimeBy(150)
+        gate.onSelectionChanged()
+        runCurrent()
+
+        advanceTimeBy(RAPID_SKIP_PLAYBACK_SETTLE_DELAY_MS - 1)
+        runCurrent()
+        assertEquals(null, requestedAt)
+
+        advanceTimeBy(1)
+        runCurrent()
+        assertEquals(300L + RAPID_SKIP_PLAYBACK_SETTLE_DELAY_MS, requestedAt)
+        assertTrue(job.isCompleted)
+    }
+
+    @Test
+    fun calmSelectionAfterBurstReturnsToFastPlaybackDelay() = runTest {
+        val gate = PlaybackStabilityGate(nowMs = { currentTime })
+
+        gate.onSelectionChanged()
+        advanceTimeBy(150)
+        gate.onSelectionChanged()
+        advanceTimeBy(150)
+        gate.onSelectionChanged()
+
+        advanceTimeBy(RAPID_SKIP_MAX_GAP_MS + 1)
+        gate.onSelectionChanged()
+        val selectedAt = currentTime
+        var requestedAt: Long? = null
+        val job = launch {
+            gate.awaitStable(
+                requiredDelayMs = { PLAYBACK_RESOLVE_STABILITY_DELAY_MS },
+            ) { true }
+            requestedAt = currentTime
+        }
+        runCurrent()
+
+        advanceTimeBy(PLAYBACK_RESOLVE_STABILITY_DELAY_MS)
+        runCurrent()
+        assertEquals(selectedAt + PLAYBACK_RESOLVE_STABILITY_DELAY_MS, requestedAt)
+        assertTrue(job.isCompleted)
+    }
+
+    @Test
     fun promotedPrefetchAdoptsShortPlaybackDelayImmediately() = runTest {
         val gate = PlaybackStabilityGate(nowMs = { currentTime })
         var current = 0
