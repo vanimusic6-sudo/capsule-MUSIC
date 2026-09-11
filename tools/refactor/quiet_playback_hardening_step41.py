@@ -163,6 +163,35 @@ replace_once(
 )
 replace_once(
     "app/src/main/kotlin/com/nikhil/yt/playback/audio/CapsuleAudioFallbackPolicy.kt",
+    '''        return ordered
+            .filter { it.isNotBlank() }
+            .distinct()
+            .filter { it in supportedProfiles }
+            .filter { it !in excluded }
+            .filter { profileEligible(it, authenticated, isUploaded) }
+            .take(MAX_FOREGROUND_ATTEMPTS)''',
+    '''        val eligible =
+            ordered
+                .filter { it.isNotBlank() }
+                .distinct()
+                .filter { it in supportedProfiles }
+                .filter { it !in excluded }
+                .filter { profileEligible(it, authenticated, isUploaded) }
+
+        if (eligible.size <= MAX_FOREGROUND_ATTEMPTS) return eligible
+
+        val firstWindow = eligible.take(MAX_FOREGROUND_ATTEMPTS)
+        if (!authenticated || WEB_CREATOR !in eligible || WEB_CREATOR in firstWindow) {
+            return firstWindow
+        }
+
+        // Keep the request budget at three identities, but do not accidentally remove the
+        // only maintained authenticated music profile. This preserves restricted/uploaded
+        // playback without restoring the old six-client waterfall.
+        return eligible.take(MAX_FOREGROUND_ATTEMPTS - 1) + WEB_CREATOR''',
+)
+replace_once(
+    "app/src/main/kotlin/com/nikhil/yt/playback/audio/CapsuleAudioFallbackPolicy.kt",
     '''    fun canFallbackAfter(kind: YouTubeFailureKind): Boolean =
         when (kind) {''',
     '''    fun fallbackDelayMs(kind: YouTubeFailureKind): Long =
@@ -200,6 +229,41 @@ text = text.replace(
 text = text.replace('''        assertEquals(custom.dropLast(1), plan)''', '''        assertEquals(custom.take(3), plan)''', 1)
 text = text.replace('''    fun authenticatedManualOrderCanReachAllSixMaintainedProfiles() {''', '''    fun authenticatedManualOrderIsCappedAtThreeForegroundProfiles() {''', 1)
 text = text.replace('''        assertEquals(custom, plan)''', '''        assertEquals(custom.take(3), plan)''', 1)
+anchor = '''    @Test
+    fun backgroundUsesOnlyConfiguredFirstProfile() {
+'''
+if anchor not in text:
+    raise SystemExit("authenticated fallback test anchor missing")
+text = text.replace(
+    anchor,
+    '''    @Test
+    fun authenticatedPlanKeepsCreatorInsideThreeAttemptBudget() {
+        val plan =
+            CapsuleAudioFallbackPolicy.profilePlan(
+                primaryProfileId = "WEB_REMIX",
+                priority = AudioResolvePriority.PLAYBACK,
+                authenticated = true,
+                isUploaded = false,
+                excludedProfiles = emptySet(),
+                preferredProfiles =
+                    listOf(
+                        "WEB_REMIX",
+                        "VISIONOS_0_1",
+                        "WEB_EMBEDDED_PLAYER",
+                        "WEB_CREATOR",
+                        "TVHTML5_SIMPLY",
+                    ),
+            )
+
+        assertEquals(
+            listOf("WEB_REMIX", "VISIONOS_0_1", "WEB_CREATOR"),
+            plan,
+        )
+    }
+
+''' + anchor,
+    1,
+)
 anchor = '''    @Test
     fun networkAndRateFailuresDoNotRotateIdentity() {
 '''
