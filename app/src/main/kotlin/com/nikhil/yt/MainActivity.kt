@@ -1207,7 +1207,7 @@ class MainActivity : ComponentActivity() {
                                                                     .size(35.dp)
                                                                     .padding(end = 6.dp)
                                                             )
-    
+
                                                             Text(
                                                                 text = stringResource(R.string.app_name),
                                                                 style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
