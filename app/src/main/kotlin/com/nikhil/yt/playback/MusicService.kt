@@ -245,6 +245,7 @@ import kotlinx.coroutines.withContext
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.OkHttpClient
 import timber.log.Timber
+import java.io.InterruptedIOException
 import java.net.ConnectException
 import java.net.NoRouteToHostException
 import java.net.SocketException
@@ -415,6 +416,42 @@ class MusicService :
      * the job that is already running instead of launching a second one.
      */
     private val audioResolveStability = PlaybackStabilityGate()
+
+    /**
+     * Final request gate for AUDIO CDN traffic.
+     *
+     * Resolver debounce alone is insufficient when prefetch has already cached PlaybackData:
+     * ResolvingDataSource can return that URL immediately and the network upstream can open before
+     * a later media-transition cancellation arrives. Blocking here means stale rapid-skip items are
+     * rejected before OkHttp's upstream.open() and therefore before a request can reach YouTube.
+     */
+    private fun awaitAudioNetworkOpenPermit(dataSpec: androidx.media3.datasource.DataSpec) {
+        val mediaId =
+            dataSpec.key
+                ?.let(AudioCacheIdentity::mediaId)
+                ?.trim()
+                ?.takeIf { it.isNotBlank() }
+                ?: return
+
+        try {
+            runBlocking {
+                audioResolveStability.awaitNetworkOpenStable {
+                    withContext(Dispatchers.Main.immediate) {
+                        mediaId == player.currentMediaItem?.mediaId ||
+                            mediaId in upcomingAudioIds()
+                    }
+                }
+            }
+        } catch (cancelled: kotlinx.coroutines.CancellationException) {
+            throw InterruptedIOException("Stale AUDIO CDN open suppressed before request").apply {
+                initCause(cancelled)
+            }
+        } catch (interrupted: InterruptedException) {
+            throw InterruptedIOException("AUDIO CDN open interrupted before request").apply {
+                initCause(interrupted)
+            }
+        }
+    }
 
     private fun audioResolveJob(
         mediaId: String,
@@ -3339,7 +3376,8 @@ class MusicService :
                 .build()
         val networkUpstream =
             AudioNetworkDiagnosticDataSource.Factory(
-                DefaultDataSource.Factory(this, OkHttpDataSource.Factory(audioHttpClient)),
+                upstreamFactory = DefaultDataSource.Factory(this, OkHttpDataSource.Factory(audioHttpClient)),
+                beforeNetworkOpen = ::awaitAudioNetworkOpenPermit,
             )
         val streaming = CacheDataSource.Factory().setCache(playerCache)
             .setUpstreamDataSourceFactory(networkUpstream)

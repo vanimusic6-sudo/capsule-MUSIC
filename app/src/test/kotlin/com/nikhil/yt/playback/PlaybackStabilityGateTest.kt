@@ -129,6 +129,71 @@ class PlaybackStabilityGateTest {
     }
 
     @Test
+    fun networkOpenUsesNormalSelectionGraceWindow() = runTest {
+        val gate = PlaybackStabilityGate(nowMs = { currentTime })
+        var openedAt: Long? = null
+
+        gate.onSelectionChanged()
+        val job = launch {
+            gate.awaitNetworkOpenStable { true }
+            openedAt = currentTime
+        }
+        runCurrent()
+
+        advanceTimeBy(PLAYBACK_RESOLVE_STABILITY_DELAY_MS - 1)
+        runCurrent()
+        assertEquals(null, openedAt)
+        advanceTimeBy(1)
+        runCurrent()
+        assertEquals(PLAYBACK_RESOLVE_STABILITY_DELAY_MS, openedAt)
+        assertTrue(job.isCompleted)
+    }
+
+    @Test
+    fun rapidSkipNetworkOpenWaitsUntilFinalSelectionSettles() = runTest {
+        val gate = PlaybackStabilityGate(nowMs = { currentTime })
+        var openedAt: Long? = null
+
+        gate.onSelectionChanged()
+        advanceTimeBy(150)
+        gate.onSelectionChanged()
+        advanceTimeBy(150)
+        gate.onSelectionChanged()
+
+        val job = launch {
+            gate.awaitNetworkOpenStable { true }
+            openedAt = currentTime
+        }
+        runCurrent()
+
+        advanceTimeBy(RAPID_SKIP_PLAYBACK_SETTLE_DELAY_MS - 1)
+        runCurrent()
+        assertEquals(null, openedAt)
+        advanceTimeBy(1)
+        runCurrent()
+        assertEquals(300L + RAPID_SKIP_PLAYBACK_SETTLE_DELAY_MS, openedAt)
+        assertTrue(job.isCompleted)
+    }
+
+    @Test
+    fun staleNetworkOpenIsCancelledBeforeRelease() = runTest {
+        val gate = PlaybackStabilityGate(nowMs = { currentTime })
+        gate.onSelectionChanged()
+        var released = false
+
+        val job = launch {
+            gate.awaitNetworkOpenStable { false }
+            released = true
+        }
+        runCurrent()
+        advanceTimeBy(PLAYBACK_RESOLVE_STABILITY_DELAY_MS)
+        runCurrent()
+
+        assertTrue(job.isCancelled)
+        assertFalse(released)
+    }
+
+    @Test
     fun promotedPrefetchAdoptsShortPlaybackDelayImmediately() = runTest {
         val gate = PlaybackStabilityGate(nowMs = { currentTime })
         var current = 0

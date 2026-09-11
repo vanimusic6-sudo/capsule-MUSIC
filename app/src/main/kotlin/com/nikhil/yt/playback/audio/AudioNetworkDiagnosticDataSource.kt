@@ -47,6 +47,7 @@ internal fun Throwable.isExpectedAudioCdnInterruption(): Boolean {
  */
 internal class AudioNetworkDiagnosticDataSource(
     private val upstream: DataSource,
+    private val beforeNetworkOpen: ((DataSpec) -> Unit)? = null,
 ) : DataSource {
     private var diagnosticsEnabled = false
     private var startedAtNs = 0L
@@ -64,6 +65,10 @@ internal class AudioNetworkDiagnosticDataSource(
     }
 
     override fun open(dataSpec: DataSpec): Long {
+        // Selection settling belongs before the physical network open. In particular, a cached
+        // pre-resolved URL must not bypass the rapid-skip guard and reach OkHttp before cancellation.
+        beforeNetworkOpen?.invoke(dataSpec)
+
         diagnosticsEnabled = GlobalLog.isEnabled
         if (!diagnosticsEnabled) return upstream.open(dataSpec)
 
@@ -227,9 +232,13 @@ internal class AudioNetworkDiagnosticDataSource(
 
     internal class Factory(
         private val upstreamFactory: DataSource.Factory,
+        private val beforeNetworkOpen: ((DataSpec) -> Unit)? = null,
     ) : DataSource.Factory {
         override fun createDataSource(): DataSource =
-            AudioNetworkDiagnosticDataSource(upstreamFactory.createDataSource())
+            AudioNetworkDiagnosticDataSource(
+                upstream = upstreamFactory.createDataSource(),
+                beforeNetworkOpen = beforeNetworkOpen,
+            )
     }
 
     private companion object {

@@ -43,6 +43,21 @@ internal class PlaybackStabilityGate(
     }
 
     /**
+     * Hold the real CDN open at the same selection boundary as the resolver.
+     *
+     * This matters when prefetch has already cached a signed URL: without this guard the
+     * ResolvingDataSource can skip the resolver gate and OkHttp can put a request on the wire
+     * for an intermediate track before Media3 cancels it. A normal transition keeps the 250 ms
+     * grace window; a rapid skip burst inherits the adaptive 650 ms settle window.
+     */
+    suspend fun awaitNetworkOpenStable(isRelevant: suspend () -> Boolean) {
+        awaitStable(
+            requiredDelayMs = { PLAYBACK_RESOLVE_STABILITY_DELAY_MS },
+            isRelevant = isRelevant,
+        )
+    }
+
+    /**
      * Wait until the current selection has been quiet for the requested delay.
      *
      * [requiredDelayMs] is re-evaluated whenever selection changes. This lets a track that was
