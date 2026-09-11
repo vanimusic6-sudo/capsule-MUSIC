@@ -2,6 +2,10 @@ package com.nikhil.yt.ui
 
 import android.app.Application
 import android.graphics.Color
+import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.drawable.InsetDrawable
+import kotlin.math.hypot
 import android.graphics.drawable.AdaptiveIconDrawable
 import android.graphics.drawable.BitmapDrawable
 import android.graphics.drawable.VectorDrawable
@@ -35,8 +39,26 @@ class CapsuleBrandingTest {
     @Test fun bothAdaptiveLaunchersUseTheNewArtwork() {
         for (resource in listOf(R.mipmap.ic_launcher, R.mipmap.ic_launcher_round)) {
             val icon = context.getDrawable(resource) as AdaptiveIconDrawable
-            assertTrue(icon.foreground is BitmapDrawable)
-            assertTrue(icon.monochrome is VectorDrawable)
+            assertTrue((icon.foreground as InsetDrawable).drawable is BitmapDrawable)
+            assertTrue((icon.monochrome as InsetDrawable).drawable is VectorDrawable)
+        }
+    }
+
+    @Test fun launcherOrbitFitsInsideTheSafeCircleBeforeAnyOemMask() {
+        for (resource in listOf(R.drawable.ic_capsule_launcher_foreground, R.drawable.ic_capsule_launcher_monochrome)) {
+            val drawable = requireNotNull(context.getDrawable(resource))
+            val bitmap = Bitmap.createBitmap(108, 108, Bitmap.Config.ARGB_8888)
+            drawable.setBounds(0, 0, 108, 108)
+            drawable.draw(Canvas(bitmap))
+            var orbitPixels = 0
+            for (y in 0 until 108) for (x in 0 until 108) {
+                val pixel = bitmap.getPixel(x, y)
+                if (Color.alpha(pixel) > 128 && Color.red(pixel) > 180) {
+                    orbitPixels++
+                    assertTrue("Orbit clipped by a round launcher at ($x, $y)", hypot(x - 53.5, y - 53.5) <= 33.5)
+                }
+            }
+            assertTrue("Orbit must be visible", orbitPixels > 100)
         }
     }
 
