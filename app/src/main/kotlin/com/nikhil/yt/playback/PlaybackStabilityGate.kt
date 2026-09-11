@@ -8,6 +8,9 @@ import kotlinx.coroutines.withTimeoutOrNull
 
 internal const val PLAYBACK_RESOLVE_STABILITY_DELAY_MS = 250L
 internal const val PREFETCH_RESOLVE_STABILITY_DELAY_MS = 800L
+internal const val RAPID_SKIP_MAX_GAP_MS = 400L
+internal const val RAPID_SKIP_TRIGGER_COUNT = 3
+internal const val RAPID_SKIP_PLAYBACK_SETTLE_DELAY_MS = 650L
 
 /** Debounces network work shared by the loader and prefetch after queue navigation. */
 internal class PlaybackStabilityGate(
@@ -16,10 +19,26 @@ internal class PlaybackStabilityGate(
 ) {
     @Volatile
     private var selectionChangedAtMs = nowMs()
+
+    @Volatile
+    private var hasObservedSelectionChange = false
+
+    @Volatile
+    private var rapidSelectionStreak = 0
+
     private val selectionGeneration = MutableStateFlow(0L)
 
     fun onSelectionChanged() {
-        selectionChangedAtMs = nowMs()
+        val now = nowMs()
+        val previous = selectionChangedAtMs
+        rapidSelectionStreak =
+            if (hasObservedSelectionChange && now - previous in 0..RAPID_SKIP_MAX_GAP_MS) {
+                rapidSelectionStreak + 1
+            } else {
+                1
+            }
+        hasObservedSelectionChange = true
+        selectionChangedAtMs = now
         selectionGeneration.update { it + 1L }
     }
 
@@ -29,6 +48,11 @@ internal class PlaybackStabilityGate(
      * [requiredDelayMs] is re-evaluated whenever selection changes. This lets a track that was
      * only PREFETCH (800 ms debounce) become PLAYBACK (250 ms debounce) immediately instead of
      * remaining stuck behind the old prefetch timer.
+     *
+     * Three or more fast selection changes are treated as an intentional scrub through the queue.
+     * During that burst only PLAYBACK work gets a slightly longer 650 ms settle window. This keeps
+     * intermediate tracks from opening CDN connections while preserving the normal 250 ms response
+     * for a single skip and the existing 800 ms prefetch debounce.
      */
     suspend fun awaitStable(
         requiredDelayMs: suspend () -> Long = { stabilityDelayMs },
@@ -37,7 +61,16 @@ internal class PlaybackStabilityGate(
         while (true) {
             val generation = selectionGeneration.value
             val changedAt = selectionChangedAtMs
-            val required = requiredDelayMs().coerceAtLeast(0L)
+            val requested = requiredDelayMs().coerceAtLeast(0L)
+            val required =
+                if (
+                    requested == PLAYBACK_RESOLVE_STABILITY_DELAY_MS &&
+                    rapidSelectionStreak >= RAPID_SKIP_TRIGGER_COUNT
+                ) {
+                    maxOf(requested, RAPID_SKIP_PLAYBACK_SETTLE_DELAY_MS)
+                } else {
+                    requested
+                }
             val remaining = required - (nowMs() - changedAt)
             if (remaining > 0L) {
                 // Wake as soon as queue selection changes so a promoted prefetch can adopt the
