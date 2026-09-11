@@ -1,5 +1,7 @@
 package com.nikhil.yt.ui.component
 
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.ui.semantics.Role
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateDpAsState
@@ -85,11 +87,10 @@ fun FluidSlidingNavigationBar(
                 capsuleMiniPlayerVisible,
         )
     } else {
-        OriginalVeluneNavigationBar(
+        StandardNavigationBar(
             modifier = modifier,
             items = items,
             currentRoute = currentRoute,
-            pureBlack = pureBlack,
             onTabSelected = onTabSelected,
         )
     }
@@ -467,207 +468,56 @@ private fun CapsuleNavigationBar(
     }
 }
 
-/**
- * Keep Velune's normal navigation untouched when Capsule Bottom Bar is off.
- */
+/** Standard full-width navigation, with the system inset inside its surface. */
 @Composable
-private fun OriginalVeluneNavigationBar(
+internal fun StandardNavigationBar(
     modifier: Modifier,
     items: List<Screens>,
     currentRoute: String,
-    pureBlack: Boolean,
     onTabSelected: (Screens) -> Unit,
 ) {
-    val selectedIndex =
-        items
-            .indexOfFirst {
-                it.route == currentRoute
-            }
-            .coerceAtLeast(0)
-
-    val barColor =
-        if (pureBlack) {
-            Color.Black
-        } else {
-            MaterialTheme.colorScheme
-                .surfaceContainer
-        }
-
+    val selectedIndex = items.indexOfFirst { isRouteSelected(currentRoute, it.route, items) }.coerceAtLeast(0)
     BoxWithConstraints(
-        modifier =
-            modifier
-                .clip(
-                    RoundedCornerShape(
-                        28.dp,
-                    ),
-                )
-                .fillMaxWidth()
-                .height(80.dp)
-                .background(barColor),
+        modifier = modifier
+            .clip(RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
+            .background(StandardChrome.panel)
+            .windowInsetsPadding(WindowInsets.navigationBars.only(WindowInsetsSides.Bottom)),
     ) {
-        if (items.isEmpty()) {
-            return@BoxWithConstraints
-        }
-
-        val tabWidth =
-            maxWidth /
-                items.size
-
-        val pillWidth =
-            48.dp
-
-        val pillHeight =
-            32.dp
-
-        val indicatorOffset by
-            animateDpAsState(
-                targetValue =
-                    (
-                        tabWidth *
-                            selectedIndex
-                    ) +
-                        (
-                            (
-                                tabWidth -
-                                    pillWidth
-                            ) / 2
-                        ),
-                animationSpec =
-                    spring(
-                        dampingRatio =
-                            Spring.DampingRatioNoBouncy,
-                        stiffness =
-                            Spring.StiffnessLow,
-                    ),
-                label =
-                    "PillSlider",
-            )
-
-        Box(
-            modifier =
-                Modifier
-                    .offset(
-                        x =
-                            indicatorOffset,
-                        y =
-                            14.dp,
-                    )
-                    .width(
-                        pillWidth,
-                    )
-                    .height(
-                        pillHeight,
-                    )
-                    .background(
-                        color =
-                            MaterialTheme
-                                .colorScheme
-                                .secondaryContainer,
-                        shape =
-                            CircleShape,
-                    ),
+        if (items.isEmpty()) return@BoxWithConstraints
+        val compact = maxHeight < 72.dp
+        val tabWidth = maxWidth / items.size
+        val pillWidth = 54.dp
+        val indicatorOffset by animateDpAsState(
+            targetValue = tabWidth * selectedIndex + (tabWidth - pillWidth) / 2,
+            animationSpec = spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = Spring.StiffnessLow),
+            label = "standardNavigationIndicator",
         )
-
-        Row(
-            modifier =
-                Modifier.fillMaxSize(),
-            verticalAlignment =
-                Alignment.Top,
-        ) {
-            items.forEachIndexed {
-                    index,
-                    item,
-                ->
-                val selected =
-                    selectedIndex ==
-                        index
-
+        Box(
+            Modifier.offset(x = indicatorOffset, y = if (compact) 8.dp else 12.dp).size(pillWidth, if (compact) 32.dp else 36.dp)
+                .background(StandardChrome.selected, CircleShape),
+        )
+        Row(Modifier.fillMaxSize()) {
+            items.forEachIndexed { index, item ->
+                val selected = index == selectedIndex
                 Column(
-                    modifier =
-                        Modifier
-                            .weight(1f)
-                            .fillMaxHeight()
-                            .clickable(
-                                interactionSource =
-                                    remember {
-                                        MutableInteractionSource()
-                                    },
-                                indication =
-                                    null,
-                            ) {
-                                onTabSelected(
-                                    item,
-                                )
-                            },
-                    horizontalAlignment =
-                        Alignment.CenterHorizontally,
+                    modifier = Modifier.weight(1f).fillMaxHeight()
+                        .selectable(selected = selected, role = Role.Tab, onClick = { onTabSelected(item) }),
+                    horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
-                    Spacer(
-                        modifier =
-                            Modifier.height(
-                                18.dp,
-                            ),
-                    )
-
+                    Spacer(Modifier.height(if (compact) 12.dp else 17.dp))
                     Icon(
-                        painter =
-                            painterResource(
-                                id =
-                                    if (selected) {
-                                        item.iconIdActive
-                                    } else {
-                                        item.iconIdInactive
-                                    },
-                            ),
-                        contentDescription =
-                            stringResource(
-                                id =
-                                    item.titleId,
-                            ),
-                        tint =
-                            if (selected) {
-                                MaterialTheme
-                                    .colorScheme
-                                    .onSecondaryContainer
-                            } else {
-                                MaterialTheme
-                                    .colorScheme
-                                    .onSurfaceVariant
-                            },
-                        modifier =
-                            Modifier.size(
-                                24.dp,
-                            ),
+                        painterResource(if (selected) item.iconIdActive else item.iconIdInactive),
+                        contentDescription = null,
+                        tint = StandardChrome.muted,
+                        modifier = Modifier.size(if (compact) 24.dp else 26.dp),
                     )
-
-                    Spacer(
-                        modifier =
-                            Modifier.height(
-                                4.dp,
-                            ),
-                    )
-
+                    Spacer(Modifier.height(if (compact) 4.dp else 8.dp))
                     Text(
-                        text =
-                            stringResource(
-                                id =
-                                    item.titleId,
-                            ),
-                        fontSize =
-                            12.sp,
+                        stringResource(item.titleId),
+                        fontSize = if (compact) 12.sp else 13.sp,
                         maxLines = 1,
-                        overflow =
-                            TextOverflow.Ellipsis,
-                        color =
-                            if (selected) {
-                                MaterialTheme
-                                    .colorScheme
-                                    .onSurface
-                            } else {
-                                MaterialTheme
-                                    .colorScheme
-                                    .onSurfaceVariant
-                            },
+                        overflow = TextOverflow.Ellipsis,
+                        color = if (selected) StandardChrome.text else StandardChrome.muted,
                     )
                 }
             }

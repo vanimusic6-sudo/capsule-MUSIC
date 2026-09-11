@@ -120,6 +120,7 @@ android {
     testOptions {
         unitTests {
             isReturnDefaultValues = true
+            isIncludeAndroidResources = true
         }
     }
 
@@ -242,6 +243,8 @@ dependencies {
 
     implementation(libs.timber)
     testImplementation(libs.junit)
+    testImplementation("androidx.compose.ui:ui-test-junit4:${libs.versions.compose.get()}")
+    debugImplementation("androidx.compose.ui:ui-test-manifest:${libs.versions.compose.get()}")
     testImplementation("org.robolectric:robolectric:4.16")
     testImplementation(libs.coroutines.test)
     testImplementation(libs.ktor.client.mock)

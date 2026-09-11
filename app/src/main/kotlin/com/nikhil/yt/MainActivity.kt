@@ -8,6 +8,8 @@
 
 package com.nikhil.yt
 
+import com.nikhil.yt.ui.component.StandardHeaderTitle
+import com.nikhil.yt.ui.component.StandardChrome
 import com.nikhil.yt.ui.component.FluidSlidingNavigationBar
 import android.annotation.SuppressLint
 import android.Manifest
@@ -626,6 +628,8 @@ class MainActivity : ComponentActivity() {
 
                     val navController = rememberNavController()
                     val homeViewModel: HomeViewModel = hiltViewModel()
+                    val headerAccountName by homeViewModel.accountName.collectAsState()
+                    val headerAccountImage by homeViewModel.accountImageUrl.collectAsState()
                     val navBackStackEntry by navController.currentBackStackEntryAsState()
                     val (_) = rememberSaveable { mutableStateOf("home") }
                     val currentRoute = navBackStackEntry?.destination?.route
@@ -727,8 +731,7 @@ class MainActivity : ComponentActivity() {
                      * into one surface. Velune normally adds an 8 dp floating
                      * gap; Capsule mode intentionally removes it.
                      */
-                    val floatingBarsBottomPadding =
-                        if (capsuleBottomBarEnabled) 0.dp else 8.dp
+                    val floatingBarsBottomPadding = 0.dp
 
                     val navVisibleHeight =
                         when {
@@ -1149,7 +1152,7 @@ class MainActivity : ComponentActivity() {
                                             isTransparentTopBarScreen
                                         }
 
-                                        val surfaceColor = MaterialTheme.colorScheme.surface
+                                        val surfaceColor = if (capsuleBottomBarEnabled) MaterialTheme.colorScheme.surface else StandardChrome.background
                                         val currentScrollBehavior = if (isTransparentTopBarScreen) searchBarScrollBehavior else topAppBarScrollBehavior
 
                                         Box(
@@ -1186,22 +1189,30 @@ class MainActivity : ComponentActivity() {
                                                     WindowInsetsSides.Right
                                                 } else WindowInsetsSides.Horizontal) + WindowInsetsSides.Top),
                                                 title = {
-                                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                                        // app icon
-                                                        Image(
-                                                            painter = painterResource(id = R.drawable.ic_velune_concept),
-                                                            contentDescription = "Velune Logo",
-                                                            modifier = Modifier
-                                                                .size(35.dp)
-                                                                .padding(end = 6.dp)
+                                                    if (!capsuleBottomBarEnabled) {
+                                                        StandardHeaderTitle(
+                                                            accountName = headerAccountName,
+                                                            accountImageUrl = headerAccountImage,
+                                                            onAccountClick = { navController.navigate("settings/account") },
                                                         )
-
-                                                        Text(
-                                                            text = stringResource(R.string.app_name),
-                                                            style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
-                                                            maxLines = 1,
-                                                            overflow = TextOverflow.Ellipsis
-                                                        )
+                                                    } else {
+                                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                                            // app icon
+                                                            Image(
+                                                                painter = painterResource(id = R.drawable.ic_velune_concept),
+                                                                contentDescription = stringResource(R.string.app_name),
+                                                                modifier = Modifier
+                                                                    .size(35.dp)
+                                                                    .padding(end = 6.dp)
+                                                            )
+    
+                                                            Text(
+                                                                text = stringResource(R.string.app_name),
+                                                                style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
+                                                                maxLines = 1,
+                                                                overflow = TextOverflow.Ellipsis
+                                                            )
+                                                        }
                                                     }
                                                 },
 
@@ -1216,7 +1227,7 @@ class MainActivity : ComponentActivity() {
                                                     IconButton(onClick = { navController.navigate("settings") }) {
                                                         Icon(
                                                             painter = painterResource(R.drawable.settings),
-                                                            contentDescription = "Settings",
+                                                            contentDescription = stringResource(R.string.settings),
                                                             modifier = Modifier.size(24.dp)
                                                         )
                                                     }
@@ -1226,7 +1237,7 @@ class MainActivity : ComponentActivity() {
                                                     containerColor = if (isTransparentTopBarScreen) Color.Transparent else if (pureBlack) Color.Black else MaterialTheme.colorScheme.surface,
                                                     scrolledContainerColor = if (isTransparentTopBarScreen) Color.Transparent else if (pureBlack) Color.Black else MaterialTheme.colorScheme.surface,
                                                     titleContentColor = MaterialTheme.colorScheme.onSurface,
-                                                    actionIconContentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                    actionIconContentColor = if (capsuleBottomBarEnabled) MaterialTheme.colorScheme.onSurfaceVariant else StandardChrome.muted,
                                                     navigationIconContentColor = MaterialTheme.colorScheme.onSurfaceVariant
                                                 )
                                             )
@@ -1454,19 +1465,8 @@ class MainActivity : ComponentActivity() {
                                                     } else {
                                                         Modifier
                                                             .align(Alignment.BottomCenter)
-                                                            .padding(
-                                                                start = 12.dp,
-                                                                end = 12.dp,
-                                                                bottom = bottomInset + floatingBarsBottomPadding,
-                                                            )
-                                                            .border(
-                                                                width = 1.dp,
-                                                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.15f),
-                                                                shape = RoundedCornerShape(24.dp)
-                                                            )
-                                                            .clip(RoundedCornerShape(24.dp))
                                                             .fillMaxWidth()
-                                                            .height(navVisibleHeight)
+                                                            .height(bottomInset + navVisibleHeight)
                                                     },
                                                 items = navigationItems,
                                                 currentRoute = navBackStackEntry?.destination?.route ?: "",

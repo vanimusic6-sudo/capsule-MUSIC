@@ -1075,7 +1075,7 @@ private fun SettingsHeroHeader(modifier: Modifier = Modifier) {
             Icon(
                 painter = painterResource(R.drawable.ic_velune_concept),
                 contentDescription = null,
-                tint = MaterialTheme.colorScheme.primary,
+                tint = Color.Unspecified,
                 modifier = Modifier.size(34.dp),
             )
         }

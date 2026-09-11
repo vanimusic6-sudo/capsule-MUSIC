@@ -8,6 +8,7 @@
 
 package com.nikhil.yt.ui.menu
 
+import com.nikhil.yt.ui.component.ArtistSelectionItem
 import com.nikhil.yt.ui.component.VeluneLoader
 import android.annotation.SuppressLint
 import android.content.Intent
@@ -235,42 +236,18 @@ fun YouTubeAlbumMenu(
     }
 
     if (showSelectArtistDialog) {
-        ListDialog(
-            onDismiss = { showSelectArtistDialog = false },
-        ) {
-            items(
-                items = splitArtists.distinctBy { it.name },
-                key = { it.name },
-            ) { splitArtist ->
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier
-                        .height(ListItemHeight)
-                        .clickable {
-                            splitArtist.originalArtist?.let { artist ->
-                                navController.navigate("artist/${artist.id}")
-                                showSelectArtistDialog = false
-                                onDismiss()
-                            }
-                        }
-                        .padding(horizontal = 12.dp),
-                ) {
-                    Box(
-                        contentAlignment = Alignment.CenterStart,
-                        modifier = Modifier
-                            .fillParentMaxWidth()
-                            .height(ListItemHeight)
-                            .padding(horizontal = 24.dp),
-                    ) {
-                        Text(
-                            text = splitArtist.name,
-                            fontSize = 18.sp,
-                            fontWeight = FontWeight.Bold,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                    }
-                }
+        ListDialog(onDismiss = { showSelectArtistDialog = false }) {
+            items(splitArtists.distinctBy { it.name }) { splitArtist ->
+                ArtistSelectionItem(
+                    name = splitArtist.name,
+                    artistId = splitArtist.originalArtist?.id,
+                    onClick = {
+                        val id = splitArtist.originalArtist?.id ?: return@ArtistSelectionItem
+                        navController.navigate("artist/$id")
+                        showSelectArtistDialog = false
+                        onDismiss()
+                    },
+                )
             }
         }
     }

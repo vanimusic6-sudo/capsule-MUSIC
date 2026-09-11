@@ -5,6 +5,9 @@ on:
   workflow_dispatch:
   pull_request:
     paths:
+      - "app/src/main/kotlin/com/nikhil/yt/ui/**"
+      - "app/src/main/kotlin/com/nikhil/yt/MainActivity.kt"
+      - "app/src/main/res/**"
       - "app/src/main/kotlin/com/nikhil/yt/playback/**"
       - "app/src/main/kotlin/com/nikhil/yt/extensions/**"
       - "app/src/main/kotlin/com/nikhil/yt/utils/**"
@@ -29,6 +32,9 @@ on:
       - main
       - cleanup/capsule-player-only
     paths:
+      - "app/src/main/kotlin/com/nikhil/yt/ui/**"
+      - "app/src/main/kotlin/com/nikhil/yt/MainActivity.kt"
+      - "app/src/main/res/**"
       - "app/src/main/kotlin/com/nikhil/yt/playback/**"
       - "app/src/main/kotlin/com/nikhil/yt/extensions/**"
       - "app/src/main/kotlin/com/nikhil/yt/utils/**"
@@ -111,6 +117,7 @@ jobs:
             betterlyrics/build/reports/tests/
             lrclib/build/reports/tests/
             app/build/reports/tests/
+            app/build/reports/ui-previews/
             app/build/reports/lint-results-*.html
             app/build/reports/lint-results-*.xml
           if-no-files-found: ignore

@@ -9,6 +9,11 @@
 package com.nikhil.yt.ui.player
 
 import android.os.SystemClock
+import com.nikhil.yt.ui.component.StandardChrome
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateDpAsState
@@ -123,6 +128,7 @@ fun CapsuleMiniPlayer(
     duration: Long,
     modifier: Modifier = Modifier,
     pureBlack: Boolean,
+    standardStyle: Boolean = false,
 ) {
     val playerConnection =
         LocalPlayerConnection.current ?: return
@@ -169,7 +175,7 @@ fun CapsuleMiniPlayer(
         rememberCapsuleArtworkColors(
             mediaMetadata = mediaMetadata,
             enabled =
-                miniPlayerBackground !=
+                !standardStyle && miniPlayerBackground !=
                     MiniPlayerBackgroundStyle.THEME,
         )
 
@@ -298,7 +304,7 @@ fun CapsuleMiniPlayer(
                         WindowInsetsSides.Horizontal,
                     ),
                 )
-                .padding(horizontal = 10.dp)
+                .padding(horizontal = if (standardStyle) 12.dp else 10.dp)
                 .let { baseModifier ->
                     if (swipeThumbnail) {
                         baseModifier.pointerInput(
@@ -475,7 +481,7 @@ fun CapsuleMiniPlayer(
         val capsuleBottomRadius by
             animateDpAsState(
                 targetValue =
-                    if (capsuleDockVisible) {
+                    if (capsuleDockVisible && !standardStyle) {
                         0.dp
                     } else {
                         24.dp
@@ -491,7 +497,7 @@ fun CapsuleMiniPlayer(
                     "capsuleMiniPlayerBottomRadius",
             )
 
-        val miniPlayerShape =
+        val miniPlayerShape = if (standardStyle) RoundedCornerShape(14.dp) else
             RoundedCornerShape(
                 topStart = 24.dp,
                 topEnd = 24.dp,
@@ -516,8 +522,8 @@ fun CapsuleMiniPlayer(
                     .clip(miniPlayerShape)
                     .background(Color.Transparent)
                     .border(
-                        width = 1.dp,
-                        color =
+                        width = if (standardStyle) 0.dp else 1.dp,
+                        color = if (standardStyle) Color.Transparent else
                             capsuleSurfaceOutline(
                                 miniArtworkColors,
                                 glass =
@@ -528,7 +534,9 @@ fun CapsuleMiniPlayer(
                             miniPlayerShape,
                     ),
         ) {
-            CapsuleCompactSurfaceBackground(
+            if (standardStyle) {
+                Box(Modifier.fillMaxSize().background(StandardChrome.panel))
+            } else CapsuleCompactSurfaceBackground(
                 style = miniPlayerBackground,
                 pureBlack = pureBlack,
                 colors = miniArtworkColors,
@@ -557,6 +565,7 @@ fun CapsuleMiniPlayer(
                         mediaMetadata,
                     playerConnection =
                         playerConnection,
+                    standardStyle = standardStyle,
                 )
 
                 Spacer(
@@ -568,6 +577,7 @@ fun CapsuleMiniPlayer(
                         mediaMetadata,
                     modifier =
                         Modifier.weight(1f),
+                    standardStyle = standardStyle,
                 )
 
                 Spacer(
@@ -584,6 +594,7 @@ fun CapsuleMiniPlayer(
                                 artistId,
                             metadata =
                                 mediaMetadata!!,
+                            standardStyle = standardStyle,
                         )
 
                         Spacer(
@@ -599,6 +610,7 @@ fun CapsuleMiniPlayer(
                             true,
                     onClick =
                         playerConnection::toggleLike,
+                    standardStyle = standardStyle,
                 )
             }
         }
@@ -704,6 +716,7 @@ private fun CapsuleMiniPlayButton(
     mediaMetadata: MediaMetadata?,
     playerConnection:
         com.nikhil.yt.playback.PlayerConnection,
+    standardStyle: Boolean = false,
 ) {
     val progress =
         if (duration > 0L) {
@@ -718,7 +731,9 @@ private fun CapsuleMiniPlayButton(
             0f
         }
 
-    val trackColor =
+    val playLabel = stringResource(if (isPlaying) androidx.media3.ui.R.string.exo_controls_pause_description else R.string.play)
+    val progressColor = if (standardStyle) StandardChrome.text else CapsuleMiniPrimary
+    val trackColor = if (standardStyle) StandardChrome.text.copy(alpha = 0.7f) else
         CapsuleMiniOutline.copy(
             alpha = 0.2f,
         )
@@ -728,7 +743,7 @@ private fun CapsuleMiniPlayButton(
             Alignment.Center,
         modifier =
             Modifier
-                .size(50.dp)
+                .size(if (standardStyle) 46.dp else 50.dp)
                 .drawWithContent {
                     drawContent()
 
@@ -774,7 +789,7 @@ private fun CapsuleMiniPlayButton(
 
                     drawArc(
                         color =
-                            CapsuleMiniPrimary,
+                            progressColor,
                         startAngle =
                             -90f,
                         sweepAngle =
@@ -797,7 +812,7 @@ private fun CapsuleMiniPlayButton(
                 Alignment.Center,
             modifier =
                 Modifier
-                    .size(44.dp)
+                    .size(if (standardStyle) 40.dp else 44.dp)
                     .clip(CircleShape)
                     .border(
                         1.dp,
@@ -806,7 +821,8 @@ private fun CapsuleMiniPlayButton(
                         ),
                         CircleShape,
                     )
-                    .clickable {
+                    .semantics { contentDescription = playLabel }
+                    .clickable(role = Role.Button) {
                         if (
                             playbackState ==
                             Player.STATE_ENDED
@@ -883,6 +899,7 @@ private fun CapsuleMiniPlayButton(
 private fun CapsuleMiniSongInfo(
     mediaMetadata: MediaMetadata?,
     modifier: Modifier = Modifier,
+    standardStyle: Boolean = false,
 ) {
     val playerConnection =
         LocalPlayerConnection.current
@@ -907,7 +924,7 @@ private fun CapsuleMiniSongInfo(
                 text =
                     metadata.title,
                 color =
-                    CapsuleMiniText,
+                    if (standardStyle) StandardChrome.text else CapsuleMiniText,
                 fontSize = 14.sp,
                 fontWeight =
                     FontWeight.Medium,
@@ -978,7 +995,7 @@ private fun CapsuleMiniSongInfo(
                                 it.name
                             },
                     color =
-                        CapsuleMiniText.copy(
+                        (if (standardStyle) StandardChrome.text else CapsuleMiniText).copy(
                             alpha = 0.7f,
                         ),
                     fontSize = 12.sp,
@@ -999,7 +1016,7 @@ private fun CapsuleMiniSongInfo(
             if (error != null) {
                 Text(
                     text =
-                        "Playback error",
+                        stringResource(R.string.error_unknown),
                     color =
                         CapsuleMiniError,
                     fontSize = 10.sp,
@@ -1016,6 +1033,7 @@ private fun CapsuleMiniSongInfo(
 private fun CapsuleSubscribeButton(
     artistId: String,
     metadata: MediaMetadata,
+    standardStyle: Boolean = false,
 ) {
     val database =
         LocalDatabase.current
@@ -1041,8 +1059,8 @@ private fun CapsuleSubscribeButton(
                 .size(40.dp)
                 .clip(CircleShape)
                 .border(
-                    width = 1.dp,
-                    color =
+                    width = if (standardStyle) 0.dp else 1.dp,
+                    color = if (standardStyle) Color.Transparent else
                         if (isSubscribed) {
                             CapsuleMiniPrimary
                                 .copy(
@@ -1060,7 +1078,7 @@ private fun CapsuleSubscribeButton(
                         CircleShape,
                 )
                 .background(
-                    color =
+                    color = if (standardStyle) Color.Transparent else
                         if (isSubscribed) {
                             CapsuleMiniPrimary
                                 .copy(
@@ -1116,16 +1134,15 @@ private fun CapsuleSubscribeButton(
                         R.drawable.person
                     },
                 ),
-            contentDescription =
-                null,
+            contentDescription = stringResource(if (isSubscribed) R.string.subscribed else R.string.subscribe),
             tint =
                 if (isSubscribed) {
-                    CapsuleMiniPrimary
+                    if (standardStyle) StandardChrome.text else CapsuleMiniPrimary
                 } else {
-                    CapsuleMiniMuted
+                    if (standardStyle) StandardChrome.muted else CapsuleMiniMuted
                 },
             modifier =
-                Modifier.size(20.dp),
+                Modifier.size(if (standardStyle) 24.dp else 20.dp),
         )
     }
 }
@@ -1134,6 +1151,7 @@ private fun CapsuleSubscribeButton(
 private fun CapsuleFavoriteButton(
     liked: Boolean,
     onClick: () -> Unit,
+    standardStyle: Boolean = false,
 ) {
     Box(
         contentAlignment =
@@ -1143,8 +1161,8 @@ private fun CapsuleFavoriteButton(
                 .size(40.dp)
                 .clip(CircleShape)
                 .border(
-                    width = 1.dp,
-                    color =
+                    width = if (standardStyle) 0.dp else 1.dp,
+                    color = if (standardStyle) Color.Transparent else
                         if (liked) {
                             CapsuleMiniError
                                 .copy(
@@ -1162,7 +1180,7 @@ private fun CapsuleFavoriteButton(
                         CircleShape,
                 )
                 .background(
-                    color =
+                    color = if (standardStyle) Color.Transparent else
                         if (liked) {
                             CapsuleMiniError
                                 .copy(
@@ -1188,16 +1206,15 @@ private fun CapsuleFavoriteButton(
                         R.drawable.favorite_border
                     },
                 ),
-            contentDescription =
-                null,
+            contentDescription = stringResource(if (liked) R.string.action_remove_like else R.string.action_like),
             tint =
                 if (liked) {
-                    CapsuleMiniError
+                    if (standardStyle) StandardChrome.favorite else CapsuleMiniError
                 } else {
-                    CapsuleMiniMuted
+                    if (standardStyle) StandardChrome.muted else CapsuleMiniMuted
                 },
             modifier =
-                Modifier.size(20.dp),
+                Modifier.size(if (standardStyle) 26.dp else 20.dp),
         )
     }
 }

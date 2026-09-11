@@ -170,7 +170,7 @@ object UpdateNotificationManager {
         )
 
         val notification = NotificationCompat.Builder(context, CHANNEL_ID)
-            .setSmallIcon(R.drawable.ic_velune_concept)
+            .setSmallIcon(R.drawable.ic_capsule_monochrome)
             .setContentTitle("capsule update available")
             .setContentText("capsule $newVersion is now available")
             .setPriority(NotificationCompat.PRIORITY_DEFAULT)

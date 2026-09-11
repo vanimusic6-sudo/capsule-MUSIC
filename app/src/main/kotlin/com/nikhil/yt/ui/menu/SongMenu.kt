@@ -8,6 +8,7 @@
 
 package com.nikhil.yt.ui.menu
 
+import com.nikhil.yt.ui.component.ArtistSelectionItem
 import com.nikhil.yt.ui.component.VeluneLoader
 import android.content.Intent
 import android.content.res.Configuration
@@ -299,42 +300,18 @@ fun SongMenu(
     }
 
     if (showSelectArtistDialog) {
-        ListDialog(
-            onDismiss = { showSelectArtistDialog = false },
-        ) {
-            items(
-                items = splitArtists.distinctBy { it.name },
-                key = { it.name },
-            ) { splitArtist ->
-                ListItem(
-                    headlineContent = {
-                        Text(
-                            text = splitArtist.name,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
+        ListDialog(onDismiss = { showSelectArtistDialog = false }) {
+            items(splitArtists.distinctBy { it.name }) { splitArtist ->
+                ArtistSelectionItem(
+                    name = splitArtist.name,
+                    artistId = splitArtist.originalArtist?.id,
+                    thumbnailUrl = splitArtist.originalArtist?.thumbnailUrl,
+                    onClick = {
+                        val id = splitArtist.originalArtist?.id ?: return@ArtistSelectionItem
+                        navController.navigate("artist/$id")
+                        showSelectArtistDialog = false
+                        onDismiss()
                     },
-                    leadingContent = {
-                        AsyncImage(
-                            model = splitArtist.originalArtist?.thumbnailUrl,
-                            contentDescription = null,
-                            modifier =
-                                Modifier
-                                    .size(40.dp)
-                                    .clip(CircleShape),
-                        )
-                    },
-                    modifier =
-                        Modifier
-                            .fillMaxWidth()
-                            .clickable {
-                                splitArtist.originalArtist?.let { artist ->
-                                    navController.navigate("artist/${artist.id}")
-                                    showSelectArtistDialog = false
-                                    onDismiss()
-                                }
-                            },
-                    colors = ListItemDefaults.colors(containerColor = Color.Transparent),
                 )
             }
         }

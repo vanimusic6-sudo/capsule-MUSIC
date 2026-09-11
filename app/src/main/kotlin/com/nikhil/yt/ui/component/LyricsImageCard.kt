@@ -386,11 +386,7 @@ fun LyricsImageCard(
                             Image(
                                 painter = painterResource(id = R.drawable.ic_velune_concept),
                                 contentDescription = null,
-                                modifier = Modifier.size(15.dp),
-                                colorFilter = ColorFilter.tint(
-                                    if (glassStyle.isDark) Color.Black.copy(alpha = 0.85f)
-                                    else Color.White.copy(alpha = 0.9f)
-                                )
+                                modifier = Modifier.size(22.dp),
                             )
                         }
 
