@@ -265,7 +265,7 @@ import kotlin.math.pow
 internal const val YOUTUBE_LOUDNESS_REFERENCE_LUFS = -7.0
 internal const val NORMALIZATION_TARGET_LUFS = -14.0
 internal const val MIN_NORMALIZATION_GAIN_DB = -12.0
-internal const val SIGNED_URL_SESSION_REFRESH_THRESHOLD_MS = 3_000L
+internal const val SIGNED_URL_CIPHER_REFRESH_THRESHOLD_MS = 3_000L
 internal const val SIGNED_URL_MAX_FRESH_RESOLVE_DELAY_MS = 3_000L
 internal const val AUDIO_PREFETCH_LEAD_TIME_MS = 45_000L
 internal const val AUDIO_PREFETCH_MIN_CURRENT_PROGRESS_MS = 3_000L
@@ -299,12 +299,12 @@ internal fun signedUrlRefreshDelayMs(
     budgetDelayMs: Long,
 ): Long = budgetDelayMs
 
-internal fun shouldRefreshStreamSessionAfterSignedUrlRejection(
+internal fun shouldRefreshCipherConfigAfterSignedUrlRejection(
     httpStatusCode: Int?,
     budgetDelayMs: Long,
 ): Boolean =
     httpStatusCode in setOf(403, 410) &&
-        budgetDelayMs >= SIGNED_URL_SESSION_REFRESH_THRESHOLD_MS
+        budgetDelayMs >= SIGNED_URL_CIPHER_REFRESH_THRESHOLD_MS
 
 internal fun shouldRetryRejectedSignedUrl(
     httpStatusCode: Int?,
@@ -3495,7 +3495,7 @@ class MusicService :
             scheduleStreamRefreshRetry(
                 mediaId = currentMediaId,
                 refreshCipherConfig =
-                    shouldRefreshStreamSessionAfterSignedUrlRejection(
+                    shouldRefreshCipherConfigAfterSignedUrlRejection(
                         httpStatusCode = httpStatusCode,
                         budgetDelayMs = retryDelay,
                     ),
@@ -4432,9 +4432,12 @@ class MusicService :
                         }
 
                     if (configChanged) {
-                        CapsuleAudioEngine.clearStreamClientFailures()
+                        // Keep step47's song-local 403/410 evidence through the fresh resolve.
+                        // Refreshing player/cipher config can repair signature generation, but it
+                        // must not make the just-rejected extraction profile immediately eligible.
                         Timber.tag("MusicService").i(
-                            "Player config changed after stream rejection; restored stream clients",
+                            "Player config changed after stream rejection; preserving per-song rejected-client quarantine id=%s",
+                            mediaId,
                         )
                     }
                 }

@@ -72,21 +72,21 @@ class CapsuleLoadErrorHandlingPolicyTest {
     }
 
     @Test
-    fun repeatedSignedUrlRejectionRefreshesSessionOnlyOnSecondFreshAttempt() {
+    fun repeatedSignedUrlRejectionRefreshesCipherConfigOnlyOnSecondFreshAttempt() {
         assertFalse(
-            shouldRefreshStreamSessionAfterSignedUrlRejection(
+            shouldRefreshCipherConfigAfterSignedUrlRejection(
                 httpStatusCode = 403,
                 budgetDelayMs = 1_500L,
             ),
         )
         assertTrue(
-            shouldRefreshStreamSessionAfterSignedUrlRejection(
+            shouldRefreshCipherConfigAfterSignedUrlRejection(
                 httpStatusCode = 403,
                 budgetDelayMs = 3_000L,
             ),
         )
         assertFalse(
-            shouldRefreshStreamSessionAfterSignedUrlRejection(
+            shouldRefreshCipherConfigAfterSignedUrlRejection(
                 httpStatusCode = 500,
                 budgetDelayMs = 3_000L,
             ),
