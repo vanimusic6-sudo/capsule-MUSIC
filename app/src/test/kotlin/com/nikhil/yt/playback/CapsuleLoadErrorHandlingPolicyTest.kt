@@ -43,14 +43,19 @@ class CapsuleLoadErrorHandlingPolicyTest {
     }
 
     @Test
-    fun rateLimitAndNonAudioLoadsKeepMedia3DefaultPolicy() {
-        assertNull(
+    fun rateLimitFailsFastForAudioWithoutSameUrlRetry() {
+        assertEquals(
+            C.TIME_UNSET,
             audioCdnRejectedRetryDelayMs(
                 cacheKey = "capsule:audio:track:251:1234",
                 httpStatusCode = 429,
-                errorCount = 2,
+                errorCount = 1,
             ),
         )
+    }
+
+    @Test
+    fun nonAudioLoadsKeepMedia3DefaultPolicy() {
         assertNull(
             audioCdnRejectedRetryDelayMs(
                 cacheKey = "capsule:video:track",

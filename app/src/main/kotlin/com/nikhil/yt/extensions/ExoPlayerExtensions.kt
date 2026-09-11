@@ -41,6 +41,10 @@ internal enum class CapsuleAudioOffloadAvailability {
     UNKNOWN,
 }
 
+internal fun ExoPlayer.isAudioOffloadRequested(): Boolean =
+    trackSelectionParameters.audioOffloadPreferences.audioOffloadMode !=
+        TrackSelectionParameters.AudioOffloadPreferences.AUDIO_OFFLOAD_MODE_DISABLED
+
 /**
  * Returns platform capability for the currently selected audio format and
  * current audio route. This is deliberately tri-state: before Media3 has a

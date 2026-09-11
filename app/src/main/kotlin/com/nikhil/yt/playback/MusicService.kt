@@ -49,6 +49,7 @@ import androidx.media3.common.Player.REPEAT_MODE_OFF
 import androidx.media3.common.Player.REPEAT_MODE_ONE
 import androidx.media3.common.Player.STATE_IDLE
 import androidx.media3.common.Timeline
+import androidx.media3.common.Tracks
 import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.HttpDataSource
@@ -151,6 +152,9 @@ import com.nikhil.yt.extensions.currentMetadata
 import com.nikhil.yt.extensions.findNextMediaItemById
 import com.nikhil.yt.extensions.mediaItems
 import com.nikhil.yt.extensions.metadata
+import com.nikhil.yt.extensions.CapsuleAudioOffloadAvailability
+import com.nikhil.yt.extensions.currentAudioOffloadAvailability
+import com.nikhil.yt.extensions.isAudioOffloadRequested
 import com.nikhil.yt.extensions.setOffloadEnabled
 import com.nikhil.yt.extensions.toMediaItem
 import com.nikhil.yt.extensions.toEnum
@@ -3050,6 +3054,25 @@ class MusicService :
         }
 
         playbackPersistence.schedulePlayerStateSave(syncToDisk = true)
+    }
+
+    override fun onTracksChanged(tracks: Tracks) {
+        if (tracks.groups.isEmpty() || !player.isAudioOffloadRequested()) return
+        if (player.currentAudioOffloadAvailability() != CapsuleAudioOffloadAvailability.UNSUPPORTED) return
+
+        // The route or selected format changed after the user enabled offload.
+        // Keep runtime state and persisted UI state honest: unsupported means OFF.
+        player.setOffloadEnabled(false)
+        scope.launch(Dispatchers.IO) {
+            dataStore.edit { preferences ->
+                if (preferences[AudioOffload] == true) {
+                    preferences[AudioOffload] = false
+                }
+            }
+        }
+        Timber.tag("AudioOffload").i(
+            "Disabled audio offload after current format/output became unsupported",
+        )
     }
 
     override fun onPlayerError(error: PlaybackException) {

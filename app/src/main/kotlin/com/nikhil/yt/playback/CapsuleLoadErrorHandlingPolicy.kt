@@ -12,10 +12,14 @@ private val REJECTED_SIGNED_URL_STATUS_CODES = setOf(403, 410)
 
 /**
  * Audio CDN URLs are signed and can occasionally be rejected even after a successful
- * WEB_REMIX resolve. Keep exactly one immediate same-URL retry because captures show
- * that a transient 403 can succeed on the next open. A second rejection is treated as
- * fatal for this load so MusicService can invalidate the URL and do its bounded fresh
- * resolve instead of letting Media3 hammer the same rejected URL many times.
+ * WEB_REMIX resolve. Keep exactly one immediate same-URL retry for 403/410 because
+ * captures show that a transient rejection can succeed on the next open. A second
+ * rejection is fatal for this load so MusicService can invalidate the URL and do its
+ * bounded fresh resolve instead of letting Media3 hammer the same rejected URL.
+ *
+ * 429 is different: it is an explicit throttle signal, so the current CDN URL fails
+ * immediately and MusicService's rate-limit circuit breaker gets control without a
+ * redundant request.
  *
  * null means: use Media3's normal policy for this load.
  */
@@ -25,6 +29,7 @@ internal fun audioCdnRejectedRetryDelayMs(
     errorCount: Int,
 ): Long? {
     if (cacheKey?.startsWith(CAPSULE_AUDIO_CACHE_PREFIX) != true) return null
+    if (httpStatusCode == 429) return C.TIME_UNSET
     if (httpStatusCode !in REJECTED_SIGNED_URL_STATUS_CODES) return null
     return if (errorCount <= 1) 0L else C.TIME_UNSET
 }
