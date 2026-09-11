@@ -267,6 +267,32 @@ internal const val NORMALIZATION_TARGET_LUFS = -14.0
 internal const val MIN_NORMALIZATION_GAIN_DB = -12.0
 internal const val SIGNED_URL_SESSION_REFRESH_THRESHOLD_MS = 3_000L
 internal const val SIGNED_URL_MAX_FRESH_RESOLVE_DELAY_MS = 3_000L
+internal const val AUDIO_PREFETCH_LEAD_TIME_MS = 45_000L
+internal const val AUDIO_PREFETCH_MIN_CURRENT_PROGRESS_MS = 3_000L
+internal const val AUDIO_PREFETCH_RECHECK_MS = 2_000L
+internal const val AUDIO_PREFETCHED_URL_MAX_AGE_MS = 60_000L
+
+internal fun audioPrefetchWaitMs(
+    durationMs: Long,
+    positionMs: Long,
+    isPlaying: Boolean,
+    leadTimeMs: Long = AUDIO_PREFETCH_LEAD_TIME_MS,
+    minimumCurrentProgressMs: Long = AUDIO_PREFETCH_MIN_CURRENT_PROGRESS_MS,
+): Long {
+    if (!isPlaying) return AUDIO_PREFETCH_RECHECK_MS
+
+    val safePositionMs = positionMs.coerceAtLeast(0L)
+    val untilPlaybackWarmMs =
+        (minimumCurrentProgressMs - safePositionMs).coerceAtLeast(0L)
+    val untilLeadWindowMs =
+        if (durationMs > 0L && durationMs != C.TIME_UNSET) {
+            (durationMs - safePositionMs - leadTimeMs).coerceAtLeast(0L)
+        } else {
+            0L
+        }
+
+    return maxOf(untilPlaybackWarmMs, untilLeadWindowMs)
+}
 
 internal fun signedUrlRefreshDelayMs(
     httpStatusCode: Int?,
@@ -567,7 +593,13 @@ class MusicService :
                         throw kotlinx.coroutines.CancellationException("Playback context changed")
                     }
                     result.getOrNull()?.let {
-                        cacheResolvedPlayback(mediaId, it, policyGeneration, selection)
+                        cacheResolvedPlayback(
+                            mediaId = mediaId,
+                            playback = it,
+                            generation = policyGeneration,
+                            selection = selection,
+                            priority = priority,
+                        )
                     }
                     Timber.tag(CAPSULE_RESOLVE_TAG).i(
                         "resolve done id=%s ok=%s tookMs=%d",
@@ -596,6 +628,9 @@ class MusicService :
     private fun prefetchUpcomingAudio() {
         val prefetchGeneration = audioResolveCoordinator.nextPrefetchGeneration()
         val upcoming = upcomingAudioIds()
+
+        prefetchScheduleJob?.cancel()
+        prefetchScheduleJob = null
 
         val relevantIds =
             buildSet {
@@ -626,9 +661,41 @@ class MusicService :
             upcoming.joinToString(","),
         )
 
-        upcoming.forEach { mediaId ->
+        val mediaId = upcoming.singleOrNull() ?: return
+        prefetchScheduleJob =
             ioScope.launch {
-                if (!audioResolveCoordinator.isPrefetchGenerationCurrent(prefetchGeneration)) {
+                /*
+                 * Resolve the next track just-in-time instead of immediately at
+                 * the start of the current song. Besides keeping the signed URL
+                 * young, requiring real current playback means background /player
+                 * work never races the current track's first CDN open/first byte.
+                 */
+                while (isActive && audioResolveCoordinator.isPrefetchGenerationCurrent(prefetchGeneration)) {
+                    val waitMs =
+                        withContext(Dispatchers.Main.immediate) {
+                            val metadataDurationMs =
+                                player.currentMetadata
+                                    ?.duration
+                                    ?.takeIf { it > 0 }
+                                    ?.toLong()
+                                    ?.times(1_000L)
+                            val durationMs =
+                                player.duration
+                                    .takeIf { it > 0L && it != C.TIME_UNSET }
+                                    ?: metadataDurationMs
+                                    ?: C.TIME_UNSET
+                            audioPrefetchWaitMs(
+                                durationMs = durationMs,
+                                positionMs = player.currentPosition,
+                                isPlaying = player.isPlaying,
+                            )
+                        }
+
+                    if (waitMs <= 0L) break
+                    delay(waitMs.coerceAtMost(AUDIO_PREFETCH_RECHECK_MS))
+                }
+
+                if (!isActive || !audioResolveCoordinator.isPrefetchGenerationCurrent(prefetchGeneration)) {
                     Timber.tag(CAPSULE_RESOLVE_TAG).i(
                         "prefetch skip transient id=%s",
                         mediaId,
@@ -636,11 +703,26 @@ class MusicService :
                     return@launch
                 }
 
+                val stillUpcoming =
+                    withContext(Dispatchers.Main.immediate) {
+                        mediaId in upcomingAudioIds()
+                    }
+                if (!stillUpcoming) {
+                    Timber.tag(CAPSULE_RESOLVE_TAG).i("prefetch skip stale-next id=%s", mediaId)
+                    return@launch
+                }
+
                 if (!isNetworkConnected.value ||
                     AudioCacheIdentity.completeKey(downloadCache, mediaId) != null ||
                     AudioCacheIdentity.completeKey(playerCache, mediaId) != null
                 ) return@launch
-                if (playbackUrlCache.get(mediaId, PREFETCH_FRESHNESS_MS) != null) {
+                if (
+                    playbackUrlCache.getForPlayback(
+                        mediaId = mediaId,
+                        maxPrefetchedAgeMs = AUDIO_PREFETCHED_URL_MAX_AGE_MS,
+                        minimumRemainingMs = PREFETCH_FRESHNESS_MS,
+                    ) != null
+                ) {
                     Timber.tag(CAPSULE_RESOLVE_TAG).i("prefetch skip cached id=%s", mediaId)
                     return@launch
                 }
@@ -652,7 +734,6 @@ class MusicService :
                 // The shared job publishes the entire result before completing.
                 audioResolveJob(mediaId).await()
             }
-        }
     }
 
     /**
@@ -728,6 +809,7 @@ class MusicService :
         )
     }
     private var streamRetryJob: Job? = null
+    private var prefetchScheduleJob: Job? = null
 
     private val mediaOkHttpClient: OkHttpClient by lazy {
         OkHttpClient
@@ -2067,6 +2149,8 @@ class MusicService :
         currentQueue = EmptyQueue
         queueTitle = null
         audioResolveCoordinator.cancelAll()
+        prefetchScheduleJob?.cancel()
+        prefetchScheduleJob = null
         playbackRecoveryCoordinator.cancelNetworkRecovery()
         currentMediaMetadata.value = null
         player.playWhenReady = false
@@ -3592,15 +3676,20 @@ class MusicService :
                         .build()
                 }
 
-                playbackUrlCache.get(mediaId)?.let { cached ->
-                    songMetadataRecoveryCoordinator.schedule(mediaId, cached)
-                    return@ResolvingDataSource resolvedAudioDataSpec(
-                        dataSpec = dataSpec,
-                        playback = cached,
-                        contract = contract,
-                        source = AudioCdnOpenSource.CACHED,
+                playbackUrlCache
+                    .getForPlayback(
+                        mediaId = mediaId,
+                        maxPrefetchedAgeMs = AUDIO_PREFETCHED_URL_MAX_AGE_MS,
                     )
-                }
+                    ?.let { cached ->
+                        songMetadataRecoveryCoordinator.schedule(mediaId, cached)
+                        return@ResolvingDataSource resolvedAudioDataSpec(
+                            dataSpec = dataSpec,
+                            playback = cached,
+                            contract = contract,
+                            source = AudioCdnOpenSource.CACHED,
+                        )
+                    }
 
                 /*
                  * Await the shared resolve rather than starting one here. The work
@@ -3728,6 +3817,7 @@ class MusicService :
         playback: CapsuleAudioEngine.PlaybackData,
         generation: Long,
         selection: AudioPlaybackContext,
+        priority: AudioResolvePriority,
     ) {
         val format = playback.format
         var loudness = TrackLoudness(
@@ -3764,7 +3854,12 @@ class MusicService :
         audioResolveCoordinator.publishIfCurrent(generation) {
             resolveContext.ensureActive()
             publishResolvedLoudness(mediaId, loudness)
-            playbackUrlCache.put(mediaId, playback, selection)
+            playbackUrlCache.put(
+                mediaId = mediaId,
+                data = playback,
+                context = selection,
+                prefetched = priority == AudioResolvePriority.PREFETCH,
+            )
         }
     }
 

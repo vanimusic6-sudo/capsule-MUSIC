@@ -56,4 +56,29 @@ class PlaybackDataCacheTest {
         assertNotNull(cache.get("track"))
     }
 
+    @Test fun stalePrefetchedGenerationIsDroppedBeforePlayback() {
+        var now = 0L
+        val cache = PlaybackDataCache(nowMs = { now })
+        val data = playback()
+
+        cache.put("prefetched", data, prefetched = true)
+        now = 1_001L
+        assertNull(
+            cache.getForPlayback(
+                mediaId = "prefetched",
+                maxPrefetchedAgeMs = 1_000L,
+            ),
+        )
+
+        cache.put("foreground", data, prefetched = false)
+        now = 2_002L
+        assertSame(
+            data,
+            cache.getForPlayback(
+                mediaId = "foreground",
+                maxPrefetchedAgeMs = 1_000L,
+            ),
+        )
+    }
+
 }
