@@ -45,7 +45,20 @@ jobs:
           gradle-version: "9.5.0"
 
       - name: Apply step43
-        run: python3 tools/refactor/cdn_first_open_hardening_step43.py
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 tools/refactor/cdn_first_open_hardening_step43.py
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path("app/src/test/kotlin/com/nikhil/yt/playback/PlaybackStabilityGateTest.kt")
+          text = path.read_text(encoding="utf-8")
+          old = """        advanceTimeBy(1_000)\n        var requested = false\n"""
+          new = """        advanceTimeBy(PREFETCH_RESOLVE_STABILITY_DELAY_MS + 200)\n        var requested = false\n"""
+          if text.count(old) != 1:
+              raise SystemExit(f"unexpected obsolete-track timing matches: {text.count(old)}")
+          path.write_text(text.replace(old, new, 1), encoding="utf-8")
+          PY
 
       - name: Verify patch shape
         shell: bash
@@ -58,6 +71,7 @@ jobs:
           grep -F 'resolvedAtElapsedMs' app/src/main/kotlin/com/nikhil/yt/playback/audio/CapsuleAudioEngine.kt
           grep -F 'cdn-retry-policy' app/src/main/kotlin/com/nikhil/yt/playback/CapsuleLoadErrorHandlingPolicy.kt
           grep -F 'audioCdnCrossHostCoalesced' app/src/main/kotlin/com/nikhil/yt/playback/audio/AudioCdnConnectionDiagnosticInterceptor.kt
+          grep -F 'advanceTimeBy(PREFETCH_RESOLVE_STABILITY_DELAY_MS + 200)' app/src/test/kotlin/com/nikhil/yt/playback/PlaybackStabilityGateTest.kt
 
       - name: Ensure locale metadata
         shell: bash
