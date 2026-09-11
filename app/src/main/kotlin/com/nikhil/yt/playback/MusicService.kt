@@ -191,9 +191,14 @@ import com.nikhil.yt.utils.CoilBitmapLoader
 import com.nikhil.yt.utils.NetworkConnectivityObserver
 import com.nikhil.yt.utils.StreamClientUtils
 import com.nikhil.yt.utils.SyncUtils
+import com.nikhil.yt.utils.GlobalLog
 import com.nikhil.yt.playback.audio.AudioCacheDataSource
 import com.nikhil.yt.playback.audio.AudioCacheSource
 import com.nikhil.yt.playback.audio.AudioNetworkDiagnosticDataSource
+import com.nikhil.yt.playback.audio.AudioCdnConnectionDiagnosticInterceptor
+import com.nikhil.yt.playback.audio.AudioCdnOpenContext
+import com.nikhil.yt.playback.audio.AudioCdnOpenSource
+import com.nikhil.yt.playback.audio.audioCdnInitialSettleDelayMs
 import com.nikhil.yt.playback.audio.CapsuleAudioRequestInterceptor
 import com.nikhil.yt.playback.audio.AudioCacheIdentity
 import com.nikhil.yt.playback.audio.AudioFormatChangedException
@@ -435,10 +440,54 @@ class MusicService :
 
         try {
             runBlocking {
-                audioResolveStability.awaitNetworkOpenStable {
+                suspend fun isRelevant(): Boolean =
                     withContext(Dispatchers.Main.immediate) {
                         mediaId == player.currentMediaItem?.mediaId ||
                             mediaId in upcomingAudioIds()
+                    }
+
+                audioResolveStability.awaitNetworkOpenStable(::isRelevant)
+
+                val openContext = dataSpec.customData as? AudioCdnOpenContext
+                val nowElapsedMs = android.os.SystemClock.elapsedRealtime()
+                val ageMs =
+                    openContext
+                        ?.resolvedAtElapsedMs
+                        ?.takeIf { it > 0L && nowElapsedMs >= it }
+                        ?.let { nowElapsedMs - it }
+                        ?: -1L
+                val settleMs =
+                    openContext?.let { context ->
+                        audioCdnInitialSettleDelayMs(
+                            nowElapsedMs = nowElapsedMs,
+                            resolvedAtElapsedMs = context.resolvedAtElapsedMs,
+                        )
+                    } ?: 0L
+
+                if (GlobalLog.isEnabled && openContext != null) {
+                    val queryNames = runCatching { dataSpec.uri.queryParameterNames }.getOrDefault(emptySet())
+                    val headerNames = dataSpec.httpRequestHeaders.keys
+                    Timber.tag("AudioCDN").d(
+                        "cdn-open-gate id=%s source=%s ageMs=%d settleMs=%d client=%s pot=%s n=%s sig=%s expire=%s ua=%s origin=%s referer=%s",
+                        mediaId,
+                        openContext.source,
+                        ageMs,
+                        settleMs,
+                        openContext.streamClient ?: "unknown",
+                        "pot" in queryNames,
+                        "n" in queryNames,
+                        "sig" in queryNames || "signature" in queryNames || "lsig" in queryNames,
+                        "expire" in queryNames,
+                        headerNames.any { it.equals("User-Agent", ignoreCase = true) },
+                        headerNames.any { it.equals("Origin", ignoreCase = true) },
+                        headerNames.any { it.equals("Referer", ignoreCase = true) },
+                    )
+                }
+
+                if (settleMs > 0L) {
+                    delay(settleMs)
+                    if (!isRelevant()) {
+                        throw kotlinx.coroutines.CancellationException("Track changed during AUDIO CDN settle window")
                     }
                 }
             }
@@ -3373,6 +3422,7 @@ class MusicService :
                 // No player/InnerTube request or client rotation happens here.
                 .retryOnConnectionFailure(true)
                 .addInterceptor(CapsuleAudioRequestInterceptor(guardStreams = true))
+                .addNetworkInterceptor(AudioCdnConnectionDiagnosticInterceptor())
                 .build()
         val networkUpstream =
             AudioNetworkDiagnosticDataSource.Factory(
@@ -3513,7 +3563,12 @@ class MusicService :
 
                 playbackUrlCache.get(mediaId)?.let { cached ->
                     songMetadataRecoveryCoordinator.schedule(mediaId, cached)
-                    return@ResolvingDataSource resolvedAudioDataSpec(dataSpec, cached, contract)
+                    return@ResolvingDataSource resolvedAudioDataSpec(
+                        dataSpec = dataSpec,
+                        playback = cached,
+                        contract = contract,
+                        source = AudioCdnOpenSource.CACHED,
+                    )
                 }
 
                 /*
@@ -3600,7 +3655,14 @@ class MusicService :
                 }
 
                 songMetadataRecoveryCoordinator.schedule(mediaId, playbackData)
-                return@ResolvingDataSource resolvedAudioDataSpec(dataSpec, playbackData, contract)
+                return@ResolvingDataSource resolvedAudioDataSpec(
+                    dataSpec = dataSpec,
+                    playback = playbackData,
+                    contract = contract,
+                    source =
+                        if (alreadyRunning) AudioCdnOpenSource.JOINED_INFLIGHT
+                        else AudioCdnOpenSource.ON_DEMAND,
+                )
             }
         }
     }
@@ -3609,13 +3671,23 @@ class MusicService :
         dataSpec: androidx.media3.datasource.DataSpec,
         playback: CapsuleAudioEngine.PlaybackData,
         contract: AudioStreamContract,
+        source: AudioCdnOpenSource,
     ): androidx.media3.datasource.DataSpec {
-        val key = AudioCacheIdentity.key(requireNotNull(dataSpec.key), playback)
+        val mediaId = requireNotNull(dataSpec.key)
+        val key = AudioCacheIdentity.key(mediaId, playback)
         contract.bind(key)
         AudioCacheIdentity.setLength(playerCache, key, playback.format.contentLength)
         return dataSpec.buildUpon()
             .setKey(key)
             .setUri(playback.streamUrl.toUri())
+            .setCustomData(
+                AudioCdnOpenContext(
+                    mediaId = mediaId,
+                    resolvedAtElapsedMs = playback.resolvedAtElapsedMs,
+                    source = source,
+                    streamClient = playback.streamClient,
+                ),
+            )
             .setHttpRequestHeaders(dataSpec.httpRequestHeaders + playback.streamHeaders)
             .build()
     }

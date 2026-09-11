@@ -37,7 +37,8 @@ class PlaybackStabilityGateTest {
         }
 
         assertTrue(requested.isEmpty())
-        advanceTimeBy(649)
+        // The loop already advanced 150 ms after the final selection.
+        advanceTimeBy(PREFETCH_RESOLVE_STABILITY_DELAY_MS - 151)
         runCurrent()
         assertTrue(requested.isEmpty())
         advanceTimeBy(1)
@@ -210,7 +211,7 @@ class PlaybackStabilityGateTest {
         }
         runCurrent()
 
-        // Track 1 starts as PREFETCH, so it would normally wait 800 ms.
+        // Track 1 starts as PREFETCH, so it would normally wait the longer background window.
         advanceTimeBy(300)
         current = 1
         gate.onSelectionChanged()
@@ -246,7 +247,7 @@ class PlaybackStabilityGateTest {
     @Test
     fun obsoleteTrackIsRejectedEvenIfLoaderArrivesLate() = runTest {
         val gate = PlaybackStabilityGate(nowMs = { currentTime })
-        advanceTimeBy(1_000)
+        advanceTimeBy(PREFETCH_RESOLVE_STABILITY_DELAY_MS + 200)
         var requested = false
         val job = launch {
             gate.awaitStable { false }

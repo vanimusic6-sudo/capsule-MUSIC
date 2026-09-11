@@ -7,7 +7,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.withTimeoutOrNull
 
 internal const val PLAYBACK_RESOLVE_STABILITY_DELAY_MS = 250L
-internal const val PREFETCH_RESOLVE_STABILITY_DELAY_MS = 800L
+internal const val PREFETCH_RESOLVE_STABILITY_DELAY_MS = 1_500L
 internal const val RAPID_SKIP_MAX_GAP_MS = 400L
 internal const val RAPID_SKIP_TRIGGER_COUNT = 3
 internal const val RAPID_SKIP_PLAYBACK_SETTLE_DELAY_MS = 650L

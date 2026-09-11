@@ -6,6 +6,8 @@ import androidx.media3.common.C
 import androidx.media3.datasource.HttpDataSource
 import androidx.media3.exoplayer.upstream.DefaultLoadErrorHandlingPolicy
 import androidx.media3.exoplayer.upstream.LoadErrorHandlingPolicy
+import com.nikhil.yt.utils.GlobalLog
+import timber.log.Timber
 
 private const val CAPSULE_AUDIO_CACHE_PREFIX = "capsule:audio:"
 private val REJECTED_SIGNED_URL_STATUS_CODES = setOf(403, 410)
@@ -67,16 +69,27 @@ internal class CapsuleLoadErrorHandlingPolicy : DefaultLoadErrorHandlingPolicy()
                 .filterIsInstance<HttpDataSource.InvalidResponseCodeException>()
                 .firstOrNull()
 
+        val resolvedKey =
+            audioCdnRetryCacheKey(
+                outerCacheKey = loadErrorInfo.loadEventInfo.dataSpec.key,
+                resolvedFailureCacheKey = httpFailure?.dataSpec?.key,
+            )
         val capsuleDecision =
             audioCdnRejectedRetryDelayMs(
-                cacheKey =
-                    audioCdnRetryCacheKey(
-                        outerCacheKey = loadErrorInfo.loadEventInfo.dataSpec.key,
-                        resolvedFailureCacheKey = httpFailure?.dataSpec?.key,
-                    ),
+                cacheKey = resolvedKey,
                 httpStatusCode = httpFailure?.responseCode,
                 errorCount = loadErrorInfo.errorCount,
             )
+        if (GlobalLog.isEnabled && httpFailure != null && capsuleDecision != null) {
+            Timber.tag("AudioCDN").d(
+                "cdn-retry-policy status=%d errorCount=%d delayMs=%d stop=%s id=%s",
+                httpFailure.responseCode,
+                loadErrorInfo.errorCount,
+                if (capsuleDecision == C.TIME_UNSET) -1L else capsuleDecision,
+                capsuleDecision == C.TIME_UNSET,
+                resolvedKey?.take(64) ?: "none",
+            )
+        }
         return capsuleDecision ?: super.getRetryDelayMsFor(loadErrorInfo)
     }
 }
