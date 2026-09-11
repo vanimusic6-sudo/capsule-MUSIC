@@ -84,4 +84,26 @@ class CapsuleLoadErrorHandlingPolicyTest {
             ),
         )
     }
+
+    @Test
+    fun resolvedHttpDataSpecAudioKeyWinsOverOuterMediaId() {
+        assertEquals(
+            "capsule:audio:track:251:1234",
+            audioCdnRetryCacheKey(
+                outerCacheKey = "track",
+                resolvedFailureCacheKey = "capsule:audio:track:251:1234",
+            ),
+        )
+    }
+
+    @Test
+    fun nonAudioResolvedKeyDoesNotHijackOuterPolicy() {
+        assertEquals(
+            "track",
+            audioCdnRetryCacheKey(
+                outerCacheKey = "track",
+                resolvedFailureCacheKey = "capsule:video:track",
+            ),
+        )
+    }
 }
