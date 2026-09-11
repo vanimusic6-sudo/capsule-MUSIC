@@ -9,19 +9,6 @@ import timber.log.Timber
 import java.io.IOException
 import java.io.InterruptedIOException
 import java.net.SocketTimeoutException
-import java.security.MessageDigest
-
-internal fun audioCdnUrlFingerprint(rawUrl: String): String {
-    val digest = MessageDigest.getInstance("SHA-256").digest(rawUrl.toByteArray(Charsets.UTF_8))
-    val alphabet = "0123456789abcdef"
-    val output = CharArray(12)
-    for (index in 0 until 6) {
-        val value = digest[index].toInt() and 0xff
-        output[index * 2] = alphabet[value ushr 4]
-        output[index * 2 + 1] = alphabet[value and 0x0f]
-    }
-    return String(output)
-}
 
 internal fun Throwable.isExpectedAudioCdnInterruption(): Boolean {
     val causes = generateSequence(this as Throwable?) { it.cause }
@@ -71,7 +58,6 @@ internal class AudioNetworkDiagnosticDataSource(
     private var worstReadMs = 0L
     private var mediaKey: String? = null
     private var host: String? = null
-    private var urlFingerprint: String? = null
 
     override fun addTransferListener(transferListener: TransferListener) {
         upstream.addTransferListener(transferListener)
@@ -90,13 +76,11 @@ internal class AudioNetworkDiagnosticDataSource(
         worstReadMs = 0L
         mediaKey = dataSpec.key?.take(64)
         host = dataSpec.uri.host?.take(96)
-        urlFingerprint = audioCdnUrlFingerprint(dataSpec.uri.toString())
 
         Timber.tag(TAG).i(
-            "cdn-open-start id=%s host=%s urlFp=%s position=%d length=%d",
+            "cdn-open-start id=%s host=%s position=%d length=%d",
             mediaKey ?: "none",
             host ?: "unknown",
-            urlFingerprint ?: "none",
             dataSpec.position,
             dataSpec.length,
         )
@@ -105,10 +89,9 @@ internal class AudioNetworkDiagnosticDataSource(
             upstream.open(dataSpec).also { resolvedLength ->
                 openCompletedAtNs = System.nanoTime()
                 Timber.tag(TAG).i(
-                    "cdn-open-ready id=%s host=%s urlFp=%s openMs=%d resolvedLength=%d",
+                    "cdn-open-ready id=%s host=%s openMs=%d resolvedLength=%d",
                     mediaKey ?: "none",
                     host ?: "unknown",
-                    urlFingerprint ?: "none",
                     elapsedMs(startedAtNs, openCompletedAtNs),
                     resolvedLength,
                 )
@@ -117,19 +100,17 @@ internal class AudioNetworkDiagnosticDataSource(
             val now = System.nanoTime()
             if (failure.isExpectedAudioCdnInterruption()) {
                 Timber.tag(TAG).d(
-                    "cdn-open-interrupted id=%s host=%s urlFp=%s elapsedMs=%d",
+                    "cdn-open-interrupted id=%s host=%s elapsedMs=%d",
                     mediaKey ?: "none",
                     host ?: "unknown",
-                    urlFingerprint ?: "none",
                     elapsedMs(startedAtNs, now),
                 )
             } else {
                 Timber.tag(TAG).w(
                     failure,
-                    "cdn-open-failed id=%s host=%s urlFp=%s elapsedMs=%d",
+                    "cdn-open-failed id=%s host=%s elapsedMs=%d",
                     mediaKey ?: "none",
                     host ?: "unknown",
-                    urlFingerprint ?: "none",
                     elapsedMs(startedAtNs, now),
                 )
             }
@@ -241,7 +222,6 @@ internal class AudioNetworkDiagnosticDataSource(
             worstReadMs = 0L
             mediaKey = null
             host = null
-            urlFingerprint = null
         }
     }
 
