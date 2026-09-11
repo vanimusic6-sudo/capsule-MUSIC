@@ -238,6 +238,8 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.withContext
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
@@ -364,6 +366,7 @@ class MusicService :
     private var scopeJob = Job()
     private var scope = CoroutineScope(Dispatchers.Main + scopeJob)
     private var ioScope = CoroutineScope(Dispatchers.IO + scopeJob)
+    private val songMutationMutex = Mutex()
     private val binder = MusicBinder()
     private val togetherShutdownGate = TogetherShutdownGate()
     private val playbackPositionGeneration = PlaybackPositionGeneration()
@@ -2455,42 +2458,126 @@ class MusicService :
         }.getOrNull()
     }
 
+    private fun activeSongMetadata(): com.nikhil.yt.models.MediaMetadata? =
+        player.currentMetadata
+            ?: currentMediaMetadata.value
+            ?: player.currentMediaItem?.metadata
+
+    private fun activeSongId(metadata: com.nikhil.yt.models.MediaMetadata? = activeSongMetadata()): String? =
+        metadata?.id
+            ?.trim()
+            ?.takeIf { it.isNotBlank() }
+            ?: player.currentMediaItem
+                ?.mediaId
+                ?.trim()
+                ?.takeIf { it.isNotBlank() }
+
+    private suspend fun ensureSongForMutation(
+        mediaId: String,
+        metadata: com.nikhil.yt.models.MediaMetadata?,
+    ): Song? {
+        var current = database.getSongById(mediaId)
+        if (current != null) return current
+
+        val sourceMetadata =
+            metadata
+                ?.takeIf { it.id.trim() == mediaId }
+                ?: return null
+
+        database.insert(sourceMetadata)
+        current = database.getSongById(mediaId)
+        return current
+    }
+
     private fun toggleLibrary() {
-        database.query {
-            currentSong.value?.let {
-                update(it.song.toggleLibrary())
+        val metadata = activeSongMetadata()
+        val mediaId = activeSongId(metadata) ?: return
+
+        ioScope.launch {
+            songMutationMutex.withLock {
+                database.withTransaction {
+                    val current = ensureSongForMutation(mediaId, metadata) ?: return@withTransaction
+                    update(current.song.toggleLibrary())
+                }
             }
         }
     }
 
     fun toggleLike(source: String = "service") {
-         Timber.tag("MusicService").i(
-             "Toggle like requested id=%s source=%s",
-             currentSong.value?.song?.id,
-             source,
-         )
-         database.query {
-             currentSong.value?.let {
-                 val song = it.song.toggleLike()
-                 update(song)
-                 syncUtils.likeSong(song)
+        val metadata = activeSongMetadata()
+        val mediaId = activeSongId(metadata)
 
-                 if (dataStore.get(AutoDownloadOnLikeKey, false) && song.liked) {
-                     val downloadRequest = androidx.media3.exoplayer.offline.DownloadRequest
-                         .Builder(song.id, song.id.toUri())
-                         .setCustomCacheKey(song.id)
-                         .setData(song.title.toByteArray())
-                         .build()
-                     androidx.media3.exoplayer.offline.DownloadService.sendAddDownload(
-                         this@MusicService,
-                         ExoDownloadService::class.java,
-                         downloadRequest,
-                         false
-                     )
-                 }
-             }
-         }
-     }
+        Timber.tag("MusicService").i(
+            "Toggle like requested id=%s source=%s",
+            mediaId,
+            source,
+        )
+
+        if (mediaId == null) {
+            Timber.tag("MusicService").w("Toggle like ignored: no active media id source=%s", source)
+            return
+        }
+
+        ioScope.launch {
+            songMutationMutex.withLock {
+                val updatedSong =
+                    database.withTransaction {
+                        val current = ensureSongForMutation(mediaId, metadata)
+                        if (current == null) {
+                            Timber.tag("MusicService").w(
+                                "Toggle like ignored id=%s: no local row and no usable metadata",
+                                mediaId,
+                            )
+                            return@withTransaction null
+                        }
+
+                        val wasLiked = current.song.liked
+                        val now = LocalDateTime.now()
+                        val updated =
+                            current.song.copy(
+                                liked = !wasLiked,
+                                likedDate = if (!wasLiked) now else null,
+                                inLibrary =
+                                    if (!wasLiked) {
+                                        current.song.inLibrary ?: now
+                                    } else {
+                                        current.song.inLibrary
+                                    },
+                            )
+                        update(updated)
+                        updated
+                    } ?: return@withLock
+
+                // Keep one owner for the remote mutation. SongEntity.toggleLike()
+                // also calls YouTube directly, so using a pure local copy above
+                // prevents duplicate like requests while SyncUtils keeps auth and
+                // sync-policy checks in one place.
+                syncUtils.likeSong(updatedSong)
+
+                Timber.tag("MusicService").i(
+                    "Toggle like applied id=%s liked=%s source=%s",
+                    updatedSong.id,
+                    updatedSong.liked,
+                    source,
+                )
+
+                if (dataStore.get(AutoDownloadOnLikeKey, false) && updatedSong.liked) {
+                    val downloadRequest =
+                        androidx.media3.exoplayer.offline.DownloadRequest
+                            .Builder(updatedSong.id, updatedSong.id.toUri())
+                            .setCustomCacheKey(updatedSong.id)
+                            .setData(updatedSong.title.toByteArray())
+                            .build()
+                    androidx.media3.exoplayer.offline.DownloadService.sendAddDownload(
+                        this@MusicService,
+                        ExoDownloadService::class.java,
+                        downloadRequest,
+                        false,
+                    )
+                }
+            }
+        }
+    }
 
     fun toggleStartRadio() {
         startRadioSeamlessly()
