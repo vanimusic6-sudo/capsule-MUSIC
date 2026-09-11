@@ -13,15 +13,16 @@ private const val CAPSULE_AUDIO_CACHE_PREFIX = "capsule:audio:"
 private val REJECTED_SIGNED_URL_STATUS_CODES = setOf(403, 410)
 
 /**
- * Audio CDN URLs are signed/tokenized and can be rejected transiently even though
- * an unchanged retry succeeds. Device captures show both one-shot 403s and a
- * double-403 that succeeds later without a fresh /player resolve.
+ * A 403/410 from googlevideo rejects the current signed URL generation.
  *
- * 403 gets two delayed same-URL retries (250 ms, then 1 s). 410 remains tighter because
- * it more often represents a genuinely gone URL: one 250 ms retry, then fresh resolve.
- * 429 is an explicit throttle signal and never retries the same URL.
+ * Step43 device captures finally separated this from transient transport noise: one
+ * generation failed at ages ~1.3 s, ~1.8 s and ~3.4 s with complete PoToken/n/signature
+ * and request headers, while a fresh /player generation for the same mediaId/itag opened
+ * successfully. Retrying the rejected generation only creates more 403s and delays recovery.
  *
- * null means: use Media3's normal policy for this load.
+ * Fail the current load immediately so MusicService can invalidate that one PlaybackData
+ * generation and perform its bounded fresh resolve. 429 also never retries the same URL.
+ * null means: keep Media3's normal policy for unrelated loads/statuses.
  */
 internal fun audioCdnRejectedRetryDelayMs(
     cacheKey: String?,
@@ -30,18 +31,8 @@ internal fun audioCdnRejectedRetryDelayMs(
 ): Long? {
     if (cacheKey?.startsWith(CAPSULE_AUDIO_CACHE_PREFIX) != true) return null
     if (httpStatusCode == 429) return C.TIME_UNSET
-    if (httpStatusCode !in REJECTED_SIGNED_URL_STATUS_CODES) return null
-
-    return when (httpStatusCode) {
-        403 ->
-            when (errorCount) {
-                1 -> 250L
-                2 -> 1_000L
-                else -> C.TIME_UNSET
-            }
-        410 -> if (errorCount <= 1) 250L else C.TIME_UNSET
-        else -> null
-    }
+    if (httpStatusCode in REJECTED_SIGNED_URL_STATUS_CODES) return C.TIME_UNSET
+    return null
 }
 
 /**

@@ -7,9 +7,9 @@ import org.junit.Test
 
 class CapsuleLoadErrorHandlingPolicyTest {
     @Test
-    fun firstAudio403WaitsBeforeSameUrlRetry() {
+    fun firstAudio403RejectsCurrentSignedUrlGeneration() {
         assertEquals(
-            250L,
+            C.TIME_UNSET,
             audioCdnRejectedRetryDelayMs(
                 cacheKey = "capsule:audio:track:251:1234",
                 httpStatusCode = 403,
@@ -19,9 +19,9 @@ class CapsuleLoadErrorHandlingPolicyTest {
     }
 
     @Test
-    fun secondAudio403GetsOneLongerPropagationRetry() {
+    fun repeatedAudio403StillRejectsCurrentSignedUrlGeneration() {
         assertEquals(
-            1_000L,
+            C.TIME_UNSET,
             audioCdnRejectedRetryDelayMs(
                 cacheKey = "capsule:audio:track:251:1234",
                 httpStatusCode = 403,
@@ -31,7 +31,7 @@ class CapsuleLoadErrorHandlingPolicyTest {
     }
 
     @Test
-    fun thirdAudio403StopsSameUrlRetries() {
+    fun laterAudio403StillStopsSameUrlGeneration() {
         assertEquals(
             C.TIME_UNSET,
             audioCdnRejectedRetryDelayMs(
@@ -45,7 +45,7 @@ class CapsuleLoadErrorHandlingPolicyTest {
     @Test
     fun rejected410GetsOnlyOneShortRetry() {
         assertEquals(
-            250L,
+            C.TIME_UNSET,
             audioCdnRejectedRetryDelayMs(
                 cacheKey = "capsule:audio:track:251:1234",
                 httpStatusCode = 410,
@@ -60,6 +60,13 @@ class CapsuleLoadErrorHandlingPolicyTest {
                 errorCount = 2,
             ),
         )
+    }
+
+    @Test
+    fun rejectedSignedUrlUsesShortFreshResolveDelayButKeepsBudgetBound() {
+        assertEquals(250L, signedUrlRefreshDelayMs(httpStatusCode = 403, budgetDelayMs = 1_500L))
+        assertEquals(250L, signedUrlRefreshDelayMs(httpStatusCode = 410, budgetDelayMs = 3_000L))
+        assertEquals(1_500L, signedUrlRefreshDelayMs(httpStatusCode = 500, budgetDelayMs = 1_500L))
     }
 
     @Test

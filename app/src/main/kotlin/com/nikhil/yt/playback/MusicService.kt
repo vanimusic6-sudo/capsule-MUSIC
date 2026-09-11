@@ -265,6 +265,17 @@ import kotlin.math.pow
 internal const val YOUTUBE_LOUDNESS_REFERENCE_LUFS = -7.0
 internal const val NORMALIZATION_TARGET_LUFS = -14.0
 internal const val MIN_NORMALIZATION_GAIN_DB = -12.0
+internal const val SIGNED_URL_REFRESH_DELAY_MS = 250L
+
+internal fun signedUrlRefreshDelayMs(
+    httpStatusCode: Int?,
+    budgetDelayMs: Long,
+): Long =
+    if (httpStatusCode in setOf(403, 410)) {
+        minOf(budgetDelayMs, SIGNED_URL_REFRESH_DELAY_MS)
+    } else {
+        budgetDelayMs
+    }
 
 /**
  * YouTube's legacy loudnessDb is an offset around a -7 LUFS reference, not a
@@ -3374,9 +3385,12 @@ class MusicService :
             }
             scheduleStreamRefreshRetry(
                 mediaId = currentMediaId,
-                refreshCipherConfig = httpStatusCode in setOf(403, 410),
+                // The step43 capture had a healthy Faraday config (the refresh returned 304)
+                // and the fresh /player generation succeeded. Refresh the rejected URL, not
+                // unrelated cipher configuration, on every rare CDN rejection.
+                refreshCipherConfig = false,
                 retryReason = "http=$httpStatusCode code=${error.errorCode}",
-                retryDelayMs = retryDelay,
+                retryDelayMs = signedUrlRefreshDelayMs(httpStatusCode, retryDelay),
             )
             return
         }
