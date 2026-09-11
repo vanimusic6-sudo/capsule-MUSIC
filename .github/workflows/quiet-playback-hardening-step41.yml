@@ -52,6 +52,7 @@ jobs:
           set -euo pipefail
           git diff --check
           grep -q 'MAX_FOREGROUND_ATTEMPTS = 3' app/src/main/kotlin/com/nikhil/yt/playback/audio/CapsuleAudioFallbackPolicy.kt
+          grep -q 'only maintained authenticated music profile' app/src/main/kotlin/com/nikhil/yt/playback/audio/CapsuleAudioFallbackPolicy.kt
           grep -q '1_000L' app/src/main/kotlin/com/nikhil/yt/playback/CapsuleLoadErrorHandlingPolicy.kt
           grep -q 'MetrolistGroup/faraday/master/registry/player_configs.json' app/src/main/kotlin/com/nikhil/yt/playback/audio/CapsuleInnerTubeXPlayer.kt
           grep -q 'distinctUntilChanged().collectLatest(scope) { (loudness, normalizeAudio)' app/src/main/kotlin/com/nikhil/yt/playback/MusicService.kt
