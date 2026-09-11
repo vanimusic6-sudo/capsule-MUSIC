@@ -1,3 +1,4 @@
+# Re-run after aligning the raw bot-check transport test with profile-aware safety.
 name: Final Playback Hardening Step 39
 
 on:
