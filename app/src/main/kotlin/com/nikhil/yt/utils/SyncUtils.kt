@@ -345,7 +345,7 @@ class SyncUtils @Inject constructor(
             if (!isSyncStillEnabled(gen)) return@onSuccess
             val remoteAlbums = page.items.filterIsInstance<AlbumItem>().reversed()
             if (remoteAlbums.isEmpty()) {
-                Timber.w("syncLikedAlbums: No liked albums found")
+                Timber.d("syncLikedAlbums: No liked albums found")
                 return@onSuccess
             }
             val remoteIds = remoteAlbums.map { it.id }.toSet()

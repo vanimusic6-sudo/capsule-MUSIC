@@ -838,4 +838,12 @@ Velune will only extract your token, and everything else is stored locally.</str
     <string name="audio_client_web_creator_description">Authenticated web profile; skipped automatically while signed out.</string>
     <string name="audio_client_tv">TV HTML5</string>
     <string name="audio_client_tv_description">Maintained TVHTML5_SIMPLY profile. The broken legacy TVHTML5 profile is not exposed.</string>
+    <string name="error_auth_required_title">Login required</string>
+    <string name="error_auth_required_description">This track requires an account. Log in to try playing it.</string>
+    <string name="error_age_restricted_title">Age restriction</string>
+    <string name="error_age_restricted_description">YouTube requires age verification for this track. Check the age verification in your account.</string>
+    <string name="error_access_restricted_title">Account access required</string>
+    <string name="error_access_restricted_description">YouTube requires account authorization for this track. Check your login and access to the track.</string>
+    <string name="error_network_problem_title">Network problem</string>
+    <string name="error_network_problem_description">Check your internet connection. If you use a VPN, try reconnecting or restarting it.</string>
 </resources>

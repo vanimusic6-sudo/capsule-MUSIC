@@ -23,7 +23,7 @@ enum class AudioResolvePriority(internal val schedulingRank: Int) {
 /** One extraction at a time. Foreground work can interrupt and requeue background work. */
 internal class AudioResolveScheduler(
     private val monotonicNowMs: () -> Long = { System.nanoTime() / 1_000_000L },
-    private val downloadStartSpacingMs: Long = DOWNLOAD_START_SPACING_MS,
+    private val downloadStartSpacingMs: () -> Long = DownloadRequestPacing()::nextSpacingMs,
     private val promotedPrefetchRestartAfterMs: Long = PROMOTED_PREFETCH_RESTART_AFTER_MS,
 ) {
     private class Preempted : CancellationException("Foreground playback needs the resolver")
@@ -37,7 +37,7 @@ internal class AudioResolveScheduler(
     private val lock = Any()
     private val waiting = mutableListOf<Ticket>()
     private var active: Ticket? = null
-    private var lastDownloadStartMs: Long? = null
+    private var nextDownloadStartMs: Long? = null
 
     fun promote(mediaId: String) = synchronized(lock) {
         val nowMs = monotonicNowMs()
@@ -104,13 +104,13 @@ internal class AudioResolveScheduler(
     }
 
     private suspend fun awaitDownloadStartWindow(priority: AudioResolvePriority) {
-        if (priority != AudioResolvePriority.DOWNLOAD || downloadStartSpacingMs <= 0L) return
+        if (priority != AudioResolvePriority.DOWNLOAD) return
 
         val waitMs =
             synchronized(lock) {
-                lastDownloadStartMs
-                    ?.let { lastStart ->
-                        (lastStart + downloadStartSpacingMs - monotonicNowMs()).coerceAtLeast(0L)
+                nextDownloadStartMs
+                    ?.let { nextStart ->
+                        (nextStart - monotonicNowMs()).coerceAtLeast(0L)
                     }
                     ?: 0L
             }
@@ -118,7 +118,8 @@ internal class AudioResolveScheduler(
         if (waitMs > 0L) delay(waitMs)
         currentCoroutineContext().ensureActive()
         synchronized(lock) {
-            lastDownloadStartMs = monotonicNowMs()
+            // Choose once per actual start. Preemption during a wait retains this deadline.
+            nextDownloadStartMs = monotonicNowMs() + downloadStartSpacingMs().coerceAtLeast(0L)
         }
     }
 
@@ -139,7 +140,6 @@ internal class AudioResolveScheduler(
     }
 
     private companion object {
-        const val DOWNLOAD_START_SPACING_MS = 4_000L
         const val PROMOTED_PREFETCH_RESTART_AFTER_MS = 4_000L
     }
 }

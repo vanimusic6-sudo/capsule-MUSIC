@@ -18,6 +18,7 @@ on:
       - "app/src/test/**"
       - "app/src/main/kotlin/com/nikhil/yt/lyrics/**"
       - "betterlyrics/**"
+      - "lrclib/**"
       - "innertube/src/main/**"
       - "innertube/src/test/**"
       - "gradle/libs.versions.toml"
@@ -41,6 +42,7 @@ on:
       - "app/src/test/**"
       - "app/src/main/kotlin/com/nikhil/yt/lyrics/**"
       - "betterlyrics/**"
+      - "lrclib/**"
       - "innertube/src/main/**"
       - "innertube/src/test/**"
       - "gradle/libs.versions.toml"
@@ -64,7 +66,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
         with:
-          ref: ${{ github.head_ref || github.ref_name }}
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0
 
       - name: Set up JDK 21
@@ -92,6 +94,7 @@ jobs:
           gradle \
             :innertube:test \
             :betterlyrics:test \
+            :lrclib:test \
             :app:testUniversalDebugUnitTest \
             :app:lintUniversalDebug \
             :app:assembleUniversalDebug \
@@ -106,6 +109,7 @@ jobs:
           path: |
             innertube/build/reports/tests/
             betterlyrics/build/reports/tests/
+            lrclib/build/reports/tests/
             app/build/reports/tests/
             app/build/reports/lint-results-*.html
             app/build/reports/lint-results-*.xml

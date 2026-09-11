@@ -34,11 +34,14 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.media3.common.PlaybackException
-import androidx.media3.datasource.HttpDataSource
 import android.widget.Toast
 import com.nikhil.yt.R
-import com.nikhil.yt.innertube.YouTubeFailureClassifier
-import com.nikhil.yt.innertube.YouTubeFailureKind
+import com.nikhil.yt.constants.InnerTubeCookieKey
+import com.nikhil.yt.innertube.utils.parseCookieString
+import com.nikhil.yt.playback.PlaybackFailureClassifier
+import com.nikhil.yt.playback.PlaybackFailureKind
+import com.nikhil.yt.utils.httpFailureStatus
+import com.nikhil.yt.utils.rememberPreference
 
 @Composable
 fun PlaybackError(
@@ -48,8 +51,6 @@ fun PlaybackError(
     val clipboard = LocalClipboardManager.current
     val context = LocalContext.current
     val fallbackUnknown = stringResource(R.string.error_unknown)
-    val fallbackNoInternet = stringResource(R.string.error_no_internet)
-    val fallbackTimeout = stringResource(R.string.error_timeout)
     val fallbackNoStream = stringResource(R.string.error_no_stream)
     val retryText = stringResource(R.string.retry)
     val copyText = stringResource(R.string.copy)
@@ -64,35 +65,28 @@ fun PlaybackError(
         stringResource(R.string.error_youtube_network_restricted_recommendation)
     val restrictedTechnical =
         stringResource(R.string.error_youtube_network_restricted_technical)
-    val httpCode = error.httpStatusCodeOrNull()
-    val errorText =
-        remember(error) {
-            buildString {
-                append(error.message.orEmpty())
-                var throwable: Throwable? = error.cause
-                var depth = 0
-                while (throwable != null && depth < 8) {
-                    append(' ')
-                    append(throwable.message.orEmpty())
-                    throwable = throwable.cause
-                    depth += 1
-                }
-            }
-        }
-    val isYouTubeBotCheck =
-        remember(errorText, httpCode) {
-            YouTubeFailureClassifier.classify(
-                httpStatusCode = httpCode,
-                text = errorText,
-            ) == YouTubeFailureKind.BOT_CHECK
-        }
-    val title =
-        if (isYouTubeBotCheck) restrictedTitle else fallbackUnknown
+    val (cookie) = rememberPreference(InnerTubeCookieKey, "")
+    val authenticated = remember(cookie) { "SAPISID" in parseCookieString(cookie) }
+    val failureKind = remember(error, authenticated) {
+        PlaybackFailureClassifier.classify(error, authenticated)
+    }
+    val httpCode = error.httpFailureStatus()
+    val isYouTubeBotCheck = failureKind == PlaybackFailureKind.BOT_CHECK
+    val title = when (failureKind) {
+        PlaybackFailureKind.AUTH_REQUIRED -> stringResource(R.string.error_auth_required_title)
+        PlaybackFailureKind.AGE_RESTRICTED -> stringResource(R.string.error_age_restricted_title)
+        PlaybackFailureKind.ACCESS_RESTRICTED -> stringResource(R.string.error_access_restricted_title)
+        PlaybackFailureKind.NETWORK -> stringResource(R.string.error_network_problem_title)
+        PlaybackFailureKind.BOT_CHECK -> restrictedTitle
+        PlaybackFailureKind.GENERIC -> fallbackUnknown
+    }
     val reason =
         when {
             isYouTubeBotCheck -> restrictedDescription
-            error.errorCode == PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED -> fallbackNoInternet
-            error.errorCode == PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT -> fallbackTimeout
+            failureKind == PlaybackFailureKind.AUTH_REQUIRED -> stringResource(R.string.error_auth_required_description)
+            failureKind == PlaybackFailureKind.AGE_RESTRICTED -> stringResource(R.string.error_age_restricted_description)
+            failureKind == PlaybackFailureKind.ACCESS_RESTRICTED -> stringResource(R.string.error_access_restricted_description)
+            failureKind == PlaybackFailureKind.NETWORK -> stringResource(R.string.error_network_problem_description)
             httpCode in setOf(403, 404, 410, 416) -> fallbackNoStream
             error.errorCode in setOf(
                 PlaybackException.ERROR_CODE_PARSING_CONTAINER_UNSUPPORTED,
@@ -206,7 +200,7 @@ fun PlaybackError(
                 }
             }
 
-            Surface(
+            if (failureKind == PlaybackFailureKind.GENERIC || isYouTubeBotCheck) Surface(
                 shape = MaterialTheme.shapes.large,
                 color = MaterialTheme.colorScheme.onErrorContainer.copy(alpha = 0.06f),
                 modifier = Modifier.fillMaxWidth(),
@@ -257,13 +251,4 @@ fun PlaybackError(
             }
         }
     }
-}
-
-private fun PlaybackException.httpStatusCodeOrNull(): Int? {
-    var t: Throwable? = cause
-    while (t != null) {
-        if (t is HttpDataSource.InvalidResponseCodeException) return t.responseCode
-        t = t.cause
-    }
-    return null
 }

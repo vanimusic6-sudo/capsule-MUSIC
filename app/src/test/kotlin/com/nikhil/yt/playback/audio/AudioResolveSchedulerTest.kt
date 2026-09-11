@@ -7,6 +7,44 @@ import org.junit.Test
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class AudioResolveSchedulerTest {
+    @Test fun downloadStartWindowsUseInjectedVariableSpacing() = runTest {
+        val gaps = listOf(3_200L, 5_800L, 4_100L).iterator()
+        val scheduler = AudioResolveScheduler(
+            monotonicNowMs = { testScheduler.currentTime },
+            downloadStartSpacingMs = { gaps.next() },
+        )
+        val starts = mutableListOf<Long>()
+        repeat(3) { index ->
+            scheduler.run("download-$index", AudioResolvePriority.DOWNLOAD) {
+                starts += testScheduler.currentTime
+            }
+        }
+        assertEquals(listOf(0L, 3_200L, 9_000L), starts)
+    }
+
+    @Test fun playbackPreemptsPacingWaitWithoutRedrawingItsDeadline() = runTest {
+        var draws = 0
+        val scheduler = AudioResolveScheduler(
+            monotonicNowMs = { testScheduler.currentTime },
+            downloadStartSpacingMs = { draws++; 5_800L },
+        )
+        scheduler.run("first", AudioResolvePriority.DOWNLOAD) { }
+        val starts = mutableListOf<Long>()
+        val waiting = async {
+            scheduler.run("second", AudioResolvePriority.DOWNLOAD) { starts += testScheduler.currentTime }
+        }
+        runCurrent()
+        advanceTimeBy(1_000)
+        val playback = async { scheduler.run("current", AudioResolvePriority.PLAYBACK) { testScheduler.currentTime } }
+        runCurrent()
+        assertEquals(1_000L, playback.await())
+        assertEquals(1, draws)
+        advanceUntilIdle()
+        waiting.await()
+        assertEquals(listOf(5_800L), starts)
+        assertEquals(2, draws)
+    }
+
     @Test fun priorityOrderingIsExplicitAndIndependentOfEnumOrdinal() {
         assertEquals(0, AudioResolvePriority.PLAYBACK.schedulingRank)
         assertEquals(100, AudioResolvePriority.PREFETCH.schedulingRank)
@@ -61,7 +99,7 @@ class AudioResolveSchedulerTest {
         val scheduler =
             AudioResolveScheduler(
                 monotonicNowMs = { testScheduler.currentTime },
-                downloadStartSpacingMs = 4_000L,
+                downloadStartSpacingMs = { 4_000L },
             )
         val starts = mutableListOf<Long>()
         val download = async {

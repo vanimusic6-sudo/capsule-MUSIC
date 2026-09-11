@@ -158,7 +158,8 @@ constructor(
                         }
                     }
                 }
-                cache.put(cacheKey, allResult)
+                // Empty/transient results use provider TTLs, not an indefinite helper cache.
+                if (allResult.isNotEmpty()) cache.put(cacheKey, allResult)
             }
             currentLyricsJob = job
             try {

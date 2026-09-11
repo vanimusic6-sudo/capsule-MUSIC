@@ -244,6 +244,7 @@ dependencies {
     testImplementation(libs.junit)
     testImplementation("org.robolectric:robolectric:4.16")
     testImplementation(libs.coroutines.test)
+    testImplementation(libs.ktor.client.mock)
     implementation("com.github.therealbush:translator:1.1.1")
     implementation("androidx.lifecycle:lifecycle-process:2.10.0")
     implementation("androidx.compose.material3.adaptive:adaptive:1.2.0")
