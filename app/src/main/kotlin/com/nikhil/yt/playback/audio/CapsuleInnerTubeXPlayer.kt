@@ -202,7 +202,26 @@ object CapsuleInnerTubeXPlayer {
     suspend fun refreshAfterStreamRejection(): Boolean =
         resolveMutex.withLock {
             CapsulePlaybackSafety.blockedExceptionOrNull()?.let { throw it }
-            bundle().cipherService.refreshAfterStreamRejection()
+            val extractionBundle = bundle()
+            val configChanged = extractionBundle.cipherService.refreshAfterStreamRejection()
+            val auth = extractionBundle.key.auth
+            val hasConfiguredPoTokens =
+                auth.poTokenPlayer?.trim().orEmpty().isNotBlank() &&
+                    auth.poTokenGvs?.trim().orEmpty().isNotBlank()
+            val visitorData =
+                auth.visitorData
+                    ?.trim()
+                    ?.takeIf { it.isNotBlank() && it != "null" }
+            val tokenSessionRefreshed =
+                if (!hasConfiguredPoTokens && visitorData != null) {
+                    poTokenGenerator.refreshSameVisitorSession(visitorData)
+                } else {
+                    false
+                }
+            if (tokenSessionRefreshed) {
+                Timber.tag(TAG).i("Refreshed same-visitor Web PoToken session after repeated CDN rejection")
+            }
+            configChanged || tokenSessionRefreshed
         }
 
     suspend fun playerResponseForPlayback(

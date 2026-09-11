@@ -2,7 +2,9 @@ package com.nikhil.yt.playback
 
 import androidx.media3.common.C
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class CapsuleLoadErrorHandlingPolicyTest {
@@ -63,10 +65,40 @@ class CapsuleLoadErrorHandlingPolicyTest {
     }
 
     @Test
-    fun rejectedSignedUrlUsesShortFreshResolveDelayButKeepsBudgetBound() {
-        assertEquals(250L, signedUrlRefreshDelayMs(httpStatusCode = 403, budgetDelayMs = 1_500L))
-        assertEquals(250L, signedUrlRefreshDelayMs(httpStatusCode = 410, budgetDelayMs = 3_000L))
+    fun rejectedSignedUrlPreservesSharedRecoveryBackoff() {
+        assertEquals(1_500L, signedUrlRefreshDelayMs(httpStatusCode = 403, budgetDelayMs = 1_500L))
+        assertEquals(3_000L, signedUrlRefreshDelayMs(httpStatusCode = 410, budgetDelayMs = 3_000L))
         assertEquals(1_500L, signedUrlRefreshDelayMs(httpStatusCode = 500, budgetDelayMs = 1_500L))
+    }
+
+    @Test
+    fun repeatedSignedUrlRejectionRefreshesSessionOnlyOnSecondFreshAttempt() {
+        assertFalse(
+            shouldRefreshStreamSessionAfterSignedUrlRejection(
+                httpStatusCode = 403,
+                budgetDelayMs = 1_500L,
+            ),
+        )
+        assertTrue(
+            shouldRefreshStreamSessionAfterSignedUrlRejection(
+                httpStatusCode = 403,
+                budgetDelayMs = 3_000L,
+            ),
+        )
+        assertFalse(
+            shouldRefreshStreamSessionAfterSignedUrlRejection(
+                httpStatusCode = 500,
+                budgetDelayMs = 3_000L,
+            ),
+        )
+    }
+
+    @Test
+    fun signedUrlFreshResolveLoopStopsBeforeThirdRecoverySlot() {
+        assertTrue(shouldRetryRejectedSignedUrl(httpStatusCode = 403, budgetDelayMs = 1_500L))
+        assertTrue(shouldRetryRejectedSignedUrl(httpStatusCode = 403, budgetDelayMs = 3_000L))
+        assertFalse(shouldRetryRejectedSignedUrl(httpStatusCode = 403, budgetDelayMs = 6_000L))
+        assertTrue(shouldRetryRejectedSignedUrl(httpStatusCode = 500, budgetDelayMs = 6_000L))
     }
 
     @Test

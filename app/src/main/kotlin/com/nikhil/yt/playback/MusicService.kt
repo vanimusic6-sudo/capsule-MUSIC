@@ -265,17 +265,27 @@ import kotlin.math.pow
 internal const val YOUTUBE_LOUDNESS_REFERENCE_LUFS = -7.0
 internal const val NORMALIZATION_TARGET_LUFS = -14.0
 internal const val MIN_NORMALIZATION_GAIN_DB = -12.0
-internal const val SIGNED_URL_REFRESH_DELAY_MS = 250L
+internal const val SIGNED_URL_SESSION_REFRESH_THRESHOLD_MS = 3_000L
+internal const val SIGNED_URL_MAX_FRESH_RESOLVE_DELAY_MS = 3_000L
 
 internal fun signedUrlRefreshDelayMs(
     httpStatusCode: Int?,
     budgetDelayMs: Long,
-): Long =
-    if (httpStatusCode in setOf(403, 410)) {
-        minOf(budgetDelayMs, SIGNED_URL_REFRESH_DELAY_MS)
-    } else {
-        budgetDelayMs
-    }
+): Long = budgetDelayMs
+
+internal fun shouldRefreshStreamSessionAfterSignedUrlRejection(
+    httpStatusCode: Int?,
+    budgetDelayMs: Long,
+): Boolean =
+    httpStatusCode in setOf(403, 410) &&
+        budgetDelayMs >= SIGNED_URL_SESSION_REFRESH_THRESHOLD_MS
+
+internal fun shouldRetryRejectedSignedUrl(
+    httpStatusCode: Int?,
+    budgetDelayMs: Long,
+): Boolean =
+    httpStatusCode !in setOf(403, 410) ||
+        budgetDelayMs <= SIGNED_URL_MAX_FRESH_RESOLVE_DELAY_MS
 
 /**
  * YouTube's legacy loudnessDb is an offset around a -7 LUFS reference, not a
@@ -3373,22 +3383,29 @@ class MusicService :
 
         if (shouldAttemptStreamRefresh && currentMediaId != null) {
             val retryDelay = playbackRecoveryCoordinator.nextRetryDelayMs(currentMediaId)
-            if (retryDelay == null) {
+            if (
+                retryDelay == null ||
+                !shouldRetryRejectedSignedUrl(httpStatusCode, retryDelay)
+            ) {
                 handleTerminalPlaybackError()
                 return
             }
             // A rejected/expired URL does not mean the selected client is broken.
-            // Refresh with that same explicit client, within the shared retry budget.
+            // Keep the same client and identity, but do not burn through fresh
+            // generations in a 250 ms loop. After a second signed-URL rejection,
+            // refresh the same visitor-bound streaming session once before the
+            // final bounded fresh resolve.
             CapsuleAudioEngine.clearTrackClientFailures(currentMediaId)
             audioResolveCoordinator.cancelMedia(currentMediaId) {
                 playbackUrlCache.remove(currentMediaId)
             }
             scheduleStreamRefreshRetry(
                 mediaId = currentMediaId,
-                // The step43 capture had a healthy Faraday config (the refresh returned 304)
-                // and the fresh /player generation succeeded. Refresh the rejected URL, not
-                // unrelated cipher configuration, on every rare CDN rejection.
-                refreshCipherConfig = false,
+                refreshCipherConfig =
+                    shouldRefreshStreamSessionAfterSignedUrlRejection(
+                        httpStatusCode = httpStatusCode,
+                        budgetDelayMs = retryDelay,
+                    ),
                 retryReason = "http=$httpStatusCode code=${error.errorCode}",
                 retryDelayMs = signedUrlRefreshDelayMs(httpStatusCode, retryDelay),
             )
