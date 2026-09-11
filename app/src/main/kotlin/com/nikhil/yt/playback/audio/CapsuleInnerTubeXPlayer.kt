@@ -48,6 +48,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.sync.Mutex
@@ -392,6 +393,7 @@ object CapsuleInnerTubeXPlayer {
                     botSignalAlreadySeen = true
                     onlyPostBotProfile = crossFamily
                     lastFailure = failure
+                    delay(CapsuleAudioFallbackPolicy.fallbackDelayMs(kind))
                     continue
                 }
 
@@ -403,13 +405,16 @@ object CapsuleInnerTubeXPlayer {
                 // After one bot-check, the single cross-family recovery gets one chance only.
                 if (onlyPostBotProfile != null || !canFallback) throw failure
 
+                val fallbackDelayMs = CapsuleAudioFallbackPolicy.fallbackDelayMs(kind)
                 Timber.tag(TAG).w(
-                    "AUDIO client-local failure id=%s profile=%s kind=%s; trying bounded fallback",
+                    "AUDIO client-local failure id=%s profile=%s kind=%s; fallbackDelayMs=%d",
                     videoId,
                     profileId,
                     kind,
+                    fallbackDelayMs,
                 )
                 lastFailure = failure
+                if (fallbackDelayMs > 0L) delay(fallbackDelayMs)
             }
         }
 
@@ -815,7 +820,7 @@ object CapsuleInnerTubeXPlayer {
 
         private companion object {
             const val PLAYER_CONFIG_URL =
-                "https://raw.githubusercontent.com/ZemerTeam/zemer-cipher/master/library/src/main/assets/player_configs.json"
+                "https://raw.githubusercontent.com/MetrolistGroup/faraday/master/registry/player_configs.json"
         }
     }
 }

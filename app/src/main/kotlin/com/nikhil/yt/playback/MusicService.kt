@@ -1258,7 +1258,7 @@ class MusicService :
                     perceptualLoudnessDb = format?.perceptualLoudnessDb,
                 )
             (fresh?.takeIf { it.preferredValue != null } ?: stored) to normalizeAudio
-        }.collectLatest(scope) { (loudness, normalizeAudio) ->
+        }.distinctUntilChanged().collectLatest(scope) { (loudness, normalizeAudio) ->
             audioNormalizationEnabled.value = normalizeAudio
             Timber.tag("AudioNormalization").d("Audio normalization enabled: $normalizeAudio")
             Timber.tag("AudioNormalization").d(

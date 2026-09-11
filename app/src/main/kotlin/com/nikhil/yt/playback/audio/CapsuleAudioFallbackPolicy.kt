@@ -20,7 +20,9 @@ internal object CapsuleAudioFallbackPolicy {
     const val TVHTML5_SIMPLY = AudioClientOrder.TVHTML5_SIMPLY
 
     private val supportedProfiles = AudioClientOrder.supportedProfiles.toSet()
-    private const val MAX_FOREGROUND_ATTEMPTS = 6
+    private const val MAX_FOREGROUND_ATTEMPTS = 3
+    private const val NORMAL_FALLBACK_DELAY_MS = 350L
+    private const val BOT_FALLBACK_DELAY_MS = 1_000L
 
     fun profilePlan(
         primaryProfileId: String,
@@ -67,14 +69,38 @@ internal object CapsuleAudioFallbackPolicy {
                 }
             }
 
-        return ordered
-            .filter { it.isNotBlank() }
-            .distinct()
-            .filter { it in supportedProfiles }
-            .filter { it !in excluded }
-            .filter { profileEligible(it, authenticated, isUploaded) }
-            .take(MAX_FOREGROUND_ATTEMPTS)
+        val eligible =
+            ordered
+                .filter { it.isNotBlank() }
+                .distinct()
+                .filter { it in supportedProfiles }
+                .filter { it !in excluded }
+                .filter { profileEligible(it, authenticated, isUploaded) }
+
+        if (eligible.size <= MAX_FOREGROUND_ATTEMPTS) return eligible
+
+        val firstWindow = eligible.take(MAX_FOREGROUND_ATTEMPTS)
+        if (!authenticated || WEB_CREATOR !in eligible || WEB_CREATOR in firstWindow) {
+            return firstWindow
+        }
+
+        // Keep the request budget at three identities, but do not accidentally remove the
+        // only maintained authenticated music profile. This preserves restricted/uploaded
+        // playback without restoring the old six-client waterfall.
+        return eligible.take(MAX_FOREGROUND_ATTEMPTS - 1) + WEB_CREATOR
     }
+
+    fun fallbackDelayMs(kind: YouTubeFailureKind): Long =
+        when (kind) {
+            YouTubeFailureKind.BOT_CHECK -> BOT_FALLBACK_DELAY_MS
+            YouTubeFailureKind.FORBIDDEN,
+            YouTubeFailureKind.LOGIN_REQUIRED,
+            YouTubeFailureKind.AGE_RESTRICTED,
+            YouTubeFailureKind.UNPLAYABLE,
+            YouTubeFailureKind.NONE,
+            -> NORMAL_FALLBACK_DELAY_MS
+            else -> 0L
+        }
 
     fun canFallbackAfter(kind: YouTubeFailureKind): Boolean =
         when (kind) {

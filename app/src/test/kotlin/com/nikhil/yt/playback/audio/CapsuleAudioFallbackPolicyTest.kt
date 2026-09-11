@@ -24,7 +24,6 @@ class CapsuleAudioFallbackPolicyTest {
                 "WEB_REMIX",
                 "VISIONOS_0_1",
                 "WEB_EMBEDDED_PLAYER",
-                "TVHTML5_SIMPLY",
             ),
             plan,
         )
@@ -53,11 +52,11 @@ class CapsuleAudioFallbackPolicyTest {
                 preferredProfiles = custom,
             )
 
-        assertEquals(custom.dropLast(1), plan)
+        assertEquals(custom.take(3), plan)
     }
 
     @Test
-    fun authenticatedManualOrderCanReachAllSixMaintainedProfiles() {
+    fun authenticatedManualOrderIsCappedAtThreeForegroundProfiles() {
         val custom =
             listOf(
                 "WEB_CREATOR",
@@ -78,7 +77,32 @@ class CapsuleAudioFallbackPolicyTest {
                 preferredProfiles = custom,
             )
 
-        assertEquals(custom, plan)
+        assertEquals(custom.take(3), plan)
+    }
+
+    @Test
+    fun authenticatedPlanKeepsCreatorInsideThreeAttemptBudget() {
+        val plan =
+            CapsuleAudioFallbackPolicy.profilePlan(
+                primaryProfileId = "WEB_REMIX",
+                priority = AudioResolvePriority.PLAYBACK,
+                authenticated = true,
+                isUploaded = false,
+                excludedProfiles = emptySet(),
+                preferredProfiles =
+                    listOf(
+                        "WEB_REMIX",
+                        "VISIONOS_0_1",
+                        "WEB_EMBEDDED_PLAYER",
+                        "WEB_CREATOR",
+                        "TVHTML5_SIMPLY",
+                    ),
+            )
+
+        assertEquals(
+            listOf("WEB_REMIX", "VISIONOS_0_1", "WEB_CREATOR"),
+            plan,
+        )
     }
 
     @Test
@@ -189,6 +213,14 @@ class CapsuleAudioFallbackPolicyTest {
             setOf("TVHTML5_SIMPLY"),
             CapsuleAudioFallbackPolicy.botQuarantineProfiles("TVHTML5_SIMPLY"),
         )
+    }
+
+    @Test
+    fun fallbackPacingIsDeterministicAndRateLimitsNeverRetry() {
+        assertEquals(350L, CapsuleAudioFallbackPolicy.fallbackDelayMs(YouTubeFailureKind.NONE))
+        assertEquals(350L, CapsuleAudioFallbackPolicy.fallbackDelayMs(YouTubeFailureKind.UNPLAYABLE))
+        assertEquals(1_000L, CapsuleAudioFallbackPolicy.fallbackDelayMs(YouTubeFailureKind.BOT_CHECK))
+        assertEquals(0L, CapsuleAudioFallbackPolicy.fallbackDelayMs(YouTubeFailureKind.RATE_LIMITED))
     }
 
     @Test

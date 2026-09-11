@@ -11,15 +11,15 @@ private const val CAPSULE_AUDIO_CACHE_PREFIX = "capsule:audio:"
 private val REJECTED_SIGNED_URL_STATUS_CODES = setOf(403, 410)
 
 /**
- * Audio CDN URLs are signed and can occasionally be rejected even after a successful
- * WEB_REMIX resolve. Keep exactly one immediate same-URL retry for 403/410 because
- * captures show that a transient rejection can succeed on the next open. A second
- * rejection is fatal for this load so MusicService can invalidate the URL and do its
- * bounded fresh resolve instead of letting Media3 hammer the same rejected URL.
+ * Audio CDN URLs are signed/tokenized and a freshly resolved GVS URL can be rejected
+ * transiently before the same URL becomes usable. Device captures show both one-shot
+ * 403s and a double-403 that succeeds roughly one second later without a fresh resolve.
+ * Use a tiny, bounded propagation backoff instead of immediately spending another
+ * /player request and rotating client identity.
  *
- * 429 is different: it is an explicit throttle signal, so the current CDN URL fails
- * immediately and MusicService's rate-limit circuit breaker gets control without a
- * redundant request.
+ * 403 gets two delayed same-URL retries (250 ms, then 1 s). 410 remains tighter because
+ * it more often represents a genuinely gone URL: one 250 ms retry, then fresh resolve.
+ * 429 is an explicit throttle signal and never retries the same URL.
  *
  * null means: use Media3's normal policy for this load.
  */
@@ -31,7 +31,17 @@ internal fun audioCdnRejectedRetryDelayMs(
     if (cacheKey?.startsWith(CAPSULE_AUDIO_CACHE_PREFIX) != true) return null
     if (httpStatusCode == 429) return C.TIME_UNSET
     if (httpStatusCode !in REJECTED_SIGNED_URL_STATUS_CODES) return null
-    return if (errorCount <= 1) 0L else C.TIME_UNSET
+
+    return when (httpStatusCode) {
+        403 ->
+            when (errorCount) {
+                1 -> 250L
+                2 -> 1_000L
+                else -> C.TIME_UNSET
+            }
+        410 -> if (errorCount <= 1) 250L else C.TIME_UNSET
+        else -> null
+    }
 }
 
 internal class CapsuleLoadErrorHandlingPolicy : DefaultLoadErrorHandlingPolicy() {
