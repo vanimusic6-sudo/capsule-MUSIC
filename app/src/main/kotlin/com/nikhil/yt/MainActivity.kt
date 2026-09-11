@@ -726,11 +726,8 @@ class MainActivity : ComponentActivity() {
                         }
                     }
 
-                    /*
-                     * Original Capsule joins the floating Mini Player and Dock
-                     * into one surface. Velune normally adds an 8 dp floating
-                     * gap; Capsule mode intentionally removes it.
-                     */
+                    // The navigation surface includes the system inset. The standard
+                    // mini-player keeps its own gap above this full-width panel.
                     val floatingBarsBottomPadding = 0.dp
 
                     val navVisibleHeight =
@@ -838,10 +835,15 @@ class MainActivity : ComponentActivity() {
                             bottomInset,
                             shouldShowNavigationBar,
                             playerBottomSheetState.isDismissed,
+                            navVisibleHeight,
+                            capsuleConnected,
                         ) {
                             var bottom = bottomInset
                             if (shouldShowNavigationBar && !useRail) bottom += getBottomNavPadding()
-                            if (!playerBottomSheetState.isDismissed) bottom += MiniPlayerHeight
+                            if (!playerBottomSheetState.isDismissed) {
+                                bottom += MiniPlayerHeight
+                                if (!capsuleConnected) bottom += MiniPlayerBottomSpacing
+                            }
                             windowsInsets
                                 .only((if(useRail) {
                                     WindowInsetsSides.Right

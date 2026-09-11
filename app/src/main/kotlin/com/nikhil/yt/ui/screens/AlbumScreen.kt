@@ -8,6 +8,8 @@
 
 package com.nikhil.yt.ui.screens
 
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material3.Button
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.ui.unit.sp
@@ -218,6 +220,7 @@ fun AlbumScreen(
                             thumbnailUrl = albumWithSongs.album.thumbnailUrl,
                             background = surfaceColor,
                         )
+                        Spacer(Modifier.height(16.dp))
 
                         // Album Title
                         Text(
@@ -368,7 +371,7 @@ fun AlbumScreen(
                                 )
                             }
                         }
-                        Spacer(Modifier.height(40.dp))
+                        Spacer(Modifier.height(56.dp))
                     }
                 }
 
@@ -747,12 +750,12 @@ private fun MetadataChip(
                 painter = painterResource(icon),
                 contentDescription = null,
                 modifier = Modifier.size(16.dp),
-                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                tint = StandardChrome.muted
             )
             Text(
                 text = text,
                 style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                color = StandardChrome.muted,
                 maxLines = 1
             )
         }

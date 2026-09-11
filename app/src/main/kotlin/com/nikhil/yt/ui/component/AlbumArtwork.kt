@@ -17,7 +17,7 @@ import coil3.compose.AsyncImage
 /** Full-bleed artwork fades into the page without a second image or palette request. */
 @Composable
 fun AlbumArtwork(thumbnailUrl: String?, background: Color, modifier: Modifier = Modifier) {
-    Box(modifier.widthIn(max = 560.dp).fillMaxWidth().aspectRatio(0.96f)) {
+    Box(modifier.widthIn(max = 560.dp).fillMaxWidth().aspectRatio(0.85f)) {
         AsyncImage(model = thumbnailUrl, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
         Box(
             Modifier.fillMaxSize().background(
