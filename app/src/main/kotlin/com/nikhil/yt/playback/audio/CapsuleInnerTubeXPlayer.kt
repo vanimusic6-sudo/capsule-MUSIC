@@ -822,8 +822,12 @@ object CapsuleInnerTubeXPlayer {
             set(value) = preferences.edit().putString("etag", value).apply()
 
         private companion object {
+            // Immutable Faraday revision: runtime extraction behavior can no
+            // longer change just because upstream master moved. jsDelivr also
+            // avoids making raw.githubusercontent.com a cold-start dependency.
+            const val PLAYER_CONFIG_REVISION = "13bb685479042a3e67e9475b2805d8a59076dde2"
             const val PLAYER_CONFIG_URL =
-                "https://raw.githubusercontent.com/MetrolistGroup/faraday/master/registry/player_configs.json"
+                "https://cdn.jsdelivr.net/gh/MetrolistGroup/faraday@$PLAYER_CONFIG_REVISION/registry/player_configs.json"
         }
     }
 }
