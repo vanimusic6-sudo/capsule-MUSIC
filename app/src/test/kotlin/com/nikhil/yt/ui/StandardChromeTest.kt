@@ -52,11 +52,18 @@ class StandardChromeTest {
 
     @Test fun pressingANavigationTabDoesNotDrawARectangularOverlay() {
         var route by mutableStateOf(Screens.Home.route)
+        var clicks = 0
         compose.setContent {
             MaterialTheme(colorScheme = darkColorScheme()) {
-                StandardNavigationBar(
-                    Modifier.fillMaxWidth().height(80.dp).testTag("bar"), Screens.MainScreens, route,
-                ) { route = it.route }
+                Column {
+                    Spacer(Modifier.height(240.dp))
+                    StandardNavigationBar(
+                        Modifier.fillMaxWidth().height(80.dp).testTag("bar"), Screens.MainScreens, route,
+                    ) {
+                        clicks++
+                        route = it.route
+                    }
+                }
             }
         }
         compose.waitForIdle()
@@ -77,8 +84,14 @@ class StandardChromeTest {
         compose.onNodeWithText(history).performTouchInput { down(center) }
         compose.mainClock.advanceTimeBy(120)
         assertTrue("Only the sliding pill should highlight a tab", before.sameAs(capture()))
-        compose.onNodeWithText(history).performTouchInput { up() }
-        compose.mainClock.advanceTimeBy(1_000)
+        compose.onNodeWithText(history).performTouchInput {
+            // Input event time is independent of the paused animation clock.
+            advanceEventTime(120)
+            up()
+        }
+        compose.mainClock.autoAdvance = true
+        compose.waitForIdle()
+        assertEquals("The real pointer gesture must invoke the tab once", 1, clicks)
         compose.onNodeWithText(history).assertIsSelected()
     }
 
