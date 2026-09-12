@@ -40,12 +40,18 @@ import com.nikhil.yt.R
 @Composable
 internal fun AlbumScreenLayout(
     background: Color,
+    gradientColors: List<Color> = emptyList(),
     state: LazyListState,
     modifier: Modifier = Modifier,
     content: LazyListScope.() -> Unit,
     topBar: @Composable BoxScope.() -> Unit,
 ) {
     Box(modifier.fillMaxSize().background(background)) {
+        ArtworkGradientBackdrop(
+            colors = gradientColors,
+            surfaceColor = background,
+            modifier = Modifier.fillMaxSize(),
+        )
         LazyColumn(
             state = state,
             contentPadding = LocalPlayerAwareWindowInsets.current

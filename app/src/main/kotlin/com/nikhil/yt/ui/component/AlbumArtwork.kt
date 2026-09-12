@@ -36,7 +36,12 @@ import kotlinx.coroutines.withContext
 
 /** One image request supplies the sharp cover and its small, reusable blur layer. */
 @Composable
-fun AlbumArtwork(thumbnailUrl: String?, background: Color, modifier: Modifier = Modifier) {
+fun AlbumArtwork(
+    thumbnailUrl: String?,
+    background: Color,
+    modifier: Modifier = Modifier,
+    fadeColor: Color = background,
+) {
     val context = LocalContext.current
     val sizeResolver = rememberConstraintsSizeResolver()
     val request = remember(thumbnailUrl, context, sizeResolver) {
@@ -53,7 +58,14 @@ fun AlbumArtwork(thumbnailUrl: String?, background: Color, modifier: Modifier = 
             }
         }
     }
-    AlbumArtworkLayers(painter, blurred, background, modifier, imageModifier = Modifier.then(sizeResolver))
+    AlbumArtworkLayers(
+        painter = painter,
+        blurred = blurred,
+        background = background,
+        modifier = modifier,
+        imageModifier = Modifier.then(sizeResolver),
+        fadeColor = fadeColor,
+    )
 }
 
 @Composable
@@ -63,6 +75,7 @@ internal fun AlbumArtworkLayers(
     background: Color,
     modifier: Modifier = Modifier,
     imageModifier: Modifier = Modifier,
+    fadeColor: Color = background,
 ) {
     Box(modifier.widthIn(max = 560.dp).fillMaxWidth().aspectRatio(0.85f).background(background)) {
         Image(painter, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize().then(imageModifier))
@@ -86,8 +99,11 @@ internal fun AlbumArtworkLayers(
         Box(
             Modifier.matchParentSize().background(
                 Brush.verticalGradient(
-                    0f to background, 0.32f to Color.Transparent,
-                    0.68f to Color.Transparent, 1f to background,
+                    0f to background,
+                    0.30f to Color.Transparent,
+                    0.64f to Color.Transparent,
+                    0.82f to fadeColor.copy(alpha = 0.34f),
+                    1f to background,
                 ),
             ),
         )
