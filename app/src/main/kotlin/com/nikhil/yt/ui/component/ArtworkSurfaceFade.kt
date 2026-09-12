@@ -23,17 +23,18 @@ internal fun ArtworkSurfaceFade(background: Color, modifier: Modifier = Modifier
             1f to Color.Transparent,
         )
         val surfaceFade = if (portrait) Brush.verticalGradient(
-            // The lower photograph is progressively blurred before this surface dissolve.
+            // A matte veil in the page colour, like the upper scrim: retain photo detail
+            // while progressively replacing it with the surface, without filtering pixels.
             0f to background.copy(alpha = 0f),
             0.40f to background.copy(alpha = 0f),
-            0.50f to background.copy(alpha = 0.025f),
-            0.60f to background.copy(alpha = 0.065f),
-            0.70f to background.copy(alpha = 0.14f),
-            0.78f to background.copy(alpha = 0.28f),
-            0.85f to background.copy(alpha = 0.48f),
-            0.90f to background.copy(alpha = 0.68f),
-            0.945f to background.copy(alpha = 0.87f),
-            0.975f to background.copy(alpha = 0.97f),
+            0.48f to background.copy(alpha = 0.025f),
+            0.56f to background.copy(alpha = 0.075f),
+            0.64f to background.copy(alpha = 0.16f),
+            0.72f to background.copy(alpha = 0.30f),
+            0.80f to background.copy(alpha = 0.49f),
+            0.87f to background.copy(alpha = 0.70f),
+            0.93f to background.copy(alpha = 0.88f),
+            0.97f to background.copy(alpha = 0.97f),
             1f to background,
         ) else Brush.verticalGradient(
             0f to background.copy(alpha = 0f),

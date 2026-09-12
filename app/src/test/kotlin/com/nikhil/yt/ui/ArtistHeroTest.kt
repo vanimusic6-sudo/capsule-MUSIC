@@ -40,9 +40,7 @@ import com.nikhil.yt.R
 import com.nikhil.yt.ui.component.ArtistHero
 import com.nikhil.yt.ui.component.ArtistHeroLayout
 import com.nikhil.yt.ui.component.ArtistToolbar
-import com.nikhil.yt.ui.component.createArtistPortraitBlur
 import java.io.File
-import kotlinx.coroutines.runBlocking
 import kotlin.math.roundToInt
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -161,9 +159,7 @@ class ArtistHeroTest {
         sourceCanvas.drawRect(52f, 48f, 128f, 120f, painter)
         painter.color = android.graphics.Color.rgb(245, 148, 40)
         sourceCanvas.drawOval(67f, 6f, 101f, 48f, painter)
-        // Preview mode bypasses Coil transformations, so run the production blur on this fixture.
-        val blurredSource = runBlocking { createArtistPortraitBlur(source) }
-        val previewHandler = AsyncImagePreviewHandler { blurredSource.asImage() }
+        val previewHandler = AsyncImagePreviewHandler { source.asImage() }
         compose.setContent {
             CompositionLocalProvider(
                 LocalInspectionMode provides true,
@@ -199,14 +195,15 @@ class ArtistHeroTest {
             kotlin.math.abs(android.graphics.Color.red(aboveJoin) - android.graphics.Color.red(belowJoin)) <= 3)
     }
 
-    @Test fun bareToolbarIconsKeepTheirSafeAreaPositionAndAllActions() {
+    @Test fun toolbarKeepsTitleAndIconsAlignedWhileCollapsingAndPreservesAllActions() {
         val clicks = mutableListOf<String>()
+        var overArtwork by mutableStateOf(true)
         var safeTop = 0
         compose.setContent {
             safeTop = WindowInsets.safeDrawing.getTop(LocalDensity.current)
             MaterialTheme(colorScheme = darkColorScheme()) {
                 Box(Modifier.width(360.dp).background(Color(0xFF824634)).testTag("toolbar")) {
-                    ArtistToolbar("Pyrokinesis", true, true,
+                    ArtistToolbar("Pyrokinesis", overArtwork, true,
                         onBack = { clicks += "back" },
                         onBackLongClick = {},
                         onCopyLink = { clicks += "copy" },
@@ -228,6 +225,31 @@ class ArtistHeroTest {
         assertEquals("No permanent circular backdrop behind navigation icons", 0x82, android.graphics.Color.red(emptyCorner))
         controls.forEach { it.performClick() }
         assertEquals(listOf("back", "copy", "share"), clicks)
+
+        // Scroll changes the toolbar mode. Check alignment during the transition, not
+        // just after it: a per-icon vertical offset previously left buttons below the name.
+        compose.mainClock.autoAdvance = false
+        compose.runOnIdle { overArtwork = false }
+        for (frameTime in listOf(80L, 80L, 160L)) {
+            compose.mainClock.advanceTimeBy(frameTime)
+            val title = compose.onNodeWithText("Pyrokinesis").fetchSemanticsNode().boundsInRoot
+            controls.forEach {
+                assertEquals("Navigation and artist name must share a centre throughout collapse",
+                    title.center.y, it.fetchSemanticsNode().boundsInRoot.center.y, 1f)
+            }
+        }
+        compose.mainClock.autoAdvance = true
+        val compact = compose.onNodeWithTag("toolbar").fetchSemanticsNode().boundsInRoot
+        assertEquals(safeTop + 64f * dp, compact.height, 1f)
+        controls.forEach { it.performClick() }
+        assertEquals(listOf("back", "copy", "share", "back", "copy", "share"), clicks)
+
+        compose.runOnIdle { overArtwork = true }
+        compose.onNodeWithText("Pyrokinesis").assertDoesNotExist()
+        controls.forEach {
+            assertEquals(bounds.top + safeTop + 48f * dp,
+                it.fetchSemanticsNode().boundsInRoot.center.y, 1f)
+        }
     }
 
     private fun capture(tag: String): Bitmap {

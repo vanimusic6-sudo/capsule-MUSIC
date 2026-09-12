@@ -33,7 +33,6 @@ import androidx.compose.ui.BiasAlignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
@@ -48,9 +47,6 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
-import coil3.request.ImageRequest
-import coil3.request.allowHardware
-import coil3.request.transformations
 import androidx.compose.ui.layout.ContentScale
 import com.nikhil.yt.R
 
@@ -107,14 +103,6 @@ internal fun ArtistHero(
     topSafePadding: Dp = 0.dp,
 ) {
     val loadingLabel = stringResource(R.string.loading)
-    val context = LocalContext.current
-    val portraitRequest = remember(context, thumbnailUrl) {
-        ImageRequest.Builder(context)
-            .data(thumbnailUrl)
-            .allowHardware(false)
-            .transformations(ArtistPortraitBlurTransformation)
-            .build()
-    }
     var artworkFailed by remember(thumbnailUrl) { mutableStateOf(thumbnailUrl.isNullOrBlank()) }
     ArtistHeroLayout(
         modifier = if (loading) modifier.clearAndSetSemantics { contentDescription = loadingLabel } else modifier,
@@ -128,7 +116,7 @@ internal fun ArtistHero(
                         tint = StandardChrome.muted.copy(alpha = 0.35f))
                 }
                 AsyncImage(
-                    model = portraitRequest,
+                    model = thumbnailUrl,
                     contentDescription = null,
                     contentScale = ContentScale.Crop,
                     onLoading = { artworkFailed = false },

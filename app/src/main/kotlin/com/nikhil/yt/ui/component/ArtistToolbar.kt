@@ -4,7 +4,6 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -39,10 +38,10 @@ internal fun ArtistToolbar(
     modifier: Modifier = Modifier,
 ) {
     val foreground = if (overArtwork) Color.White else StandardChrome.text
-    val titleAlpha by animateFloatAsState(
-        targetValue = if (overArtwork) 0f else 1f,
+    val artworkFraction by animateFloatAsState(
+        targetValue = if (overArtwork) 1f else 0f,
         animationSpec = tween(200),
-        label = "artistToolbarTitle",
+        label = "artistToolbarCollapse",
     )
     val buttonColors = IconButtonDefaults.iconButtonColors(
         containerColor = Color.Transparent,
@@ -54,16 +53,16 @@ internal fun ArtistToolbar(
     )
     TopAppBar(
         modifier = modifier,
-        // Respect the phone's top safe area instead of drawing controls under the
-        // status bar/cutout, then keep a small extra visual drop like the reference.
+        // One shared, centred row keeps the name and icons aligned throughout scrolling.
+        // 96 dp preserves the artwork controls' existing centre; the compact bar uses 64 dp.
         windowInsets = WindowInsets.safeDrawing.only(
             WindowInsetsSides.Horizontal + WindowInsetsSides.Top,
         ),
-        expandedHeight = 76.dp,
+        expandedHeight = (64f + 32f * artworkFraction).dp,
         title = {
             Text(
                 name,
-                modifier = Modifier.alpha(titleAlpha)
+                modifier = Modifier.alpha(1f - artworkFraction)
                     .then(if (overArtwork) Modifier.clearAndSetSemantics {} else Modifier),
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
@@ -73,7 +72,6 @@ internal fun ArtistToolbar(
             IconButton(
                 onBack,
                 onBackLongClick,
-                modifier = Modifier.offset(y = 10.dp),
                 colors = buttonColors,
             ) {
                 Icon(painterResource(R.drawable.arrow_back), stringResource(R.string.back))
@@ -83,7 +81,6 @@ internal fun ArtistToolbar(
             IconButton(
                 onCopyLink,
                 {},
-                modifier = Modifier.offset(y = 10.dp),
                 enabled = canShare,
                 colors = shareColors,
             ) {
@@ -92,7 +89,6 @@ internal fun ArtistToolbar(
             IconButton(
                 onShare,
                 {},
-                modifier = Modifier.offset(y = 10.dp),
                 enabled = canShare,
                 colors = shareColors,
             ) {
