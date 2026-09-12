@@ -67,13 +67,15 @@ internal object ArtistPortraits {
 
         peek(id)?.let { return it }
 
+        /* Room Flow.first() is suspendable; never execute it while holding the
+         * portrait mutex. A second cache check below handles races cleanly. */
+        localLookup()
+            ?.takeIf { it.isNotBlank() }
+            ?.let { return put(id, it) }
+
         val mutex = mutexes[(id.hashCode() and Int.MAX_VALUE) % mutexes.size]
         return mutex.withLock {
             peek(id)?.let { return@withLock it }
-
-            localLookup()
-                ?.takeIf { it.isNotBlank() }
-                ?.let { return@withLock put(id, it) }
 
             if (!allowNetwork) return@withLock null
 
