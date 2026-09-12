@@ -3735,7 +3735,7 @@ class MusicService :
                 val alreadyRunning = audioResolveCoordinator.hasInFlight(mediaId)
 
                 val playbackData = runBlocking {
-                    runCatching {
+                    kotlin.runCatching {
                         withTimeout(AUDIO_RESOLVE_TIMEOUT_MS) {
                             CapsuleAudioEngine.prioritizePlayback(mediaId)
                             Result.success(awaitForegroundAudioResolve(
