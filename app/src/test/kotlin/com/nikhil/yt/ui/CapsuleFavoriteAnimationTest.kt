@@ -103,7 +103,7 @@ class CapsuleFavoriteAnimationTest {
 
     private fun capture(): Bitmap {
         compose.waitForIdle()
-        val bounds = compose.onNodeWithTag("heart").fetchSemanticsNode().boundsInRoot
+        val bounds = compose.onNodeWithTag("heart", useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
         lateinit var bitmap: Bitmap
         compose.runOnIdle {
             bitmap = Bitmap.createBitmap(bounds.width.roundToInt(), bounds.height.roundToInt(), Bitmap.Config.ARGB_8888)
