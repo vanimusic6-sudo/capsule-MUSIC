@@ -63,14 +63,15 @@ internal fun ArtistHeroLayout(
 ) {
     BoxWithConstraints(modifier.fillMaxWidth().background(background)) {
         // At 360 dp: title ~425 dp, first actions ~484 dp, radio ~546 dp.
-        // The source may be a wide banner: size the photo separately from the controls.
+        // Extend the portrait/fade a little farther down so the image never appears to
+        // end on a hard horizontal edge behind the artist name.
         val referenceWidth = maxWidth.coerceAtMost(450.dp)
         val heroHeight = referenceWidth * 1.69f
-        Box(Modifier.fillMaxWidth().height(referenceWidth * 1.32f)) {
+        Box(Modifier.fillMaxWidth().height(referenceWidth * 1.44f)) {
             Box(
                 Modifier.fillMaxWidth()
                     .padding(top = referenceWidth * 0.06f)
-                    .height(referenceWidth * 1.18f),
+                    .height(referenceWidth * 1.30f),
             ) { artwork() }
             ArtworkSurfaceFade(background, Modifier.matchParentSize(), portrait = true)
         }
@@ -79,14 +80,12 @@ internal fun ArtistHeroLayout(
                 .padding(top = topSafePadding + 72.dp, bottom = 14.dp),
             verticalArrangement = Arrangement.Bottom,
         ) {
-            // Keep the action rows exactly where they are, but let the artist name sit a
-            // little deeper in the artwork/fade like the reference composition.
             Box(
                 Modifier.fillMaxWidth()
                     .padding(horizontal = 14.dp)
-                    .offset(y = (-10).dp),
+                    .offset(y = (-16).dp),
             ) { title() }
-            Spacer(Modifier.height(24.dp))
+            Spacer(Modifier.height(20.dp))
             Column(Modifier.fillMaxWidth().padding(horizontal = 22.dp)) { actions() }
         }
     }
@@ -143,10 +142,15 @@ internal fun ArtistHero(
                     text = name,
                     style = MaterialTheme.typography.headlineLarge.copy(fontSize = 30.sp, lineHeight = 36.sp),
                     fontWeight = FontWeight.Bold,
-                    color = StandardChrome.text,
+                    color = StandardChrome.text.copy(alpha = 0.96f),
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.semantics { heading() },
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(14.dp))
+                        // Simple translucent backing only: no blur, render effect or glass.
+                        .background(Color.Black.copy(alpha = 0.22f))
+                        .padding(horizontal = 10.dp, vertical = 6.dp)
+                        .semantics { heading() },
                 )
             }
         },
