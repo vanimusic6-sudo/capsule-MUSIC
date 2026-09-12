@@ -182,6 +182,12 @@ jobs:
           }
 
           blocks = {key: client_block(value) for key, value in names.items()}
+          if not any("PO_TOKEN" in block for block in blocks.values()):
+              raise RuntimeError(
+                  "No parsed client contains a PO_TOKEN policy marker; "
+                  "manual upstream schema review required"
+              )
+
 
           safe_active = ("visionos", "web_embedded", "tv", "tv_downgraded")
           policy_changes = []

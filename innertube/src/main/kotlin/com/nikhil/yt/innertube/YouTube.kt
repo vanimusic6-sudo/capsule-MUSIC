@@ -141,15 +141,6 @@ object YouTube {
             innerTube.useLoginForBrowse = value
         }
 
-    internal fun appendGvsPoToken(url: String, client: YouTubeClient? = null): String {
-        val token = authState.resolveGvsPoToken(client) ?: return url
-
-        if (url.contains("pot=")) return url
-
-        val separator = if (url.contains("?")) "&" else "?"
-        return "$url${separator}pot=$token"
-    }
-
     suspend fun searchSuggestions(query: String): Result<SearchSuggestions> = runCatchingCancellable {
         val response = innerTube.getSearchSuggestions(WEB_REMIX, query).body<GetSearchSuggestionsResponse>()
         SearchSuggestions(
@@ -975,7 +966,6 @@ object YouTube {
                 else -> null
             }
         } catch (e: Exception) {
-            println("Error converting chart item: ${e.message}\n${Json.encodeToString(renderer)}")
             null
         }
     }
@@ -1021,7 +1011,6 @@ object YouTube {
                 else -> null
             }
         } catch (e: Exception) {
-            println("Error converting two row item: ${e.message}\n${Json.encodeToString(renderer)}")
             null
         }
     }

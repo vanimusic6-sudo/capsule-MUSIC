@@ -157,6 +157,10 @@ class AudioResolveSchedulerTest {
     @Test fun loaderPromotionBeforeTicketPromotesTheNextPrefetchRun() = runTest {
         val scheduler = AudioResolveScheduler(monotonicNowMs = { testScheduler.currentTime })
         scheduler.promote("next")
+        assertEquals(
+            AudioResolvePriority.PLAYBACK,
+            scheduler.effectivePriority("next", AudioResolvePriority.PREFETCH),
+        )
 
         var observed = AudioResolvePriority.PREFETCH
         val value =

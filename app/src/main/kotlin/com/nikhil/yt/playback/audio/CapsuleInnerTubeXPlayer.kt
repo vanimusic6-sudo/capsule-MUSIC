@@ -91,6 +91,9 @@ object CapsuleInnerTubeXPlayer {
     private val scheduler = AudioResolveScheduler()
 
     fun prioritizePlayback(mediaId: String) = scheduler.promote(mediaId)
+
+    fun effectiveResolvePriority(mediaId: String, fallback: AudioResolvePriority): AudioResolvePriority =
+        scheduler.effectivePriority(mediaId, fallback)
     private val prewarmScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val streamClientFailures = ConcurrentHashMap<String, FailedStreamClients>()
 

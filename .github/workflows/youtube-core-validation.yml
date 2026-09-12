@@ -105,6 +105,7 @@ jobs:
             :lrclib:test \
             :app:testUniversalDebugUnitTest \
             :app:lintUniversalDebug \
+            :app:lintVitalUniversalRelease \
             :app:assembleUniversalDebug \
             --stacktrace \
             --no-daemon

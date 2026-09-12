@@ -78,7 +78,7 @@ fun StorageSettings(
     val (maxSongCacheSize, onMaxSongCacheSizeChange) =
         rememberPreference(
             key = MaxSongCacheSizeKey,
-            defaultValue = 1024,
+            defaultValue = 256,
         )
     var clearCacheDialog by remember { mutableStateOf(false) }
     var clearVideoCacheDialog by remember { mutableStateOf(false) }

@@ -206,6 +206,8 @@ import com.nikhil.yt.playback.audio.AudioStreamContract
 import com.nikhil.yt.playback.audio.AudioPlaybackContext
 import com.nikhil.yt.playback.audio.AudioResolveCoordinator
 import com.nikhil.yt.playback.audio.AudioResolvePriority
+import com.nikhil.yt.playback.audio.awaitForegroundAudioResolve
+import com.nikhil.yt.playback.audio.cancelledAudioLoad
 import com.nikhil.yt.playback.audio.CapsuleAudioEngine
 import com.nikhil.yt.playback.audio.PlaybackDataCache
 import com.nikhil.yt.playback.presence.DiscordPresenceOwner
@@ -549,6 +551,14 @@ class MusicService :
         }
     }
 
+    /** Called on the application looper. Loader demand can precede currentMediaItem. */
+    private fun audioResolvePriority(mediaId: String): AudioResolvePriority =
+        CapsuleAudioEngine.effectiveResolvePriority(
+            mediaId,
+            if (mediaId == player.currentMediaItem?.mediaId) AudioResolvePriority.PLAYBACK
+            else AudioResolvePriority.PREFETCH,
+        )
+
     private fun audioResolveJob(
         mediaId: String,
     ) =
@@ -556,7 +566,7 @@ class MusicService :
             audioResolveStability.awaitStable(
                 requiredDelayMs = {
                     withContext(Dispatchers.Main.immediate) {
-                        if (mediaId == player.currentMediaItem?.mediaId) {
+                        if (audioResolvePriority(mediaId) == AudioResolvePriority.PLAYBACK) {
                             PLAYBACK_RESOLVE_STABILITY_DELAY_MS
                         } else {
                             PREFETCH_RESOLVE_STABILITY_DELAY_MS
@@ -571,8 +581,7 @@ class MusicService :
             }
             val selection = playbackContext()
             val priority = withContext(Dispatchers.Main.immediate) {
-                if (mediaId == player.currentMediaItem?.mediaId) AudioResolvePriority.PLAYBACK
-                else AudioResolvePriority.PREFETCH
+                audioResolvePriority(mediaId)
             }
             val startedAt = System.currentTimeMillis()
             Timber.tag(CAPSULE_RESOLVE_TAG).i(
@@ -1490,7 +1499,7 @@ class MusicService :
 
         dataStore.data
             .map { prefs ->
-                (prefs[SmartTrimmerKey] ?: false) to (prefs[MaxSongCacheSizeKey] ?: 1024)
+                (prefs[SmartTrimmerKey] ?: false) to (prefs[MaxSongCacheSizeKey] ?: 256)
             }
             .debounce(300)
             .distinctUntilChanged()
@@ -2694,6 +2703,8 @@ class MusicService :
         }
     }
 
+    private val likeTapGate = LikeTapGate()
+
     fun toggleLike(source: String = "service") {
         val metadata = activeSongMetadata()
         val mediaId = activeSongId(metadata)
@@ -2708,6 +2719,8 @@ class MusicService :
             Timber.tag("MusicService").w("Toggle like ignored: no active media id source=%s", source)
             return
         }
+
+        if (!likeTapGate.accept(mediaId)) return
 
         ioScope.launch {
             songMutationMutex.withLock {
@@ -3674,7 +3687,15 @@ class MusicService :
 
                 val mediaId = dataSpec.key ?: error("No media id")
                 // Only a complete legacy file can be trusted without resolving its byte format.
-                val legacyLength = runBlocking(Dispatchers.IO) { database.format(mediaId).first()?.contentLength }
+                // Current format-aware caches carry their own length. Consult Room only
+                // when an old media-id cache entry without that metadata actually exists.
+                val needsLegacyLength = listOf(downloadCache, playerCache).any { cache ->
+                    mediaId in cache.keys &&
+                        androidx.media3.datasource.cache.ContentMetadata.getContentLength(cache.getContentMetadata(mediaId)) <= 0
+                }
+                val legacyLength = if (needsLegacyLength) {
+                    runBlocking(Dispatchers.IO) { database.format(mediaId).first()?.contentLength }
+                } else null
                 val downloadedKey = AudioCacheIdentity.completeKey(downloadCache, mediaId, legacyLength)
                 val completeKey = downloadedKey ?: AudioCacheIdentity.completeKey(playerCache, mediaId, legacyLength)
                 if (completeKey != null) {
@@ -3717,7 +3738,17 @@ class MusicService :
                     runCatching {
                         withTimeout(AUDIO_RESOLVE_TIMEOUT_MS) {
                             CapsuleAudioEngine.prioritizePlayback(mediaId)
-                            audioResolveJob(mediaId).await()
+                            Result.success(awaitForegroundAudioResolve(
+                                isRelevant = {
+                                    withContext(Dispatchers.Main.immediate) {
+                                        mediaId == player.currentMediaItem?.mediaId || mediaId in upcomingAudioIds()
+                                    }
+                                },
+                                resolve = {
+                                    CapsuleAudioEngine.prioritizePlayback(mediaId)
+                                    audioResolveJob(mediaId).await()
+                                },
+                            ))
                         }
                     }.getOrElse { failure ->
                         val waitedMs = System.currentTimeMillis() - loaderWaitStartedAt
@@ -3774,6 +3805,10 @@ class MusicService :
                                 PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT
                             )
                         }
+
+                        // Media3 expects IO at this synchronous loader boundary.
+                        // A cancelled loader is discarded; it must not become a remote playback error.
+                        is kotlinx.coroutines.CancellationException -> throw cancelledAudioLoad(throwable)
 
                         else -> throw PlaybackException(
                             getString(R.string.error_unknown),

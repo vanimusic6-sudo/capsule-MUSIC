@@ -42,6 +42,7 @@ internal class AudioResolveScheduler(
 
     fun promote(mediaId: String) = synchronized(lock) {
         val nowMs = monotonicNowMs()
+        pendingPlaybackPromotions.entries.removeAll { nowMs - it.value !in 0 until PENDING_PLAYBACK_PROMOTION_TTL_MS }
         val matches =
             (waiting + listOfNotNull(active)).filter {
                 it.mediaId == mediaId && it.priority == AudioResolvePriority.PREFETCH
@@ -55,6 +56,9 @@ internal class AudioResolveScheduler(
              * as PLAYBACK instead of losing its fallback chain.
              */
             pendingPlaybackPromotions[mediaId] = nowMs
+            while (pendingPlaybackPromotions.size > 64) {
+                pendingPlaybackPromotions.remove(pendingPlaybackPromotions.minBy { it.value }.key)
+            }
         }
 
         matches.forEach { ticket ->

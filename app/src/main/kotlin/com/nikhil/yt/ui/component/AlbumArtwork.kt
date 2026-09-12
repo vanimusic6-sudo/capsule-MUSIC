@@ -10,7 +10,9 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.produceState
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithCache
@@ -49,10 +51,10 @@ fun AlbumArtwork(
     val painter = rememberAsyncImagePainter(request, contentScale = ContentScale.Crop)
     val state by painter.state.collectAsState()
     val image = (state as? AsyncImagePainter.State.Success)?.result?.image
-    val blurred by produceState<ImageBitmap?>(null, image) {
-        value = null
+    var blurred by remember(image) { mutableStateOf<ImageBitmap?>(null) }
+    LaunchedEffect(image) {
         if (image != null) {
-            value = withContext(Dispatchers.Default) {
+            blurred = withContext(Dispatchers.Default) {
                 createAlbumArtworkBlur(image.toBitmap()).asImageBitmap()
             }
         }

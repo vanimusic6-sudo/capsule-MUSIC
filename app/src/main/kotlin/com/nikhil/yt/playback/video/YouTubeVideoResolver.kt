@@ -27,7 +27,6 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import timber.log.Timber
-import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executors
 import java.util.UUID
 
@@ -80,13 +79,9 @@ object YouTubeVideoResolver {
         cause: Throwable? = null,
     ) : IllegalStateException(message, cause)
 
-    private data class Cached(
-        val resolved: ResolvedVideo,
-        val cacheKey: String,
-    )
-
-    private val cache = ConcurrentHashMap<String, Cached>()
-    private val latestCacheKeyByVideoId = ConcurrentHashMap<String, String>()
+    private val cache = VideoStreamCache<ResolvedVideo>(maxEntries = 64) {
+        it.expiresAtMs > System.currentTimeMillis() + CACHE_SAFETY_MS
+    }
 
     /*
      * One extraction at a time is deliberate. It prevents queue skips, UI
@@ -117,24 +112,12 @@ object YouTubeVideoResolver {
     fun invalidate(videoId: String) {
         val id = videoId.trim()
         if (id.isBlank()) return
-        cache.keys.removeIf { it.startsWith("$id:") }
-        latestCacheKeyByVideoId.remove(id)
+        cache.invalidate(id)
     }
 
     fun peekResolved(videoId: String): ResolvedVideo? {
         ensureInitialized()
-        val id = videoId.trim()
-        val key = latestCacheKeyByVideoId[id] ?: return null
-        val now = System.currentTimeMillis()
-        val cached = cache[key]
-            ?.resolved
-            ?.takeIf { it.expiresAtMs > now + CACHE_SAFETY_MS }
-            ?: run {
-                cache.remove(key)
-                latestCacheKeyByVideoId.remove(id, key)
-                return null
-            }
-        return cached
+        return cache.latest(videoId.trim())
     }
 
     suspend fun resolveForSong(
@@ -187,8 +170,7 @@ object YouTubeVideoResolver {
                                 quality = quality,
                                 muxedOnly = false,
                             )
-                        latestCacheKeyByVideoId[link.videoId] =
-                            cacheKey(link.videoId, quality, false)
+                        cache.put(link.videoId, cacheKey(link.videoId, quality, false), resolved)
                         CapsuleVideoRequestGuard.noteSuccess()
                         Result.success(resolved)
                     } ?: Result.failure(VideoBackendException(CapsuleVideoFailure.NETWORK, "VIDEO extraction timed out"))
@@ -241,11 +223,7 @@ object YouTubeVideoResolver {
         muxedOnly: Boolean,
     ): ResolvedVideo {
         val key = cacheKey(videoId, quality, muxedOnly)
-        val now = System.currentTimeMillis()
-        cache[key]
-            ?.resolved
-            ?.takeIf { it.expiresAtMs > now + CACHE_SAFETY_MS }
-            ?.let { return it }
+        cache[key]?.let { return it }
 
         if (CapsuleVideoRequestGuard.isBlocked()) {
             throw CapsuleVideoRequestGuard.RequestBlockedException(
@@ -256,16 +234,11 @@ object YouTubeVideoResolver {
         CapsuleVideoRequestGuard.beforeMetadataRequest()
 
         return resolveMutex.withLock {
-            val secondNow = System.currentTimeMillis()
-            cache[key]
-                ?.resolved
-                ?.takeIf { it.expiresAtMs > secondNow + CACHE_SAFETY_MS }
-                ?.let { return@withLock it }
+            cache[key]?.let { return@withLock it }
 
             val remote = callRemoteExtractor(videoId, quality, muxedOnly)
             val resolved = remote.toResolved(sourceMediaId)
-            cache[key] = Cached(resolved = resolved, cacheKey = key)
-            latestCacheKeyByVideoId[videoId] = key
+            cache.put(videoId, key, resolved)
             resolved
         }
     }

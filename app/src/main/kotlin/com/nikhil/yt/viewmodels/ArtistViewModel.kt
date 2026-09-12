@@ -88,19 +88,19 @@ class ArtistViewModel @Inject constructor(
         isLoading = true
         loadJob = viewModelScope.launch {
             try {
-            val hideExplicit = context.dataStore.get(HideExplicitKey, false)
-            YouTube.artist(artistId)
-                .onSuccess { page ->
-                    val filteredSections = page.sections
-                        .filterNot { section ->
-                            section.moreEndpoint?.browseId?.startsWith("MPLAUC") == true
-                        }
-                        .map { section ->
-                            section.copy(items = section.items.filterExplicit(hideExplicit))
-                        }
+                val hideExplicit = context.dataStore.get(HideExplicitKey, false)
+                YouTube.artist(artistId)
+                    .onSuccess { page ->
+                        val filteredSections = page.sections
+                            .filterNot { section ->
+                                section.moreEndpoint?.browseId?.startsWith("MPLAUC") == true
+                            }
+                            .map { section ->
+                                section.copy(items = section.items.filterExplicit(hideExplicit))
+                            }
 
-                    artistPage = page.copy(sections = filteredSections)
-                }.getOrThrow()
+                        artistPage = page.copy(sections = filteredSections)
+                    }.getOrThrow()
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (error: Exception) {

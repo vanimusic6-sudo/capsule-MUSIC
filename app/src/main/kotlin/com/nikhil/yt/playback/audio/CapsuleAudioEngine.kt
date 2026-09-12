@@ -39,6 +39,9 @@ object CapsuleAudioEngine {
 
     fun prioritizePlayback(mediaId: String) = CapsuleInnerTubeXPlayer.prioritizePlayback(mediaId)
 
+    fun effectiveResolvePriority(mediaId: String, fallback: AudioResolvePriority): AudioResolvePriority =
+        CapsuleInnerTubeXPlayer.effectiveResolvePriority(mediaId, fallback)
+
     suspend fun prewarm() = CapsuleInnerTubeXPlayer.prewarm()
 
     fun playbackBlockedExceptionOrNull(): PlaybackException? = CapsulePlaybackSafety.blockedExceptionOrNull()

@@ -8,7 +8,6 @@ package com.nikhil.yt.innertube.pages
 
 import com.nikhil.yt.innertube.YouTube
 import com.nikhil.yt.innertube.models.YouTubeClient
-import com.nikhil.yt.innertube.models.response.PlayerResponse
 import io.ktor.http.URLBuilder
 import io.ktor.http.parseQueryString
 import okhttp3.OkHttpClient
@@ -22,7 +21,6 @@ import org.schabi.newpipe.extractor.exceptions.ReCaptchaException
 import org.schabi.newpipe.extractor.services.youtube.YoutubeJavaScriptPlayerManager
 import java.io.IOException
 import java.net.Proxy
-import java.net.SocketTimeoutException
 import java.util.concurrent.TimeUnit
 
 private class NewPipeDownloaderImpl(
@@ -105,53 +103,6 @@ object NewPipeUtils {
             withPlayerManagerRecovery {
                 YoutubeJavaScriptPlayerManager.getSignatureTimestamp(videoId)
             }
-        }
-
-    fun getStreamUrl(
-        format: PlayerResponse.StreamingData.Format,
-        videoId: String,
-        client: YouTubeClient? = null,
-    ): Result<String> =
-        runCatching {
-            val url =
-                format.url ?: run {
-                    val cipherString =
-                        format.signatureCipher
-                            ?: format.cipher
-                            ?: throw ParsingException("Could not find format URL")
-
-                    decipherSignatureCipher(cipherString) { obfuscatedSignature ->
-                        withPlayerManagerRecovery {
-                            YoutubeJavaScriptPlayerManager.deobfuscateSignature(
-                                videoId,
-                                obfuscatedSignature,
-                            )
-                        }
-                    }
-                }
-
-            val resolvedUrl =
-                runCatching {
-                    retryWithBackoff(
-                        maxAttempts = 3,
-                        initialDelayMs = 250L,
-                        maxDelayMs = 2_000L,
-                    ) {
-                        withPlayerManagerRecovery {
-                            YoutubeJavaScriptPlayerManager
-                                .getUrlWithThrottlingParameterDeobfuscated(videoId, url)
-                        }
-                    }
-                }.getOrElse {
-                    /*
-                     * A broken n-parameter decoder must not discard an
-                     * otherwise valid signed URL. The one-byte probe will
-                     * decide whether YouTube accepts the original value.
-                     */
-                    url
-                }
-
-            YouTube.appendGvsPoToken(resolvedUrl, client)
         }
 
     fun clearPlayerCaches() {
@@ -246,36 +197,4 @@ object NewPipeUtils {
         }
     }
 
-    private inline fun <T> retryWithBackoff(
-        maxAttempts: Int,
-        initialDelayMs: Long,
-        maxDelayMs: Long,
-        block: () -> T,
-    ): T {
-        var attempt = 0
-        var delayMs = initialDelayMs
-        var lastError: Throwable? = null
-        while (attempt < maxAttempts) {
-            try {
-                return block()
-            } catch (error: Throwable) {
-                val retryable =
-                    error is SocketTimeoutException ||
-                        error is IOException ||
-                        error.cause is SocketTimeoutException ||
-                        error.cause is IOException
-                if (!retryable || attempt == maxAttempts - 1) throw error
-                lastError = error
-                try {
-                    Thread.sleep(delayMs)
-                } catch (_: InterruptedException) {
-                    Thread.currentThread().interrupt()
-                    throw error
-                }
-                delayMs = (delayMs * 2).coerceAtMost(maxDelayMs)
-                attempt += 1
-            }
-        }
-        throw lastError ?: IllegalStateException("Retry attempts exhausted")
-    }
 }
