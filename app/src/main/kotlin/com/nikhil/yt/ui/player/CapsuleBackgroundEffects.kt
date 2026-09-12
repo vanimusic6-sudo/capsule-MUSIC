@@ -25,6 +25,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.graphics.drawscope.scale
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -119,7 +120,7 @@ internal fun CapsuleProceduralBackground(
             null
         }
 
-    val starFields = remember(compact) { CapsuleStarFields(if (compact) 30 else 82) }
+    val starFields = remember(compact) { CapsuleStarFields(if (compact) 22 else 64) }
     Canvas(modifier = modifier) {
         val elapsedMs = time?.value ?: STATIC_BACKGROUND_TIME_MS
         when (effect) {
@@ -179,7 +180,7 @@ internal fun CapsuleGlassSurface(
                 Brush.linearGradient(
                     colors =
                         listOf(
-                            Color.White.copy(alpha = 0.055f),
+                            Color.White.copy(alpha = 0.045f),
                             Color(0xFF15161D).copy(alpha = 0.28f),
                             Color.Black.copy(alpha = 0.2f),
                         ),
@@ -192,7 +193,7 @@ internal fun CapsuleGlassSurface(
                 Brush.radialGradient(
                     colors =
                         listOf(
-                            Color.White.copy(alpha = 0.095f),
+                            Color.White.copy(alpha = 0.065f),
                             Color.White.copy(alpha = 0.025f),
                             Color.Transparent,
                         ),
@@ -201,14 +202,14 @@ internal fun CapsuleGlassSurface(
                 ),
         )
         drawLine(
-            color = Color.White.copy(alpha = 0.17f),
+            color = Color.White.copy(alpha = 0.1f),
             start = Offset(size.width * 0.08f, 0.7f * density),
             end = Offset(size.width * 0.92f, 0.7f * density),
             strokeWidth = 0.7f * density,
             cap = StrokeCap.Round,
         )
         drawLine(
-            color = Color.Black.copy(alpha = 0.24f),
+            color = Color.Black.copy(alpha = 0.18f),
             start = Offset(size.width * 0.1f, size.height - 0.7f * density),
             end = Offset(size.width * 0.9f, size.height - 0.7f * density),
             strokeWidth = 0.7f * density,
@@ -273,102 +274,77 @@ private fun deepColor(
     amount: Float,
 ): Color = lerp(color, Color(0xFF03040A), amount.coerceIn(0f, 1f))
 
-private fun DrawScope.drawMatteGradient(palette: List<Color>) {
-    val top = deepColor(lerp(palette[0], palette[1], 0.16f), 0.48f)
-    val middle = deepColor(lerp(palette[0], palette[2], 0.46f), 0.6f)
-    val bottom = deepColor(lerp(palette[1], palette[2], 0.58f), 0.76f)
+/** Diffuse elliptical light; no blur bitmap, texture uploads or per-frame palette extraction. */
+private fun DrawScope.drawSoftLight(
+    color: Color,
+    center: Offset,
+    radius: Float,
+    opacity: Float,
+    verticalScale: Float = 1f,
+) {
+    val safeRadius = radius.coerceAtLeast(1f)
+    scale(scaleX = 1f, scaleY = verticalScale, pivot = center) {
+        drawCircle(
+            brush = Brush.radialGradient(
+                0f to color.copy(alpha = opacity),
+                0.34f to color.copy(alpha = opacity * 0.6f),
+                0.7f to color.copy(alpha = opacity * 0.16f),
+                1f to Color.Transparent,
+                center = center, radius = safeRadius,
+            ),
+            radius = safeRadius, center = center,
+        )
+    }
+}
 
-    drawRect(
-        brush =
-            Brush.verticalGradient(
-                0f to top,
-                0.48f to middle,
-                1f to bottom,
-            ),
-    )
-    drawRect(
-        brush =
-            Brush.radialGradient(
-                colors =
-                    listOf(
-                        palette[0].copy(alpha = 0.2f),
-                        Color.Transparent,
-                    ),
-                center = Offset(size.width * 0.12f, size.height * 0.08f),
-                radius = max(size.width, size.height) * 0.82f,
-            ),
-    )
-    drawRect(
-        brush =
-            Brush.radialGradient(
-                colors =
-                    listOf(
-                        palette[2].copy(alpha = 0.11f),
-                        Color.Transparent,
-                    ),
-                center = Offset(size.width * 0.9f, size.height * 0.86f),
-                radius = max(size.width, size.height) * 0.7f,
-            ),
-    )
-    drawVignette(alpha = 0.24f)
+private fun DrawScope.drawMatteGradient(palette: List<Color>) {
+    val extent = max(size.width, size.height)
+    val compact = size.width > size.height * 2f
+    drawRect(Brush.verticalGradient(
+        0f to deepColor(lerp(palette[0], palette[1], 0.12f), 0.5f),
+        0.36f to deepColor(lerp(palette[0], palette[2], 0.28f), 0.62f),
+        0.74f to deepColor(lerp(palette[1], palette[2], 0.4f), 0.78f),
+        1f to Color(0xFF09090D),
+    ))
+    drawSoftLight(palette[0], Offset(size.width * 0.18f, size.height * 0.04f),
+        extent * 0.82f, 0.22f, if (compact) 0.32f else 0.9f)
+    drawSoftLight(palette[2], Offset(size.width * 0.96f, size.height * 0.46f),
+        extent * 0.62f, 0.12f, if (compact) 0.35f else 1.1f)
+    drawVignette(if (compact) 0.12f else 0.24f)
 }
 
 private fun DrawScope.drawTonalWash(palette: List<Color>) {
-    val base = deepColor(lerp(palette[0], palette[1], 0.24f), 0.54f)
-    val highlight = deepColor(lerp(palette[0], Color.White, 0.08f), 0.48f)
-    val shadow = deepColor(lerp(palette[0], palette[2], 0.5f), 0.76f)
-
-    drawRect(base)
-    drawRect(
-        brush =
-            Brush.linearGradient(
-                colors = listOf(highlight, base, shadow),
-                start = Offset(size.width * 0.08f, 0f),
-                end = Offset(size.width * 0.9f, size.height),
-            ),
-    )
-    drawRect(
-        brush =
-            Brush.radialGradient(
-                colors =
-                    listOf(
-                        palette[1].copy(alpha = 0.12f),
-                        Color.Transparent,
-                    ),
-                center = Offset(size.width * 0.74f, size.height * 0.24f),
-                radius = max(size.width, size.height) * 0.64f,
-            ),
-    )
-    drawVignette(alpha = 0.2f)
+    val compact = size.width > size.height * 2f
+    val extent = max(size.width, size.height)
+    drawRect(Brush.linearGradient(
+        0f to deepColor(palette[0], 0.52f),
+        0.46f to deepColor(lerp(palette[0], palette[1], 0.22f), 0.66f),
+        1f to deepColor(lerp(palette[0], palette[2], 0.38f), 0.84f),
+        start = Offset(size.width * 0.08f, 0f), end = Offset(size.width, size.height),
+    ))
+    drawSoftLight(lerp(palette[0], Color.White, 0.12f),
+        Offset(size.width * 0.1f, -size.height * 0.12f), extent * 0.94f, 0.18f,
+        if (compact) 0.34f else 1f)
+    drawSoftLight(palette[1], Offset(size.width * 0.88f, size.height * 0.55f),
+        extent * 0.54f, 0.1f, if (compact) 0.3f else 1.1f)
+    drawVignette(if (compact) 0.1f else 0.22f)
 }
 
 private fun DrawScope.drawAmbientGlow(palette: List<Color>) {
-    drawRect(Color(0xFF05060A))
-    val centers =
-        listOf(
-            Offset(size.width * 0.08f, size.height * 0.18f),
-            Offset(size.width * 0.92f, size.height * 0.74f),
-            Offset(size.width * 0.58f, size.height * 0.04f),
-        )
-    val radius = max(size.width, size.height) * 0.78f
-
-    centers.forEachIndexed { index, center ->
-        val glow = deepColor(palette[index], 0.2f)
-        drawRect(
-            brush =
-                Brush.radialGradient(
-                    colors =
-                        listOf(
-                            glow.copy(alpha = 0.52f),
-                            glow.copy(alpha = 0.2f),
-                            Color.Transparent,
-                        ),
-                    center = center,
-                    radius = radius * (0.86f + index * 0.08f),
-                ),
-        )
-    }
-    drawVignette(alpha = 0.3f)
+    val compact = size.width > size.height * 2f
+    val extent = max(size.width, size.height)
+    drawRect(Color(0xFF07080C))
+    drawSoftLight(palette[0], Offset(size.width * 0.12f, size.height * 0.02f),
+        extent * 0.82f, 0.58f, if (compact) 0.34f else 1.05f)
+    drawSoftLight(palette[1], Offset(size.width * 0.94f, size.height * 0.48f),
+        extent * 0.64f, 0.3f, if (compact) 0.38f else 1.15f)
+    drawSoftLight(palette[2], Offset(size.width * 0.3f, size.height * 0.72f),
+        extent * 0.58f, 0.12f, if (compact) 0.3f else 0.9f)
+    drawRect(Brush.verticalGradient(
+        0f to Color.Transparent, 0.42f to Color.Transparent,
+        1f to Color.Black.copy(alpha = if (compact) 0.24f else 0.65f),
+    ))
+    drawVignette(if (compact) 0.12f else 0.22f)
 }
 
 private fun DrawScope.drawSoftColorFlow(
@@ -376,58 +352,30 @@ private fun DrawScope.drawSoftColorFlow(
     elapsedMs: Long,
     compact: Boolean,
 ) {
-    val base = deepColor(lerp(palette[0], palette[1], 0.34f), 0.56f)
-    drawRect(base)
-    drawRect(
-        brush =
-            Brush.linearGradient(
-                colors =
-                    listOf(
-                        deepColor(palette[0], 0.44f),
-                        deepColor(palette[1], 0.56f),
-                        deepColor(palette[2], 0.64f),
-                    ),
-                start = Offset.Zero,
-                end = Offset(size.width, size.height),
-            ),
+    val angle = capsuleBackgroundAngle(elapsedMs) * 0.36
+    val extent = max(size.width, size.height)
+    drawRect(Brush.linearGradient(
+        0f to deepColor(lerp(palette[0], palette[1], 0.18f), 0.58f),
+        0.52f to deepColor(lerp(palette[1], palette[2], 0.35f), 0.7f),
+        1f to deepColor(palette[2], 0.84f),
+        start = Offset.Zero, end = Offset(size.width, size.height),
+    ))
+    val centers = listOf(
+        Offset(size.width * (0.12f + 0.13f * waveSin(angle)),
+            size.height * (0.12f + 0.09f * waveCos(angle * 0.72))),
+        Offset(size.width * (0.88f + 0.11f * waveCos(angle * 0.62)),
+            size.height * (0.52f + 0.12f * waveSin(angle * 0.66))),
+        Offset(size.width * (0.48f + 0.15f * waveSin(angle * 0.48 + 2.2)),
+            size.height * (0.82f + 0.09f * waveCos(angle * 0.52 + 1.4))),
     )
-
-    val angle = capsuleBackgroundAngle(elapsedMs)
-    val radius = max(size.width, size.height) * if (compact) 1.12f else 0.76f
-    val centers =
-        listOf(
-            Offset(
-                size.width * (0.16f + 0.14f * waveSin(angle)),
-                size.height * (0.28f + 0.1f * waveCos(angle * 0.72f)),
-            ),
-            Offset(
-                size.width * (0.84f + 0.11f * waveCos(angle * 0.62f)),
-                size.height * (0.7f + 0.12f * waveSin(angle * 0.66f)),
-            ),
-            Offset(
-                size.width * (0.5f + 0.18f * waveSin(angle * 0.48f + 2.2f)),
-                size.height * (0.46f + 0.13f * waveCos(angle * 0.52f + 1.4f)),
-            ),
-        )
-
     palette.forEachIndexed { index, color ->
-        val pastel = lerp(color, Color(0xFFE2DDE6), 0.16f)
-        drawRect(
-            brush =
-                Brush.radialGradient(
-                    colors =
-                        listOf(
-                            pastel.copy(alpha = if (compact) 0.2f else 0.28f),
-                            pastel.copy(alpha = if (compact) 0.07f else 0.12f),
-                            Color.Transparent,
-                        ),
-                    center = centers[index],
-                    radius = radius,
-                ),
+        drawSoftLight(
+            color, centers[index], extent * (0.78f - index * 0.08f),
+            if (index == 0) 0.35f else 0.2f,
+            if (compact) 0.34f else 1.1f,
         )
     }
-
-    drawVignette(alpha = if (compact) 0.12f else 0.2f)
+    drawVignette(if (compact) 0.14f else 0.26f)
 }
 
 private fun DrawScope.drawCapsuleStarField(
@@ -436,9 +384,9 @@ private fun DrawScope.drawCapsuleStarField(
     compact: Boolean,
     fields: CapsuleStarFields,
 ) {
-    val top = deepColor(lerp(palette[0], palette[1], 0.18f), 0.66f)
-    val center = deepColor(lerp(palette[0], palette[2], 0.45f), 0.76f)
-    val bottom = deepColor(lerp(palette[1], palette[2], 0.58f), 0.86f)
+    val top = deepColor(lerp(palette[0], palette[1], 0.18f), 0.72f)
+    val center = deepColor(lerp(palette[0], palette[2], 0.45f), 0.82f)
+    val bottom = deepColor(lerp(palette[1], palette[2], 0.58f), 0.9f)
     drawRect(
         brush =
             Brush.verticalGradient(
@@ -454,7 +402,7 @@ private fun DrawScope.drawCapsuleStarField(
             Brush.radialGradient(
                 colors =
                     listOf(
-                        palette[0].copy(alpha = if (compact) 0.16f else 0.23f),
+                        palette[0].copy(alpha = if (compact) 0.14f else 0.2f),
                         palette[1].copy(alpha = if (compact) 0.05f else 0.09f),
                         Color.Transparent,
                     ),
@@ -515,14 +463,15 @@ private fun DrawScope.drawConstellation(
     val angle = capsuleBackgroundAngle(elapsedMs)
     stars.forEachIndexed { index, star ->
         val depth = star.depth
-        val drift = (depth - 0.32f) * if (compact) 1.1f * density else 2.4f * density
+        val drift = (depth - 0.32f) * if (compact) 1.1f * density else 3.2f * density
         val (dx, dy) = capsuleStarDrift(star, elapsedMs)
-        val x = wrapCoordinate(star.x * size.width + dx * drift, size.width)
-        val y = wrapCoordinate(star.y * size.height + dy * drift, size.height)
-        val pulse = (waveSin(angle * (0.48f + depth * 0.74f) + star.phase) + 1f) / 2f
-        val alpha = (0.2f + depth * 0.32f + pulse * 0.16f).coerceAtMost(0.76f) * opacity
+        val inset = 8f * density
+        val x = inset + star.x * (size.width - 2f * inset).coerceAtLeast(1f) + dx * drift
+        val y = inset + star.y * (size.height - 2f * inset).coerceAtLeast(1f) + dy * drift
+        val pulse = (waveSin(angle * (0.18f + depth * 0.24f) + star.phase) + 1f) / 2f
+        val alpha = (0.14f + depth * 0.24f + pulse * 0.09f).coerceAtMost(0.6f) * opacity
         val radius =
-            (if (index % 17 == 0) 1.42f else 0.56f + depth * 0.42f) * density
+            (if (index % 17 == 0) 1.15f else 0.42f + depth * 0.32f) * density
         val starColor = lerp(Color.White, palette[index % palette.size], 0.15f)
 
         if (index % 17 == 0) {
@@ -560,74 +509,31 @@ private fun DrawScope.drawArtworkNebula(
     elapsedMs: Long,
     compact: Boolean,
 ) {
-    val base = deepColor(lerp(palette[0], palette[1], 0.28f), 0.8f)
-    drawRect(base)
-
-    val angle = capsuleBackgroundAngle(elapsedMs)
-    val radius = max(size.width, size.height) * if (compact) 1.06f else 0.66f
-    val centers =
-        listOf(
-            Offset(
-                size.width * (0.22f + 0.06f * waveCos(angle * 0.36f)),
-                size.height * (0.32f + 0.07f * waveSin(angle * 0.32f)),
-            ),
-            Offset(
-                size.width * (0.78f + 0.07f * waveSin(angle * 0.3f + 1.8f)),
-                size.height * (0.66f + 0.06f * waveCos(angle * 0.28f + 1.2f)),
-            ),
-            Offset(
-                size.width * (0.5f + 0.1f * waveCos(angle * 0.24f + 3.1f)),
-                size.height * (0.46f + 0.08f * waveSin(angle * 0.26f + 2.4f)),
-            ),
-        )
-
-    centers.forEachIndexed { index, cloudCenter ->
-        val cloud = deepColor(palette[index], if (compact) 0.32f else 0.24f)
-        drawRect(
-            brush =
-                Brush.radialGradient(
-                    colors =
-                        listOf(
-                            cloud.copy(alpha = if (compact) 0.3f else 0.42f),
-                            cloud.copy(alpha = if (compact) 0.12f else 0.18f),
-                            Color.Transparent,
-                        ),
-                    center = cloudCenter,
-                    radius = radius * (0.86f + index * 0.08f),
-                ),
-        )
-    }
-
-    drawRect(
-        brush =
-            Brush.linearGradient(
-                colors =
-                    listOf(
-                        Color.Transparent,
-                        palette[1].copy(alpha = if (compact) 0.08f else 0.13f),
-                        Color.Transparent,
-                    ),
-                start = Offset(-size.width * 0.08f, size.height * 0.86f),
-                end = Offset(size.width * 1.08f, size.height * 0.16f),
-            ),
+    val angle = capsuleBackgroundAngle(elapsedMs) * 0.42
+    val extent = max(size.width, size.height)
+    drawRect(deepColor(lerp(palette[0], palette[1], 0.28f), 0.88f))
+    val centers = listOf(
+        Offset(size.width * (0.16f + 0.07f * waveCos(angle * 0.36)),
+            size.height * (0.24f + 0.07f * waveSin(angle * 0.32))),
+        Offset(size.width * (0.84f + 0.08f * waveSin(angle * 0.3 + 1.8)),
+            size.height * (0.5f + 0.09f * waveCos(angle * 0.28 + 1.2))),
+        Offset(size.width * (0.48f + 0.08f * waveCos(angle * 0.24 + 3.1)),
+            size.height * (0.68f + 0.06f * waveSin(angle * 0.26 + 2.4))),
     )
-
-    repeat(if (compact) 14 else 38) { index ->
-        val twinkle =
-            0.1f +
-                0.16f *
-                ((waveSin(angle * 0.44f + index * 0.91f) + 1f) / 2f)
+    centers.forEachIndexed { index, center ->
+        drawSoftLight(palette[index], center, extent * (0.66f + index * 0.07f),
+            if (compact) 0.24f else 0.34f, if (compact) 0.36f else 0.72f)
+    }
+    repeat(if (compact) 10 else 24) { index ->
+        val twinkle = 0.08f + 0.09f * ((waveSin(angle * 0.44 + index * 0.91) + 1f) / 2f)
         drawCircle(
-            color = lerp(Color.White, palette[index % palette.size], 0.12f).copy(alpha = twinkle),
-            radius = (0.48f + index % 4 * 0.18f) * density,
-            center =
-                Offset(
-                    deterministicFraction(index * 23 + 5) * size.width,
-                    deterministicFraction(index * 41 + 7) * size.height,
-                ),
+            color = lerp(Color.White, palette[index % palette.size], 0.18f).copy(alpha = twinkle),
+            radius = (0.38f + index % 4 * 0.14f) * density,
+            center = Offset(deterministicFraction(index * 23 + 5) * size.width,
+                deterministicFraction(index * 41 + 7) * size.height),
         )
     }
-    drawVignette(alpha = if (compact) 0.2f else 0.32f)
+    drawVignette(if (compact) 0.18f else 0.3f)
 }
 
 private fun DrawScope.drawVignette(alpha: Float) {

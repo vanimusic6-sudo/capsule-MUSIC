@@ -8,6 +8,7 @@
 
 package com.nikhil.yt.ui.player
 
+import com.nikhil.yt.ui.component.CapsuleFavoriteColors
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -152,7 +153,7 @@ fun CurrentSongHeader(
                     ),
                     contentDescription = stringResource(R.string.action_like),
                     tint = if (mediaMetadata?.liked == true)
-                        MaterialTheme.colorScheme.primary
+                        CapsuleFavoriteColors.selected(onBackgroundColor)
                     else onBackgroundColor,
                     modifier = Modifier.size(24.dp)
                 )

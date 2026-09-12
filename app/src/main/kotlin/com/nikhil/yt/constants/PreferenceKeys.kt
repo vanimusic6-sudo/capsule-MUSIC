@@ -5,7 +5,6 @@
  */
 
 
-
 package com.nikhil.yt.constants
 
 import androidx.datastore.preferences.core.booleanPreferencesKey
@@ -353,6 +352,7 @@ enum class PreferredLyricsProvider {
 }
 
 enum class CapsulePlayerDesign {
+    // Persisted as SUPER for existing installations; displayed as Capsule Dense.
     SUPER,
     LIGHT,
 }

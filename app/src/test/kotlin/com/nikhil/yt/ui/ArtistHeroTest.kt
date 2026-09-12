@@ -48,7 +48,7 @@ import org.robolectric.annotation.GraphicsMode
 class ArtistHeroTest {
     @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
 
-    @Test fun portraitIsSquareAndControlsRemainOnIt() {
+    @Test fun portraitHasRoomForTheFullCompositionAndControlsRemainOnIt() {
         compose.setContent {
             ArtistHeroLayout(
                 background = Color.Black,
@@ -63,7 +63,7 @@ class ArtistHeroTest {
         val portrait = compose.onNodeWithTag("portrait").fetchSemanticsNode().boundsInRoot
         val title = compose.onNodeWithTag("title").fetchSemanticsNode().boundsInRoot
         val actions = compose.onNodeWithTag("actions").fetchSemanticsNode().boundsInRoot
-        assertEquals(portrait.width, portrait.height, 1f)
+        assertTrue(portrait.height > portrait.width * 1.5f)
         assertEquals(hero.top, portrait.top, 1f)
         assertEquals(hero.width, portrait.width, 1f)
         assertTrue(title.bottom < actions.top)
@@ -131,6 +131,55 @@ class ArtistHeroTest {
         val hero = compose.onNodeWithTag("hero").fetchSemanticsNode().boundsInRoot
         assertTrue(buttons.last().bottom <= hero.bottom)
         savePreview("artist-large-text")
+    }
+
+
+    @Test fun uncroppedPhotoKeepsItsEdgesAndLowerBodyVisible() {
+        val source = Bitmap.createBitmap(120, 180, Bitmap.Config.ARGB_8888)
+        source.eraseColor(android.graphics.Color.rgb(40, 70, 150))
+        val painter = android.graphics.Paint()
+        val sourceCanvas = Canvas(source)
+        painter.color = android.graphics.Color.rgb(220, 50, 47)
+        sourceCanvas.drawRect(0f, 0f, 4f, 180f, painter)
+        painter.color = android.graphics.Color.rgb(13, 187, 170)
+        sourceCanvas.drawRect(116f, 0f, 120f, 180f, painter)
+        val photo = File(compose.activity.cacheDir, "artist-portrait-fixture.png")
+        photo.outputStream().use { source.compress(Bitmap.CompressFormat.PNG, 100, it) }
+        compose.setContent {
+            MaterialTheme(colorScheme = darkColorScheme()) {
+                ArtistHero(
+                    name = "Pyrokinesis", thumbnailUrl = "file://${photo.absolutePath}",
+                    background = Color(0xFF090909), subscribed = false,
+                    canSubscribe = true, canShuffle = true, showRadio = true, canRadio = true,
+                    onSubscribe = {}, onShuffle = {}, onRadio = {},
+                    modifier = Modifier.width(393.dp).testTag("hero"),
+                )
+            }
+        }
+        fun capture(): Bitmap {
+            val bounds = compose.onNodeWithTag("hero").fetchSemanticsNode().boundsInRoot
+            lateinit var result: Bitmap
+            compose.runOnIdle {
+                result = Bitmap.createBitmap(bounds.width.roundToInt(), bounds.height.roundToInt(), Bitmap.Config.ARGB_8888)
+                val canvas = Canvas(result)
+                canvas.translate(-bounds.left, -bounds.top)
+                compose.activity.findViewById<View>(android.R.id.content).draw(canvas)
+            }
+            return result
+        }
+        compose.waitUntil(timeoutMillis = 15_000) {
+            val image = capture()
+            val x = (image.width * 0.02f).roundToInt()
+            val y = (image.width * 1.5f * 0.24f).roundToInt()
+            android.graphics.Color.red(image.getPixel(x, y)) > 100
+        }
+        val image = capture()
+        val edgeY = (image.width * 1.5f * 0.24f).roundToInt()
+        val right = image.getPixel((image.width * 0.98f).roundToInt(), edgeY)
+        assertTrue("The right edge of the original photograph is cropped", android.graphics.Color.green(right) > 100)
+        val lowerBody = image.getPixel(image.width / 2, (image.width * 1.5f * 0.7f).roundToInt())
+        assertTrue("The fade hides the lower portrait too early", android.graphics.Color.blue(lowerBody) > 70)
+        savePreview("artist-full-portrait")
     }
 
     private fun savePreview(name: String) {

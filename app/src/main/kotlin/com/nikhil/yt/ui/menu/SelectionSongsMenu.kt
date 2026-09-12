@@ -5,9 +5,10 @@
  */
 
 
-
 package com.nikhil.yt.ui.menu
 
+import androidx.compose.material3.LocalContentColor
+import com.nikhil.yt.ui.component.StandardChrome
 import com.nikhil.yt.ui.component.VeluneLoader
 import android.annotation.SuppressLint
 import android.widget.Toast
@@ -49,7 +50,6 @@ import androidx.media3.common.Timeline
 import androidx.media3.exoplayer.offline.Download
 import androidx.media3.exoplayer.offline.DownloadRequest
 import androidx.media3.exoplayer.offline.DownloadService
-import com.nikhil.yt.innertube.YouTube
 import com.nikhil.yt.LocalDatabase
 import com.nikhil.yt.LocalDownloadUtil
 import com.nikhil.yt.LocalPlayerConnection
@@ -67,7 +67,6 @@ import com.nikhil.yt.ui.component.NewAction
 import com.nikhil.yt.ui.component.NewActionGrid
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-
 import kotlinx.coroutines.withContext
 import java.time.LocalDateTime
 
@@ -457,6 +456,7 @@ fun SelectionSongMenu(
                         painter = painterResource(
                             if (allLiked) R.drawable.favorite else R.drawable.favorite_border
                         ),
+                        tint = if (allLiked) StandardChrome.favorite else LocalContentColor.current,
                         contentDescription = null,
                     )
                 },
@@ -734,6 +734,7 @@ fun SelectionMediaMetadataMenu(
                         painter = painterResource(
                             if (allLiked) R.drawable.favorite else R.drawable.favorite_border
                         ),
+                        tint = if (allLiked) StandardChrome.favorite else LocalContentColor.current,
                         contentDescription = null,
                     )
                 },

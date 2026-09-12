@@ -141,6 +141,25 @@ jobs:
                   print(f"{issue.get('id')}: {where}: {issue.get('message')}")
           PY
 
+      # Opt-in visual review for UI commits; no repository writes or device data.
+      - name: Export requested UI previews
+        if: success() && contains(github.event.head_commit.message, '[ui-review]')
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import base64
+          import json
+          import pathlib
+          previews = pathlib.Path("app/build/reports/ui-previews")
+          for name in ("artist-full-portrait.png", "playlist-header.png", "player-background-gallery.png"):
+              path = previews / name
+              if path.is_file():
+                  print("UI_PREVIEW_JSON=" + json.dumps({
+                      "name": name,
+                      "base64": base64.b64encode(path.read_bytes()).decode("ascii"),
+                  }))
+          PY
+
       - name: Upload test and lint reports
         if: always()
         uses: actions/upload-artifact@v4

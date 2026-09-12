@@ -5,9 +5,9 @@
  */
 
 
-
 package com.nikhil.yt.ui.menu
 
+import com.nikhil.yt.ui.component.StandardChrome
 import com.nikhil.yt.ui.component.VeluneLoader
 import android.annotation.SuppressLint
 import android.content.Intent
@@ -194,7 +194,7 @@ fun YouTubePlaylistMenu(
                 ) {
                     Icon(
                         painter = painterResource(if (dbPlaylist?.playlist?.bookmarkedAt != null) R.drawable.favorite else R.drawable.favorite_border),
-                        tint = if (dbPlaylist?.playlist?.bookmarkedAt != null) MaterialTheme.colorScheme.error else LocalContentColor.current,
+                        tint = if (dbPlaylist?.playlist?.bookmarkedAt != null) StandardChrome.favorite else LocalContentColor.current,
                         contentDescription = null
                     )
                 }

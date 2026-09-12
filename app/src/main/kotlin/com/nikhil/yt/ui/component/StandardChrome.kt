@@ -41,7 +41,7 @@ object StandardChrome {
     val selected: Color @Composable get() = if (isDark) Color(0xFF272727) else Color(0xFFDEDEDE)
     val text: Color @Composable get() = if (isDark) Color(0xFFF3F3F3) else Color(0xFF171717)
     val muted: Color @Composable get() = if (isDark) Color(0xFF969696) else Color(0xFF626262)
-    val favorite = Color(0xFFBE0924)
+    val favorite: Color @Composable get() = CapsuleFavoriteColors.selected(text)
 }
 
 @Composable

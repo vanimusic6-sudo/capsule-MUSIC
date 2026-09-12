@@ -9,6 +9,7 @@
 
 package com.nikhil.yt.ui.player
 
+import com.nikhil.yt.ui.component.CapsuleFavoriteColors
 import android.content.Context
 import android.content.Intent
 import androidx.compose.animation.core.Animatable
@@ -49,8 +50,6 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
-import androidx.compose.material3.Slider
-import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -435,7 +434,7 @@ fun CapsulePlayerContent(
                 if (isCapsuleVideoPlaying) {
                     RoundedCornerShape(28.dp)
                 } else {
-                    if (isLight) RoundedCornerShape(32.dp) else CapsuleArtworkShape
+                    if (isLight) RoundedCornerShape(16.dp) else CapsuleArtworkShape
                 }
             val currentPlaybackError = playbackError
 
@@ -562,11 +561,11 @@ fun CapsulePlayerContent(
                                 mediaMetadata.title,
                             color =
                                 textColor,
-                            fontSize = if (isLight) 27.sp else 28.sp,
+                            fontSize = if (isLight) 24.sp else 28.sp,
                             lineHeight =
-                                31.sp,
+                                if (isLight) 29.sp else 31.sp,
                             fontWeight =
-                                FontWeight.Bold,
+                                if (isLight) FontWeight.SemiBold else FontWeight.Bold,
                             maxLines = 1,
                             overflow =
                                 TextOverflow.Ellipsis,
@@ -722,7 +721,7 @@ fun CapsulePlayerContent(
                     onValueChangeFinished =
                         onSeekFinished,
                     trackHeight = if (isLight) 2.dp else 6.dp,
-                    thumbRadius = if (isLight) 6.dp else 4.dp,
+                    thumbRadius = if (isLight) 3.dp else 4.dp,
                     modifier =
                         Modifier
                             .fillMaxWidth()
@@ -748,9 +747,9 @@ fun CapsulePlayerContent(
                         color =
                             secondaryText,
                         fontFamily =
-                            FontFamily.Monospace,
+                            if (isLight) FontFamily.SansSerif else FontFamily.Monospace,
                         fontSize =
-                            13.sp,
+                            if (isLight) 12.sp else 13.sp,
                     )
 
                     Text(
@@ -766,32 +765,59 @@ fun CapsulePlayerContent(
                         color =
                             secondaryText,
                         fontFamily =
-                            FontFamily.Monospace,
+                            if (isLight) FontFamily.SansSerif else FontFamily.Monospace,
                         fontSize =
-                            13.sp,
+                            if (isLight) 12.sp else 13.sp,
                     )
                 }
 
-                CapsuleAudioVideoToggle(
-                    lightStyle = isLight,
-                    state = videoPlaybackState,
-                    textColor = textColor,
-                    enabled = !isListenTogetherGuest,
-                    onAudioClick = {
-                        playerConnection.service.setCapsulePlaybackMode(
-                            CapsulePlaybackMode.AUDIO,
-                        )
-                    },
-                    onVideoClick = {
-                        playerConnection.service.setCapsulePlaybackMode(
-                            CapsulePlaybackMode.VIDEO,
-                        )
-                    },
-                    modifier =
-                        Modifier
-                            .align(Alignment.CenterHorizontally)
-                            .padding(top = 6.dp),
-                )
+                Row(
+                    Modifier.fillMaxWidth().padding(top = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.Center,
+                ) {
+                    if (isLight) {
+                        androidx.compose.material3.IconButton(
+                            onClick = { playerConnection.player.shuffleModeEnabled = !shuffleEnabled },
+                            enabled = !isListenTogetherGuest,
+                            modifier = Modifier.size(48.dp),
+                        ) {
+                            Icon(painterResource(R.drawable.shuffle), stringResource(R.string.shuffle),
+                                tint = textColor.copy(alpha = if (shuffleEnabled) 1f else 0.5f),
+                                modifier = Modifier.size(21.dp))
+                        }
+                    }
+                    CapsuleAudioVideoToggle(
+                        lightStyle = isLight,
+                        state = videoPlaybackState,
+                        textColor = textColor,
+                        enabled = !isListenTogetherGuest,
+                        onAudioClick = {
+                            playerConnection.service.setCapsulePlaybackMode(
+                                CapsulePlaybackMode.AUDIO,
+                            )
+                        },
+                        onVideoClick = {
+                            playerConnection.service.setCapsulePlaybackMode(
+                                CapsulePlaybackMode.VIDEO,
+                            )
+                        },
+                        modifier =
+                            if (isLight) Modifier.weight(1f) else Modifier,
+                    )
+    
+                    if (isLight) {
+                        androidx.compose.material3.IconButton(
+                            onClick = { showSleepTimerDialog = true },
+                            enabled = !isListenTogetherGuest,
+                            modifier = Modifier.size(48.dp),
+                        ) {
+                            Icon(painterResource(R.drawable.bedtime), stringResource(R.string.sleep_timer),
+                                tint = textColor.copy(alpha = if (sleepTimerEnabled) 1f else 0.5f),
+                                modifier = Modifier.size(21.dp))
+                        }
+                    }
+                }
 
                 Spacer(
                     Modifier.height(
@@ -1033,7 +1059,6 @@ fun CapsulePlayerContent(
         },
     )
 }
-
 
 
 @Composable
@@ -1362,10 +1387,8 @@ private fun CapsuleShareFavoriteButtons(
                             R.drawable.favorite_border
                         },
                     ),
-                contentDescription =
-                    null,
-                tint =
-                    textColor,
+                contentDescription = stringResource(if (liked) R.string.action_remove_like else R.string.action_like),
+                tint = CapsuleFavoriteColors.selected(textColor),
                 modifier =
                     Modifier.size(
                         25.dp,

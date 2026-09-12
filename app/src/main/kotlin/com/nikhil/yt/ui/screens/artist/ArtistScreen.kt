@@ -5,9 +5,9 @@
  */
 
 
-
 package com.nikhil.yt.ui.screens.artist
 
+import com.nikhil.yt.ui.utils.artistPortraitUrl
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
@@ -112,7 +112,6 @@ import com.nikhil.yt.ui.menu.YouTubeArtistMenu
 import com.nikhil.yt.ui.menu.YouTubePlaylistMenu
 import com.nikhil.yt.ui.menu.YouTubeSongMenu
 import com.nikhil.yt.ui.utils.backToMain
-import com.nikhil.yt.ui.utils.resize
 import com.nikhil.yt.utils.rememberPreference
 import com.nikhil.yt.viewmodels.ArtistViewModel
 
@@ -171,7 +170,7 @@ fun ArtistScreen(
             item(key = "header") {
                 ArtistHero(
                     name = artistName ?: if (remoteLoading) "" else stringResource(R.string.unknown_artist),
-                    thumbnailUrl = thumbnail?.resize(1200, 1200),
+                    thumbnailUrl = thumbnail?.artistPortraitUrl(),
                     background = surfaceColor,
                     subscribed = libraryArtist?.artist?.bookmarkedAt != null,
                     canSubscribe = libraryArtist != null || artistPage != null,

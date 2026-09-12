@@ -26,6 +26,10 @@ import org.robolectric.annotation.GraphicsMode
 class CapsuleBrandingTest {
     private val context get() = RuntimeEnvironment.getApplication()
 
+    @Test fun persistedSuperSkinIsDisplayedAsCapsuleDense() {
+        assertEquals("Capsule Dense", context.getString(R.string.capsule_player_super))
+    }
+
     @Test fun composeBrandAliasesResolveToTheOriginalRaster() {
         for (resource in listOf(R.drawable.ic_velune_concept, R.drawable.app_icon_small, R.drawable.about_splash)) {
             val bitmap = (context.getDrawable(resource) as BitmapDrawable).bitmap

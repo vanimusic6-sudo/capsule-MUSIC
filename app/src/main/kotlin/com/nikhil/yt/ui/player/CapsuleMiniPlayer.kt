@@ -8,8 +8,8 @@
 
 package com.nikhil.yt.ui.player
 
+import com.nikhil.yt.ui.component.CapsuleFavoriteColors
 import android.os.SystemClock
-import com.nikhil.yt.ui.component.StandardChrome
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
@@ -1079,6 +1079,7 @@ private fun CapsuleFavoriteButton(
     onClick: () -> Unit,
     standardStyle: Boolean = false,
 ) {
+    val favoriteTint = CapsuleFavoriteColors.selected(LocalContentColor.current)
     Box(
         contentAlignment =
             Alignment.Center,
@@ -1090,7 +1091,7 @@ private fun CapsuleFavoriteButton(
                     width = if (standardStyle) 0.dp else 1.dp,
                     color = if (standardStyle) Color.Transparent else
                         if (liked) {
-                            CapsuleMiniError
+                            favoriteTint
                                 .copy(
                                     alpha =
                                         0.5f,
@@ -1108,7 +1109,7 @@ private fun CapsuleFavoriteButton(
                 .background(
                     color = if (standardStyle) Color.Transparent else
                         if (liked) {
-                            CapsuleMiniError
+                            favoriteTint
                                 .copy(
                                     alpha =
                                         0.1f,
@@ -1135,7 +1136,7 @@ private fun CapsuleFavoriteButton(
             contentDescription = stringResource(if (liked) R.string.action_remove_like else R.string.action_like),
             tint =
                 if (liked) {
-                    if (standardStyle) StandardChrome.favorite else CapsuleMiniError
+                    favoriteTint
                 } else {
                     LocalContentColor.current.copy(alpha = 0.65f)
                 },

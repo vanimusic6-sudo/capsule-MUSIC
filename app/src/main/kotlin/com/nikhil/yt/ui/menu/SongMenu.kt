@@ -5,9 +5,9 @@
  */
 
 
-
 package com.nikhil.yt.ui.menu
 
+import com.nikhil.yt.ui.component.StandardChrome
 import com.nikhil.yt.ui.component.ArtistSelectionItem
 import com.nikhil.yt.ui.component.VeluneLoader
 import android.content.Intent
@@ -16,13 +16,9 @@ import android.widget.Toast
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
-import androidx.compose.foundation.background
-import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -33,7 +29,6 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -55,9 +50,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.saveable.Saver
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.graphicsLayer
@@ -67,18 +60,14 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextRange
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.TextFieldValue
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.core.net.toUri
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.media3.exoplayer.offline.Download
 import androidx.media3.exoplayer.offline.DownloadRequest
 import androidx.media3.exoplayer.offline.DownloadService
 import androidx.navigation.NavController
-import coil3.compose.AsyncImage
 import com.nikhil.yt.innertube.YouTube
 import com.nikhil.yt.LocalDatabase
 import com.nikhil.yt.LocalDownloadUtil
@@ -86,14 +75,11 @@ import com.nikhil.yt.LocalPlayerConnection
 import com.nikhil.yt.LocalSyncUtils
 import com.nikhil.yt.R
 import com.nikhil.yt.constants.ArtistSeparatorsKey
-import com.nikhil.yt.constants.ListItemHeight
 import com.nikhil.yt.constants.ListThumbnailSize
 import com.nikhil.yt.db.entities.ArtistEntity
 import com.nikhil.yt.db.entities.Event
 import com.nikhil.yt.db.entities.PlaylistSong
 import com.nikhil.yt.db.entities.Song
-import com.nikhil.yt.db.entities.SongArtistMap
-import com.nikhil.yt.db.MusicDatabase
 import com.nikhil.yt.extensions.toMediaItem
 import com.nikhil.yt.models.toMediaMetadata
 import com.nikhil.yt.playback.ExoDownloadService
@@ -108,7 +94,6 @@ import com.nikhil.yt.ui.component.TextFieldDialog
 import com.nikhil.yt.ui.utils.ShowMediaInfo
 import com.nikhil.yt.utils.rememberPreference
 import com.nikhil.yt.viewmodels.CachePlaylistViewModel
-import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -340,7 +325,7 @@ fun SongMenu(
                 ) {
                     Icon(
                         painter = painterResource(if (song.song.liked) R.drawable.favorite else R.drawable.favorite_border),
-                        tint = if (song.song.liked) MaterialTheme.colorScheme.error else LocalContentColor.current,
+                        tint = if (song.song.liked) StandardChrome.favorite else LocalContentColor.current,
                         contentDescription = null,
                     )
                 }

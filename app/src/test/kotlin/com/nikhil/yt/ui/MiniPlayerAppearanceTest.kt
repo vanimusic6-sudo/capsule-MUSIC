@@ -147,4 +147,37 @@ class MiniPlayerAppearanceTest {
         compose.runOnIdle { duration = 0L }
         assertTrue(empty.sameAs(capture("progress")))
     }
+    @Test fun exportRefinedBackgroundGallery() {
+        var effect by mutableStateOf(CapsuleBackgroundEffect.MATTE_GRADIENT)
+        compose.setContent {
+            MaterialTheme(colorScheme = darkColorScheme()) {
+                CapsuleProceduralBackground(
+                    effect = effect,
+                    colors = listOf(Color(0xFFBC6242), Color(0xFFAB713E), Color(0xFF692842)),
+                    modifier = Modifier.size(200.dp, 350.dp).testTag("background"),
+                    animated = false,
+                )
+            }
+        }
+        val styles = CapsuleBackgroundEffect.entries.filter { it != CapsuleBackgroundEffect.CAPSULE_GLOW }
+        val gallery = Bitmap.createBitmap(720, 864, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(gallery)
+        canvas.drawColor(android.graphics.Color.BLACK)
+        val label = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+            color = android.graphics.Color.WHITE
+            textSize = 13f
+        }
+        styles.forEachIndexed { index, selected ->
+            compose.runOnIdle { effect = selected }
+            val bitmap = capture("background")
+            val x = index % 3 * 240
+            val y = index / 3 * 432
+            canvas.drawBitmap(bitmap, null, android.graphics.Rect(x + 6, y + 6, x + 234, y + 405), null)
+            canvas.drawText(selected.name.replace('_', ' '), x + 12f, y + 423f, label)
+        }
+        val output = File("build/reports/ui-previews/player-background-gallery.png")
+        output.parentFile.mkdirs()
+        output.outputStream().use { gallery.compress(Bitmap.CompressFormat.PNG, 100, it) }
+    }
+
 }

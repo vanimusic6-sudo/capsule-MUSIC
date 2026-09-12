@@ -5,9 +5,9 @@
  */
 
 
-
 package com.nikhil.yt.ui.menu
 
+import com.nikhil.yt.ui.component.StandardChrome
 import com.nikhil.yt.ui.component.ArtistSelectionItem
 import com.nikhil.yt.ui.component.VeluneLoader
 import android.annotation.SuppressLint
@@ -17,7 +17,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
@@ -55,10 +54,8 @@ import androidx.compose.ui.platform.LocalConfiguration
 import android.content.res.Configuration
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.core.net.toUri
 import androidx.media3.exoplayer.offline.Download
 import androidx.media3.exoplayer.offline.DownloadRequest
@@ -73,7 +70,6 @@ import com.nikhil.yt.LocalPlayerConnection
 import com.nikhil.yt.LocalSyncUtils
 import com.nikhil.yt.R
 import com.nikhil.yt.constants.ArtistSeparatorsKey
-import com.nikhil.yt.constants.ListItemHeight
 import com.nikhil.yt.constants.ListThumbnailSize
 import com.nikhil.yt.constants.ThumbnailCornerRadius
 import com.nikhil.yt.db.entities.SongEntity
@@ -246,7 +242,7 @@ fun YouTubeSongMenu(
             ) {  
                 Icon(  
                     painter = painterResource(if (librarySong?.song?.liked == true) R.drawable.favorite else R.drawable.favorite_border),  
-                    tint = if (librarySong?.song?.liked == true) MaterialTheme.colorScheme.error else LocalContentColor.current,  
+                    tint = if (librarySong?.song?.liked == true) StandardChrome.favorite else LocalContentColor.current,  
                     contentDescription = if (librarySong?.song?.liked == true) "Unlike" else "Like",
                 )  
             }  

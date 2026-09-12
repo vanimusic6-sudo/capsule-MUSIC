@@ -847,7 +847,7 @@ Velune will only extract your token, and everything else is stored locally.</str
     <string name="error_network_problem_title">Network problem</string>
     <string name="error_network_problem_description">Check your internet connection. If you use a VPN, try reconnecting or restarting it.</string>
     <string name="capsule_player_design">Player design</string>
-    <string name="capsule_player_super">Capsule Super</string>
+    <string name="capsule_player_super">Capsule Dense</string>
     <string name="capsule_player_light">Capsule Light</string>
     <string name="background_capsule_glow">Capsule Glow</string>
     <string name="capsule_choose_artist">Choose artist</string>
@@ -857,4 +857,5 @@ Velune will only extract your token, and everything else is stored locally.</str
     <string name="back">Back</string>
     <string name="show_less">Show less</string>
     <string name="show_more">Show more</string>
+    <string name="start_mix">Start mix</string>
 </resources>

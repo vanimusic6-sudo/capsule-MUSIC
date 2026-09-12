@@ -1,11 +1,13 @@
 package com.nikhil.yt.ui.player
 
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.rememberScrollState
+import com.nikhil.yt.ui.component.CapsuleFavoriteColors
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
-import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
@@ -24,11 +26,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.selected
@@ -40,8 +39,8 @@ import com.nikhil.yt.constants.CapsulePlayerDesign
 
 private val LocalCapsuleLightMenu = staticCompositionLocalOf<() -> Unit> { {} }
 
-/** Shared radius for Capsule Light's two outlined control panels. */
-internal val CapsuleLightPanelShape = RoundedCornerShape(18.dp)
+/** Soft corners for Capsule Light's low-contrast controls. */
+internal val CapsuleLightPanelShape = RoundedCornerShape(14.dp)
 
 /** Both designs host the same artwork, metadata and playback actions. */
 @Composable
@@ -55,62 +54,31 @@ internal fun CapsulePlayerLayout(
     details: @Composable () -> Unit,
 ) {
     val light = design == CapsulePlayerDesign.LIGHT
-    val configuration = LocalConfiguration.current
-    val screenHeight = configuration.screenHeightDp.dp
-
-    Column(
-        modifier = modifier.fillMaxWidth(),
-        horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
-        if (light) {
-            /* Capsule Light has no floating header controls. The artwork starts
-             * almost immediately below the system inset and remains the dominant
-             * element, matching the compact reference layout. */
-            Spacer(Modifier.height(4.dp))
-
-            BoxWithConstraints(
-                modifier =
-                    Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 14.dp),
-                contentAlignment = Alignment.TopCenter,
+    if (light) {
+        BoxWithConstraints(modifier = modifier.fillMaxWidth()) {
+            val fontScale = LocalDensity.current.fontScale.coerceIn(1f, 1.6f)
+            val detailsSpace = 320.dp * fontScale
+            val artworkSide = minOf(
+                (maxWidth - 48.dp).coerceAtLeast(120.dp),
+                (maxHeight - detailsSpace).coerceIn(180.dp, 420.dp),
+            )
+            Column(
+                modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState()),
+                horizontalAlignment = Alignment.CenterHorizontally,
             ) {
-                val targetSide =
-                    when {
-                        screenHeight < 700.dp -> 245.dp
-                        screenHeight < 760.dp -> 290.dp
-                        screenHeight < 840.dp -> 335.dp
-                        else -> 380.dp
-                    }
-
-                val artworkSide = minOf(maxWidth, targetSide)
-
-                Box(
-                    modifier = Modifier.size(artworkSide),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    artwork()
-                }
+                Spacer(Modifier.height(8.dp))
+                Box(Modifier.size(artworkSide), contentAlignment = Alignment.Center) { artwork() }
+                Spacer(Modifier.height(20.dp))
+                CompositionLocalProvider(LocalCapsuleLightMenu provides onMenuClick) { details() }
             }
-
-            Spacer(Modifier.height(14.dp))
-            CompositionLocalProvider(LocalCapsuleLightMenu provides onMenuClick) {
-                details()
-            }
-        } else {
+        }
+    } else {
+        Column(modifier = modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
             Spacer(Modifier.height(10.dp))
-
             Box(
-                modifier =
-                    Modifier
-                        .weight(1f)
-                        .fillMaxWidth()
-                        .padding(horizontal = 22.dp, vertical = 8.dp),
+                Modifier.weight(1f).fillMaxWidth().padding(horizontal = 22.dp, vertical = 8.dp),
                 contentAlignment = Alignment.Center,
-            ) {
-                artwork()
-            }
-
+            ) { artwork() }
             details()
         }
     }
@@ -124,10 +92,10 @@ internal fun CapsuleLightFavorite(
 ) {
     val scale by
         animateFloatAsState(
-            targetValue = if (liked) 1.08f else 1f,
+            targetValue = if (liked) 1.04f else 1f,
             animationSpec =
                 spring(
-                    dampingRatio = Spring.DampingRatioMediumBouncy,
+                    dampingRatio = Spring.DampingRatioNoBouncy,
                     stiffness = Spring.StiffnessMediumLow,
                 ),
             label = "capsuleLightFavoriteScale",
@@ -135,13 +103,13 @@ internal fun CapsuleLightFavorite(
 
     val tint by
         animateColorAsState(
-            targetValue = if (liked) Color(0xFFFF174F) else textColor.copy(alpha = 0.92f),
+            targetValue = if (liked) CapsuleFavoriteColors.selected(textColor) else textColor.copy(alpha = 0.72f),
             label = "capsuleLightFavoriteTint",
         )
 
     IconButton(
         onClick = onToggleLike,
-        modifier = Modifier.size(52.dp),
+        modifier = Modifier.size(48.dp),
     ) {
         Icon(
             painter = painterResource(if (liked) R.drawable.favorite else R.drawable.favorite_border),
@@ -149,7 +117,7 @@ internal fun CapsuleLightFavorite(
             tint = tint,
             modifier =
                 Modifier
-                    .size(32.dp)
+                    .size(28.dp)
                     .graphicsLayer {
                         scaleX = scale
                         scaleY = scale
@@ -175,23 +143,13 @@ internal fun CapsuleLightControls(
     onMenuClick: (() -> Unit)? = null,
 ) {
     val menuAction = onMenuClick ?: LocalCapsuleLightMenu.current
-    val panelBrush =
-        Brush.verticalGradient(
-            listOf(
-                textColor.copy(alpha = 0.035f),
-                textColor.copy(alpha = 0.012f),
-            ),
-        )
 
     Row(
         modifier =
             Modifier
                 .fillMaxWidth()
-                .height(110.dp)
-                .clip(CapsuleLightPanelShape)
-                .background(panelBrush)
-                .border(1.dp, textColor.copy(alpha = 0.14f), CapsuleLightPanelShape)
-                .padding(horizontal = 8.dp),
+                .height(84.dp)
+                .padding(horizontal = 2.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         CapsuleLightTransportIcon(

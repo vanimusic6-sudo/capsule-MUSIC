@@ -5,18 +5,21 @@
  */
 
 
-
 package com.nikhil.yt.ui.screens.playlist
 
+import com.nikhil.yt.playback.queues.ListQueue
+import com.nikhil.yt.ui.component.PlaylistMixAction
+import androidx.compose.material3.CenterAlignedTopAppBar
+import com.nikhil.yt.ui.component.PlaylistAction
+import com.nikhil.yt.ui.component.PlaylistHero
+import com.nikhil.yt.ui.component.StandardChrome
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
@@ -26,15 +29,11 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.layout.union
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -42,11 +41,9 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
-import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.TopAppBarScrollBehavior
 import androidx.compose.material3.pulltorefresh.PullToRefreshDefaults
@@ -66,51 +63,28 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.toMutableStateList
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.drawBehind
-import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.LinkAnnotation
-import androidx.compose.ui.text.buildAnnotatedString
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.text.withLink
-import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.util.fastAny
-import androidx.compose.ui.zIndex
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.navigation.NavController
-import androidx.palette.graphics.Palette
-import coil3.compose.AsyncImage
-import coil3.imageLoader
-import coil3.request.ImageRequest
-import coil3.request.allowHardware
-import coil3.toBitmap
 import com.valentinilk.shimmer.shimmer
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 import com.nikhil.yt.LocalDatabase
 import com.nikhil.yt.LocalPlayerAwareWindowInsets
 import com.nikhil.yt.LocalPlayerConnection
 import com.nikhil.yt.R
-import com.nikhil.yt.constants.AppBarHeight
-import com.nikhil.yt.constants.DisableBlurKey
 import com.nikhil.yt.constants.HideExplicitKey
 import com.nikhil.yt.db.entities.PlaylistEntity
 import com.nikhil.yt.db.entities.PlaylistSongMap
@@ -125,14 +99,11 @@ import com.nikhil.yt.ui.component.DraggableScrollbar
 import com.nikhil.yt.ui.component.IconButton
 import com.nikhil.yt.ui.component.LocalMenuState
 import com.nikhil.yt.ui.component.YouTubeListItem
-import com.nikhil.yt.ui.component.shimmer.ButtonPlaceholder
 import com.nikhil.yt.ui.component.shimmer.ListItemPlaceHolder
 import com.nikhil.yt.ui.component.shimmer.ShimmerHost
-import com.nikhil.yt.ui.component.shimmer.TextPlaceholder
 import com.nikhil.yt.ui.menu.SelectionMediaMetadataMenu
 import com.nikhil.yt.ui.menu.YouTubePlaylistMenu
 import com.nikhil.yt.ui.menu.YouTubeSongMenu
-import com.nikhil.yt.ui.theme.PlayerColorExtractor
 import com.nikhil.yt.ui.utils.ItemWrapper
 import com.nikhil.yt.ui.utils.backToMain
 import com.nikhil.yt.ui.utils.formatCompactCount
@@ -165,10 +136,7 @@ fun OnlinePlaylistScreen(
 
     var selection by remember { mutableStateOf(false) }
     val hideExplicit by rememberPreference(key = HideExplicitKey, defaultValue = false)
-    val (disableBlur) = rememberPreference(DisableBlurKey, true)
 
-    // System bars padding
-    val systemBarsTopPadding = WindowInsets.systemBars.asPaddingValues().calculateTopPadding()
 
     val lazyListState = rememberLazyListState()
     val coroutineScope = rememberCoroutineScope()
@@ -213,68 +181,10 @@ fun OnlinePlaylistScreen(
         remember(filteredSongs) { filteredSongs.map { item -> ItemWrapper(item) } }
             .toMutableStateList()
 
-    val showTopBarTitle by remember { derivedStateOf { lazyListState.firstVisibleItemIndex > 0 } }
 
-    // Gradient colors state for playlist cover
-    var gradientColors by remember { mutableStateOf<List<Color>>(emptyList()) }
-    val fallbackColor = MaterialTheme.colorScheme.surface.toArgb()
-    val surfaceColor = MaterialTheme.colorScheme.surface
+    val surfaceColor = StandardChrome.background
 
-    // Extract gradient colors from playlist cover
-    LaunchedEffect(playlist?.thumbnail) {
-        val thumbnailUrl = playlist?.thumbnail
-        if (thumbnailUrl != null) {
-            val request =
-                ImageRequest.Builder(context)
-                    .data(thumbnailUrl)
-                    .size(
-                        PlayerColorExtractor.Config.IMAGE_SIZE,
-                        PlayerColorExtractor.Config.IMAGE_SIZE
-                    )
-                    .allowHardware(false)
-                    .build()
 
-            val result = runCatching { context.imageLoader.execute(request) }.getOrNull()
-
-            if (result != null) {
-                val bitmap = result.image?.toBitmap()
-                if (bitmap != null) {
-                    val palette =
-                        withContext(Dispatchers.Default) {
-                            Palette.from(bitmap)
-                                .maximumColorCount(PlayerColorExtractor.Config.MAX_COLOR_COUNT)
-                                .resizeBitmapArea(PlayerColorExtractor.Config.BITMAP_AREA)
-                                .generate()
-                        }
-
-                    val extractedColors =
-                        PlayerColorExtractor.extractGradientColors(
-                            palette = palette,
-                            fallbackColor = fallbackColor
-                        )
-                    gradientColors = extractedColors
-                }
-            }
-        } else {
-            gradientColors = emptyList()
-        }
-    }
-
-    // Calculate gradient opacity based on scroll position
-    val gradientAlpha by remember {
-        derivedStateOf {
-            if (lazyListState.firstVisibleItemIndex == 0) {
-                val offset = lazyListState.firstVisibleItemScrollOffset
-                (1f - (offset / 600f)).coerceIn(0f, 1f)
-            } else {
-                0f
-            }
-        }
-    }
-
-    val transparentAppBar by remember {
-        derivedStateOf { !disableBlur && !selection && !showTopBarTitle }
-    }
 
     val headerItems by remember {
         derivedStateOf {
@@ -306,154 +216,7 @@ fun OnlinePlaylistScreen(
                 onRefresh = viewModel::refresh
             ),
     ) {
-        // Mesh gradient background layer
-        if (!disableBlur && gradientColors.isNotEmpty() && gradientAlpha > 0f) {
-            Box(
-                modifier =
-                    Modifier.fillMaxWidth()
-                        .fillMaxSize(0.55f)
-                        .align(Alignment.TopCenter)
-                        .zIndex(-1f)
-                        .drawBehind {
-                            val width = size.width
-                            val height = size.height
 
-                            if (gradientColors.size >= 3) {
-                                val c0 = gradientColors[0]
-                                val c1 = gradientColors[1]
-                                val c2 = gradientColors[2]
-                                val c3 = gradientColors.getOrElse(3) { c0 }
-                                val c4 = gradientColors.getOrElse(4) { c1 }
-                                // Primary color blob - top center
-                                drawRect(
-                                    brush =
-                                        Brush.radialGradient(
-                                            colors =
-                                                listOf(
-                                                    c0.copy(
-                                                        alpha = gradientAlpha * 0.75f
-                                                    ),
-                                                    c0.copy(
-                                                        alpha = gradientAlpha * 0.4f
-                                                    ),
-                                                    Color.Transparent
-                                                ),
-                                            center = Offset(width * 0.5f, height * 0.15f),
-                                            radius = width * 0.8f
-                                        )
-                                )
-
-                                // Secondary color blob - left side
-                                drawRect(
-                                    brush =
-                                        Brush.radialGradient(
-                                            colors =
-                                                listOf(
-                                                    c1.copy(
-                                                        alpha = gradientAlpha * 0.55f
-                                                    ),
-                                                    c1.copy(
-                                                        alpha = gradientAlpha * 0.3f
-                                                    ),
-                                                    Color.Transparent
-                                                ),
-                                            center = Offset(width * 0.1f, height * 0.4f),
-                                            radius = width * 0.6f
-                                        )
-                                )
-
-                                // Third color blob - right side
-                                drawRect(
-                                    brush =
-                                        Brush.radialGradient(
-                                            colors =
-                                                listOf(
-                                                    c2.copy(
-                                                        alpha = gradientAlpha * 0.5f
-                                                    ),
-                                                    c2.copy(
-                                                        alpha = gradientAlpha * 0.25f
-                                                    ),
-                                                    Color.Transparent
-                                                ),
-                                            center = Offset(width * 0.9f, height * 0.35f),
-                                            radius = width * 0.55f
-                                        )
-                                )
-
-                                drawRect(
-                                    brush =
-                                        Brush.radialGradient(
-                                            colors =
-                                                listOf(
-                                                    c3.copy(
-                                                        alpha = gradientAlpha * 0.35f
-                                                    ),
-                                                    c3.copy(
-                                                        alpha = gradientAlpha * 0.18f
-                                                    ),
-                                                    Color.Transparent
-                                                ),
-                                            center = Offset(width * 0.25f, height * 0.65f),
-                                            radius = width * 0.75f
-                                        )
-                                )
-
-                                drawRect(
-                                    brush =
-                                        Brush.radialGradient(
-                                            colors =
-                                                listOf(
-                                                    c4.copy(
-                                                        alpha = gradientAlpha * 0.3f
-                                                    ),
-                                                    c4.copy(
-                                                        alpha = gradientAlpha * 0.15f
-                                                    ),
-                                                    Color.Transparent
-                                                ),
-                                            center = Offset(width * 0.55f, height * 0.85f),
-                                            radius = width * 0.9f
-                                        )
-                                )
-                            } else if (gradientColors.isNotEmpty()) {
-                                drawRect(
-                                    brush =
-                                        Brush.radialGradient(
-                                            colors =
-                                                listOf(
-                                                    gradientColors[0].copy(
-                                                        alpha = gradientAlpha * 0.7f
-                                                    ),
-                                                    gradientColors[0].copy(
-                                                        alpha = gradientAlpha * 0.35f
-                                                    ),
-                                                    Color.Transparent
-                                                ),
-                                            center = Offset(width * 0.5f, height * 0.25f),
-                                            radius = width * 0.85f
-                                        )
-                                )
-                            }
-
-                            drawRect(
-                                brush =
-                                    Brush.verticalGradient(
-                                        colors =
-                                            listOf(
-                                                Color.Transparent,
-                                                Color.Transparent,
-                                                surfaceColor.copy(alpha = gradientAlpha * 0.22f),
-                                                surfaceColor.copy(alpha = gradientAlpha * 0.55f),
-                                                surfaceColor
-                                            ),
-                                        startY = height * 0.4f,
-                                        endY = height
-                                    )
-                            )
-                        }
-            )
-        }
 
         LazyColumn(
             state = lazyListState,
@@ -465,373 +228,140 @@ fun OnlinePlaylistScreen(
                     // Shimmer Loading State
                     item(key = "shimmer") {
                         ShimmerHost {
-                            Column(
-                                modifier =
-                                    Modifier.fillMaxWidth()
-                                        .padding(top = systemBarsTopPadding + AppBarHeight),
-                                horizontalAlignment = Alignment.CenterHorizontally
-                            ) {
-                                // Playlist art placeholder
-                                Box(
-                                    modifier =
-                                        Modifier.padding(top = 8.dp, bottom = 20.dp)
-                                            .size(240.dp)
-                                            .shimmer()
-                                            .clip(RoundedCornerShape(16.dp))
-                                            .background(MaterialTheme.colorScheme.onSurface)
-                                )
-
-                                // Title placeholder
-                                TextPlaceholder(
-                                    height = 28.dp,
-                                    modifier =
-                                        Modifier.fillMaxWidth(0.6f).padding(horizontal = 32.dp)
-                                )
-
-                                Spacer(modifier = Modifier.height(8.dp))
-
-                                // Author placeholder
-                                TextPlaceholder(
-                                    height = 20.dp,
-                                    modifier = Modifier.fillMaxWidth(0.4f)
-                                )
-
-                                Spacer(modifier = Modifier.height(16.dp))
-
-                                // Metadata placeholder
-                                Row(
-                                    modifier = Modifier.fillMaxWidth().padding(horizontal = 48.dp),
-                                    horizontalArrangement = Arrangement.SpaceEvenly
-                                ) {
-                                    repeat(2) {
-                                        TextPlaceholder(
-                                            height = 32.dp,
-                                            modifier = Modifier.width(80.dp)
-                                        )
-                                    }
-                                }
-
-                                Spacer(modifier = Modifier.height(24.dp))
-
-                                // Buttons placeholder
-                                Row(
-                                    modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp),
-                                    horizontalArrangement =
-                                        Arrangement.spacedBy(12.dp, Alignment.CenterHorizontally)
-                                ) {
-                                    Box(
-                                        modifier =
-                                            Modifier.size(48.dp)
-                                                .shimmer()
-                                                .clip(CircleShape)
-                                                .background(MaterialTheme.colorScheme.onSurface)
-                                    )
-                                    ButtonPlaceholder(modifier = Modifier.weight(1f).height(48.dp))
-                                    ButtonPlaceholder(modifier = Modifier.weight(1f).height(48.dp))
-                                    Box(
-                                        modifier =
-                                            Modifier.size(48.dp)
-                                                .shimmer()
-                                                .clip(CircleShape)
-                                                .background(MaterialTheme.colorScheme.onSurface)
-                                    )
-                                }
-
-                                Spacer(modifier = Modifier.height(24.dp))
-                            }
-
-                            repeat(6) { ListItemPlaceHolder() }
+                        PlaylistHero(
+                            thumbnails = listOfNotNull(playlist?.thumbnail),
+                            songCount = stringResource(R.string.loading),
+                            loading = true,
+                            secondaryAction = { PlaylistMixAction(onClick = {}, enabled = false) },
+                        ) {
+                            repeat(5) { PlaylistAction(R.drawable.play, stringResource(R.string.loading), {}, enabled = false) }
+                        }
+                        repeat(6) { ListItemPlaceHolder() }
+                    
                         }
                     }
                 } else if (playlist != null) {
                     if (!isSearching) {
                         // Hero Header
                         item(key = "header") {
-                            Column(
-                                modifier =
-                                    Modifier.fillMaxWidth()
-                                        .padding(top = systemBarsTopPadding + AppBarHeight)
-                                        .animateItem(),
-                                horizontalAlignment = Alignment.CenterHorizontally
-                            ) {
-                                // Playlist Thumbnail - Large centered with shadow
-                                Box(modifier = Modifier.padding(top = 8.dp, bottom = 20.dp)) {
-                                    Surface(
-                                        modifier =
-                                            Modifier.size(240.dp)
-                                                .shadow(
-                                                    elevation = 24.dp,
-                                                    shape = RoundedCornerShape(16.dp),
-                                                    spotColor =
-                                                        gradientColors
-                                                            .getOrNull(0)
-                                                            ?.copy(alpha = 0.5f)
-                                                            ?: MaterialTheme.colorScheme.primary
-                                                                .copy(alpha = 0.3f)
-                                                ),
-                                        shape = RoundedCornerShape(16.dp)
-                                    ) {
-                                        AsyncImage(
-                                            model = playlist.thumbnail,
-                                            contentDescription = null,
-                                            contentScale = ContentScale.Crop,
-                                            modifier = Modifier.fillMaxSize()
+                            PlaylistHero(
+                                thumbnails = listOfNotNull(playlist.thumbnail),
+                                songCount = playlist.songCountText ?: pluralStringResource(R.plurals.n_song, songs.size, songs.size),
+                                subtitle = {
+                                    playlist.author?.let { artist ->
+                                        Text(
+                                            text = artist.name, color = StandardChrome.muted,
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            maxLines = 1, overflow = TextOverflow.Ellipsis,
+                                            modifier = Modifier.padding(horizontal = 24.dp)
+                                                .clickable(enabled = artist.id != null) { navController.navigate("artist/${artist.id}") },
                                         )
                                     }
-                                }
-
-                                // Playlist Title
-                                Text(
-                                    text = playlist.title,
-                                    style = MaterialTheme.typography.headlineSmall,
-                                    fontWeight = FontWeight.Bold,
-                                    textAlign = TextAlign.Center,
-                                    maxLines = 2,
-                                    overflow = TextOverflow.Ellipsis,
-                                    modifier = Modifier.padding(horizontal = 32.dp)
-                                )
-
-                                // Author (Clickable)
-                                playlist.author?.let { artist ->
-                                    Spacer(modifier = Modifier.height(8.dp))
-                                    Text(
-                                        text =
-                                            buildAnnotatedString {
-                                                withStyle(
-                                                    style =
-                                                        MaterialTheme.typography.titleMedium
-                                                            .copy(
-                                                                fontWeight = FontWeight.Normal,
-                                                                color =
-                                                                    MaterialTheme.colorScheme
-                                                                        .primary
+                                },
+                                secondaryAction = {
+                                    PlaylistMixAction(onClick = {
+                                        playlist.shuffleEndpoint?.let { shuffleEndpoint ->
+                                            playerConnection.playQueue(
+                                                YouTubeQueue(shuffleEndpoint)
+                                            )
+                                        }
+                                    }, enabled = playlist.shuffleEndpoint != null)
+                                },
+                            ) {
+                                if (playlist.id != "LM") {
+                                    PlaylistAction(
+                                        icon = if (dbPlaylist?.playlist?.bookmarkedAt != null) R.drawable.favorite else R.drawable.favorite_border, label = stringResource(if (dbPlaylist?.playlist?.bookmarkedAt != null) R.string.action_remove_like else R.string.action_like),
+                                        onClick = {
+                                            if (dbPlaylist?.playlist == null) {
+                                                database.transaction {
+                                                    val playlistEntity =
+                                                        PlaylistEntity(
+                                                                name = playlist.title,
+                                                                browseId = playlist.id,
+                                                                thumbnailUrl =
+                                                                    playlist.thumbnail,
+                                                                isEditable =
+                                                                    playlist.isEditable,
+                                                                playEndpointParams =
+                                                                    playlist.playEndpoint
+                                                                        ?.params,
+                                                                shuffleEndpointParams =
+                                                                    playlist.shuffleEndpoint
+                                                                        ?.params,
+                                                                radioEndpointParams =
+                                                                    playlist.radioEndpoint
+                                                                        ?.params
                                                             )
-                                                            .toSpanStyle()
-                                                ) {
-                                                    if (artist.id != null) {
-                                                        val link =
-                                                            LinkAnnotation.Clickable(artist.id!!) {
-                                                                navController.navigate(
-                                                                    "artist/${artist.id}"
-                                                                )
-                                                            }
-                                                        withLink(link) { append(artist.name) }
-                                                    } else {
-                                                        append(artist.name)
-                                                    }
+                                                            .toggleLike()
+                                                    insert(playlistEntity)
+                                                    songs
+                                                        .map(SongItem::toMediaMetadata)
+                                                        .onEach(::insert)
+                                                        .mapIndexed { index, song ->
+                                                            PlaylistSongMap(
+                                                                songId = song.id,
+                                                                playlistId = playlistEntity.id,
+                                                                position = index
+                                                            )
+                                                        }
+                                                        .forEach(::insert)
                                                 }
-                                            },
-                                        textAlign = TextAlign.Center,
-                                        modifier = Modifier.padding(horizontal = 32.dp)
+                                            } else {
+                                                database.transaction {
+                                                    val currentPlaylist = dbPlaylist!!.playlist
+                                                    update(currentPlaylist, playlist)
+                                                    update(currentPlaylist.toggleLike())
+                                                }
+                                            }
+                                        },
+                                        tint = StandardChrome.favorite,
                                     )
                                 }
-
-                                Spacer(modifier = Modifier.height(16.dp))
-
-                                // Metadata Row - Song Count
-                                playlist.songCountText?.let { songCountText ->
-                                    Row(
-                                        modifier =
-                                            Modifier.fillMaxWidth().padding(horizontal = 48.dp),
-                                        horizontalArrangement = Arrangement.Center,
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        MetadataChip(
-                                            icon = R.drawable.music_note,
-                                            text = songCountText
-                                        )
-                                    }
-                                }
-
-                                Spacer(modifier = Modifier.height(24.dp))
-
-                                // Action Buttons Row
-                                Row(
-                                    modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp),
-                                    horizontalArrangement =
-                                        Arrangement.spacedBy(12.dp, Alignment.CenterHorizontally),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    // Like/Save Button
-                                    if (playlist.id != "LM") {
-                                        Surface(
-                                            onClick = {
-                                                if (dbPlaylist?.playlist == null) {
-                                                    database.transaction {
-                                                        val playlistEntity =
-                                                            PlaylistEntity(
-                                                                    name = playlist.title,
-                                                                    browseId = playlist.id,
-                                                                    thumbnailUrl =
-                                                                        playlist.thumbnail,
-                                                                    isEditable =
-                                                                        playlist.isEditable,
-                                                                    playEndpointParams =
-                                                                        playlist.playEndpoint
-                                                                            ?.params,
-                                                                    shuffleEndpointParams =
-                                                                        playlist.shuffleEndpoint
-                                                                            ?.params,
-                                                                    radioEndpointParams =
-                                                                        playlist.radioEndpoint
-                                                                            ?.params
-                                                                )
-                                                                .toggleLike()
-                                                        insert(playlistEntity)
-                                                        songs
-                                                            .map(SongItem::toMediaMetadata)
-                                                            .onEach(::insert)
-                                                            .mapIndexed { index, song ->
-                                                                PlaylistSongMap(
-                                                                    songId = song.id,
-                                                                    playlistId = playlistEntity.id,
-                                                                    position = index
-                                                                )
-                                                            }
-                                                            .forEach(::insert)
-                                                    }
-                                                } else {
-                                                    database.transaction {
-                                                        val currentPlaylist = dbPlaylist!!.playlist
-                                                        update(currentPlaylist, playlist)
-                                                        update(currentPlaylist.toggleLike())
-                                                    }
-                                                }
-                                            },
-                                            shape = CircleShape,
-                                            color = MaterialTheme.colorScheme.surfaceVariant,
-                                            modifier = Modifier.size(48.dp)
-                                        ) {
-                                            Box(
-                                                modifier = Modifier.fillMaxSize(),
-                                                contentAlignment = Alignment.Center
-                                            ) {
-                                                Icon(
-                                                    painter =
-                                                        painterResource(
-                                                            if (
-                                                                dbPlaylist
-                                                                    ?.playlist
-                                                                    ?.bookmarkedAt != null
-                                                            )
-                                                                R.drawable.favorite
-                                                            else R.drawable.favorite_border
-                                                        ),
-                                                    contentDescription = null,
-                                                    tint =
-                                                        if (
-                                                            dbPlaylist?.playlist?.bookmarkedAt !=
-                                                                null
-                                                        )
-                                                            MaterialTheme.colorScheme.error
-                                                        else
-                                                            MaterialTheme.colorScheme
-                                                                .onSurfaceVariant,
-                                                    modifier = Modifier.size(24.dp)
-                                                )
-                                            }
-                                        }
-                                    }
-
-                                    // Shuffle Button
-                                    playlist.shuffleEndpoint?.let { shuffleEndpoint ->
-                                        Button(
-                                            onClick = {
-                                                playerConnection.playQueue(
-                                                    YouTubeQueue(shuffleEndpoint)
-                                                )
-                                            },
-                                            shape = RoundedCornerShape(24.dp),
-                                            modifier = Modifier.weight(1f).height(48.dp)
-                                        ) {
-                                            Icon(
-                                                painter = painterResource(R.drawable.shuffle),
-                                                contentDescription =
-                                                    stringResource(R.string.shuffle),
-                                                modifier = Modifier.size(24.dp)
-                                            )
-                                        }
-                                    }
-
-                                    // Radio Button
-                                    playlist.radioEndpoint?.let { radioEndpoint ->
-                                        Button(
-                                            onClick = {
-                                                playerConnection.playQueue(
-                                                    YouTubeQueue(radioEndpoint)
-                                                )
-                                            },
-                                            shape = RoundedCornerShape(24.dp),
-                                            modifier = Modifier.weight(1f).height(48.dp)
-                                        ) {
-                                            Icon(
-                                                painter = painterResource(R.drawable.radio),
-                                                contentDescription = stringResource(R.string.radio),
-                                                modifier = Modifier.size(24.dp)
-                                            )
-                                        }
-                                    }
-
-                                    // More Options Button
-                                    Surface(
+                                PlaylistAction(
+                                    icon = R.drawable.play, label = stringResource(R.string.play),
+                                    onClick = {
+                                        val endpoint = playlist.playEndpoint
+                                        if (endpoint != null) playerConnection.playQueue(YouTubeQueue(endpoint))
+                                        else playerConnection.playQueue(ListQueue(title = playlist.title, items = songs.map { it.toMediaItem() }))
+                                    },
+                                    enabled = playlist.playEndpoint != null || songs.isNotEmpty(),
+                                )
+                                playlist.shuffleEndpoint?.let { shuffleEndpoint ->
+                                    PlaylistAction(
+                                        icon = R.drawable.shuffle, label = stringResource(R.string.shuffle),
                                         onClick = {
-                                            menuState.show {
-                                                YouTubePlaylistMenu(
-                                                    playlist = playlist,
-                                                    songs = songs,
-                                                    coroutineScope = coroutineScope,
-                                                    onDismiss = menuState::dismiss,
-                                                    selectAction = { selection = true },
-                                                    canSelect = true,
-                                                    snackbarHostState = snackbarHostState,
-                                                )
-                                            }
+                                            playerConnection.playQueue(
+                                                YouTubeQueue(shuffleEndpoint)
+                                            )
                                         },
-                                        shape = CircleShape,
-                                        color = MaterialTheme.colorScheme.surfaceVariant,
-                                        modifier = Modifier.size(48.dp)
-                                    ) {
-                                        Box(
-                                            modifier = Modifier.fillMaxSize(),
-                                            contentAlignment = Alignment.Center
-                                        ) {
-                                            Icon(
-                                                painter = painterResource(R.drawable.more_vert),
-                                                contentDescription = null,
-                                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                                modifier = Modifier.size(24.dp)
+                                    )
+                                }
+                                playlist.radioEndpoint?.let { radioEndpoint ->
+                                    PlaylistAction(
+                                        icon = R.drawable.radio, label = stringResource(R.string.radio),
+                                        onClick = {
+                                            playerConnection.playQueue(
+                                                YouTubeQueue(radioEndpoint)
+                                            )
+                                        },
+                                    )
+                                }
+                                PlaylistAction(
+                                    icon = R.drawable.more_vert, label = stringResource(R.string.more),
+                                    onClick = {
+                                        menuState.show {
+                                            YouTubePlaylistMenu(
+                                                playlist = playlist,
+                                                songs = songs,
+                                                coroutineScope = coroutineScope,
+                                                onDismiss = menuState::dismiss,
+                                                selectAction = { selection = true },
+                                                canSelect = true,
+                                                snackbarHostState = snackbarHostState,
                                             )
                                         }
-                                    }
-                                }
-
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(horizontal = 20.dp, vertical = 20.dp),
-                                    horizontalArrangement = Arrangement.Center,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Button(
-                                        onClick = {
-                                            playlist.shuffleEndpoint?.let { shuffleEndpoint ->
-                                                playerConnection.playQueue(
-                                                    YouTubeQueue(shuffleEndpoint)
-                                                )
-                                            }
-                                        },
-                                        shape = RoundedCornerShape(24.dp),
-                                        modifier = Modifier.weight(1f).height(48.dp)
-                                    ) {
-                                        Icon(
-                                            painter = painterResource(R.drawable.mix),
-                                            contentDescription = "Start Mix",
-                                            modifier = Modifier.size(24.dp)
-                                        )
-                                    }
-                                }
-
-                                Spacer(modifier = Modifier.height(24.dp))
+                                    },
+                                )
                             }
                         }
                     }
@@ -1007,24 +537,14 @@ fun OnlinePlaylistScreen(
         )
 
         // Top App Bar
-        val topAppBarColors =
-            if (transparentAppBar) {
-                TopAppBarDefaults.topAppBarColors(
-                    containerColor = Color.Transparent,
-                    scrolledContainerColor = Color.Transparent,
-                    navigationIconContentColor = MaterialTheme.colorScheme.onBackground,
-                    titleContentColor = MaterialTheme.colorScheme.onBackground,
-                    actionIconContentColor = MaterialTheme.colorScheme.onBackground
-                )
-            } else {
-                TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surface,
-                    scrolledContainerColor = MaterialTheme.colorScheme.surface
-                )
-            }
-
-        TopAppBar(
-            colors = topAppBarColors,
+        CenterAlignedTopAppBar(
+            colors = TopAppBarDefaults.topAppBarColors(
+                containerColor = surfaceColor,
+                scrolledContainerColor = surfaceColor,
+                titleContentColor = StandardChrome.text,
+                navigationIconContentColor = StandardChrome.text,
+                actionIconContentColor = StandardChrome.text,
+            ),
             title = {
                 if (selection) {
                     val count = wrappedSongs.count { it.isSelected }
@@ -1055,8 +575,8 @@ fun OnlinePlaylistScreen(
                             ),
                         modifier = Modifier.fillMaxWidth().focusRequester(focusRequester)
                     )
-                } else if (showTopBarTitle) {
-                    Text(playlist?.title.orEmpty())
+                } else {
+                    Text(playlist?.title.orEmpty(), maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
             },
             navigationIcon = {
@@ -1159,30 +679,4 @@ fun OnlinePlaylistScreen(
     }
 }
 
-@Composable
-private fun MetadataChip(icon: Int, text: String, modifier: Modifier = Modifier) {
-    Surface(
-        modifier = modifier,
-        shape = RoundedCornerShape(20.dp),
-        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f)
-    ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Icon(
-                painter = painterResource(icon),
-                contentDescription = null,
-                modifier = Modifier.size(16.dp),
-                tint = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            Text(
-                text = text,
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 1
-            )
-        }
-    }
-}
+

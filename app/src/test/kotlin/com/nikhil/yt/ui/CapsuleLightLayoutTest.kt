@@ -20,6 +20,9 @@ import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.foundation.layout.Column
 import androidx.compose.ui.unit.dp
 import androidx.media3.common.Player
 import com.nikhil.yt.R
@@ -104,4 +107,24 @@ class CapsuleLightLayoutTest {
         menu.performClick()
         compose.runOnIdle { assertEquals("menu", clicked.last()) }
     }
+    @Test fun shortLightPlayerCanScrollToItsLastControlWithoutLosingActions() {
+        var clicks = 0
+        compose.setContent {
+            MaterialTheme {
+                CapsulePlayerLayout(CapsulePlayerDesign.LIGHT, Color.White, {}, {},
+                    Modifier.size(320.dp, 420.dp),
+                    artwork = { Box(Modifier.fillMaxWidth().aspectRatio(1f).testTag("cover")) },
+                    details = {
+                        Column(Modifier.fillMaxWidth()) {
+                            Box(Modifier.height(500.dp))
+                            Box(Modifier.size(48.dp).testTag("last-control").clickable { clicks++ })
+                        }
+                    },
+                )
+            }
+        }
+        compose.onNodeWithTag("last-control").performScrollTo().assertIsDisplayed().performClick()
+        assertEquals(1, clicks)
+    }
+
 }

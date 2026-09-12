@@ -62,13 +62,13 @@ fun CapsuleAudioVideoToggle(
     Row(
         modifier =
             modifier
-                .width(if (lightStyle) 220.dp else 190.dp)
-                .height(if (lightStyle) 46.dp else 36.dp)
+                .width(if (lightStyle) 200.dp else 190.dp)
+                .height(if (lightStyle) 48.dp else 36.dp)
                 .clip(shape)
-                .background(textColor.copy(alpha = if (lightStyle) 0.025f else 0.018f))
+                .background(textColor.copy(alpha = if (lightStyle) 0.035f else 0.018f))
                 .border(
                     1.dp,
-                    textColor.copy(alpha = if (lightStyle) 0.16f else 0.18f),
+                    textColor.copy(alpha = if (lightStyle) 0f else 0.18f),
                     shape,
                 )
                 .padding(horizontal = 3.dp, vertical = if (lightStyle) 3.dp else 0.dp),
@@ -91,7 +91,7 @@ fun CapsuleAudioVideoToggle(
             Modifier
                 .width(1.dp)
                 .height(if (lightStyle) 22.dp else 18.dp)
-                .background(textColor.copy(alpha = if (lightStyle) 0.13f else 0.16f)),
+                .background(textColor.copy(alpha = if (lightStyle) 0f else 0.16f)),
         )
 
         CapsuleModeSegment(
@@ -144,7 +144,7 @@ private fun CapsuleModeSegment(
                     scaleY = scale
                 }
                 .clip(segmentShape)
-                .background(Color.Transparent)
+                .background(if (lightStyle && selected) textColor.copy(alpha = 0.08f) else Color.Transparent)
                 .clickable(
                     enabled = enabled && !loading,
                     onClick = onClick,
@@ -169,7 +169,7 @@ private fun CapsuleModeSegment(
                             },
                     ),
                 fontFamily = if (lightStyle) FontFamily.SansSerif else FontFamily.Monospace,
-                fontSize = if (unavailable || requestError) 9.sp else if (lightStyle) 16.sp else 11.sp,
+                fontSize = if (unavailable || requestError) 9.sp else if (lightStyle) 14.sp else 11.sp,
                 fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
                 letterSpacing = 0.35.sp,
                 maxLines = 1,

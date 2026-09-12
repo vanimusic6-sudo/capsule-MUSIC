@@ -10,7 +10,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -45,7 +44,7 @@ import coil3.compose.AsyncImage
 import androidx.compose.ui.layout.ContentScale
 import com.nikhil.yt.R
 
-/** A square full-width portrait. Large accessibility text may extend the content below it. */
+/** Full-width portrait composition; controls sit in its lower fade without cropping the subject. */
 @Composable
 internal fun ArtistHeroLayout(
     background: Color,
@@ -56,10 +55,10 @@ internal fun ArtistHeroLayout(
     topSafePadding: Dp = 0.dp,
 ) {
     BoxWithConstraints(modifier.fillMaxWidth().background(background)) {
-        val portraitSize = maxWidth
-        Box(Modifier.fillMaxWidth().aspectRatio(1f)) {
+        val portraitSize = (maxWidth / 0.62f).coerceAtMost(760.dp)
+        Box(Modifier.fillMaxWidth().height(portraitSize)) {
             artwork()
-            ArtworkSurfaceFade(background, Modifier.matchParentSize())
+            ArtworkSurfaceFade(background, Modifier.matchParentSize(), portrait = true)
         }
         Column(
             Modifier.fillMaxWidth().heightIn(min = portraitSize)
@@ -101,7 +100,7 @@ internal fun ArtistHero(
                 AsyncImage(
                     model = thumbnailUrl,
                     contentDescription = null,
-                    contentScale = ContentScale.Crop,
+                    contentScale = ContentScale.Fit,
                     alignment = Alignment.TopCenter,
                     modifier = Modifier.fillMaxSize(),
                 )
