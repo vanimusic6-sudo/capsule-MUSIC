@@ -154,6 +154,47 @@ class AudioResolveSchedulerTest {
         assertEquals(1, calls)
     }
 
+    @Test fun loaderPromotionBeforeTicketPromotesTheNextPrefetchRun() = runTest {
+        val scheduler = AudioResolveScheduler(monotonicNowMs = { testScheduler.currentTime })
+        scheduler.promote("next")
+
+        var observed = AudioResolvePriority.PREFETCH
+        val value =
+            scheduler.run("next", AudioResolvePriority.PREFETCH) {
+                observed = scheduler.effectivePriority("next", AudioResolvePriority.PREFETCH)
+                7
+            }
+
+        assertEquals(7, value)
+        assertEquals(AudioResolvePriority.PLAYBACK, observed)
+    }
+
+    @Test fun loaderPromotionIsVisibleInsideYoungSharedPrefetch() = runTest {
+        val scheduler = AudioResolveScheduler(monotonicNowMs = { testScheduler.currentTime })
+        val started = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        val observed = mutableListOf<AudioResolvePriority>()
+
+        val work = async {
+            scheduler.run("next", AudioResolvePriority.PREFETCH) {
+                observed += scheduler.effectivePriority("next", AudioResolvePriority.PREFETCH)
+                started.complete(Unit)
+                release.await()
+                observed += scheduler.effectivePriority("next", AudioResolvePriority.PREFETCH)
+            }
+        }
+
+        started.await()
+        scheduler.promote("next")
+        release.complete(Unit)
+        work.await()
+
+        assertEquals(
+            listOf(AudioResolvePriority.PREFETCH, AudioResolvePriority.PLAYBACK),
+            observed,
+        )
+    }
+
     @Test fun stalePrefetchPromotionRestartsAsForeground() = runTest {
         val scheduler =
             AudioResolveScheduler(
