@@ -174,12 +174,9 @@ class PoTokenGenerator(context: Context) {
                 return obtain(videoId, visitorData, forceRecreate = true)
             }
 
-        // BotGuard token scope is not interchangeable:
-        // - the token minted from videoId belongs on the /player request;
-        // - the visitorData token belongs on streaming/GVS requests.
-        return PoTokenResult(
-            playerRequestPoToken = playerToken,
-            streamingDataPoToken = prepared.streamingToken,
+        return PoTokenResult.fromBotGuard(
+            videoIdPoToken = playerToken,
+            visitorDataPoToken = prepared.streamingToken,
         )
     }
 
