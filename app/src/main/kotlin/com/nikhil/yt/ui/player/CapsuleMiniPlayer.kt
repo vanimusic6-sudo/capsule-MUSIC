@@ -44,9 +44,11 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
@@ -58,14 +60,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.drawWithContent
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.lerp
-import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalDensity
@@ -175,7 +172,7 @@ fun CapsuleMiniPlayer(
         rememberCapsuleArtworkColors(
             mediaMetadata = mediaMetadata,
             enabled =
-                !standardStyle && miniPlayerBackground !=
+                miniPlayerBackground !=
                     MiniPlayerBackgroundStyle.THEME,
         )
 
@@ -507,7 +504,10 @@ fun CapsuleMiniPlayer(
                     capsuleBottomRadius,
             )
 
-        Box(
+        MiniPlayerSurface(
+            style = miniPlayerBackground,
+            pureBlack = pureBlack,
+            colors = miniArtworkColors,
             modifier =
                 Modifier
                     .fillMaxWidth()
@@ -534,15 +534,6 @@ fun CapsuleMiniPlayer(
                             miniPlayerShape,
                     ),
         ) {
-            if (standardStyle) {
-                Box(Modifier.fillMaxSize().background(StandardChrome.panel))
-            } else CapsuleCompactSurfaceBackground(
-                style = miniPlayerBackground,
-                pureBlack = pureBlack,
-                colors = miniArtworkColors,
-                modifier = Modifier.fillMaxSize(),
-            )
-
             Row(
                 verticalAlignment =
                     Alignment.CenterVertically,
@@ -577,7 +568,6 @@ fun CapsuleMiniPlayer(
                         mediaMetadata,
                     modifier =
                         Modifier.weight(1f),
-                    standardStyle = standardStyle,
                 )
 
                 Spacer(
@@ -614,6 +604,27 @@ fun CapsuleMiniPlayer(
                 )
             }
         }
+    }
+}
+
+@Composable
+internal fun MiniPlayerSurface(
+    style: MiniPlayerBackgroundStyle,
+    pureBlack: Boolean,
+    colors: List<Color>,
+    modifier: Modifier = Modifier,
+    animated: Boolean = true,
+    content: @Composable () -> Unit,
+) {
+    // Layout (standard or connected dock) must not override the chosen background.
+    val contentColor = if (style == MiniPlayerBackgroundStyle.THEME && !pureBlack) {
+        MaterialTheme.colorScheme.onSurface
+    } else {
+        CapsuleMiniText
+    }
+    Box(modifier) {
+        CapsuleCompactSurfaceBackground(style, pureBlack, colors, Modifier.matchParentSize(), animated)
+        CompositionLocalProvider(LocalContentColor provides contentColor, content = content)
     }
 }
 
@@ -718,25 +729,7 @@ private fun CapsuleMiniPlayButton(
         com.nikhil.yt.playback.PlayerConnection,
     standardStyle: Boolean = false,
 ) {
-    val progress =
-        if (duration > 0L) {
-            (
-                position.toFloat() /
-                    duration.toFloat()
-            ).coerceIn(
-                0f,
-                1f,
-            )
-        } else {
-            0f
-        }
-
     val playLabel = stringResource(if (isPlaying) androidx.media3.ui.R.string.exo_controls_pause_description else R.string.play)
-    val progressColor = if (standardStyle) StandardChrome.text else CapsuleMiniPrimary
-    val trackColor = if (standardStyle) StandardChrome.text.copy(alpha = 0.7f) else
-        CapsuleMiniOutline.copy(
-            alpha = 0.2f,
-        )
 
     Box(
         contentAlignment =
@@ -744,68 +737,7 @@ private fun CapsuleMiniPlayButton(
         modifier =
             Modifier
                 .size(if (standardStyle) 46.dp else 50.dp)
-                .drawWithContent {
-                    drawContent()
-
-                    val stroke =
-                        Stroke(
-                            width =
-                                2.dp.toPx(),
-                            cap =
-                                StrokeCap.Round,
-                        )
-
-                    val diameter =
-                        size.minDimension
-
-                    val topLeft =
-                        Offset(
-                            (
-                                size.width -
-                                    diameter
-                            ) / 2f,
-                            (
-                                size.height -
-                                    diameter
-                            ) / 2f,
-                        )
-
-                    drawArc(
-                        color =
-                            trackColor,
-                        startAngle = 0f,
-                        sweepAngle = 360f,
-                        useCenter = false,
-                        topLeft =
-                            topLeft,
-                        size =
-                            Size(
-                                diameter,
-                                diameter,
-                            ),
-                        style =
-                            stroke,
-                    )
-
-                    drawArc(
-                        color =
-                            progressColor,
-                        startAngle =
-                            -90f,
-                        sweepAngle =
-                            360f * progress,
-                        useCenter = false,
-                        topLeft =
-                            topLeft,
-                        size =
-                            Size(
-                                diameter,
-                                diameter,
-                            ),
-                        style =
-                            stroke,
-                    )
-                },
+                .miniPlayerProgress(position, duration),
     ) {
         Box(
             contentAlignment =
@@ -899,7 +831,6 @@ private fun CapsuleMiniPlayButton(
 private fun CapsuleMiniSongInfo(
     mediaMetadata: MediaMetadata?,
     modifier: Modifier = Modifier,
-    standardStyle: Boolean = false,
 ) {
     val playerConnection =
         LocalPlayerConnection.current
@@ -924,7 +855,7 @@ private fun CapsuleMiniSongInfo(
                 text =
                     metadata.title,
                 color =
-                    if (standardStyle) StandardChrome.text else CapsuleMiniText,
+                    LocalContentColor.current,
                 fontSize = 14.sp,
                 fontWeight =
                     FontWeight.Medium,
@@ -995,7 +926,7 @@ private fun CapsuleMiniSongInfo(
                                 it.name
                             },
                     color =
-                        (if (standardStyle) StandardChrome.text else CapsuleMiniText).copy(
+                        LocalContentColor.current.copy(
                             alpha = 0.7f,
                         ),
                     fontSize = 12.sp,
@@ -1137,9 +1068,9 @@ private fun CapsuleSubscribeButton(
             contentDescription = stringResource(if (isSubscribed) R.string.subscribed else R.string.subscribe),
             tint =
                 if (isSubscribed) {
-                    if (standardStyle) StandardChrome.text else CapsuleMiniPrimary
+                    LocalContentColor.current
                 } else {
-                    if (standardStyle) StandardChrome.muted else CapsuleMiniMuted
+                    LocalContentColor.current.copy(alpha = 0.65f)
                 },
             modifier =
                 Modifier.size(if (standardStyle) 24.dp else 20.dp),
@@ -1211,7 +1142,7 @@ private fun CapsuleFavoriteButton(
                 if (liked) {
                     if (standardStyle) StandardChrome.favorite else CapsuleMiniError
                 } else {
-                    if (standardStyle) StandardChrome.muted else CapsuleMiniMuted
+                    LocalContentColor.current.copy(alpha = 0.65f)
                 },
             modifier =
                 Modifier.size(if (standardStyle) 26.dp else 20.dp),

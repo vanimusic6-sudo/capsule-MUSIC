@@ -501,7 +501,13 @@ internal fun StandardNavigationBar(
                 val selected = index == selectedIndex
                 Column(
                     modifier = Modifier.weight(1f).fillMaxHeight()
-                        .selectable(selected = selected, role = Role.Tab, onClick = { onTabSelected(item) }),
+                        .selectable(
+                            selected = selected,
+                            role = Role.Tab,
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null,
+                            onClick = { onTabSelected(item) },
+                        ),
                     horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
                     Spacer(Modifier.height(if (compact) 12.dp else 17.dp))

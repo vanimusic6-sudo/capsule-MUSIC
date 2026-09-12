@@ -1,0 +1,123 @@
+package com.nikhil.yt.ui
+
+import android.app.Application
+import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.view.View
+import androidx.activity.ComponentActivity
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.size
+import androidx.compose.material3.LocalContentColor
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.material3.darkColorScheme
+import androidx.compose.material3.lightColorScheme
+import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.unit.dp
+import com.nikhil.yt.constants.MiniPlayerBackgroundStyle
+import com.nikhil.yt.ui.player.MiniPlayerSurface
+import com.nikhil.yt.ui.player.miniPlayerProgress
+import java.io.File
+import kotlin.math.roundToInt
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
+import org.junit.Rule
+import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
+import org.robolectric.annotation.Config
+import org.robolectric.annotation.GraphicsMode
+
+@RunWith(RobolectricTestRunner::class)
+@Config(sdk = [35], application = Application::class, qualifiers = "w393dp-h851dp-xhdpi")
+@GraphicsMode(GraphicsMode.Mode.NATIVE)
+class MiniPlayerAppearanceTest {
+    @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
+
+    private fun capture(tag: String): Bitmap {
+        compose.waitForIdle()
+        val bounds = compose.onNodeWithTag(tag).fetchSemanticsNode().boundsInRoot
+        lateinit var bitmap: Bitmap
+        compose.runOnIdle {
+            bitmap = Bitmap.createBitmap(bounds.width.roundToInt(), bounds.height.roundToInt(), Bitmap.Config.ARGB_8888)
+            val canvas = Canvas(bitmap)
+            canvas.translate(-bounds.left, -bounds.top)
+            compose.activity.findViewById<View>(android.R.id.content).draw(canvas)
+        }
+        return bitmap
+    }
+
+    @Test fun switchingEveryMiniPlayerStyleChangesTheRenderedSurface() {
+        var style by mutableStateOf(MiniPlayerBackgroundStyle.THEME)
+        compose.setContent {
+            MaterialTheme(colorScheme = darkColorScheme()) {
+                MiniPlayerSurface(
+                    style, pureBlack = false,
+                    colors = listOf(Color(0xFF647BBE), Color(0xFFBF7791), Color(0xFF96A6AF)),
+                    modifier = Modifier.fillMaxWidth().height(64.dp).testTag("mini"),
+                    animated = false,
+                ) { Text("Capsule") }
+            }
+        }
+        val hashes = mutableSetOf<Int>()
+        for (candidate in MiniPlayerBackgroundStyle.entries) {
+            compose.runOnIdle { style = candidate }
+            val bitmap = capture("mini")
+            val pixels = IntArray(bitmap.width * bitmap.height)
+            bitmap.getPixels(pixels, 0, bitmap.width, 0, 0, bitmap.width, bitmap.height)
+            hashes += pixels.contentHashCode()
+            val output = File("build/reports/ui-previews/mini-${candidate.name.lowercase()}.png")
+            output.parentFile.mkdirs()
+            output.outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
+        }
+        assertEquals("A selected style must not be replaced by a fixed panel", MiniPlayerBackgroundStyle.entries.size, hashes.size)
+    }
+
+    @Test fun contentRemainsReadableWithEffectsSelectedInALightAppTheme() {
+        var style by mutableStateOf(MiniPlayerBackgroundStyle.THEME)
+        var observedColor = Color.Unspecified
+        val scheme = lightColorScheme()
+        compose.setContent {
+            MaterialTheme(colorScheme = scheme) {
+                MiniPlayerSurface(style, false, emptyList(), Modifier.size(100.dp, 64.dp), animated = false) {
+                    val color = LocalContentColor.current
+                    SideEffect { observedColor = color }
+                    Text("Capsule")
+                }
+            }
+        }
+        compose.runOnIdle { assertEquals(scheme.onSurface, observedColor) }
+        for (candidate in MiniPlayerBackgroundStyle.entries.filter { it != MiniPlayerBackgroundStyle.THEME }) {
+            compose.runOnIdle { style = candidate }
+            compose.runOnIdle { assertEquals(Color(0xFFF4F4F4), observedColor) }
+        }
+    }
+
+    @Test fun progressHasADimUnplayedTrackAndResetsForUnknownDuration() {
+        var position by mutableStateOf(0L)
+        var duration by mutableStateOf(100L)
+        compose.setContent {
+            Box(Modifier.size(50.dp).background(Color.Black).miniPlayerProgress(position, duration).testTag("progress"))
+        }
+        fun rightEdge(bitmap: Bitmap) = android.graphics.Color.red(bitmap.getPixel(bitmap.width - 1, bitmap.height / 2))
+        val empty = capture("progress")
+        assertTrue("Unplayed track must not be a bright white ring", rightEdge(empty) in 1..30)
+        compose.runOnIdle { position = 50L }
+        val halfway = capture("progress")
+        assertTrue(rightEdge(halfway) > 180)
+        assertTrue(android.graphics.Color.red(halfway.getPixel(0, halfway.height / 2)) < 30)
+        compose.runOnIdle { duration = 0L }
+        assertTrue(empty.sameAs(capture("progress")))
+    }
+}

@@ -1,7 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Keep the orbit inside Android's 66dp safe zone in the 108dp layer. -->
+<!-- Only the orbit belongs in this transparent layer. The adaptive background
+     supplies the single tile; nesting the complete PNG here adds a second tile. -->
 <inset xmlns:android="http://schemas.android.com/apk/res/android"
-    android:drawable="@drawable/capsule_app_icon"
+    android:drawable="@drawable/ic_capsule_monochrome"
     android:insetLeft="14%"
     android:insetTop="14%"
     android:insetRight="14%"

@@ -9,6 +9,7 @@ import kotlin.math.hypot
 import android.graphics.drawable.AdaptiveIconDrawable
 import android.graphics.drawable.BitmapDrawable
 import android.graphics.drawable.VectorDrawable
+import java.io.File
 import com.nikhil.yt.R
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -36,11 +37,33 @@ class CapsuleBrandingTest {
         }
     }
 
-    @Test fun bothAdaptiveLaunchersUseTheNewArtwork() {
+    @Test fun adaptiveLaunchersUseTransparentOrbitLayersWithoutANestedTile() {
         for (resource in listOf(R.mipmap.ic_launcher, R.mipmap.ic_launcher_round)) {
             val icon = context.getDrawable(resource) as AdaptiveIconDrawable
-            assertTrue((icon.foreground as InsetDrawable).drawable is BitmapDrawable)
+            assertTrue((icon.foreground as InsetDrawable).drawable is VectorDrawable)
             assertTrue((icon.monochrome as InsetDrawable).drawable is VectorDrawable)
+            val foreground = Bitmap.createBitmap(108, 108, Bitmap.Config.ARGB_8888)
+            icon.foreground.setBounds(0, 0, 108, 108)
+            icon.foreground.draw(Canvas(foreground))
+            var visiblePixels = 0
+            for (y in 0 until 108) for (x in 0 until 108) {
+                val pixel = foreground.getPixel(x, y)
+                if (Color.alpha(pixel) > 128) {
+                    visiblePixels++
+                    assertTrue("Foreground contains a dark tile at ($x, $y)", Color.red(pixel) > 180)
+                }
+            }
+            assertTrue("Foreground must contain only the orbit and dot", visiblePixels in 100..1500)
+            assertEquals(0, Color.alpha(foreground.getPixel(54, 24)))
+
+            val preview = Bitmap.createBitmap(256, 256, Bitmap.Config.ARGB_8888)
+            val canvas = Canvas(preview)
+            canvas.drawColor(Color.rgb(73, 109, 141))
+            icon.setBounds(32, 32, 224, 224)
+            icon.draw(canvas)
+            val output = File("build/reports/ui-previews/launcher-${context.resources.getResourceEntryName(resource)}.png")
+            output.parentFile.mkdirs()
+            output.outputStream().use { preview.compress(Bitmap.CompressFormat.PNG, 100, it) }
         }
     }
 

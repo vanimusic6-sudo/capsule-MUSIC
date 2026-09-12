@@ -9,6 +9,9 @@
 package com.nikhil.yt
 
 import com.nikhil.yt.ui.component.StandardHeaderTitle
+import com.nikhil.yt.ui.screens.ScreenTransitions
+import com.nikhil.yt.ui.screens.rememberMainTabNavigator
+import androidx.compose.ui.draw.clipToBounds
 import com.nikhil.yt.ui.component.StandardChrome
 import com.nikhil.yt.ui.component.FluidSlidingNavigationBar
 import android.annotation.SuppressLint
@@ -29,7 +32,6 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.AnimatedContentTransitionScope
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.Spring
@@ -38,8 +40,6 @@ import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInHorizontally
-import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -636,6 +636,7 @@ class MainActivity : ComponentActivity() {
                     val isYearInMusicScreen = currentRoute == "year_in_music"
 
                     val navigationItems = remember { Screens.MainScreens }
+                    val mainTabNavigator = rememberMainTabNavigator(navController)
                     val (slimNav) = rememberPreference(SlimNavBarKey, defaultValue = false)
                     val capsuleBottomBarEnabled by
                         rememberPreference(
@@ -1118,20 +1119,12 @@ class MainActivity : ComponentActivity() {
                                                     playerBottomSheetState.collapse(spring())
                                                 }
 
-                                                if (isSelected) {
-                                                    if(wasPlayerActive) return@NavigationRailItem
-
-                                                    navController.currentBackStackEntry?.savedStateHandle?.set("scrollToTop", true)
-                                                    coroutineScope.launch {
-                                                        searchBarScrollBehavior.state.resetHeightOffset()
-                                                    }
-                                                } else {
-                                                    navController.navigate(screen.route) {
-                                                        popUpTo(navController.graph.startDestinationId) {
-                                                            saveState = true
+                                                mainTabNavigator.select(screen.route) {
+                                                    if (!wasPlayerActive) {
+                                                        navController.currentBackStackEntry?.savedStateHandle?.set("scrollToTop", true)
+                                                        coroutineScope.launch {
+                                                            searchBarScrollBehavior.state.resetHeightOffset()
                                                         }
-                                                        launchSingleTop = true
-                                                        restoreState = true
                                                     }
                                                 }
                                             },
@@ -1475,22 +1468,14 @@ class MainActivity : ComponentActivity() {
                                                 pureBlack = pureBlack,
                                                 capsuleMiniPlayerVisible = capsuleMiniPlayerActuallyVisible,
                                                 onTabSelected = { screen ->
-                                                    val isSelected = navBackStackEntry?.destination?.hierarchy?.any { it.route == screen.route } == true
-
                                                     if (screen.route == Screens.Search.route) {
                                                         onActiveChange(true)
-                                                    } else if (isSelected) {
-                                                        navController.currentBackStackEntry?.savedStateHandle?.set("scrollToTop", true)
-                                                        coroutineScope.launch {
-                                                            searchBarScrollBehavior.state.resetHeightOffset()
-                                                        }
                                                     } else {
-                                                        navController.navigate(screen.route) {
-                                                            popUpTo(navController.graph.startDestinationId) {
-                                                                saveState = true
+                                                        mainTabNavigator.select(screen.route) {
+                                                            navController.currentBackStackEntry?.savedStateHandle?.set("scrollToTop", true)
+                                                            coroutineScope.launch {
+                                                                searchBarScrollBehavior.state.resetHeightOffset()
                                                             }
-                                                            launchSingleTop = true
-                                                            restoreState = true
                                                         }
                                                     }
                                                 }
@@ -1512,86 +1497,18 @@ class MainActivity : ComponentActivity() {
                                         else -> Screens.Home
                                     }.route,
                                     enterTransition = {
-                                        val initialIndex = navigationItems.indexOfFirst { it.route == initialState.destination.route }
-                                        val targetIndex = navigationItems.indexOfFirst { it.route == targetState.destination.route }
-
-                                        if (initialState.destination.route in topLevelScreens && targetState.destination.route in topLevelScreens) {
-                                            val direction = if (targetIndex > initialIndex) {
-                                                AnimatedContentTransitionScope.SlideDirection.Left
-                                            } else {
-                                                AnimatedContentTransitionScope.SlideDirection.Right
-                                            }
-                                            slideIntoContainer(
-                                                towards = direction,
-                                                animationSpec = spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = Spring.StiffnessLow)
-                                            )
-                                        } else {
-                                            fadeIn(tween(300)) + slideInHorizontally(
-                                                animationSpec = spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = Spring.StiffnessLow)
-                                            ) { it / 2 }
-                                        }
+                                        ScreenTransitions.enter(initialState.destination.route, targetState.destination.route)
                                     },
                                     exitTransition = {
-                                        val initialIndex = navigationItems.indexOfFirst { it.route == initialState.destination.route }
-                                        val targetIndex = navigationItems.indexOfFirst { it.route == targetState.destination.route }
-
-                                        if (initialState.destination.route in topLevelScreens && targetState.destination.route in topLevelScreens) {
-                                            val direction = if (targetIndex > initialIndex) {
-                                                AnimatedContentTransitionScope.SlideDirection.Left
-                                            } else {
-                                                AnimatedContentTransitionScope.SlideDirection.Right
-                                            }
-                                            slideOutOfContainer(
-                                                towards = direction,
-                                                animationSpec = spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = Spring.StiffnessLow)
-                                            )
-                                        } else {
-                                            fadeOut(tween(300)) + slideOutHorizontally(
-                                                animationSpec = spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = Spring.StiffnessLow)
-                                            ) { -it / 2 }
-                                        }
+                                        ScreenTransitions.exit(initialState.destination.route, targetState.destination.route)
                                     },
-                                     popEnterTransition = {
-                                         val initialIndex = navigationItems.indexOfFirst { it.route == initialState.destination.route }
-                                         val targetIndex = navigationItems.indexOfFirst { it.route == targetState.destination.route }
-
-                                         if (initialState.destination.route in topLevelScreens && targetState.destination.route in topLevelScreens) {
-                                             val direction = if (targetIndex > initialIndex) {
-                                                 AnimatedContentTransitionScope.SlideDirection.Left
-                                             } else {
-                                                 AnimatedContentTransitionScope.SlideDirection.Right
-                                             }
-                                             slideIntoContainer(
-                                                 towards = direction,
-                                                 animationSpec = spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = Spring.StiffnessLow)
-                                             )
-                                         } else {
-                                             fadeIn(tween(300)) + slideInHorizontally(
-                                                 animationSpec = spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = Spring.StiffnessLow)
-                                             ) { -it / 2 }
-                                         }
-                                     },
-                                     popExitTransition = {
-                                         val initialIndex = navigationItems.indexOfFirst { it.route == initialState.destination.route }
-                                         val targetIndex = navigationItems.indexOfFirst { it.route == targetState.destination.route }
-
-                                         if (initialState.destination.route in topLevelScreens && targetState.destination.route in topLevelScreens) {
-                                             val direction = if (targetIndex > initialIndex) {
-                                                 AnimatedContentTransitionScope.SlideDirection.Left
-                                             } else {
-                                                 AnimatedContentTransitionScope.SlideDirection.Right
-                                             }
-                                             slideOutOfContainer(
-                                                 towards = direction,
-                                                 animationSpec = spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = Spring.StiffnessLow)
-                                             )
-                                         } else {
-                                             fadeOut(tween(300)) + slideOutHorizontally(
-                                                 animationSpec = spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = Spring.StiffnessLow)
-                                             ) { it / 2 }
-                                         }
-                                     },
-                                    modifier = Modifier.nestedScroll(
+                                    popEnterTransition = {
+                                        ScreenTransitions.enter(initialState.destination.route, targetState.destination.route, isPop = true)
+                                    },
+                                    popExitTransition = {
+                                        ScreenTransitions.exit(initialState.destination.route, targetState.destination.route, isPop = true)
+                                    },
+                                    modifier = Modifier.clipToBounds().nestedScroll(
                                         if (navigationItems.fastAny { it.route == navBackStackEntry?.destination?.route } ||
                                             navBackStackEntry?.destination?.route?.startsWith("search/") == true
                                         ) {

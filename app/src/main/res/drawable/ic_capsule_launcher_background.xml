@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Full bleed: Android applies the launcher shape once, with no inset frame. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
+    <gradient android:angle="315" android:startColor="#2A2A2A" android:endColor="#151515" />
+</shape>

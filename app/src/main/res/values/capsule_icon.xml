@@ -2,20 +2,20 @@
 <resources>
     <!-- Keep existing resource IDs backed by the supplied Capsule artwork. -->
     <item type="drawable" name="ic_velune_concept">@drawable/capsule_app_icon</item>
-    <item type="drawable" name="app_icon_foreground">@drawable/capsule_app_icon</item>
+    <item type="drawable" name="app_icon_foreground">@drawable/ic_capsule_launcher_foreground</item>
     <item type="drawable" name="app_icon_small">@drawable/capsule_app_icon</item>
     <item type="drawable" name="about_splash_bitmap">@drawable/capsule_app_icon</item>
     <item type="drawable" name="about_splash">@drawable/capsule_app_icon</item>
-    <item type="drawable" name="launcher_foreground">@drawable/capsule_app_icon</item>
-    <item type="drawable" name="launcher_foreground_v31">@drawable/capsule_app_icon</item>
-    <item type="drawable" name="ic_launcher_foreground">@drawable/capsule_app_icon</item>
+    <item type="drawable" name="launcher_foreground">@drawable/ic_capsule_launcher_foreground</item>
+    <item type="drawable" name="launcher_foreground_v31">@drawable/ic_capsule_launcher_foreground</item>
+    <item type="drawable" name="ic_launcher_foreground">@drawable/ic_capsule_launcher_foreground</item>
     <item type="drawable" name="small_icon">@drawable/ic_capsule_monochrome</item>
     <item type="drawable" name="media3_notification_small_icon">@drawable/ic_capsule_monochrome</item>
     <item type="drawable" name="app_icon_monochrome">@drawable/ic_capsule_monochrome</item>
     <item type="drawable" name="launcher_monochrome">@drawable/ic_capsule_monochrome</item>
     <item type="mipmap" name="ic_launcher">@drawable/capsule_app_icon</item>
     <item type="mipmap" name="ic_launcher_round">@drawable/capsule_app_icon</item>
-    <item type="mipmap" name="ic_launcher_foreground">@drawable/capsule_app_icon</item>
+    <item type="mipmap" name="ic_launcher_foreground">@drawable/ic_capsule_launcher_foreground</item>
     <item type="mipmap" name="ic_launcher_monochrome">@drawable/ic_capsule_monochrome</item>
-    <item type="mipmap" name="ic_launcher_background">@color/ic_launcher_background</item>
+    <item type="mipmap" name="ic_launcher_background">@drawable/ic_capsule_launcher_background</item>
 </resources>

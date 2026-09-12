@@ -25,6 +25,7 @@ import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.unit.dp
 import com.nikhil.yt.R
 import com.nikhil.yt.ui.component.StandardChrome
@@ -34,6 +35,7 @@ import com.nikhil.yt.ui.component.StandardNavigationBar
 import com.nikhil.yt.ui.screens.Screens
 import java.io.File
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -47,6 +49,38 @@ import org.robolectric.annotation.GraphicsMode
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class StandardChromeTest {
     @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
+
+    @Test fun pressingANavigationTabDoesNotDrawARectangularOverlay() {
+        var route by mutableStateOf(Screens.Home.route)
+        compose.setContent {
+            MaterialTheme(colorScheme = darkColorScheme()) {
+                StandardNavigationBar(
+                    Modifier.fillMaxWidth().height(80.dp).testTag("bar"), Screens.MainScreens, route,
+                ) { route = it.route }
+            }
+        }
+        compose.waitForIdle()
+        compose.mainClock.autoAdvance = false
+        fun capture(): Bitmap {
+            val bounds = compose.onNodeWithTag("bar").fetchSemanticsNode().boundsInRoot
+            lateinit var bitmap: Bitmap
+            compose.runOnIdle {
+                bitmap = Bitmap.createBitmap(bounds.width.roundToInt(), bounds.height.roundToInt(), Bitmap.Config.ARGB_8888)
+                val canvas = Canvas(bitmap)
+                canvas.translate(-bounds.left, -bounds.top)
+                compose.activity.findViewById<View>(android.R.id.content).draw(canvas)
+            }
+            return bitmap
+        }
+        val before = capture()
+        val history = RuntimeEnvironment.getApplication().getString(R.string.history)
+        compose.onNodeWithText(history).performTouchInput { down(center) }
+        compose.mainClock.advanceTimeBy(120)
+        assertTrue("Only the sliding pill should highlight a tab", before.sameAs(capture()))
+        compose.onNodeWithText(history).performTouchInput { up() }
+        compose.mainClock.advanceTimeBy(1_000)
+        compose.onNodeWithText(history).assertIsSelected()
+    }
 
     @Test fun standardHeaderChipsAndNavigationRemainInteractive() {
         var route by mutableStateOf(Screens.Home.route)
