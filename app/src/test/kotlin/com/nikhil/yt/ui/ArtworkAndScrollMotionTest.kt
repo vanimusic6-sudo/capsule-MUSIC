@@ -156,28 +156,37 @@ class ArtworkAndScrollMotionTest {
         return light to weightedY / light.coerceAtLeast(1)
     }
 
+    private fun advanceMotionFrames(count: Int) {
+        repeat(count) {
+            compose.mainClock.advanceTimeByFrame()
+            // Android draws on its own clock. Let layout and layer updates finish
+            // between frames, including the setup of the slide transition.
+            compose.waitForIdle()
+        }
+    }
+
     @Test fun actionButtonDissolvesBeforeItReachesTheBottom() {
         showButton()
         val before = brightness(capture("scene", "shuffle-visible"))
+        assertTrue("The initial button must be rendered: $before", before.first > 0)
         compose.runOnIdle { visible = false }
-        compose.mainClock.advanceTimeByFrame()
-        compose.mainClock.advanceTimeBy(96)
+        advanceMotionFrames(7)
         val during = brightness(capture("scene", "shuffle-disappearing"))
-        assertTrue("Button must fade during its movement", during.first > before.first * 0.03 && during.first < before.first * 0.85)
-        assertTrue("Downward movement stays small", during.second > before.second && during.second < before.second + 40)
+        assertTrue("Button must fade during its movement: before=$before, during=$during", during.first > before.first * 0.03 && during.first < before.first * 0.85)
+        assertTrue("Downward movement stays small: before=$before, during=$during", during.second > before.second && during.second < before.second + 40)
         val shuffle = compose.activity.getString(R.string.shuffle)
         compose.onNodeWithContentDescription(shuffle).assertIsNotEnabled()
             .performSemanticsAction(SemanticsActions.OnClick) { it() }
         assertEquals("A disappearing button must not start playback", 0, clicks)
-        compose.mainClock.advanceTimeBy(400)
+        compose.mainClock.autoAdvance = true
+        compose.waitForIdle()
         compose.onNodeWithContentDescription(shuffle).assertDoesNotExist()
     }
 
     @Test fun reversingVisibilityRestoresOneWorkingButton() {
         showButton()
         compose.runOnIdle { visible = false }
-        compose.mainClock.advanceTimeByFrame()
-        compose.mainClock.advanceTimeBy(96)
+        advanceMotionFrames(7)
         compose.runOnIdle { visible = true }
         compose.mainClock.autoAdvance = true
         compose.waitForIdle()
