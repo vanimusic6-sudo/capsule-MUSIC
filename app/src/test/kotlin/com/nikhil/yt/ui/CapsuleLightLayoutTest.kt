@@ -64,7 +64,7 @@ class CapsuleLightLayoutTest {
         }
     }
 
-    @Test fun lightTransportUsesMenuPreviousPlayNextRepeatAndRespectsPlaybackRestrictions() {
+    @Test fun lightTransportUsesRepeatPreviousPlayNextMenuAndRespectsPlaybackRestrictions() {
         var enabled by mutableStateOf(true)
         val clicked = mutableListOf<String>()
         compose.setContent {
@@ -87,20 +87,20 @@ class CapsuleLightLayoutTest {
                 }
             }
         }
-        val menu = compose.onNodeWithContentDescription(compose.activity.getString(R.string.more))
+        val repeat = compose.onNodeWithContentDescription(compose.activity.getString(R.string.repeat_mode_all))
         val previous = compose.onNodeWithContentDescription(compose.activity.getString(androidx.media3.ui.R.string.exo_controls_previous_description))
         val orbit = compose.onNodeWithTag("orbit")
         val next = compose.onNodeWithContentDescription(compose.activity.getString(androidx.media3.ui.R.string.exo_controls_next_description))
-        val repeat = compose.onNodeWithContentDescription(compose.activity.getString(R.string.repeat_mode_all))
-        val nodes = listOf(menu, previous, orbit, next, repeat)
+        val menu = compose.onNodeWithContentDescription(compose.activity.getString(R.string.more))
+        val nodes = listOf(repeat, previous, orbit, next, menu)
         val centers = nodes.map { it.fetchSemanticsNode().boundsInRoot.center.x }
         assertEquals(centers.sorted(), centers)
         nodes.forEach { it.performClick() }
         compose.runOnIdle {
-            assertEquals(listOf("menu", "previous", "play", "next", "repeat"), clicked)
+            assertEquals(listOf("repeat", "previous", "play", "next", "menu"), clicked)
             enabled = false
         }
-        listOf(previous, orbit, next, repeat).forEach { it.assertIsNotEnabled() }
+        listOf(repeat, previous, orbit, next).forEach { it.assertIsNotEnabled() }
         menu.performClick()
         compose.runOnIdle { assertEquals("menu", clicked.last()) }
     }
