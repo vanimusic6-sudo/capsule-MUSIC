@@ -45,7 +45,7 @@ fun CapsuleAudioVideoToggle(
     modifier: Modifier = Modifier,
     lightStyle: Boolean = false,
 ) {
-    val shape = RoundedCornerShape(if (lightStyle) 14.dp else 10.dp)
+    val shape = if (lightStyle) CapsuleLightPanelShape else RoundedCornerShape(10.dp)
     val videoResolving =
         state.preferredMode == CapsulePlaybackMode.VIDEO &&
             state.phase == CapsuleVideoPhase.RESOLVING
@@ -133,12 +133,6 @@ private fun CapsuleModeSegment(
             animationSpec = tween(160),
             label = "capsuleModeScale",
         )
-    val selectionAlpha by
-        animateFloatAsState(
-            targetValue = if (lightStyle && selected) 0.065f else 0f,
-            animationSpec = tween(180),
-            label = "capsuleLightModeSelection",
-        )
     val segmentShape = RoundedCornerShape(10.dp)
 
     Box(
@@ -150,7 +144,7 @@ private fun CapsuleModeSegment(
                     scaleY = scale
                 }
                 .clip(segmentShape)
-                .background(textColor.copy(alpha = selectionAlpha))
+                .background(Color.Transparent)
                 .clickable(
                     enabled = enabled && !loading,
                     onClick = onClick,
