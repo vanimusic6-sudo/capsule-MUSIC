@@ -1,13 +1,11 @@
 package com.nikhil.yt.ui.component
 
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.luminance
 
-/** The full player's neutral filled heart, with the same contrast rule on every surface. */
+/** Single accent for the active/filled like state across Capsule UI. */
 object CapsuleFavoriteColors {
-    val onDark = Color.White
-    val onLight = Color(0xFF171717)
+    val active = Color(0xFF822133)
 
-    fun selected(contentColor: Color): Color =
-        if (contentColor.luminance() >= 0.5f) onDark else onLight
+    @Suppress("UNUSED_PARAMETER")
+    fun selected(contentColor: Color): Color = active
 }
