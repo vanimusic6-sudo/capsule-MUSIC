@@ -17,6 +17,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.clearAndSetSemantics
@@ -62,7 +63,7 @@ internal fun ArtistToolbar(
         title = {
             Text(
                 name,
-                modifier = Modifier.alpha(1f - artworkFraction)
+                modifier = Modifier.testTag("artist-toolbar-title").alpha(1f - artworkFraction)
                     .then(if (overArtwork) Modifier.clearAndSetSemantics {} else Modifier),
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,

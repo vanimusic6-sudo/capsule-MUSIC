@@ -232,13 +232,18 @@ class ArtistHeroTest {
         compose.runOnIdle { overArtwork = false }
         for (frameTime in listOf(80L, 80L, 160L)) {
             compose.mainClock.advanceTimeBy(frameTime)
-            val title = compose.onNodeWithText("Pyrokinesis").fetchSemanticsNode().boundsInRoot
+            compose.waitForIdle()
+            // The title intentionally clears its text semantics while hidden; measure
+            // its layout node during the fade, then check the visible text after settling.
+            val title = compose.onNodeWithTag("artist-toolbar-title", useUnmergedTree = true)
+                .fetchSemanticsNode().boundsInRoot
             controls.forEach {
                 assertEquals("Navigation and artist name must share a centre throughout collapse",
                     title.center.y, it.fetchSemanticsNode().boundsInRoot.center.y, 1f)
             }
         }
         compose.mainClock.autoAdvance = true
+        compose.onNodeWithText("Pyrokinesis").assertIsDisplayed()
         val compact = compose.onNodeWithTag("toolbar").fetchSemanticsNode().boundsInRoot
         assertEquals(safeTop + 64f * dp, compact.height, 1f)
         controls.forEach { it.performClick() }
