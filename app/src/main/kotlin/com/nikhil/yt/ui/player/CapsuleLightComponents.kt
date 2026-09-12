@@ -19,7 +19,9 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -35,6 +37,8 @@ import androidx.compose.ui.unit.dp
 import androidx.media3.common.Player
 import com.nikhil.yt.R
 import com.nikhil.yt.constants.CapsulePlayerDesign
+
+private val LocalCapsuleLightMenu = staticCompositionLocalOf<() -> Unit> { {} }
 
 /** Both designs host the same artwork, metadata and playback actions. */
 @Composable
@@ -87,7 +91,9 @@ internal fun CapsulePlayerLayout(
             }
 
             Spacer(Modifier.height(14.dp))
-            details()
+            CompositionLocalProvider(LocalCapsuleLightMenu provides onMenuClick) {
+                details()
+            }
         } else {
             Spacer(Modifier.height(10.dp))
 
@@ -153,17 +159,20 @@ internal fun CapsuleLightFavorite(
 @Composable
 internal fun CapsuleLightControls(
     textColor: Color,
+    shuffleEnabled: Boolean,
     repeatMode: Int,
     enabled: Boolean,
     canSkipPrevious: Boolean,
     canSkipNext: Boolean,
-    onMenuClick: () -> Unit,
+    onShuffle: () -> Unit,
     onPrevious: () -> Unit,
     onNext: () -> Unit,
     onRepeat: () -> Unit,
     orbit: @Composable () -> Unit,
+    onMenuClick: (() -> Unit)? = null,
 ) {
     val shape = RoundedCornerShape(38.dp)
+    val menuAction = onMenuClick ?: LocalCapsuleLightMenu.current
     val panelBrush =
         Brush.verticalGradient(
             listOf(
@@ -189,7 +198,7 @@ internal fun CapsuleLightControls(
             enabled = true,
             active = true,
             textColor = textColor,
-            onClick = onMenuClick,
+            onClick = menuAction,
             modifier = Modifier.weight(1f),
             iconSize = 27,
         )
