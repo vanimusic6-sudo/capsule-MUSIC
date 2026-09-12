@@ -40,6 +40,9 @@ import com.nikhil.yt.constants.CapsulePlayerDesign
 
 private val LocalCapsuleLightMenu = staticCompositionLocalOf<() -> Unit> { {} }
 
+/** Shared radius for Capsule Light's two outlined control panels. */
+internal val CapsuleLightPanelShape = RoundedCornerShape(18.dp)
+
 /** Both designs host the same artwork, metadata and playback actions. */
 @Composable
 internal fun CapsulePlayerLayout(
@@ -155,7 +158,7 @@ internal fun CapsuleLightFavorite(
     }
 }
 
-/** One calm transport capsule: menu, previous, orbit, next and repeat. */
+/** One calm transport capsule: repeat, previous, orbit, next and menu. */
 @Composable
 internal fun CapsuleLightControls(
     textColor: Color,
@@ -171,7 +174,6 @@ internal fun CapsuleLightControls(
     orbit: @Composable () -> Unit,
     onMenuClick: (() -> Unit)? = null,
 ) {
-    val shape = RoundedCornerShape(38.dp)
     val menuAction = onMenuClick ?: LocalCapsuleLightMenu.current
     val panelBrush =
         Brush.verticalGradient(
@@ -186,21 +188,28 @@ internal fun CapsuleLightControls(
             Modifier
                 .fillMaxWidth()
                 .height(110.dp)
-                .clip(shape)
+                .clip(CapsuleLightPanelShape)
                 .background(panelBrush)
-                .border(1.dp, textColor.copy(alpha = 0.14f), shape)
+                .border(1.dp, textColor.copy(alpha = 0.14f), CapsuleLightPanelShape)
                 .padding(horizontal = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         CapsuleLightTransportIcon(
-            iconRes = R.drawable.more_vert,
-            contentDescription = stringResource(R.string.more),
-            enabled = true,
-            active = true,
+            iconRes = if (repeatMode == Player.REPEAT_MODE_ONE) R.drawable.repeat_one else R.drawable.repeat,
+            contentDescription =
+                stringResource(
+                    when (repeatMode) {
+                        Player.REPEAT_MODE_ONE -> R.string.repeat_mode_one
+                        Player.REPEAT_MODE_ALL -> R.string.repeat_mode_all
+                        else -> R.string.repeat_mode_off
+                    },
+                ),
+            enabled = enabled,
+            active = repeatMode != Player.REPEAT_MODE_OFF,
             textColor = textColor,
-            onClick = menuAction,
-            modifier = Modifier.weight(1f),
-            iconSize = 27,
+            onClick = onRepeat,
+            modifier = Modifier.weight(1f).semantics { selected = repeatMode != Player.REPEAT_MODE_OFF },
+            iconSize = 25,
         )
 
         CapsuleLightTransportIcon(
@@ -233,21 +242,14 @@ internal fun CapsuleLightControls(
         )
 
         CapsuleLightTransportIcon(
-            iconRes = if (repeatMode == Player.REPEAT_MODE_ONE) R.drawable.repeat_one else R.drawable.repeat,
-            contentDescription =
-                stringResource(
-                    when (repeatMode) {
-                        Player.REPEAT_MODE_ONE -> R.string.repeat_mode_one
-                        Player.REPEAT_MODE_ALL -> R.string.repeat_mode_all
-                        else -> R.string.repeat_mode_off
-                    },
-                ),
-            enabled = enabled,
-            active = repeatMode != Player.REPEAT_MODE_OFF,
+            iconRes = R.drawable.more_vert,
+            contentDescription = stringResource(R.string.more),
+            enabled = true,
+            active = true,
             textColor = textColor,
-            onClick = onRepeat,
-            modifier = Modifier.weight(1f).semantics { selected = repeatMode != Player.REPEAT_MODE_OFF },
-            iconSize = 25,
+            onClick = menuAction,
+            modifier = Modifier.weight(1f),
+            iconSize = 27,
         )
     }
 }
