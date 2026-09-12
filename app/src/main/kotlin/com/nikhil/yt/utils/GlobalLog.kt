@@ -23,10 +23,19 @@ object GlobalLog {
     private const val MAX_ENTRIES = 5000
 
     /*
+     * Identical hot-path callbacks can arrive twice within the same frame or
+     * loader hand-off (normalization was a common example). Keeping both adds
+     * zero diagnostic value but still allocates and copies strings while field
+     * logging is enabled. Only exact duplicates in a very small window are
+     * collapsed; later repetitions are preserved.
+     */
+    private const val DUPLICATE_WINDOW_MS = 250L
+
+    /*
      * How often the UI snapshot may be rebuilt. Rebuilding a 5000 element list
      * on every single log line was costing more CPU than the work being logged.
      */
-    private const val PUBLISH_INTERVAL_MS = 400L
+    private const val PUBLISH_INTERVAL_MS = 1_000L
 
     /*
      * The deque is the real buffer: appending and trimming are both constant
@@ -47,12 +56,17 @@ object GlobalLog {
     @Volatile
     private var lastPublishedAtMs = 0L
 
+    private var lastAcceptedLevel: Int = Int.MIN_VALUE
+    private var lastAcceptedTag: String? = null
+    private var lastAcceptedMessage: String? = null
+    private var lastAcceptedAtMs: Long = 0L
+
     private val timeFormat = SimpleDateFormat("HH:mm:ss.SSS", Locale.getDefault())
 
     val isEnabled: Boolean
         get() = enabled
 
-    internal fun setEnabled(value: Boolean) {
+    internal fun setEnabled(value: Boolean) = synchronized(lock) {
         enabled = value
         if (!value) clear()
     }
@@ -60,26 +74,35 @@ object GlobalLog {
     fun append(level: Int, tag: String?, message: String) {
         if (!enabled) return
 
-        val entry = LogEntry(System.currentTimeMillis(), level, tag, message)
+        val now = System.currentTimeMillis()
+        val entry = LogEntry(now, level, tag, message)
 
-        val snapshot =
-            synchronized(lock) {
-                buffer.addLast(entry)
-                while (buffer.size > MAX_ENTRIES) {
-                    buffer.removeFirst()
-                }
+        synchronized(lock) {
+            if (!enabled) return
+            val isBurstDuplicate =
+                level == lastAcceptedLevel &&
+                    tag == lastAcceptedTag &&
+                    message == lastAcceptedMessage &&
+                    now - lastAcceptedAtMs in 0..DUPLICATE_WINDOW_MS
 
-                val now = entry.time
-                val observed = _logs.subscriptionCount.value > 0
-                if (!observed || now - lastPublishedAtMs < PUBLISH_INTERVAL_MS) {
-                    null
-                } else {
-                    lastPublishedAtMs = now
-                    buffer.toList()
-                }
+            if (isBurstDuplicate) return
+
+            lastAcceptedLevel = level
+            lastAcceptedTag = tag
+            lastAcceptedMessage = message
+            lastAcceptedAtMs = now
+
+            buffer.addLast(entry)
+            while (buffer.size > MAX_ENTRIES) {
+                buffer.removeFirst()
             }
 
-        if (snapshot != null) _logs.value = snapshot
+            val observed = _logs.subscriptionCount.value > 0
+            if (observed && now - lastPublishedAtMs >= PUBLISH_INTERVAL_MS) {
+                lastPublishedAtMs = now
+                _logs.value = buffer.toList()
+            }
+        }
     }
 
     /*
@@ -88,7 +111,7 @@ object GlobalLog {
      */
     fun snapshot(): List<LogEntry> {
         if (!enabled) return emptyList()
-        return synchronized(lock) { buffer.toList() }
+        return synchronized(lock) { if (enabled) buffer.toList() else emptyList() }
     }
 
     /*
@@ -96,29 +119,25 @@ object GlobalLog {
      * would show whatever snapshot happened to be current when the last
      * observer went away.
      */
-    fun refresh() {
-        if (!enabled) {
-            _logs.value = emptyList()
-            return
-        }
-
-        val snapshot = synchronized(lock) {
-            lastPublishedAtMs = System.currentTimeMillis()
-            buffer.toList()
-        }
-        _logs.value = snapshot
+    fun refresh() = synchronized(lock) {
+        lastPublishedAtMs = System.currentTimeMillis()
+        _logs.value = if (enabled) buffer.toList() else emptyList()
     }
 
     fun clear() {
         synchronized(lock) {
             buffer.clear()
             lastPublishedAtMs = 0L
+            lastAcceptedLevel = Int.MIN_VALUE
+            lastAcceptedTag = null
+            lastAcceptedMessage = null
+            lastAcceptedAtMs = 0L
+            _logs.value = emptyList()
         }
-        _logs.value = emptyList()
     }
 
     fun format(entry: LogEntry): String {
-        val ts = timeFormat.format(Date(entry.time))
+        val ts = synchronized(timeFormat) { timeFormat.format(Date(entry.time)) }
         val lvl = when (entry.level) {
             android.util.Log.VERBOSE -> "V"
             android.util.Log.DEBUG -> "D"
@@ -141,20 +160,22 @@ class GlobalLogTree : Timber.Tree() {
             val final = if (t != null) "$message\n$t" else message
             GlobalLog.append(priority, tag, final)
         } catch (_: Exception) {
-            // swallow
+            // Logging must never be allowed to crash the process or recurse.
         }
     }
 }
 
 /**
- * Owns the only Timber trees used by the main process.
+ * Owns the only Timber tree used by the main process.
  *
- * When logging is disabled Timber's forest is empty, so call sites return
- * before message formatting, stack-trace rendering or Logcat I/O. Direct
- * [GlobalLog.append] callers are also stopped by the guard in [GlobalLog].
+ * The diagnostics screen needs the in-app buffer, not a second copy in
+ * Logcat. Keeping only [GlobalLogTree] halves the hot-path work while a field
+ * log is being recorded. When logging is disabled Timber's forest is empty,
+ * so call sites return before message formatting or stack-trace rendering.
+ * Direct [GlobalLog.append] callers are also stopped by the guard in
+ * [GlobalLog].
  */
 object DebugLoggingController {
-    private val debugTree = Timber.DebugTree()
     private val globalLogTree = GlobalLogTree()
 
     @Volatile
@@ -166,11 +187,9 @@ object DebugLoggingController {
 
         if (value) {
             GlobalLog.setEnabled(true)
-            Timber.plant(debugTree)
             Timber.plant(globalLogTree)
         } else {
             Timber.uproot(globalLogTree)
-            Timber.uproot(debugTree)
             GlobalLog.setEnabled(false)
         }
 

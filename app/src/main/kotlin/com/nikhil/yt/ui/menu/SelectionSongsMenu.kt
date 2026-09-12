@@ -5,9 +5,10 @@
  */
 
 
-
 package com.nikhil.yt.ui.menu
 
+import androidx.compose.material3.LocalContentColor
+import com.nikhil.yt.ui.component.StandardChrome
 import com.nikhil.yt.ui.component.VeluneLoader
 import android.annotation.SuppressLint
 import android.widget.Toast
@@ -35,6 +36,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.platform.LocalConfiguration
 import android.content.res.Configuration
 import androidx.compose.foundation.layout.Spacer
@@ -48,7 +50,6 @@ import androidx.media3.common.Timeline
 import androidx.media3.exoplayer.offline.Download
 import androidx.media3.exoplayer.offline.DownloadRequest
 import androidx.media3.exoplayer.offline.DownloadService
-import com.nikhil.yt.innertube.YouTube
 import com.nikhil.yt.LocalDatabase
 import com.nikhil.yt.LocalDownloadUtil
 import com.nikhil.yt.LocalPlayerConnection
@@ -66,7 +67,6 @@ import com.nikhil.yt.ui.component.NewAction
 import com.nikhil.yt.ui.component.NewActionGrid
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-
 import kotlinx.coroutines.withContext
 import java.time.LocalDateTime
 
@@ -79,6 +79,7 @@ fun SelectionSongMenu(
     songPosition: List<PlaylistSongMap>? = emptyList(),
 ) {
     val context = LocalContext.current
+    val resources = LocalResources.current
     val database = LocalDatabase.current
     val downloadUtil = LocalDownloadUtil.current
     val coroutineScope = rememberCoroutineScope()
@@ -142,10 +143,10 @@ fun SelectionSongMenu(
         },
         onAddComplete = { songCount, playlistNames ->
             val message = when {
-                songCount == 1 && playlistNames.size == 1 -> context.getString(R.string.added_to_playlist, playlistNames.first())
-                songCount > 1 && playlistNames.size == 1 -> context.getString(R.string.added_n_songs_to_playlist, songCount, playlistNames.first())
-                songCount == 1 -> context.getString(R.string.added_to_n_playlists, playlistNames.size)
-                else -> context.getString(R.string.added_n_songs_to_n_playlists, songCount, playlistNames.size)
+                songCount == 1 && playlistNames.size == 1 -> resources.getString(R.string.added_to_playlist, playlistNames.first())
+                songCount > 1 && playlistNames.size == 1 -> resources.getString(R.string.added_n_songs_to_playlist, songCount, playlistNames.first())
+                songCount == 1 -> resources.getString(R.string.added_to_n_playlists, playlistNames.size)
+                else -> resources.getString(R.string.added_n_songs_to_n_playlists, songCount, playlistNames.size)
             }
             Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
         },
@@ -455,6 +456,7 @@ fun SelectionSongMenu(
                         painter = painterResource(
                             if (allLiked) R.drawable.favorite else R.drawable.favorite_border
                         ),
+                        tint = if (allLiked) StandardChrome.favorite else LocalContentColor.current,
                         contentDescription = null,
                     )
                 },
@@ -514,6 +516,7 @@ fun SelectionMediaMetadataMenu(
     clearAction: () -> Unit,
 ) {
     val context = LocalContext.current
+    val resources = LocalResources.current
     val database = LocalDatabase.current
     val downloadUtil = LocalDownloadUtil.current
     val coroutineScope = rememberCoroutineScope()
@@ -542,10 +545,10 @@ fun SelectionMediaMetadataMenu(
         onDismiss = { showChoosePlaylistDialog = false },
         onAddComplete = { songCount, playlistNames ->
             val message = when {
-                songCount == 1 && playlistNames.size == 1 -> context.getString(R.string.added_to_playlist, playlistNames.first())
-                songCount > 1 && playlistNames.size == 1 -> context.getString(R.string.added_n_songs_to_playlist, songCount, playlistNames.first())
-                songCount == 1 -> context.getString(R.string.added_to_n_playlists, playlistNames.size)
-                else -> context.getString(R.string.added_n_songs_to_n_playlists, songCount, playlistNames.size)
+                songCount == 1 && playlistNames.size == 1 -> resources.getString(R.string.added_to_playlist, playlistNames.first())
+                songCount > 1 && playlistNames.size == 1 -> resources.getString(R.string.added_n_songs_to_playlist, songCount, playlistNames.first())
+                songCount == 1 -> resources.getString(R.string.added_to_n_playlists, playlistNames.size)
+                else -> resources.getString(R.string.added_n_songs_to_n_playlists, songCount, playlistNames.size)
             }
             Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
         },
@@ -731,6 +734,7 @@ fun SelectionMediaMetadataMenu(
                         painter = painterResource(
                             if (allLiked) R.drawable.favorite else R.drawable.favorite_border
                         ),
+                        tint = if (allLiked) StandardChrome.favorite else LocalContentColor.current,
                         contentDescription = null,
                     )
                 },

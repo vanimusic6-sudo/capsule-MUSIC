@@ -181,7 +181,7 @@ fun LibraryMixScreen(
     val (showDownloaded) = rememberPreference(ShowDownloadedPlaylistKey, true)
     val (showTop) = rememberPreference(ShowTopPlaylistKey, true)
     val (showCached) = rememberPreference(ShowCachedPlaylistKey, true)
-    val (useNewLibraryDesign) = rememberPreference(UseNewLibraryDesignKey, false)
+    val (useNewLibraryDesign) = rememberPreference(UseNewLibraryDesignKey, true)
 
     val albums = viewModel.albums.collectAsState()
     val artist = viewModel.artists.collectAsState()
@@ -355,7 +355,7 @@ fun LibraryMixScreen(
     LaunchedEffect(Unit) {
          if (ytmSync) {
              withContext(Dispatchers.IO) {
-                 viewModel.syncAllLibrary()
+                 viewModel.syncAllLibrary(automatic = true)
              }
          }
     }

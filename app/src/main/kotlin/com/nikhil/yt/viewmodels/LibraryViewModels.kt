@@ -146,14 +146,14 @@ constructor(
                 }
             }.stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
 
-    fun refresh(filter: SongFilter) {
+    fun refresh(filter: SongFilter, automatic: Boolean = false) {
         if (_isRefreshing.value) return
         viewModelScope.launch(Dispatchers.IO) {
             _isRefreshing.value = true
             try {
                 when (filter) {
-                    SongFilter.LIKED -> syncUtils.syncLikedSongs()
-                    SongFilter.LIBRARY -> syncUtils.syncLibrarySongs()
+                    SongFilter.LIKED -> syncUtils.syncLikedSongs(automatic = automatic)
+                    SongFilter.LIBRARY -> syncUtils.syncLibrarySongs(automatic = automatic)
                     SongFilter.DOWNLOADED -> Unit
                 }
             } catch (e: Exception) {
@@ -164,12 +164,12 @@ constructor(
         }
     }
 
-    fun syncLikedSongs() {
-        refresh(SongFilter.LIKED)
+    fun syncLikedSongs(automatic: Boolean = false) {
+        refresh(SongFilter.LIKED, automatic = automatic)
     }
 
-    fun syncLibrarySongs() {
-        refresh(SongFilter.LIBRARY)
+    fun syncLibrarySongs(automatic: Boolean = false) {
+        refresh(SongFilter.LIBRARY, automatic = automatic)
     }
 }
 
@@ -200,13 +200,13 @@ constructor(
                 }
             }.stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
 
-    fun refresh(filter: ArtistFilter) {
+    fun refresh(filter: ArtistFilter, automatic: Boolean = false) {
         if (filter != ArtistFilter.LIKED) return
         if (_isRefreshing.value) return
         viewModelScope.launch(Dispatchers.IO) {
             _isRefreshing.value = true
             try {
-                syncUtils.syncArtistsSubscriptions()
+                syncUtils.syncArtistsSubscriptions(automatic = automatic)
             } catch (e: Exception) {
                 reportException(e)
             } finally {
@@ -215,8 +215,8 @@ constructor(
         }
     }
 
-    fun sync() {
-        refresh(ArtistFilter.LIKED)
+    fun sync(automatic: Boolean = false) {
+        refresh(ArtistFilter.LIKED, automatic = automatic)
     }
 
     init {
@@ -309,13 +309,13 @@ constructor(
                 }
             }.stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
 
-    fun refresh(filter: AlbumFilter) {
+    fun refresh(filter: AlbumFilter, automatic: Boolean = false) {
         if (filter != AlbumFilter.LIKED) return
         if (_isRefreshing.value) return
         viewModelScope.launch(Dispatchers.IO) {
             _isRefreshing.value = true
             try {
-                syncUtils.syncLikedAlbums()
+                syncUtils.syncLikedAlbums(automatic = automatic)
             } catch (e: Exception) {
                 reportException(e)
             } finally {
@@ -324,8 +324,8 @@ constructor(
         }
     }
 
-    fun sync() {
-        refresh(AlbumFilter.LIKED)
+    fun sync(automatic: Boolean = false) {
+        refresh(AlbumFilter.LIKED, automatic = automatic)
     }
 
     init {
@@ -376,12 +376,18 @@ constructor(
     private val _isRefreshing = MutableStateFlow(false)
     val isRefreshing = _isRefreshing.asStateFlow()
 
-    fun sync() {
+    fun sync(automatic: Boolean = false) {
+        if (_isRefreshing.value) return
         viewModelScope.launch(Dispatchers.IO) {
             _isRefreshing.value = true
-            syncUtils.syncSavedPlaylists()
-            syncUtils.syncAutoSyncPlaylists()
-            _isRefreshing.value = false
+            try {
+                syncUtils.syncSavedPlaylists(automatic = automatic)
+                syncUtils.syncAutoSyncPlaylists(automatic = automatic)
+            } catch (e: Exception) {
+                reportException(e)
+            } finally {
+                _isRefreshing.value = false
+            }
         }
     }
 
@@ -428,14 +434,14 @@ constructor(
     database: MusicDatabase,
     private val syncUtils: SyncUtils,
 ) : ViewModel() {
-    val syncAllLibrary = {
-         viewModelScope.launch(Dispatchers.IO) {
-             try {
-                 syncUtils.performFullSync()
-             } catch (e: Exception) {
-                 timber.log.Timber.e(e, "Error during manual sync")
-             }
-         }
+    fun syncAllLibrary(automatic: Boolean = false) {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                syncUtils.performFullSync(automatic = automatic)
+            } catch (e: Exception) {
+                timber.log.Timber.e(e, "Error during library sync")
+            }
+        }
     }
     val topValue =
         context.dataStore.data

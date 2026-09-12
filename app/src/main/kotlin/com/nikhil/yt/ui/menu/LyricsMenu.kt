@@ -47,6 +47,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.runtime.rememberCoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -56,6 +57,7 @@ import me.bush.translator.Translator
 import me.bush.translator.Language
 import com.nikhil.yt.utils.TranslatorLanguages
 import com.nikhil.yt.utils.TranslatorLang
+import com.nikhil.yt.utils.reportRecoverableException
 import androidx.compose.runtime.produceState
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -89,6 +91,7 @@ fun LyricsMenu(
     viewModel: LyricsMenuViewModel = hiltViewModel(),
 ) {
     val context = LocalContext.current
+    val resources = LocalResources.current
     val database = LocalDatabase.current
 
     var showEditDialog by rememberSaveable {
@@ -174,7 +177,8 @@ fun LyricsMenu(
                                     )
                                 },
                             )
-                        } catch (_: Exception) {
+                        } catch (error: Exception) {
+                            reportRecoverableException("LyricsMenu", "open web lyrics search", error)
                         }
                     },
                 ) {
@@ -197,7 +201,7 @@ fun LyricsMenu(
                         
                         // Show warning only if network is definitely unavailable
                         if (!isNetworkAvailable) {
-                            Toast.makeText(context, context.getString(R.string.error_no_internet), Toast.LENGTH_SHORT).show()
+                            Toast.makeText(context, resources.getString(R.string.error_no_internet), Toast.LENGTH_SHORT).show()
                         }
                     },
                 ) {
@@ -317,7 +321,7 @@ fun LyricsMenu(
             if (!isLoading && results.isEmpty()) {
                 item {
                     Text(
-                        text = context.getString(R.string.lyrics_not_found),
+                        text = resources.getString(R.string.lyrics_not_found),
                         textAlign = TextAlign.Center,
                         modifier =
                         Modifier
@@ -431,7 +435,10 @@ fun LyricsMenu(
                                                 val batchIndices = mutableListOf<Int>()
                                                 while (cursor < translatableIndices.size && batchIndices.size < maxItemsPerBatch) {
                                                     val idx = translatableIndices[cursor]
-                                                    val pieceLen = contents[idx]!!.length
+                                                    val piece = requireNotNull(contents[idx]) {
+                                                        "Translatable lyric at index $idx is missing"
+                                                    }
+                                                    val pieceLen = piece.length
                                                     if (batchIndices.isEmpty() || currentChars + pieceLen + sep.length <= maxCharsPerRequest) {
                                                         batchIndices.add(idx)
                                                         currentChars += pieceLen + sep.length
@@ -439,7 +446,11 @@ fun LyricsMenu(
                                                     } else break
                                                 }
 
-                                                val batchTexts = batchIndices.map { contents[it]!! }
+                                                val batchTexts = batchIndices.map { idx ->
+                                                    requireNotNull(contents[idx]) {
+                                                        "Batched lyric at index $idx is missing"
+                                                    }
+                                                }
                                                 val joined = batchTexts.joinToString(separator = sep)
                                                 val translatedJoined =
                                                     translator.translateBlocking(joined, lang).translatedText
@@ -451,7 +462,9 @@ fun LyricsMenu(
                                                     }
                                                 } else {
                                                     for (idx in batchIndices) {
-                                                        val original = contents[idx]!!
+                                                        val original = requireNotNull(contents[idx]) {
+                                                            "Fallback lyric at index $idx is missing"
+                                                        }
                                                         val singleTranslated = runCatching {
                                                             translator.translateBlocking(original, lang).translatedText
                                                         }.getOrNull() ?: original
@@ -480,7 +493,7 @@ fun LyricsMenu(
                                 } catch (e: Exception) {
                                     Toast.makeText(
                                         context,
-                                        context.getString(R.string.translation_failed) + ": " + (e.localizedMessage ?: e.toString()),
+                                        resources.getString(R.string.translation_failed) + ": " + (e.localizedMessage ?: e.toString()),
                                         Toast.LENGTH_SHORT
                                     ).show()
                                 } finally {

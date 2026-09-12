@@ -8,6 +8,10 @@
 
 package com.nikhil.yt.ui.screens
 
+import com.nikhil.yt.ui.component.StandardHomeChips
+import com.nikhil.yt.ui.component.StandardChrome
+import com.nikhil.yt.ui.theme.CapsuleBottomBarEnabledKey
+import androidx.compose.foundation.background
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.layout.Box
@@ -170,8 +174,9 @@ fun HomeScreen(
     val color5 = MaterialTheme.colorScheme.secondaryContainer
     val surfaceColor = MaterialTheme.colorScheme.surface
     
+    val capsuleDock by rememberPreference(CapsuleBottomBarEnabledKey, false)
     Box(
-        modifier = Modifier.fillMaxSize()
+        modifier = Modifier.fillMaxSize().background(if (capsuleDock) MaterialTheme.colorScheme.surface else StandardChrome.background)
     ) {
 
         if (!disableBlur) {
@@ -301,13 +306,19 @@ fun HomeScreen(
             ) {
                 if (showHomeCategoryChips) {
                     item {
-                        ChipsRow(
-                            chips = homePage?.chips.orEmpty().map { it to it.title },
-                            currentValue = selectedChip,
-                            onValueUpdate = {
-                                viewModel.toggleChip(it)
-                            }
-                        )
+                        if (capsuleDock) {
+                            ChipsRow(
+                                chips = homePage?.chips.orEmpty().map { it to it.title },
+                                currentValue = selectedChip,
+                                onValueUpdate = viewModel::toggleChip,
+                            )
+                        } else {
+                            StandardHomeChips(
+                                chips = homePage?.chips.orEmpty().map { it to it.title },
+                                currentValue = selectedChip,
+                                onValueUpdate = viewModel::toggleChip,
+                            )
+                        }
                     }
                 }
 

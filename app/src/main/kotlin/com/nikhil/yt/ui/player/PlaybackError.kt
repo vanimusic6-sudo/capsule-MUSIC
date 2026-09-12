@@ -34,9 +34,14 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.media3.common.PlaybackException
-import androidx.media3.datasource.HttpDataSource
 import android.widget.Toast
 import com.nikhil.yt.R
+import com.nikhil.yt.constants.InnerTubeCookieKey
+import com.nikhil.yt.innertube.utils.parseCookieString
+import com.nikhil.yt.playback.PlaybackFailureClassifier
+import com.nikhil.yt.playback.PlaybackFailureKind
+import com.nikhil.yt.utils.httpFailureStatus
+import com.nikhil.yt.utils.rememberPreference
 
 @Composable
 fun PlaybackError(
@@ -46,17 +51,42 @@ fun PlaybackError(
     val clipboard = LocalClipboardManager.current
     val context = LocalContext.current
     val fallbackUnknown = stringResource(R.string.error_unknown)
-    val fallbackNoInternet = stringResource(R.string.error_no_internet)
-    val fallbackTimeout = stringResource(R.string.error_timeout)
     val fallbackNoStream = stringResource(R.string.error_no_stream)
     val retryText = stringResource(R.string.retry)
     val copyText = stringResource(R.string.copy)
     val copiedText = stringResource(R.string.copied)
-    val httpCode = error.httpStatusCodeOrNull()
+    val restrictedTitle =
+        stringResource(R.string.error_youtube_network_restricted_title)
+    val restrictedDescription =
+        stringResource(R.string.error_youtube_network_restricted_description)
+    val recommendationTitle =
+        stringResource(R.string.error_youtube_network_restricted_recommendation_title)
+    val recommendation =
+        stringResource(R.string.error_youtube_network_restricted_recommendation)
+    val restrictedTechnical =
+        stringResource(R.string.error_youtube_network_restricted_technical)
+    val (cookie) = rememberPreference(InnerTubeCookieKey, "")
+    val authenticated = remember(cookie) { "SAPISID" in parseCookieString(cookie) }
+    val failureKind = remember(error, authenticated) {
+        PlaybackFailureClassifier.classify(error, authenticated)
+    }
+    val httpCode = error.httpFailureStatus()
+    val isYouTubeBotCheck = failureKind == PlaybackFailureKind.BOT_CHECK
+    val title = when (failureKind) {
+        PlaybackFailureKind.AUTH_REQUIRED -> stringResource(R.string.error_auth_required_title)
+        PlaybackFailureKind.AGE_RESTRICTED -> stringResource(R.string.error_age_restricted_title)
+        PlaybackFailureKind.ACCESS_RESTRICTED -> stringResource(R.string.error_access_restricted_title)
+        PlaybackFailureKind.NETWORK -> stringResource(R.string.error_network_problem_title)
+        PlaybackFailureKind.BOT_CHECK -> restrictedTitle
+        PlaybackFailureKind.GENERIC -> fallbackUnknown
+    }
     val reason =
         when {
-            error.errorCode == PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED -> fallbackNoInternet
-            error.errorCode == PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT -> fallbackTimeout
+            isYouTubeBotCheck -> restrictedDescription
+            failureKind == PlaybackFailureKind.AUTH_REQUIRED -> stringResource(R.string.error_auth_required_description)
+            failureKind == PlaybackFailureKind.AGE_RESTRICTED -> stringResource(R.string.error_age_restricted_description)
+            failureKind == PlaybackFailureKind.ACCESS_RESTRICTED -> stringResource(R.string.error_access_restricted_description)
+            failureKind == PlaybackFailureKind.NETWORK -> stringResource(R.string.error_network_problem_description)
             httpCode in setOf(403, 404, 410, 416) -> fallbackNoStream
             error.errorCode in setOf(
                 PlaybackException.ERROR_CODE_PARSING_CONTAINER_UNSUPPORTED,
@@ -70,7 +100,7 @@ fun PlaybackError(
                 ?: fallbackUnknown
         }
 
-    val details =
+    val rawDetails =
         remember(error, reason, httpCode) {
             buildString {
                 appendLine(reason)
@@ -94,6 +124,12 @@ fun PlaybackError(
                     depth++
                 }
             }.trim()
+        }
+    val visibleDetails =
+        if (isYouTubeBotCheck) {
+            "$restrictedTechnical\nCode: ${error.errorCode}"
+        } else {
+            rawDetails
         }
 
     Surface(
@@ -122,10 +158,10 @@ fun PlaybackError(
                     verticalArrangement = Arrangement.spacedBy(4.dp),
                 ) {
                     Text(
-                        text = fallbackUnknown,
+                        text = title,
                         style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
                         color = MaterialTheme.colorScheme.onErrorContainer,
-                        maxLines = 1,
+                        maxLines = 2,
                         overflow = TextOverflow.Ellipsis,
                     )
 
@@ -139,17 +175,42 @@ fun PlaybackError(
                 }
             }
 
-            Surface(
+            if (isYouTubeBotCheck) {
+                Surface(
+                    shape = MaterialTheme.shapes.large,
+                    color = MaterialTheme.colorScheme.onErrorContainer.copy(alpha = 0.09f),
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Column(
+                        modifier = Modifier.padding(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp),
+                    ) {
+                        Text(
+                            text = recommendationTitle,
+                            style = MaterialTheme.typography.labelLarge,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.onErrorContainer,
+                        )
+                        Text(
+                            text = recommendation,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onErrorContainer.copy(alpha = 0.92f),
+                        )
+                    }
+                }
+            }
+
+            if (failureKind == PlaybackFailureKind.GENERIC || isYouTubeBotCheck) Surface(
                 shape = MaterialTheme.shapes.large,
                 color = MaterialTheme.colorScheme.onErrorContainer.copy(alpha = 0.06f),
                 modifier = Modifier.fillMaxWidth(),
             ) {
                 Text(
-                    text = details,
+                    text = visibleDetails,
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onErrorContainer.copy(alpha = 0.92f),
                     modifier = Modifier.padding(12.dp),
-                    maxLines = 12,
+                    maxLines = if (isYouTubeBotCheck) 3 else 12,
                     overflow = TextOverflow.Clip,
                 )
             }
@@ -171,7 +232,7 @@ fun PlaybackError(
 
                 Button(
                     onClick = {
-                        clipboard.setText(AnnotatedString(details))
+                        clipboard.setText(AnnotatedString(rawDetails))
                         Toast.makeText(context, copiedText, Toast.LENGTH_SHORT).show()
                     },
                     colors =
@@ -190,13 +251,4 @@ fun PlaybackError(
             }
         }
     }
-}
-
-private fun PlaybackException.httpStatusCodeOrNull(): Int? {
-    var t: Throwable? = cause
-    while (t != null) {
-        if (t is HttpDataSource.InvalidResponseCodeException) return t.responseCode
-        t = t.cause
-    }
-    return null
 }

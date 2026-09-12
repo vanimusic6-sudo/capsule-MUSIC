@@ -12,9 +12,9 @@ import android.content.Context
 import android.net.ConnectivityManager
 import android.net.Network
 import android.net.NetworkCapabilities
-import android.net.NetworkRequest
-import kotlinx.coroutines.channels.Channel
-import kotlinx.coroutines.flow.receiveAsFlow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 
 /**
  * Simple NetworkConnectivityObserver based on OuterTune's implementation
@@ -24,62 +24,86 @@ class NetworkConnectivityObserver(context: Context) {
     private val connectivityManager =
         context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
 
-    private val _networkStatus = Channel<Boolean>(Channel.CONFLATED)
-    val networkStatus = _networkStatus.receiveAsFlow()
+    private val initialNetwork = connectivityManager.activeNetwork
+    private val _networkStatus =
+        MutableStateFlow(isValidatedInternetNetwork(initialNetwork))
+    val networkStatus: StateFlow<Boolean> = _networkStatus.asStateFlow()
+
+    /*
+     * A VPN hand-off can keep INTERNET available while changing the default
+     * Android Network (and therefore the public exit IP). A Boolean online /
+     * offline signal cannot represent that transition, so playback also gets
+     * the stable network handle and may discard only network-bound state.
+     */
+    private val _activeNetworkId =
+        MutableStateFlow(initialNetwork?.networkHandle)
+    val activeNetworkId: StateFlow<Long?> = _activeNetworkId.asStateFlow()
 
     private val networkCallback = object : ConnectivityManager.NetworkCallback() {
         override fun onAvailable(network: Network) {
-            _networkStatus.trySend(true)
+            publish(network)
         }
 
         override fun onLost(network: Network) {
-            _networkStatus.trySend(false)
+            if (_activeNetworkId.value == network.networkHandle) {
+                publish(connectivityManager.activeNetwork)
+            }
+        }
+
+        override fun onCapabilitiesChanged(
+            network: Network,
+            networkCapabilities: NetworkCapabilities,
+        ) {
+            if (_activeNetworkId.value == network.networkHandle) {
+                publish(network, networkCapabilities)
+            }
         }
     }
 
     init {
-        val request = NetworkRequest.Builder()
-            .addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
-            .addCapability(NetworkCapabilities.NET_CAPABILITY_NOT_RESTRICTED)
-            .build()
-        
         try {
-            connectivityManager.registerNetworkCallback(request, networkCallback)
-        } catch (e: Exception) {
-            // Fallback: assume connected if registration fails
-            _networkStatus.trySend(true)
+            /*
+             * Observe the default route, not every network that happens to
+             * exist. With registerNetworkCallback an old Wi-Fi/VPN onLost
+             * event could incorrectly mark the new active VPN as offline.
+             */
+            connectivityManager.registerDefaultNetworkCallback(networkCallback)
+        } catch (_: Exception) {
+            _networkStatus.value = isCurrentlyConnected()
         }
-        
-        // Send initial state
-        val isInitiallyConnected = isCurrentlyConnected()
-        _networkStatus.trySend(isInitiallyConnected)
     }
 
     fun unregister() {
-        connectivityManager.unregisterNetworkCallback(networkCallback)
+        runCatching {
+            connectivityManager.unregisterNetworkCallback(networkCallback)
+        }
     }
-    
+
     /**
      * Check current connectivity state synchronously
      */
-    fun isCurrentlyConnected(): Boolean {
-        return try {
-            val activeNetwork = connectivityManager.activeNetwork
-            val networkCapabilities = connectivityManager.getNetworkCapabilities(activeNetwork)
-            
-            // Check if we have internet capability
-            val hasInternet = networkCapabilities?.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) == true
-            
-            // For API 23+, also check if connection is validated
-            val isValidated = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
-                networkCapabilities?.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED) == true
-            } else {
-                true // For older versions, assume validated if we have internet capability
-            }
-            
-            hasInternet && isValidated
-        } catch (e: Exception) {
-            false
-        }
+    fun isCurrentlyConnected(): Boolean =
+        isValidatedInternetNetwork(connectivityManager.activeNetwork)
+
+    private fun publish(
+        network: Network?,
+        capabilities: NetworkCapabilities? =
+            network?.let { connectivityManager.getNetworkCapabilities(it) },
+    ) {
+        _activeNetworkId.value = network?.networkHandle
+        _networkStatus.value = isValidatedInternetNetwork(capabilities)
     }
+
+    private fun isValidatedInternetNetwork(network: Network?): Boolean =
+        isValidatedInternetNetwork(
+            network?.let { connectivityManager.getNetworkCapabilities(it) },
+        )
+
+    private fun isValidatedInternetNetwork(
+        capabilities: NetworkCapabilities?,
+    ): Boolean =
+        capabilities?.let {
+            it.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) &&
+                it.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
+        } == true
 }

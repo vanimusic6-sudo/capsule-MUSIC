@@ -39,6 +39,7 @@ class CapsuleCacheRoutingDataSource private constructor(
         return try {
             selected.open(dataSpec)
         } catch (throwable: Throwable) {
+            try { selected.close() } catch (closeFailure: Throwable) { throwable.addSuppressed(closeFailure) }
             activeDataSource = null
             throw throwable
         }

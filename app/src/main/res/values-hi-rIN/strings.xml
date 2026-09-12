@@ -216,7 +216,7 @@
     <string name="sleep_timer">Sleep timer</string>
     <string name="end_of_song">End of song</string>
     <plurals name="minute">
-        <item quantity="one">1 minute</item>
+        <item quantity="one">%d minute</item>
         <item quantity="other">%d minutes</item>
     </plurals>
     <string name="error_no_stream">No stream available</string>
@@ -333,7 +333,6 @@
     <string name="palette_spring">Spring</string>
     <string name="palette_summer">Summer</string>
     <string name="palette_twilight">Twilight</string>
-    <string name="palette_aurora">Aurora</string>
     <string name="palette_candy">Candy</string>
     <string name="palette_rainbow">Rainbow</string>
     <!-- Additional Palettes -->
@@ -360,8 +359,6 @@
     <string name="ok_button">OK</string>
     <string name="custom_radius">Customize thumbnail corner radius</string>
     <string name="custom">Custom</string>
-    <string name="customized_background">Customized background</string>
-    <string name="customize_background_title">Customize background</string>
     <string name="add_image">Add image</string>
     <string name="blur">Blur</string>
     <string name="contrast">Contrast</string>

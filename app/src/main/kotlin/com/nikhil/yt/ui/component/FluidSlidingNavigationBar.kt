@@ -1,5 +1,7 @@
 package com.nikhil.yt.ui.component
 
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.ui.semantics.Role
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateDpAsState
@@ -33,20 +35,30 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.nikhil.yt.LocalPlayerConnection
+import com.nikhil.yt.constants.MiniPlayerBackgroundStyle
+import com.nikhil.yt.constants.MiniPlayerBackgroundStyleKey
 import com.nikhil.yt.ui.screens.Screens
+import com.nikhil.yt.ui.player.CapsuleCompactSurfaceBackground
+import com.nikhil.yt.ui.player.capsuleDockIndicatorColor
+import com.nikhil.yt.ui.player.capsuleSurfaceOutline
+import com.nikhil.yt.ui.player.rememberCapsuleArtworkColors
 import com.nikhil.yt.ui.theme.CapsuleBottomBarEnabledKey
+import com.nikhil.yt.utils.rememberEnumPreference
 import com.nikhil.yt.utils.rememberPreference
 
 @Composable
@@ -69,16 +81,16 @@ fun FluidSlidingNavigationBar(
             modifier = modifier,
             items = items,
             currentRoute = currentRoute,
+            pureBlack = pureBlack,
             onTabSelected = onTabSelected,
             connectedToMiniPlayer =
                 capsuleMiniPlayerVisible,
         )
     } else {
-        OriginalVeluneNavigationBar(
+        StandardNavigationBar(
             modifier = modifier,
             items = items,
             currentRoute = currentRoute,
-            pureBlack = pureBlack,
             onTabSelected = onTabSelected,
         )
     }
@@ -136,9 +148,48 @@ private fun CapsuleNavigationBar(
     modifier: Modifier,
     items: List<Screens>,
     currentRoute: String?,
+    pureBlack: Boolean,
     onTabSelected: (Screens) -> Unit,
     connectedToMiniPlayer: Boolean,
 ) {
+    val playerConnection = LocalPlayerConnection.current
+    val mediaMetadata =
+        if (playerConnection == null) {
+            null
+        } else {
+            val value by
+                playerConnection.mediaMetadata.collectAsState()
+            value
+        }
+    val miniPlayerBackground by
+        rememberEnumPreference(
+            MiniPlayerBackgroundStyleKey,
+            defaultValue = MiniPlayerBackgroundStyle.CAPSULE_STAR,
+        )
+    val dockBackground =
+        if (connectedToMiniPlayer) {
+            miniPlayerBackground
+        } else {
+            MiniPlayerBackgroundStyle.THEME
+        }
+    val artworkColors =
+        rememberCapsuleArtworkColors(
+            mediaMetadata = mediaMetadata,
+            enabled =
+                connectedToMiniPlayer &&
+                    dockBackground !=
+                    MiniPlayerBackgroundStyle.THEME,
+        )
+    val glassDock = dockBackground == MiniPlayerBackgroundStyle.GLASS
+    val dockOutline = capsuleSurfaceOutline(artworkColors, glass = glassDock)
+    val dockIndicator = capsuleDockIndicatorColor(artworkColors, glass = glassDock)
+    val dockMutedContent =
+        lerp(
+            Color(0xFFA2A1AA),
+            artworkColors.firstOrNull() ?: Color(0xFFA2A1AA),
+            0.08f,
+        )
+
     val dockTopRadius by
         animateDpAsState(
             targetValue =
@@ -200,81 +251,93 @@ private fun CapsuleNavigationBar(
         contentAlignment =
             Alignment.Center,
     ) {
-        BoxWithConstraints(
+        Box(
             modifier =
                 Modifier
                     .fillMaxWidth()
                     .fillMaxHeight()
                     .clip(dockShape)
-                    .background(
-                        Color(0xFF151515),
-                    )
                     .border(
                         width = 1.dp,
-                        color =
-                            Color(0xFF353535),
+                        color = dockOutline,
                         shape =
                             dockShape,
-                    )
-                    .padding(5.dp),
+                    ),
         ) {
-            if (items.isEmpty()) {
-                return@BoxWithConstraints
-            }
-
-            val itemCount =
-                items.size.coerceAtLeast(1)
-
-            val itemWidth =
-                maxWidth /
-                    itemCount.toFloat()
-
-            val indicatorOffset by
-                animateDpAsState(
-                    targetValue =
-                        itemWidth *
-                            selectedIndex
-                                .toFloat(),
-                    animationSpec =
-                        spring(
-                            dampingRatio =
-                                Spring.DampingRatioNoBouncy,
-                            stiffness =
-                                Spring.StiffnessMediumLow,
-                        ),
-                    label =
-                        "capsuleDockIndicatorOffset",
-                )
-
-            Box(
-                modifier =
-                    Modifier
-                        .offset(
-                            x =
-                                indicatorOffset,
-                        )
-                        .width(itemWidth)
-                        .fillMaxHeight()
-                        .padding(
-                            horizontal = 2.dp,
-                        )
-                        .clip(
-                            RoundedCornerShape(
-                                21.dp,
-                            ),
-                        )
-                        .background(
-                            Color(0xFFF0F0F0),
-                        ),
+            CapsuleCompactSurfaceBackground(
+                style = dockBackground,
+                pureBlack = pureBlack,
+                colors = artworkColors,
+                modifier = Modifier.fillMaxSize(),
+                // The mini-player carries the motion. A matching static phase
+                // keeps the connected dock cohesive without a second
+                // full-time animation clock and Canvas redraw loop.
+                animated = false,
             )
 
-            Row(
+            BoxWithConstraints(
                 modifier =
-                    Modifier.fillMaxSize(),
-                verticalAlignment =
-                    Alignment.CenterVertically,
+                    Modifier
+                        .fillMaxSize()
+                        .padding(5.dp),
             ) {
-                items.forEach { screen ->
+                if (items.isEmpty()) {
+                    return@BoxWithConstraints
+                }
+
+                val itemCount =
+                    items.size.coerceAtLeast(1)
+
+                val itemWidth =
+                    maxWidth /
+                        itemCount.toFloat()
+
+                val indicatorOffset by
+                    animateDpAsState(
+                        targetValue =
+                            itemWidth *
+                                selectedIndex
+                                    .toFloat(),
+                        animationSpec =
+                            spring(
+                                dampingRatio =
+                                    Spring.DampingRatioNoBouncy,
+                                stiffness =
+                                    Spring.StiffnessMediumLow,
+                            ),
+                        label =
+                            "capsuleDockIndicatorOffset",
+                    )
+
+                Box(
+                    modifier =
+                        Modifier
+                            .offset(
+                                x =
+                                    indicatorOffset,
+                            )
+                            .width(itemWidth)
+                            .fillMaxHeight()
+                            .padding(
+                                horizontal = 2.dp,
+                            )
+                            .clip(
+                                RoundedCornerShape(
+                                    21.dp,
+                                ),
+                            )
+                            .background(
+                                dockIndicator,
+                            ),
+                )
+
+                Row(
+                    modifier =
+                        Modifier.fillMaxSize(),
+                    verticalAlignment =
+                        Alignment.CenterVertically,
+                ) {
+                    items.forEach { screen ->
                     val isSelected =
                         remember(
                             currentRoute,
@@ -308,9 +371,9 @@ private fun CapsuleNavigationBar(
                         animateColorAsState(
                             targetValue =
                                 if (isSelected) {
-                                    Color(0xFF101010)
+                                    Color(0xFF121219)
                                 } else {
-                                    Color(0xFF979797)
+                                    dockMutedContent
                                 },
                             animationSpec =
                                 spring(
@@ -398,213 +461,69 @@ private fun CapsuleNavigationBar(
                             )
                         }
                     }
+                    }
                 }
             }
         }
     }
 }
 
-/**
- * Keep Velune's normal navigation untouched when Capsule Bottom Bar is off.
- */
+/** Standard full-width navigation, with the system inset inside its surface. */
 @Composable
-private fun OriginalVeluneNavigationBar(
+internal fun StandardNavigationBar(
     modifier: Modifier,
     items: List<Screens>,
     currentRoute: String,
-    pureBlack: Boolean,
     onTabSelected: (Screens) -> Unit,
 ) {
-    val selectedIndex =
-        items
-            .indexOfFirst {
-                it.route == currentRoute
-            }
-            .coerceAtLeast(0)
-
-    val barColor =
-        if (pureBlack) {
-            Color.Black
-        } else {
-            MaterialTheme.colorScheme
-                .surfaceContainer
-        }
-
+    val selectedIndex = items.indexOfFirst { isRouteSelected(currentRoute, it.route, items) }.coerceAtLeast(0)
     BoxWithConstraints(
-        modifier =
-            modifier
-                .clip(
-                    RoundedCornerShape(
-                        28.dp,
-                    ),
-                )
-                .fillMaxWidth()
-                .height(80.dp)
-                .background(barColor),
+        modifier = modifier
+            .clip(RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
+            .background(StandardChrome.panel)
+            .windowInsetsPadding(WindowInsets.navigationBars.only(WindowInsetsSides.Bottom)),
     ) {
-        if (items.isEmpty()) {
-            return@BoxWithConstraints
-        }
-
-        val tabWidth =
-            maxWidth /
-                items.size
-
-        val pillWidth =
-            48.dp
-
-        val pillHeight =
-            32.dp
-
-        val indicatorOffset by
-            animateDpAsState(
-                targetValue =
-                    (
-                        tabWidth *
-                            selectedIndex
-                    ) +
-                        (
-                            (
-                                tabWidth -
-                                    pillWidth
-                            ) / 2
-                        ),
-                animationSpec =
-                    spring(
-                        dampingRatio =
-                            Spring.DampingRatioNoBouncy,
-                        stiffness =
-                            Spring.StiffnessLow,
-                    ),
-                label =
-                    "PillSlider",
-            )
-
-        Box(
-            modifier =
-                Modifier
-                    .offset(
-                        x =
-                            indicatorOffset,
-                        y =
-                            14.dp,
-                    )
-                    .width(
-                        pillWidth,
-                    )
-                    .height(
-                        pillHeight,
-                    )
-                    .background(
-                        color =
-                            MaterialTheme
-                                .colorScheme
-                                .secondaryContainer,
-                        shape =
-                            CircleShape,
-                    ),
+        if (items.isEmpty()) return@BoxWithConstraints
+        val compact = maxHeight < 72.dp
+        val tabWidth = maxWidth / items.size
+        val pillWidth = 54.dp
+        val indicatorOffset by animateDpAsState(
+            targetValue = tabWidth * selectedIndex + (tabWidth - pillWidth) / 2,
+            animationSpec = spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = Spring.StiffnessLow),
+            label = "standardNavigationIndicator",
         )
-
-        Row(
-            modifier =
-                Modifier.fillMaxSize(),
-            verticalAlignment =
-                Alignment.Top,
-        ) {
-            items.forEachIndexed {
-                    index,
-                    item,
-                ->
-                val selected =
-                    selectedIndex ==
-                        index
-
+        Box(
+            Modifier.offset(x = indicatorOffset, y = if (compact) 8.dp else 12.dp).size(pillWidth, if (compact) 32.dp else 36.dp)
+                .background(StandardChrome.selected, CircleShape),
+        )
+        Row(Modifier.fillMaxSize()) {
+            items.forEachIndexed { index, item ->
+                val selected = index == selectedIndex
                 Column(
-                    modifier =
-                        Modifier
-                            .weight(1f)
-                            .fillMaxHeight()
-                            .clickable(
-                                interactionSource =
-                                    remember {
-                                        MutableInteractionSource()
-                                    },
-                                indication =
-                                    null,
-                            ) {
-                                onTabSelected(
-                                    item,
-                                )
-                            },
-                    horizontalAlignment =
-                        Alignment.CenterHorizontally,
+                    modifier = Modifier.weight(1f).fillMaxHeight()
+                        .selectable(
+                            selected = selected,
+                            role = Role.Tab,
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null,
+                            onClick = { onTabSelected(item) },
+                        ),
+                    horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
-                    Spacer(
-                        modifier =
-                            Modifier.height(
-                                18.dp,
-                            ),
-                    )
-
+                    Spacer(Modifier.height(if (compact) 12.dp else 17.dp))
                     Icon(
-                        painter =
-                            painterResource(
-                                id =
-                                    if (selected) {
-                                        item.iconIdActive
-                                    } else {
-                                        item.iconIdInactive
-                                    },
-                            ),
-                        contentDescription =
-                            stringResource(
-                                id =
-                                    item.titleId,
-                            ),
-                        tint =
-                            if (selected) {
-                                MaterialTheme
-                                    .colorScheme
-                                    .onSecondaryContainer
-                            } else {
-                                MaterialTheme
-                                    .colorScheme
-                                    .onSurfaceVariant
-                            },
-                        modifier =
-                            Modifier.size(
-                                24.dp,
-                            ),
+                        painterResource(if (selected) item.iconIdActive else item.iconIdInactive),
+                        contentDescription = null,
+                        tint = StandardChrome.muted,
+                        modifier = Modifier.size(if (compact) 24.dp else 26.dp),
                     )
-
-                    Spacer(
-                        modifier =
-                            Modifier.height(
-                                4.dp,
-                            ),
-                    )
-
+                    Spacer(Modifier.height(if (compact) 4.dp else 8.dp))
                     Text(
-                        text =
-                            stringResource(
-                                id =
-                                    item.titleId,
-                            ),
-                        fontSize =
-                            12.sp,
+                        stringResource(item.titleId),
+                        fontSize = if (compact) 12.sp else 13.sp,
                         maxLines = 1,
-                        overflow =
-                            TextOverflow.Ellipsis,
-                        color =
-                            if (selected) {
-                                MaterialTheme
-                                    .colorScheme
-                                    .onSurface
-                            } else {
-                                MaterialTheme
-                                    .colorScheme
-                                    .onSurfaceVariant
-                            },
+                        overflow = TextOverflow.Ellipsis,
+                        color = if (selected) StandardChrome.text else StandardChrome.muted,
                     )
                 }
             }

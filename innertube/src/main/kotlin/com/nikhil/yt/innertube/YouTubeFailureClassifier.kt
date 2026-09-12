@@ -167,6 +167,10 @@ object YouTubeFailureClassifier {
             "confirm you’re not a bot" in text ||
             "verify you're human" in text ||
             "verify you are human" in text ||
+            "подтвердить, что вы не бот" in text ||
+            "подтвердить что вы не бот" in text ||
+            "подтвердите, что вы не бот" in text ||
+            "подтвердите что вы не бот" in text ||
             "подтвердите, что вы не робот" in text ||
             "подтвердите что вы не робот" in text ||
             "необычный трафик" in text ||

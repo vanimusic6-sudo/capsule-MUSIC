@@ -127,6 +127,7 @@ import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -185,6 +186,7 @@ import com.nikhil.yt.ui.utils.smoothFadingEdge
 import com.nikhil.yt.utils.ComposeToImage
 import com.nikhil.yt.utils.rememberEnumPreference
 import com.nikhil.yt.utils.rememberPreference
+import com.nikhil.yt.utils.reportRecoverableException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
@@ -428,6 +430,7 @@ fun Lyrics(
     val menuState = LocalMenuState.current
     val density = LocalDensity.current
     val context = LocalContext.current
+    val resources = LocalResources.current
     val configuration = LocalConfiguration.current
 
     DisposableEffect(Unit) {
@@ -465,7 +468,7 @@ fun Lyrics(
 
     val playerBackground by rememberEnumPreference(
         key = PlayerBackgroundStyleKey,
-        defaultValue = PlayerBackgroundStyle.DEFAULT
+        defaultValue = PlayerBackgroundStyle.CAPSULE_STAR
     )
 
     val darkTheme by rememberEnumPreference(DarkModeKey, defaultValue = DarkMode.AUTO)
@@ -641,7 +644,7 @@ fun Lyrics(
         if (showMaxSelectionToast) {
             Toast.makeText(
                 context,
-                context.getString(R.string.max_selection_limit, maxSelectionLimit),
+                resources.getString(R.string.max_selection_limit, maxSelectionLimit),
                 Toast.LENGTH_SHORT
             ).show()
             showMaxSelectionToast = false
@@ -2259,7 +2262,8 @@ fun Lyrics(
     }
 
     if (showShareDialog && shareDialogData != null) {
-        val (lyricsText, songTitle, artists) = shareDialogData!! 
+        val (lyricsText, songTitle, artists) =
+            requireNotNull(shareDialogData) { "Lyrics share dialog data is missing" }
         BasicAlertDialog(onDismissRequest = { showShareDialog = false }) {
             Card(
                 shape = MaterialTheme.shapes.medium,
@@ -2291,7 +2295,7 @@ fun Lyrics(
 
                                     putExtra(Intent.EXTRA_TEXT, "\"$lyricsText\"\n\n$songTitle - $artists\n$songLink")
                                 }
-                                context.startActivity(Intent.createChooser(shareIntent, context.getString(R.string.share_lyrics)))
+                                context.startActivity(Intent.createChooser(shareIntent, resources.getString(R.string.share_lyrics)))
                                 showShareDialog = false
                             }
                             .padding(vertical = 12.dp),
@@ -2357,7 +2361,8 @@ fun Lyrics(
     }
 
     if (showColorPickerDialog && shareDialogData != null) {
-        val (lyricsText, songTitle, artists) = shareDialogData!!
+        val (lyricsText, songTitle, artists) =
+            requireNotNull(shareDialogData) { "Lyrics image dialog data is missing" }
         val coverUrl = mediaMetadata?.thumbnailUrl
 
         LaunchedEffect(coverUrl) {
@@ -2372,7 +2377,9 @@ fun Lyrics(
                             val palette = Palette.from(bmp).generate()
                             paletteGlassStyle = LyricsGlassStyle.fromPalette(palette)
                         }
-                    } catch (_: Exception) {}
+                    } catch (error: Exception) {
+                        reportRecoverableException("Lyrics", "derive lyrics palette", error)
+                    }
                 }
             }
         }

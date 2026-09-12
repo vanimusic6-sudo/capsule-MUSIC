@@ -33,6 +33,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
@@ -59,11 +60,12 @@ fun PlaylistSuggestionsSection(
     viewModel: LocalPlaylistViewModel = hiltViewModel()
 ) {
     val context = LocalContext.current
+    val resources = LocalResources.current
     val database = LocalDatabase.current
     val coroutineScope = rememberCoroutineScope()
     val playerConnection = LocalPlayerConnection.current
-    val isPlaying by playerConnection?.isPlaying?.collectAsState() ?: androidx.compose.runtime.mutableStateOf(false)
-    val mediaMetadata by playerConnection?.mediaMetadata?.collectAsState() ?: androidx.compose.runtime.mutableStateOf(null)
+    val isPlaying = playerConnection?.isPlaying?.collectAsState()?.value ?: false
+    val mediaMetadata = playerConnection?.mediaMetadata?.collectAsState()?.value
     
     val playlistSuggestions by viewModel.playlistSuggestions.collectAsState()
     val isLoading by viewModel.isLoadingSuggestions.collectAsState()
@@ -99,9 +101,9 @@ fun PlaylistSuggestionsSection(
                             
                             val playlistName = viewModel.playlist.value?.playlist?.name
                             val message = if (playlistName != null) {
-                                context.getString(R.string.added_to_playlist, playlistName)
+                                resources.getString(R.string.added_to_playlist, playlistName)
                             } else {
-                                context.getString(R.string.add_to_playlist)
+                                resources.getString(R.string.add_to_playlist)
                             }
                             Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
                         }
@@ -178,9 +180,9 @@ fun PlaylistSuggestionsSection(
                                             if (success) {
                                                 val playlistName = viewModel.playlist.value?.playlist?.name
                                                 val message = if (playlistName != null) {
-                                                    context.getString(R.string.added_to_playlist, playlistName)
+                                                    resources.getString(R.string.added_to_playlist, playlistName)
                                                 } else {
-                                                    context.getString(R.string.add_to_playlist)
+                                                    resources.getString(R.string.add_to_playlist)
                                                 }
                                                 Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
                                             } else {
@@ -214,7 +216,7 @@ fun PlaylistSuggestionsSection(
                                     if (startIndex != -1) {
                                         playerConnection.playQueue(
                                             ListQueue(
-                                                title = context.getString(R.string.you_might_like),
+                                                title = resources.getString(R.string.you_might_like),
                                                 items = songItems.map { it.toMediaItem() },
                                                 startIndex = startIndex
                                             )

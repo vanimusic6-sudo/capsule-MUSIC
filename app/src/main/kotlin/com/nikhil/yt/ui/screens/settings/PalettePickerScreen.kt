@@ -89,6 +89,7 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -720,15 +721,6 @@ object ThemePalettes {
         neutral = Color(0xFF4B0082)
     )
     
-    val Aurora = ThemePalette(
-        id = "aurora",
-        nameResId = R.string.palette_aurora,
-        primary = Color(0xFF00FF7F),
-        secondary = Color(0xFF00FF7F),
-        tertiary = Color(0xFF00FF7F),
-        neutral = Color(0xFF00FF7F)
-    )
-    
     val Candy = ThemePalette(
         id = "candy",
         nameResId = R.string.palette_candy,
@@ -825,7 +817,6 @@ object ThemePalettes {
         Spring,
         Summer,
         Twilight,
-        Aurora,
         Candy,
         Rainbow
     )
@@ -897,6 +888,7 @@ fun PalettePickerScreen(
     navController: NavController
 ) {
     val context = LocalContext.current
+    val resources = LocalResources.current
     val scope = rememberCoroutineScope()
     val (customThemeColor, onCustomThemeColorChange) = rememberPreference(
         CustomThemeColorKey,
@@ -928,10 +920,10 @@ fun PalettePickerScreen(
                 if (imported != null) {
                     val name = ThemeSeedPaletteCodec.extractNameFromJsonOrNull(text)
                     onCustomThemeColorChange(ThemeSeedPaletteCodec.encodeForPreference(imported, name))
-                    Toast.makeText(context, context.getString(R.string.theme_import_success), Toast.LENGTH_SHORT).show()
+                    Toast.makeText(context, resources.getString(R.string.theme_import_success), Toast.LENGTH_SHORT).show()
                     navController.navigate("settings/appearance/theme_creator")
                 } else {
-                    Toast.makeText(context, context.getString(R.string.theme_import_failed), Toast.LENGTH_SHORT).show()
+                    Toast.makeText(context, resources.getString(R.string.theme_import_failed), Toast.LENGTH_SHORT).show()
                 }
             }
         }

@@ -143,7 +143,7 @@ fun LibraryPlaylistsScreen(
         true
     )
     val gridItemSize by rememberEnumPreference(GridItemsSizeKey, GridItemSize.BIG)
-    val useNewLibraryDesign by rememberPreference(UseNewLibraryDesignKey, false)
+    val useNewLibraryDesign by rememberPreference(UseNewLibraryDesignKey, true)
 
 
     val (selectedTagsFilter, onSelectedTagsFilterChange) = rememberPreference(PlaylistTagsFilterKey, "")
@@ -288,12 +288,12 @@ fun LibraryPlaylistsScreen(
     }
 
     val (ytmSync) = rememberPreference(YtmSyncKey, true)
-    val (disableBlur) = rememberPreference(DisableBlurKey, false)
+    val (disableBlur) = rememberPreference(DisableBlurKey, true)
 
     LaunchedEffect(Unit) {
         if (ytmSync) {
             withContext(Dispatchers.IO) {
-                viewModel.sync()
+                viewModel.sync(automatic = true)
             }
         }
     }
@@ -887,4 +887,3 @@ fun LibraryPlaylistsScreen(
         )
     }
 }
-

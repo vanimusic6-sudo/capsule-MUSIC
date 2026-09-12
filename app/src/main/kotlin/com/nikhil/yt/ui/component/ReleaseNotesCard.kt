@@ -8,7 +8,6 @@
 
 package com.nikhil.yt.ui.component
 
-import android.util.Log
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -29,6 +28,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.nikhil.yt.R
+import com.nikhil.yt.utils.CapsuleBrand
+import com.nikhil.yt.utils.reportRecoverableException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.jsoup.Jsoup
@@ -74,7 +75,7 @@ suspend fun fetchReleaseNotesText(): List<String> {
     return withContext(Dispatchers.IO) {
         try {
             val document =
-                Jsoup.connect("https://github.com/nikhilvishwakarma00/Velune/releases/latest").get()
+                Jsoup.connect(CapsuleBrand.LATEST_RELEASE_URL).get()
             val changelogElement = document.selectFirst(".markdown-body")
             val htmlContent = changelogElement?.html() ?: "No release notes found"
 
@@ -82,12 +83,11 @@ suspend fun fetchReleaseNotesText(): List<String> {
                 .replace(Regex("<br.*?>|</p>"), "\n")
                 .replace(Regex("<.*?>"), "")
 
-            Log.d("ChangelogParser","Cleared text is:$textContent")
-
             textContent.split("\n")
                 .map { it.trim() }
                 .filter { it.isNotEmpty() }
         } catch (e: Exception) {
+            reportRecoverableException("ReleaseNotes", "load release notes", e)
             listOf("Error loading release notes")
         }
     }

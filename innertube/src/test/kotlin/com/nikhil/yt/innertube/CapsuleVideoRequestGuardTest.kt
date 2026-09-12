@@ -1,5 +1,6 @@
 package com.nikhil.yt.innertube
 
+import kotlinx.coroutines.async
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -48,4 +49,20 @@ class CapsuleVideoRequestGuardTest {
         )
         assertTrue(CapsuleVideoRequestGuard.isBlocked())
     }
+    @Test
+    fun queuedRequestRechecksABreakerOpenedDuringItsDelay() = kotlinx.coroutines.runBlocking {
+        kotlinx.coroutines.supervisorScope {
+            CapsuleVideoRequestGuard.beforeMetadataRequest()
+            val queued = async(start = kotlinx.coroutines.CoroutineStart.UNDISPATCHED) {
+                CapsuleVideoRequestGuard.beforeMetadataRequest()
+            }
+            assertFalse(queued.isCompleted)
+            CapsuleVideoRequestGuard.noteApiFailure(IllegalStateException("Confirm you're not a bot"))
+            try {
+                queued.await()
+                org.junit.Assert.fail("Queued request escaped the breaker")
+            } catch (_: CapsuleVideoRequestGuard.RequestBlockedException) { }
+        }
+    }
+
 }

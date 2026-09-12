@@ -96,9 +96,7 @@
     <string name="player_design_v4">Sinematik</string>
     <string name="player_design_v5">Metro</string>
     <string name="new_mini_player_design">Desain pemutar mini baru</string>
-    <string name="player_background_blur">Mengaburkan</string>
     <string name="coloring">Pewarnaan</string>
-    <string name="blur_gradient">Gradasi buram</string>
     <string name="glow">Bersinar</string>
     <string name="player_buttons_style">Warna tombol pemutar</string>
     <string name="default_style">Bawaan</string>

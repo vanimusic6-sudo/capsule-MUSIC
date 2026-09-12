@@ -80,10 +80,8 @@
     <string name="player_design_v3">ミニマル</string>
     <string name="player_design_v4">シネマティック</string>
     <string name="coloring">彩色</string>
-    <string name="blur_gradient">ぼかしグラデーション</string>
     <string name="glow">輝き</string>
     <string name="new_mini_player_design">新しいミニプレーヤーのデザイン</string>
-    <string name="player_background_blur">ぼかし</string>
     <string name="player_buttons_style">プレーヤーのボタンの色</string>
     <string name="default_style">デフォルト</string>
     <string name="secondary_color_style">二次</string>

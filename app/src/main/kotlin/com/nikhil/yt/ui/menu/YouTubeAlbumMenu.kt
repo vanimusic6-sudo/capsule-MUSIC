@@ -5,9 +5,10 @@
  */
 
 
-
 package com.nikhil.yt.ui.menu
 
+import com.nikhil.yt.ui.component.StandardChrome
+import com.nikhil.yt.ui.component.ArtistSelectionItem
 import com.nikhil.yt.ui.component.VeluneLoader
 import android.annotation.SuppressLint
 import android.content.Intent
@@ -15,9 +16,7 @@ import android.content.res.Configuration
 import android.widget.Toast
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
@@ -45,17 +44,14 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.core.net.toUri
 import androidx.media3.exoplayer.offline.Download
 import androidx.media3.exoplayer.offline.DownloadRequest
@@ -68,7 +64,6 @@ import com.nikhil.yt.LocalDownloadUtil
 import com.nikhil.yt.LocalPlayerConnection
 import com.nikhil.yt.R
 import com.nikhil.yt.constants.ArtistSeparatorsKey
-import com.nikhil.yt.constants.ListItemHeight
 import com.nikhil.yt.constants.ListThumbnailSize
 import com.nikhil.yt.db.entities.Song
 import com.nikhil.yt.extensions.toMediaItem
@@ -93,6 +88,7 @@ fun YouTubeAlbumMenu(
     onDismiss: () -> Unit,
 ) {
     val context = LocalContext.current
+    val resources = LocalResources.current
     val database = LocalDatabase.current
     val downloadUtil = LocalDownloadUtil.current
     val playerConnection = LocalPlayerConnection.current ?: return
@@ -193,10 +189,10 @@ fun YouTubeAlbumMenu(
         onDismiss = { showChoosePlaylistDialog = false },
         onAddComplete = { songCount, playlistNames ->
             val message = when {
-                songCount == 1 && playlistNames.size == 1 -> context.getString(R.string.added_to_playlist, playlistNames.first())
-                songCount > 1 && playlistNames.size == 1 -> context.getString(R.string.added_n_songs_to_playlist, songCount, playlistNames.first())
-                songCount == 1 -> context.getString(R.string.added_to_n_playlists, playlistNames.size)
-                else -> context.getString(R.string.added_n_songs_to_n_playlists, songCount, playlistNames.size)
+                songCount == 1 && playlistNames.size == 1 -> resources.getString(R.string.added_to_playlist, playlistNames.first())
+                songCount > 1 && playlistNames.size == 1 -> resources.getString(R.string.added_n_songs_to_playlist, songCount, playlistNames.first())
+                songCount == 1 -> resources.getString(R.string.added_to_n_playlists, playlistNames.size)
+                else -> resources.getString(R.string.added_n_songs_to_n_playlists, songCount, playlistNames.size)
             }
             Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
         },
@@ -235,42 +231,18 @@ fun YouTubeAlbumMenu(
     }
 
     if (showSelectArtistDialog) {
-        ListDialog(
-            onDismiss = { showSelectArtistDialog = false },
-        ) {
-            items(
-                items = splitArtists.distinctBy { it.name },
-                key = { it.name },
-            ) { splitArtist ->
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier
-                        .height(ListItemHeight)
-                        .clickable {
-                            splitArtist.originalArtist?.let { artist ->
-                                navController.navigate("artist/${artist.id}")
-                                showSelectArtistDialog = false
-                                onDismiss()
-                            }
-                        }
-                        .padding(horizontal = 12.dp),
-                ) {
-                    Box(
-                        contentAlignment = Alignment.CenterStart,
-                        modifier = Modifier
-                            .fillParentMaxWidth()
-                            .height(ListItemHeight)
-                            .padding(horizontal = 24.dp),
-                    ) {
-                        Text(
-                            text = splitArtist.name,
-                            fontSize = 18.sp,
-                            fontWeight = FontWeight.Bold,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                    }
-                }
+        ListDialog(onDismiss = { showSelectArtistDialog = false }) {
+            items(splitArtists.distinctBy { it.name }) { splitArtist ->
+                ArtistSelectionItem(
+                    name = splitArtist.name,
+                    artistId = splitArtist.originalArtist?.id,
+                    onClick = {
+                        val id = splitArtist.originalArtist?.id ?: return@ArtistSelectionItem
+                        navController.navigate("artist/$id")
+                        showSelectArtistDialog = false
+                        onDismiss()
+                    },
+                )
             }
         }
     }
@@ -288,7 +260,7 @@ fun YouTubeAlbumMenu(
             ) {
                 Icon(
                     painter = painterResource(if (album?.album?.bookmarkedAt != null) R.drawable.favorite else R.drawable.favorite_border),
-                    tint = if (album?.album?.bookmarkedAt != null) MaterialTheme.colorScheme.error else LocalContentColor.current,
+                    tint = if (album?.album?.bookmarkedAt != null) StandardChrome.favorite else LocalContentColor.current,
                     contentDescription = null,
                 )
             }

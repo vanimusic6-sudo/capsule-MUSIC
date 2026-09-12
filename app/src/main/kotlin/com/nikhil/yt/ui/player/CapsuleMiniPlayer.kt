@@ -2,13 +2,21 @@
  * Capsule MUSIC
  *
  * Capsule Mini Player adapted from the original Capsule/Metrolist implementation.
- * Only the Velune-facing APIs were changed.
  *
  * GPL-3.0
  */
 
 package com.nikhil.yt.ui.player
 
+import com.nikhil.yt.ui.component.CapsuleFavoriteIcon
+import androidx.compose.foundation.LocalIndication
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import com.nikhil.yt.ui.component.CapsuleFavoriteColors
+import android.os.SystemClock
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateDpAsState
@@ -29,7 +37,6 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -39,8 +46,11 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
+import androidx.compose.material3.LocalContentColor
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
@@ -52,19 +62,16 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.drawWithContent
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -74,6 +81,8 @@ import com.nikhil.yt.LocalDatabase
 import com.nikhil.yt.LocalPlayerConnection
 import com.nikhil.yt.R
 import com.nikhil.yt.constants.MiniPlayerHeight
+import com.nikhil.yt.constants.MiniPlayerBackgroundStyle
+import com.nikhil.yt.constants.MiniPlayerBackgroundStyleKey
 import com.nikhil.yt.constants.SwipeSensitivityKey
 import com.nikhil.yt.constants.SwipeThumbnailKey
 import com.nikhil.yt.db.entities.ArtistEntity
@@ -81,9 +90,10 @@ import com.nikhil.yt.models.MediaMetadata
 import com.nikhil.yt.together.TogetherRole
 import com.nikhil.yt.together.TogetherSessionState
 import com.nikhil.yt.ui.screens.settings.DiscordPresenceManager
+import com.nikhil.yt.utils.rememberEnumPreference
 import com.nikhil.yt.utils.rememberPreference
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
-import kotlin.math.roundToInt
 
 /**
  * MainActivity provides whether Capsule Dock is really visible under Mini Player.
@@ -94,11 +104,8 @@ import kotlin.math.roundToInt
 val LocalCapsuleDockVisible =
     compositionLocalOf { false }
 
-private val CapsuleMiniBackground =
-    Color(0xFF171717)
-
 private val CapsuleMiniOutline =
-    Color(0xFF363636)
+    Color(0xFF363640)
 
 private val CapsuleMiniPrimary =
     Color(0xFFF1F1F1)
@@ -118,6 +125,7 @@ fun CapsuleMiniPlayer(
     duration: Long,
     modifier: Modifier = Modifier,
     pureBlack: Boolean,
+    standardStyle: Boolean = false,
 ) {
     val playerConnection =
         LocalPlayerConnection.current ?: return
@@ -154,6 +162,20 @@ fun CapsuleMiniPlayer(
             defaultValue = true,
         )
 
+    val miniPlayerBackground by
+        rememberEnumPreference(
+            MiniPlayerBackgroundStyleKey,
+            defaultValue = MiniPlayerBackgroundStyle.CAPSULE_STAR,
+        )
+
+    val miniArtworkColors =
+        rememberCapsuleArtworkColors(
+            mediaMetadata = mediaMetadata,
+            enabled =
+                miniPlayerBackground !=
+                    MiniPlayerBackgroundStyle.THEME,
+        )
+
     val togetherState by
         playerConnection.service.togetherSessionState.collectAsState()
 
@@ -186,38 +208,26 @@ fun CapsuleMiniPlayer(
             mutableFloatStateOf(0f)
         }
 
-    val animationSpec =
-        remember {
-            spring<Float>(
-                dampingRatio =
-                    Spring.DampingRatioNoBouncy,
-                stiffness =
-                    Spring.StiffnessLow,
-            )
+    val animationSpec = MiniPlayerSwipeSpring
+
+    val density = LocalDensity.current
+    val normalizedSwipeSensitivity = swipeSensitivity.coerceIn(0f, 1f)
+    val swipeDistanceThresholdPx =
+        remember(density, normalizedSwipeSensitivity) {
+            with(density) {
+                (84.dp - 36.dp * normalizedSwipeSensitivity).toPx()
+            }
         }
-
-    val autoSwipeThreshold =
-        remember(swipeSensitivity) {
-            (
-                600 /
-                    (
-                        1f +
-                            kotlin.math.exp(
-                                -(
-                                    -11.44748 *
-                                        swipeSensitivity +
-                                        9.04945
-                                ),
-                            )
-                        )
-            ).roundToInt()
+    val fastSwipeMinDistancePx =
+        remember(density) {
+            with(density) { 24.dp.toPx() }
         }
-
-    val canSkipPrevious =
-        playerConnection.player.previousMediaItemIndex != -1
-
-    val canSkipNext =
-        playerConnection.player.nextMediaItemIndex != -1
+    val swipeVelocityThresholdPxPerMs =
+        remember(density, normalizedSwipeSensitivity) {
+            with(density) {
+                (0.55.dp - 0.30.dp * normalizedSwipeSensitivity).toPx()
+            }
+        }
 
     fun restartPresence() {
         if (DiscordPresenceManager.isRunning()) {
@@ -283,35 +293,49 @@ fun CapsuleMiniPlayer(
                         WindowInsetsSides.Horizontal,
                     ),
                 )
-                .padding(horizontal = 10.dp)
+                .padding(horizontal = if (standardStyle) 12.dp else 10.dp)
                 .let { baseModifier ->
                     if (swipeThumbnail) {
                         baseModifier.pointerInput(
-                            swipeSensitivity,
-                            canSkipPrevious,
-                            canSkipNext,
+                            mediaMetadata?.id,
+                            swipeDistanceThresholdPx,
+                            swipeVelocityThresholdPxPerMs,
+                            layoutDirection,
                         ) {
+                            var dragTargetOffset = offsetXAnimatable.value
+                            var motionJob: Job? = null
+
                             detectHorizontalDragGestures(
                                 onDragStart = {
+                                    motionJob?.cancel()
+                                    dragTargetOffset = offsetXAnimatable.value
+                                    motionJob =
+                                        coroutineScope.launch {
+                                            offsetXAnimatable.stop()
+                                        }
                                     dragStartTime =
-                                        System.currentTimeMillis()
+                                        SystemClock.uptimeMillis()
 
                                     totalDragDistance =
                                         0f
                                 },
                                 onDragCancel = {
-                                    coroutineScope.launch {
-                                        offsetXAnimatable
-                                            .animateTo(
+                                    val settleFrom = dragTargetOffset
+                                    motionJob?.cancel()
+                                    motionJob =
+                                        coroutineScope.launch {
+                                            offsetXAnimatable.snapTo(settleFrom)
+                                            offsetXAnimatable.animateTo(
                                                 0f,
                                                 animationSpec,
                                             )
-                                    }
+                                        }
                                 },
                                 onHorizontalDrag = {
-                                        _,
+                                        change,
                                         dragAmount,
                                     ->
+                                    change.consume()
                                     val adjustedDragAmount =
                                         if (
                                             layoutDirection ==
@@ -328,6 +352,11 @@ fun CapsuleMiniPlayer(
                                     val tryingToSwipeLeft =
                                         adjustedDragAmount < 0f
 
+                                    val canSkipPrevious =
+                                        playerConnection.player.previousMediaItemIndex != -1
+                                    val canSkipNext =
+                                        playerConnection.player.nextMediaItemIndex != -1
+
                                     val allowLeft =
                                         tryingToSwipeLeft &&
                                             canSkipNext
@@ -341,17 +370,17 @@ fun CapsuleMiniPlayer(
                                      * even at the edge of the queue the card may
                                      * return toward the center. It never gets stuck.
                                      */
+                                    val returningFromLeftEdge =
+                                        tryingToSwipeRight &&
+                                            !canSkipPrevious &&
+                                            dragTargetOffset < 0f
+                                    val returningFromRightEdge =
+                                        tryingToSwipeLeft &&
+                                            !canSkipNext &&
+                                            dragTargetOffset > 0f
                                     val canReturnToCenter =
-                                        (
-                                            tryingToSwipeRight &&
-                                                !canSkipPrevious &&
-                                                offsetXAnimatable.value < 0f
-                                        ) ||
-                                            (
-                                                tryingToSwipeLeft &&
-                                                    !canSkipNext &&
-                                                    offsetXAnimatable.value > 0f
-                                            )
+                                        returningFromLeftEdge ||
+                                            returningFromRightEdge
 
                                     if (
                                         allowLeft ||
@@ -363,18 +392,18 @@ fun CapsuleMiniPlayer(
                                                 adjustedDragAmount,
                                             )
 
-                                        coroutineScope.launch {
-                                            offsetXAnimatable
-                                                .snapTo(
-                                                    offsetXAnimatable.value +
-                                                        adjustedDragAmount,
-                                                )
-                                        }
+                                        dragTargetOffset += adjustedDragAmount
+                                        val nextOffset = dragTargetOffset
+                                        motionJob?.cancel()
+                                        motionJob =
+                                            coroutineScope.launch {
+                                                offsetXAnimatable.snapTo(nextOffset)
+                                            }
                                     }
                                 },
                                 onDragEnd = {
                                     val dragDuration =
-                                        System.currentTimeMillis() -
+                                        SystemClock.uptimeMillis() -
                                             dragStartTime
 
                                     val velocity =
@@ -385,35 +414,29 @@ fun CapsuleMiniPlayer(
                                             0f
                                         }
 
-                                    val currentOffset =
-                                        offsetXAnimatable.value
-
-                                    val minDistanceThreshold =
-                                        50f
-
-                                    val velocityThreshold =
-                                        (
-                                            swipeSensitivity *
-                                                -8.25f
-                                        ) + 8.5f
+                                    val currentOffset = dragTargetOffset
 
                                     val shouldChangeSong =
                                         (
                                             kotlin.math.abs(
                                                 currentOffset,
                                             ) >
-                                                minDistanceThreshold &&
+                                                fastSwipeMinDistancePx &&
                                                 velocity >
-                                                velocityThreshold
+                                                swipeVelocityThresholdPxPerMs
                                         ) ||
                                             (
                                                 kotlin.math.abs(
                                                     currentOffset,
                                                 ) >
-                                                    autoSwipeThreshold
+                                                    swipeDistanceThresholdPx
                                             )
 
                                     if (shouldChangeSong) {
+                                        val canSkipPrevious =
+                                            playerConnection.player.previousMediaItemIndex != -1
+                                        val canSkipNext =
+                                            playerConnection.player.nextMediaItemIndex != -1
                                         if (
                                             currentOffset > 0f &&
                                             canSkipPrevious
@@ -427,13 +450,15 @@ fun CapsuleMiniPlayer(
                                         }
                                     }
 
-                                    coroutineScope.launch {
-                                        offsetXAnimatable
-                                            .animateTo(
+                                    motionJob?.cancel()
+                                    motionJob =
+                                        coroutineScope.launch {
+                                            offsetXAnimatable.snapTo(currentOffset)
+                                            offsetXAnimatable.animateTo(
                                                 0f,
                                                 animationSpec,
                                             )
-                                    }
+                                        }
                                 },
                             )
                         }
@@ -445,7 +470,7 @@ fun CapsuleMiniPlayer(
         val capsuleBottomRadius by
             animateDpAsState(
                 targetValue =
-                    if (capsuleDockVisible) {
+                    if (capsuleDockVisible && !standardStyle) {
                         0.dp
                     } else {
                         24.dp
@@ -461,7 +486,7 @@ fun CapsuleMiniPlayer(
                     "capsuleMiniPlayerBottomRadius",
             )
 
-        val miniPlayerShape =
+        val miniPlayerShape = if (standardStyle) RoundedCornerShape(14.dp) else
             RoundedCornerShape(
                 topStart = 24.dp,
                 topEnd = 24.dp,
@@ -471,30 +496,29 @@ fun CapsuleMiniPlayer(
                     capsuleBottomRadius,
             )
 
-        Box(
+        MiniPlayerSurface(
+            style = miniPlayerBackground,
+            pureBlack = pureBlack,
+            colors = miniArtworkColors,
             modifier =
                 Modifier
                     .fillMaxWidth()
                     .fillMaxHeight()
-                    .offset {
-                        IntOffset(
-                            offsetXAnimatable.value
-                                .roundToInt(),
-                            0,
-                        )
-                    }
-                    .clip(miniPlayerShape)
-                    .background(
-                        if (pureBlack) {
-                            Color.Black
-                        } else {
-                            CapsuleMiniBackground
-                        },
+                    .miniPlayerSwipeMotion(
+                        offset = { offsetXAnimatable.value },
+                        layoutDirection = layoutDirection,
                     )
+                    .clip(miniPlayerShape)
+                    .background(Color.Transparent)
                     .border(
-                        width = 1.dp,
-                        color =
-                            CapsuleMiniOutline,
+                        width = if (standardStyle) 0.dp else 1.dp,
+                        color = if (standardStyle) Color.Transparent else
+                            capsuleSurfaceOutline(
+                                miniArtworkColors,
+                                glass =
+                                    miniPlayerBackground ==
+                                        MiniPlayerBackgroundStyle.GLASS,
+                            ),
                         shape =
                             miniPlayerShape,
                     ),
@@ -521,6 +545,7 @@ fun CapsuleMiniPlayer(
                         mediaMetadata,
                     playerConnection =
                         playerConnection,
+                    standardStyle = standardStyle,
                 )
 
                 Spacer(
@@ -548,6 +573,7 @@ fun CapsuleMiniPlayer(
                                 artistId,
                             metadata =
                                 mediaMetadata!!,
+                            standardStyle = standardStyle,
                         )
 
                         Spacer(
@@ -563,9 +589,130 @@ fun CapsuleMiniPlayer(
                             true,
                     onClick =
                         playerConnection::toggleLike,
+                    standardStyle = standardStyle,
                 )
             }
         }
+    }
+}
+
+@Composable
+internal fun MiniPlayerSurface(
+    style: MiniPlayerBackgroundStyle,
+    pureBlack: Boolean,
+    colors: List<Color>,
+    modifier: Modifier = Modifier,
+    animated: Boolean = true,
+    content: @Composable () -> Unit,
+) {
+    // Layout (standard or connected dock) must not override the chosen background.
+    val contentColor = if (style == MiniPlayerBackgroundStyle.THEME && !pureBlack) {
+        MaterialTheme.colorScheme.onSurface
+    } else {
+        CapsuleMiniText
+    }
+    Box(modifier) {
+        CapsuleCompactSurfaceBackground(style, pureBlack, colors, Modifier.matchParentSize(), animated)
+        CompositionLocalProvider(LocalContentColor provides contentColor, content = content)
+    }
+}
+
+@Composable
+internal fun CapsuleCompactSurfaceBackground(
+    style: MiniPlayerBackgroundStyle,
+    pureBlack: Boolean,
+    colors: List<Color>,
+    modifier: Modifier = Modifier,
+    animated: Boolean = true,
+) {
+    val primary = MaterialTheme.colorScheme.primary
+    val secondary = MaterialTheme.colorScheme.secondary
+    val tertiary = MaterialTheme.colorScheme.tertiary
+    val surface = MaterialTheme.colorScheme.surface
+    val palette =
+        listOf(
+            colors.getOrElse(0) { primary },
+            colors.getOrElse(1) { secondary },
+            colors.getOrElse(2) { tertiary },
+        )
+
+    when (style) {
+        MiniPlayerBackgroundStyle.THEME ->
+            Box(
+                modifier =
+                    modifier.background(
+                        if (pureBlack) {
+                            Brush.linearGradient(
+                                listOf(
+                                    Color.Black,
+                                    Color.Black,
+                                ),
+                            )
+                        } else {
+                            Brush.linearGradient(
+                                listOf(
+                                    lerp(surface, primary, 0.12f).copy(
+                                        alpha = 1f,
+                                    ),
+                                    lerp(surface, Color.Black, 0.3f).copy(
+                                        alpha = 1f,
+                                    ),
+                                ),
+                            )
+                        },
+                    ),
+            )
+
+        MiniPlayerBackgroundStyle.GRADIENT ->
+            CapsuleProceduralBackground(
+                effect = CapsuleBackgroundEffect.MATTE_GRADIENT,
+                colors = palette,
+                modifier = modifier,
+                compact = true,
+                animated = false,
+            )
+
+        MiniPlayerBackgroundStyle.COLOR_FLOW ->
+            CapsuleProceduralBackground(
+                effect = CapsuleBackgroundEffect.COLOR_FLOW,
+                colors = palette,
+                modifier = modifier,
+                compact = true,
+                animated = animated,
+            )
+
+        MiniPlayerBackgroundStyle.CAPSULE_STAR ->
+            CapsuleProceduralBackground(
+                effect = CapsuleBackgroundEffect.CAPSULE_STAR,
+                colors = palette,
+                modifier = modifier,
+                compact = true,
+                animated = animated,
+            )
+
+        MiniPlayerBackgroundStyle.NEBULA ->
+            CapsuleProceduralBackground(
+                effect = CapsuleBackgroundEffect.NEBULA,
+                colors = palette,
+                modifier = modifier,
+                compact = true,
+                animated = animated,
+            )
+
+        MiniPlayerBackgroundStyle.CAPSULE_GLOW ->
+            CapsuleProceduralBackground(
+                effect = CapsuleBackgroundEffect.CAPSULE_GLOW,
+                colors = palette,
+                modifier = modifier,
+                compact = true,
+                animated = false,
+            )
+
+        MiniPlayerBackgroundStyle.GLASS ->
+            CapsuleGlassSurface(
+                colors = palette,
+                modifier = modifier,
+            )
     }
 }
 
@@ -578,100 +725,24 @@ private fun CapsuleMiniPlayButton(
     mediaMetadata: MediaMetadata?,
     playerConnection:
         com.nikhil.yt.playback.PlayerConnection,
+    standardStyle: Boolean = false,
 ) {
-    val progress =
-        if (duration > 0L) {
-            (
-                position.toFloat() /
-                    duration.toFloat()
-            ).coerceIn(
-                0f,
-                1f,
-            )
-        } else {
-            0f
-        }
-
-    val trackColor =
-        CapsuleMiniOutline.copy(
-            alpha = 0.2f,
-        )
+    val playLabel = stringResource(if (isPlaying) androidx.media3.ui.R.string.exo_controls_pause_description else R.string.play)
 
     Box(
         contentAlignment =
             Alignment.Center,
         modifier =
             Modifier
-                .size(50.dp)
-                .drawWithContent {
-                    drawContent()
-
-                    val stroke =
-                        Stroke(
-                            width =
-                                2.dp.toPx(),
-                            cap =
-                                StrokeCap.Round,
-                        )
-
-                    val diameter =
-                        size.minDimension
-
-                    val topLeft =
-                        Offset(
-                            (
-                                size.width -
-                                    diameter
-                            ) / 2f,
-                            (
-                                size.height -
-                                    diameter
-                            ) / 2f,
-                        )
-
-                    drawArc(
-                        color =
-                            trackColor,
-                        startAngle = 0f,
-                        sweepAngle = 360f,
-                        useCenter = false,
-                        topLeft =
-                            topLeft,
-                        size =
-                            Size(
-                                diameter,
-                                diameter,
-                            ),
-                        style =
-                            stroke,
-                    )
-
-                    drawArc(
-                        color =
-                            CapsuleMiniPrimary,
-                        startAngle =
-                            -90f,
-                        sweepAngle =
-                            360f * progress,
-                        useCenter = false,
-                        topLeft =
-                            topLeft,
-                        size =
-                            Size(
-                                diameter,
-                                diameter,
-                            ),
-                        style =
-                            stroke,
-                    )
-                },
+                .size(if (standardStyle) 46.dp else 50.dp)
+                .miniPlayerProgress(position, duration),
     ) {
         Box(
             contentAlignment =
                 Alignment.Center,
             modifier =
                 Modifier
-                    .size(44.dp)
+                    .size(if (standardStyle) 40.dp else 44.dp)
                     .clip(CircleShape)
                     .border(
                         1.dp,
@@ -680,7 +751,8 @@ private fun CapsuleMiniPlayButton(
                         ),
                         CircleShape,
                     )
-                    .clickable {
+                    .semantics { contentDescription = playLabel }
+                    .clickable(role = Role.Button) {
                         if (
                             playbackState ==
                             Player.STATE_ENDED
@@ -781,7 +853,7 @@ private fun CapsuleMiniSongInfo(
                 text =
                     metadata.title,
                 color =
-                    CapsuleMiniText,
+                    LocalContentColor.current,
                 fontSize = 14.sp,
                 fontWeight =
                     FontWeight.Medium,
@@ -852,7 +924,7 @@ private fun CapsuleMiniSongInfo(
                                 it.name
                             },
                     color =
-                        CapsuleMiniText.copy(
+                        LocalContentColor.current.copy(
                             alpha = 0.7f,
                         ),
                     fontSize = 12.sp,
@@ -873,7 +945,7 @@ private fun CapsuleMiniSongInfo(
             if (error != null) {
                 Text(
                     text =
-                        "Playback error",
+                        stringResource(R.string.error_unknown),
                     color =
                         CapsuleMiniError,
                     fontSize = 10.sp,
@@ -890,6 +962,7 @@ private fun CapsuleMiniSongInfo(
 private fun CapsuleSubscribeButton(
     artistId: String,
     metadata: MediaMetadata,
+    standardStyle: Boolean = false,
 ) {
     val database =
         LocalDatabase.current
@@ -915,8 +988,8 @@ private fun CapsuleSubscribeButton(
                 .size(40.dp)
                 .clip(CircleShape)
                 .border(
-                    width = 1.dp,
-                    color =
+                    width = if (standardStyle) 0.dp else 1.dp,
+                    color = if (standardStyle) Color.Transparent else
                         if (isSubscribed) {
                             CapsuleMiniPrimary
                                 .copy(
@@ -934,7 +1007,7 @@ private fun CapsuleSubscribeButton(
                         CircleShape,
                 )
                 .background(
-                    color =
+                    color = if (standardStyle) Color.Transparent else
                         if (isSubscribed) {
                             CapsuleMiniPrimary
                                 .copy(
@@ -990,16 +1063,15 @@ private fun CapsuleSubscribeButton(
                         R.drawable.person
                     },
                 ),
-            contentDescription =
-                null,
+            contentDescription = stringResource(if (isSubscribed) R.string.subscribed else R.string.subscribe),
             tint =
                 if (isSubscribed) {
-                    CapsuleMiniPrimary
+                    LocalContentColor.current
                 } else {
-                    CapsuleMiniMuted
+                    LocalContentColor.current.copy(alpha = 0.65f)
                 },
             modifier =
-                Modifier.size(20.dp),
+                Modifier.size(if (standardStyle) 24.dp else 20.dp),
         )
     }
 }
@@ -1008,7 +1080,10 @@ private fun CapsuleSubscribeButton(
 private fun CapsuleFavoriteButton(
     liked: Boolean,
     onClick: () -> Unit,
+    standardStyle: Boolean = false,
 ) {
+    val favoriteTint = CapsuleFavoriteColors.selected(LocalContentColor.current)
+    val favoriteInteraction = remember { MutableInteractionSource() }
     Box(
         contentAlignment =
             Alignment.Center,
@@ -1017,10 +1092,10 @@ private fun CapsuleFavoriteButton(
                 .size(40.dp)
                 .clip(CircleShape)
                 .border(
-                    width = 1.dp,
-                    color =
+                    width = if (standardStyle) 0.dp else 1.dp,
+                    color = if (standardStyle) Color.Transparent else
                         if (liked) {
-                            CapsuleMiniError
+                            favoriteTint
                                 .copy(
                                     alpha =
                                         0.5f,
@@ -1036,9 +1111,9 @@ private fun CapsuleFavoriteButton(
                         CircleShape,
                 )
                 .background(
-                    color =
+                    color = if (standardStyle) Color.Transparent else
                         if (liked) {
-                            CapsuleMiniError
+                            favoriteTint
                                 .copy(
                                     alpha =
                                         0.1f,
@@ -1050,28 +1125,22 @@ private fun CapsuleFavoriteButton(
                         CircleShape,
                 )
                 .clickable(
+                    interactionSource = favoriteInteraction,
+                    indication = LocalIndication.current,
                     onClick = onClick,
                 ),
     ) {
-        Icon(
-            painter =
-                painterResource(
-                    if (liked) {
-                        R.drawable.favorite
-                    } else {
-                        R.drawable.favorite_border
-                    },
-                ),
-            contentDescription =
-                null,
+        CapsuleFavoriteIcon(
+            liked = liked,
+            interactionSource = favoriteInteraction,
             tint =
                 if (liked) {
-                    CapsuleMiniError
+                    favoriteTint
                 } else {
-                    CapsuleMiniMuted
+                    LocalContentColor.current.copy(alpha = 0.65f)
                 },
             modifier =
-                Modifier.size(20.dp),
+                Modifier.size(if (standardStyle) 26.dp else 20.dp),
         )
     }
 }

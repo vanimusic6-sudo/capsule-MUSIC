@@ -596,22 +596,6 @@ fun SettingsScreen(
         )
         add(
             PremiumSettingsItem(
-                icon = painterResource(R.drawable.image),
-                title = stringResource(R.string.customize_background_title),
-                subtitle = stringResource(R.string.appearance),
-                accentColor = MaterialTheme.colorScheme.secondary,
-                keywords = listOf(
-                    "background",
-                    "wallpaper",
-                    "image",
-                    "blur",
-                    "gradient",
-                ),
-                onClick = { navController.navigate("customize_background") },
-            ),
-        )
-        add(
-            PremiumSettingsItem(
                 icon = painterResource(R.drawable.discord),
                 title = stringResource(R.string.discord_integration),
                 subtitle = stringResource(R.string.integration),
@@ -1091,7 +1075,7 @@ private fun SettingsHeroHeader(modifier: Modifier = Modifier) {
             Icon(
                 painter = painterResource(R.drawable.ic_velune_concept),
                 contentDescription = null,
-                tint = MaterialTheme.colorScheme.primary,
+                tint = Color.Unspecified,
                 modifier = Modifier.size(34.dp),
             )
         }

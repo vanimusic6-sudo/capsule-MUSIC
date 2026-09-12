@@ -5,14 +5,12 @@
  */
 
 
-
 package com.nikhil.yt.ui.component
 
+import com.nikhil.yt.ui.component.StandardChrome
 import com.nikhil.yt.ui.component.VeluneLoader
-import android.annotation.SuppressLint
 import android.widget.Toast
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animate
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandIn
@@ -48,9 +46,6 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.rememberSwipeToDismissBoxState
-import androidx.compose.material3.SwipeToDismissBox
-import androidx.compose.material3.SwipeToDismissBoxValue
 import androidx.compose.material3.Text
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -71,10 +66,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.blur
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
-import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
@@ -89,14 +83,12 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.util.fastForEachIndexed
 import androidx.compose.ui.zIndex
-import androidx.core.graphics.drawable.toBitmapOrNull
 import androidx.media3.common.MediaItem
 import androidx.media3.exoplayer.offline.Download
 import androidx.media3.exoplayer.offline.Download.STATE_COMPLETED
 import androidx.media3.exoplayer.offline.Download.STATE_DOWNLOADING
 import androidx.media3.exoplayer.offline.Download.STATE_QUEUED
 import coil3.compose.AsyncImage
-import coil3.compose.AsyncImagePainter
 import coil3.request.ImageRequest
 import coil3.request.allowHardware
 import com.nikhil.yt.innertube.YouTube
@@ -109,9 +101,7 @@ import com.nikhil.yt.LocalDatabase
 import com.nikhil.yt.LocalDownloadUtil
 import com.nikhil.yt.LocalPlayerConnection
 import com.nikhil.yt.R
-import com.nikhil.yt.constants.DisableBlurKey
 import com.nikhil.yt.constants.GridThumbnailCornerRadius
-import com.nikhil.yt.constants.HideExplicitKey
 import com.nikhil.yt.constants.ListItemHeight
 import com.nikhil.yt.constants.GridThumbnailHeight
 import com.nikhil.yt.constants.ListThumbnailSize
@@ -119,13 +109,12 @@ import com.nikhil.yt.constants.ThumbnailCornerRadius
 import com.nikhil.yt.constants.SwipeToSongKey
 import com.nikhil.yt.db.entities.Song
 import com.nikhil.yt.db.entities.Album
-import com.nikhil.yt.db.entities.AlbumEntity
 import com.nikhil.yt.db.entities.Artist
 import com.nikhil.yt.db.entities.Playlist
 import com.nikhil.yt.extensions.toMediaItem
 import com.nikhil.yt.models.MediaMetadata
 import com.nikhil.yt.playback.queues.LocalAlbumRadio
-import com.nikhil.yt.ui.theme.extractThemeColor
+import com.nikhil.yt.ui.player.rememberArtworkGradientColors
 import com.nikhil.yt.utils.joinByBullet
 import com.nikhil.yt.utils.makeTimeString
 import com.nikhil.yt.utils.rememberPreference
@@ -137,7 +126,6 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import java.util.logging.Logger
 import kotlin.math.roundToInt
 
 const val ActiveBoxAlpha = 0.6f
@@ -418,7 +406,7 @@ fun ArtistListItem(
             Icon(
                 painter = painterResource(R.drawable.favorite),
                 contentDescription = null,
-                tint = MaterialTheme.colorScheme.error,
+                tint = StandardChrome.favorite,
                 modifier = Modifier
                     .size(18.dp)
                     .padding(end = 2.dp),
@@ -684,7 +672,20 @@ fun OverlayPlaylistListItem(
 ) {
     var showPreview by remember { mutableStateOf(false) }
     val backgroundUrl = playlist.thumbnails.getOrNull(0)
-    val (disableBlur) = rememberPreference(DisableBlurKey, true)
+    val surfaceColor = MaterialTheme.colorScheme.surface
+    val artworkGradientColors =
+        rememberArtworkGradientColors(
+            cacheKey = "playlist:${playlist.id}|${backgroundUrl.orEmpty()}",
+            thumbnailUrl = backgroundUrl,
+        )
+    val cardGradientColors =
+        remember(artworkGradientColors, surfaceColor) {
+            listOf(
+                lerp(surfaceColor, artworkGradientColors.getOrElse(0) { surfaceColor }, 0.72f),
+                lerp(surfaceColor, artworkGradientColors.getOrElse(1) { surfaceColor }, 0.58f),
+                lerp(surfaceColor, artworkGradientColors.getOrElse(2) { surfaceColor }, 0.42f),
+            )
+        }
 
     Card(
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
@@ -694,30 +695,23 @@ fun OverlayPlaylistListItem(
             .clickable { onClick?.invoke() }
     ) {
         Box(modifier = Modifier.height(120.dp)) {
-            if (!backgroundUrl.isNullOrBlank()) {
-                AsyncImage(
-                    model = backgroundUrl,
-                    contentDescription = null,
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier.fillMaxSize().let { 
-                        if (disableBlur) it else it.blur(8.dp)
-                    }
-                )
-                Box(modifier = Modifier
-                    .fillMaxSize()
-                    .background(
-                        Brush.verticalGradient(
-                            colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.45f)),
-                            startY = 40f
+            Box(
+                modifier =
+                    Modifier
+                        .fillMaxSize()
+                        .background(
+                            Brush.linearGradient(cardGradientColors),
                         )
-                    )
-                )
-            } else {
-                Box(modifier = Modifier
-                    .fillMaxSize()
-                    .background(MaterialTheme.colorScheme.surfaceContainer)
-                )
-            }
+                        .background(
+                            Brush.verticalGradient(
+                                colors =
+                                    listOf(
+                                        surfaceColor.copy(alpha = 0.04f),
+                                        surfaceColor.copy(alpha = 0.5f),
+                                    ),
+                            ),
+                        ),
+            )
 
             Row(
                 modifier = Modifier
@@ -1327,7 +1321,8 @@ fun LocalThumbnail(
                 if (isPlaying) {
                     PlayingIndicator(
                         color = Color.White,
-                        modifier = Modifier.height(24.dp)
+                        modifier = Modifier.height(24.dp),
+                        isPlaying = isPlaying,
                     )
                 } else {
                     Icon(
@@ -1631,7 +1626,7 @@ private object Icon {
         Icon(
             painter = painterResource(R.drawable.favorite),
             contentDescription = null,
-            tint = MaterialTheme.colorScheme.error,
+            tint = StandardChrome.favorite,
             modifier = Modifier
                 .size(18.dp)
                 .padding(end = 2.dp)

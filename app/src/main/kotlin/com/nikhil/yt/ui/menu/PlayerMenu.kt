@@ -8,6 +8,10 @@
 
 package com.nikhil.yt.ui.menu
 
+import com.nikhil.yt.ui.player.CapsuleSleepTimerDialog
+import com.nikhil.yt.together.TogetherRole
+import com.nikhil.yt.together.TogetherSessionState
+import com.nikhil.yt.ui.component.ArtistSelectionItem
 import com.nikhil.yt.ui.component.VeluneLoader
 import android.content.Intent
 import android.content.res.Configuration
@@ -78,6 +82,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -148,6 +153,7 @@ fun PlayerMenu(
 ) {
     mediaMetadata ?: return
     val context = LocalContext.current
+    val resources = LocalResources.current
     val database = LocalDatabase.current
     val playerConnection = LocalPlayerConnection.current ?: return
     val playerVolume = playerConnection.service.playerVolume.collectAsState()
@@ -211,8 +217,8 @@ fun PlayerMenu(
         },
         onAddComplete = { songCount, playlistNames ->
             val message = when {
-                playlistNames.size == 1 -> context.getString(R.string.added_to_playlist, playlistNames.first())
-                else -> context.getString(R.string.added_to_n_playlists, playlistNames.size)
+                playlistNames.size == 1 -> resources.getString(R.string.added_to_playlist, playlistNames.first())
+                else -> resources.getString(R.string.added_to_n_playlists, playlistNames.size)
             }
             Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
         },
@@ -223,60 +229,19 @@ fun PlayerMenu(
     }
 
     if (showSelectArtistDialog) {
-        ListDialog(
-            onDismiss = { showSelectArtistDialog = false },
-        ) {
+        ListDialog(onDismiss = { showSelectArtistDialog = false }) {
             items(splitArtists.distinctBy { it.name }) { splitArtist ->
-                ListItem(
-                    headlineContent = {
-                        Text(
-                            text = splitArtist.name,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
+                ArtistSelectionItem(
+                    name = splitArtist.name,
+                    artistId = splitArtist.originalArtist?.id,
+                    thumbnailUrl = splitArtist.originalArtist?.thumbnailUrl,
+                    onClick = {
+                        val id = splitArtist.originalArtist?.id ?: return@ArtistSelectionItem
+                        navController.navigate("artist/$id")
+                        showSelectArtistDialog = false
+                        playerBottomSheetState.collapseSoft()
+                        onDismiss()
                     },
-                    leadingContent = {
-                        val thumbUrl = splitArtist.originalArtist?.thumbnailUrl
-                        if (thumbUrl.isNullOrBlank()) {
-                            Box(
-                                modifier =
-                                    Modifier
-                                        .size(40.dp)
-                                        .clip(CircleShape)
-                                        .background(MaterialTheme.colorScheme.surfaceContainerHighest),
-                                contentAlignment = Alignment.Center,
-                            ) {
-                                Icon(
-                                    painter = painterResource(R.drawable.music_note),
-                                    contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    modifier = Modifier.size(18.dp),
-                                )
-                            }
-                        } else {
-                            AsyncImage(
-                                model = thumbUrl,
-                                contentDescription = null,
-                                contentScale = ContentScale.Crop,
-                                modifier =
-                                    Modifier
-                                        .size(40.dp)
-                                        .clip(CircleShape),
-                            )
-                        }
-                    },
-                    modifier =
-                        Modifier
-                            .fillMaxWidth()
-                            .clickable {
-                                splitArtist.originalArtist?.let { artist ->
-                                    navController.navigate("artist/${artist.id}")
-                                    showSelectArtistDialog = false
-                                    playerBottomSheetState.collapseSoft()
-                                    onDismiss()
-                                }
-                            },
-                    colors = ListItemDefaults.colors(containerColor = Color.Transparent),
                 )
             }
         }
@@ -316,10 +281,25 @@ fun PlayerMenu(
         )
     }
 
-    val nowPlayingTitle =
-        remember(mediaMetadata.title) {
-            mediaMetadata.title.ifBlank { context.getString(R.string.no_title) }
-        }
+    var showSleepTimer by rememberSaveable { mutableStateOf(false) }
+    var sleepMinutes by rememberSaveable { mutableFloatStateOf(30f) }
+    val togetherState by playerConnection.service.togetherSessionState.collectAsState()
+    val canSetSleepTimer = (togetherState as? TogetherSessionState.Joined)?.role !is TogetherRole.Guest
+    if (showSleepTimer) {
+        CapsuleSleepTimerDialog(
+            minutes = sleepMinutes,
+            enabled = canSetSleepTimer,
+            onMinutesChange = { sleepMinutes = it },
+            onConfirm = {
+                if (canSetSleepTimer) playerConnection.service.sleepTimer.start(sleepMinutes.toInt())
+                showSleepTimer = false
+            },
+            onDismiss = { showSleepTimer = false },
+        )
+    }
+
+    val noTitle = stringResource(R.string.no_title)
+    val nowPlayingTitle = mediaMetadata.title.ifBlank { noTitle }
 
     val nowPlayingSubtitle =
         remember(mediaMetadata.artists) {
@@ -432,7 +412,7 @@ fun PlayerMenu(
                         },
                         text = stringResource(R.string.start_radio),
                         onClick = {
-                            Toast.makeText(context, context.getString(R.string.starting_radio), Toast.LENGTH_SHORT).show()
+                            Toast.makeText(context, resources.getString(R.string.starting_radio), Toast.LENGTH_SHORT).show()
                             playerConnection.startRadioSeamlessly()
                             onDismiss()
                         }
@@ -450,6 +430,12 @@ fun PlayerMenu(
                         onClick = { showChoosePlaylistDialog = true }
                     ),
                     NewAction(
+                        icon = { Icon(painterResource(R.drawable.bedtime), contentDescription = null) },
+                        text = stringResource(R.string.sleep_timer),
+                        enabled = canSetSleepTimer,
+                        onClick = { showSleepTimer = true },
+                    ),
+                    NewAction(
                         icon = {
                             Icon(
                                 painter = painterResource(R.drawable.link),
@@ -464,7 +450,7 @@ fun PlayerMenu(
                                 context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
                             val clip =
                                 android.content.ClipData.newPlainText(
-                                    context.getString(R.string.copy_link),
+                                    resources.getString(R.string.copy_link),
                                     "https://music.youtube.com/watch?v=${mediaMetadata.id}",
                                 )
                             clipboard.setPrimaryClip(clip)
@@ -765,26 +751,26 @@ private fun VolumeSliderL(
 
     val insetIcon = if (sliderValue <= 0f) R.drawable.volume_off else R.drawable.volume_up
 
-        Slider(
-            value = sliderValue,
-            onValueChange = { updated ->
-                isDragging = true
-                val coerced = updated.coerceIn(0f, 1f)
-                sliderValue = coerced
-                onValueChange(coerced)
-            },
-            onValueChangeFinished = { isDragging = false },
-            valueRange = 0f..1f,
-            modifier = Modifier.height(56.dp),
-            thumb = {
-                Icon(
-                    painter = painterResource(insetIcon),
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            },
-            colors = SliderDefaults.colors(),
-        )
+    Slider(
+        value = sliderValue,
+        onValueChange = { updated ->
+            isDragging = true
+            val coerced = updated.coerceIn(0f, 1f)
+            sliderValue = coerced
+            onValueChange(coerced)
+        },
+        onValueChangeFinished = { isDragging = false },
+        valueRange = 0f..1f,
+        modifier = modifier.height(56.dp),
+        thumb = {
+            Icon(
+                painter = painterResource(insetIcon),
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        },
+        colors = SliderDefaults.colors(),
+    )
 }
 
 @Composable
@@ -1180,6 +1166,7 @@ fun EqualizerDialog(
     openSystemEqualizer: () -> Unit,
 ) {
     val context = LocalContext.current
+    val resources = LocalResources.current
     val playerConnection = LocalPlayerConnection.current ?: return
     val eqCapabilities by playerConnection.service.eqCapabilities.collectAsState()
 
@@ -1277,7 +1264,7 @@ fun EqualizerDialog(
 
                 if (payload.profiles.isEmpty()) {
                     Toast
-                        .makeText(context, context.getString(R.string.eq_import_failed), Toast.LENGTH_SHORT)
+                        .makeText(context, resources.getString(R.string.eq_import_failed), Toast.LENGTH_SHORT)
                         .show()
                     return@TextFieldDialog
                 }
@@ -1286,7 +1273,7 @@ fun EqualizerDialog(
                 val normalizedImported =
                     payload.profiles
                         .map { p ->
-                            val baseName = p.name.trim().ifBlank { context.getString(R.string.eq_imported_profile) }
+                            val baseName = p.name.trim().ifBlank { resources.getString(R.string.eq_imported_profile) }
                             val incomingId = p.id.trim()
                             val finalId =
                                 if (incomingId.isBlank() || !existingIds.add(incomingId)) {
@@ -1319,7 +1306,7 @@ fun EqualizerDialog(
                 Toast
                     .makeText(
                         context,
-                        context.getString(R.string.eq_import_success, normalizedImported.size),
+                        resources.getString(R.string.eq_import_success, normalizedImported.size),
                         Toast.LENGTH_SHORT,
                     ).show()
             },

@@ -88,6 +88,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.painterResource
@@ -162,6 +163,7 @@ fun YearInMusicScreen(
     viewModel: YearInMusicViewModel = hiltViewModel(),
 ) {
     val context = LocalContext.current
+    val resources = LocalResources.current
     val menuState = LocalMenuState.current
     val haptic = LocalHapticFeedback.current
     val playerConnection = LocalPlayerConnection.current ?: return
@@ -289,7 +291,7 @@ fun YearInMusicScreen(
                                     context.startActivity(
                                         Intent.createChooser(
                                             shareIntent,
-                                            context.getString(R.string.share_summary)
+                                            resources.getString(R.string.share_summary)
                                         )
                                     )
                                 } finally {

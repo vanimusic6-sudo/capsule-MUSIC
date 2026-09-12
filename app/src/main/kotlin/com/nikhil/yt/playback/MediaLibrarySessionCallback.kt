@@ -55,7 +55,7 @@ constructor(
     val downloadUtil: DownloadUtil,
 ) : MediaLibrarySession.Callback {
     private val scope = CoroutineScope(Dispatchers.Main) + Job()
-    var toggleLike: () -> Unit = {}
+    var toggleLike: (String) -> Unit = {}
     var toggleStartRadio: () -> Unit = {}
     var toggleLibrary: () -> Unit = {}
 
@@ -100,7 +100,8 @@ constructor(
         args: Bundle,
     ): ListenableFuture<SessionResult> {
         when (customCommand.customAction) {
-            MediaSessionConstants.ACTION_TOGGLE_LIKE -> toggleLike()
+            MediaSessionConstants.ACTION_TOGGLE_LIKE ->
+                toggleLike("media_session:${controller.packageName}")
             MediaSessionConstants.ACTION_TOGGLE_START_RADIO -> toggleStartRadio()
             MediaSessionConstants.ACTION_TOGGLE_LIBRARY -> toggleLibrary()
             MediaSessionConstants.ACTION_TOGGLE_SHUFFLE -> session.player.shuffleModeEnabled =

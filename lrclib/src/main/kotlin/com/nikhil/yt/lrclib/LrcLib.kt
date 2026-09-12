@@ -21,6 +21,7 @@ import io.ktor.client.request.parameter
 import io.ktor.serialization.kotlinx.json.json
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.CancellationException
 import kotlinx.serialization.json.Json
 import kotlin.math.abs
 
@@ -67,7 +68,7 @@ object LrcLib {
         artist: String,
         duration: Int,
         album: String? = null,
-    ) = runCatching {
+    ): Result<String?> = try {
         val tracks = queryLyrics(artist, title, album)
 
         val res = when {
@@ -79,11 +80,12 @@ object LrcLib {
             }
         }
 
-        if (res != null) {
-            return@runCatching res.text
-        } else {
-            throw IllegalStateException("Lyrics unavailable")
-        }
+        currentCoroutineContext().ensureActive()
+        Result.success(res?.text)
+    } catch (cancelled: CancellationException) {
+        throw cancelled
+    } catch (failure: Exception) {
+        Result.failure(failure)
     }
 
     suspend fun getAllLyrics(
@@ -112,7 +114,12 @@ object LrcLib {
                 }
             }
             else -> {
-                tracks.sortedBy { abs(it.duration.toInt() - duration) }
+                tracks.sortedBy { track ->
+                    track.duration
+                        ?.takeIf { it.isFinite() }
+                        ?.let { value -> abs(value.toInt() - duration) }
+                        ?: Int.MAX_VALUE
+                }
             }
         }
 
@@ -123,11 +130,15 @@ object LrcLib {
                     count++
                     track.syncedLyrics.let(callback)
                 } else {
-                    if (track.syncedLyrics != null && abs(track.duration.toInt() - duration) <= 2) {
+                    val durationDelta =
+                        track.duration
+                            ?.takeIf { it.isFinite() }
+                            ?.let { value -> abs(value.toInt() - duration) }
+                    if (track.syncedLyrics != null && durationDelta != null && durationDelta <= 2) {
                         count++
                         track.syncedLyrics.let(callback)
                     }
-                    if (track.plainLyrics != null && abs(track.duration.toInt() - duration) <= 2 && plain == 0) {
+                    if (track.plainLyrics != null && durationDelta != null && durationDelta <= 2 && plain == 0) {
                         count++
                         plain++
                         track.plainLyrics.let(callback)
@@ -179,8 +190,12 @@ object LrcLib {
     suspend fun lyrics(
         artist: String,
         title: String,
-    ) = runCatching {
-        queryLyrics(artist = artist, title = title, album = null)
+    ) = try {
+        Result.success(queryLyrics(artist = artist, title = title, album = null))
+    } catch (cancelled: CancellationException) {
+        throw cancelled
+    } catch (failure: Exception) {
+        Result.failure(failure)
     }
 
     @JvmInline
@@ -207,5 +222,4 @@ object LrcLib {
                 }.getOrNull()
     }
 }
-
 

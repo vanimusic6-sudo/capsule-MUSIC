@@ -37,6 +37,9 @@ enum class CapsuleVideoFailure {
 
 internal object CapsuleVideoIpc {
     const val METHOD_RESOLVE = "resolve"
+    const val METHOD_CANCEL = "cancel"
+    const val EXTRA_REQUEST_ID = "request_id"
+    const val REQUEST_TIMEOUT_MS = 20_000L
 
     const val EXTRA_VIDEO_ID = "video_id"
     const val EXTRA_QUALITY = "quality"

@@ -8,11 +8,6 @@
 
 package com.nikhil.yt.ui.screens
 
-import androidx.compose.animation.core.tween
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInHorizontally
-import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.AlertDialog
@@ -65,7 +60,6 @@ import com.nikhil.yt.ui.screens.playlist.CachePlaylistScreen
 import com.nikhil.yt.ui.screens.search.OnlineSearchResult
 import com.nikhil.yt.ui.screens.settings.AboutScreen
 import com.nikhil.yt.ui.screens.settings.AppearanceSettings
-import com.nikhil.yt.ui.screens.settings.CustomizeBackground
 import com.nikhil.yt.ui.screens.settings.BackupAndRestore
 import com.nikhil.yt.ui.screens.settings.VeluneSettingsScreen
 import com.nikhil.yt.ui.screens.settings.VeluneAccountSettingsScreen
@@ -144,26 +138,6 @@ fun NavGraphBuilder.navigationBuilder(
                 type = NavType.StringType
             },
         ),
-        enterTransition = {
-            fadeIn(tween(250))
-        },
-        exitTransition = {
-            if (targetState.destination.route?.startsWith("search/") == true) {
-                fadeOut(tween(200))
-            } else {
-                fadeOut(tween(200)) + slideOutHorizontally { -it / 2 }
-            }
-        },
-        popEnterTransition = {
-            if (initialState.destination.route?.startsWith("search/") == true) {
-                fadeIn(tween(250))
-            } else {
-                fadeIn(tween(250)) + slideInHorizontally { -it / 2 }
-            }
-        },
-        popExitTransition = {
-            fadeOut(tween(200))
-        },
     ) {
         OnlineSearchResult(navController)
     }
@@ -363,9 +337,6 @@ fun NavGraphBuilder.navigationBuilder(
     }
     composable("settings/po_token") {
         PoTokenScreen(navController, scrollBehavior)
-    }
-    composable("customize_background") {
-        CustomizeBackground(navController)
     }
     composable("login") {
         LoginScreen(navController)
