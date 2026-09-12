@@ -4,6 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -57,10 +58,26 @@ internal fun CapsulePlayerLayout(
             }
         }
         Spacer(Modifier.height(10.dp))
-        Box(
-            Modifier.weight(1f).fillMaxWidth().padding(horizontal = if (light) 32.dp else 22.dp, vertical = 8.dp),
-            contentAlignment = Alignment.Center,
-        ) { artwork() }
+        if (light) {
+            /*
+             * On shorter phones the remaining vertical space can be smaller than
+             * the artwork width. A plain fillMaxWidth + aspectRatio child would
+             * then draw past its weighted slot and overlap the metadata. Bound the
+             * square by both dimensions so Light scales down cleanly instead.
+             */
+            BoxWithConstraints(
+                Modifier.weight(1f).fillMaxWidth().padding(horizontal = 32.dp, vertical = 8.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                val artworkSide = minOf(maxWidth, maxHeight)
+                Box(Modifier.size(artworkSide), contentAlignment = Alignment.Center) { artwork() }
+            }
+        } else {
+            Box(
+                Modifier.weight(1f).fillMaxWidth().padding(horizontal = 22.dp, vertical = 8.dp),
+                contentAlignment = Alignment.Center,
+            ) { artwork() }
+        }
         details()
     }
 }

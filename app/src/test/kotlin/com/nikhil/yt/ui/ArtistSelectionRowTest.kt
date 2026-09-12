@@ -36,8 +36,9 @@ class ArtistSelectionRowTest {
             MaterialTheme { ArtistSelectionRow("Artist", "artist-id", portrait) { clicks++ } }
         }
         val avatar = compose.onNodeWithTag("artistPortrait:artist-id", useUnmergedTree = true)
+        val name = compose.onNodeWithTag("artistName:artist-id", useUnmergedTree = true)
         val before = avatar.fetchSemanticsNode().boundsInRoot
-        val nameBefore = compose.onNodeWithText("Artist").fetchSemanticsNode().boundsInRoot
+        val nameBefore = name.fetchSemanticsNode().boundsInRoot
         assertTrue(before.right <= nameBefore.left)
         compose.runOnIdle {
             portrait = Bitmap.createBitmap(8, 8, Bitmap.Config.ARGB_8888).apply { eraseColor(android.graphics.Color.RED) }
@@ -54,7 +55,7 @@ class ArtistSelectionRowTest {
             android.graphics.Color.red(pixel) > 240 && android.graphics.Color.green(pixel) < 20
         }
         assertEquals(before, avatar.fetchSemanticsNode().boundsInRoot)
-        assertEquals(nameBefore, compose.onNodeWithText("Artist").fetchSemanticsNode().boundsInRoot)
+        assertEquals(nameBefore, name.fetchSemanticsNode().boundsInRoot)
         compose.onNodeWithText("Artist").performClick()
         compose.runOnIdle { assertEquals(1, clicks) }
     }

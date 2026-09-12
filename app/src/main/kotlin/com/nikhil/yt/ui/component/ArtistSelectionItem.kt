@@ -68,7 +68,15 @@ fun ArtistSelectionItem(name: String, artistId: String?, thumbnailUrl: String? =
 @Composable
 internal fun ArtistSelectionRow(name: String, artistId: String?, portrait: Any?, onClick: () -> Unit) {
     ListItem(
-        headlineContent = { Text(name, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+        headlineContent = {
+            Text(
+                name,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.testTag("artistName:$artistId"),
+            )
+        },
         leadingContent = {
             Box(
                 modifier = Modifier.size(40.dp).clip(CircleShape)
