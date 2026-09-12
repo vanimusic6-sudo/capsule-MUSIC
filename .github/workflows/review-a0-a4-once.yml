@@ -1,0 +1,157 @@
+name: Apply A0/A4 playback review fix once
+
+on:
+  push:
+    branches:
+      - cleanup/capsule-player-only
+    paths:
+      - .github/workflows/review-a0-a4-once.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@v6
+        with:
+          ref: cleanup/capsule-player-only
+          fetch-depth: 0
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Apply reviewed playback fixes
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          scheduler_path = Path("app/src/main/kotlin/com/nikhil/yt/playback/audio/AudioResolveScheduler.kt")
+          scheduler = scheduler_path.read_text()
+
+          scheduler = scheduler.replace(
+              """    private val waiting = mutableListOf<Ticket>()\n    private var active: Ticket? = null\n    private var nextDownloadStartMs: Long? = null\n\n    fun promote(mediaId: String) = synchronized(lock) {\n        val nowMs = monotonicNowMs()\n        (waiting + listOfNotNull(active)).filter {\n            it.mediaId == mediaId && it.priority == AudioResolvePriority.PREFETCH\n        }.forEach { ticket ->\n""",
+              """    private val waiting = mutableListOf<Ticket>()\n    private var active: Ticket? = null\n    private var nextDownloadStartMs: Long? = null\n    private val pendingPlaybackPromotions = mutableMapOf<String, Long>()\n\n    fun promote(mediaId: String) = synchronized(lock) {\n        val nowMs = monotonicNowMs()\n        val matches = (waiting + listOfNotNull(active)).filter {\n            it.mediaId == mediaId && it.priority == AudioResolvePriority.PREFETCH\n        }\n        if (matches.isEmpty()) {\n            // Media3 can ask ResolvingDataSource for a track before the shared\n            // prefetch ticket exists. Remember that foreground demand briefly\n            // so the next PREFETCH-labelled resolve actually starts as PLAYBACK.\n            pendingPlaybackPromotions[mediaId] = nowMs\n        }\n        matches.forEach { ticket ->\n""",
+          )
+
+          scheduler = scheduler.replace(
+              """        preemptBackground()\n    }\n\n    suspend fun <T> run(mediaId: String, priority: AudioResolvePriority, block: suspend () -> T): T {\n        var effectivePriority = priority\n""",
+              """        preemptBackground()\n    }\n\n    /** Current scheduler priority, including a loader promotion that arrived mid-extraction. */\n    fun effectivePriority(\n        mediaId: String,\n        fallback: AudioResolvePriority,\n    ): AudioResolvePriority =\n        synchronized(lock) {\n            val ticketPriority =\n                (waiting + listOfNotNull(active))\n                    .asSequence()\n                    .filter { it.mediaId == mediaId }\n                    .minByOrNull { it.priority.schedulingRank }\n                    ?.priority\n            if (ticketPriority != null) return@synchronized ticketPriority\n\n            val promotedAt = pendingPlaybackPromotions[mediaId]\n            if (\n                fallback == AudioResolvePriority.PREFETCH &&\n                promotedAt != null &&\n                monotonicNowMs() - promotedAt in 0 until PENDING_PLAYBACK_PROMOTION_TTL_MS\n            ) {\n                AudioResolvePriority.PLAYBACK\n            } else {\n                fallback\n            }\n        }\n\n    suspend fun <T> run(mediaId: String, priority: AudioResolvePriority, block: suspend () -> T): T {\n        var effectivePriority =\n            synchronized(lock) {\n                val promotedAt = pendingPlaybackPromotions.remove(mediaId)\n                if (\n                    priority == AudioResolvePriority.PREFETCH &&\n                    promotedAt != null &&\n                    monotonicNowMs() - promotedAt in 0 until PENDING_PLAYBACK_PROMOTION_TTL_MS\n                ) {\n                    AudioResolvePriority.PLAYBACK\n                } else {\n                    priority\n                }\n            }\n""",
+          )
+
+          scheduler = scheduler.replace(
+              """    private companion object {\n        const val PROMOTED_PREFETCH_RESTART_AFTER_MS = 4_000L\n    }\n""",
+              """    private companion object {\n        const val PROMOTED_PREFETCH_RESTART_AFTER_MS = 4_000L\n        const val PENDING_PLAYBACK_PROMOTION_TTL_MS = 10_000L\n    }\n""",
+          )
+          scheduler_path.write_text(scheduler)
+
+          player_path = Path("app/src/main/kotlin/com/nikhil/yt/playback/audio/CapsuleInnerTubeXPlayer.kt")
+          player = player_path.read_text()
+
+          old_run = """            val resolvedQuality = audioQuality.toInnerTubeX(connectivityManager)\n            val stream =\n                scheduler.run(videoId, priority) {\n                    resolveMutex.withLock {\n                        withTimeout(ENGINE_RESOLVE_TIMEOUT_MS) {\n                            CapsulePlaybackSafety.blockedExceptionOrNull()?.let { throw it }\n                            val extractionBundle = bundle()\n                            Timber.tag(TAG).i(\n                                \"Resolving audio id=%s priority=%s primaryProfile=%s\",\n                                videoId,\n                                priority,\n                                primaryProfileId,\n                            )\n                            resolveWithSafeClientFallbacks(\n                                extractionBundle = extractionBundle,\n                                videoId = videoId,\n                                baseHints = baseHints,\n                                audioQuality = resolvedQuality,\n                                primaryProfileId = primaryProfileId,\n                                preferredProfiles = clientOrder,\n                                priority = priority,\n                            )\n                        }\n                    }\n                }\n"""
+          new_run = """            val resolvedQuality = audioQuality.toInnerTubeX(connectivityManager)\n            val effectivePriority = { scheduler.effectivePriority(videoId, priority) }\n            val stream =\n                scheduler.run(videoId, priority) {\n                    resolveMutex.withLock {\n                        withTimeout(ENGINE_RESOLVE_TIMEOUT_MS) {\n                            CapsulePlaybackSafety.blockedExceptionOrNull()?.let { throw it }\n                            val extractionBundle = bundle()\n                            Timber.tag(TAG).i(\n                                \"Resolving audio id=%s priority=%s primaryProfile=%s\",\n                                videoId,\n                                effectivePriority(),\n                                primaryProfileId,\n                            )\n                            resolveWithSafeClientFallbacks(\n                                extractionBundle = extractionBundle,\n                                videoId = videoId,\n                                baseHints = baseHints,\n                                audioQuality = resolvedQuality,\n                                primaryProfileId = primaryProfileId,\n                                preferredProfiles = clientOrder,\n                                priorityProvider = effectivePriority,\n                            )\n                        }\n                    }\n                }\n"""
+          if old_run not in player:
+              raise SystemExit("playerResponseForPlayback scheduler block not found")
+          player = player.replace(old_run, new_run, 1)
+
+          start = player.index("    private suspend fun resolveWithSafeClientFallbacks(")
+          end = player.index("    private suspend fun extractDirectStream(", start)
+          replacement = '''    private suspend fun resolveWithSafeClientFallbacks(\n        extractionBundle: ExtractionBundle,\n        videoId: String,\n        baseHints: ContentHints,\n        audioQuality: InnerTubeXAudioQuality,\n        primaryProfileId: String,\n        preferredProfiles: List<String>,\n        priorityProvider: () -> AudioResolvePriority,\n    ): ExtractedStream {\n        var lastFailure: Exception? = null\n        var botSignalAlreadySeen = CapsulePlaybackSafety.quarantinedProfileIds().isNotEmpty()\n        var onlyPostBotProfile: String? = null\n        val attempted = linkedSetOf<String>()\n\n        while (true) {\n            val priorityBeforeAttempt = priorityProvider()\n            val excludedBeforeAttempt =\n                CapsulePlaybackSafety.quarantinedProfileIds() + failedStreamClients(videoId)\n            val plan =\n                CapsuleAudioFallbackPolicy.profilePlan(\n                    primaryProfileId = primaryProfileId,\n                    priority = priorityBeforeAttempt,\n                    authenticated = extractionBundle.innerTube.hasSapCookieAuth(),\n                    isUploaded = baseHints.isUploaded == true,\n                    excludedProfiles = excludedBeforeAttempt,\n                    preferredProfiles = preferredProfiles,\n                )\n\n            val profileId =\n                onlyPostBotProfile\n                    ?.takeIf { it !in attempted && it in plan }\n                    ?: plan.firstOrNull { it !in attempted }\n                    ?: throw lastFailure\n                    ?: IllegalStateException(\n                        if (priorityBeforeAttempt == AudioResolvePriority.PLAYBACK) {\n                            \"No safe AUDIO client profile is currently available\"\n                        } else {\n                            \"AUDIO background resolve suppressed while its primary profile is quarantined\"\n                        },\n                    )\n\n            attempted += profileId\n            CapsulePlaybackSafety.blockedExceptionOrNull()?.let { throw it }\n\n            val wireGeneration = CapsulePlaybackSafety.wireBotSignalGeneration()\n            Timber.tag(TAG).i(\n                \"AUDIO profile attempt id=%s priority=%s profile=%s\",\n                videoId,\n                priorityBeforeAttempt,\n                profileId,\n            )\n\n            try {\n                val stream =\n                    extractDirectStream(\n                        extractionBundle = extractionBundle,\n                        videoId = videoId,\n                        hints = baseHints.copy(playbackClientOverrideId = profileId),\n                        audioQuality = audioQuality,\n                    )\n                if (profileId != primaryProfileId) {\n                    Timber.tag(TAG).i(\n                        \"AUDIO fallback recovered id=%s primary=%s selected=%s\",\n                        videoId,\n                        primaryProfileId,\n                        profileId,\n                    )\n                }\n                return stream\n            } catch (cancelled: CancellationException) {\n                throw cancelled\n            } catch (failure: Exception) {\n                val kind =\n                    CapsulePlaybackSafety.classifyFailureSince(\n                        error = failure,\n                        wireGenerationBeforeAttempt = wireGeneration,\n                    )\n                val priorityAfterFailure = priorityProvider()\n\n                if (kind == YouTubeFailureKind.RATE_LIMITED) {\n                    CapsulePlaybackSafety.observeFailure(failure)\n                    throw failure\n                }\n\n                if (kind == YouTubeFailureKind.BOT_CHECK) {\n                    // Build the foreground plan from the state that existed before\n                    // quarantining this family, so crossFamilyFallback can locate\n                    // the failed profile even if the loader promoted us mid-request.\n                    val foregroundPlan =\n                        CapsuleAudioFallbackPolicy.profilePlan(\n                            primaryProfileId = primaryProfileId,\n                            priority = AudioResolvePriority.PLAYBACK,\n                            authenticated = extractionBundle.innerTube.hasSapCookieAuth(),\n                            isUploaded = baseHints.isUploaded == true,\n                            excludedProfiles = excludedBeforeAttempt,\n                            preferredProfiles = preferredProfiles,\n                        )\n\n                    CapsulePlaybackSafety.markProfileBotCheck(profileId)\n                    markStreamClientFailed(videoId, profileId)\n                    Timber.tag(TAG).w(\n                        \"AUDIO bot-check isolated id=%s priority=%s profile=%s\",\n                        videoId,\n                        priorityAfterFailure,\n                        profileId,\n                    )\n\n                    if (priorityAfterFailure != AudioResolvePriority.PLAYBACK) throw failure\n\n                    if (botSignalAlreadySeen) {\n                        CapsulePlaybackSafety.markBotDetectionFailure(\n                            \"confirmed across multiple AUDIO client profiles\",\n                        )\n                        throw failure\n                    }\n\n                    val crossFamily =\n                        CapsuleAudioFallbackPolicy.crossFamilyFallback(foregroundPlan, profileId)\n                            ?: throw failure\n                    botSignalAlreadySeen = true\n                    onlyPostBotProfile = crossFamily\n                    lastFailure = failure\n                    delay(CapsuleAudioFallbackPolicy.fallbackDelayMs(kind))\n                    continue\n                }\n\n                val canFallback = CapsuleAudioFallbackPolicy.canFallbackAfter(kind)\n                if (canFallback) {\n                    markStreamClientFailed(videoId, profileId)\n                }\n\n                // Background work still never rotates identities. If a real\n                // Media3 loader has promoted this shared job, however, the very\n                // same extraction may now use the normal foreground fallback plan.\n                if (\n                    onlyPostBotProfile != null ||\n                    !canFallback ||\n                    priorityAfterFailure != AudioResolvePriority.PLAYBACK\n                ) {\n                    throw failure\n                }\n\n                val fallbackDelayMs = CapsuleAudioFallbackPolicy.fallbackDelayMs(kind)\n                Timber.tag(TAG).w(\n                    \"AUDIO client-local failure id=%s profile=%s kind=%s; fallbackDelayMs=%d\",\n                    videoId,\n                    profileId,\n                    kind,\n                    fallbackDelayMs,\n                )\n                lastFailure = failure\n                if (fallbackDelayMs > 0L) delay(fallbackDelayMs)\n            }\n        }\n    }\n\n'''
+          player = player[:start] + replacement + player[end:]
+          player_path.write_text(player)
+
+          service_path = Path("app/src/main/kotlin/com/nikhil/yt/playback/MusicService.kt")
+          service = service_path.read_text()
+          old_mapping = '''                        is TimeoutCancellationException,\n                        is java.net.SocketTimeoutException,\n                        -> {\n                            throw PlaybackException(\n                                getString(R.string.error_timeout),\n                                throwable,\n                                PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT\n                            )\n                        }\n\n                        else -> throw PlaybackException(\n'''
+          new_mapping = '''                        is TimeoutCancellationException,\n                        is java.net.SocketTimeoutException,\n                        -> {\n                            throw PlaybackException(\n                                getString(R.string.error_timeout),\n                                throwable,\n                                PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT\n                            )\n                        }\n\n                        // A stale prefetch/selection cancellation is control flow,\n                        // not a playback failure. Do not turn it into error_unknown.\n                        is kotlinx.coroutines.CancellationException -> throw throwable\n\n                        else -> throw PlaybackException(\n'''
+          if old_mapping not in service:
+              raise SystemExit("MusicService resolve failure mapping not found")
+          service = service.replace(old_mapping, new_mapping, 1)
+          service_path.write_text(service)
+
+          test_path = Path("app/src/test/kotlin/com/nikhil/yt/playback/audio/AudioResolveSchedulerTest.kt")
+          tests = test_path.read_text()
+          marker = "\n}\n"
+          insertion = r'''
+
+    @Test fun loaderPromotionBeforeTicketPromotesTheNextPrefetchRun() = runTest {
+        val scheduler = AudioResolveScheduler(monotonicNowMs = { testScheduler.currentTime })
+        scheduler.promote("next")
+
+        var observed = AudioResolvePriority.PREFETCH
+        val value =
+            scheduler.run("next", AudioResolvePriority.PREFETCH) {
+                observed = scheduler.effectivePriority("next", AudioResolvePriority.PREFETCH)
+                7
+            }
+
+        assertEquals(7, value)
+        assertEquals(AudioResolvePriority.PLAYBACK, observed)
+    }
+
+    @Test fun loaderPromotionIsVisibleInsideYoungSharedPrefetch() = runTest {
+        val scheduler = AudioResolveScheduler(monotonicNowMs = { testScheduler.currentTime })
+        val started = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        val observed = mutableListOf<AudioResolvePriority>()
+
+        val work = async {
+            scheduler.run("next", AudioResolvePriority.PREFETCH) {
+                observed += scheduler.effectivePriority("next", AudioResolvePriority.PREFETCH)
+                started.complete(Unit)
+                release.await()
+                observed += scheduler.effectivePriority("next", AudioResolvePriority.PREFETCH)
+            }
+        }
+
+        started.await()
+        scheduler.promote("next")
+        release.complete(Unit)
+        work.await()
+
+        assertEquals(
+            listOf(AudioResolvePriority.PREFETCH, AudioResolvePriority.PLAYBACK),
+            observed,
+        )
+    }
+'''
+          pos = tests.rfind(marker)
+          if pos < 0:
+              raise SystemExit("AudioResolveSchedulerTest class end not found")
+          tests = tests[:pos] + insertion + tests[pos:]
+          test_path.write_text(tests)
+          PY
+
+      - name: Verify focused tests and Kotlin compile
+        run: |
+          ./gradlew \
+            :app:testUniversalDebugUnitTest \
+            --tests 'com.nikhil.yt.playback.audio.AudioResolveSchedulerTest' \
+            :app:compileUniversalDebugKotlin \
+            --stacktrace \
+            --no-daemon
+
+      - name: Commit reviewed fixes and remove one-shot workflow
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm .github/workflows/review-a0-a4-once.yml
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add \
+            app/src/main/kotlin/com/nikhil/yt/playback/MusicService.kt \
+            app/src/main/kotlin/com/nikhil/yt/playback/audio/AudioResolveScheduler.kt \
+            app/src/main/kotlin/com/nikhil/yt/playback/audio/CapsuleInnerTubeXPlayer.kt \
+            app/src/test/kotlin/com/nikhil/yt/playback/audio/AudioResolveSchedulerTest.kt \
+            .github/workflows/review-a0-a4-once.yml
+          git commit -m 'Fix foreground audio fallback promotion and stale cancellation'
+          git push origin HEAD:cleanup/capsule-player-only
