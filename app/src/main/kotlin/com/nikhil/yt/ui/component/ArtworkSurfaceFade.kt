@@ -13,8 +13,9 @@ internal fun ArtworkSurfaceFade(background: Color, modifier: Modifier = Modifier
     Box(modifier.drawWithCache {
         val navigationScrim = if (portrait) Brush.verticalGradient(
             0f to background,
-            0.045f to background,
-            0.12f to Color.Transparent,
+            0.035f to background.copy(alpha = 0.94f),
+            0.085f to background.copy(alpha = 0.58f),
+            0.14f to Color.Transparent,
             1f to Color.Transparent,
         ) else Brush.verticalGradient(
             0f to Color.Black.copy(alpha = 0.48f),
@@ -22,17 +23,18 @@ internal fun ArtworkSurfaceFade(background: Color, modifier: Modifier = Modifier
             1f to Color.Transparent,
         )
         val surfaceFade = if (portrait) Brush.verticalGradient(
-            // Keep the portrait readable for as long as possible, then dissolve it into
-            // the page over a wide range. The small alpha steps avoid a visible dark band.
+            // Keep most of the portrait untouched and then dissolve it gradually into
+            // the page. This is only a cached gradient draw: no blur or render effect.
             0f to background.copy(alpha = 0f),
-            0.50f to background.copy(alpha = 0f),
-            0.62f to background.copy(alpha = 0.04f),
-            0.70f to background.copy(alpha = 0.09f),
-            0.78f to background.copy(alpha = 0.18f),
-            0.84f to background.copy(alpha = 0.30f),
-            0.89f to background.copy(alpha = 0.45f),
-            0.93f to background.copy(alpha = 0.62f),
-            0.965f to background.copy(alpha = 0.79f),
+            0.40f to background.copy(alpha = 0f),
+            0.54f to background.copy(alpha = 0.035f),
+            0.64f to background.copy(alpha = 0.085f),
+            0.72f to background.copy(alpha = 0.15f),
+            0.79f to background.copy(alpha = 0.24f),
+            0.85f to background.copy(alpha = 0.36f),
+            0.90f to background.copy(alpha = 0.50f),
+            0.94f to background.copy(alpha = 0.66f),
+            0.97f to background.copy(alpha = 0.80f),
             0.988f to background.copy(alpha = 0.92f),
             1f to background,
         ) else Brush.verticalGradient(
