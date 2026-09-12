@@ -6,6 +6,7 @@ import com.nikhil.yt.db.entities.ArtistEntity
 import com.nikhil.yt.innertube.models.ArtistItem
 import com.nikhil.yt.innertube.pages.ArtistPage
 import java.time.LocalDateTime
+import java.time.temporal.ChronoUnit
 import org.junit.After
 import org.junit.Assert.*
 import org.junit.Before
@@ -20,7 +21,10 @@ import org.robolectric.annotation.Config
 class ArtistSubscriptionTest {
     private lateinit var database: InternalDatabase
     private val dao get() = database.dao
-    private val artist = ArtistEntity(id = "UC-artist", name = "Artist")
+    private val artist = ArtistEntity(
+        id = "UC-artist", name = "Artist",
+        lastUpdateTime = LocalDateTime.of(2026, 9, 12, 17, 0),
+    )
     private val bookmark = LocalDateTime.of(2026, 9, 12, 18, 0)
     private val page = ArtistPage(
         artist = ArtistItem(
@@ -48,7 +52,7 @@ class ArtistSubscriptionTest {
         dao.update(requestSnapshot, page)
 
         val saved = requireNotNull(dao.getArtistById(artist.id))
-        assertEquals(subscribed.bookmarkedAt, saved.bookmarkedAt)
+        assertEquals(subscribed.bookmarkedAt?.truncatedTo(ChronoUnit.MILLIS), saved.bookmarkedAt)
         assertEquals(page.artist.title, saved.name)
         assertNotNull(saved.thumbnailUrl)
     }
@@ -70,13 +74,13 @@ class ArtistSubscriptionTest {
         val changed = requireNotNull(dao.setArtistBookmarked(artist, true))
 
         assertNotNull(changed.bookmarkedAt)
-        assertEquals(latest.copy(bookmarkedAt = changed.bookmarkedAt), dao.getArtistById(artist.id))
+        assertEquals(latest.copy(bookmarkedAt = changed.bookmarkedAt?.truncatedTo(ChronoUnit.MILLIS)), dao.getArtistById(artist.id))
     }
 
     @Test fun repeatedSubscribeIntentBeforeUiRefreshDoesNotToggleBack() {
         val first = requireNotNull(dao.setArtistBookmarked(artist, true))
         assertNull(dao.setArtistBookmarked(artist, true))
-        assertEquals(first, dao.getArtistById(artist.id))
+        assertEquals(first.copy(bookmarkedAt = first.bookmarkedAt?.truncatedTo(ChronoUnit.MILLIS)), dao.getArtistById(artist.id))
 
         assertNotNull(dao.setArtistBookmarked(first, false))
         assertNull(dao.setArtistBookmarked(first, false))
