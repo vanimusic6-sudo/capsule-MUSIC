@@ -28,6 +28,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 import com.nikhil.yt.LocalDatabase
@@ -53,6 +54,7 @@ fun ImportPlaylistDialog(
     val database = LocalDatabase.current
     val coroutineScope = rememberCoroutineScope()
     val context = LocalContext.current
+    val resources = LocalResources.current
 
     var currentPlaylistName by remember(playlistTitle) { mutableStateOf(playlistTitle) }
     var songIds by remember { mutableStateOf<List<String>?>(null) }
@@ -106,7 +108,7 @@ fun ImportPlaylistDialog(
                         songIds = ids
 
                         if (ids.isEmpty()) {
-                            showMessage(context.getString(R.string.import_failed))
+                            showMessage(resources.getString(R.string.import_failed))
                             withContext(Dispatchers.Main) {
                                 resetState()
                                 onDismiss()
@@ -137,14 +139,14 @@ fun ImportPlaylistDialog(
                             database.addSongToPlaylist(playlist, ids)
                         }
 
-                        showMessage(context.getString(R.string.playlist_synced))
+                        showMessage(resources.getString(R.string.playlist_synced))
                         withContext(Dispatchers.Main) {
                             resetState()
                             onDismiss()
                         }
                     } catch (e: Exception) {
                         e.printStackTrace()
-                        showMessage(context.getString(R.string.import_failed) + ": ${e.message ?: "Unknown error"}")
+                        showMessage(resources.getString(R.string.import_failed) + ": ${e.message ?: "Unknown error"}")
                         withContext(Dispatchers.Main) {
                             resetState()
                             onDismiss()
@@ -189,7 +191,7 @@ fun ImportPlaylistDialog(
                             try {
                                 val ids = songIds ?: onGetSong()
                                 if (ids.isEmpty()) {
-                                    showMessage(context.getString(R.string.import_failed))
+                                    showMessage(resources.getString(R.string.import_failed))
                                     withContext(Dispatchers.Main) {
                                         resetState()
                                         onDismiss()
@@ -204,7 +206,7 @@ fun ImportPlaylistDialog(
                                     val newSongIds = ids.filterNot { it in existingSongIds }
 
                                     if (newSongIds.isEmpty()) {
-                                        showMessage(context.getString(R.string.playlist_synced))
+                                        showMessage(resources.getString(R.string.playlist_synced))
                                     } else {
                                         database.transaction {
                                             var position = playlist.songCount
@@ -218,10 +220,10 @@ fun ImportPlaylistDialog(
                                                 )
                                             }
                                         }
-                                        showMessage(context.getString(R.string.playlist_synced))
+                                        showMessage(resources.getString(R.string.playlist_synced))
                                     }
                                 } else {
-                                    showMessage(context.getString(R.string.import_failed))
+                                    showMessage(resources.getString(R.string.import_failed))
                                 }
 
                                 withContext(Dispatchers.Main) {
@@ -230,7 +232,7 @@ fun ImportPlaylistDialog(
                                 }
                             } catch (e: Exception) {
                                 e.printStackTrace()
-                                showMessage(context.getString(R.string.import_failed) + ": ${e.message ?: "Unknown error"}")
+                                showMessage(resources.getString(R.string.import_failed) + ": ${e.message ?: "Unknown error"}")
                                 withContext(Dispatchers.Main) {
                                     resetState()
                                     onDismiss()
@@ -248,7 +250,7 @@ fun ImportPlaylistDialog(
                             try {
                                 val ids = songIds ?: onGetSong()
                                 if (ids.isEmpty()) {
-                                    showMessage(context.getString(R.string.import_failed))
+                                    showMessage(resources.getString(R.string.import_failed))
                                     withContext(Dispatchers.Main) {
                                         resetState()
                                         onDismiss()
@@ -265,9 +267,9 @@ fun ImportPlaylistDialog(
                                 val playlist = database.playlist(newPlaylist.id).firstOrNull()
                                 if (playlist != null) {
                                     database.addSongToPlaylist(playlist, ids)
-                                    showMessage(context.getString(R.string.playlist_synced))
+                                    showMessage(resources.getString(R.string.playlist_synced))
                                 } else {
-                                    showMessage(context.getString(R.string.import_failed))
+                                    showMessage(resources.getString(R.string.import_failed))
                                 }
 
                                 withContext(Dispatchers.Main) {
@@ -276,7 +278,7 @@ fun ImportPlaylistDialog(
                                 }
                             } catch (e: Exception) {
                                 e.printStackTrace()
-                                showMessage(context.getString(R.string.import_failed) + ": ${e.message ?: "Unknown error"}")
+                                showMessage(resources.getString(R.string.import_failed) + ": ${e.message ?: "Unknown error"}")
                                 withContext(Dispatchers.Main) {
                                     resetState()
                                     onDismiss()

@@ -34,6 +34,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
@@ -265,6 +266,7 @@ fun PlayerSettings(
     var showAudioClientPriorityDialog by remember { mutableStateOf(false) }
     val database = LocalDatabase.current
     val context = LocalContext.current
+    val resources = LocalResources.current
     val playerConnection = LocalPlayerConnection.current
 
     if (showArtistSeparatorsDialog) {
@@ -478,7 +480,7 @@ fun PlayerSettings(
                         onAudioOffloadChange(true)
                         Toast.makeText(
                             context,
-                            context.getString(R.string.audio_offload_supported),
+                            resources.getString(R.string.audio_offload_supported),
                             Toast.LENGTH_SHORT,
                         ).show()
                     }
@@ -486,7 +488,7 @@ fun PlayerSettings(
                         onAudioOffloadChange(false)
                         Toast.makeText(
                             context,
-                            context.getString(R.string.audio_offload_unsupported),
+                            resources.getString(R.string.audio_offload_unsupported),
                             Toast.LENGTH_LONG,
                         ).show()
                     }
@@ -494,7 +496,7 @@ fun PlayerSettings(
                         onAudioOffloadChange(false)
                         Toast.makeText(
                             context,
-                            context.getString(R.string.audio_offload_unknown),
+                            resources.getString(R.string.audio_offload_unknown),
                             Toast.LENGTH_LONG,
                         ).show()
                     }

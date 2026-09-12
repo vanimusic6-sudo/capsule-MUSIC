@@ -202,10 +202,10 @@
     <string name="empty_album">Empty Album</string>
     <string name="empty_album_desc">This album doesn\'t contain any songs</string>
     <plurals name="seconds">
-        <item quantity="one">1 second</item>
-        <item quantity="few">%d seconds</item>
-        <item quantity="many">%d seconds</item>
-        <item quantity="other">%d seconds</item>
+        <item quantity="one">%d секунда</item>
+        <item quantity="few">%d секунды</item>
+        <item quantity="many">%d секунд</item>
+        <item quantity="other">%d секунды</item>
     </plurals>
     <string name="audio_crossfade_title">Crossfade</string>
     <string name="audio_crossfade_description">Smoothly transition between songs by fading out the end of each track.</string>

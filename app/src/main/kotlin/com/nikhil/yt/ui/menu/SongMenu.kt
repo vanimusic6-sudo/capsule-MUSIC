@@ -62,6 +62,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -123,6 +124,7 @@ fun SongMenu(
     isFromCache: Boolean = false,
 ) {
     val context = LocalContext.current
+    val resources = LocalResources.current
     val database = LocalDatabase.current
     val playerConnection = LocalPlayerConnection.current ?: return
     val songState = database.song(originalSong.id).collectAsState(initial = originalSong)
@@ -260,8 +262,8 @@ fun SongMenu(
         },
         onAddComplete = { songCount, playlistNames ->
             val message = when {
-                playlistNames.size == 1 -> context.getString(R.string.added_to_playlist, playlistNames.first())
-                else -> context.getString(R.string.added_to_n_playlists, playlistNames.size)
+                playlistNames.size == 1 -> resources.getString(R.string.added_to_playlist, playlistNames.first())
+                else -> resources.getString(R.string.added_to_n_playlists, playlistNames.size)
             }
             Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
         },

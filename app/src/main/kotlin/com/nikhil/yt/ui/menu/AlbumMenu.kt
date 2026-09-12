@@ -54,6 +54,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -102,6 +103,7 @@ fun AlbumMenu(
     onDismiss: () -> Unit,
 ) {
     val context = LocalContext.current
+    val resources = LocalResources.current
     val database = LocalDatabase.current
     val downloadUtil = LocalDownloadUtil.current
     val playerConnection = LocalPlayerConnection.current ?: return
@@ -211,10 +213,10 @@ fun AlbumMenu(
         },
         onAddComplete = { songCount, playlistNames ->
             val message = when {
-                songCount == 1 && playlistNames.size == 1 -> context.getString(R.string.added_to_playlist, playlistNames.first())
-                songCount > 1 && playlistNames.size == 1 -> context.getString(R.string.added_n_songs_to_playlist, songCount, playlistNames.first())
-                songCount == 1 -> context.getString(R.string.added_to_n_playlists, playlistNames.size)
-                else -> context.getString(R.string.added_n_songs_to_n_playlists, songCount, playlistNames.size)
+                songCount == 1 && playlistNames.size == 1 -> resources.getString(R.string.added_to_playlist, playlistNames.first())
+                songCount > 1 && playlistNames.size == 1 -> resources.getString(R.string.added_n_songs_to_playlist, songCount, playlistNames.first())
+                songCount == 1 -> resources.getString(R.string.added_to_n_playlists, playlistNames.size)
+                else -> resources.getString(R.string.added_n_songs_to_n_playlists, songCount, playlistNames.size)
             }
             Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
         },

@@ -26,6 +26,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.TextFieldValue
@@ -52,6 +53,7 @@ fun CreatePlaylistDialog(
     val coroutineScope = rememberCoroutineScope()
     var syncedPlaylist by remember { mutableStateOf(false) }
     val context = LocalContext.current
+    val resources = LocalResources.current
 
     val innerTubeCookie by rememberPreference(InnerTubeCookieKey, "")
     val isSignedIn = innerTubeCookie.isNotEmpty()
@@ -109,13 +111,13 @@ fun CreatePlaylistDialog(
                                 if (!isSignedIn && !syncedPlaylist) {
                                     Toast.makeText(
                                         context,
-                                        context.getString(R.string.not_logged_in_youtube),
+                                        resources.getString(R.string.not_logged_in_youtube),
                                         Toast.LENGTH_SHORT
                                     ).show()
                                 } else if (!isYtmSyncEnabled) {
                                     Toast.makeText(
                                         context,
-                                        context.getString(R.string.sync_disabled),
+                                        resources.getString(R.string.sync_disabled),
                                         Toast.LENGTH_SHORT
                                     ).show()
                                 } else {

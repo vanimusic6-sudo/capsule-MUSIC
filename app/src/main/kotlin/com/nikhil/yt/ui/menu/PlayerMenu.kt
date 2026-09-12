@@ -82,6 +82,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -152,6 +153,7 @@ fun PlayerMenu(
 ) {
     mediaMetadata ?: return
     val context = LocalContext.current
+    val resources = LocalResources.current
     val database = LocalDatabase.current
     val playerConnection = LocalPlayerConnection.current ?: return
     val playerVolume = playerConnection.service.playerVolume.collectAsState()
@@ -215,8 +217,8 @@ fun PlayerMenu(
         },
         onAddComplete = { songCount, playlistNames ->
             val message = when {
-                playlistNames.size == 1 -> context.getString(R.string.added_to_playlist, playlistNames.first())
-                else -> context.getString(R.string.added_to_n_playlists, playlistNames.size)
+                playlistNames.size == 1 -> resources.getString(R.string.added_to_playlist, playlistNames.first())
+                else -> resources.getString(R.string.added_to_n_playlists, playlistNames.size)
             }
             Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
         },
@@ -296,10 +298,8 @@ fun PlayerMenu(
         )
     }
 
-    val nowPlayingTitle =
-        remember(mediaMetadata.title) {
-            mediaMetadata.title.ifBlank { context.getString(R.string.no_title) }
-        }
+    val noTitle = stringResource(R.string.no_title)
+    val nowPlayingTitle = mediaMetadata.title.ifBlank { noTitle }
 
     val nowPlayingSubtitle =
         remember(mediaMetadata.artists) {
@@ -412,7 +412,7 @@ fun PlayerMenu(
                         },
                         text = stringResource(R.string.start_radio),
                         onClick = {
-                            Toast.makeText(context, context.getString(R.string.starting_radio), Toast.LENGTH_SHORT).show()
+                            Toast.makeText(context, resources.getString(R.string.starting_radio), Toast.LENGTH_SHORT).show()
                             playerConnection.startRadioSeamlessly()
                             onDismiss()
                         }
@@ -450,7 +450,7 @@ fun PlayerMenu(
                                 context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
                             val clip =
                                 android.content.ClipData.newPlainText(
-                                    context.getString(R.string.copy_link),
+                                    resources.getString(R.string.copy_link),
                                     "https://music.youtube.com/watch?v=${mediaMetadata.id}",
                                 )
                             clipboard.setPrimaryClip(clip)
@@ -751,26 +751,26 @@ private fun VolumeSliderL(
 
     val insetIcon = if (sliderValue <= 0f) R.drawable.volume_off else R.drawable.volume_up
 
-        Slider(
-            value = sliderValue,
-            onValueChange = { updated ->
-                isDragging = true
-                val coerced = updated.coerceIn(0f, 1f)
-                sliderValue = coerced
-                onValueChange(coerced)
-            },
-            onValueChangeFinished = { isDragging = false },
-            valueRange = 0f..1f,
-            modifier = Modifier.height(56.dp),
-            thumb = {
-                Icon(
-                    painter = painterResource(insetIcon),
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            },
-            colors = SliderDefaults.colors(),
-        )
+    Slider(
+        value = sliderValue,
+        onValueChange = { updated ->
+            isDragging = true
+            val coerced = updated.coerceIn(0f, 1f)
+            sliderValue = coerced
+            onValueChange(coerced)
+        },
+        onValueChangeFinished = { isDragging = false },
+        valueRange = 0f..1f,
+        modifier = modifier.height(56.dp),
+        thumb = {
+            Icon(
+                painter = painterResource(insetIcon),
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        },
+        colors = SliderDefaults.colors(),
+    )
 }
 
 @Composable
@@ -1166,6 +1166,7 @@ fun EqualizerDialog(
     openSystemEqualizer: () -> Unit,
 ) {
     val context = LocalContext.current
+    val resources = LocalResources.current
     val playerConnection = LocalPlayerConnection.current ?: return
     val eqCapabilities by playerConnection.service.eqCapabilities.collectAsState()
 
@@ -1263,7 +1264,7 @@ fun EqualizerDialog(
 
                 if (payload.profiles.isEmpty()) {
                     Toast
-                        .makeText(context, context.getString(R.string.eq_import_failed), Toast.LENGTH_SHORT)
+                        .makeText(context, resources.getString(R.string.eq_import_failed), Toast.LENGTH_SHORT)
                         .show()
                     return@TextFieldDialog
                 }
@@ -1272,7 +1273,7 @@ fun EqualizerDialog(
                 val normalizedImported =
                     payload.profiles
                         .map { p ->
-                            val baseName = p.name.trim().ifBlank { context.getString(R.string.eq_imported_profile) }
+                            val baseName = p.name.trim().ifBlank { resources.getString(R.string.eq_imported_profile) }
                             val incomingId = p.id.trim()
                             val finalId =
                                 if (incomingId.isBlank() || !existingIds.add(incomingId)) {
@@ -1305,7 +1306,7 @@ fun EqualizerDialog(
                 Toast
                     .makeText(
                         context,
-                        context.getString(R.string.eq_import_success, normalizedImported.size),
+                        resources.getString(R.string.eq_import_success, normalizedImported.size),
                         Toast.LENGTH_SHORT,
                     ).show()
             },

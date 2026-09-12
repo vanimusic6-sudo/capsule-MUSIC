@@ -148,12 +148,14 @@ fun DiscordSettings(
 
     Scaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) },
+        contentWindowInsets = LocalPlayerAwareWindowInsets.current.only(
+            WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom
+        ),
     ) { innerPadding ->
         Column(
             Modifier
-                .windowInsetsPadding(
-                    LocalPlayerAwareWindowInsets.current.only(WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom)
-                )
+                .padding(innerPadding)
+                .consumeWindowInsets(innerPadding)
                 .verticalScroll(rememberScrollState())
         ) {
         Spacer(

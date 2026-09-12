@@ -63,6 +63,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.AnnotatedString
@@ -100,6 +101,7 @@ fun PoTokenScreen(
     viewModel: PoTokenViewModel = hiltViewModel(),
 ) {
     val context = LocalContext.current
+    val resources = LocalResources.current
     val clipboardManager = LocalClipboardManager.current
     val tokenState by viewModel.state.collectAsState()
     var showRegenerateSheet by remember { mutableStateOf(false) }
@@ -150,7 +152,7 @@ fun PoTokenScreen(
                     playerToken = playerToken,
                 )
             } else {
-                viewModel.onExtractionError(context.getString(R.string.token_generation_failed))
+                viewModel.onExtractionError(resources.getString(R.string.token_generation_failed))
             }
         } else {
             val error = result.data?.getStringExtra(PoTokenExtractionActivity.EXTRA_ERROR).orEmpty()

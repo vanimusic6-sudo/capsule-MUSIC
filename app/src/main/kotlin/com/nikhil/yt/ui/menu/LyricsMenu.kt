@@ -47,6 +47,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.runtime.rememberCoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -90,6 +91,7 @@ fun LyricsMenu(
     viewModel: LyricsMenuViewModel = hiltViewModel(),
 ) {
     val context = LocalContext.current
+    val resources = LocalResources.current
     val database = LocalDatabase.current
 
     var showEditDialog by rememberSaveable {
@@ -199,7 +201,7 @@ fun LyricsMenu(
                         
                         // Show warning only if network is definitely unavailable
                         if (!isNetworkAvailable) {
-                            Toast.makeText(context, context.getString(R.string.error_no_internet), Toast.LENGTH_SHORT).show()
+                            Toast.makeText(context, resources.getString(R.string.error_no_internet), Toast.LENGTH_SHORT).show()
                         }
                     },
                 ) {
@@ -319,7 +321,7 @@ fun LyricsMenu(
             if (!isLoading && results.isEmpty()) {
                 item {
                     Text(
-                        text = context.getString(R.string.lyrics_not_found),
+                        text = resources.getString(R.string.lyrics_not_found),
                         textAlign = TextAlign.Center,
                         modifier =
                         Modifier
@@ -491,7 +493,7 @@ fun LyricsMenu(
                                 } catch (e: Exception) {
                                     Toast.makeText(
                                         context,
-                                        context.getString(R.string.translation_failed) + ": " + (e.localizedMessage ?: e.toString()),
+                                        resources.getString(R.string.translation_failed) + ": " + (e.localizedMessage ?: e.toString()),
                                         Toast.LENGTH_SHORT
                                     ).show()
                                 } finally {

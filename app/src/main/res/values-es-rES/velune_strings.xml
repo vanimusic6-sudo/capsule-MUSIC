@@ -74,10 +74,12 @@
     <string name="already_in_playlist">Already in playlist:</string>
     <plurals name="n_element">
         <item quantity="one">%d element</item>
+        <item quantity="many">%d elements</item>
         <item quantity="other">%d elements</item>
     </plurals>
     <plurals name="n_time">
         <item quantity="one">%d time</item>
+        <item quantity="many">%d times</item>
         <item quantity="other">%d times</item>
     </plurals>
     <string name="seek_backward">5 seconds backward</string>
@@ -199,6 +201,7 @@
     <string name="empty_album_desc">This album doesn\'t contain any songs</string>
     <plurals name="seconds">
         <item quantity="one">1 second</item>
+        <item quantity="many">%d seconds</item>
         <item quantity="other">%d seconds</item>
     </plurals>
     <string name="audio_crossfade_title">Crossfade</string>

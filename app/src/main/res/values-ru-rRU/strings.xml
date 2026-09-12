@@ -232,10 +232,10 @@
     <string name="sleep_timer">Sleep timer</string>
     <string name="end_of_song">End of song</string>
     <plurals name="minute">
-        <item quantity="one">1 minute</item>
-        <item quantity="few">%d minutes</item>
-        <item quantity="many">%d minutes</item>
-        <item quantity="other">%d minutes</item>
+        <item quantity="one">%d минута</item>
+        <item quantity="few">%d минуты</item>
+        <item quantity="many">%d минут</item>
+        <item quantity="other">%d минуты</item>
     </plurals>
     <string name="error_no_stream">No stream available</string>
     <string name="error_no_internet">No network connection</string>

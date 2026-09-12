@@ -127,6 +127,7 @@ import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -429,6 +430,7 @@ fun Lyrics(
     val menuState = LocalMenuState.current
     val density = LocalDensity.current
     val context = LocalContext.current
+    val resources = LocalResources.current
     val configuration = LocalConfiguration.current
 
     DisposableEffect(Unit) {
@@ -642,7 +644,7 @@ fun Lyrics(
         if (showMaxSelectionToast) {
             Toast.makeText(
                 context,
-                context.getString(R.string.max_selection_limit, maxSelectionLimit),
+                resources.getString(R.string.max_selection_limit, maxSelectionLimit),
                 Toast.LENGTH_SHORT
             ).show()
             showMaxSelectionToast = false
@@ -2293,7 +2295,7 @@ fun Lyrics(
 
                                     putExtra(Intent.EXTRA_TEXT, "\"$lyricsText\"\n\n$songTitle - $artists\n$songLink")
                                 }
-                                context.startActivity(Intent.createChooser(shareIntent, context.getString(R.string.share_lyrics)))
+                                context.startActivity(Intent.createChooser(shareIntent, resources.getString(R.string.share_lyrics)))
                                 showShareDialog = false
                             }
                             .padding(vertical = 12.dp),

@@ -52,6 +52,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
@@ -103,6 +104,7 @@ fun YouTubePlaylistMenu(
     snackbarHostState: androidx.compose.material3.SnackbarHostState? = null,
 ) {
     val context = LocalContext.current
+    val resources = LocalResources.current
     val database = LocalDatabase.current
     val downloadUtil = LocalDownloadUtil.current
     val playerConnection = LocalPlayerConnection.current ?: return
@@ -134,10 +136,10 @@ fun YouTubePlaylistMenu(
         onDismiss = { showChoosePlaylistDialog = false },
         onAddComplete = { songCount, playlistNames ->
             val message = when {
-                songCount == 1 && playlistNames.size == 1 -> context.getString(R.string.added_to_playlist, playlistNames.first())
-                songCount > 1 && playlistNames.size == 1 -> context.getString(R.string.added_n_songs_to_playlist, songCount, playlistNames.first())
-                songCount == 1 -> context.getString(R.string.added_to_n_playlists, playlistNames.size)
-                else -> context.getString(R.string.added_n_songs_to_n_playlists, songCount, playlistNames.size)
+                songCount == 1 && playlistNames.size == 1 -> resources.getString(R.string.added_to_playlist, playlistNames.first())
+                songCount > 1 && playlistNames.size == 1 -> resources.getString(R.string.added_n_songs_to_playlist, songCount, playlistNames.first())
+                songCount == 1 -> resources.getString(R.string.added_to_n_playlists, playlistNames.size)
+                else -> resources.getString(R.string.added_n_songs_to_n_playlists, songCount, playlistNames.size)
             }
             Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
         },
@@ -526,9 +528,9 @@ fun YouTubePlaylistMenu(
                                         if (fetchedSongs.isEmpty() && newValue) {
                                             withContext(Dispatchers.Main) {
                                                 if (snackbarHostState != null) {
-                                                    snackbarHostState.showSnackbar(context.getString(R.string.import_failed))
+                                                    snackbarHostState.showSnackbar(resources.getString(R.string.import_failed))
                                                 } else {
-                                                    android.widget.Toast.makeText(context, context.getString(R.string.import_failed), android.widget.Toast.LENGTH_SHORT).show()
+                                                    android.widget.Toast.makeText(context, resources.getString(R.string.import_failed), android.widget.Toast.LENGTH_SHORT).show()
                                                 }
                                             }
                                             return@launch
@@ -562,9 +564,9 @@ fun YouTubePlaylistMenu(
                                         if (newValue) {
                                             withContext(Dispatchers.Main) {
                                                 if (snackbarHostState != null) {
-                                                    snackbarHostState.showSnackbar(context.getString(R.string.playlist_synced))
+                                                    snackbarHostState.showSnackbar(resources.getString(R.string.playlist_synced))
                                                 } else {
-                                                    android.widget.Toast.makeText(context, context.getString(R.string.playlist_synced), android.widget.Toast.LENGTH_SHORT).show()
+                                                    android.widget.Toast.makeText(context, resources.getString(R.string.playlist_synced), android.widget.Toast.LENGTH_SHORT).show()
                                                 }
                                             }
                                         }
@@ -578,9 +580,9 @@ fun YouTubePlaylistMenu(
                                             syncUtils.syncAutoSyncPlaylists()
                                             withContext(Dispatchers.Main) {
                                                 if (snackbarHostState != null) {
-                                                    snackbarHostState.showSnackbar(context.getString(R.string.playlist_synced))
+                                                    snackbarHostState.showSnackbar(resources.getString(R.string.playlist_synced))
                                                 } else {
-                                                    android.widget.Toast.makeText(context, context.getString(R.string.playlist_synced), android.widget.Toast.LENGTH_SHORT).show()
+                                                    android.widget.Toast.makeText(context, resources.getString(R.string.playlist_synced), android.widget.Toast.LENGTH_SHORT).show()
                                                 }
                                             }
                                         }
@@ -588,7 +590,7 @@ fun YouTubePlaylistMenu(
                                 } catch (e: Exception) {
                                     e.printStackTrace()
                                     withContext(Dispatchers.Main) {
-                                        val errorMsg = context.getString(R.string.import_failed) + ": ${e.message ?: "Unknown error"}"
+                                        val errorMsg = resources.getString(R.string.import_failed) + ": ${e.message ?: "Unknown error"}"
                                         if (snackbarHostState != null) {
                                             snackbarHostState.showSnackbar(errorMsg)
                                         } else {

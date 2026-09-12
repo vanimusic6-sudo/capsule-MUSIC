@@ -83,6 +83,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.platform.rememberNestedScrollInteropConnection
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -411,6 +412,7 @@ private fun LogViewerPanel() {
     LaunchedEffect(Unit) { GlobalLog.refresh() }
     val coroutineScope = rememberCoroutineScope()
     val context = LocalContext.current
+    val resources = LocalResources.current
     val clipboard = LocalClipboardManager.current
     var pendingLogExportText by remember { mutableStateOf("") }
     val saveLogsLauncher =
@@ -427,7 +429,7 @@ private fun LogViewerPanel() {
                     }.isSuccess
                 Toast.makeText(
                     context,
-                    context.getString(
+                    resources.getString(
                         if (saved) R.string.logs_saved_to_file else R.string.logs_save_failed
                     ),
                     Toast.LENGTH_SHORT
@@ -691,7 +693,7 @@ private fun LogViewerPanel() {
                             type = "text/plain"
                             putExtra(Intent.EXTRA_TEXT, sb.toString())
                         }
-                        context.startActivity(Intent.createChooser(send, context.getString(R.string.share_logs)))
+                        context.startActivity(Intent.createChooser(send, resources.getString(R.string.share_logs)))
                     },
                     enabled = filtered.isNotEmpty(),
                     modifier = Modifier.weight(1f)
