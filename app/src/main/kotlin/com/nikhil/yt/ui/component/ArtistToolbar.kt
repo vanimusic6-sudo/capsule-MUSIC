@@ -54,10 +54,12 @@ internal fun ArtistToolbar(
     )
     TopAppBar(
         modifier = modifier,
-        // The artwork remains edge-to-edge, but the controls sit a touch lower than the
-        // stock app-bar centre so they match the artist reference framing.
-        windowInsets = WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal),
-        expandedHeight = 68.dp,
+        // Respect the phone's top safe area instead of drawing controls under the
+        // status bar/cutout, then keep a small extra visual drop like the reference.
+        windowInsets = WindowInsets.safeDrawing.only(
+            WindowInsetsSides.Horizontal + WindowInsetsSides.Top,
+        ),
+        expandedHeight = 76.dp,
         title = {
             Text(
                 name,
@@ -71,7 +73,7 @@ internal fun ArtistToolbar(
             IconButton(
                 onBack,
                 onBackLongClick,
-                modifier = Modifier.offset(y = 8.dp),
+                modifier = Modifier.offset(y = 10.dp),
                 colors = buttonColors,
             ) {
                 Icon(painterResource(R.drawable.arrow_back), stringResource(R.string.back))
@@ -81,7 +83,7 @@ internal fun ArtistToolbar(
             IconButton(
                 onCopyLink,
                 {},
-                modifier = Modifier.offset(y = 8.dp),
+                modifier = Modifier.offset(y = 10.dp),
                 enabled = canShare,
                 colors = shareColors,
             ) {
@@ -90,7 +92,7 @@ internal fun ArtistToolbar(
             IconButton(
                 onShare,
                 {},
-                modifier = Modifier.offset(y = 8.dp),
+                modifier = Modifier.offset(y = 10.dp),
                 enabled = canShare,
                 colors = shareColors,
             ) {
