@@ -22,11 +22,18 @@ internal fun ArtworkSurfaceFade(background: Color, modifier: Modifier = Modifier
             1f to Color.Transparent,
         )
         val surfaceFade = if (portrait) Brush.verticalGradient(
+            // Keep the portrait readable for as long as possible, then dissolve it into
+            // the page over a wide range. The small alpha steps avoid a visible dark band.
             0f to background.copy(alpha = 0f),
-            0.64f to background.copy(alpha = 0f),
-            0.78f to background.copy(alpha = 0.20f),
-            0.88f to background.copy(alpha = 0.78f),
-            0.94f to background,
+            0.50f to background.copy(alpha = 0f),
+            0.62f to background.copy(alpha = 0.04f),
+            0.70f to background.copy(alpha = 0.09f),
+            0.78f to background.copy(alpha = 0.18f),
+            0.84f to background.copy(alpha = 0.30f),
+            0.89f to background.copy(alpha = 0.45f),
+            0.93f to background.copy(alpha = 0.62f),
+            0.965f to background.copy(alpha = 0.79f),
+            0.988f to background.copy(alpha = 0.92f),
             1f to background,
         ) else Brush.verticalGradient(
             0f to background.copy(alpha = 0f),
