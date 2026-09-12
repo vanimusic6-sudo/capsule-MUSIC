@@ -11,17 +11,22 @@ import androidx.compose.ui.graphics.Color
 @Composable
 internal fun ArtworkSurfaceFade(background: Color, modifier: Modifier = Modifier, portrait: Boolean = false) {
     Box(modifier.drawWithCache {
-        val navigationScrim = Brush.verticalGradient(
+        val navigationScrim = if (portrait) Brush.verticalGradient(
+            0f to background,
+            0.045f to background,
+            0.12f to Color.Transparent,
+            1f to Color.Transparent,
+        ) else Brush.verticalGradient(
             0f to Color.Black.copy(alpha = 0.48f),
             0.25f to Color.Transparent,
             1f to Color.Transparent,
         )
         val surfaceFade = if (portrait) Brush.verticalGradient(
             0f to background.copy(alpha = 0f),
-            0.48f to background.copy(alpha = 0f),
-            0.62f to background.copy(alpha = 0.18f),
-            0.76f to background.copy(alpha = 0.65f),
-            0.9f to background.copy(alpha = 0.96f),
+            0.64f to background.copy(alpha = 0f),
+            0.78f to background.copy(alpha = 0.20f),
+            0.88f to background.copy(alpha = 0.78f),
+            0.94f to background,
             1f to background,
         ) else Brush.verticalGradient(
             0f to background.copy(alpha = 0f),

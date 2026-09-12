@@ -28,6 +28,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -36,6 +37,7 @@ import androidx.compose.ui.unit.dp
 import com.nikhil.yt.R
 import com.nikhil.yt.ui.component.ArtistHero
 import com.nikhil.yt.ui.component.ArtistHeroLayout
+import com.nikhil.yt.ui.component.ArtistToolbar
 import java.io.File
 import kotlin.math.roundToInt
 import org.junit.Assert.assertEquals
@@ -48,31 +50,36 @@ import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [35], application = Application::class, qualifiers = "w393dp-h851dp-xhdpi")
+@Config(sdk = [35], application = Application::class, qualifiers = "w360dp-h800dp-xhdpi")
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class ArtistHeroTest {
     @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
 
-    @Test fun portraitHasRoomForTheFullCompositionAndControlsRemainOnIt() {
+    @Test fun artistElementsFollowTheReferencePositionsAtPhoneWidth() {
         compose.setContent {
             ArtistHeroLayout(
                 background = Color.Black,
-                modifier = Modifier.width(393.dp).testTag("hero"),
-                topSafePadding = 24.dp,
+                modifier = Modifier.width(360.dp).testTag("hero"),
                 artwork = { Box(Modifier.fillMaxSize().background(Color.Red).testTag("portrait")) },
-                title = { Box(Modifier.fillMaxWidth().height(39.dp).testTag("title")) },
-                actions = { Box(Modifier.fillMaxWidth().height(106.dp).testTag("actions")) },
+                title = { Box(Modifier.fillMaxWidth().height(36.dp).testTag("title")) },
+                actions = { Box(Modifier.fillMaxWidth().height(110.dp).testTag("actions")) },
             )
         }
         val hero = compose.onNodeWithTag("hero").fetchSemanticsNode().boundsInRoot
         val portrait = compose.onNodeWithTag("portrait").fetchSemanticsNode().boundsInRoot
         val title = compose.onNodeWithTag("title").fetchSemanticsNode().boundsInRoot
         val actions = compose.onNodeWithTag("actions").fetchSemanticsNode().boundsInRoot
-        assertTrue(portrait.height > portrait.width * 1.5f)
-        assertEquals(hero.top, portrait.top, 1f)
+        val dp = hero.width / 360f
+        // Measured reference: name near 1.2 widths, first button row near 1.34 widths.
+        assertEquals(hero.width * 1.69f, hero.height, 2f)
+        assertEquals(hero.top + hero.width * 0.06f, portrait.top, 2f)
+        assertEquals(hero.width * 1.18f, portrait.height, 2f)
         assertEquals(hero.width, portrait.width, 1f)
+        assertEquals(hero.top + 424.4f * dp, title.top, 2f)
+        assertEquals(hero.left + 14f * dp, title.left, 1f)
+        assertEquals(hero.top + 484.4f * dp, actions.top, 2f)
+        assertEquals(hero.left + 22f * dp, actions.left, 1f)
         assertTrue(title.bottom < actions.top)
-        assertTrue(actions.bottom < portrait.bottom)
     }
 
     @Test fun loadingUsesTheSameHeaderAndActionsWorkAfterLoading() {
@@ -93,7 +100,7 @@ class ArtistHeroTest {
                     onShuffle = { clicks++ },
                     onRadio = { clicks++ },
                     loading = loading,
-                    modifier = Modifier.width(393.dp).testTag("hero"),
+                    modifier = Modifier.width(360.dp).testTag("hero"),
                 )
             }
         }
@@ -140,16 +147,16 @@ class ArtistHeroTest {
 
 
     @OptIn(ExperimentalCoilApi::class)
-    @Test fun uncroppedPhotoKeepsItsEdgesAndLowerBodyVisible() {
-        val source = Bitmap.createBitmap(120, 180, Bitmap.Config.ARGB_8888)
-        source.eraseColor(android.graphics.Color.rgb(40, 70, 150))
+    @Test fun wideArtistArtworkFillsThePortraitInsteadOfLeavingAPlaceholderBand() {
+        // The real artist source is a 3:2 banner, not a tall portrait.
+        val source = Bitmap.createBitmap(180, 120, Bitmap.Config.ARGB_8888)
+        source.eraseColor(android.graphics.Color.rgb(180, 60, 30))
         val painter = android.graphics.Paint()
         val sourceCanvas = Canvas(source)
-        painter.color = android.graphics.Color.rgb(220, 50, 47)
-        sourceCanvas.drawRect(0f, 0f, 4f, 180f, painter)
-        painter.color = android.graphics.Color.rgb(13, 187, 170)
-        sourceCanvas.drawRect(116f, 0f, 120f, 180f, painter)
-        // Keep the real AsyncImage sizing and fade; inject pixels independently of file decoding.
+        painter.color = android.graphics.Color.rgb(16, 28, 48)
+        sourceCanvas.drawRect(52f, 48f, 128f, 120f, painter)
+        painter.color = android.graphics.Color.rgb(245, 148, 40)
+        sourceCanvas.drawOval(67f, 6f, 101f, 48f, painter)
         val previewHandler = AsyncImagePreviewHandler { source.asImage() }
         compose.setContent {
             CompositionLocalProvider(
@@ -157,50 +164,77 @@ class ArtistHeroTest {
                 LocalAsyncImagePreviewHandler provides previewHandler,
             ) {
                 MaterialTheme(colorScheme = darkColorScheme()) {
-                    ArtistHero(
-                        name = "Pyrokinesis", thumbnailUrl = "test://artist-portrait",
-                        background = Color(0xFF090909), subscribed = false,
-                        canSubscribe = true, canShuffle = true, showRadio = true, canRadio = true,
-                        onSubscribe = {}, onShuffle = {}, onRadio = {},
-                        modifier = Modifier.width(393.dp).testTag("hero"),
+                    Box(Modifier.width(360.dp).testTag("hero")) {
+                        ArtistHero(
+                            name = "Pyrokinesis", thumbnailUrl = "test://wide-artist-artwork",
+                            background = Color(0xFF090909), subscribed = false,
+                            canSubscribe = true, canShuffle = true, showRadio = true, canRadio = true,
+                            onSubscribe = {}, onShuffle = {}, onRadio = {},
+                        )
+                        ArtistToolbar("", true, true, {}, {}, {}, {})
+                    }
+                }
+            }
+        }
+        savePreview("artist-full-portrait")
+        val image = capture("hero")
+        compose.onNodeWithTag("artist-artwork-placeholder").assertDoesNotExist()
+        val side = image.getPixel((image.width * 0.04f).roundToInt(), (image.width * 0.82f).roundToInt())
+        assertTrue("Wide photos must continue below the former empty band", android.graphics.Color.red(side) > 100)
+        val head = image.getPixel((image.width * 0.48f).roundToInt(), (image.width * 0.30f).roundToInt())
+        assertTrue("The subject must be enlarged and framed at the reference height",
+            android.graphics.Color.red(head) > 200 && android.graphics.Color.green(head) > 100)
+        val bottom = image.getPixel((image.width * 0.04f).roundToInt(), (image.width * 1.30f).roundToInt())
+        assertTrue("The photograph must fade into the page without a hard lower edge",
+            android.graphics.Color.red(bottom) < 20)
+    }
+
+    @Test fun bareToolbarIconsKeepTheReferenceHeightAndAllActions() {
+        val clicks = mutableListOf<String>()
+        compose.setContent {
+            MaterialTheme(colorScheme = darkColorScheme()) {
+                Box(Modifier.width(360.dp).background(Color(0xFF824634)).testTag("toolbar")) {
+                    ArtistToolbar("Pyrokinesis", true, true,
+                        onBack = { clicks += "back" },
+                        onBackLongClick = {},
+                        onCopyLink = { clicks += "copy" },
+                        onShare = { clicks += "share" },
                     )
                 }
             }
         }
-        fun capture(): Bitmap {
-            val bounds = compose.onNodeWithTag("hero").fetchSemanticsNode().boundsInRoot
-            lateinit var result: Bitmap
-            compose.runOnIdle {
-                result = Bitmap.createBitmap(bounds.width.roundToInt(), bounds.height.roundToInt(), Bitmap.Config.ARGB_8888)
-                val canvas = Canvas(result)
-                canvas.translate(-bounds.left, -bounds.top)
-                compose.activity.findViewById<View>(android.R.id.content).draw(canvas)
-            }
-            return result
+        val bounds = compose.onNodeWithTag("toolbar").fetchSemanticsNode().boundsInRoot
+        val dp = bounds.width / 360f
+        val controls = listOf(R.string.back, R.string.copy_link, R.string.share).map {
+            compose.onNodeWithContentDescription(compose.activity.getString(it)).assertIsDisplayed()
         }
-        compose.waitForIdle()
-        savePreview("artist-full-portrait")
-        val image = capture()
-        val edgeY = (image.width * 1.5f * 0.24f).roundToInt()
-        val left = image.getPixel((image.width * 0.02f).roundToInt(), edgeY)
-        assertTrue("The left edge of the original photograph is cropped", android.graphics.Color.red(left) > 100)
-        val right = image.getPixel((image.width * 0.98f).roundToInt(), edgeY)
-        assertTrue("The right edge of the original photograph is cropped", android.graphics.Color.green(right) > 100)
-        val lowerBody = image.getPixel(image.width / 2, (image.width * 1.5f * 0.7f).roundToInt())
-        assertTrue("The fade hides the lower portrait too early", android.graphics.Color.blue(lowerBody) > 70)
+        controls.forEach {
+            assertEquals(bounds.top + 34f * dp, it.fetchSemanticsNode().boundsInRoot.center.y, 1f)
+        }
+        val bitmap = capture("toolbar")
+        val emptyCorner = bitmap.getPixel((28f * dp).roundToInt(), (18f * dp).roundToInt())
+        assertEquals("No permanent circular backdrop behind navigation icons", 0x82, android.graphics.Color.red(emptyCorner))
+        controls.forEach { it.performClick() }
+        assertEquals(listOf("back", "copy", "share"), clicks)
     }
 
-    private fun savePreview(name: String) {
+    private fun capture(tag: String): Bitmap {
         compose.waitForIdle()
-        val bounds = compose.onNodeWithTag("hero").fetchSemanticsNode().boundsInRoot
+        val bounds = compose.onNodeWithTag(tag).fetchSemanticsNode().boundsInRoot
+        lateinit var bitmap: Bitmap
         compose.runOnIdle {
-            val bitmap = Bitmap.createBitmap(bounds.width.roundToInt(), bounds.height.roundToInt(), Bitmap.Config.ARGB_8888)
+            bitmap = Bitmap.createBitmap(bounds.width.roundToInt(), bounds.height.roundToInt(), Bitmap.Config.ARGB_8888)
             val canvas = Canvas(bitmap)
             canvas.translate(-bounds.left, -bounds.top)
             compose.activity.findViewById<View>(android.R.id.content).draw(canvas)
-            val file = File("build/reports/ui-previews/$name.png")
-            file.parentFile.mkdirs()
-            file.outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
         }
+        return bitmap
+    }
+
+    private fun savePreview(name: String) {
+        val bitmap = capture("hero")
+        val file = File("build/reports/ui-previews/$name.png")
+        file.parentFile.mkdirs()
+        file.outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
     }
 }

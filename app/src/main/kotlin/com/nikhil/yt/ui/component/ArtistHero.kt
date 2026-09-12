@@ -24,11 +24,17 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.BiasAlignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.clearAndSetSemantics
@@ -44,7 +50,7 @@ import coil3.compose.AsyncImage
 import androidx.compose.ui.layout.ContentScale
 import com.nikhil.yt.R
 
-/** Full-width portrait composition; controls sit in its lower fade without cropping the subject. */
+/** Reference composition: large photograph, low title and two rows of existing Capsule actions. */
 @Composable
 internal fun ArtistHeroLayout(
     background: Color,
@@ -55,19 +61,26 @@ internal fun ArtistHeroLayout(
     topSafePadding: Dp = 0.dp,
 ) {
     BoxWithConstraints(modifier.fillMaxWidth().background(background)) {
-        val portraitSize = (maxWidth / 0.62f).coerceAtMost(760.dp)
-        Box(Modifier.fillMaxWidth().height(portraitSize)) {
-            artwork()
+        // At 360 dp: title ~425 dp, first actions ~484 dp, radio ~546 dp.
+        // The source may be a wide banner: size the photo separately from the controls.
+        val referenceWidth = maxWidth.coerceAtMost(450.dp)
+        val heroHeight = referenceWidth * 1.69f
+        Box(Modifier.fillMaxWidth().height(referenceWidth * 1.32f)) {
+            Box(
+                Modifier.fillMaxWidth()
+                    .padding(top = referenceWidth * 0.06f)
+                    .height(referenceWidth * 1.18f),
+            ) { artwork() }
             ArtworkSurfaceFade(background, Modifier.matchParentSize(), portrait = true)
         }
         Column(
-            Modifier.fillMaxWidth().heightIn(min = portraitSize)
-                .padding(start = 20.dp, end = 20.dp, top = topSafePadding + 72.dp, bottom = 18.dp),
+            Modifier.fillMaxWidth().heightIn(min = heroHeight)
+                .padding(top = topSafePadding + 72.dp, bottom = 14.dp),
             verticalArrangement = Arrangement.Bottom,
         ) {
-            title()
-            Spacer(Modifier.height(16.dp))
-            actions()
+            Box(Modifier.fillMaxWidth().padding(horizontal = 14.dp)) { title() }
+            Spacer(Modifier.height(24.dp))
+            Column(Modifier.fillMaxWidth().padding(horizontal = 22.dp)) { actions() }
         }
     }
 }
@@ -90,18 +103,26 @@ internal fun ArtistHero(
     topSafePadding: Dp = 0.dp,
 ) {
     val loadingLabel = stringResource(R.string.loading)
+    var artworkFailed by remember(thumbnailUrl) { mutableStateOf(thumbnailUrl.isNullOrBlank()) }
     ArtistHeroLayout(
         modifier = if (loading) modifier.clearAndSetSemantics { contentDescription = loadingLabel } else modifier,
         background = background,
         topSafePadding = topSafePadding,
         artwork = {
-            Box(Modifier.fillMaxSize().background(StandardChrome.panel), contentAlignment = Alignment.Center) {
-                Icon(painterResource(R.drawable.person), null, Modifier.size(88.dp), tint = StandardChrome.muted.copy(alpha = 0.35f))
+            Box(Modifier.fillMaxSize().background(background), contentAlignment = Alignment.Center) {
+                if (artworkFailed) {
+                    Icon(painterResource(R.drawable.person), null,
+                        Modifier.size(88.dp).testTag("artist-artwork-placeholder"),
+                        tint = StandardChrome.muted.copy(alpha = 0.35f))
+                }
                 AsyncImage(
                     model = thumbnailUrl,
                     contentDescription = null,
-                    contentScale = ContentScale.Fit,
-                    alignment = Alignment.TopCenter,
+                    contentScale = ContentScale.Crop,
+                    onLoading = { artworkFailed = false },
+                    onSuccess = { artworkFailed = false },
+                    onError = { artworkFailed = true },
+                    alignment = BiasAlignment(horizontalBias = -0.1f, verticalBias = -1f),
                     modifier = Modifier.fillMaxSize(),
                 )
             }
@@ -113,7 +134,7 @@ internal fun ArtistHero(
             } else {
                 Text(
                     text = name,
-                    style = MaterialTheme.typography.headlineLarge.copy(fontSize = 34.sp, lineHeight = 39.sp),
+                    style = MaterialTheme.typography.headlineLarge.copy(fontSize = 30.sp, lineHeight = 36.sp),
                     fontWeight = FontWeight.Bold,
                     color = StandardChrome.text,
                     maxLines = 2,
@@ -128,16 +149,16 @@ internal fun ArtistHero(
             val subscribeIcon = if (subscribed) R.drawable.done else R.drawable.add
             if (stackActions) {
                 CapsuleArtistAction(subscribeIcon, subscribeLabel, onSubscribe, Modifier.fillMaxWidth(), !loading && canSubscribe, subscribed)
-                Spacer(Modifier.height(10.dp))
+                Spacer(Modifier.height(14.dp))
                 CapsuleArtistAction(R.drawable.shuffle, stringResource(R.string.shuffle), onShuffle, Modifier.fillMaxWidth(), !loading && canShuffle)
             } else {
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     CapsuleArtistAction(subscribeIcon, subscribeLabel, onSubscribe, Modifier.weight(1f), !loading && canSubscribe, subscribed)
                     CapsuleArtistAction(R.drawable.shuffle, stringResource(R.string.shuffle), onShuffle, Modifier.weight(1f), !loading && canShuffle)
                 }
             }
             if (showRadio) {
-                Spacer(Modifier.height(10.dp))
+                Spacer(Modifier.height(14.dp))
                 CapsuleArtistAction(R.drawable.radio, stringResource(R.string.radio), onRadio, Modifier.fillMaxWidth(), !loading && canRadio)
             }
         },

@@ -13,8 +13,6 @@ import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.widget.Toast
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
@@ -48,8 +46,6 @@ import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.TopAppBarScrollBehavior
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
@@ -63,7 +59,6 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
@@ -94,6 +89,7 @@ import com.nikhil.yt.models.toMediaMetadata
 import com.nikhil.yt.playback.queues.ListQueue
 import com.nikhil.yt.playback.queues.YouTubeQueue
 import com.nikhil.yt.ui.component.ArtistHero
+import com.nikhil.yt.ui.component.ArtistToolbar
 import com.nikhil.yt.ui.component.StandardChrome
 import com.nikhil.yt.ui.component.AlbumGridItem
 import com.nikhil.yt.ui.component.HideOnScrollFAB
@@ -166,7 +162,7 @@ fun ArtistScreen(
                     .only(WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom)
                     .asPaddingValues(),
         ) {
-            // One header in every state; loading uses the final square portrait geometry.
+            // Loading and loaded data share the same reference composition.
             item(key = "header") {
                 ArtistHero(
                     name = artistName ?: if (remoteLoading) "" else stringResource(R.string.unknown_artist),
@@ -578,7 +574,7 @@ fun ArtistScreen(
 
         // FAB for switching between local/remote view
         HideOnScrollFAB(
-            visible = librarySongs.isNotEmpty() && libraryArtist?.artist?.isLocal != true,
+            visible = !transparentAppBar && librarySongs.isNotEmpty() && libraryArtist?.artist?.isLocal != true,
             lazyListState = lazyListState,
             icon = if (showLocal) R.drawable.language else R.drawable.library_music,
             onClick = {
@@ -596,95 +592,31 @@ fun ArtistScreen(
         )
     }
 
-    // Top App Bar
-    TopAppBar(
-        title = {
-            val animatedAlpha by animateFloatAsState(
-                targetValue = if (!transparentAppBar) 1f else 0f,
-                animationSpec = tween(200),
-                label = "titleAlpha"
-            )
-            Text(
-                text = artistPage?.artist?.title ?: libraryArtist?.artist?.name ?: "",
-                modifier = Modifier.alpha(animatedAlpha),
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-        },
-        navigationIcon = {
-            IconButton(
-                onClick = navController::navigateUp,
-                onLongClick = navController::backToMain,
-                colors = artworkToolbarColors(transparentAppBar),
-            ) {
-                Icon(
-                    painterResource(R.drawable.arrow_back),
-                    contentDescription = stringResource(R.string.back),
-                )
+    ArtistToolbar(
+        name = artistName.orEmpty(),
+        overArtwork = transparentAppBar,
+        canShare = artistPage != null,
+        onBack = navController::navigateUp,
+        onBackLongClick = navController::backToMain,
+        onCopyLink = {
+            viewModel.artistPage?.artist?.shareLink?.let { link ->
+                val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                val clip = ClipData.newPlainText("Artist Link", link)
+                clipboard.setPrimaryClip(clip)
+                Toast.makeText(context, R.string.link_copied, Toast.LENGTH_SHORT).show()
             }
         },
-        actions = {
-            // Share/Copy link button
-            IconButton(
-                onClick = {
-                    viewModel.artistPage?.artist?.shareLink?.let { link ->
-                        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                        val clip = ClipData.newPlainText("Artist Link", link)
-                        clipboard.setPrimaryClip(clip)
-                        Toast.makeText(context, R.string.link_copied, Toast.LENGTH_SHORT).show()
-                    }
-                },
-                onLongClick = {},
-                enabled = artistPage != null,
-                colors = artworkToolbarColors(transparentAppBar),
-            ) {
-                Icon(
-                    painterResource(R.drawable.link),
-                    contentDescription = stringResource(R.string.copy_link),
+        onShare = {
+            val shareIntent = Intent().apply {
+                action = Intent.ACTION_SEND
+                type = "text/plain"
+                putExtra(
+                    Intent.EXTRA_TEXT,
+                    viewModel.artistPage?.artist?.shareLink
+                        ?: "https://music.youtube.com/channel/${viewModel.artistId}"
                 )
             }
-
-            // Share button
-            IconButton(
-                onClick = {
-                    val shareIntent = Intent().apply {
-                        action = Intent.ACTION_SEND
-                        type = "text/plain"
-                        putExtra(
-                            Intent.EXTRA_TEXT,
-                            viewModel.artistPage?.artist?.shareLink
-                                ?: "https://music.youtube.com/channel/${viewModel.artistId}"
-                        )
-                    }
-                    context.startActivity(Intent.createChooser(shareIntent, null))
-                },
-                onLongClick = {},
-                enabled = artistPage != null,
-                colors = artworkToolbarColors(transparentAppBar),
-            ) {
-                Icon(
-                    painter = painterResource(R.drawable.share),
-                    contentDescription = stringResource(R.string.share)
-                )
-            }
+            context.startActivity(Intent.createChooser(shareIntent, null))
         },
-        colors = if (transparentAppBar) {
-            TopAppBarDefaults.topAppBarColors(
-                containerColor = Color.Transparent,
-                scrolledContainerColor = Color.Transparent,
-                navigationIconContentColor = Color.White,
-                actionIconContentColor = Color.White,
-                titleContentColor = Color.White,
-            )
-        } else {
-            TopAppBarDefaults.topAppBarColors()
-        }
     )
 }
-
-@Composable
-private fun artworkToolbarColors(overArtwork: Boolean) =
-    androidx.compose.material3.IconButtonDefaults.iconButtonColors(
-        containerColor = if (overArtwork) Color.Black.copy(alpha = 0.28f) else Color.Transparent,
-        contentColor = if (overArtwork) Color.White else StandardChrome.text,
-    )
