@@ -4,6 +4,7 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -53,8 +54,8 @@ internal fun ArtistToolbar(
     )
     TopAppBar(
         modifier = modifier,
-        // The photo starts at the screen edge. A status-bar-sized spacer doubled the
-        // reference offset; retain horizontal cutout protection, with a 34 dp icon centre.
+        // The artwork remains edge-to-edge, but the controls sit a touch lower than the
+        // stock app-bar centre so they match the artist reference framing.
         windowInsets = WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal),
         expandedHeight = 68.dp,
         title = {
@@ -67,15 +68,32 @@ internal fun ArtistToolbar(
             )
         },
         navigationIcon = {
-            IconButton(onBack, onBackLongClick, colors = buttonColors) {
+            IconButton(
+                onBack,
+                onBackLongClick,
+                modifier = Modifier.offset(y = 8.dp),
+                colors = buttonColors,
+            ) {
                 Icon(painterResource(R.drawable.arrow_back), stringResource(R.string.back))
             }
         },
         actions = {
-            IconButton(onCopyLink, {}, enabled = canShare, colors = shareColors) {
+            IconButton(
+                onCopyLink,
+                {},
+                modifier = Modifier.offset(y = 8.dp),
+                enabled = canShare,
+                colors = shareColors,
+            ) {
                 Icon(painterResource(R.drawable.link), stringResource(R.string.copy_link))
             }
-            IconButton(onShare, {}, enabled = canShare, colors = shareColors) {
+            IconButton(
+                onShare,
+                {},
+                modifier = Modifier.offset(y = 8.dp),
+                enabled = canShare,
+                colors = shareColors,
+            ) {
                 Icon(painterResource(R.drawable.share), stringResource(R.string.share))
             }
         },
