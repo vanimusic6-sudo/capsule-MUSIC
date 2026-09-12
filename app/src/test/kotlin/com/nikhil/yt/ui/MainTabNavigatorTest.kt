@@ -76,6 +76,9 @@ class MainTabNavigatorTest {
                         popEnterTransition = { ScreenTransitions.enter(initialState.destination.route, targetState.destination.route, true) },
                         popExitTransition = { ScreenTransitions.exit(initialState.destination.route, targetState.destination.route, true) },
                     ) {
+                        composable("details") {
+                            Box(Modifier.fillMaxSize().testTag("details")) { Text("Details") }
+                        }
                         Screens.MainScreens.forEach { screen ->
                             composable(screen.route) {
                                 var count by rememberSaveable { mutableIntStateOf(0) }
@@ -151,6 +154,16 @@ class MainTabNavigatorTest {
         settle()
         assertSettled("home")
         assertFalse(visited.contains("library"))
+    }
+
+    @Test fun backDuringADetailTransitionReturnsToASettledMainScreen() {
+        showNavigation()
+        compose.runOnIdle { controller.navigate("details") }
+        compose.mainClock.advanceTimeByFrame()
+        compose.mainClock.advanceTimeBy(64)
+        compose.runOnIdle { controller.popBackStack() }
+        settle()
+        assertSettled("home")
     }
 
     @Test fun tabStateSurvivesRoundTripsWhenLibraryIsTheStartDestination() {

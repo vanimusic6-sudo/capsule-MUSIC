@@ -2,8 +2,7 @@ package com.nikhil.yt.ui.screens
 
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
-import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.LinearOutSlowInEasing
+import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -12,18 +11,21 @@ import androidx.compose.animation.slideOutHorizontally
 
 /** Short travel keeps interrupted transitions inside the viewport. */
 internal object ScreenTransitions {
-    const val DURATION_MS = 240
+    const val DURATION_MS = 280
+    private val motionEasing = CubicBezierEasing(0.2f, 0f, 0f, 1f)
+    private val appearEasing = CubicBezierEasing(0.16f, 1f, 0.3f, 1f)
 
     fun enter(from: String?, to: String?, isPop: Boolean = false): EnterTransition {
         val direction = direction(from, to, isPop)
-        return fadeIn(tween(DURATION_MS, easing = LinearOutSlowInEasing)) +
-            slideInHorizontally(tween(DURATION_MS, easing = FastOutSlowInEasing)) { direction * it / 12 }
+        // Reveal the arriving page early while the shorter movement settles gently.
+        return fadeIn(tween(220, easing = appearEasing)) +
+            slideInHorizontally(tween(DURATION_MS, easing = motionEasing)) { direction * it / 18 }
     }
 
     fun exit(from: String?, to: String?, isPop: Boolean = false): ExitTransition {
         val direction = direction(from, to, isPop)
-        return fadeOut(tween(160)) +
-            slideOutHorizontally(tween(DURATION_MS, easing = FastOutSlowInEasing)) { -direction * it / 24 }
+        return fadeOut(tween(220)) +
+            slideOutHorizontally(tween(DURATION_MS, easing = motionEasing)) { -direction * it / 36 }
     }
 
     private fun direction(from: String?, to: String?, isPop: Boolean): Int {
