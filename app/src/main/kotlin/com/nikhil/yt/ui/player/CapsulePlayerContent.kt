@@ -9,6 +9,9 @@
 
 package com.nikhil.yt.ui.player
 
+import com.nikhil.yt.ui.component.CapsuleFavoriteIcon
+import androidx.compose.foundation.LocalIndication
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import com.nikhil.yt.ui.component.CapsuleFavoriteColors
 import android.content.Context
 import android.content.Intent
@@ -1284,6 +1287,7 @@ private fun CapsuleShareFavoriteButtons(
             bottomEnd = 3.dp,
         )
 
+    val favoriteInteraction = remember { MutableInteractionSource() }
     val favoriteShape =
         RoundedCornerShape(
             topStart = 3.dp,
@@ -1373,22 +1377,16 @@ private fun CapsuleShareFavoriteButtons(
                         panelColor,
                     )
                     .clickable(
-                        onClick =
-                            onToggleLike,
+                        interactionSource = favoriteInteraction,
+                        indication = LocalIndication.current,
+                        onClick = onToggleLike,
                     ),
             contentAlignment =
                 Alignment.Center,
         ) {
-            Icon(
-                painter =
-                    painterResource(
-                        if (liked) {
-                            R.drawable.favorite
-                        } else {
-                            R.drawable.favorite_border
-                        },
-                    ),
-                contentDescription = stringResource(if (liked) R.string.action_remove_like else R.string.action_like),
+            CapsuleFavoriteIcon(
+                liked = liked,
+                interactionSource = favoriteInteraction,
                 tint = CapsuleFavoriteColors.selected(textColor),
                 modifier =
                     Modifier.size(

@@ -8,6 +8,9 @@
 
 package com.nikhil.yt.ui.player
 
+import com.nikhil.yt.ui.component.CapsuleFavoriteIcon
+import androidx.compose.foundation.LocalIndication
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import com.nikhil.yt.ui.component.CapsuleFavoriteColors
 import android.os.SystemClock
 import androidx.compose.ui.res.stringResource
@@ -1080,6 +1083,7 @@ private fun CapsuleFavoriteButton(
     standardStyle: Boolean = false,
 ) {
     val favoriteTint = CapsuleFavoriteColors.selected(LocalContentColor.current)
+    val favoriteInteraction = remember { MutableInteractionSource() }
     Box(
         contentAlignment =
             Alignment.Center,
@@ -1121,19 +1125,14 @@ private fun CapsuleFavoriteButton(
                         CircleShape,
                 )
                 .clickable(
+                    interactionSource = favoriteInteraction,
+                    indication = LocalIndication.current,
                     onClick = onClick,
                 ),
     ) {
-        Icon(
-            painter =
-                painterResource(
-                    if (liked) {
-                        R.drawable.favorite
-                    } else {
-                        R.drawable.favorite_border
-                    },
-                ),
-            contentDescription = stringResource(if (liked) R.string.action_remove_like else R.string.action_like),
+        CapsuleFavoriteIcon(
+            liked = liked,
+            interactionSource = favoriteInteraction,
             tint =
                 if (liked) {
                     favoriteTint

@@ -8,6 +8,9 @@
 
 package com.nikhil.yt.ui.player
 
+import com.nikhil.yt.ui.component.CapsuleFavoriteIcon
+import androidx.compose.runtime.remember
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import com.nikhil.yt.ui.component.CapsuleFavoriteColors
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -142,16 +145,15 @@ fun CurrentSongHeader(
             }
 
             // Like button
+            val favoriteInteraction = remember { MutableInteractionSource() }
             IconButton(
                 onClick = onToggleLike,
+                interactionSource = favoriteInteraction,
                 modifier = Modifier.size(40.dp)
             ) {
-                Icon(
-                    painter = painterResource(
-                        if (mediaMetadata?.liked == true) R.drawable.favorite
-                        else R.drawable.favorite_border
-                    ),
-                    contentDescription = stringResource(R.string.action_like),
+                CapsuleFavoriteIcon(
+                    liked = mediaMetadata?.liked == true,
+                    interactionSource = favoriteInteraction,
                     tint = if (mediaMetadata?.liked == true)
                         CapsuleFavoriteColors.selected(onBackgroundColor)
                     else onBackgroundColor,

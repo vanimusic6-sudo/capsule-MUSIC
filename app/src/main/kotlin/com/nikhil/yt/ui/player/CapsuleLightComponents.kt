@@ -1,5 +1,7 @@
 package com.nikhil.yt.ui.player
 
+import com.nikhil.yt.ui.component.CapsuleFavoriteIcon
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.geometry.Offset
@@ -11,10 +13,6 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.rememberScrollState
 import com.nikhil.yt.ui.component.CapsuleFavoriteColors
-import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.core.Spring
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.spring
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
@@ -34,7 +32,6 @@ import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.selected
@@ -135,38 +132,17 @@ internal fun CapsuleLightFavorite(
     textColor: Color,
     onToggleLike: () -> Unit,
 ) {
-    val scale by
-        animateFloatAsState(
-            targetValue = if (liked) 1.04f else 1f,
-            animationSpec =
-                spring(
-                    dampingRatio = Spring.DampingRatioNoBouncy,
-                    stiffness = Spring.StiffnessMediumLow,
-                ),
-            label = "capsuleLightFavoriteScale",
-        )
-
-    val tint by
-        animateColorAsState(
-            targetValue = if (liked) CapsuleFavoriteColors.selected(textColor) else textColor.copy(alpha = 0.72f),
-            label = "capsuleLightFavoriteTint",
-        )
-
+    val favoriteInteraction = remember { MutableInteractionSource() }
     IconButton(
         onClick = onToggleLike,
+        interactionSource = favoriteInteraction,
         modifier = Modifier.size(48.dp),
     ) {
-        Icon(
-            painter = painterResource(if (liked) R.drawable.favorite else R.drawable.favorite_border),
-            contentDescription = stringResource(if (liked) R.string.action_remove_like else R.string.action_like),
-            tint = tint,
-            modifier =
-                Modifier
-                    .size(28.dp)
-                    .graphicsLayer {
-                        scaleX = scale
-                        scaleY = scale
-                    },
+        CapsuleFavoriteIcon(
+            liked = liked,
+            interactionSource = favoriteInteraction,
+            tint = if (liked) CapsuleFavoriteColors.selected(textColor) else textColor.copy(alpha = 0.72f),
+            modifier = Modifier.size(28.dp),
         )
     }
 }

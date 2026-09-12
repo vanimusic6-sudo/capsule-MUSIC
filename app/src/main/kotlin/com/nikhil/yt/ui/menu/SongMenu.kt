@@ -7,6 +7,8 @@
 
 package com.nikhil.yt.ui.menu
 
+import com.nikhil.yt.ui.component.CapsuleFavoriteIcon
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import com.nikhil.yt.ui.component.StandardChrome
 import com.nikhil.yt.ui.component.ArtistSelectionItem
 import com.nikhil.yt.ui.component.VeluneLoader
@@ -314,7 +316,9 @@ fun SongMenu(
             badges = {},
             modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
             trailingContent = {
+                val favoriteInteraction = remember { MutableInteractionSource() }
                 IconButton(
+                    interactionSource = favoriteInteraction,
                     onClick = {
                         val s = song.song.toggleLike()
                         database.query {
@@ -323,10 +327,10 @@ fun SongMenu(
                         syncUtils.likeSong(s)
                     },
                 ) {
-                    Icon(
-                        painter = painterResource(if (song.song.liked) R.drawable.favorite else R.drawable.favorite_border),
+                    CapsuleFavoriteIcon(
+                        liked = song.song.liked,
+                        interactionSource = favoriteInteraction,
                         tint = if (song.song.liked) StandardChrome.favorite else LocalContentColor.current,
-                        contentDescription = null,
                     )
                 }
             },

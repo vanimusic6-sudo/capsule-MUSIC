@@ -14,7 +14,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -34,6 +33,7 @@ import androidx.compose.ui.BiasAlignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
@@ -48,6 +48,9 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
+import coil3.request.ImageRequest
+import coil3.request.allowHardware
+import coil3.request.transformations
 import androidx.compose.ui.layout.ContentScale
 import com.nikhil.yt.R
 
@@ -62,12 +65,11 @@ internal fun ArtistHeroLayout(
     topSafePadding: Dp = 0.dp,
 ) {
     BoxWithConstraints(modifier.fillMaxWidth().background(background)) {
-        // At 360 dp: title ~425 dp, first actions ~484 dp, radio ~546 dp.
-        // Extend the portrait/fade a little farther down so the image never appears to
-        // end on a hard horizontal edge behind the artist name.
+        // Keep the reference's bottom-aligned actions, lowered by 16 dp.
+        // The fade and photograph end together; no uncovered strip below the image.
         val referenceWidth = maxWidth.coerceAtMost(450.dp)
-        val heroHeight = referenceWidth * 1.69f
-        Box(Modifier.fillMaxWidth().height(referenceWidth * 1.44f)) {
+        val heroHeight = referenceWidth * 1.69f + 16.dp
+        Box(Modifier.fillMaxWidth().height(referenceWidth * 1.36f)) {
             Box(
                 Modifier.fillMaxWidth()
                     .padding(top = referenceWidth * 0.06f)
@@ -80,12 +82,8 @@ internal fun ArtistHeroLayout(
                 .padding(top = topSafePadding + 72.dp, bottom = 14.dp),
             verticalArrangement = Arrangement.Bottom,
         ) {
-            Box(
-                Modifier.fillMaxWidth()
-                    .padding(horizontal = 14.dp)
-                    .offset(y = (-16).dp),
-            ) { title() }
-            Spacer(Modifier.height(20.dp))
+            Box(Modifier.fillMaxWidth().padding(horizontal = 14.dp)) { title() }
+            Spacer(Modifier.height(24.dp))
             Column(Modifier.fillMaxWidth().padding(horizontal = 22.dp)) { actions() }
         }
     }
@@ -109,6 +107,14 @@ internal fun ArtistHero(
     topSafePadding: Dp = 0.dp,
 ) {
     val loadingLabel = stringResource(R.string.loading)
+    val context = LocalContext.current
+    val portraitRequest = remember(context, thumbnailUrl) {
+        ImageRequest.Builder(context)
+            .data(thumbnailUrl)
+            .allowHardware(false)
+            .transformations(ArtistPortraitBlurTransformation)
+            .build()
+    }
     var artworkFailed by remember(thumbnailUrl) { mutableStateOf(thumbnailUrl.isNullOrBlank()) }
     ArtistHeroLayout(
         modifier = if (loading) modifier.clearAndSetSemantics { contentDescription = loadingLabel } else modifier,
@@ -122,7 +128,7 @@ internal fun ArtistHero(
                         tint = StandardChrome.muted.copy(alpha = 0.35f))
                 }
                 AsyncImage(
-                    model = thumbnailUrl,
+                    model = portraitRequest,
                     contentDescription = null,
                     contentScale = ContentScale.Crop,
                     onLoading = { artworkFailed = false },
@@ -142,15 +148,11 @@ internal fun ArtistHero(
                     text = name,
                     style = MaterialTheme.typography.headlineLarge.copy(fontSize = 30.sp, lineHeight = 36.sp),
                     fontWeight = FontWeight.Bold,
-                    color = StandardChrome.text.copy(alpha = 0.96f),
+                    color = StandardChrome.text.copy(alpha = 0.72f),
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(14.dp))
-                        // Simple translucent backing only: no blur, render effect or glass.
-                        .background(Color.Black.copy(alpha = 0.22f))
-                        .padding(horizontal = 10.dp, vertical = 6.dp)
-                        .semantics { heading() },
+                    // Alpha belongs to the glyphs, so the photograph shows through the letters.
+                    modifier = Modifier.semantics { heading() },
                 )
             }
         },

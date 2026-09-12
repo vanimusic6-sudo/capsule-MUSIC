@@ -12,6 +12,8 @@ import android.view.View
 import androidx.activity.ComponentActivity
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -38,6 +40,7 @@ import com.nikhil.yt.R
 import com.nikhil.yt.ui.component.ArtistHero
 import com.nikhil.yt.ui.component.ArtistHeroLayout
 import com.nikhil.yt.ui.component.ArtistToolbar
+import com.nikhil.yt.ui.component.createArtistPortraitBlur
 import java.io.File
 import kotlin.math.roundToInt
 import org.junit.Assert.assertEquals
@@ -70,14 +73,14 @@ class ArtistHeroTest {
         val title = compose.onNodeWithTag("title").fetchSemanticsNode().boundsInRoot
         val actions = compose.onNodeWithTag("actions").fetchSemanticsNode().boundsInRoot
         val dp = hero.width / 360f
-        // Measured reference: name near 1.2 widths, first button row near 1.34 widths.
-        assertEquals(hero.width * 1.69f, hero.height, 2f)
+        // The original reference composition is lowered by 16 dp, without a separate title offset.
+        assertEquals(hero.width * 1.69f + 16f * dp, hero.height, 2f)
         assertEquals(hero.top + hero.width * 0.06f, portrait.top, 2f)
-        assertEquals(hero.width * 1.18f, portrait.height, 2f)
+        assertEquals(hero.width * 1.30f, portrait.height, 2f)
         assertEquals(hero.width, portrait.width, 1f)
-        assertEquals(hero.top + 424.4f * dp, title.top, 2f)
+        assertEquals(hero.top + 440.4f * dp, title.top, 2f)
         assertEquals(hero.left + 14f * dp, title.left, 1f)
-        assertEquals(hero.top + 484.4f * dp, actions.top, 2f)
+        assertEquals(hero.top + 500.4f * dp, actions.top, 2f)
         assertEquals(hero.left + 22f * dp, actions.left, 1f)
         assertTrue(title.bottom < actions.top)
     }
@@ -157,7 +160,8 @@ class ArtistHeroTest {
         sourceCanvas.drawRect(52f, 48f, 128f, 120f, painter)
         painter.color = android.graphics.Color.rgb(245, 148, 40)
         sourceCanvas.drawOval(67f, 6f, 101f, 48f, painter)
-        val previewHandler = AsyncImagePreviewHandler { source.asImage() }
+        // Preview mode bypasses Coil transformations, so run the production blur on this fixture.
+        val previewHandler = AsyncImagePreviewHandler { createArtistPortraitBlur(source).asImage() }
         compose.setContent {
             CompositionLocalProvider(
                 LocalInspectionMode provides true,
@@ -184,14 +188,20 @@ class ArtistHeroTest {
         val head = image.getPixel((image.width * 0.48f).roundToInt(), (image.width * 0.30f).roundToInt())
         assertTrue("The subject must be enlarged and framed at the reference height",
             android.graphics.Color.red(head) > 200 && android.graphics.Color.green(head) > 100)
-        val bottom = image.getPixel((image.width * 0.04f).roundToInt(), (image.width * 1.30f).roundToInt())
+        val bottom = image.getPixel((image.width * 0.04f).roundToInt(), (image.width * 1.35f).roundToInt())
         assertTrue("The photograph must fade into the page without a hard lower edge",
             android.graphics.Color.red(bottom) < 20)
+        val aboveJoin = image.getPixel((image.width * 0.04f).roundToInt(), (image.width * 1.355f).roundToInt())
+        val belowJoin = image.getPixel((image.width * 0.04f).roundToInt(), (image.width * 1.365f).roundToInt())
+        assertTrue("The photo edge must not create a visible seam",
+            kotlin.math.abs(android.graphics.Color.red(aboveJoin) - android.graphics.Color.red(belowJoin)) <= 3)
     }
 
-    @Test fun bareToolbarIconsKeepTheReferenceHeightAndAllActions() {
+    @Test fun bareToolbarIconsKeepTheirSafeAreaPositionAndAllActions() {
         val clicks = mutableListOf<String>()
+        var safeTop = 0
         compose.setContent {
+            safeTop = WindowInsets.safeDrawing.getTop(LocalDensity.current)
             MaterialTheme(colorScheme = darkColorScheme()) {
                 Box(Modifier.width(360.dp).background(Color(0xFF824634)).testTag("toolbar")) {
                     ArtistToolbar("Pyrokinesis", true, true,
@@ -209,7 +219,7 @@ class ArtistHeroTest {
             compose.onNodeWithContentDescription(compose.activity.getString(it)).assertIsDisplayed()
         }
         controls.forEach {
-            assertEquals(bounds.top + 34f * dp, it.fetchSemanticsNode().boundsInRoot.center.y, 1f)
+            assertEquals(bounds.top + safeTop + 48f * dp, it.fetchSemanticsNode().boundsInRoot.center.y, 1f)
         }
         val bitmap = capture("toolbar")
         val emptyCorner = bitmap.getPixel((28f * dp).roundToInt(), (18f * dp).roundToInt())

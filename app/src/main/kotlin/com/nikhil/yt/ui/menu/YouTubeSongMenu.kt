@@ -7,6 +7,8 @@
 
 package com.nikhil.yt.ui.menu
 
+import com.nikhil.yt.ui.component.CapsuleFavoriteIcon
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import com.nikhil.yt.ui.component.StandardChrome
 import com.nikhil.yt.ui.component.ArtistSelectionItem
 import com.nikhil.yt.ui.component.VeluneLoader
@@ -223,7 +225,9 @@ fun YouTubeSongMenu(
             }
         },
         trailingContent = {  
-            IconButton(  
+            val favoriteInteraction = remember { MutableInteractionSource() }
+            IconButton(
+                interactionSource = favoriteInteraction,  
                 onClick = {  
                     database.transaction {  
                         librarySong.let { librarySong ->  
@@ -240,10 +244,10 @@ fun YouTubeSongMenu(
                     }  
                 },  
             ) {  
-                Icon(  
-                    painter = painterResource(if (librarySong?.song?.liked == true) R.drawable.favorite else R.drawable.favorite_border),  
-                    tint = if (librarySong?.song?.liked == true) StandardChrome.favorite else LocalContentColor.current,  
-                    contentDescription = if (librarySong?.song?.liked == true) "Unlike" else "Like",
+                CapsuleFavoriteIcon(
+                    liked = librarySong?.song?.liked == true,
+                    interactionSource = favoriteInteraction,
+                    tint = if (librarySong?.song?.liked == true) StandardChrome.favorite else LocalContentColor.current,
                 )  
             }  
         },  

@@ -23,19 +23,17 @@ internal fun ArtworkSurfaceFade(background: Color, modifier: Modifier = Modifier
             1f to Color.Transparent,
         )
         val surfaceFade = if (portrait) Brush.verticalGradient(
-            // Keep most of the portrait untouched and then dissolve it gradually into
-            // the page. This is only a cached gradient draw: no blur or render effect.
+            // The lower photograph is progressively blurred before this surface dissolve.
             0f to background.copy(alpha = 0f),
             0.40f to background.copy(alpha = 0f),
-            0.54f to background.copy(alpha = 0.035f),
-            0.64f to background.copy(alpha = 0.085f),
-            0.72f to background.copy(alpha = 0.15f),
-            0.79f to background.copy(alpha = 0.24f),
-            0.85f to background.copy(alpha = 0.36f),
-            0.90f to background.copy(alpha = 0.50f),
-            0.94f to background.copy(alpha = 0.66f),
-            0.97f to background.copy(alpha = 0.80f),
-            0.988f to background.copy(alpha = 0.92f),
+            0.50f to background.copy(alpha = 0.025f),
+            0.60f to background.copy(alpha = 0.065f),
+            0.70f to background.copy(alpha = 0.14f),
+            0.78f to background.copy(alpha = 0.28f),
+            0.85f to background.copy(alpha = 0.48f),
+            0.90f to background.copy(alpha = 0.68f),
+            0.945f to background.copy(alpha = 0.87f),
+            0.975f to background.copy(alpha = 0.97f),
             1f to background,
         ) else Brush.verticalGradient(
             0f to background.copy(alpha = 0f),
