@@ -38,7 +38,7 @@ import org.robolectric.annotation.Config
 class CapsuleLightLayoutTest {
     @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
 
-    @Test fun lightIsAnIndependentLayoutWithAccessibleHeaderAndNonOverlappingSquareCover() {
+    @Test fun lightIsAnIndependentCoverFirstLayoutWithAccessibleOverlayHeader() {
         var design by mutableStateOf(CapsulePlayerDesign.SUPER)
         var height by mutableStateOf(760.dp)
         var collapse = 0
@@ -65,7 +65,10 @@ class CapsuleLightLayoutTest {
             val back = compose.onNodeWithContentDescription(collapseLabel).fetchSemanticsNode().boundsInRoot
             assertEquals(cover.width, cover.height, 1f)
             assertTrue(cover.width > 0f)
-            assertTrue(back.bottom <= cover.top)
+            assertTrue(back.left >= cover.left)
+            assertTrue(back.top >= cover.top)
+            assertTrue(back.right <= cover.right)
+            assertTrue(back.bottom <= cover.bottom)
             assertTrue(cover.bottom <= details.top)
         }
         compose.runOnIdle { design = CapsulePlayerDesign.SUPER }
