@@ -232,6 +232,7 @@ object CapsuleInnerTubeXPlayer {
                 )
 
             val resolvedQuality = audioQuality.toInnerTubeX(connectivityManager)
+            val effectivePriority = { scheduler.effectivePriority(videoId, priority) }
             val stream =
                 scheduler.run(videoId, priority) {
                     resolveMutex.withLock {
@@ -241,7 +242,7 @@ object CapsuleInnerTubeXPlayer {
                             Timber.tag(TAG).i(
                                 "Resolving audio id=%s priority=%s primaryProfile=%s",
                                 videoId,
-                                priority,
+                                effectivePriority(),
                                 primaryProfileId,
                             )
                             resolveWithSafeClientFallbacks(
@@ -251,7 +252,7 @@ object CapsuleInnerTubeXPlayer {
                                 audioQuality = resolvedQuality,
                                 primaryProfileId = primaryProfileId,
                                 preferredProfiles = clientOrder,
-                                priority = priority,
+                                priorityProvider = effectivePriority,
                             )
                         }
                     }
@@ -292,6 +293,8 @@ object CapsuleInnerTubeXPlayer {
      * Metrolist-style client resilience with a Capsule-sized request budget.
      * Background work never rotates clients. Foreground playback uses a short vetted chain;
      * after a bot-check exactly one different family may be tried before escalation.
+     * A shared prefetch can be promoted by Media3 while it is already resolving;
+     * that promotion must also upgrade this client plan, not only the scheduler queue.
      */
     private suspend fun resolveWithSafeClientFallbacks(
         extractionBundle: ExtractionBundle,
@@ -300,43 +303,50 @@ object CapsuleInnerTubeXPlayer {
         audioQuality: InnerTubeXAudioQuality,
         primaryProfileId: String,
         preferredProfiles: List<String>,
-        priority: AudioResolvePriority,
+        priorityProvider: () -> AudioResolvePriority,
     ): ExtractedStream {
-        val quarantinedAtStart = CapsulePlaybackSafety.quarantinedProfileIds()
-        val perSongExcluded = failedStreamClients(videoId)
-        val plan =
-            CapsuleAudioFallbackPolicy.profilePlan(
-                primaryProfileId = primaryProfileId,
-                priority = priority,
-                authenticated = extractionBundle.innerTube.hasSapCookieAuth(),
-                isUploaded = baseHints.isUploaded == true,
-                excludedProfiles = quarantinedAtStart + perSongExcluded,
-                preferredProfiles = preferredProfiles,
-            )
-
-        if (plan.isEmpty()) {
-            throw IllegalStateException(
-                if (priority == AudioResolvePriority.PLAYBACK) {
-                    "No safe AUDIO client profile is currently available"
-                } else {
-                    "AUDIO background resolve suppressed while its primary profile is quarantined"
-                },
-            )
-        }
-
         var lastFailure: Exception? = null
-        var botSignalAlreadySeen = quarantinedAtStart.isNotEmpty()
+        var botSignalAlreadySeen = CapsulePlaybackSafety.quarantinedProfileIds().isNotEmpty()
         var onlyPostBotProfile: String? = null
+        val attempted = linkedSetOf<String>()
 
-        for (profileId in plan) {
-            if (onlyPostBotProfile != null && profileId != onlyPostBotProfile) continue
+        while (true) {
+            val priorityBeforeAttempt = priorityProvider()
+            val excludedBeforeAttempt =
+                CapsulePlaybackSafety.quarantinedProfileIds() + failedStreamClients(videoId)
+            val plan =
+                CapsuleAudioFallbackPolicy.profilePlan(
+                    primaryProfileId = primaryProfileId,
+                    priority = priorityBeforeAttempt,
+                    authenticated = extractionBundle.innerTube.hasSapCookieAuth(),
+                    isUploaded = baseHints.isUploaded == true,
+                    excludedProfiles = excludedBeforeAttempt,
+                    preferredProfiles = preferredProfiles,
+                )
+
+            val profileId =
+                onlyPostBotProfile
+                    ?.takeIf { it !in attempted && it in plan }
+                    ?: plan.firstOrNull { it !in attempted }
+                    ?: run {
+                        lastFailure?.let { throw it }
+                        throw IllegalStateException(
+                            if (priorityBeforeAttempt == AudioResolvePriority.PLAYBACK) {
+                                "No safe AUDIO client profile is currently available"
+                            } else {
+                                "AUDIO background resolve suppressed while its primary profile is quarantined"
+                            },
+                        )
+                    }
+
+            attempted += profileId
             CapsulePlaybackSafety.blockedExceptionOrNull()?.let { throw it }
 
             val wireGeneration = CapsulePlaybackSafety.wireBotSignalGeneration()
             Timber.tag(TAG).i(
                 "AUDIO profile attempt id=%s priority=%s profile=%s",
                 videoId,
-                priority,
+                priorityBeforeAttempt,
                 profileId,
             )
 
@@ -365,6 +375,7 @@ object CapsuleInnerTubeXPlayer {
                         error = failure,
                         wireGenerationBeforeAttempt = wireGeneration,
                     )
+                val priorityAfterFailure = priorityProvider()
 
                 if (kind == YouTubeFailureKind.RATE_LIMITED) {
                     CapsulePlaybackSafety.observeFailure(failure)
@@ -372,16 +383,32 @@ object CapsuleInnerTubeXPlayer {
                 }
 
                 if (kind == YouTubeFailureKind.BOT_CHECK) {
+                    /*
+                     * Construct the foreground order from the state before this
+                     * attempt is quarantined. That preserves the failed profile's
+                     * position so crossFamilyFallback can choose exactly one later
+                     * family when a PREFETCH was promoted mid-request.
+                     */
+                    val foregroundPlan =
+                        CapsuleAudioFallbackPolicy.profilePlan(
+                            primaryProfileId = primaryProfileId,
+                            priority = AudioResolvePriority.PLAYBACK,
+                            authenticated = extractionBundle.innerTube.hasSapCookieAuth(),
+                            isUploaded = baseHints.isUploaded == true,
+                            excludedProfiles = excludedBeforeAttempt,
+                            preferredProfiles = preferredProfiles,
+                        )
+
                     CapsulePlaybackSafety.markProfileBotCheck(profileId)
                     markStreamClientFailed(videoId, profileId)
                     Timber.tag(TAG).w(
                         "AUDIO bot-check isolated id=%s priority=%s profile=%s",
                         videoId,
-                        priority,
+                        priorityAfterFailure,
                         profileId,
                     )
 
-                    if (priority != AudioResolvePriority.PLAYBACK) throw failure
+                    if (priorityAfterFailure != AudioResolvePriority.PLAYBACK) throw failure
 
                     if (botSignalAlreadySeen) {
                         CapsulePlaybackSafety.markBotDetectionFailure(
@@ -391,7 +418,7 @@ object CapsuleInnerTubeXPlayer {
                     }
 
                     val crossFamily =
-                        CapsuleAudioFallbackPolicy.crossFamilyFallback(plan, profileId)
+                        CapsuleAudioFallbackPolicy.crossFamilyFallback(foregroundPlan, profileId)
                             ?: throw failure
                     botSignalAlreadySeen = true
                     onlyPostBotProfile = crossFamily
@@ -405,8 +432,20 @@ object CapsuleInnerTubeXPlayer {
                     markStreamClientFailed(videoId, profileId)
                 }
 
-                // After one bot-check, the single cross-family recovery gets one chance only.
-                if (onlyPostBotProfile != null || !canFallback) throw failure
+                /*
+                 * Genuine background work still never rotates client identities.
+                 * If the Media3 loader promoted this exact shared job while the
+                 * first request was running, however, it is now foreground and
+                 * may use the normal bounded fallback plan without waiting for a
+                 * second user-visible playback failure.
+                 */
+                if (
+                    onlyPostBotProfile != null ||
+                    !canFallback ||
+                    priorityAfterFailure != AudioResolvePriority.PLAYBACK
+                ) {
+                    throw failure
+                }
 
                 val fallbackDelayMs = CapsuleAudioFallbackPolicy.fallbackDelayMs(kind)
                 Timber.tag(TAG).w(
@@ -420,8 +459,6 @@ object CapsuleInnerTubeXPlayer {
                 if (fallbackDelayMs > 0L) delay(fallbackDelayMs)
             }
         }
-
-        throw lastFailure ?: IllegalStateException("No safe AUDIO client profile produced a stream")
     }
 
     private suspend fun extractDirectStream(
