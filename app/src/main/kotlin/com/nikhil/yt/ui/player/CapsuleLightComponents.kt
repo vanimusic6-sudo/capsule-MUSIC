@@ -6,18 +6,15 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -59,12 +56,10 @@ internal fun CapsulePlayerLayout(
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         if (light) {
-            /*
-             * Capsule Light is deliberately cover-first. The reference keeps the
-             * artwork almost edge-to-edge and high on the screen, so the header
-             * actions float on the artwork instead of consuming a separate row.
-             */
-            Spacer(Modifier.height(18.dp))
+            /* Capsule Light has no floating header controls. The artwork starts
+             * almost immediately below the system inset and remains the dominant
+             * element, matching the compact reference layout. */
+            Spacer(Modifier.height(4.dp))
 
             BoxWithConstraints(
                 modifier =
@@ -87,30 +82,7 @@ internal fun CapsulePlayerLayout(
                     modifier = Modifier.size(artworkSide),
                     contentAlignment = Alignment.Center,
                 ) {
-                    Box(Modifier.fillMaxSize()) { artwork() }
-
-                    Row(
-                        modifier =
-                            Modifier
-                                .fillMaxWidth()
-                                .align(Alignment.TopCenter)
-                                .padding(12.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        CapsuleLightHeaderButton(
-                            iconRes = R.drawable.expand_more,
-                            contentDescription = stringResource(R.string.capsule_collapse_player),
-                            textColor = textColor,
-                            onClick = onCollapse,
-                        )
-                        CapsuleLightHeaderButton(
-                            iconRes = R.drawable.more_vert,
-                            contentDescription = stringResource(R.string.more),
-                            textColor = textColor,
-                            onClick = onMenuClick,
-                        )
-                    }
+                    artwork()
                 }
             }
 
@@ -132,33 +104,6 @@ internal fun CapsulePlayerLayout(
 
             details()
         }
-    }
-}
-
-@Composable
-private fun CapsuleLightHeaderButton(
-    iconRes: Int,
-    contentDescription: String,
-    textColor: Color,
-    onClick: () -> Unit,
-) {
-    val shape = CircleShape
-
-    IconButton(
-        onClick = onClick,
-        modifier =
-            Modifier
-                .size(46.dp)
-                .clip(shape)
-                .border(1.dp, textColor.copy(alpha = 0.12f), shape)
-                .background(Color.Black.copy(alpha = 0.34f)),
-    ) {
-        Icon(
-            painter = painterResource(iconRes),
-            contentDescription = contentDescription,
-            tint = textColor.copy(alpha = 0.98f),
-            modifier = Modifier.size(24.dp),
-        )
     }
 }
 
@@ -204,16 +149,15 @@ internal fun CapsuleLightFavorite(
     }
 }
 
-/** One calm transport capsule with real queue shuffle/repeat and the Capsule orbit. */
+/** One calm transport capsule: menu, previous, orbit, next and repeat. */
 @Composable
 internal fun CapsuleLightControls(
     textColor: Color,
-    shuffleEnabled: Boolean,
     repeatMode: Int,
     enabled: Boolean,
     canSkipPrevious: Boolean,
     canSkipNext: Boolean,
-    onShuffle: () -> Unit,
+    onMenuClick: () -> Unit,
     onPrevious: () -> Unit,
     onNext: () -> Unit,
     onRepeat: () -> Unit,
@@ -240,14 +184,14 @@ internal fun CapsuleLightControls(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         CapsuleLightTransportIcon(
-            iconRes = R.drawable.shuffle,
-            contentDescription = stringResource(R.string.shuffle),
-            enabled = enabled,
-            active = shuffleEnabled,
+            iconRes = R.drawable.more_vert,
+            contentDescription = stringResource(R.string.more),
+            enabled = true,
+            active = true,
             textColor = textColor,
-            onClick = onShuffle,
-            modifier = Modifier.weight(1f).semantics { selected = shuffleEnabled },
-            iconSize = 25,
+            onClick = onMenuClick,
+            modifier = Modifier.weight(1f),
+            iconSize = 27,
         )
 
         CapsuleLightTransportIcon(
