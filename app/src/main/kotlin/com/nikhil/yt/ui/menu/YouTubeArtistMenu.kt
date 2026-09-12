@@ -181,21 +181,15 @@ fun YouTubeArtistMenu(
                     )
                 },
                 modifier = Modifier.clickable {
-                    database.query {
-                        val libraryArtist = libraryArtist
-                        if (libraryArtist != null) {
-                            update(libraryArtist.artist.toggleLike())
-                        } else {
-                            insert(
-                                ArtistEntity(
-                                    id = artist.id,
-                                    name = artist.title,
-                                    channelId = artist.channelId,
-                                    thumbnailUrl = artist.thumbnail,
-                                ).toggleLike()
-                            )
-                        }
-                    }
+                    database.setArtistSubscribed(
+                        libraryArtist?.artist ?: ArtistEntity(
+                            id = artist.id,
+                            name = artist.title,
+                            channelId = artist.channelId,
+                            thumbnailUrl = artist.thumbnail,
+                        ),
+                        subscribed = libraryArtist?.artist?.bookmarkedAt == null,
+                    )
                 }
             )
         }

@@ -42,12 +42,15 @@ data class ArtistEntity(
         bookmarkedAt = if (bookmarkedAt != null) null else LocalDateTime.now(),
     )
 
-    fun toggleLike() = localToggleLike().also {
+    fun toggleLike() = localToggleLike().also { it.syncSubscription() }
+
+    fun syncSubscription() {
+        if (isLocal || isPrivatelyOwnedArtist) return
         CoroutineScope(Dispatchers.IO).launch {
             if (channelId == null)
-                YouTube.subscribeChannel(YouTube.getChannelId(id), bookmarkedAt == null)
+                YouTube.subscribeChannel(YouTube.getChannelId(id), bookmarkedAt != null)
             else
-                YouTube.subscribeChannel(channelId, bookmarkedAt == null)
+                YouTube.subscribeChannel(channelId, bookmarkedAt != null)
             this.cancel()
         }
     }

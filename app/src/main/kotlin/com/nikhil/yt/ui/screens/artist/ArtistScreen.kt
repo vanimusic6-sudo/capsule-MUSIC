@@ -176,20 +176,16 @@ fun ArtistScreen(
                     loading = remoteLoading && libraryArtist == null,
                     topSafePadding = systemBarsTopPadding,
                     onSubscribe = {
-                        database.transaction {
-                            val artist = libraryArtist?.artist
-                            if (artist != null) {
-                                update(artist.toggleLike())
-                            } else {
-                                artistPage?.artist?.let { remote ->
-                                    insert(ArtistEntity(
-                                        id = remote.id,
-                                        name = remote.title,
-                                        channelId = remote.channelId,
-                                        thumbnailUrl = remote.thumbnail,
-                                    ).toggleLike())
-                                }
-                            }
+                        val artist = libraryArtist?.artist ?: artistPage?.artist?.let { remote ->
+                            ArtistEntity(
+                                id = remote.id,
+                                name = remote.title,
+                                channelId = remote.channelId,
+                                thumbnailUrl = remote.thumbnail,
+                            )
+                        }
+                        artist?.let {
+                            database.setArtistSubscribed(it, libraryArtist?.artist?.bookmarkedAt == null)
                         }
                     },
                     onShuffle = {

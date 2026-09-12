@@ -95,6 +95,12 @@ class MusicDatabase(
         }
     }
 
+    fun setArtistSubscribed(artist: ArtistEntity, subscribed: Boolean) {
+        transaction {
+            setArtistBookmarked(artist, subscribed)?.syncSubscription()
+        }
+    }
+
     fun close() = delegate.close()
 
     private suspend fun awaitExecutor(executor: Executor) {

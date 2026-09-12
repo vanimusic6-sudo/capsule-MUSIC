@@ -400,6 +400,8 @@ class SyncUtils @Inject constructor(
             return@coroutineScope
         }
         val gen = syncGeneration.get()
+        // A response can be older than a subscription made while the request is in flight.
+        val localBeforeRequest = database.artistsBookmarkedByNameAsc().first()
         YouTube.library("FEmusic_library_corpus_artists").completed().onSuccess { page ->
             if (!isSyncStillEnabled(gen)) return@onSuccess
             val remoteArtists = page.items.filterIsInstance<ArtistItem>()
@@ -408,20 +410,25 @@ class SyncUtils @Inject constructor(
                 return@onSuccess
             }
             val remoteIds = remoteArtists.map { it.id }.toSet()
-            val localArtists = database.artistsBookmarkedByNameAsc().first()
-
             if (!isSyncStillEnabled(gen)) return@onSuccess
-            localArtists.filterNot { it.id in remoteIds }
-                .forEach { database.update(it.artist.localToggleLike()) }
+            localBeforeRequest.filterNot { it.id in remoteIds }
+                .forEach { artist ->
+                    database.withTransaction {
+                        if (!isSyncStillEnabled(gen)) return@withTransaction
+                        artist.artist.bookmarkedAt?.let { bookmark ->
+                            clearArtistBookmarkIfUnchanged(artist.id, bookmark)
+                        }
+                    }
+                }
 
             remoteArtists.forEach { artist ->
                 launch {
                     if (!isSyncStillEnabled(gen)) return@launch
                     dbWriteSemaphore.withPermit {
                         if (!isSyncStillEnabled(gen)) return@withPermit
-                        val dbArtist = database.artist(artist.id).firstOrNull()
                         database.withTransaction {
                             if (!isSyncStillEnabled(gen)) return@withTransaction
+                            val dbArtist = getArtistById(artist.id)
                             if (dbArtist == null) {
                                 insert(
                                     ArtistEntity(
@@ -432,7 +439,7 @@ class SyncUtils @Inject constructor(
                                     )
                                 )
                             } else {
-                                val existing = dbArtist.artist
+                                val existing = dbArtist
                                 if (existing.name != artist.title || existing.thumbnailUrl != artist.thumbnail || existing.channelId != artist.channelId) {
                                     update(
                                         existing.copy(
