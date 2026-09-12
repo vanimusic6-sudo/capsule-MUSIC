@@ -99,7 +99,9 @@ class ArtistViewModel @Inject constructor(
                                 section.copy(items = section.items.filterExplicit(hideExplicit))
                             }
 
-                        artistPage = page.copy(sections = filteredSections)
+                        if (generation == loadGeneration) {
+                            artistPage = page.copy(sections = filteredSections)
+                        }
                     }.getOrThrow()
             } catch (cancelled: CancellationException) {
                 throw cancelled
