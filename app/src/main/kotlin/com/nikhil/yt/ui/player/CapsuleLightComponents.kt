@@ -1,5 +1,9 @@
 package com.nikhil.yt.ui.player
 
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -17,10 +21,13 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.selected
@@ -42,59 +49,141 @@ internal fun CapsulePlayerLayout(
     details: @Composable () -> Unit,
 ) {
     val light = design == CapsulePlayerDesign.LIGHT
+
     Column(modifier, horizontalAlignment = Alignment.CenterHorizontally) {
         if (light) {
             Row(
-                Modifier.fillMaxWidth().height(56.dp).padding(horizontal = 16.dp),
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .height(58.dp)
+                        .padding(horizontal = 18.dp, vertical = 5.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                IconButton(onClick = onCollapse, modifier = Modifier.background(textColor.copy(alpha = 0.035f), CircleShape)) {
-                    Icon(painterResource(R.drawable.expand_more), stringResource(R.string.capsule_collapse_player), tint = textColor)
-                }
-                IconButton(onClick = onMenuClick, modifier = Modifier.background(textColor.copy(alpha = 0.035f), CircleShape)) {
-                    Icon(painterResource(R.drawable.more_vert), stringResource(R.string.more), tint = textColor)
-                }
+                CapsuleLightHeaderButton(
+                    iconRes = R.drawable.expand_more,
+                    contentDescription = stringResource(R.string.capsule_collapse_player),
+                    textColor = textColor,
+                    onClick = onCollapse,
+                )
+                CapsuleLightHeaderButton(
+                    iconRes = R.drawable.more_vert,
+                    contentDescription = stringResource(R.string.more),
+                    textColor = textColor,
+                    onClick = onMenuClick,
+                )
             }
         }
-        Spacer(Modifier.height(10.dp))
+
+        Spacer(Modifier.height(if (light) 4.dp else 10.dp))
+
         if (light) {
             /*
-             * On shorter phones the remaining vertical space can be smaller than
-             * the artwork width. A plain fillMaxWidth + aspectRatio child would
-             * then draw past its weighted slot and overlap the metadata. Bound the
-             * square by both dimensions so Light scales down cleanly instead.
+             * Light is intentionally cover-first, but it must stay usable on
+             * short phones. Size the square from both available dimensions and
+             * keep a little air around it instead of letting it collide with
+             * metadata/controls.
              */
             BoxWithConstraints(
-                Modifier.weight(1f).fillMaxWidth().padding(horizontal = 32.dp, vertical = 8.dp),
+                modifier =
+                    Modifier
+                        .weight(1f)
+                        .fillMaxWidth()
+                        .padding(horizontal = 30.dp, vertical = 6.dp),
                 contentAlignment = Alignment.Center,
             ) {
                 val artworkSide = minOf(maxWidth, maxHeight)
-                Box(Modifier.size(artworkSide), contentAlignment = Alignment.Center) { artwork() }
+                Box(
+                    modifier = Modifier.size(artworkSide),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    artwork()
+                }
             }
         } else {
             Box(
-                Modifier.weight(1f).fillMaxWidth().padding(horizontal = 22.dp, vertical = 8.dp),
+                modifier =
+                    Modifier
+                        .weight(1f)
+                        .fillMaxWidth()
+                        .padding(horizontal = 22.dp, vertical = 8.dp),
                 contentAlignment = Alignment.Center,
-            ) { artwork() }
+            ) {
+                artwork()
+            }
         }
+
         details()
     }
 }
 
 @Composable
-internal fun CapsuleLightFavorite(liked: Boolean, textColor: Color, onToggleLike: () -> Unit) {
-    IconButton(onClick = onToggleLike, modifier = Modifier.size(52.dp)) {
+private fun CapsuleLightHeaderButton(
+    iconRes: Int,
+    contentDescription: String,
+    textColor: Color,
+    onClick: () -> Unit,
+) {
+    val shape = CircleShape
+
+    IconButton(
+        onClick = onClick,
+        modifier =
+            Modifier
+                .size(46.dp)
+                .clip(shape)
+                .border(1.dp, textColor.copy(alpha = 0.09f), shape)
+                .background(Color.Black.copy(alpha = 0.18f)),
+    ) {
         Icon(
-            painterResource(if (liked) R.drawable.favorite else R.drawable.favorite_border),
-            contentDescription = stringResource(if (liked) R.string.action_remove_like else R.string.action_like),
-            tint = if (liked) Color(0xFFE00038) else textColor,
-            modifier = Modifier.size(32.dp),
+            painter = painterResource(iconRes),
+            contentDescription = contentDescription,
+            tint = textColor.copy(alpha = 0.96f),
+            modifier = Modifier.size(24.dp),
         )
     }
 }
 
-/** One quiet transport row, with real queue shuffle/repeat and the Capsule orbit. */
+@Composable
+internal fun CapsuleLightFavorite(
+    liked: Boolean,
+    textColor: Color,
+    onToggleLike: () -> Unit,
+) {
+    val scale by
+        animateFloatAsState(
+            targetValue = if (liked) 1.08f else 1f,
+            animationSpec =
+                spring(
+                    dampingRatio = Spring.DampingRatioMediumBouncy,
+                    stiffness = Spring.StiffnessMediumLow,
+                ),
+            label = "capsuleLightFavoriteScale",
+        )
+    val tint by
+        animateColorAsState(
+            targetValue = if (liked) Color(0xFFFF174F) else textColor.copy(alpha = 0.92f),
+            label = "capsuleLightFavoriteTint",
+        )
+
+    IconButton(onClick = onToggleLike, modifier = Modifier.size(52.dp)) {
+        Icon(
+            painter = painterResource(if (liked) R.drawable.favorite else R.drawable.favorite_border),
+            contentDescription = stringResource(if (liked) R.string.action_remove_like else R.string.action_like),
+            tint = tint,
+            modifier =
+                Modifier
+                    .size(32.dp)
+                    .graphicsLayer {
+                        scaleX = scale
+                        scaleY = scale
+                    },
+        )
+    }
+}
+
+/** One calm transport capsule with real queue shuffle/repeat and the Capsule orbit. */
 @Composable
 internal fun CapsuleLightControls(
     textColor: Color,
@@ -109,37 +198,115 @@ internal fun CapsuleLightControls(
     onRepeat: () -> Unit,
     orbit: @Composable () -> Unit,
 ) {
-    val shape = RoundedCornerShape(36.dp)
+    val shape = RoundedCornerShape(38.dp)
+    val panelBrush =
+        Brush.verticalGradient(
+            listOf(
+                textColor.copy(alpha = 0.032f),
+                textColor.copy(alpha = 0.012f),
+            ),
+        )
+
     Row(
-        Modifier.fillMaxWidth().height(104.dp).clip(shape)
-            .border(1.dp, textColor.copy(alpha = 0.16f), shape)
-            .background(textColor.copy(alpha = 0.015f)).padding(horizontal = 6.dp),
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .height(108.dp)
+                .clip(shape)
+                .background(panelBrush)
+                .border(1.dp, textColor.copy(alpha = 0.18f), shape)
+                .padding(horizontal = 7.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        IconButton(onClick = onShuffle, enabled = enabled, modifier = Modifier.weight(1f).semantics { selected = shuffleEnabled }) {
-            Icon(painterResource(R.drawable.shuffle), stringResource(R.string.shuffle),
-                tint = textColor.copy(alpha = if (!enabled) 0.25f else if (shuffleEnabled) 1f else 0.52f), modifier = Modifier.size(25.dp))
+        CapsuleLightTransportIcon(
+            iconRes = R.drawable.shuffle,
+            contentDescription = stringResource(R.string.shuffle),
+            enabled = enabled,
+            active = shuffleEnabled,
+            textColor = textColor,
+            onClick = onShuffle,
+            modifier = Modifier.weight(1f).semantics { selected = shuffleEnabled },
+            iconSize = 25,
+        )
+
+        CapsuleLightTransportIcon(
+            iconRes = R.drawable.skip_previous,
+            contentDescription = stringResource(androidx.media3.ui.R.string.exo_controls_previous_description),
+            enabled = enabled && canSkipPrevious,
+            active = true,
+            textColor = textColor,
+            onClick = onPrevious,
+            modifier = Modifier.weight(1f),
+            iconSize = 32,
+        )
+
+        Box(
+            modifier = Modifier.weight(1.38f),
+            contentAlignment = Alignment.Center,
+        ) {
+            orbit()
         }
-        IconButton(onClick = onPrevious, enabled = enabled && canSkipPrevious, modifier = Modifier.weight(1f)) {
-            Icon(painterResource(R.drawable.skip_previous), stringResource(androidx.media3.ui.R.string.exo_controls_previous_description),
-                tint = textColor.copy(alpha = if (enabled && canSkipPrevious) 0.96f else 0.25f), modifier = Modifier.size(32.dp))
-        }
-        Box(Modifier.weight(1.35f), contentAlignment = Alignment.Center) { orbit() }
-        IconButton(onClick = onNext, enabled = enabled && canSkipNext, modifier = Modifier.weight(1f)) {
-            Icon(painterResource(R.drawable.skip_next), stringResource(androidx.media3.ui.R.string.exo_controls_next_description),
-                tint = textColor.copy(alpha = if (enabled && canSkipNext) 0.96f else 0.25f), modifier = Modifier.size(32.dp))
-        }
-        IconButton(onClick = onRepeat, enabled = enabled, modifier = Modifier.weight(1f).semantics { selected = repeatMode != Player.REPEAT_MODE_OFF }) {
-            Icon(
-                painterResource(if (repeatMode == Player.REPEAT_MODE_ONE) R.drawable.repeat_one else R.drawable.repeat),
-                stringResource(when (repeatMode) {
-                    Player.REPEAT_MODE_ONE -> R.string.repeat_mode_one
-                    Player.REPEAT_MODE_ALL -> R.string.repeat_mode_all
-                    else -> R.string.repeat_mode_off
-                }),
-                tint = textColor.copy(alpha = if (!enabled) 0.25f else if (repeatMode != Player.REPEAT_MODE_OFF) 1f else 0.52f),
-                modifier = Modifier.size(25.dp),
-            )
-        }
+
+        CapsuleLightTransportIcon(
+            iconRes = R.drawable.skip_next,
+            contentDescription = stringResource(androidx.media3.ui.R.string.exo_controls_next_description),
+            enabled = enabled && canSkipNext,
+            active = true,
+            textColor = textColor,
+            onClick = onNext,
+            modifier = Modifier.weight(1f),
+            iconSize = 32,
+        )
+
+        CapsuleLightTransportIcon(
+            iconRes = if (repeatMode == Player.REPEAT_MODE_ONE) R.drawable.repeat_one else R.drawable.repeat,
+            contentDescription =
+                stringResource(
+                    when (repeatMode) {
+                        Player.REPEAT_MODE_ONE -> R.string.repeat_mode_one
+                        Player.REPEAT_MODE_ALL -> R.string.repeat_mode_all
+                        else -> R.string.repeat_mode_off
+                    },
+                ),
+            enabled = enabled,
+            active = repeatMode != Player.REPEAT_MODE_OFF,
+            textColor = textColor,
+            onClick = onRepeat,
+            modifier = Modifier.weight(1f).semantics { selected = repeatMode != Player.REPEAT_MODE_OFF },
+            iconSize = 25,
+        )
+    }
+}
+
+@Composable
+private fun CapsuleLightTransportIcon(
+    iconRes: Int,
+    contentDescription: String,
+    enabled: Boolean,
+    active: Boolean,
+    textColor: Color,
+    onClick: () -> Unit,
+    modifier: Modifier,
+    iconSize: Int,
+) {
+    IconButton(
+        onClick = onClick,
+        enabled = enabled,
+        modifier = modifier,
+    ) {
+        Icon(
+            painter = painterResource(iconRes),
+            contentDescription = contentDescription,
+            tint =
+                textColor.copy(
+                    alpha =
+                        when {
+                            !enabled -> 0.24f
+                            active -> 0.98f
+                            else -> 0.48f
+                        },
+                ),
+            modifier = Modifier.size(iconSize.dp),
+        )
     }
 }
