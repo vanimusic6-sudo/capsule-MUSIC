@@ -1,0 +1,129 @@
+name: InnerTubeX upstream drift
+
+# AUDIO extraction is owned by InnerTubeX. Keep the release pin reproducible,
+# but test its main branch every day so upstream YouTube fixes or regressions do
+# not go unnoticed. This workflow never changes the dependency pin or code; it
+# only opens/updates one issue when the pin is behind or main no longer builds.
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "17 5 * * *"
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: innertubex-drift
+  cancel-in-progress: true
+
+jobs:
+  drift:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Set up Gradle 9.5
+        uses: gradle/actions/setup-gradle@v6
+        with:
+          gradle-version: "9.5.0"
+
+      - name: Compare pin against InnerTubeX main
+        id: compare
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          pinned="$(sed -n 's/^innertubex[[:space:]]*=[[:space:]]*"\([^"]*\)"/\1/p' gradle/libs.versions.toml | head -n1)"
+          if [[ -z "$pinned" ]]; then
+            echo "Could not read InnerTubeX pin from gradle/libs.versions.toml" >&2
+            exit 1
+          fi
+
+          api="https://api.github.com/repos/MetrolistGroup/innertubex"
+          auth=(-H 'Accept: application/vnd.github+json' -H "Authorization: Bearer ${{ github.token }}")
+
+          head_sha="$(curl --fail --silent --show-error --retry 3 "${auth[@]}" "$api/commits/main" | jq -r '.sha')"
+          if [[ -z "$head_sha" || "$head_sha" == "null" ]]; then
+            echo "Could not resolve InnerTubeX main" >&2
+            exit 1
+          fi
+
+          compare_json="$(curl --fail --silent --show-error --retry 3 "${auth[@]}" "$api/compare/$pinned...main")"
+          behind="$(jq -r '.ahead_by // 0' <<<"$compare_json")"
+          latest_tag="$(curl --fail --silent --show-error --retry 3 "${auth[@]}" "$api/releases/latest" | jq -r '.tag_name // empty')"
+
+          echo "pinned=$pinned" >> "$GITHUB_OUTPUT"
+          echo "head_sha=${head_sha:0:12}" >> "$GITHUB_OUTPUT"
+          echo "behind=$behind" >> "$GITHUB_OUTPUT"
+          echo "latest_tag=$latest_tag" >> "$GITHUB_OUTPUT"
+          echo "Pinned $pinned is $behind commits behind main (${head_sha:0:12}); latest release=$latest_tag"
+
+      - name: Build against InnerTubeX main
+        id: build
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          python3 - <<'PY'
+          import re
+          from pathlib import Path
+
+          path = Path("gradle/libs.versions.toml")
+          text = path.read_text()
+          updated, count = re.subn(
+              r'(?m)^(innertubex\s*=\s*")[^"]+("\s*)$',
+              r'\g<1>main-SNAPSHOT\2',
+              text,
+              count=1,
+          )
+          if count != 1:
+              raise SystemExit("Could not switch InnerTubeX pin to main-SNAPSHOT")
+          path.write_text(updated)
+          PY
+
+          gradle :innertube:test :app:testUniversalDebugUnitTest :app:assembleUniversalDebug --no-daemon
+
+      - name: Report InnerTubeX drift
+        if: steps.compare.outputs.behind != '0' || steps.build.outcome != 'success' || (steps.compare.outputs.latest_tag != '' && steps.compare.outputs.latest_tag != steps.compare.outputs.pinned)
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PINNED: ${{ steps.compare.outputs.pinned }}
+          BEHIND: ${{ steps.compare.outputs.behind }}
+          HEAD_SHA: ${{ steps.compare.outputs.head_sha }}
+          LATEST_TAG: ${{ steps.compare.outputs.latest_tag }}
+          BUILD: ${{ steps.build.outcome }}
+        run: |
+          set -euo pipefail
+
+          title="InnerTubeX: upstream drift requires review"
+          body="$(printf '%s\n' \
+            "Pinned release: \`$PINNED\`" \
+            "Latest release: \`${LATEST_TAG:-unknown}\`" \
+            "Main head: \`$HEAD_SHA\` ($BEHIND commits ahead of the pin)" \
+            "Capsule build against \`main-SNAPSHOT\`: **$BUILD**" \
+            "" \
+            "InnerTubeX owns Capsule's AUDIO extraction path, so this issue is intentionally" \
+            "fail-visible. Review upstream changes before moving the production pin." \
+            "" \
+            "The workflow did not modify the repository or dependency version.")"
+
+          existing="$(gh issue list --state open --search "InnerTubeX: upstream drift requires review in:title" --json number --jq '.[0].number // empty')"
+          if [[ -z "$existing" ]]; then
+            gh issue create --title "$title" --body "$body" --label dependencies || \
+              gh issue create --title "$title" --body "$body"
+          else
+            gh issue edit "$existing" --title "$title" --body "$body"
+          fi
