@@ -125,10 +125,20 @@ jobs:
           if-no-files-found: ignore
           retention-days: 14
 
+      - name: Prepare validated APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p app/build/validated
+          cp app/build/outputs/apk/universal/debug/app-universal-debug.apk \
+            app/build/validated/capsule-music-universal-debug.apk
+          sha256sum app/build/validated/capsule-music-universal-debug.apk \
+            > app/build/validated/SHA256SUMS.txt
+
       - name: Upload validated debug APK
         uses: actions/upload-artifact@v4
         with:
-          name: capsule-universal-debug
-          path: app/build/outputs/apk/universal/debug/*.apk
+          name: capsule-music-universal-debug
+          path: app/build/validated/
           if-no-files-found: error
           retention-days: 14
