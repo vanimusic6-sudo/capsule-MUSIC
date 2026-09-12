@@ -43,6 +43,7 @@ fun CapsuleAudioVideoToggle(
     onAudioClick: () -> Unit,
     onVideoClick: () -> Unit,
     modifier: Modifier = Modifier,
+    lightStyle: Boolean = false,
 ) {
     val shape = RoundedCornerShape(10.dp)
     val videoResolving =
@@ -61,8 +62,8 @@ fun CapsuleAudioVideoToggle(
     Row(
         modifier =
             modifier
-                .width(190.dp)
-                .height(36.dp)
+                .width(if (lightStyle) 202.dp else 190.dp)
+                .height(if (lightStyle) 44.dp else 36.dp)
                 .clip(shape)
                 .background(textColor.copy(alpha = 0.018f))
                 .border(1.dp, textColor.copy(alpha = 0.18f), shape)
@@ -70,7 +71,8 @@ fun CapsuleAudioVideoToggle(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         CapsuleModeSegment(
-            text = "AUDIO",
+            text = if (lightStyle) "audio" else "AUDIO",
+            lightStyle = lightStyle,
             selected = audioSelected,
             loading = false,
             unavailable = false,
@@ -89,11 +91,12 @@ fun CapsuleAudioVideoToggle(
         )
 
         CapsuleModeSegment(
+            lightStyle = lightStyle,
             text =
                 when {
                     videoRequestError -> "VIDEO ERROR"
                     videoUnavailable -> "VIDEO N/A"
-                    else -> "VIDEO"
+                    else -> if (lightStyle) "video" else "VIDEO"
                 },
             selected = videoSelected,
             loading = videoResolving,
@@ -118,6 +121,7 @@ private fun CapsuleModeSegment(
     textColor: Color,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
+    lightStyle: Boolean = false,
 ) {
     val scale by
         animateFloatAsState(
@@ -129,7 +133,7 @@ private fun CapsuleModeSegment(
     Box(
         modifier =
             modifier
-                .height(34.dp)
+                .height(if (lightStyle) 42.dp else 34.dp)
                 .graphicsLayer {
                     scaleX = scale
                     scaleY = scale
@@ -157,8 +161,8 @@ private fun CapsuleModeSegment(
                                 else -> 0.46f
                             },
                     ),
-                fontFamily = FontFamily.Monospace,
-                fontSize = if (unavailable || requestError) 9.sp else 11.sp,
+                fontFamily = if (lightStyle) FontFamily.SansSerif else FontFamily.Monospace,
+                fontSize = if (unavailable || requestError) 9.sp else if (lightStyle) 16.sp else 11.sp,
                 fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
                 letterSpacing = 0.35.sp,
                 maxLines = 1,
@@ -173,7 +177,7 @@ private fun CapsuleModeSegment(
             }
         }
 
-        if (selected) {
+        if (selected && !lightStyle) {
             Box(
                 modifier =
                     Modifier

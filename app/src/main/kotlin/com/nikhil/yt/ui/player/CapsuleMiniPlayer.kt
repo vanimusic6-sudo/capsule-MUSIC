@@ -631,7 +631,7 @@ internal fun CapsuleCompactSurfaceBackground(
             colors.getOrElse(0) { primary },
             colors.getOrElse(1) { secondary },
             colors.getOrElse(2) { tertiary },
-        ).map(::capsuleMutedArtworkColor)
+        )
 
     when (style) {
         MiniPlayerBackgroundStyle.THEME ->
@@ -694,6 +694,15 @@ internal fun CapsuleCompactSurfaceBackground(
                 modifier = modifier,
                 compact = true,
                 animated = animated,
+            )
+
+        MiniPlayerBackgroundStyle.CAPSULE_GLOW ->
+            CapsuleProceduralBackground(
+                effect = CapsuleBackgroundEffect.CAPSULE_GLOW,
+                colors = palette,
+                modifier = modifier,
+                compact = true,
+                animated = false,
             )
 
         MiniPlayerBackgroundStyle.GLASS ->

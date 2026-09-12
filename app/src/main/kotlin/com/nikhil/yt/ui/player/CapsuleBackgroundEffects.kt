@@ -14,7 +14,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -30,7 +30,6 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
-import kotlin.math.PI
 import kotlin.math.abs
 import kotlin.math.cos
 import kotlin.math.max
@@ -43,12 +42,12 @@ internal enum class CapsuleBackgroundEffect {
     COLOR_FLOW,
     CAPSULE_STAR,
     NEBULA,
+    CAPSULE_GLOW,
 }
 
-private const val BACKGROUND_CYCLE_MS = 36_000
 private const val COMPACT_BACKGROUND_FPS = 15
 private const val FULL_BACKGROUND_FPS = 24
-private const val STATIC_BACKGROUND_PHASE = 0.18f
+private const val STATIC_BACKGROUND_TIME_MS = 6_480L
 
 /**
  * Drive the slow effects at their actual target frame rate and stop the clock
@@ -56,9 +55,9 @@ private const val STATIC_BACKGROUND_PHASE = 0.18f
  * the display refresh rate even when its derived value changes less often.
  */
 @Composable
-private fun rememberCapsuleAnimationPhase(compact: Boolean): State<Float> {
+private fun rememberCapsuleAnimationTime(compact: Boolean): State<Long> {
     val lifecycleOwner = LocalLifecycleOwner.current
-    val phase = remember { mutableFloatStateOf(STATIC_BACKGROUND_PHASE) }
+    val time = remember { mutableLongStateOf(SystemClock.elapsedRealtime()) }
     var isVisible by
         remember(lifecycleOwner) {
             mutableStateOf(
@@ -86,14 +85,12 @@ private fun rememberCapsuleAnimationPhase(compact: Boolean): State<Float> {
         if (!isVisible) return@LaunchedEffect
 
         while (isActive) {
-            phase.floatValue =
-                (SystemClock.elapsedRealtime() % BACKGROUND_CYCLE_MS).toFloat() /
-                    BACKGROUND_CYCLE_MS.toFloat()
+            time.longValue = SystemClock.elapsedRealtime()
             delay(frameDelayMs)
         }
     }
 
-    return phase
+    return time
 }
 
 @Composable
@@ -115,15 +112,16 @@ internal fun CapsuleProceduralBackground(
                 colors.getOrElse(2) { tertiary },
             ).map(::capsuleMutedArtworkColor)
         }
-    val phase =
+    val time =
         if (animated) {
-            rememberCapsuleAnimationPhase(compact = compact)
+            rememberCapsuleAnimationTime(compact = compact)
         } else {
             null
         }
 
+    val starFields = remember(compact) { CapsuleStarFields(if (compact) 30 else 82) }
     Canvas(modifier = modifier) {
-        val phaseValue = phase?.value ?: STATIC_BACKGROUND_PHASE
+        val elapsedMs = time?.value ?: STATIC_BACKGROUND_TIME_MS
         when (effect) {
             CapsuleBackgroundEffect.MATTE_GRADIENT ->
                 drawMatteGradient(palette)
@@ -137,21 +135,25 @@ internal fun CapsuleProceduralBackground(
             CapsuleBackgroundEffect.COLOR_FLOW ->
                 drawSoftColorFlow(
                     palette = palette,
-                    phase = phaseValue,
+                    elapsedMs = elapsedMs,
                     compact = compact,
                 )
 
             CapsuleBackgroundEffect.CAPSULE_STAR ->
                 drawCapsuleStarField(
                     palette = palette,
-                    phase = phaseValue,
+                    elapsedMs = elapsedMs,
                     compact = compact,
+                    fields = starFields,
                 )
+
+            CapsuleBackgroundEffect.CAPSULE_GLOW ->
+                drawCapsuleGlow(palette, compact)
 
             CapsuleBackgroundEffect.NEBULA ->
                 drawArtworkNebula(
                     palette = palette,
-                    phase = phaseValue,
+                    elapsedMs = elapsedMs,
                     compact = compact,
                 )
         }
@@ -371,7 +373,7 @@ private fun DrawScope.drawAmbientGlow(palette: List<Color>) {
 
 private fun DrawScope.drawSoftColorFlow(
     palette: List<Color>,
-    phase: Float,
+    elapsedMs: Long,
     compact: Boolean,
 ) {
     val base = deepColor(lerp(palette[0], palette[1], 0.34f), 0.56f)
@@ -390,21 +392,21 @@ private fun DrawScope.drawSoftColorFlow(
             ),
     )
 
-    val angle = phase * 2f * PI.toFloat()
+    val angle = capsuleBackgroundAngle(elapsedMs)
     val radius = max(size.width, size.height) * if (compact) 1.12f else 0.76f
     val centers =
         listOf(
             Offset(
-                size.width * (0.16f + 0.14f * sin(angle)),
-                size.height * (0.28f + 0.1f * cos(angle * 0.72f)),
+                size.width * (0.16f + 0.14f * waveSin(angle)),
+                size.height * (0.28f + 0.1f * waveCos(angle * 0.72f)),
             ),
             Offset(
-                size.width * (0.84f + 0.11f * cos(angle * 0.62f)),
-                size.height * (0.7f + 0.12f * sin(angle * 0.66f)),
+                size.width * (0.84f + 0.11f * waveCos(angle * 0.62f)),
+                size.height * (0.7f + 0.12f * waveSin(angle * 0.66f)),
             ),
             Offset(
-                size.width * (0.5f + 0.18f * sin(angle * 0.48f + 2.2f)),
-                size.height * (0.46f + 0.13f * cos(angle * 0.52f + 1.4f)),
+                size.width * (0.5f + 0.18f * waveSin(angle * 0.48f + 2.2f)),
+                size.height * (0.46f + 0.13f * waveCos(angle * 0.52f + 1.4f)),
             ),
         )
 
@@ -430,8 +432,9 @@ private fun DrawScope.drawSoftColorFlow(
 
 private fun DrawScope.drawCapsuleStarField(
     palette: List<Color>,
-    phase: Float,
+    elapsedMs: Long,
     compact: Boolean,
+    fields: CapsuleStarFields,
 ) {
     val top = deepColor(lerp(palette[0], palette[1], 0.18f), 0.66f)
     val center = deepColor(lerp(palette[0], palette[2], 0.45f), 0.76f)
@@ -445,7 +448,7 @@ private fun DrawScope.drawCapsuleStarField(
             ),
     )
 
-    val angle = phase * 2f * PI.toFloat()
+    val angle = capsuleBackgroundAngle(elapsedMs)
     drawRect(
         brush =
             Brush.radialGradient(
@@ -457,8 +460,8 @@ private fun DrawScope.drawCapsuleStarField(
                     ),
                 center =
                     Offset(
-                        size.width * (0.44f + 0.1f * sin(angle * 0.34f)),
-                        size.height * (0.38f + 0.08f * cos(angle * 0.3f)),
+                        size.width * (0.44f + 0.1f * waveSin(angle * 0.34f)),
+                        size.height * (0.38f + 0.08f * waveCos(angle * 0.3f)),
                     ),
                 radius = max(size.width, size.height) * if (compact) 1.14f else 0.7f,
             ),
@@ -477,21 +480,47 @@ private fun DrawScope.drawCapsuleStarField(
             ),
     )
 
-    val starCount = if (compact) 30 else 82
-    repeat(starCount) { index ->
-        val depth = 0.36f + deterministicFraction(index * 37 + 9) * 0.64f
+    val blend = constellationBlend(elapsedMs)
+    fields.update(blend.generation)
+    drawConstellation(fields.current, palette, elapsedMs, compact, 1f - blend.nextAlpha)
+    if (blend.nextAlpha > 0f) {
+        drawConstellation(fields.next, palette, elapsedMs, compact, blend.nextAlpha)
+    }
+    drawVignette(alpha = if (compact) 0.16f else 0.28f)
+}
+
+private class CapsuleStarFields(private val count: Int) {
+    private var generation = Long.MIN_VALUE
+    var current: List<CapsuleStar> = emptyList()
+        private set
+    var next: List<CapsuleStar> = emptyList()
+        private set
+
+    fun update(value: Long) {
+        if (value == generation) return
+        current = if (value == generation + 1L && next.isNotEmpty()) next else capsuleConstellation(value, count)
+        next = capsuleConstellation(value + 1L, count)
+        generation = value
+    }
+}
+
+private fun DrawScope.drawConstellation(
+    stars: List<CapsuleStar>,
+    palette: List<Color>,
+    elapsedMs: Long,
+    compact: Boolean,
+    opacity: Float,
+) {
+    if (opacity <= 0f) return
+    val angle = capsuleBackgroundAngle(elapsedMs)
+    stars.forEachIndexed { index, star ->
+        val depth = star.depth
         val drift = (depth - 0.32f) * if (compact) 1.1f * density else 2.4f * density
-        val rawX =
-            deterministicFraction(index * 17 + 3) * size.width +
-                sin(angle * (0.18f + depth * 0.14f) + index) * drift
-        val rawY =
-            deterministicFraction(index * 31 + 11) * size.height +
-                cos(angle * (0.15f + depth * 0.11f) + index * 0.7f) * drift
-        val x = wrapCoordinate(rawX, size.width)
-        val y = wrapCoordinate(rawY, size.height)
-        val pulse =
-            (sin(angle * (0.48f + depth * 0.74f) + index * 0.73f) + 1f) / 2f
-        val alpha = (0.2f + depth * 0.32f + pulse * 0.16f).coerceAtMost(0.76f)
+        val (dx, dy) = capsuleStarDrift(star, elapsedMs)
+        val x = wrapCoordinate(star.x * size.width + dx * drift, size.width)
+        val y = wrapCoordinate(star.y * size.height + dy * drift, size.height)
+        val pulse = (waveSin(angle * (0.48f + depth * 0.74f) + star.phase) + 1f) / 2f
+        val alpha = (0.2f + depth * 0.32f + pulse * 0.16f).coerceAtMost(0.76f) * opacity
         val radius =
             (if (index % 17 == 0) 1.42f else 0.56f + depth * 0.42f) * density
         val starColor = lerp(Color.White, palette[index % palette.size], 0.15f)
@@ -524,32 +553,31 @@ private fun DrawScope.drawCapsuleStarField(
         )
     }
 
-    drawVignette(alpha = if (compact) 0.16f else 0.28f)
 }
 
 private fun DrawScope.drawArtworkNebula(
     palette: List<Color>,
-    phase: Float,
+    elapsedMs: Long,
     compact: Boolean,
 ) {
     val base = deepColor(lerp(palette[0], palette[1], 0.28f), 0.8f)
     drawRect(base)
 
-    val angle = phase * 2f * PI.toFloat()
+    val angle = capsuleBackgroundAngle(elapsedMs)
     val radius = max(size.width, size.height) * if (compact) 1.06f else 0.66f
     val centers =
         listOf(
             Offset(
-                size.width * (0.22f + 0.06f * cos(angle * 0.36f)),
-                size.height * (0.32f + 0.07f * sin(angle * 0.32f)),
+                size.width * (0.22f + 0.06f * waveCos(angle * 0.36f)),
+                size.height * (0.32f + 0.07f * waveSin(angle * 0.32f)),
             ),
             Offset(
-                size.width * (0.78f + 0.07f * sin(angle * 0.3f + 1.8f)),
-                size.height * (0.66f + 0.06f * cos(angle * 0.28f + 1.2f)),
+                size.width * (0.78f + 0.07f * waveSin(angle * 0.3f + 1.8f)),
+                size.height * (0.66f + 0.06f * waveCos(angle * 0.28f + 1.2f)),
             ),
             Offset(
-                size.width * (0.5f + 0.1f * cos(angle * 0.24f + 3.1f)),
-                size.height * (0.46f + 0.08f * sin(angle * 0.26f + 2.4f)),
+                size.width * (0.5f + 0.1f * waveCos(angle * 0.24f + 3.1f)),
+                size.height * (0.46f + 0.08f * waveSin(angle * 0.26f + 2.4f)),
             ),
         )
 
@@ -588,7 +616,7 @@ private fun DrawScope.drawArtworkNebula(
         val twinkle =
             0.1f +
                 0.16f *
-                ((sin(angle * 0.44f + index * 0.91f) + 1f) / 2f)
+                ((waveSin(angle * 0.44f + index * 0.91f) + 1f) / 2f)
         drawCircle(
             color = lerp(Color.White, palette[index % palette.size], 0.12f).copy(alpha = twinkle),
             radius = (0.48f + index % 4 * 0.18f) * density,
@@ -629,3 +657,31 @@ private fun wrapCoordinate(
 
 private fun deterministicFraction(seed: Int): Float =
     (abs(sin(seed * 12.9898)) * 43_758.5453).toFloat() % 1f
+
+// Evaluate long-running waves in double precision, then convert only coordinates.
+private fun waveSin(value: Double): Float = sin(value).toFloat()
+private fun waveCos(value: Double): Float = cos(value).toFloat()
+
+/** Artwork light above a dark base, with a softer rim glow around the cover. */
+private fun DrawScope.drawCapsuleGlow(palette: List<Color>, compact: Boolean) {
+    drawRect(Color(0xFF050506))
+    val extent = max(size.width, size.height)
+    val core = Offset(size.width * if (compact) 0.18f else 0.48f, size.height * if (compact) 0.15f else 0.08f)
+    drawRect(Brush.radialGradient(
+        0f to palette[0].copy(alpha = 0.72f),
+        0.42f to palette[0].copy(alpha = 0.34f),
+        1f to Color.Transparent,
+        center = core,
+        radius = extent * if (compact) 0.94f else 0.78f,
+    ))
+    drawRect(Brush.radialGradient(
+        colors = listOf(palette[1].copy(alpha = 0.34f), Color.Transparent),
+        center = Offset(size.width * 0.96f, size.height * if (compact) 0.8f else 0.38f),
+        radius = extent * if (compact) 0.7f else 0.48f,
+    ))
+    drawRect(Brush.verticalGradient(
+        0f to Color.Transparent,
+        0.46f to Color.Black.copy(alpha = if (compact) 0.08f else 0.14f),
+        1f to Color.Black.copy(alpha = if (compact) 0.4f else 0.94f),
+    ))
+}

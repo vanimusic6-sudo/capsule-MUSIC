@@ -785,4 +785,11 @@
     <string name="error_access_restricted_description">YouTube требует авторизацию для этого трека. Проверьте вход в аккаунт и доступ к треку.</string>
     <string name="error_network_problem_title">Проблема с сетью</string>
     <string name="error_network_problem_description">Проверьте подключение к интернету. Если используете VPN — попробуйте переподключить или перезапустить его.</string>
+    <string name="capsule_player_design">Дизайн плеера</string>
+    <string name="capsule_player_super">Capsule Super</string>
+    <string name="capsule_player_light">Capsule Light</string>
+    <string name="background_capsule_glow">Capsule Glow</string>
+    <string name="capsule_choose_artist">Выбор исполнителя</string>
+    <string name="capsule_collapse_player">Свернуть плеер</string>
+    <string name="capsule_timer_minutes">%1$d мин</string>
 </resources>

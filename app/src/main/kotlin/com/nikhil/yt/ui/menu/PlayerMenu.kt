@@ -8,6 +8,9 @@
 
 package com.nikhil.yt.ui.menu
 
+import com.nikhil.yt.ui.player.CapsuleSleepTimerDialog
+import com.nikhil.yt.together.TogetherRole
+import com.nikhil.yt.together.TogetherSessionState
 import com.nikhil.yt.ui.component.ArtistSelectionItem
 import com.nikhil.yt.ui.component.VeluneLoader
 import android.content.Intent
@@ -276,6 +279,23 @@ fun PlayerMenu(
         )
     }
 
+    var showSleepTimer by rememberSaveable { mutableStateOf(false) }
+    var sleepMinutes by rememberSaveable { mutableFloatStateOf(30f) }
+    val togetherState by playerConnection.service.togetherSessionState.collectAsState()
+    val canSetSleepTimer = (togetherState as? TogetherSessionState.Joined)?.role !is TogetherRole.Guest
+    if (showSleepTimer) {
+        CapsuleSleepTimerDialog(
+            minutes = sleepMinutes,
+            enabled = canSetSleepTimer,
+            onMinutesChange = { sleepMinutes = it },
+            onConfirm = {
+                if (canSetSleepTimer) playerConnection.service.sleepTimer.start(sleepMinutes.toInt())
+                showSleepTimer = false
+            },
+            onDismiss = { showSleepTimer = false },
+        )
+    }
+
     val nowPlayingTitle =
         remember(mediaMetadata.title) {
             mediaMetadata.title.ifBlank { context.getString(R.string.no_title) }
@@ -408,6 +428,12 @@ fun PlayerMenu(
                         },
                         text = stringResource(R.string.add_to_playlist),
                         onClick = { showChoosePlaylistDialog = true }
+                    ),
+                    NewAction(
+                        icon = { Icon(painterResource(R.drawable.bedtime), contentDescription = null) },
+                        text = stringResource(R.string.sleep_timer),
+                        enabled = canSetSleepTimer,
+                        onClick = { showSleepTimer = true },
                     ),
                     NewAction(
                         icon = {

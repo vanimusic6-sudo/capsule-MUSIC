@@ -20,6 +20,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -33,7 +34,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
 // Artist metadata often contains only a browse ID. Resolve portraits only while
-// the picker is open; reuse successful lookups across the five entry points.
+// the picker is open; reuse successful lookups across all player/menu entry points.
 private object ArtistPortraits {
     private val cache = LruCache<String, String>(64)
     private val mutex = Mutex()
@@ -61,11 +62,17 @@ fun ArtistSelectionItem(name: String, artistId: String?, thumbnailUrl: String? =
             }
         }
     }
+    ArtistSelectionRow(name, artistId, portrait, onClick)
+}
+
+@Composable
+internal fun ArtistSelectionRow(name: String, artistId: String?, portrait: Any?, onClick: () -> Unit) {
     ListItem(
         headlineContent = { Text(name, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis) },
         leadingContent = {
             Box(
-                modifier = Modifier.size(40.dp).clip(CircleShape).background(MaterialTheme.colorScheme.surfaceContainerHighest),
+                modifier = Modifier.size(40.dp).clip(CircleShape)
+                    .background(MaterialTheme.colorScheme.surfaceContainerHighest).testTag("artistPortrait:$artistId"),
                 contentAlignment = Alignment.Center,
             ) {
                 Text(name.trim().firstOrNull()?.uppercase() ?: "♪", color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -73,6 +80,6 @@ fun ArtistSelectionItem(name: String, artistId: String?, thumbnailUrl: String? =
             }
         },
         colors = ListItemDefaults.colors(containerColor = Color.Transparent),
-        modifier = Modifier.fillMaxWidth().clickable(enabled = artistId != null, onClick = onClick),
+        modifier = Modifier.fillMaxWidth().clickable(enabled = !artistId.isNullOrBlank(), onClick = onClick),
     )
 }

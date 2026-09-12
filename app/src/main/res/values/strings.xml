@@ -846,4 +846,11 @@ Velune will only extract your token, and everything else is stored locally.</str
     <string name="error_access_restricted_description">YouTube requires account authorization for this track. Check your login and access to the track.</string>
     <string name="error_network_problem_title">Network problem</string>
     <string name="error_network_problem_description">Check your internet connection. If you use a VPN, try reconnecting or restarting it.</string>
+    <string name="capsule_player_design">Player design</string>
+    <string name="capsule_player_super">Capsule Super</string>
+    <string name="capsule_player_light">Capsule Light</string>
+    <string name="background_capsule_glow">Capsule Glow</string>
+    <string name="capsule_choose_artist">Choose artist</string>
+    <string name="capsule_collapse_player">Collapse player</string>
+    <string name="capsule_timer_minutes">%1$d min</string>
 </resources>

@@ -352,6 +352,11 @@ enum class PreferredLyricsProvider {
     SIMPMUSIC,
 }
 
+enum class CapsulePlayerDesign {
+    SUPER,
+    LIGHT,
+}
+
 enum class PlayerBackgroundStyle {
     CAPSULE_STAR,
     GLOW_ANIMATED,
@@ -360,6 +365,7 @@ enum class PlayerBackgroundStyle {
     GRADIENT,
     COLORING,
     GLOW,
+    CAPSULE_GLOW,
 }
 
 enum class MiniPlayerBackgroundStyle {
@@ -369,6 +375,7 @@ enum class MiniPlayerBackgroundStyle {
     GRADIENT,
     GLASS,
     THEME,
+    CAPSULE_GLOW,
 }
 
 
@@ -389,6 +396,7 @@ val TopSize = stringPreferencesKey("topSize")
 val HistoryDuration = floatPreferencesKey("historyDuration")
 
 val PlayerBackgroundStyleKey = stringPreferencesKey("playerBackgroundStyle")
+val CapsulePlayerDesignKey = stringPreferencesKey("capsulePlayerDesign")
 val MiniPlayerBackgroundStyleKey = stringPreferencesKey("capsuleMiniPlayerBackgroundStyle")
 val LyricsTextPositionKey = stringPreferencesKey("lyricsTextPosition")
 val LyricsClickKey = booleanPreferencesKey("lyricsClick")

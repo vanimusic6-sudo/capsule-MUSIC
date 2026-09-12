@@ -26,26 +26,27 @@ import coil3.request.allowHardware
 import coil3.toBitmap
 import com.nikhil.yt.models.MediaMetadata
 import com.nikhil.yt.ui.theme.PlayerColorExtractor
+import com.nikhil.yt.utils.reportException
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
-import java.util.concurrent.ConcurrentHashMap
 
 private const val ARTWORK_PALETTE_TRANSITION_MS = 1_400
 
-private object CapsuleArtworkPaletteCache {
-    private const val MAX_ENTRIES = 32
-    private val extractionMutexes = ConcurrentHashMap<String, Mutex>()
+internal class ArtworkPaletteCache(private val maxEntries: Int = 32) {
+    // Bounded stripes also keep waiters on the same lock after a failed decode.
+    private val extractionMutexes = Array(8) { Mutex() }
     private val values =
         object : LinkedHashMap<String, List<Color>>(
-            MAX_ENTRIES,
+            maxEntries,
             0.75f,
             true,
         ) {
             override fun removeEldestEntry(
                 eldest: MutableMap.MutableEntry<String, List<Color>>?,
-            ): Boolean = size > MAX_ENTRIES
+            ): Boolean = size > maxEntries
         }
 
     @Synchronized
@@ -65,16 +66,18 @@ private object CapsuleArtworkPaletteCache {
     ): List<Color>? {
         get(key)?.let { return it }
 
-        val extractionMutex = extractionMutexes.getOrPut(key) { Mutex() }
-        return try {
-            extractionMutex.withLock {
-                get(key) ?: extract()?.also { put(key, it) }
-            }
-        } finally {
-            extractionMutexes.remove(key, extractionMutex)
+        val extractionMutex = extractionMutexes[(key.hashCode() and Int.MAX_VALUE) % extractionMutexes.size]
+        return extractionMutex.withLock {
+            get(key) ?: extract()?.also { put(key, it) }
         }
     }
 }
+
+private val CapsuleArtworkPaletteCache = ArtworkPaletteCache()
+
+// Thumbnail resolution and URL signatures can change while the same song plays.
+// Keep its first successful palette for the lifetime of the shared cache entry.
+internal fun capsuleArtworkPaletteKey(mediaId: String): String = "track:$mediaId"
 
 /**
  * Player, mini-player and Capsule Dock all use this exact palette. Besides
@@ -89,7 +92,7 @@ internal fun rememberCapsuleArtworkColors(
     rememberArtworkGradientColors(
         cacheKey =
             mediaMetadata?.let {
-                "track:${it.id}|${it.thumbnailUrl.orEmpty()}"
+                capsuleArtworkPaletteKey(it.id)
             },
         thumbnailUrl = mediaMetadata?.thumbnailUrl,
         enabled = enabled,
@@ -101,6 +104,7 @@ internal fun rememberArtworkGradientColors(
     cacheKey: String?,
     thumbnailUrl: String?,
     enabled: Boolean = true,
+    paletteCache: ArtworkPaletteCache = CapsuleArtworkPaletteCache,
 ): List<Color> {
     val context = LocalContext.current
     val primary = MaterialTheme.colorScheme.primary
@@ -116,8 +120,10 @@ internal fun rememberArtworkGradientColors(
      * Keying this state by cacheKey used to recreate it for every track and
      * briefly expose the theme fallback before the new artwork was ready.
      */
-    var targetColors by remember { mutableStateOf(fallback) }
-    var hasArtworkPalette by remember { mutableStateOf(false) }
+    val initialPalette = remember { cacheKey?.let(paletteCache::get) }
+    var targetColors by remember { mutableStateOf(initialPalette ?: fallback) }
+    var hasArtworkPalette by remember { mutableStateOf(initialPalette != null) }
+    var resolvedKey by remember { mutableStateOf(cacheKey.takeIf { initialPalette != null }) }
 
     LaunchedEffect(
         cacheKey,
@@ -139,9 +145,13 @@ internal fun rememberArtworkGradientColors(
             return@LaunchedEffect
         }
 
-        CapsuleArtworkPaletteCache.get(cacheKey)?.let {
+        // Pin the visible song even if browsing many albums evicts its cache entry.
+        if (cacheKey == resolvedKey) return@LaunchedEffect
+
+        paletteCache.get(cacheKey)?.let {
             targetColors = it
             hasArtworkPalette = true
+            resolvedKey = cacheKey
             return@LaunchedEffect
         }
 
@@ -152,7 +162,7 @@ internal fun rememberArtworkGradientColors(
         }
 
         val extracted =
-            CapsuleArtworkPaletteCache.getOrExtract(cacheKey) {
+            paletteCache.getOrExtract(cacheKey) {
                 val request =
                     ImageRequest.Builder(context)
                         .data(thumbnailUrl)
@@ -162,15 +172,10 @@ internal fun rememberArtworkGradientColors(
                         )
                         .allowHardware(false)
                         .build()
-                val artworkBitmap =
-                    runCatching {
-                        withContext(Dispatchers.IO) {
-                            context.imageLoader.execute(request)
-                        }.image?.toBitmap()
-                    }.getOrNull()
-                        ?: return@getOrExtract null
-
-                runCatching {
+                try {
+                    val artworkBitmap = withContext(Dispatchers.IO) {
+                        context.imageLoader.execute(request)
+                    }.image?.toBitmap() ?: return@getOrExtract null
                     val palette =
                         withContext(Dispatchers.Default) {
                             Palette.from(artworkBitmap)
@@ -182,12 +187,18 @@ internal fun rememberArtworkGradientColors(
                         palette = palette,
                         fallbackColor = surface.toArgb(),
                     )
-                }.getOrNull()
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (failure: Exception) {
+                    reportException(failure)
+                    null
+                }
             }
                 ?: return@LaunchedEffect
 
         targetColors = extracted
         hasArtworkPalette = true
+        resolvedKey = cacheKey
     }
 
     val first by

@@ -39,6 +39,8 @@ import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
 import com.nikhil.yt.LocalPlayerAwareWindowInsets
 import com.nikhil.yt.R
+import com.nikhil.yt.constants.CapsulePlayerDesign
+import com.nikhil.yt.constants.CapsulePlayerDesignKey
 import com.nikhil.yt.constants.ChipSortTypeKey
 import com.nikhil.yt.constants.CropThumbnailToSquareKey
 import com.nikhil.yt.constants.DarkModeKey
@@ -93,6 +95,10 @@ fun AppearanceSettings(
     navController: NavController,
     scrollBehavior: TopAppBarScrollBehavior,
 ) {
+    val (playerDesign, onPlayerDesignChange) = rememberEnumPreference(
+        CapsulePlayerDesignKey,
+        defaultValue = CapsulePlayerDesign.SUPER,
+    )
     /*
      * =========================
      * Capsule
@@ -746,6 +752,19 @@ fun AppearanceSettings(
         )
 
         EnumListPreference(
+            title = { Text(stringResource(R.string.capsule_player_design)) },
+            icon = { Icon(painterResource(R.drawable.play), contentDescription = null) },
+            selectedValue = playerDesign,
+            onValueSelected = onPlayerDesignChange,
+            valueText = {
+                stringResource(when (it) {
+                    CapsulePlayerDesign.SUPER -> R.string.capsule_player_super
+                    CapsulePlayerDesign.LIGHT -> R.string.capsule_player_light
+                })
+            },
+        )
+
+        EnumListPreference(
             title = {
                 Text(
                     stringResource(
@@ -787,6 +806,9 @@ fun AppearanceSettings(
 
                     PlayerBackgroundStyle.NEBULA ->
                         stringResource(R.string.background_nebula)
+
+                    PlayerBackgroundStyle.CAPSULE_GLOW ->
+                        stringResource(R.string.background_capsule_glow)
                 }
             },
         )
@@ -817,6 +839,8 @@ fun AppearanceSettings(
                         stringResource(R.string.background_nebula)
                     MiniPlayerBackgroundStyle.GLASS ->
                         stringResource(R.string.background_glass)
+                    MiniPlayerBackgroundStyle.CAPSULE_GLOW ->
+                        stringResource(R.string.background_capsule_glow)
                 }
             },
         )

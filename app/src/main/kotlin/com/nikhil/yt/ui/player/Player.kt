@@ -41,6 +41,8 @@ import androidx.compose.ui.unit.dp
 import androidx.media3.common.C
 import androidx.navigation.NavController
 import com.nikhil.yt.LocalPlayerConnection
+import com.nikhil.yt.constants.CapsulePlayerDesign
+import com.nikhil.yt.constants.CapsulePlayerDesignKey
 import com.nikhil.yt.constants.DarkModeKey
 import com.nikhil.yt.constants.PlayerBackgroundStyle
 import com.nikhil.yt.constants.PlayerBackgroundStyleKey
@@ -73,6 +75,8 @@ fun BottomSheetPlayer(
     var showInlineLyrics by rememberSaveable {
         mutableStateOf(false)
     }
+
+    val playerDesign by rememberEnumPreference(CapsulePlayerDesignKey, CapsulePlayerDesign.SUPER)
 
     val playerBackground by
         rememberEnumPreference(
@@ -228,6 +232,7 @@ fun BottomSheetPlayer(
 
             enrichedMetadata?.let { metadata ->
                 CapsulePlayerLyricsHost(
+                    design = playerDesign,
                     showLyrics = showInlineLyrics,
                     mediaMetadata = metadata,
                     sliderPosition = sliderPosition,
@@ -297,6 +302,7 @@ fun BottomSheetPlayer(
 
 @Composable
 private fun CapsulePlayerLyricsHost(
+    design: CapsulePlayerDesign,
     showLyrics: Boolean,
     mediaMetadata: MediaMetadata,
     sliderPosition: Long?,
@@ -380,6 +386,7 @@ private fun CapsulePlayerLyricsHost(
             )
         } else {
             CapsulePlayerContent(
+                design = design,
                 mediaMetadata = mediaMetadata,
                 sliderPosition = sliderPosition,
                 positionMs = position,
@@ -391,6 +398,7 @@ private fun CapsulePlayerLyricsHost(
                 playerConnection = playerConnection,
                 onToggleLike = playerConnection::toggleLike,
                 onExpandQueue = queueState::expandSoft,
+                onCollapse = playerState::collapseSoft,
                 onArtworkClick = onShowLyrics,
                 onArtistSelected = { artist ->
                     artist.id?.let { artistId ->

@@ -22,6 +22,14 @@ fun PlayerBackground(
     when (playerBackground) {
         PlayerBackgroundStyle.DEFAULT -> Unit
 
+        PlayerBackgroundStyle.CAPSULE_GLOW ->
+            CapsuleProceduralBackground(
+                effect = CapsuleBackgroundEffect.CAPSULE_GLOW,
+                colors = gradientColors,
+                modifier = modifier,
+                animated = false,
+            )
+
         PlayerBackgroundStyle.GRADIENT ->
             CapsuleProceduralBackground(
                 effect = CapsuleBackgroundEffect.MATTE_GRADIENT,

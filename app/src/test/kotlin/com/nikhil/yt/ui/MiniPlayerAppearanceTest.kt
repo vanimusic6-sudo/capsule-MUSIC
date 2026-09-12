@@ -27,6 +27,8 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.unit.dp
 import com.nikhil.yt.constants.MiniPlayerBackgroundStyle
 import com.nikhil.yt.ui.player.MiniPlayerSurface
+import com.nikhil.yt.ui.player.CapsuleBackgroundEffect
+import com.nikhil.yt.ui.player.CapsuleProceduralBackground
 import com.nikhil.yt.ui.player.miniPlayerProgress
 import java.io.File
 import kotlin.math.roundToInt
@@ -102,6 +104,31 @@ class MiniPlayerAppearanceTest {
             compose.runOnIdle { style = candidate }
             compose.runOnIdle { assertEquals(Color(0xFFF4F4F4), observedColor) }
         }
+    }
+
+    @Test fun capsuleGlowHasArtworkLightAtTheTopAndFadesToADarkLowerPlayer() {
+        var effect by mutableStateOf(CapsuleBackgroundEffect.CAPSULE_GLOW)
+        compose.setContent {
+            MaterialTheme(colorScheme = darkColorScheme()) {
+                CapsuleProceduralBackground(
+                    effect = effect,
+                    colors = listOf(Color(0xFFBC6242), Color(0xFFAB713E), Color(0xFF692842)),
+                    modifier = Modifier.size(200.dp, 400.dp).testTag("glow"),
+                    animated = false,
+                )
+            }
+        }
+        val glow = capture("glow")
+        val top = glow.getPixel(glow.width / 2, glow.height / 10)
+        val bottom = glow.getPixel(glow.width / 2, glow.height * 9 / 10)
+        assertTrue(android.graphics.Color.red(top) > android.graphics.Color.red(bottom) + 20)
+        assertTrue(android.graphics.Color.red(top) > android.graphics.Color.blue(top))
+        assertTrue(android.graphics.Color.red(bottom) < 20)
+        val output = File("build/reports/ui-previews/player-capsule-glow.png")
+        output.parentFile.mkdirs()
+        output.outputStream().use { glow.compress(Bitmap.CompressFormat.PNG, 100, it) }
+        compose.runOnIdle { effect = CapsuleBackgroundEffect.AMBIENT_GLOW }
+        assertTrue("Capsule Glow must have its own composition", !glow.sameAs(capture("glow")))
     }
 
     @Test fun progressHasADimUnplayedTrackAndResetsForUnknownDuration() {
