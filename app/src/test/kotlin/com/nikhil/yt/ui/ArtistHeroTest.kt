@@ -42,6 +42,7 @@ import com.nikhil.yt.ui.component.ArtistHeroLayout
 import com.nikhil.yt.ui.component.ArtistToolbar
 import com.nikhil.yt.ui.component.createArtistPortraitBlur
 import java.io.File
+import kotlinx.coroutines.runBlocking
 import kotlin.math.roundToInt
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -161,7 +162,8 @@ class ArtistHeroTest {
         painter.color = android.graphics.Color.rgb(245, 148, 40)
         sourceCanvas.drawOval(67f, 6f, 101f, 48f, painter)
         // Preview mode bypasses Coil transformations, so run the production blur on this fixture.
-        val previewHandler = AsyncImagePreviewHandler { createArtistPortraitBlur(source).asImage() }
+        val blurredSource = runBlocking { createArtistPortraitBlur(source) }
+        val previewHandler = AsyncImagePreviewHandler { blurredSource.asImage() }
         compose.setContent {
             CompositionLocalProvider(
                 LocalInspectionMode provides true,
