@@ -1,5 +1,10 @@
 name: YouTube client policy sync
 
+# This workflow maintains Capsule's legacy/browse client identity snapshot. Core
+# AUDIO playback uses InnerTubeX and is monitored separately by innertubex-drift.
+# Keep this sync fail-closed so an upstream yt-dlp schema rename cannot silently
+# make the PO-token safety check ineffective.
+
 on:
   workflow_dispatch:
   schedule:
@@ -79,6 +84,15 @@ jobs:
 
           source = source_path.read_text(encoding="utf-8")
           source_sha = os.environ["YTDLP_SOURCE_SHA"]
+
+          # The policy below depends on yt-dlp's PO_TOKEN marker. If upstream
+          # renames/removes that marker, continuing would turn the safety check
+          # into a silent fail-open. Stop and require a manual schema review.
+          if "PO_TOKEN" not in source:
+              raise RuntimeError(
+                  "yt-dlp YouTube client schema changed: PO_TOKEN marker is missing; "
+                  "manual policy review required"
+              )
 
           def client_block(name: str) -> str:
               marker = f"    '{name}': {{"
