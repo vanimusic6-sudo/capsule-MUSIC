@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -58,44 +59,26 @@ internal fun CapsulePlayerLayout(
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         if (light) {
-            Row(
-                modifier =
-                    Modifier
-                        .fillMaxWidth()
-                        .height(62.dp)
-                        .padding(horizontal = 20.dp, vertical = 6.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                CapsuleLightHeaderButton(
-                    iconRes = R.drawable.expand_more,
-                    contentDescription = stringResource(R.string.capsule_collapse_player),
-                    textColor = textColor,
-                    onClick = onCollapse,
-                )
-                CapsuleLightHeaderButton(
-                    iconRes = R.drawable.more_vert,
-                    contentDescription = stringResource(R.string.more),
-                    textColor = textColor,
-                    onClick = onMenuClick,
-                )
-            }
-
-            Spacer(Modifier.height(10.dp))
+            /*
+             * Capsule Light is deliberately cover-first. The reference keeps the
+             * artwork almost edge-to-edge and high on the screen, so the header
+             * actions float on the artwork instead of consuming a separate row.
+             */
+            Spacer(Modifier.height(18.dp))
 
             BoxWithConstraints(
                 modifier =
                     Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 28.dp),
+                        .padding(horizontal = 14.dp),
                 contentAlignment = Alignment.TopCenter,
             ) {
                 val targetSide =
                     when {
-                        screenHeight < 700.dp -> 292.dp
-                        screenHeight < 760.dp -> 320.dp
-                        screenHeight < 840.dp -> 348.dp
-                        else -> 370.dp
+                        screenHeight < 700.dp -> 245.dp
+                        screenHeight < 760.dp -> 290.dp
+                        screenHeight < 840.dp -> 335.dp
+                        else -> 380.dp
                     }
 
                 val artworkSide = minOf(maxWidth, targetSide)
@@ -104,7 +87,30 @@ internal fun CapsulePlayerLayout(
                     modifier = Modifier.size(artworkSide),
                     contentAlignment = Alignment.Center,
                 ) {
-                    artwork()
+                    Box(Modifier.fillMaxSize()) { artwork() }
+
+                    Row(
+                        modifier =
+                            Modifier
+                                .fillMaxWidth()
+                                .align(Alignment.TopCenter)
+                                .padding(12.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        CapsuleLightHeaderButton(
+                            iconRes = R.drawable.expand_more,
+                            contentDescription = stringResource(R.string.capsule_collapse_player),
+                            textColor = textColor,
+                            onClick = onCollapse,
+                        )
+                        CapsuleLightHeaderButton(
+                            iconRes = R.drawable.more_vert,
+                            contentDescription = stringResource(R.string.more),
+                            textColor = textColor,
+                            onClick = onMenuClick,
+                        )
+                    }
                 }
             }
 
@@ -142,15 +148,15 @@ private fun CapsuleLightHeaderButton(
         onClick = onClick,
         modifier =
             Modifier
-                .size(48.dp)
+                .size(46.dp)
                 .clip(shape)
-                .border(1.dp, textColor.copy(alpha = 0.09f), shape)
-                .background(Color.Black.copy(alpha = 0.16f)),
+                .border(1.dp, textColor.copy(alpha = 0.12f), shape)
+                .background(Color.Black.copy(alpha = 0.34f)),
     ) {
         Icon(
             painter = painterResource(iconRes),
             contentDescription = contentDescription,
-            tint = textColor.copy(alpha = 0.96f),
+            tint = textColor.copy(alpha = 0.98f),
             modifier = Modifier.size(24.dp),
         )
     }
