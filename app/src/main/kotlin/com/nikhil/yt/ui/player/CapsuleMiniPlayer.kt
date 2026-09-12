@@ -34,7 +34,6 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -70,7 +69,6 @@ import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -93,7 +91,6 @@ import com.nikhil.yt.utils.rememberEnumPreference
 import com.nikhil.yt.utils.rememberPreference
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
-import kotlin.math.roundToInt
 
 /**
  * MainActivity provides whether Capsule Dock is really visible under Mini Player.
@@ -208,15 +205,7 @@ fun CapsuleMiniPlayer(
             mutableFloatStateOf(0f)
         }
 
-    val animationSpec =
-        remember {
-            spring<Float>(
-                dampingRatio =
-                    Spring.DampingRatioNoBouncy,
-                stiffness =
-                    Spring.StiffnessMediumLow,
-            )
-        }
+    val animationSpec = MiniPlayerSwipeSpring
 
     val density = LocalDensity.current
     val normalizedSwipeSensitivity = swipeSensitivity.coerceIn(0f, 1f)
@@ -512,13 +501,10 @@ fun CapsuleMiniPlayer(
                 Modifier
                     .fillMaxWidth()
                     .fillMaxHeight()
-                    .offset {
-                        IntOffset(
-                            offsetXAnimatable.value
-                                .roundToInt(),
-                            0,
-                        )
-                    }
+                    .miniPlayerSwipeMotion(
+                        offset = { offsetXAnimatable.value },
+                        layoutDirection = layoutDirection,
+                    )
                     .clip(miniPlayerShape)
                     .background(Color.Transparent)
                     .border(
