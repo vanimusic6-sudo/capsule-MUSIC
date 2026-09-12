@@ -45,7 +45,7 @@ fun CapsuleAudioVideoToggle(
     modifier: Modifier = Modifier,
     lightStyle: Boolean = false,
 ) {
-    val shape = RoundedCornerShape(10.dp)
+    val shape = RoundedCornerShape(if (lightStyle) 14.dp else 10.dp)
     val videoResolving =
         state.preferredMode == CapsulePlaybackMode.VIDEO &&
             state.phase == CapsuleVideoPhase.RESOLVING
@@ -62,12 +62,16 @@ fun CapsuleAudioVideoToggle(
     Row(
         modifier =
             modifier
-                .width(if (lightStyle) 202.dp else 190.dp)
-                .height(if (lightStyle) 44.dp else 36.dp)
+                .width(if (lightStyle) 220.dp else 190.dp)
+                .height(if (lightStyle) 46.dp else 36.dp)
                 .clip(shape)
-                .background(textColor.copy(alpha = 0.018f))
-                .border(1.dp, textColor.copy(alpha = 0.18f), shape)
-                .padding(horizontal = 3.dp),
+                .background(textColor.copy(alpha = if (lightStyle) 0.025f else 0.018f))
+                .border(
+                    1.dp,
+                    textColor.copy(alpha = if (lightStyle) 0.16f else 0.18f),
+                    shape,
+                )
+                .padding(horizontal = 3.dp, vertical = if (lightStyle) 3.dp else 0.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         CapsuleModeSegment(
@@ -86,8 +90,8 @@ fun CapsuleAudioVideoToggle(
         Box(
             Modifier
                 .width(1.dp)
-                .height(18.dp)
-                .background(textColor.copy(alpha = 0.16f)),
+                .height(if (lightStyle) 22.dp else 18.dp)
+                .background(textColor.copy(alpha = if (lightStyle) 0.13f else 0.16f)),
         )
 
         CapsuleModeSegment(
@@ -129,15 +133,24 @@ private fun CapsuleModeSegment(
             animationSpec = tween(160),
             label = "capsuleModeScale",
         )
+    val selectionAlpha by
+        animateFloatAsState(
+            targetValue = if (lightStyle && selected) 0.065f else 0f,
+            animationSpec = tween(180),
+            label = "capsuleLightModeSelection",
+        )
+    val segmentShape = RoundedCornerShape(10.dp)
 
     Box(
         modifier =
             modifier
-                .height(if (lightStyle) 42.dp else 34.dp)
+                .height(if (lightStyle) 40.dp else 34.dp)
                 .graphicsLayer {
                     scaleX = scale
                     scaleY = scale
                 }
+                .clip(segmentShape)
+                .background(textColor.copy(alpha = selectionAlpha))
                 .clickable(
                     enabled = enabled && !loading,
                     onClick = onClick,
@@ -157,8 +170,8 @@ private fun CapsuleModeSegment(
                                 unavailable -> 0.24f
                                 requestError -> 0.56f
                                 !enabled -> 0.28f
-                                selected -> 0.94f
-                                else -> 0.46f
+                                selected -> 0.96f
+                                else -> if (lightStyle) 0.42f else 0.46f
                             },
                     ),
                 fontFamily = if (lightStyle) FontFamily.SansSerif else FontFamily.Monospace,
