@@ -43,8 +43,8 @@ import kotlinx.coroutines.sync.withLock
 
 /*
  * Artist metadata on playback items often contains only a browse ID. Keep the
- * resolved portrait URL independently from the dialog so the work can start as
- * soon as the track starts and the picker can open with warm images.
+ * resolved portrait URL independently from the dialog so already-known artwork
+ * can be warmed as soon as playback starts.
  */
 internal object ArtistPortraits {
     private val cache = LruCache<String, String>(96)
@@ -90,10 +90,13 @@ internal object ArtistPortraits {
 }
 
 /**
- * Warm portraits while a track is already playing rather than when the artist
- * chooser opens. Existing metadata/database thumbnails require no extra API
- * request. A remote artist lookup is only used when a chooser can actually be
- * needed (two or more navigable artists), which keeps request volume bounded.
+ * Warm artist portraits at track start without starting any extra YouTube API
+ * request in the background. We only use URLs that are already present in the
+ * playback metadata or local database and prime Coil's cache with those.
+ *
+ * If an artist has no known portrait yet, the chooser may resolve it normally
+ * when the user opens the menu. This keeps startup traffic predictable while
+ * still making the common case instant.
  */
 @Composable
 fun PreloadArtistPortraits(artists: List<MediaMetadata.Artist>) {
@@ -108,7 +111,6 @@ fun PreloadArtistPortraits(artists: List<MediaMetadata.Artist>) {
 
     LaunchedEffect(targets) {
         if (targets.isEmpty()) return@LaunchedEffect
-        val allowNetwork = targets.size > 1
 
         coroutineScope {
             targets.forEach { artist ->
@@ -119,14 +121,14 @@ fun PreloadArtistPortraits(artists: List<MediaMetadata.Artist>) {
                             ArtistPortraits.resolve(
                                 id = id,
                                 hintedUrl = artist.thumbnailUrl,
-                                allowNetwork = allowNetwork,
+                                allowNetwork = false,
                                 localLookup = {
                                     database.artist(id).first()?.thumbnailUrl
                                 },
                             )
 
                         if (!portrait.isNullOrBlank()) {
-                            context.imageLoader.execute(
+                            context.imageLoader.enqueue(
                                 ImageRequest.Builder(context)
                                     .data(portrait)
                                     .size(192, 192)
@@ -136,7 +138,7 @@ fun PreloadArtistPortraits(artists: List<MediaMetadata.Artist>) {
                     } catch (cancelled: CancellationException) {
                         throw cancelled
                     } catch (_: Exception) {
-                        // Best effort only. Opening the picker may retry the lookup.
+                        // Best effort only. Opening the picker may retry normally.
                     }
                 }
             }
