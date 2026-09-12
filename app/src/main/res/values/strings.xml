@@ -853,4 +853,8 @@ Velune will only extract your token, and everything else is stored locally.</str
     <string name="capsule_choose_artist">Choose artist</string>
     <string name="capsule_collapse_player">Collapse player</string>
     <string name="capsule_timer_minutes">%1$d min</string>
+    <string name="artist_load_failed">Could not load this artist. Try again.</string>
+    <string name="back">Back</string>
+    <string name="show_less">Show less</string>
+    <string name="show_more">Show more</string>
 </resources>

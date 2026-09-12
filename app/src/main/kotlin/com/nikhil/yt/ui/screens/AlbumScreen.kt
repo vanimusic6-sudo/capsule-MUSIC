@@ -13,7 +13,6 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.ui.unit.sp
 import com.nikhil.yt.ui.component.AlbumArtwork
-import com.nikhil.yt.ui.component.rememberArtworkGradientColors
 import com.nikhil.yt.ui.component.AlbumHeaderLayout
 import com.nikhil.yt.ui.component.AlbumHeaderPlaceholder
 import com.nikhil.yt.ui.component.AlbumScreenLayout
@@ -131,11 +130,7 @@ fun AlbumScreen(
     val systemBarsTopPadding = WindowInsets.systemBars.asPaddingValues().calculateTopPadding()
 
     val surfaceColor = if (StandardChrome.isDark) Color(0xFF090909) else StandardChrome.background
-    val albumGradientColors =
-        rememberArtworkGradientColors(
-            thumbnailUrl = albumWithSongs?.album?.thumbnailUrl,
-            fallbackColor = surfaceColor,
-        )
+
 
     val wrappedSongs = remember(albumWithSongs, hideExplicit) {
         val filteredSongs = if (hideExplicit) {
@@ -194,7 +189,6 @@ fun AlbumScreen(
 
     AlbumScreenLayout(
         background = surfaceColor,
-        gradientColors = albumGradientColors,
         state = lazyListState,
         content = {
             val albumWithSongs = albumWithSongs
@@ -206,7 +200,6 @@ fun AlbumScreen(
                             AlbumArtwork(
                                 thumbnailUrl = albumWithSongs.album.thumbnailUrl,
                                 background = surfaceColor,
-                                fadeColor = albumGradientColors.firstOrNull() ?: surfaceColor,
                             )
                         },
                         title = {

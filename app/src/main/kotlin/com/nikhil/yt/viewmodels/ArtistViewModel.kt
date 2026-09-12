@@ -24,6 +24,8 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
 import javax.inject.Inject
 import android.content.Context
 import com.nikhil.yt.constants.HideExplicitKey
@@ -46,6 +48,10 @@ class ArtistViewModel @Inject constructor(
 ) : ViewModel() {
     val artistId = savedStateHandle.get<String>("artistId")!!
     var artistPage by mutableStateOf<ArtistPage?>(null)
+    var isLoading by mutableStateOf(true)
+        private set
+    private var loadJob: Job? = null
+    private var loadGeneration = 0L
     val libraryArtist = database.artist(artistId)
         .stateIn(viewModelScope, SharingStarted.Lazily, null)
     val librarySongs = context.dataStore.data
@@ -77,7 +83,11 @@ class ArtistViewModel @Inject constructor(
     }
 
     fun fetchArtistsFromYTM() {
-        viewModelScope.launch {
+        loadJob?.cancel()
+        val generation = ++loadGeneration
+        isLoading = true
+        loadJob = viewModelScope.launch {
+            try {
             val hideExplicit = context.dataStore.get(HideExplicitKey, false)
             YouTube.artist(artistId)
                 .onSuccess { page ->
@@ -90,9 +100,14 @@ class ArtistViewModel @Inject constructor(
                         }
 
                     artistPage = page.copy(sections = filteredSections)
-                }.onFailure {
-                    reportException(it)
-                }
+                }.getOrThrow()
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                reportException(error)
+            } finally {
+                if (generation == loadGeneration) isLoading = false
+            }
         }
     }
 }

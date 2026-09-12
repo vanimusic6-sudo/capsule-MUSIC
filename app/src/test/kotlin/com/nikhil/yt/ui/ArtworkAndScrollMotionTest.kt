@@ -73,19 +73,19 @@ class ArtworkAndScrollMotionTest {
         return bitmap
     }
 
-    @Test fun albumFadesEquallyIntoThePageAtBothEdges() {
+    @Test fun albumPreservesThePortraitAndDissolvesIntoThePage() {
         val cover = Bitmap.createBitmap(200, 236, Bitmap.Config.ARGB_8888).apply { eraseColor(android.graphics.Color.WHITE) }.asImageBitmap()
         compose.setContent {
             AlbumArtworkLayers(BitmapPainter(cover), cover, Color(0xFF080808), Modifier.width(200.dp).testTag("album"))
         }
-        val frame = capture("album", "album-symmetric-fade")
+        val frame = capture("album", "album-reference-fade")
         val x = frame.width / 2
-        for (y in 0 until frame.height / 2) {
-            assertTrue("Top and bottom must match at row $y", abs(red(frame, x, y) - red(frame, x, frame.height - 1 - y)) <= 2)
+        assertTrue("Top navigation retains a scrim", red(frame, x, 0) in 100..160)
+        assertTrue("Upper portrait stays clear", red(frame, x, frame.height / 4) > 245)
+        assertTrue("Bottom joins the page without a seam", red(frame, x, frame.height - 1) in 8..12)
+        for (y in frame.height / 3 until frame.height - 1) {
+            assertTrue("Fade must not brighten again at row $y", red(frame, x, y + 1) <= red(frame, x, y) + 1)
         }
-        assertTrue(red(frame, x, 0) in 8..10)
-        assertTrue(red(frame, x, frame.height / 2) > 250)
-        assertTrue(red(frame, x, frame.height / 8) in 40..150)
     }
 
     @Test fun albumBlurSoftensOnlyTheEdgesAndKeepsTheCentreSharp() {
@@ -103,11 +103,11 @@ class ArtworkAndScrollMotionTest {
         compose.runOnIdle { useBlur = true }
         val softEdges = capture("album", "album-soft-edges-sharp-centre")
         fun detail(frame: Bitmap, y: Int): Long = (1 until frame.width - 1).sumOf { x -> abs(red(frame, x, y) - red(frame, x - 1, y)).toLong() }
-        for (y in listOf(sharp.height / 8, sharp.height - 1 - sharp.height / 8)) {
+        for (y in listOf(sharp.height * 3 / 4, sharp.height - 1 - sharp.height / 8)) {
             assertTrue("Edges should soften beyond the darkening alone", detail(softEdges, y) < detail(sharp, y) * 0.85)
         }
         for (x in 0 until sharp.width) {
-            assertEquals("Centre must retain the original pixels", sharp.getPixel(x, sharp.height / 2), softEdges.getPixel(x, softEdges.height / 2))
+            assertEquals("Upper portrait must retain the original pixels", sharp.getPixel(x, sharp.height / 3), softEdges.getPixel(x, softEdges.height / 3))
         }
     }
 

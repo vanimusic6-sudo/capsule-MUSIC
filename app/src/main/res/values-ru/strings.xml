@@ -792,4 +792,8 @@
     <string name="capsule_choose_artist">Выбор исполнителя</string>
     <string name="capsule_collapse_player">Свернуть плеер</string>
     <string name="capsule_timer_minutes">%1$d мин</string>
+    <string name="artist_load_failed">Не удалось загрузить исполнителя. Попробуйте ещё раз.</string>
+    <string name="back">Назад</string>
+    <string name="show_less">Свернуть</string>
+    <string name="show_more">Подробнее</string>
 </resources>

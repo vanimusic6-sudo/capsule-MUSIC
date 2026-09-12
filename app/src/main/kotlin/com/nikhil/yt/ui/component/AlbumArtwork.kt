@@ -40,7 +40,6 @@ fun AlbumArtwork(
     thumbnailUrl: String?,
     background: Color,
     modifier: Modifier = Modifier,
-    fadeColor: Color = background,
 ) {
     val context = LocalContext.current
     val sizeResolver = rememberConstraintsSizeResolver()
@@ -64,7 +63,6 @@ fun AlbumArtwork(
         background = background,
         modifier = modifier,
         imageModifier = Modifier.then(sizeResolver),
-        fadeColor = fadeColor,
     )
 }
 
@@ -75,7 +73,6 @@ internal fun AlbumArtworkLayers(
     background: Color,
     modifier: Modifier = Modifier,
     imageModifier: Modifier = Modifier,
-    fadeColor: Color = background,
 ) {
     Box(modifier.widthIn(max = 560.dp).fillMaxWidth().aspectRatio(0.85f).background(background)) {
         Image(painter, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize().then(imageModifier))
@@ -86,8 +83,8 @@ internal fun AlbumArtworkLayers(
                     .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
                     .drawWithCache {
                         val edgeMask = Brush.verticalGradient(
-                            0f to Color.White, 0.28f to Color.Transparent,
-                            0.72f to Color.Transparent, 1f to Color.White,
+                            0f to Color.Transparent, 0.52f to Color.Transparent,
+                            0.86f to Color.White, 1f to Color.White,
                         )
                         onDrawWithContent {
                             drawContent()
@@ -96,16 +93,6 @@ internal fun AlbumArtworkLayers(
                     },
             )
         }
-        Box(
-            Modifier.matchParentSize().background(
-                Brush.verticalGradient(
-                    0f to background,
-                    0.30f to Color.Transparent,
-                    0.64f to Color.Transparent,
-                    0.82f to fadeColor.copy(alpha = 0.34f),
-                    1f to background,
-                ),
-            ),
-        )
+        ArtworkSurfaceFade(background, Modifier.matchParentSize())
     }
 }
