@@ -343,6 +343,7 @@ fun CapsulePlayerContent(
         textColor = textColor,
         onCollapse = onCollapse,
         onMenuClick = onMenuClick,
+        onExpandQueue = onExpandQueue,
         modifier =
             Modifier
                 .fillMaxSize()

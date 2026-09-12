@@ -1,5 +1,12 @@
 package com.nikhil.yt.ui.player
 
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.rememberScrollState
@@ -50,6 +57,7 @@ internal fun CapsulePlayerLayout(
     onCollapse: () -> Unit,
     onMenuClick: () -> Unit,
     modifier: Modifier = Modifier,
+    onExpandQueue: () -> Unit = {},
     artwork: @Composable () -> Unit,
     details: @Composable () -> Unit,
 ) {
@@ -62,8 +70,45 @@ internal fun CapsulePlayerLayout(
                 (maxWidth - 48.dp).coerceAtLeast(120.dp),
                 (maxHeight - detailsSpace).coerceIn(180.dp, 420.dp),
             )
+            val scrollState = rememberScrollState()
+            val openQueue by rememberUpdatedState(onExpandQueue)
+            val queueThreshold = with(LocalDensity.current) { 64.dp.toPx() }
+            // A downward pull past the top keeps Capsule's existing queue gesture.
+            // Scrolling back through the controls must not open the queue.
+            val queueScroll = remember(scrollState, queueThreshold) {
+                object : NestedScrollConnection {
+                    var pulled = 0f
+                    var opened = false
+
+                    override fun onPostScroll(
+                        consumed: Offset,
+                        available: Offset,
+                        source: NestedScrollSource,
+                    ): Offset {
+                        if (source != NestedScrollSource.UserInput) return Offset.Zero
+                        if (available.y > 0f && scrollState.value == 0) {
+                            pulled += available.y
+                            if (!opened && pulled >= queueThreshold) {
+                                opened = true
+                                openQueue()
+                            }
+                            return Offset(0f, available.y)
+                        }
+                        if (consumed.y != 0f || available.y < 0f) pulled = 0f
+                        return Offset.Zero
+                    }
+
+                    override suspend fun onPreFling(available: Velocity): Velocity {
+                        val wasPulling = pulled > 0f || opened
+                        pulled = 0f
+                        opened = false
+                        return if (wasPulling) Velocity(0f, available.y) else Velocity.Zero
+                    }
+                }
+            }
             Column(
-                modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState()),
+                modifier = Modifier.fillMaxWidth().nestedScroll(queueScroll)
+                    .verticalScroll(scrollState, enabled = scrollState.maxValue > 0),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
                 Spacer(Modifier.height(8.dp))
