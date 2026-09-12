@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -78,7 +79,13 @@ internal fun ArtistHeroLayout(
                 .padding(top = topSafePadding + 72.dp, bottom = 14.dp),
             verticalArrangement = Arrangement.Bottom,
         ) {
-            Box(Modifier.fillMaxWidth().padding(horizontal = 14.dp)) { title() }
+            // Keep the action rows exactly where they are, but let the artist name sit a
+            // little deeper in the artwork/fade like the reference composition.
+            Box(
+                Modifier.fillMaxWidth()
+                    .padding(horizontal = 14.dp)
+                    .offset(y = (-10).dp),
+            ) { title() }
             Spacer(Modifier.height(24.dp))
             Column(Modifier.fillMaxWidth().padding(horizontal = 22.dp)) { actions() }
         }
