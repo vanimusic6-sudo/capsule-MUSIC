@@ -14,16 +14,16 @@ import coil3.request.ImageRequest
 import com.nikhil.yt.innertube.toHighResThumbnail
 import com.nikhil.yt.models.MediaMetadata
 import com.nikhil.yt.ui.component.PreloadArtistPortraits
-import kotlinx.coroutines.CancellationException
 
 private const val CAPSULE_FULL_ARTWORK_PREFETCH_SIZE = 960
 
 /**
  * The full player is normally collapsed when a track begins. Warm its high-res
- * cover immediately instead of waiting for the user to expand the sheet. Artist
- * portraits are warmed at the same time by [PreloadArtistPortraits].
+ * cover immediately instead of waiting for the user to expand the sheet.
  *
- * Prefetch is deliberately best-effort: playback must never wait for artwork.
+ * This uses Coil's normal non-blocking enqueue path and only the thumbnail URL
+ * already present in playback metadata. It does not perform any additional
+ * metadata/API lookup in the background.
  */
 @Composable
 internal fun PreloadCapsuleTrackAssets(mediaMetadata: MediaMetadata?) {
@@ -33,8 +33,8 @@ internal fun PreloadCapsuleTrackAssets(mediaMetadata: MediaMetadata?) {
     LaunchedEffect(mediaMetadata?.id, artworkUrl) {
         if (artworkUrl.isNullOrBlank()) return@LaunchedEffect
 
-        try {
-            context.imageLoader.execute(
+        runCatching {
+            context.imageLoader.enqueue(
                 ImageRequest.Builder(context)
                     .data(artworkUrl)
                     .size(
@@ -43,10 +43,6 @@ internal fun PreloadCapsuleTrackAssets(mediaMetadata: MediaMetadata?) {
                     )
                     .build(),
             )
-        } catch (cancelled: CancellationException) {
-            throw cancelled
-        } catch (_: Exception) {
-            // A later AsyncImage load is still allowed to retry normally.
         }
     }
 
