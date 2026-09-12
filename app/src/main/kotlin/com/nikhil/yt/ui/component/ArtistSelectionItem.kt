@@ -52,8 +52,10 @@ internal object ArtistPortraits {
 
     fun peek(id: String?): String? = id?.let(cache::get)
 
-    private fun put(id: String, url: String): String =
+    fun prime(id: String, url: String): String =
         url.also { cache.put(id, it) }
+
+    private fun put(id: String, url: String): String = prime(id, url)
 
     suspend fun resolve(
         id: String,
@@ -90,13 +92,10 @@ internal object ArtistPortraits {
 }
 
 /**
- * Warm artist portraits at track start without starting any extra YouTube API
- * request in the background. We only use URLs that are already present in the
- * playback metadata or local database and prime Coil's cache with those.
- *
- * If an artist has no known portrait yet, the chooser may resolve it normally
- * when the user opens the menu. This keeps startup traffic predictable while
- * still making the common case instant.
+ * Warm portraits as soon as the track starts. Metadata/database portraits are
+ * always primed. For a real multi-artist chooser, missing portraits are also
+ * resolved in the background, capped to four artists so playback startup never
+ * turns into an unbounded metadata sweep.
  */
 @Composable
 fun PreloadArtistPortraits(artists: List<MediaMetadata.Artist>) {
@@ -107,25 +106,39 @@ fun PreloadArtistPortraits(artists: List<MediaMetadata.Artist>) {
             artists
                 .filter { !it.id.isNullOrBlank() }
                 .distinctBy { it.id }
+                .take(4)
         }
 
     LaunchedEffect(targets) {
         if (targets.isEmpty()) return@LaunchedEffect
+        val allowNetwork = targets.size > 1
 
         coroutineScope {
             targets.forEach { artist ->
                 launch {
                     val id = artist.id ?: return@launch
                     try {
+                        val hintedPortrait = artist.thumbnailUrl?.takeIf { it.isNotBlank() }
+                        val databasePortrait =
+                            if (hintedPortrait == null) {
+                                database.artist(id).first()?.thumbnailUrl?.takeIf { it.isNotBlank() }
+                            } else {
+                                null
+                            }
+
                         val portrait =
-                            ArtistPortraits.resolve(
-                                id = id,
-                                hintedUrl = artist.thumbnailUrl,
-                                allowNetwork = false,
-                                localLookup = {
-                                    database.artist(id).first()?.thumbnailUrl
-                                },
-                            )
+                            when {
+                                hintedPortrait != null -> ArtistPortraits.prime(id, hintedPortrait)
+                                databasePortrait != null -> ArtistPortraits.prime(id, databasePortrait)
+                                allowNetwork ->
+                                    ArtistPortraits.resolve(
+                                        id = id,
+                                        hintedUrl = null,
+                                        allowNetwork = true,
+                                        localLookup = { null },
+                                    )
+                                else -> null
+                            }
 
                         if (!portrait.isNullOrBlank()) {
                             context.imageLoader.enqueue(
