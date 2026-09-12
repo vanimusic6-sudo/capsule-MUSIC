@@ -101,6 +101,51 @@ fun BottomSheetPlayer(
     val canSkipNext by playerConnection.canSkipNext.collectAsState()
     val automix by playerConnection.service.automixItems.collectAsState()
 
+    /*
+     * Playback metadata can arrive before Room relations. Merge the richer
+     * local artist/album information as soon as it becomes available, but keep
+     * the same MediaMetadata object shape used by the rest of the player.
+     */
+    val enrichedMetadata =
+        remember(mediaMetadata, currentSong) {
+            val metadata = mediaMetadata ?: return@remember null
+            val databaseArtists = currentSong?.artists?.associateBy { it.id }.orEmpty()
+            val enrichedArtists =
+                metadata.artists.map { artist ->
+                    if (!artist.thumbnailUrl.isNullOrBlank()) {
+                        artist
+                    } else {
+                        artist.copy(
+                            thumbnailUrl = artist.id?.let { databaseArtists[it]?.thumbnailUrl },
+                        )
+                    }
+                }
+
+            val album =
+                metadata.album
+                    ?: currentSong?.album?.let {
+                        MediaMetadata.Album(
+                            id = it.id,
+                            title = it.title,
+                        )
+                    }
+                    ?: currentSong?.song?.albumId?.let { albumId ->
+                        MediaMetadata.Album(
+                            id = albumId,
+                            title = currentSong?.song?.albumName.orEmpty(),
+                        )
+                    }
+
+            metadata.copy(
+                artists = enrichedArtists,
+                thumbnailUrl = metadata.thumbnailUrl ?: currentSong?.song?.thumbnailUrl,
+                album = album,
+            )
+        }
+
+    /* Start cover + portrait work while the full player is still collapsed. */
+    PreloadCapsuleTrackAssets(enrichedMetadata)
+
     var position by remember(mediaMetadata?.id) {
         mutableLongStateOf(playerConnection.player.currentPosition.coerceAtLeast(0L))
     }
@@ -142,7 +187,7 @@ fun BottomSheetPlayer(
         playerBackground != PlayerBackgroundStyle.DEFAULT
     val gradientColors =
         rememberCapsuleArtworkColors(
-            mediaMetadata = mediaMetadata,
+            mediaMetadata = enrichedMetadata,
             enabled = needsArtworkPalette,
         )
 
@@ -194,34 +239,6 @@ fun BottomSheetPlayer(
             )
         },
     ) {
-        val enrichedMetadata =
-            remember(mediaMetadata, currentSong) {
-                val metadata = mediaMetadata ?: return@remember null
-                if (metadata.album != null) return@remember metadata
-
-                val databaseAlbum = currentSong?.album
-                val databaseAlbumId = currentSong?.song?.albumId
-                when {
-                    databaseAlbum != null ->
-                        metadata.copy(
-                            album =
-                                MediaMetadata.Album(
-                                    id = databaseAlbum.id,
-                                    title = databaseAlbum.title,
-                                ),
-                        )
-                    databaseAlbumId != null ->
-                        metadata.copy(
-                            album =
-                                MediaMetadata.Album(
-                                    id = databaseAlbumId,
-                                    title = currentSong?.song?.albumName.orEmpty(),
-                                ),
-                        )
-                    else -> metadata
-                }
-            }
-
         Box(modifier = Modifier.fillMaxSize()) {
             if (!state.isCollapsed) {
                 PlayerBackground(
