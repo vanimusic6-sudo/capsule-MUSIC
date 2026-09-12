@@ -38,12 +38,26 @@ internal class AudioResolveScheduler(
     private val waiting = mutableListOf<Ticket>()
     private var active: Ticket? = null
     private var nextDownloadStartMs: Long? = null
+    private val pendingPlaybackPromotions = mutableMapOf<String, Long>()
 
     fun promote(mediaId: String) = synchronized(lock) {
         val nowMs = monotonicNowMs()
-        (waiting + listOfNotNull(active)).filter {
-            it.mediaId == mediaId && it.priority == AudioResolvePriority.PREFETCH
-        }.forEach { ticket ->
+        val matches =
+            (waiting + listOfNotNull(active)).filter {
+                it.mediaId == mediaId && it.priority == AudioResolvePriority.PREFETCH
+            }
+
+        if (matches.isEmpty()) {
+            /*
+             * ResolvingDataSource can demand the track a few milliseconds before
+             * the shared prefetch creates its scheduler ticket. Remember that
+             * foreground demand briefly so the next PREFETCH-labelled run starts
+             * as PLAYBACK instead of losing its fallback chain.
+             */
+            pendingPlaybackPromotions[mediaId] = nowMs
+        }
+
+        matches.forEach { ticket ->
             ticket.priority = AudioResolvePriority.PLAYBACK
             val startedAtMs = ticket.workerStartedAtMs
             if (
@@ -62,8 +76,53 @@ internal class AudioResolveScheduler(
         preemptBackground()
     }
 
+    /**
+     * Returns the priority the resolver should use *now*.
+     *
+     * A young shared PREFETCH can be promoted while its extractor call is still
+     * running. The fallback layer must observe that promotion too; otherwise the
+     * scheduler says PLAYBACK while the client plan remains stuck at PREFETCH.
+     */
+    fun effectivePriority(
+        mediaId: String,
+        fallback: AudioResolvePriority,
+    ): AudioResolvePriority =
+        synchronized(lock) {
+            val ticketPriority =
+                (waiting + listOfNotNull(active))
+                    .asSequence()
+                    .filter { it.mediaId == mediaId }
+                    .minByOrNull { it.priority.schedulingRank }
+                    ?.priority
+            if (ticketPriority != null) return@synchronized ticketPriority
+
+            val promotedAt = pendingPlaybackPromotions[mediaId]
+            if (
+                fallback == AudioResolvePriority.PREFETCH &&
+                promotedAt != null &&
+                monotonicNowMs() - promotedAt in 0 until PENDING_PLAYBACK_PROMOTION_TTL_MS
+            ) {
+                AudioResolvePriority.PLAYBACK
+            } else {
+                fallback
+            }
+        }
+
     suspend fun <T> run(mediaId: String, priority: AudioResolvePriority, block: suspend () -> T): T {
-        var effectivePriority = priority
+        var effectivePriority =
+            synchronized(lock) {
+                val promotedAt = pendingPlaybackPromotions.remove(mediaId)
+                if (
+                    priority == AudioResolvePriority.PREFETCH &&
+                    promotedAt != null &&
+                    monotonicNowMs() - promotedAt in 0 until PENDING_PLAYBACK_PROMOTION_TTL_MS
+                ) {
+                    AudioResolvePriority.PLAYBACK
+                } else {
+                    priority
+                }
+            }
+
         while (true) {
             currentCoroutineContext().ensureActive()
             val ticket = Ticket(mediaId, effectivePriority)
@@ -141,5 +200,6 @@ internal class AudioResolveScheduler(
 
     private companion object {
         const val PROMOTED_PREFETCH_RESTART_AFTER_MS = 4_000L
+        const val PENDING_PLAYBACK_PROMOTION_TTL_MS = 10_000L
     }
 }
