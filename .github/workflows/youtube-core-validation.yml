@@ -143,7 +143,7 @@ jobs:
 
       # Opt-in visual review for UI commits; no repository writes or device data.
       - name: Export requested UI previews
-        if: success() && contains(github.event.head_commit.message, '[ui-review]')
+        if: always() && contains(github.event.head_commit.message, '[ui-review]')
         shell: bash
         run: |
           python3 - <<'PY'

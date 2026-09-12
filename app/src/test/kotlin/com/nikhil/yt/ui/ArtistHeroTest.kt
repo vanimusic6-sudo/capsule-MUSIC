@@ -1,5 +1,10 @@
 package com.nikhil.yt.ui
 
+import androidx.compose.ui.platform.LocalInspectionMode
+import coil3.annotation.ExperimentalCoilApi
+import coil3.asImage
+import coil3.compose.AsyncImagePreviewHandler
+import coil3.compose.LocalAsyncImagePreviewHandler
 import android.app.Application
 import android.graphics.Bitmap
 import android.graphics.Canvas
@@ -134,6 +139,7 @@ class ArtistHeroTest {
     }
 
 
+    @OptIn(ExperimentalCoilApi::class)
     @Test fun uncroppedPhotoKeepsItsEdgesAndLowerBodyVisible() {
         val source = Bitmap.createBitmap(120, 180, Bitmap.Config.ARGB_8888)
         source.eraseColor(android.graphics.Color.rgb(40, 70, 150))
@@ -143,17 +149,22 @@ class ArtistHeroTest {
         sourceCanvas.drawRect(0f, 0f, 4f, 180f, painter)
         painter.color = android.graphics.Color.rgb(13, 187, 170)
         sourceCanvas.drawRect(116f, 0f, 120f, 180f, painter)
-        val photo = File(compose.activity.cacheDir, "artist-portrait-fixture.png")
-        photo.outputStream().use { source.compress(Bitmap.CompressFormat.PNG, 100, it) }
+        // Keep the real AsyncImage sizing and fade; inject pixels independently of file decoding.
+        val previewHandler = AsyncImagePreviewHandler { source.asImage() }
         compose.setContent {
-            MaterialTheme(colorScheme = darkColorScheme()) {
-                ArtistHero(
-                    name = "Pyrokinesis", thumbnailUrl = "file://${photo.absolutePath}",
-                    background = Color(0xFF090909), subscribed = false,
-                    canSubscribe = true, canShuffle = true, showRadio = true, canRadio = true,
-                    onSubscribe = {}, onShuffle = {}, onRadio = {},
-                    modifier = Modifier.width(393.dp).testTag("hero"),
-                )
+            CompositionLocalProvider(
+                LocalInspectionMode provides true,
+                LocalAsyncImagePreviewHandler provides previewHandler,
+            ) {
+                MaterialTheme(colorScheme = darkColorScheme()) {
+                    ArtistHero(
+                        name = "Pyrokinesis", thumbnailUrl = "test://artist-portrait",
+                        background = Color(0xFF090909), subscribed = false,
+                        canSubscribe = true, canShuffle = true, showRadio = true, canRadio = true,
+                        onSubscribe = {}, onShuffle = {}, onRadio = {},
+                        modifier = Modifier.width(393.dp).testTag("hero"),
+                    )
+                }
             }
         }
         fun capture(): Bitmap {
@@ -167,19 +178,16 @@ class ArtistHeroTest {
             }
             return result
         }
-        compose.waitUntil(timeoutMillis = 15_000) {
-            val image = capture()
-            val x = (image.width * 0.02f).roundToInt()
-            val y = (image.width * 1.5f * 0.24f).roundToInt()
-            android.graphics.Color.red(image.getPixel(x, y)) > 100
-        }
+        compose.waitForIdle()
+        savePreview("artist-full-portrait")
         val image = capture()
         val edgeY = (image.width * 1.5f * 0.24f).roundToInt()
+        val left = image.getPixel((image.width * 0.02f).roundToInt(), edgeY)
+        assertTrue("The left edge of the original photograph is cropped", android.graphics.Color.red(left) > 100)
         val right = image.getPixel((image.width * 0.98f).roundToInt(), edgeY)
         assertTrue("The right edge of the original photograph is cropped", android.graphics.Color.green(right) > 100)
         val lowerBody = image.getPixel(image.width / 2, (image.width * 1.5f * 0.7f).roundToInt())
         assertTrue("The fade hides the lower portrait too early", android.graphics.Color.blue(lowerBody) > 70)
-        savePreview("artist-full-portrait")
     }
 
     private fun savePreview(name: String) {
