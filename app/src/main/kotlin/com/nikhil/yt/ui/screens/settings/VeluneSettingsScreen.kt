@@ -54,8 +54,8 @@ fun VeluneSettingsScreen(
                 modifier = Modifier.capsuleSceneItem(
                     state = sceneMotion,
                     order = 0,
-                    lift = 8.dp,
-                    depth = 0.004f,
+                    lift = 3.dp,
+                    depth = 0.0012f,
                 ),
                 title = { Text("Settings", fontSize = 20.sp) },
                 navigationIcon = {
@@ -87,8 +87,8 @@ fun VeluneSettingsScreen(
                         .capsuleSceneItem(
                             state = sceneMotion,
                             order = 1,
-                            lift = 14.dp,
-                            depth = 0.007f,
+                            lift = 5.dp,
+                            depth = 0.0016f,
                         )
                         .padding(vertical = 16.dp, horizontal = 4.dp),
                     verticalAlignment = Alignment.CenterVertically
