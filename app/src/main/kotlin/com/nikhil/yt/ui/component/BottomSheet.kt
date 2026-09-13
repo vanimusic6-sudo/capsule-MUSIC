@@ -11,7 +11,6 @@ import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.AnimationSpec
 import androidx.compose.animation.core.AnimationVector1D
 import androidx.compose.animation.core.VectorConverter
-import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.DraggableState
@@ -33,7 +32,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
@@ -55,9 +53,6 @@ import com.nikhil.yt.constants.BottomSheetSoftAnimationSpec
 import com.nikhil.yt.constants.BottomSheetSoftCollapseAnimationSpec
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
-import kotlinx.coroutines.flow.collectLatest
-import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 
 /**
@@ -65,8 +60,6 @@ import kotlinx.coroutines.launch
  *
  * Animated value/velocity reads deliberately live in layout/layer lambdas. That lets Compose
  * invalidate only position or the GPU layer on each frame instead of recomposing the whole player.
- * The mini-player is mounted only near its docking zone, so its slow procedural background does not
- * keep drawing invisibly behind the full player.
  */
 @Composable
 fun BottomSheet(
@@ -77,22 +70,22 @@ fun BottomSheet(
     collapsedContent: @Composable BoxScope.() -> Unit,
     content: @Composable BoxScope.() -> Unit,
 ) {
+    /*
+     * Keep the mini-player composition alive for the lifetime of an active queue. Recreating it
+     * after every full-player close caused Room-backed subscribe state to bootstrap again and replay
+     * the plus -> check morph even though the user had not subscribed again.
+     */
     val shouldComposeMini by
         remember(state, onDismiss) {
             derivedStateOf {
-                val exists = onDismiss == null || !state.isDismissed
-                exists &&
-                    (
-                        state.isCollapsed ||
-                            state.visualProgress < 0.46f
-                    )
+                onDismiss == null || !state.isDismissed
             }
         }
     val canReopen by
         remember(state, onDismiss) {
             derivedStateOf {
                 (onDismiss == null || !state.isDismissed) &&
-                    state.visualProgress < 0.46f
+                    state.progress < 0.46f
             }
         }
 
@@ -109,7 +102,7 @@ fun BottomSheet(
                 }
                 .bottomSheetDraggable(state, onDismiss)
                 .graphicsLayer {
-                    val motionProgress = state.visualProgress
+                    val motionProgress = state.progress
                     val topCornerRadius = 22.dp * (1f - motionProgress)
                     shape =
                         RoundedCornerShape(
@@ -123,12 +116,6 @@ fun BottomSheet(
             BackHandler(onBack = state::collapseSoft)
         }
 
-        /*
-         * Compose the mini-player before it becomes visible so docking/reversal are continuous, but
-         * stop its flows and procedural background while it is completely hidden by the full page.
-         * CapsuleSubscribeIcon treats the short Room bootstrap window as restoration, so remounting
-         * this subtree can no longer replay a fake plus-to-check morph.
-         */
         if (shouldComposeMini) {
             Box(
                 modifier =
@@ -144,7 +131,7 @@ fun BottomSheet(
                         }
                         .graphicsLayer {
                             val rawProgress = state.rawProgress
-                            val motionProgress = state.visualProgress
+                            val motionProgress = state.progress
                             val closingVelocity =
                                 (-state.animationVelocity.value).coerceAtLeast(0f)
                             val closingVelocityWeight =
@@ -160,8 +147,8 @@ fun BottomSheet(
                                 )
                             val impact = rawImpact * rawImpact * (3f - 2f * rawImpact)
 
-                            scaleX = 1f + 0.0038f * impact
-                            scaleY = 1f - 0.0062f * impact
+                            scaleX = 1f + 0.0032f * impact
+                            scaleY = 1f - 0.0052f * impact
                             transformOrigin = TransformOrigin(0.5f, 0.5f)
                         }
                         .clickable(
@@ -176,17 +163,13 @@ fun BottomSheet(
             )
         }
 
-        /*
-         * Full content is not kept alive at rest while collapsed, so animated backgrounds and player
-         * internals still cost nothing there. During travel only offset/layer properties are updated.
-         */
         if (!state.isCollapsed) {
             Box(
                 modifier =
                     Modifier
                         .fillMaxSize()
                         .offset {
-                            val motionProgress = state.visualProgress
+                            val motionProgress = state.progress
                             val revealOffset =
                                 state.collapsedBound *
                                     (1f - motionProgress)
@@ -196,7 +179,7 @@ fun BottomSheet(
                             )
                         }
                         .graphicsLayer {
-                            val motionProgress = state.visualProgress
+                            val motionProgress = state.progress
                             val openingVelocity =
                                 state.animationVelocity.value.coerceAtLeast(0f)
                             val openingVelocityWeight =
@@ -206,8 +189,8 @@ fun BottomSheet(
                             val rawImpact = openingVelocityWeight * openingDockWeight
                             val impact = rawImpact * rawImpact * (3f - 2f * rawImpact)
 
-                            scaleX = 1f - 0.00105f * impact
-                            scaleY = 1f + 0.00275f * impact
+                            scaleX = 1f - 0.00085f * impact
+                            scaleY = 1f + 0.0022f * impact
                             transformOrigin = TransformOrigin(0.5f, 1f)
                         }
                         .background(backgroundColor),
@@ -248,69 +231,23 @@ class BottomSheetState(
         value == animatable.upperBound
     }
 
-    private fun currentRawProgress(): Float {
-        val range = animatable.upperBound!! - collapsedBound
-        if (range == 0.dp) return 0f
-        return 1f - (animatable.upperBound!! - animatable.value) / range
-    }
-
     /** Physical anchor progress, intentionally allowed to overshoot for impact calculations. */
     val rawProgress by derivedStateOf {
-        currentRawProgress()
+        val range = animatable.upperBound!! - collapsedBound
+        if (range == 0.dp) {
+            0f
+        } else {
+            1f - (animatable.upperBound!! - animatable.value) / range
+        }
     }
 
     /**
-     * Smooth physical progress used by the player itself. This follows every drag/spring frame, but
-     * reaches both anchors with zero visual acceleration so large surfaces do not look abrupt.
+     * Visual docking progress. Quintic smootherstep reaches both anchors with zero velocity and
+     * acceleration without creating a second animation engine inside BottomSheetState.
      */
-    val visualProgress by derivedStateOf {
+    val progress by derivedStateOf {
         val p = rawProgress.coerceIn(0f, 1f)
         p * p * p * (p * (p * 6f - 15f) + 10f)
-    }
-
-    /*
-     * Bottom navigation is deliberately NOT tied pixel-for-pixel to the player anymore. It yields
-     * after the player has clearly started opening and begins returning before the player reaches
-     * the mini-player dock. The two pieces therefore rendezvous instead of one mechanically pushing
-     * the other. Direction-sensitive thresholds provide hysteresis during drag reversals.
-     */
-    private val chromeProgress =
-        Animatable(if (currentRawProgress() > 0.16f) 1f else 0f)
-    private var chromeYielded = chromeProgress.value > 0.5f
-
-    /** Independent progress consumed by external chrome such as MainActivity's bottom navigation. */
-    val progress by chromeProgress.asState()
-
-    init {
-        coroutineScope.launch {
-            var previous = currentRawProgress()
-            snapshotFlow { currentRawProgress() }
-                .map { current ->
-                    val opening = current > previous + 0.001f
-                    val closing = current < previous - 0.001f
-                    previous = current
-
-                    when {
-                        opening && current >= 0.14f -> true
-                        closing && current <= 0.34f -> false
-                        current >= 0.78f -> true
-                        current <= 0.02f -> false
-                        else -> chromeYielded
-                    }
-                }
-                .distinctUntilChanged()
-                .collectLatest { shouldYield ->
-                    chromeYielded = shouldYield
-                    chromeProgress.animateTo(
-                        targetValue = if (shouldYield) 1f else 0f,
-                        animationSpec =
-                            spring(
-                                dampingRatio = 0.90f,
-                                stiffness = 125f,
-                            ),
-                    )
-                }
-        }
     }
 
     fun collapse(animationSpec: AnimationSpec<Dp>) {
