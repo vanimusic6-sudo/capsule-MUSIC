@@ -3,12 +3,12 @@ package com.nikhil.yt.ui.screens
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.withFrameNanos
 import androidx.navigation.NavHostController
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.yield
 
 @Composable
 internal fun rememberMainTabNavigator(navController: NavHostController): MainTabNavigator {
@@ -17,12 +17,14 @@ internal fun rememberMainTabNavigator(navController: NavHostController): MainTab
 }
 
 /**
- * Coalesce only taps that happen in the same UI turn; never wait for an animation to finish.
+ * Coalesce only taps that land before the next UI frame; never wait for an animation to finish.
  *
  * The old implementation waited for Lifecycle.RESUMED, which created a very noticeable cooldown
  * between tabs. Fully synchronous navigation removed that delay but could briefly visit every route
- * in a burst of taps. One yield gives multiple taps in the same frame a chance to collapse into the
- * newest request, while taps on later frames can still retarget an in-flight NavHost transition.
+ * in a burst of taps. Waiting for exactly one Compose frame lets a same-frame burst collapse into
+ * the newest request, while a tap on the following frame can immediately retarget an in-flight
+ * NavHost transition. In practice the input latency is one frame rather than the lifetime of a
+ * spring animation.
  */
 internal class MainTabNavigator(
     private val navController: NavHostController,
@@ -36,10 +38,10 @@ internal class MainTabNavigator(
         val originEntry = navController.currentBackStackEntry ?: return
         pendingNavigation =
             scope.launch(start = CoroutineStart.UNDISPATCHED) {
-                yield()
+                withFrameNanos { }
 
-                // A back press or unrelated navigation that happened during this one-frame window
-                // invalidates the stale tab request instead of reopening an old destination.
+                // A back press or unrelated navigation during this one-frame window invalidates the
+                // stale request instead of reopening a destination the user has already left.
                 if (navController.currentBackStackEntry !== originEntry) return@launch
 
                 if (originEntry.destination.route == route) {
