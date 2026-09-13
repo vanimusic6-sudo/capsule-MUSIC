@@ -1,11 +1,12 @@
 package com.nikhil.yt.ui.component
 
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
@@ -15,8 +16,9 @@ import androidx.compose.ui.graphics.StrokeCap
  * A real geometric morph between the subscribe plus and the subscribed check mark.
  *
  * Both glyphs are represented by the same two strokes, so changing state never swaps one
- * drawable for another. The stroke endpoints simply flow into their new positions and the
- * animation can reverse cleanly even if the state changes before it has finished.
+ * drawable for another. The animation starts from the actual subscription state on first
+ * composition; only a real later state change triggers the morph. Reopening/remounting the
+ * mini-player therefore cannot replay a fake plus-to-check animation.
  */
 @Composable
 internal fun CapsuleSubscribeIcon(
@@ -24,11 +26,16 @@ internal fun CapsuleSubscribeIcon(
     tint: Color,
     modifier: Modifier = Modifier,
 ) {
-    val progress by animateFloatAsState(
-        targetValue = if (subscribed) 1f else 0f,
-        animationSpec = tween(durationMillis = 280, easing = FastOutSlowInEasing),
-        label = "capsuleSubscribeMorph",
-    )
+    val progress = remember {
+        Animatable(if (subscribed) 1f else 0f)
+    }
+
+    LaunchedEffect(subscribed) {
+        progress.animateTo(
+            targetValue = if (subscribed) 1f else 0f,
+            animationSpec = tween(durationMillis = 280, easing = FastOutSlowInEasing),
+        )
+    }
 
     Canvas(modifier) {
         val unit = minOf(size.width, size.height) / 24f
@@ -37,7 +44,7 @@ internal fun CapsuleSubscribeIcon(
             y = (size.height - 24f * unit) / 2f,
         )
 
-        fun lerp(start: Float, end: Float): Float = start + (end - start) * progress
+        fun lerp(start: Float, end: Float): Float = start + (end - start) * progress.value
         fun point(x: Float, y: Float): Offset =
             Offset(origin.x + x * unit, origin.y + y * unit)
 
