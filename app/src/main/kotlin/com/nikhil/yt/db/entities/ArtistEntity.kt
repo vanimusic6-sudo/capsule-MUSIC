@@ -12,6 +12,7 @@ import androidx.compose.runtime.Immutable
 import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.PrimaryKey
+import com.nikhil.yt.db.ArtistSubscriptionState
 import com.nikhil.yt.innertube.YouTube
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -46,11 +47,20 @@ data class ArtistEntity(
 
     fun syncSubscription() {
         if (isLocal || isPrivatelyOwnedArtist) return
+
+        // Logged-out mode is deliberately local-only. The database bookmark is still changed by
+        // the caller, but no authenticated YouTube mutation (or reconciliation intent) is created.
+        if (!YouTube.authState.hasLoginCookie) return
+
+        val subscribed = bookmarkedAt != null
+        ArtistSubscriptionState.recordLocalIntent(id, channelId, subscribed)
+
         CoroutineScope(Dispatchers.IO).launch {
-            if (channelId == null)
-                YouTube.subscribeChannel(YouTube.getChannelId(id), bookmarkedAt != null)
-            else
-                YouTube.subscribeChannel(channelId, bookmarkedAt != null)
+            val resolvedChannelId = channelId ?: YouTube.getChannelId(id)
+            // Register the resolved UC id as an alias before sending the mutation. The library
+            // endpoint returns public channel ids, while some local artist rows use browse ids.
+            ArtistSubscriptionState.recordLocalIntent(id, resolvedChannelId, subscribed)
+            YouTube.subscribeChannel(resolvedChannelId, subscribed)
             this.cancel()
         }
     }
