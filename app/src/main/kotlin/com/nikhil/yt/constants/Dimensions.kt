@@ -38,32 +38,23 @@ val GridThumbnailCornerRadius = 8.dp
 
 val PlayerHorizontalPadding = 32.dp
 
-/*
- * Capsule motion intentionally uses a slightly under-damped spring instead of a tween. A tween can
- * be smooth, but it still reads as a programmed interpolation. The spring carries momentum into
- * the target and then settles by a few pixels, which is the same tactile language used by the
- * favourite-heart press animation.
- */
 val NavigationBarAnimationSpec = spring<Dp>(
     dampingRatio = 0.86f,
     stiffness = 380f,
 )
 
 /*
- * Releases stay denser and quicker than deliberate open/close actions. There is enough damping to
- * avoid a visible bounce, but not so much that the sheet loses its sense of mass when it docks.
+ * BottomSheet's Animatable is bounded by the collapsed/expanded anchors. An under-damped spring
+ * can hit that bound while it still carries velocity, which turns a theoretically pretty bounce
+ * into a hard stop. Keep the surface critically damped and let the velocity-driven inner layer
+ * provide the tactile follow-through instead.
  */
 val BottomSheetAnimationSpec = spring<Dp>(
-    dampingRatio = 0.86f,
+    dampingRatio = Spring.DampingRatioNoBouncy,
     stiffness = 420f,
 )
 
-/*
- * Programmatic player/queue motion is softer. The tiny controlled overshoot is intentional: it is
- * perceived as magnetic settling rather than a bounce, especially together with the secondary
- * content-lag deformation in BottomSheet.
- */
 val BottomSheetSoftAnimationSpec = spring<Dp>(
-    dampingRatio = 0.82f,
-    stiffness = 280f,
+    dampingRatio = Spring.DampingRatioNoBouncy,
+    stiffness = 265f,
 )
