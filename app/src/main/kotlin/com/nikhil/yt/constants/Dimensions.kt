@@ -6,8 +6,10 @@
 
 package com.nikhil.yt.constants
 
+import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 
@@ -38,10 +40,13 @@ val GridThumbnailCornerRadius = 8.dp
 
 val PlayerHorizontalPadding = 32.dp
 
-/* Navigation chrome should settle softly and never snap into the mini-player. */
-val NavigationBarAnimationSpec = spring<Dp>(
-    dampingRatio = 0.92f,
-    stiffness = 125f,
+/*
+ * Route chrome follows the same calm curve as tab selection. A deterministic tween prevents the
+ * bottom bar from snapping or briefly overshooting while the new destination is already visible.
+ */
+val NavigationBarAnimationSpec = tween<Dp>(
+    durationMillis = 380,
+    easing = CubicBezierEasing(0.22f, 0f, 0.18f, 1f),
 )
 
 /*
