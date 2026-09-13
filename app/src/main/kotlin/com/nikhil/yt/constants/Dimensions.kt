@@ -38,34 +38,36 @@ val GridThumbnailCornerRadius = 8.dp
 
 val PlayerHorizontalPadding = 32.dp
 
-/* Slower travel than the old snap, but deliberately under-damped so navigation still has life. */
+/*
+ * Keep the magnetic return, but lower natural frequency so navigation accelerates and settles
+ * instead of snapping. Damping stays under one, therefore the tactile overshoot is still present.
+ */
 val NavigationBarAnimationSpec = spring<Dp>(
     dampingRatio = 0.82f,
-    stiffness = 250f,
+    stiffness = 185f,
 )
 
 /*
- * Expanding and dismissing can hit the Animatable's hard outer bounds, so those motions remain
- * critically damped. Collapsing targets the interior mini-player anchor instead, which gives us
- * room for a tiny safe overshoot: the full player can physically dock, compress and settle rather
- * than merely drifting downward to a stop.
+ * The outer anchors are hard Animatable bounds, so expansion/dismissal remain critically damped.
+ * Lower stiffness makes the large surface read as mass instead of a fast translate. The interior
+ * collapse anchor has room for a small safe overshoot and therefore keeps the sticky dock impact.
  */
 val BottomSheetAnimationSpec = spring<Dp>(
     dampingRatio = Spring.DampingRatioNoBouncy,
-    stiffness = 310f,
+    stiffness = 235f,
 )
 
 val BottomSheetSoftAnimationSpec = spring<Dp>(
     dampingRatio = Spring.DampingRatioNoBouncy,
-    stiffness = 220f,
+    stiffness = 165f,
 )
 
 val BottomSheetCollapseAnimationSpec = spring<Dp>(
     dampingRatio = 0.78f,
-    stiffness = 330f,
+    stiffness = 215f,
 )
 
 val BottomSheetSoftCollapseAnimationSpec = spring<Dp>(
     dampingRatio = 0.80f,
-    stiffness = 280f,
+    stiffness = 175f,
 )
