@@ -102,8 +102,12 @@ fun BottomSheet(
                 }
                 .bottomSheetDraggable(state, onDismiss)
                 .graphicsLayer {
-                    val motionProgress = state.progress
-                    val topCornerRadius = 22.dp * (1f - motionProgress)
+                    val motionProgress = state.progress.coerceIn(0f, 1f)
+                    // Springs and Float math can land a few ulps above 1f. Android 16 rejects even
+                    // a microscopic negative corner radius, so geometry is clamped independently of
+                    // the animation math as a final safety boundary.
+                    val topCornerRadius =
+                        (22.dp * (1f - motionProgress)).coerceAtLeast(0.dp)
                     shape =
                         RoundedCornerShape(
                             topStart = topCornerRadius,
@@ -131,7 +135,7 @@ fun BottomSheet(
                         }
                         .graphicsLayer {
                             val rawProgress = state.rawProgress
-                            val motionProgress = state.progress
+                            val motionProgress = state.progress.coerceIn(0f, 1f)
                             val closingVelocity =
                                 (-state.animationVelocity.value).coerceAtLeast(0f)
                             val closingVelocityWeight =
@@ -169,7 +173,7 @@ fun BottomSheet(
                     Modifier
                         .fillMaxSize()
                         .offset {
-                            val motionProgress = state.progress
+                            val motionProgress = state.progress.coerceIn(0f, 1f)
                             val revealOffset =
                                 state.collapsedBound *
                                     (1f - motionProgress)
@@ -179,7 +183,7 @@ fun BottomSheet(
                             )
                         }
                         .graphicsLayer {
-                            val motionProgress = state.progress
+                            val motionProgress = state.progress.coerceIn(0f, 1f)
                             val openingVelocity =
                                 state.animationVelocity.value.coerceAtLeast(0f)
                             val openingVelocityWeight =
@@ -247,7 +251,8 @@ class BottomSheetState(
      */
     val progress by derivedStateOf {
         val p = rawProgress.coerceIn(0f, 1f)
-        p * p * p * (p * (p * 6f - 15f) + 10f)
+        val smooth = p * p * p * (p * (p * 6f - 15f) + 10f)
+        smooth.coerceIn(0f, 1f)
     }
 
     fun collapse(animationSpec: AnimationSpec<Dp>) {
