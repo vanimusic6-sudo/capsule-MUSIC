@@ -1,17 +1,18 @@
 package com.nikhil.yt.db
 
+import com.nikhil.yt.App
+import com.nikhil.yt.utils.ArtistSubscriptionOutbox
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.runBlocking
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicBoolean
 
 /**
- * Keeps short-lived local artist subscription intents separate from the remote library snapshot.
+ * Protects local artist subscription intent from stale YouTube library snapshots.
  *
- * YouTube Music can return a subscription list that is a few refreshes behind a successful
- * subscribe/unsubscribe request. Treating one such snapshot as authoritative causes the UI to
- * flip back even though the account already accepted the action. This state machine protects the
- * fresh local intent, while still allowing the authenticated account to become authoritative once
- * the propagation window has passed.
- *
- * Logged-out subscriptions never enter this tracker; they are intentionally local-only.
+ * Short-lived intents cover normal online propagation. Durable intents are restored from the
+ * subscription outbox and deliberately do not expire: an offline user action remains authoritative
+ * until it has actually been delivered to YouTube.
  */
 internal object ArtistSubscriptionState {
     private const val INTENT_TTL_MS = 5 * 60_000L
@@ -20,21 +21,30 @@ internal object ArtistSubscriptionState {
     internal data class PendingIntent(
         val subscribed: Boolean,
         val changedAtMs: Long,
+        val durable: Boolean = false,
     )
 
     private val pendingIntents = ConcurrentHashMap<String, PendingIntent>()
     private val missingSnapshots = ConcurrentHashMap<String, Int>()
+    private val durableHydrated = AtomicBoolean(false)
+    private val hydrateLock = Any()
 
     fun recordLocalIntent(
         artistId: String?,
         channelId: String?,
         subscribed: Boolean,
         nowMs: Long = System.currentTimeMillis(),
+        durable: Boolean = false,
     ) {
         val keys = identityKeys(artistId, channelId)
         if (keys.isEmpty()) return
 
-        val intent = PendingIntent(subscribed = subscribed, changedAtMs = nowMs)
+        val intent =
+            PendingIntent(
+                subscribed = subscribed,
+                changedAtMs = nowMs,
+                durable = durable,
+            )
         keys.forEach { pendingIntents[it] = intent }
         resetMissing(artistId, channelId)
     }
@@ -44,16 +54,20 @@ internal object ArtistSubscriptionState {
         channelId: String?,
         nowMs: Long = System.currentTimeMillis(),
     ): Boolean? {
+        ensureDurableHydrated()
+
         val intent =
             identityKeys(artistId, channelId)
                 .mapNotNull { pendingIntents[it] }
                 .maxByOrNull { it.changedAtMs }
                 ?: return null
 
-        val ageMs = nowMs - intent.changedAtMs
-        if (ageMs >= INTENT_TTL_MS) {
-            clearIntent(intent)
-            return null
+        if (!intent.durable) {
+            val ageMs = nowMs - intent.changedAtMs
+            if (ageMs >= INTENT_TTL_MS) {
+                clearIntent(intent)
+                return null
+            }
         }
 
         return intent.subscribed
@@ -65,12 +79,14 @@ internal object ArtistSubscriptionState {
         subscribed: Boolean,
         nowMs: Long = System.currentTimeMillis(),
     ) {
+        ensureDurableHydrated()
+
         val intent =
             identityKeys(artistId, channelId)
                 .mapNotNull { pendingIntents[it] }
                 .maxByOrNull { it.changedAtMs }
 
-        if (intent != null) {
+        if (intent != null && !intent.durable) {
             val ageMs = nowMs - intent.changedAtMs
             if (ageMs >= INTENT_TTL_MS || intent.subscribed == subscribed) {
                 clearIntent(intent)
@@ -82,9 +98,7 @@ internal object ArtistSubscriptionState {
 
     /**
      * A single missing server snapshot is not enough to delete a local subscription.
-     * Two consecutive authenticated snapshots are required unless a fresh local subscribe intent
-     * is still propagating, in which case remote absence is ignored until the intent is confirmed
-     * or expires.
+     * Durable outbox intent blocks remote absence indefinitely until delivery succeeds.
      */
     fun shouldApplyRemoteAbsence(
         artistId: String?,
@@ -122,6 +136,49 @@ internal object ArtistSubscriptionState {
         return identityKeys(remoteId, remoteChannelId).any(local::contains)
     }
 
+    fun clearLocalIntent(
+        artistId: String?,
+        channelId: String?,
+        expectedSubscribed: Boolean? = null,
+    ) {
+        ensureDurableHydrated()
+        val intent =
+            identityKeys(artistId, channelId)
+                .mapNotNull { pendingIntents[it] }
+                .maxByOrNull { it.changedAtMs }
+                ?: return
+        if (expectedSubscribed == null || intent.subscribed == expectedSubscribed) {
+            clearIntent(intent)
+        }
+    }
+
+    private fun ensureDurableHydrated() {
+        if (durableHydrated.get()) return
+
+        val app = runCatching { App.instance }.getOrNull() ?: return
+        synchronized(hydrateLock) {
+            if (durableHydrated.get()) return
+
+            val pending =
+                runCatching {
+                    runBlocking(Dispatchers.IO) {
+                        ArtistSubscriptionOutbox.snapshot(app.applicationContext)
+                    }
+                }.getOrNull() ?: return
+
+            pending.forEach { item ->
+                recordLocalIntent(
+                    artistId = item.artistId,
+                    channelId = item.channelId,
+                    subscribed = item.subscribed,
+                    nowMs = item.changedAtMs,
+                    durable = true,
+                )
+            }
+            durableHydrated.set(true)
+        }
+    }
+
     private fun resetMissing(artistId: String?, channelId: String?) {
         identityKeys(artistId, channelId).forEach(missingSnapshots::remove)
     }
@@ -139,5 +196,8 @@ internal object ArtistSubscriptionState {
     internal fun resetForTests() {
         pendingIntents.clear()
         missingSnapshots.clear()
+        // JVM tests do not have an initialized Android Application. Treat the in-memory state as
+        // authoritative for the duration of a test after resetForTests().
+        durableHydrated.set(true)
     }
 }
