@@ -53,7 +53,6 @@ import com.nikhil.yt.ui.utils.ShowMediaInfo
 import com.nikhil.yt.utils.rememberEnumPreference
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
-import kotlin.math.abs
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -330,9 +329,10 @@ private fun CapsulePlayerLyricsHost(
     onShowMenu: () -> Unit,
 ) {
     /*
-     * One continuous physical state means a reversal starts from the exact current position and
-     * velocity. The visual layer clamps positional overshoot at its dock and expresses the final
-     * impact through a tiny deformation instead, which keeps the hit without the old crooked jerk.
+     * The lyrics layer keeps one continuous physical state, so a reversal starts from the current
+     * position and velocity. Its spring is deliberately under-damped again, but positional overshoot
+     * is clamped at the dock: the extra energy becomes a short squash/rebound instead of a crooked
+     * vertical jump through the top edge.
      */
     val lyricsMotion = remember {
         Animatable(if (showLyrics) 1f else 0f)
@@ -343,8 +343,8 @@ private fun CapsulePlayerLyricsHost(
             targetValue = if (showLyrics) 1f else 0f,
             animationSpec =
                 spring(
-                    dampingRatio = if (showLyrics) 0.88f else 0.90f,
-                    stiffness = if (showLyrics) 210f else 265f,
+                    dampingRatio = if (showLyrics) 0.80f else 0.84f,
+                    stiffness = if (showLyrics) 220f else 255f,
                 ),
         )
     }
@@ -357,9 +357,9 @@ private fun CapsulePlayerLyricsHost(
                 Modifier
                     .fillMaxSize()
                     .graphicsLayer {
-                        translationY = -2.25f * playerReaction
-                        scaleX = 1f - 0.00055f * playerReaction
-                        scaleY = 1f - 0.00085f * playerReaction
+                        translationY = -3.25f * playerReaction
+                        scaleX = 1f - 0.00085f * playerReaction
+                        scaleY = 1f - 0.00125f * playerReaction
                         transformOrigin = TransformOrigin(0.5f, 0.5f)
                     },
         ) {
@@ -397,10 +397,29 @@ private fun CapsulePlayerLyricsHost(
             val fullHeightPx = constraints.maxHeight.toFloat()
             val baseTranslation = (1f - visualProgress) * fullHeightPx
             val velocity = lyricsMotion.velocity
-            val velocityWeight = (abs(velocity) / 5.8f).coerceIn(0f, 1f)
-            val landingWeight = ((visualProgress - 0.72f) / 0.28f).coerceIn(0f, 1f)
-            val impactWeight = velocityWeight * landingWeight
-            val inertialLag = (velocity * 1.8f).coerceIn(-5.5f, 5.5f)
+            val incomingVelocityWeight =
+                (velocity.coerceAtLeast(0f) / 4.6f).coerceIn(0f, 1f)
+            val landingWeight =
+                ((visualProgress - 0.66f) / 0.34f).coerceIn(0f, 1f)
+            val overshootWeight =
+                ((progress - 1f) / 0.045f).coerceIn(0f, 1f)
+            val impactWeight =
+                maxOf(
+                    incomingVelocityWeight * landingWeight,
+                    overshootWeight,
+                )
+
+            /*
+             * Only incoming velocity may add a few pixels of lag. Rebound velocity never moves the
+             * surface above its dock, so the landing still has a visible hit without the old skewed
+             * bounce. The squash is the impact; geometry remains perfectly aligned.
+             */
+            val incomingLag =
+                if (velocity > 0f) {
+                    (velocity * 2.0f).coerceIn(0f, 7.5f) * landingWeight
+                } else {
+                    0f
+                }
             val shouldComposeLyrics =
                 showLyrics || lyricsMotion.isRunning || progress > 0.001f
 
@@ -410,9 +429,9 @@ private fun CapsulePlayerLyricsHost(
                         Modifier
                             .fillMaxSize()
                             .graphicsLayer {
-                                translationY = baseTranslation + inertialLag
-                                scaleX = 1f + 0.00065f * impactWeight
-                                scaleY = 1f - 0.00155f * impactWeight
+                                translationY = (baseTranslation + incomingLag).coerceAtLeast(0f)
+                                scaleX = 1f + 0.00220f * impactWeight
+                                scaleY = 1f - 0.00480f * impactWeight
                                 transformOrigin = TransformOrigin(0.5f, 1f)
                             },
                 ) {
