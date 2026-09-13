@@ -14,10 +14,13 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
@@ -28,6 +31,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.navigation.NavController
 import androidx.navigation.NavHostController
+import androidx.navigation.compose.ComposeNavigator
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
@@ -39,6 +43,7 @@ import com.nikhil.yt.ui.screens.Screens
 import com.nikhil.yt.ui.screens.rememberMainTabNavigator
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -114,6 +119,31 @@ class MainTabNavigatorTest {
             assertEquals(route, controller.currentDestination?.route)
             assertEquals(Lifecycle.State.RESUMED, controller.currentBackStackEntry?.lifecycle?.currentState)
         }
+    }
+
+    @Test fun attachBeforeNavHostDoesNotTouchUnattachedComposeNavigatorState() {
+        var attachedWithoutCrash = false
+
+        compose.setContent {
+            val context = LocalContext.current
+            val scope = rememberCoroutineScope()
+            val earlyController =
+                remember(context) {
+                    NavHostController(context).apply {
+                        navigatorProvider.addNavigator(ComposeNavigator())
+                    }
+                }
+
+            DisposableEffect(earlyController, scope) {
+                val earlyNavigator = MainTabNavigator(earlyController, scope)
+                earlyNavigator.attach()
+                attachedWithoutCrash = true
+                onDispose { earlyNavigator.detach() }
+            }
+        }
+
+        compose.waitForIdle()
+        assertTrue(attachedWithoutCrash)
     }
 
     @Test fun rapidReversalsOpenOnlyTheLastRequestedTab() {
