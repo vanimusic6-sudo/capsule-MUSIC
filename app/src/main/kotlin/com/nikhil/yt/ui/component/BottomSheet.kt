@@ -49,7 +49,9 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
 import com.nikhil.yt.constants.BottomSheetAnimationSpec
+import com.nikhil.yt.constants.BottomSheetCollapseAnimationSpec
 import com.nikhil.yt.constants.BottomSheetSoftAnimationSpec
+import com.nikhil.yt.constants.BottomSheetSoftCollapseAnimationSpec
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.launch
@@ -57,10 +59,11 @@ import kotlinx.coroutines.launch
 /**
  * A single physical Capsule sheet.
  *
- * The full player and its background now travel as one surface. The root itself stays transparent,
- * so collapsing the player cannot expose a second flat plate under the mini-player. The mini-player
- * is only composed near the docking zone, while the full surface is still covering it, and is then
- * revealed naturally as that surface finishes its travel. No alpha, scrim or blur is involved.
+ * The full player and its background move as one opaque surface. The mini-player stays composed
+ * behind it for the entire lifetime of playback, so its internal icon state is never recreated when
+ * the full player closes. The surface reveals that already-alive mini-player only at the docking
+ * point, then a small under-damped settle provides the same sort of sticky physical response as the
+ * favourite interaction. No alpha, scrim or blur is involved.
  */
 @Composable
 fun BottomSheet(
@@ -71,18 +74,31 @@ fun BottomSheet(
     collapsedContent: @Composable BoxScope.() -> Unit,
     content: @Composable BoxScope.() -> Unit,
 ) {
-    val motionProgress = state.progress.coerceIn(0f, 1f)
+    val rawProgress = state.progress
+    val motionProgress = rawProgress.coerceIn(0f, 1f)
     val topCornerRadius = 22.dp * (1f - motionProgress)
 
+    val signedVelocity = state.animationVelocity.value
+    val openingVelocity = signedVelocity.coerceAtLeast(0f)
+    val closingVelocity = (-signedVelocity).coerceAtLeast(0f)
+
     /*
-     * Keep the exit absolutely cohesive: during collapse there is no independent content lag or
-     * album-art deformation. Opening retains a very small velocity-driven compression near the top
-     * of the travel so the player still has mass, but the background and every child deform together.
+     * Opening cannot overshoot the hard expanded bound, so its impact is expressed as a tiny
+     * whole-surface deformation. Closing targets the interior mini-player anchor and can safely
+     * overshoot it by a few dp; the mini-player absorbs that energy and settles back like a dock.
      */
-    val openingVelocity = state.animationVelocity.value.coerceAtLeast(0f)
-    val openingVelocityWeight = (openingVelocity / 1450f).coerceIn(0f, 1f)
-    val dockingWeight = ((motionProgress - 0.68f) / 0.32f).coerceIn(0f, 1f)
-    val openingImpact = openingVelocityWeight * dockingWeight
+    val openingVelocityWeight = (openingVelocity / 1250f).coerceIn(0f, 1f)
+    val openingDockWeight = ((motionProgress - 0.60f) / 0.40f).coerceIn(0f, 1f)
+    val openingImpact = openingVelocityWeight * openingDockWeight
+
+    val closingVelocityWeight = (closingVelocity / 1150f).coerceIn(0f, 1f)
+    val closingDockWeight = ((0.36f - motionProgress) / 0.36f).coerceIn(0f, 1f)
+    val collapseOvershootWeight = ((-rawProgress) / 0.055f).coerceIn(0f, 1f)
+    val miniDockImpact =
+        maxOf(
+            closingVelocityWeight * closingDockWeight,
+            collapseOvershootWeight,
+        )
 
     Box(
         modifier =
@@ -107,16 +123,18 @@ fun BottomSheet(
             BackHandler(onBack = state::collapseSoft)
         }
 
-        // Compose the mini-player only close to the docking point. Earlier in the transition the
-        // full player is still the only visible surface, avoiding the old layered/underlay look.
-        val shouldComposeMini =
-            state.isCollapsed ||
-                (!state.isExpanded && motionProgress < 0.28f && (onDismiss == null || !state.isDismissed))
-
-        if (shouldComposeMini) {
+        /*
+         * Keep the mini-player mounted even while the full player covers it. Besides eliminating the
+         * subscribe-icon replay, this makes the close/open reversal continuous: once the mini-player
+         * is visibly exposed, tapping it immediately retargets the same Animatable back upward.
+         */
+        if (onDismiss == null || !state.isDismissed) {
             val miniPinOffset =
                 (state.value - state.collapsedBound)
                     .coerceAtLeast(0.dp)
+            val canReopen =
+                motionProgress < 0.42f &&
+                    !state.isDismissed
 
             Box(
                 modifier =
@@ -127,8 +145,13 @@ fun BottomSheet(
                                 y = miniPinOffset.roundToPx(),
                             )
                         }
+                        .graphicsLayer {
+                            scaleX = 1f + 0.0042f * miniDockImpact
+                            scaleY = 1f - 0.0070f * miniDockImpact
+                            transformOrigin = TransformOrigin(0.5f, 0.5f)
+                        }
                         .clickable(
-                            enabled = state.isCollapsed,
+                            enabled = canReopen,
                             interactionSource = remember { MutableInteractionSource() },
                             indication = null,
                             onClick = state::expandSoft,
@@ -155,8 +178,8 @@ fun BottomSheet(
                             )
                         }
                         .graphicsLayer {
-                            scaleX = 1f - 0.00045f * openingImpact
-                            scaleY = 1f + 0.00115f * openingImpact
+                            scaleX = 1f - 0.00115f * openingImpact
+                            scaleY = 1f + 0.00310f * openingImpact
                             transformOrigin = TransformOrigin(0.5f, 1f)
                         }
                         .background(backgroundColor),
@@ -216,7 +239,7 @@ class BottomSheetState(
     }
 
     private fun collapse() {
-        collapse(BottomSheetAnimationSpec)
+        collapse(BottomSheetCollapseAnimationSpec)
     }
 
     private fun expand() {
@@ -224,7 +247,7 @@ class BottomSheetState(
     }
 
     fun collapseSoft() {
-        collapse(BottomSheetSoftAnimationSpec)
+        collapse(BottomSheetSoftCollapseAnimationSpec)
     }
 
     fun expandSoft() {
