@@ -39,22 +39,21 @@ val GridThumbnailCornerRadius = 8.dp
 val PlayerHorizontalPadding = 32.dp
 
 val NavigationBarAnimationSpec = spring<Dp>(
-    dampingRatio = 0.86f,
-    stiffness = 380f,
+    dampingRatio = 0.90f,
+    stiffness = 270f,
 )
 
 /*
- * BottomSheet's Animatable is bounded by the collapsed/expanded anchors. An under-damped spring
- * can hit that bound while it still carries velocity, which turns a theoretically pretty bounce
- * into a hard stop. Keep the surface critically damped and let the velocity-driven inner layer
- * provide the tactile follow-through instead.
+ * The sheet itself stays critically damped because its Animatable is bounded. Impact comes from
+ * small child/surface reactions instead of slamming an under-damped spring into those bounds.
+ * Lower stiffness gives the movement enough time to accelerate and settle without feeling delayed.
  */
 val BottomSheetAnimationSpec = spring<Dp>(
     dampingRatio = Spring.DampingRatioNoBouncy,
-    stiffness = 420f,
+    stiffness = 300f,
 )
 
 val BottomSheetSoftAnimationSpec = spring<Dp>(
     dampingRatio = Spring.DampingRatioNoBouncy,
-    stiffness = 265f,
+    stiffness = 205f,
 )
