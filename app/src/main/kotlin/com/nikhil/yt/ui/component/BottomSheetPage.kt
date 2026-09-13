@@ -99,9 +99,8 @@ fun BottomSheetPage(
     }
 
     /*
-     * This sheet uses the same under-damped motion language as the player and lyrics. The movement
-     * can briefly pass the mathematical resting point and return, creating a soft magnetic dock
-     * instead of the sterile end-of-tween stop. There is still no alpha or blur anywhere.
+     * Keep a tiny magnetic settle, but give the sheet enough travel time for the eye to read its
+     * mass. The previous high-stiffness spring was physically lively but visually nervous.
      */
     AnimatedVisibility(
         visible = state.isVisible,
@@ -110,8 +109,8 @@ fun BottomSheetPage(
                 initialOffsetY = { it },
                 animationSpec =
                     spring(
-                        dampingRatio = 0.82f,
-                        stiffness = 300f,
+                        dampingRatio = 0.88f,
+                        stiffness = 235f,
                     ),
             ),
         exit =
@@ -119,8 +118,8 @@ fun BottomSheetPage(
                 targetOffsetY = { it },
                 animationSpec =
                     spring(
-                        dampingRatio = 0.86f,
-                        stiffness = 360f,
+                        dampingRatio = 0.90f,
+                        stiffness = 280f,
                     ),
             ),
         modifier = modifier,
