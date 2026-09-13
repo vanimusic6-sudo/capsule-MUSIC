@@ -4,8 +4,6 @@
  * Licensed Under GPL-3.0
  */
 
-
-
 package com.nikhil.yt.ui.component
 
 import androidx.activity.compose.BackHandler
@@ -56,12 +54,11 @@ import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.launch
 
 /**
- * Bottom Sheet
- * Modified from [ViMusic](https://github.com/vfsfitvnm/ViMusic)
+ * Bottom sheet with transform-only motion.
  *
- * The sheet is intentionally transform-only: it remains fully opaque while moving and never
- * crossfades the collapsed and expanded layers. This keeps the motion physical and prevents the
- * content underneath from being darkened or blended through the arriving surface.
+ * The mini surface stays physically underneath while the full surface travels over it. Nothing
+ * changes alpha during the gesture, so opening/closing never creates a dim crossfade or a blended
+ * double image.
  */
 @Composable
 fun BottomSheet(
@@ -96,22 +93,16 @@ fun BottomSheet(
             BackHandler(onBack = state::collapseSoft)
         }
 
-        // Keep the full page attached to the moving surface for the complete travel. It replaces
-        // the mini surface as soon as expansion starts and remains until collapse fully settles.
-        if (!state.isCollapsed) {
-            BoxWithConstraints(
-                modifier = Modifier.fillMaxSize(),
-                content = content,
-            )
-        }
-
-        // Do not overlap/crossfade mini and full player. At the collapsed anchor the mini player is
-        // already in its final state; the next gesture starts moving the opaque full surface.
-        if (state.isCollapsed && (onDismiss == null || !state.isDismissed)) {
+        /*
+         * Keep the collapsed surface under the moving page until the page fully covers it. This
+         * avoids the one-frame "mini disappears, empty top of player appears" swap at lift-off.
+         */
+        if (!state.isExpanded && (onDismiss == null || !state.isDismissed)) {
             Box(
                 modifier =
                     Modifier
                         .clickable(
+                            enabled = state.isCollapsed,
                             interactionSource = remember { MutableInteractionSource() },
                             indication = null,
                             onClick = state::expandSoft,
@@ -119,6 +110,25 @@ fun BottomSheet(
                         .fillMaxWidth()
                         .height(state.collapsedBound),
                 content = collapsedContent,
+            )
+        }
+
+        if (!state.isCollapsed) {
+            val revealOffset =
+                state.collapsedBound *
+                    (1f - state.progress.coerceIn(0f, 1f))
+
+            BoxWithConstraints(
+                modifier =
+                    Modifier
+                        .fillMaxSize()
+                        .offset {
+                            IntOffset(
+                                x = 0,
+                                y = revealOffset.roundToPx(),
+                            )
+                        },
+                content = content,
             )
         }
     }
@@ -277,7 +287,6 @@ class BottomSheetState(
                     if (isTopReached) {
                         val velocity = -available.y
                         performFling(velocity, null)
-
                         available
                     } else {
                         Velocity.Zero
@@ -348,8 +357,8 @@ fun rememberBottomSheetState(
 fun Modifier.bottomSheetDraggable(
     state: BottomSheetState,
     onDismiss: (() -> Unit)? = null,
-): Modifier {
-    return this.pointerInput(state) {
+): Modifier =
+    pointerInput(state) {
         val velocityTracker = VelocityTracker()
 
         detectVerticalDragGestures(
@@ -368,4 +377,3 @@ fun Modifier.bottomSheetDraggable(
             },
         )
     }
-}
