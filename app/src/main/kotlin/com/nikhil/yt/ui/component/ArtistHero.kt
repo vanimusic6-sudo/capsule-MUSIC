@@ -21,6 +21,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -143,20 +144,53 @@ internal fun ArtistHero(
         actions = {
             val stackActions = LocalDensity.current.fontScale > 1.3f
             val subscribeLabel = stringResource(if (subscribed) R.string.subscribed else R.string.subscribe)
-            val subscribeIcon = if (subscribed) R.drawable.done else R.drawable.add
             if (stackActions) {
-                CapsuleArtistAction(subscribeIcon, subscribeLabel, onSubscribe, Modifier.fillMaxWidth(), !loading && canSubscribe, subscribed)
+                CapsuleArtistAction(
+                    icon = R.drawable.add,
+                    label = subscribeLabel,
+                    onClick = onSubscribe,
+                    modifier = Modifier.fillMaxWidth(),
+                    enabled = !loading && canSubscribe,
+                    selected = subscribed,
+                    subscribeState = subscribed,
+                )
                 Spacer(Modifier.height(14.dp))
-                CapsuleArtistAction(R.drawable.shuffle, stringResource(R.string.shuffle), onShuffle, Modifier.fillMaxWidth(), !loading && canShuffle)
+                CapsuleArtistAction(
+                    R.drawable.shuffle,
+                    stringResource(R.string.shuffle),
+                    onShuffle,
+                    Modifier.fillMaxWidth(),
+                    !loading && canShuffle,
+                )
             } else {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    CapsuleArtistAction(subscribeIcon, subscribeLabel, onSubscribe, Modifier.weight(1f), !loading && canSubscribe, subscribed)
-                    CapsuleArtistAction(R.drawable.shuffle, stringResource(R.string.shuffle), onShuffle, Modifier.weight(1f), !loading && canShuffle)
+                    CapsuleArtistAction(
+                        icon = R.drawable.add,
+                        label = subscribeLabel,
+                        onClick = onSubscribe,
+                        modifier = Modifier.weight(1f),
+                        enabled = !loading && canSubscribe,
+                        selected = subscribed,
+                        subscribeState = subscribed,
+                    )
+                    CapsuleArtistAction(
+                        R.drawable.shuffle,
+                        stringResource(R.string.shuffle),
+                        onShuffle,
+                        Modifier.weight(1f),
+                        !loading && canShuffle,
+                    )
                 }
             }
             if (showRadio) {
                 Spacer(Modifier.height(14.dp))
-                CapsuleArtistAction(R.drawable.radio, stringResource(R.string.radio), onRadio, Modifier.fillMaxWidth(), !loading && canRadio)
+                CapsuleArtistAction(
+                    R.drawable.radio,
+                    stringResource(R.string.radio),
+                    onRadio,
+                    Modifier.fillMaxWidth(),
+                    !loading && canRadio,
+                )
             }
         },
     )
@@ -170,6 +204,7 @@ private fun CapsuleArtistAction(
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
     selected: Boolean = false,
+    subscribeState: Boolean? = null,
 ) {
     Button(
         onClick = onClick,
@@ -185,8 +220,22 @@ private fun CapsuleArtistAction(
         ),
         contentPadding = PaddingValues(horizontal = 12.dp, vertical = 12.dp),
     ) {
-        Icon(painterResource(icon), null, Modifier.size(19.dp))
+        if (subscribeState != null) {
+            CapsuleSubscribeIcon(
+                subscribed = subscribeState,
+                tint = LocalContentColor.current,
+                modifier = Modifier.size(19.dp),
+            )
+        } else {
+            Icon(painterResource(icon), null, Modifier.size(19.dp))
+        }
         Spacer(Modifier.width(8.dp))
-        Text(label, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
+        Text(
+            label,
+            style = MaterialTheme.typography.labelLarge,
+            fontWeight = FontWeight.SemiBold,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+        )
     }
 }

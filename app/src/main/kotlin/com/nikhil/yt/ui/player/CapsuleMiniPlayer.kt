@@ -9,7 +9,7 @@
 package com.nikhil.yt.ui.player
 
 import com.nikhil.yt.ui.component.CapsuleFavoriteIcon
-import androidx.compose.foundation.LocalIndication
+import com.nikhil.yt.ui.component.CapsuleSubscribeIcon
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import com.nikhil.yt.ui.component.CapsuleFavoriteColors
 import android.os.SystemClock
@@ -980,6 +980,15 @@ private fun CapsuleSubscribeButton(
             ?.bookmarkedAt !=
             null
 
+    val subscribeLabel =
+        stringResource(if (isSubscribed) R.string.subscribed else R.string.subscribe)
+    val subscribeTint =
+        if (isSubscribed) {
+            LocalContentColor.current
+        } else {
+            LocalContentColor.current.copy(alpha = 0.65f)
+        }
+
     Box(
         contentAlignment =
             Alignment.Center,
@@ -1020,58 +1029,30 @@ private fun CapsuleSubscribeButton(
                     shape =
                         CircleShape,
                 )
+                .semantics { contentDescription = subscribeLabel }
                 .clickable {
-                    database.transaction {
-                        val artist =
-                            libraryArtist
-                                ?.artist
-
-                        if (artist != null) {
-                            update(
-                                artist.toggleLike(),
+                    val artistInfo =
+                        metadata.artists.firstOrNull { it.id == artistId }
+                            ?: metadata.artists.firstOrNull()
+                            ?: return@clickable
+                    val artist =
+                        libraryArtist?.artist
+                            ?: ArtistEntity(
+                                id = artistId,
+                                name = artistInfo.name,
+                                channelId = null,
+                                thumbnailUrl = artistInfo.thumbnailUrl,
                             )
-                        } else {
-                            metadata.artists
-                                .firstOrNull()
-                                ?.let {
-                                        artistInfo,
-                                    ->
-                                    insert(
-                                        ArtistEntity(
-                                            id =
-                                                artistInfo.id
-                                                    ?: "",
-                                            name =
-                                                artistInfo.name,
-                                            channelId =
-                                                null,
-                                            thumbnailUrl =
-                                                null,
-                                        ).toggleLike(),
-                                    )
-                                }
-                        }
-                    }
+                    database.setArtistSubscribed(
+                        artist = artist,
+                        subscribed = !isSubscribed,
+                    )
                 },
     ) {
-        Icon(
-            painter =
-                painterResource(
-                    if (isSubscribed) {
-                        R.drawable.subscribed
-                    } else {
-                        R.drawable.person
-                    },
-                ),
-            contentDescription = stringResource(if (isSubscribed) R.string.subscribed else R.string.subscribe),
-            tint =
-                if (isSubscribed) {
-                    LocalContentColor.current
-                } else {
-                    LocalContentColor.current.copy(alpha = 0.65f)
-                },
-            modifier =
-                Modifier.size(if (standardStyle) 24.dp else 20.dp),
+        CapsuleSubscribeIcon(
+            subscribed = isSubscribed,
+            tint = subscribeTint,
+            modifier = Modifier.size(if (standardStyle) 24.dp else 20.dp),
         )
     }
 }
@@ -1126,7 +1107,7 @@ private fun CapsuleFavoriteButton(
                 )
                 .clickable(
                     interactionSource = favoriteInteraction,
-                    indication = LocalIndication.current,
+                    indication = null,
                     onClick = onClick,
                 ),
     ) {

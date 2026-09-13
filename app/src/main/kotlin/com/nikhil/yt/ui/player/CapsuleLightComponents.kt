@@ -3,6 +3,7 @@ package com.nikhil.yt.ui.player
 import com.nikhil.yt.ui.component.CapsuleFavoriteIcon
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
@@ -24,6 +25,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -37,6 +39,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
@@ -136,10 +139,17 @@ internal fun CapsuleLightFavorite(
     onToggleLike: () -> Unit,
 ) {
     val favoriteInteraction = remember { MutableInteractionSource() }
-    IconButton(
-        onClick = onToggleLike,
-        interactionSource = favoriteInteraction,
-        modifier = Modifier.size(48.dp),
+    Box(
+        modifier = Modifier
+            .size(48.dp)
+            .clip(CircleShape)
+            .clickable(
+                interactionSource = favoriteInteraction,
+                indication = null,
+                role = Role.Button,
+                onClick = onToggleLike,
+            ),
+        contentAlignment = Alignment.Center,
     ) {
         CapsuleFavoriteIcon(
             liked = liked,

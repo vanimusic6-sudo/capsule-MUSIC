@@ -1,0 +1,68 @@
+package com.nikhil.yt.ui.component
+
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Canvas
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
+
+/**
+ * A real geometric morph between the subscribe plus and the subscribed check mark.
+ *
+ * Both glyphs are represented by the same two strokes, so changing state never swaps one
+ * drawable for another. The stroke endpoints simply flow into their new positions and the
+ * animation can reverse cleanly even if the state changes before it has finished.
+ */
+@Composable
+internal fun CapsuleSubscribeIcon(
+    subscribed: Boolean,
+    tint: Color,
+    modifier: Modifier = Modifier,
+) {
+    val progress by animateFloatAsState(
+        targetValue = if (subscribed) 1f else 0f,
+        animationSpec = tween(durationMillis = 280, easing = FastOutSlowInEasing),
+        label = "capsuleSubscribeMorph",
+    )
+
+    Canvas(modifier) {
+        val unit = minOf(size.width, size.height) / 24f
+        val origin = Offset(
+            x = (size.width - 24f * unit) / 2f,
+            y = (size.height - 24f * unit) / 2f,
+        )
+
+        fun lerp(start: Float, end: Float): Float = start + (end - start) * progress
+        fun point(x: Float, y: Float): Offset =
+            Offset(origin.x + x * unit, origin.y + y * unit)
+
+        // Horizontal plus stroke -> short rising stroke of the check.
+        val firstStart = point(
+            lerp(5.2f, 5.4f),
+            lerp(12f, 12.6f),
+        )
+        val firstEnd = point(
+            lerp(18.8f, 10.1f),
+            lerp(12f, 17.1f),
+        )
+
+        // Vertical plus stroke -> long falling stroke of the check.
+        val secondStart = point(
+            lerp(12f, 10.1f),
+            lerp(5.2f, 17.1f),
+        )
+        val secondEnd = point(
+            lerp(12f, 19.1f),
+            lerp(18.8f, 7.2f),
+        )
+
+        val stroke = 2.15f * unit
+        drawLine(tint, firstStart, firstEnd, strokeWidth = stroke, cap = StrokeCap.Round)
+        drawLine(tint, secondStart, secondEnd, strokeWidth = stroke, cap = StrokeCap.Round)
+    }
+}
