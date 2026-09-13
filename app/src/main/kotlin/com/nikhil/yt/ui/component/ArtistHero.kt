@@ -101,6 +101,18 @@ internal fun ArtistHero(
 ) {
     val loadingLabel = stringResource(R.string.loading)
     var artworkFailed by remember(thumbnailUrl) { mutableStateOf(thumbnailUrl.isNullOrBlank()) }
+
+    // A follow/unfollow tap is a local user intent. Keep that intent visually authoritative for
+    // the lifetime of this hero instead of letting a delayed database/server snapshot undo the
+    // button a frame later. The database + durable subscription outbox still reconcile in the
+    // background, so this only removes the misleading subscribe -> unsubscribe flicker.
+    var localSubscribedIntent by remember { mutableStateOf<Boolean?>(null) }
+    val displayedSubscribed = localSubscribedIntent ?: subscribed
+    val onSubscribeClick = {
+        localSubscribedIntent = !displayedSubscribed
+        onSubscribe()
+    }
+
     ArtistHeroLayout(
         modifier = if (loading) modifier.clearAndSetSemantics { contentDescription = loadingLabel } else modifier,
         background = background,
@@ -143,16 +155,16 @@ internal fun ArtistHero(
         },
         actions = {
             val stackActions = LocalDensity.current.fontScale > 1.3f
-            val subscribeLabel = stringResource(if (subscribed) R.string.subscribed else R.string.subscribe)
+            val subscribeLabel = stringResource(if (displayedSubscribed) R.string.subscribed else R.string.subscribe)
             if (stackActions) {
                 CapsuleArtistAction(
                     icon = R.drawable.add,
                     label = subscribeLabel,
-                    onClick = onSubscribe,
+                    onClick = onSubscribeClick,
                     modifier = Modifier.fillMaxWidth(),
                     enabled = !loading && canSubscribe,
-                    selected = subscribed,
-                    subscribeState = subscribed,
+                    selected = displayedSubscribed,
+                    subscribeState = displayedSubscribed,
                 )
                 Spacer(Modifier.height(14.dp))
                 CapsuleArtistAction(
@@ -167,11 +179,11 @@ internal fun ArtistHero(
                     CapsuleArtistAction(
                         icon = R.drawable.add,
                         label = subscribeLabel,
-                        onClick = onSubscribe,
+                        onClick = onSubscribeClick,
                         modifier = Modifier.weight(1f),
                         enabled = !loading && canSubscribe,
-                        selected = subscribed,
-                        subscribeState = subscribed,
+                        selected = displayedSubscribed,
+                        subscribeState = displayedSubscribed,
                     )
                     CapsuleArtistAction(
                         R.drawable.shuffle,
