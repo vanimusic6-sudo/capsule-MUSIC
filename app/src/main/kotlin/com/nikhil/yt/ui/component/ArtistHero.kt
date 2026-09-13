@@ -99,7 +99,9 @@ internal fun ArtistHero(
 ) {
     val loadingLabel = stringResource(R.string.loading)
     var artworkFailed by remember(thumbnailUrl) { mutableStateOf(thumbnailUrl.isNullOrBlank()) }
-    val sceneMotion = rememberCapsuleSceneMotionState(key = thumbnailUrl ?: name)
+    // Keep the entrance tied to this composition, not to async metadata. Keying by thumbnail/name
+    // replayed the whole hero when the network response arrived after the screen was already visible.
+    val sceneMotion = rememberCapsuleSceneMotionState()
 
     var localSubscribedIntent by remember { mutableStateOf<Boolean?>(null) }
     val displayedSubscribed = localSubscribedIntent ?: subscribed
@@ -116,7 +118,7 @@ internal fun ArtistHero(
             Box(
                 Modifier
                     .fillMaxSize()
-                    .capsuleSceneItem(sceneMotion, order = 0, lift = 4.dp, depth = 0.0022f)
+                    .capsuleSceneItem(sceneMotion, order = 0, lift = 2.dp, depth = 0.0012f)
                     .background(background),
                 contentAlignment = Alignment.Center,
             ) {
@@ -146,7 +148,7 @@ internal fun ArtistHero(
                     Modifier
                         .fillMaxWidth(0.66f)
                         .height(38.dp)
-                        .capsuleSceneItem(sceneMotion, order = 1, lift = 7.dp, depth = 0.0032f)
+                        .capsuleSceneItem(sceneMotion, order = 1, lift = 4.dp, depth = 0.0015f)
                         .clip(RoundedCornerShape(10.dp))
                         .background(StandardChrome.muted.copy(alpha = 0.18f)),
                 )
@@ -159,7 +161,7 @@ internal fun ArtistHero(
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier
-                        .capsuleSceneItem(sceneMotion, order = 1, lift = 7.dp, depth = 0.0032f)
+                        .capsuleSceneItem(sceneMotion, order = 1, lift = 4.dp, depth = 0.0015f)
                         .semantics { heading() },
                 )
             }
@@ -174,7 +176,7 @@ internal fun ArtistHero(
                     onClick = onSubscribeClick,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .capsuleSceneItem(sceneMotion, order = 2, lift = 8.dp),
+                        .capsuleSceneItem(sceneMotion, order = 2, lift = 5.dp),
                     enabled = !loading && canSubscribe,
                     selected = displayedSubscribed,
                     subscribeState = displayedSubscribed,
@@ -186,7 +188,7 @@ internal fun ArtistHero(
                     onShuffle,
                     Modifier
                         .fillMaxWidth()
-                        .capsuleSceneItem(sceneMotion, order = 3, lift = 8.dp),
+                        .capsuleSceneItem(sceneMotion, order = 3, lift = 5.dp),
                     !loading && canShuffle,
                 )
             } else {
@@ -197,7 +199,7 @@ internal fun ArtistHero(
                         onClick = onSubscribeClick,
                         modifier = Modifier
                             .weight(1f)
-                            .capsuleSceneItem(sceneMotion, order = 2, lift = 8.dp),
+                            .capsuleSceneItem(sceneMotion, order = 2, lift = 5.dp),
                         enabled = !loading && canSubscribe,
                         selected = displayedSubscribed,
                         subscribeState = displayedSubscribed,
@@ -208,7 +210,7 @@ internal fun ArtistHero(
                         onShuffle,
                         Modifier
                             .weight(1f)
-                            .capsuleSceneItem(sceneMotion, order = 3, lift = 8.dp),
+                            .capsuleSceneItem(sceneMotion, order = 3, lift = 5.dp),
                         !loading && canShuffle,
                     )
                 }
@@ -221,7 +223,7 @@ internal fun ArtistHero(
                     onRadio,
                     Modifier
                         .fillMaxWidth()
-                        .capsuleSceneItem(sceneMotion, order = 4, lift = 8.dp),
+                        .capsuleSceneItem(sceneMotion, order = 4, lift = 5.dp),
                     !loading && canRadio,
                 )
             }
