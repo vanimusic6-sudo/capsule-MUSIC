@@ -37,6 +37,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.pointer.pointerInput
@@ -58,7 +60,8 @@ import kotlinx.coroutines.launch
  *
  * The mini-player is visually pinned to its collapsed position while the opaque full page rises
  * from below the viewport and covers it. The reverse happens on collapse. No alpha, scrim or blur
- * is involved, so softness comes entirely from geometry and timing rather than layer blending.
+ * is involved. A tiny secondary deformation makes the contents lag behind the surface while it is
+ * moving and catch up at rest, mirroring the tactile squeeze/follow-through of Capsule's heart.
  */
 @Composable
 fun BottomSheet(
@@ -71,6 +74,19 @@ fun BottomSheet(
 ) {
     val motionProgress = state.progress.coerceIn(0f, 1f)
     val topCornerRadius = 22.dp * (1f - motionProgress)
+
+    /*
+     * Same bell-shaped deformation used conceptually by the favourite icon: zero at both anchors,
+     * strongest halfway through the move. It is enabled only for programmatic/spring settling, so
+     * direct finger dragging stays perfectly one-to-one with the gesture.
+     */
+    val inertiaPulse =
+        if (state.isAnimationRunning) {
+            4f * motionProgress * (1f - motionProgress)
+        } else {
+            0f
+        }
+    val contentLag = 7.dp * inertiaPulse * state.motionDirection
 
     Box(
         modifier =
@@ -128,8 +144,10 @@ fun BottomSheet(
         }
 
         /*
-         * Combined with the parent offset this resolves to exactly viewportHeight * (1-progress):
-         * the full surface starts completely below the screen and travels as one rigid page to 0.
+         * The sheet surface itself follows the main spring. Its contents trail by at most 7 dp in
+         * the opposite direction of travel, compress by roughly half a percent, then catch up to
+         * their exact resting geometry. This is deliberately below the threshold of "rubber UI"
+         * but large enough for the eye to read weight and adhesion.
          */
         if (!state.isCollapsed) {
             val revealOffset =
@@ -143,8 +161,13 @@ fun BottomSheet(
                         .offset {
                             IntOffset(
                                 x = 0,
-                                y = revealOffset.roundToPx(),
+                                y = (revealOffset + contentLag).roundToPx(),
                             )
+                        }
+                        .graphicsLayer {
+                            scaleX = 1f + 0.0025f * inertiaPulse
+                            scaleY = 1f - 0.0055f * inertiaPulse
+                            transformOrigin = TransformOrigin(0.5f, 1f)
                         },
                 content = content,
             )
@@ -167,6 +190,17 @@ class BottomSheetState(
         get() = animatable.upperBound!!
 
     val value by animatable.asState()
+
+    val isAnimationRunning: Boolean
+        get() = animatable.isRunning
+
+    val motionDirection: Float
+        get() =
+            when {
+                animatable.targetValue > animatable.value -> 1f
+                animatable.targetValue < animatable.value -> -1f
+                else -> 0f
+            }
 
     val isDismissed by derivedStateOf {
         value == animatable.lowerBound!!
