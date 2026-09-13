@@ -2,21 +2,31 @@ package com.nikhil.yt.ui.screens
 
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
 
 /**
- * Route navigation deliberately does not move whole pages.
+ * Route navigation never visibly moves a whole page.
  *
- * A full-width slide makes one screen physically shove the previous screen away, which is exactly
- * the motion language Capsule no longer wants. Individual destinations own their entrance motion
- * instead (hero, controls, sections, rows), so navigation stays interruptible and never needs to
- * wait for a page-sized transition to settle.
+ * Navigation Compose still needs a real, finite transition so the outgoing destination can leave
+ * STARTED and be disposed. Returning EnterTransition.None/ExitTransition.None left both route
+ * contents alive together on some fast changes, which made translucent destinations visibly stack.
+ * A 1 ms identity-scale transition has no visible motion, alpha or slide, but gives NavHost a clean
+ * transition boundary. Individual destinations remain responsible for their own element motion.
  */
 internal object ScreenTransitions {
     @Suppress("UNUSED_PARAMETER")
     fun enter(from: String?, to: String?, isPop: Boolean = false): EnterTransition =
-        EnterTransition.None
+        scaleIn(
+            initialScale = 1f,
+            animationSpec = tween(durationMillis = 1),
+        )
 
     @Suppress("UNUSED_PARAMETER")
     fun exit(from: String?, to: String?, isPop: Boolean = false): ExitTransition =
-        ExitTransition.None
+        scaleOut(
+            targetScale = 1f,
+            animationSpec = tween(durationMillis = 1),
+        )
 }
