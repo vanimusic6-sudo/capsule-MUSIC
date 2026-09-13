@@ -54,11 +54,11 @@ import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.launch
 
 /**
- * Bottom sheet with transform-only motion.
+ * A single physical Capsule sheet.
  *
- * The mini surface stays physically underneath while the full surface travels over it. Nothing
- * changes alpha during the gesture, so opening/closing never creates a dim crossfade or a blended
- * double image.
+ * The mini-player is visually pinned to its collapsed position while the opaque full page rises
+ * from below the viewport and covers it. The reverse happens on collapse. No alpha, scrim or blur
+ * is involved, so softness comes entirely from geometry and timing rather than layer blending.
  */
 @Composable
 fun BottomSheet(
@@ -69,6 +69,9 @@ fun BottomSheet(
     collapsedContent: @Composable BoxScope.() -> Unit,
     content: @Composable BoxScope.() -> Unit,
 ) {
+    val motionProgress = state.progress.coerceIn(0f, 1f)
+    val topCornerRadius = 22.dp * (1f - motionProgress)
+
     Box(
         modifier =
             modifier
@@ -83,8 +86,8 @@ fun BottomSheet(
                 .bottomSheetDraggable(state, onDismiss)
                 .clip(
                     RoundedCornerShape(
-                        topStart = if (!state.isExpanded) 16.dp else 0.dp,
-                        topEnd = if (!state.isExpanded) 16.dp else 0.dp,
+                        topStart = topCornerRadius,
+                        topEnd = topCornerRadius,
                     ),
                 )
                 .background(backgroundColor),
@@ -94,13 +97,24 @@ fun BottomSheet(
         }
 
         /*
-         * Keep the collapsed surface under the moving page until the page fully covers it. This
-         * avoids the one-frame "mini disappears, empty top of player appears" swap at lift-off.
+         * Counter the parent sheet translation so the mini-player stays at exactly the same
+         * screen-space Y while the full page approaches it from below. This removes the old
+         * double-motion where the mini-player flew upward underneath the expanding player.
          */
         if (!state.isExpanded && (onDismiss == null || !state.isDismissed)) {
+            val miniPinOffset =
+                (state.value - state.collapsedBound)
+                    .coerceAtLeast(0.dp)
+
             Box(
                 modifier =
                     Modifier
+                        .offset {
+                            IntOffset(
+                                x = 0,
+                                y = miniPinOffset.roundToPx(),
+                            )
+                        }
                         .clickable(
                             enabled = state.isCollapsed,
                             interactionSource = remember { MutableInteractionSource() },
@@ -113,10 +127,14 @@ fun BottomSheet(
             )
         }
 
+        /*
+         * Combined with the parent offset this resolves to exactly viewportHeight * (1-progress):
+         * the full surface starts completely below the screen and travels as one rigid page to 0.
+         */
         if (!state.isCollapsed) {
             val revealOffset =
                 state.collapsedBound *
-                    (1f - state.progress.coerceIn(0f, 1f))
+                    (1f - motionProgress)
 
             BoxWithConstraints(
                 modifier =
@@ -199,7 +217,7 @@ class BottomSheetState(
     fun dismiss() {
         onAnchorChanged(DISMISSED_ANCHOR)
         coroutineScope.launch(start = CoroutineStart.UNDISPATCHED) {
-            animatable.animateTo(animatable.lowerBound!!)
+            animatable.animateTo(animatable.lowerBound!!, BottomSheetAnimationSpec)
         }
     }
 
@@ -209,39 +227,42 @@ class BottomSheetState(
         }
     }
 
+    fun settle(onDismiss: (() -> Unit)? = null) {
+        performFling(velocity = 0f, onDismiss = onDismiss)
+    }
+
     fun performFling(
         velocity: Float,
         onDismiss: (() -> Unit)?,
     ) {
-        if (velocity > 250) {
+        val flingThreshold = 900f
+
+        if (velocity > flingThreshold) {
             expand()
-        } else if (velocity < -250) {
+            return
+        }
+
+        if (velocity < -flingThreshold) {
             if (value < collapsedBound && onDismiss != null) {
                 dismiss()
                 onDismiss.invoke()
             } else {
                 collapse()
             }
-        } else {
-            val l0 = dismissedBound
-            val l1 = (collapsedBound - dismissedBound) / 2
-            val l2 = (expandedBound - collapsedBound) / 2
-            val l3 = expandedBound
+            return
+        }
 
-            when (value) {
-                in l0..l1 -> {
-                    if (onDismiss != null) {
-                        dismiss()
-                        onDismiss.invoke()
-                    } else {
-                        collapse()
-                    }
-                }
+        val dismissMidpoint = dismissedBound + (collapsedBound - dismissedBound) / 2f
+        val expandMidpoint = collapsedBound + (expandedBound - collapsedBound) / 2f
 
-                in l1..l2 -> collapse()
-                in l2..l3 -> expand()
-                else -> Unit
+        when {
+            value < dismissMidpoint && onDismiss != null -> {
+                dismiss()
+                onDismiss.invoke()
             }
+
+            value < expandMidpoint -> collapse()
+            else -> expand()
         }
     }
 
@@ -335,7 +356,7 @@ fun rememberBottomSheetState(
 
         animatable.updateBounds(dismissedBound.coerceAtMost(expandedBound), expandedBound)
         coroutineScope.launch(start = CoroutineStart.UNDISPATCHED) {
-            animatable.animateTo(initialValue, BottomSheetAnimationSpec)
+            animatable.snapTo(initialValue)
         }
 
         BottomSheetState(
@@ -368,7 +389,7 @@ fun Modifier.bottomSheetDraggable(
             },
             onDragCancel = {
                 velocityTracker.resetTracking()
-                state.snapTo(state.collapsedBound)
+                state.settle(onDismiss)
             },
             onDragEnd = {
                 val velocity = -velocityTracker.calculateVelocity().y
