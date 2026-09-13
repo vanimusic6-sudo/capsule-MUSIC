@@ -25,7 +25,9 @@ class CapsuleSceneMotionState internal constructor(
     internal val progress: Animatable<Float, AnimationVector1D>,
 ) {
     internal fun itemProgress(order: Int): Float {
-        val start = (order.coerceAtLeast(0) * 0.055f).coerceAtMost(0.28f)
+        // Long lists still get a real cascade, but the delay stays subtle enough to remain
+        // interruptible. Later items never wait for the first ones to fully settle.
+        val start = (order.coerceAtLeast(0) * 0.028f).coerceAtMost(0.38f)
         return ((progress.value - start) / (1f - start)).coerceIn(0f, 1.055f)
     }
 }
