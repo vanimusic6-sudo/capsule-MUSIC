@@ -330,10 +330,9 @@ private fun CapsulePlayerLyricsHost(
     onShowMenu: () -> Unit,
 ) {
     /*
-     * Unlike AnimatedVisibility, this keeps one continuous physical state. If the user reverses the
-     * transition before it finishes, Animatable starts from the current position and velocity rather
-     * than spawning a second entrance/exit animation. That continuity is a large part of the tactile
-     * feeling of the favourite-heart interaction.
+     * One continuous physical state means a reversal starts from the exact current position and
+     * velocity. The visual layer clamps positional overshoot at its dock and expresses the final
+     * impact through a tiny deformation instead, which keeps the hit without the old crooked jerk.
      */
     val lyricsMotion = remember {
         Animatable(if (showLyrics) 1f else 0f)
@@ -344,8 +343,8 @@ private fun CapsulePlayerLyricsHost(
             targetValue = if (showLyrics) 1f else 0f,
             animationSpec =
                 spring(
-                    dampingRatio = if (showLyrics) 0.80f else 0.86f,
-                    stiffness = if (showLyrics) 270f else 350f,
+                    dampingRatio = if (showLyrics) 0.88f else 0.90f,
+                    stiffness = if (showLyrics) 210f else 265f,
                 ),
         )
     }
@@ -358,9 +357,9 @@ private fun CapsulePlayerLyricsHost(
                 Modifier
                     .fillMaxSize()
                     .graphicsLayer {
-                        translationY = -4f * playerReaction
-                        scaleX = 1f - 0.0012f * playerReaction
-                        scaleY = 1f - 0.0018f * playerReaction
+                        translationY = -2.25f * playerReaction
+                        scaleX = 1f - 0.00055f * playerReaction
+                        scaleY = 1f - 0.00085f * playerReaction
                         transformOrigin = TransformOrigin(0.5f, 0.5f)
                     },
         ) {
@@ -394,11 +393,14 @@ private fun CapsulePlayerLyricsHost(
 
         BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
             val progress = lyricsMotion.value
+            val visualProgress = progress.coerceIn(0f, 1f)
             val fullHeightPx = constraints.maxHeight.toFloat()
-            val baseTranslation = (1f - progress) * fullHeightPx
+            val baseTranslation = (1f - visualProgress) * fullHeightPx
             val velocity = lyricsMotion.velocity
-            val velocityWeight = (abs(velocity) / 4.5f).coerceIn(0f, 1f)
-            val inertialLag = (velocity * 4.5f).coerceIn(-14f, 14f)
+            val velocityWeight = (abs(velocity) / 5.8f).coerceIn(0f, 1f)
+            val landingWeight = ((visualProgress - 0.72f) / 0.28f).coerceIn(0f, 1f)
+            val impactWeight = velocityWeight * landingWeight
+            val inertialLag = (velocity * 1.8f).coerceIn(-5.5f, 5.5f)
             val shouldComposeLyrics =
                 showLyrics || lyricsMotion.isRunning || progress > 0.001f
 
@@ -409,8 +411,8 @@ private fun CapsulePlayerLyricsHost(
                             .fillMaxSize()
                             .graphicsLayer {
                                 translationY = baseTranslation + inertialLag
-                                scaleX = 1f + 0.0015f * velocityWeight
-                                scaleY = 1f - 0.0035f * velocityWeight
+                                scaleX = 1f + 0.00065f * impactWeight
+                                scaleY = 1f - 0.00155f * impactWeight
                                 transformOrigin = TransformOrigin(0.5f, 1f)
                             },
                 ) {
