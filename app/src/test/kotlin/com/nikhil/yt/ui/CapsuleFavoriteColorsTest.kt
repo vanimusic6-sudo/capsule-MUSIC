@@ -6,15 +6,15 @@ import org.junit.Assert.assertEquals
 import org.junit.Test
 
 class CapsuleFavoriteColorsTest {
-    @Test fun everyDarkSurfaceUsesTheSharedBurgundyHeart() {
-        for (foreground in listOf(Color.White, Color(0xFFF4F4F4), Color(0xFFF3F3F3), Color(0xFFDDDDDD))) {
-            assertEquals(Color(0xFF822133), CapsuleFavoriteColors.selected(foreground))
+    @Test
+    fun inactiveHeartUsesSharedForegroundTone() {
+        for (foreground in listOf(Color.White, Color(0xFFF4F4F4), Color.Black, Color(0xFF171717))) {
+            assertEquals(foreground.copy(alpha = 0.72f), CapsuleFavoriteColors.selected(foreground))
         }
     }
 
-    @Test fun lightSurfacesKeepTheSameBurgundyAccent() {
-        for (foreground in listOf(Color.Black, Color(0xFF171717), Color(0xFF444444))) {
-            assertEquals(Color(0xFF822133), CapsuleFavoriteColors.selected(foreground))
-        }
+    @Test
+    fun activeHeartKeepsCapsuleBurgundyAccent() {
+        assertEquals(Color(0xFF822133), CapsuleFavoriteColors.active)
     }
 }
