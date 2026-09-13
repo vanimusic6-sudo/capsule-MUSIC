@@ -54,14 +54,15 @@ import com.nikhil.yt.constants.BottomSheetSoftAnimationSpec
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.launch
+import kotlin.math.abs
 
 /**
  * A single physical Capsule sheet.
  *
  * The mini-player is visually pinned to its collapsed position while the opaque full page rises
  * from below the viewport and covers it. The reverse happens on collapse. No alpha, scrim or blur
- * is involved. A tiny secondary deformation makes the contents lag behind the surface while it is
- * moving and catch up at rest, mirroring the tactile squeeze/follow-through of Capsule's heart.
+ * is involved. The inner player reacts to the spring's real velocity, so its tiny follow-through is
+ * caused by movement itself instead of a synthetic progress curve.
  */
 @Composable
 fun BottomSheet(
@@ -76,17 +77,14 @@ fun BottomSheet(
     val topCornerRadius = 22.dp * (1f - motionProgress)
 
     /*
-     * Same bell-shaped deformation used conceptually by the favourite icon: zero at both anchors,
-     * strongest halfway through the move. It is enabled only for programmatic/spring settling, so
-     * direct finger dragging stays perfectly one-to-one with the gesture.
+     * Animatable velocity is expressed in dp/s. Converting roughly ten milliseconds of travel into
+     * a visual offset gives the inner layer just enough inertia to be felt without looking detached
+     * from the surface. Snap/drag operations report no spring velocity, so finger tracking remains
+     * perfectly direct.
      */
-    val inertiaPulse =
-        if (state.isAnimationRunning) {
-            4f * motionProgress * (1f - motionProgress)
-        } else {
-            0f
-        }
-    val contentLag = 7.dp * inertiaPulse * state.motionDirection
+    val velocity = state.animationVelocity.value
+    val contentLag = (velocity * 0.010f).coerceIn(-7f, 7f).dp
+    val velocityWeight = (abs(velocity) / 1150f).coerceIn(0f, 1f)
 
     Box(
         modifier =
@@ -112,11 +110,6 @@ fun BottomSheet(
             BackHandler(onBack = state::collapseSoft)
         }
 
-        /*
-         * Counter the parent sheet translation so the mini-player stays at exactly the same
-         * screen-space Y while the full page approaches it from below. This removes the old
-         * double-motion where the mini-player flew upward underneath the expanding player.
-         */
         if (!state.isExpanded && (onDismiss == null || !state.isDismissed)) {
             val miniPinOffset =
                 (state.value - state.collapsedBound)
@@ -144,10 +137,10 @@ fun BottomSheet(
         }
 
         /*
-         * The sheet surface itself follows the main spring. Its contents trail by at most 7 dp in
-         * the opposite direction of travel, compress by roughly half a percent, then catch up to
-         * their exact resting geometry. This is deliberately below the threshold of "rubber UI"
-         * but large enough for the eye to read weight and adhesion.
+         * Surface position and inner content are deliberately not identical while the spring has
+         * speed. On the way up the content trails a few dp below; on the way down it trails above.
+         * As velocity naturally decays, translation and micro-compression disappear continuously.
+         * This is the large-surface equivalent of the favourite heart's tactile deformation.
          */
         if (!state.isCollapsed) {
             val revealOffset =
@@ -165,8 +158,8 @@ fun BottomSheet(
                             )
                         }
                         .graphicsLayer {
-                            scaleX = 1f + 0.0025f * inertiaPulse
-                            scaleY = 1f - 0.0055f * inertiaPulse
+                            scaleX = 1f + 0.0018f * velocityWeight
+                            scaleY = 1f - 0.0042f * velocityWeight
                             transformOrigin = TransformOrigin(0.5f, 1f)
                         },
                 content = content,
@@ -191,16 +184,8 @@ class BottomSheetState(
 
     val value by animatable.asState()
 
-    val isAnimationRunning: Boolean
-        get() = animatable.isRunning
-
-    val motionDirection: Float
-        get() =
-            when {
-                animatable.targetValue > animatable.value -> 1f
-                animatable.targetValue < animatable.value -> -1f
-                else -> 0f
-            }
+    val animationVelocity: Dp
+        get() = animatable.velocity
 
     val isDismissed by derivedStateOf {
         value == animatable.lowerBound!!
