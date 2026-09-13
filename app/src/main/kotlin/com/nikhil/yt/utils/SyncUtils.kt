@@ -20,6 +20,7 @@ import com.nikhil.yt.innertube.models.PlaylistItem
 import com.nikhil.yt.innertube.models.SongItem
 import com.nikhil.yt.innertube.utils.completed
 import com.nikhil.yt.innertube.utils.parseCookieString
+import com.nikhil.yt.db.ArtistSubscriptionState
 import com.nikhil.yt.db.MusicDatabase
 import com.nikhil.yt.db.entities.ArtistEntity
 import com.nikhil.yt.db.entities.PlaylistEntity
@@ -87,7 +88,6 @@ class SyncUtils @Inject constructor(
             Timber.d("Sync already in progress, skipping")
             return@withContext
         }
-        
         try {
             syncMutex.withLock {
                 if (!isLoggedIn()) {
@@ -98,16 +98,13 @@ class SyncUtils @Inject constructor(
                     Timber.w("Skipping full sync - sync disabled")
                     return@withLock
                 }
-                
                 supervisorScope {
                     syncLikedSongs(automatic = automatic)
                     syncLibrarySongs(automatic = automatic)
-
                     listOf(
                         async { syncLikedAlbums(automatic = automatic) },
                         async { syncArtistsSubscriptions(automatic = automatic) },
                     ).awaitAll()
-                    
                     syncSavedPlaylists(automatic = automatic)
                     syncAutoSyncPlaylists(automatic = automatic)
                 }
@@ -131,7 +128,6 @@ class SyncUtils @Inject constructor(
                     Timber.w("Found ${playlists.size} duplicate playlists for browseId: $browseId")
                     val toKeep = playlists.maxByOrNull { it.songCount }
                         ?: playlists.first()
-                    
                     playlists.filter { it.id != toKeep.id }.forEach { duplicate ->
                         Timber.d("Removing duplicate playlist: ${duplicate.playlist.name} (${duplicate.id})")
                         database.clearPlaylist(duplicate.id)
@@ -388,7 +384,7 @@ class SyncUtils @Inject constructor(
 
     suspend fun syncArtistsSubscriptions(automatic: Boolean = false) = coroutineScope {
         if (!isLoggedIn()) {
-            Timber.w("Skipping syncArtistsSubscriptions - user not logged in")
+            Timber.w("Skipping syncArtistsSubscriptions - user not logged in; local subscriptions stay untouched")
             return@coroutineScope
         }
         if (!isYtmSyncEnabled()) {
@@ -399,58 +395,146 @@ class SyncUtils @Inject constructor(
             Timber.d("syncArtistsSubscriptions: automatic refresh skipped inside cooldown")
             return@coroutineScope
         }
+
         val gen = syncGeneration.get()
-        // A response can be older than a subscription made while the request is in flight.
+        // Snapshot before the request so a late response can never overwrite a newer local tap.
         val localBeforeRequest = database.artistsBookmarkedByNameAsc().first()
+
         YouTube.library("FEmusic_library_corpus_artists").completed().onSuccess { page ->
             if (!isSyncStillEnabled(gen)) return@onSuccess
             val remoteArtists = page.items.filterIsInstance<ArtistItem>()
             if (remoteArtists.isEmpty()) {
-                Timber.w("syncArtistsSubscriptions: No artist subscriptions found")
-                return@onSuccess
+                Timber.d("syncArtistsSubscriptions: remote subscription snapshot is empty")
             }
-            val remoteIds = remoteArtists.map { it.id }.toSet()
+
             if (!isSyncStillEnabled(gen)) return@onSuccess
-            localBeforeRequest.filterNot { it.id in remoteIds }
-                .forEach { artist ->
-                    database.withTransaction {
-                        if (!isSyncStillEnabled(gen)) return@withTransaction
-                        artist.artist.bookmarkedAt?.let { bookmark ->
-                            clearArtistBookmarkIfUnchanged(artist.id, bookmark)
+
+            // Remote absence is destructive, so require confirmation. A freshly sent subscribe is
+            // protected for a propagation window and cannot be erased by a stale library snapshot.
+            localBeforeRequest.forEach { localArtist ->
+                val local = localArtist.artist
+                val remoteMatch =
+                    remoteArtists.firstOrNull { remote ->
+                        ArtistSubscriptionState.identitiesMatch(
+                            localId = local.id,
+                            localChannelId = local.channelId,
+                            remoteId = remote.id,
+                            remoteChannelId = remote.channelId,
+                        )
+                    }
+
+                if (remoteMatch != null) {
+                    ArtistSubscriptionState.observeRemotePresence(local.id, local.channelId)
+                    ArtistSubscriptionState.confirmRemoteState(
+                        artistId = local.id,
+                        channelId = local.channelId ?: remoteMatch.channelId,
+                        subscribed = true,
+                    )
+                    return@forEach
+                }
+
+                val pendingState =
+                    ArtistSubscriptionState.pendingDesiredState(local.id, local.channelId)
+                if (pendingState == true) {
+                    Timber.d("syncArtistsSubscriptions: keeping fresh local subscribe for ${local.id}")
+                    return@forEach
+                }
+                if (pendingState == false) {
+                    ArtistSubscriptionState.confirmRemoteState(local.id, local.channelId, subscribed = false)
+                }
+
+                if (!ArtistSubscriptionState.shouldApplyRemoteAbsence(local.id, local.channelId)) {
+                    Timber.d("syncArtistsSubscriptions: waiting for a second remote absence for ${local.id}")
+                    return@forEach
+                }
+
+                database.withTransaction {
+                    if (!isSyncStillEnabled(gen)) return@withTransaction
+                    val current = getArtistById(local.id) ?: return@withTransaction
+                    current.bookmarkedAt?.let { bookmark ->
+                        if (clearArtistBookmarkIfUnchanged(current.id, bookmark) > 0) {
+                            Timber.d("syncArtistsSubscriptions: confirmed remote unsubscribe for ${current.id}")
                         }
                     }
                 }
+            }
 
-            remoteArtists.forEach { artist ->
+            // Remote presence is positive evidence. Restore a locally missing bookmark immediately,
+            // unless the user has a fresh local unsubscribe that has not propagated yet.
+            remoteArtists.forEach { remote ->
                 launch {
                     if (!isSyncStillEnabled(gen)) return@launch
                     dbWriteSemaphore.withPermit {
                         if (!isSyncStillEnabled(gen)) return@withPermit
                         database.withTransaction {
                             if (!isSyncStillEnabled(gen)) return@withTransaction
-                            val dbArtist = getArtistById(artist.id)
-                            if (dbArtist == null) {
+
+                            if (
+                                ArtistSubscriptionState.pendingDesiredState(
+                                    artistId = remote.id,
+                                    channelId = remote.channelId,
+                                ) == false
+                            ) {
+                                Timber.d("syncArtistsSubscriptions: ignoring stale remote presence for ${remote.id}")
+                                return@withTransaction
+                            }
+
+                            val snapshotMatch =
+                                localBeforeRequest.firstOrNull { localArtist ->
+                                    ArtistSubscriptionState.identitiesMatch(
+                                        localId = localArtist.artist.id,
+                                        localChannelId = localArtist.artist.channelId,
+                                        remoteId = remote.id,
+                                        remoteChannelId = remote.channelId,
+                                    )
+                                }?.artist
+                            val existing =
+                                getArtistById(remote.id)
+                                    ?: snapshotMatch?.let { getArtistById(it.id) }
+                            val now = LocalDateTime.now()
+
+                            if (existing == null) {
                                 insert(
                                     ArtistEntity(
-                                        id = artist.id,
-                                        name = artist.title,
-                                        thumbnailUrl = artist.thumbnail,
-                                        channelId = artist.channelId,
-                                    )
+                                        id = remote.id,
+                                        name = remote.title,
+                                        thumbnailUrl = remote.thumbnail,
+                                        channelId = remote.channelId,
+                                        bookmarkedAt = now,
+                                    ),
                                 )
-                            } else {
-                                val existing = dbArtist
-                                if (existing.name != artist.title || existing.thumbnailUrl != artist.thumbnail || existing.channelId != artist.channelId) {
-                                    update(
-                                        existing.copy(
-                                            name = artist.title,
-                                            thumbnailUrl = artist.thumbnail,
-                                            channelId = artist.channelId,
-                                            lastUpdateTime = java.time.LocalDateTime.now()
-                                        )
-                                    )
-                                }
+                                ArtistSubscriptionState.observeRemotePresence(remote.id, remote.channelId)
+                                ArtistSubscriptionState.confirmRemoteState(
+                                    artistId = remote.id,
+                                    channelId = remote.channelId,
+                                    subscribed = true,
+                                )
+                                return@withTransaction
                             }
+
+                            val mergedChannelId = remote.channelId ?: existing.channelId
+                            val metadataChanged =
+                                existing.name != remote.title ||
+                                    existing.thumbnailUrl != remote.thumbnail ||
+                                    existing.channelId != mergedChannelId
+                            if (existing.bookmarkedAt == null || metadataChanged) {
+                                update(
+                                    existing.copy(
+                                        name = remote.title,
+                                        thumbnailUrl = remote.thumbnail,
+                                        channelId = mergedChannelId,
+                                        bookmarkedAt = existing.bookmarkedAt ?: now,
+                                        lastUpdateTime = if (metadataChanged) now else existing.lastUpdateTime,
+                                    ),
+                                )
+                            }
+
+                            ArtistSubscriptionState.observeRemotePresence(existing.id, mergedChannelId)
+                            ArtistSubscriptionState.confirmRemoteState(
+                                artistId = existing.id,
+                                channelId = mergedChannelId,
+                                subscribed = true,
+                            )
                         }
                     }
                 }
@@ -595,18 +679,15 @@ class SyncUtils @Inject constructor(
             if (!isSyncStillEnabled(gen)) return@onSuccess
             val songs = page.songs.orEmpty().map(SongItem::toMediaMetadata)
             Timber.d("syncPlaylist: Fetched ${songs.size} songs from remote")
-
             if (songs.isEmpty()) {
                 Timber.w("syncPlaylist: Remote playlist is empty, skipping sync")
                 return@onSuccess
             }
-
             val remoteIds = songs.mapNotNull { it.id }
             if (remoteIds.isEmpty()) {
                 Timber.w("syncPlaylist: No valid song IDs found, skipping sync")
                 return@onSuccess
             }
-
             val localIds = try {
                 database.playlistSongs(playlistId).first()
                     .sortedBy { it.map.position }
@@ -615,14 +696,12 @@ class SyncUtils @Inject constructor(
                 Timber.w("syncPlaylist: Failed to fetch local songs", e)
                 emptyList()
             }
-
             if (remoteIds == localIds) {
                 Timber.d("syncPlaylist: Local and remote are in sync, no changes needed")
                 return@onSuccess
             }
 
             Timber.d("syncPlaylist: Updating local playlist (remote: ${remoteIds.size}, local: ${localIds.size})")
-
             try {
                 database.withTransaction {
                     if (!isSyncStillEnabled(gen)) return@withTransaction
@@ -640,7 +719,7 @@ class SyncUtils @Inject constructor(
                                 position = idx,
                                 setVideoId = song.setVideoId
                             )
-                        )
+                         )
                     }
                 }
                 Timber.d("syncPlaylist: Successfully synced playlist")
