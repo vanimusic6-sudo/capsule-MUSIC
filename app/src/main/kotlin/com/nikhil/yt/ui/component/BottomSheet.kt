@@ -61,7 +61,7 @@ import kotlinx.coroutines.launch
  * Animated value/velocity reads deliberately live in layout/layer lambdas. That lets Compose
  * invalidate only position or the GPU layer on each frame instead of recomposing the whole player.
  * The mini-player is mounted only near its docking zone, so its slow procedural background does not
- * keep drawing invisibly behind the full player. Stateful icons snap to their real restored state.
+ * keep drawing invisibly behind the full player.
  */
 @Composable
 fun BottomSheet(
@@ -79,7 +79,7 @@ fun BottomSheet(
                 exists &&
                     (
                         state.isCollapsed ||
-                            state.progress.coerceIn(0f, 1f) < 0.46f
+                            state.progress < 0.46f
                     )
             }
         }
@@ -87,7 +87,7 @@ fun BottomSheet(
         remember(state, onDismiss) {
             derivedStateOf {
                 (onDismiss == null || !state.isDismissed) &&
-                    state.progress.coerceIn(0f, 1f) < 0.46f
+                    state.progress < 0.46f
             }
         }
 
@@ -104,7 +104,7 @@ fun BottomSheet(
                 }
                 .bottomSheetDraggable(state, onDismiss)
                 .graphicsLayer {
-                    val motionProgress = state.progress.coerceIn(0f, 1f)
+                    val motionProgress = state.progress
                     val topCornerRadius = 22.dp * (1f - motionProgress)
                     shape =
                         RoundedCornerShape(
@@ -121,8 +121,8 @@ fun BottomSheet(
         /*
          * Compose the mini-player before it becomes visible so docking/reversal are continuous, but
          * stop its flows and procedural background while it is completely hidden by the full page.
-         * The subscription and favourite glyphs initialise from real state, so remounting here does
-         * not replay fake state-change animations.
+         * CapsuleSubscribeIcon treats the short Room bootstrap window as restoration, so remounting
+         * this subtree can no longer replay a fake plus-to-check morph.
          */
         if (shouldComposeMini) {
             Box(
@@ -138,8 +138,8 @@ fun BottomSheet(
                             )
                         }
                         .graphicsLayer {
-                            val rawProgress = state.progress
-                            val motionProgress = rawProgress.coerceIn(0f, 1f)
+                            val rawProgress = state.rawProgress
+                            val motionProgress = state.progress
                             val closingVelocity =
                                 (-state.animationVelocity.value).coerceAtLeast(0f)
                             val closingVelocityWeight =
@@ -181,7 +181,7 @@ fun BottomSheet(
                     Modifier
                         .fillMaxSize()
                         .offset {
-                            val motionProgress = state.progress.coerceIn(0f, 1f)
+                            val motionProgress = state.progress
                             val revealOffset =
                                 state.collapsedBound *
                                     (1f - motionProgress)
@@ -191,7 +191,7 @@ fun BottomSheet(
                             )
                         }
                         .graphicsLayer {
-                            val motionProgress = state.progress.coerceIn(0f, 1f)
+                            val motionProgress = state.progress
                             val openingVelocity =
                                 state.animationVelocity.value.coerceAtLeast(0f)
                             val openingVelocityWeight =
@@ -243,8 +243,19 @@ class BottomSheetState(
         value == animatable.upperBound
     }
 
-    val progress by derivedStateOf {
+    /** Physical anchor progress, intentionally allowed to overshoot for impact calculations. */
+    val rawProgress by derivedStateOf {
         1f - (animatable.upperBound!! - animatable.value) / (animatable.upperBound!! - collapsedBound)
+    }
+
+    /**
+     * Visual docking progress. Quintic smootherstep keeps position, velocity and acceleration calm at
+     * both ends. External chrome (especially the bottom navigation) therefore no longer inherits a
+     * sharp start/stop from the large player surface while the raw spring remains available above.
+     */
+    val progress by derivedStateOf {
+        val p = rawProgress.coerceIn(0f, 1f)
+        p * p * p * (p * (p * 6f - 15f) + 10f)
     }
 
     fun collapse(animationSpec: AnimationSpec<Dp>) {
