@@ -46,7 +46,9 @@ import com.nikhil.yt.utils.rememberPreference
 fun LibraryScreen(navController: NavController) {
     var filterType by rememberEnumPreference(ChipSortTypeKey, LibraryFilter.LIBRARY)
     val (disableBlur) = rememberPreference(DisableBlurKey, true)
-    val sceneMotion = rememberCapsuleSceneMotionState(key = filterType)
+    // The filter chrome belongs to the Library destination, not to each selected filter. Re-keying
+    // this motion by filterType replayed the entrance every time the user switched Songs/Albums/etc.
+    val sceneMotion = rememberCapsuleSceneMotionState(key = "library-destination")
 
     val database = LocalDatabase.current
     val (showTagsInLibrary) = rememberPreference(ShowTagsInLibraryKey, true)
@@ -61,8 +63,8 @@ fun LibraryScreen(navController: NavController) {
                 modifier = Modifier.capsuleSceneItem(
                     state = sceneMotion,
                     order = 0,
-                    lift = 8.dp,
-                    depth = 0.004f,
+                    lift = 4.dp,
+                    depth = 0.0016f,
                 ),
             ) {
                 ChipsRow(
@@ -102,8 +104,8 @@ fun LibraryScreen(navController: NavController) {
                         .capsuleSceneItem(
                             state = sceneMotion,
                             order = 1,
-                            lift = 9.dp,
-                            depth = 0.004f,
+                            lift = 5.dp,
+                            depth = 0.0016f,
                         )
                         .padding(horizontal = 16.dp, vertical = 8.dp),
                 )
@@ -111,7 +113,6 @@ fun LibraryScreen(navController: NavController) {
         }
     }
 
-    // Capture M3 Expressive colors from theme outside drawBehind
     val color1 = MaterialTheme.colorScheme.primary
     val color2 = MaterialTheme.colorScheme.secondary
     val color3 = MaterialTheme.colorScheme.tertiary
@@ -124,7 +125,6 @@ fun LibraryScreen(navController: NavController) {
             .fillMaxSize()
             .background(surfaceColor),
     ) {
-        // M3E Mesh gradient background layer at the top
         if (!disableBlur) {
             Box(
                 modifier = Modifier
@@ -223,9 +223,8 @@ fun LibraryScreen(navController: NavController) {
             ) {}
         }
 
-        // The destination canvas never moves. Only the actual controls above use scene motion.
-        // Moving this whole container exposed the previous route underneath and looked like two
-        // screens were physically stacked on top of each other.
+        // The destination canvas remains completely stationary and opaque. Filter changes replace
+        // content on this canvas instead of replaying a container entrance over the previous view.
         Box(
             modifier = Modifier.fillMaxSize(),
         ) {
