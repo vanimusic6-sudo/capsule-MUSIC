@@ -12,12 +12,16 @@ import androidx.compose.runtime.Immutable
 import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.PrimaryKey
+import com.nikhil.yt.App
 import com.nikhil.yt.db.ArtistSubscriptionState
 import com.nikhil.yt.innertube.YouTube
+import com.nikhil.yt.utils.ArtistSubscriptionOutbox
+import com.nikhil.yt.utils.ArtistSubscriptionSyncScheduler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import org.apache.commons.lang3.RandomStringUtils
 import java.time.LocalDateTime
 
@@ -45,22 +49,55 @@ data class ArtistEntity(
 
     fun toggleLike() = localToggleLike().also { it.syncSubscription() }
 
+    /**
+     * Persist the local desired state before touching the network.
+     *
+     * Logged-out users stay completely local. Authenticated users get a durable outbox entry that
+     * survives process death/reboot and is pushed to YouTube as soon as connectivity is available.
+     */
     fun syncSubscription() {
         if (isLocal || isPrivatelyOwnedArtist) return
 
-        // Logged-out mode is deliberately local-only. The database bookmark is still changed by
-        // the caller, but no authenticated YouTube mutation (or reconciliation intent) is created.
-        if (!YouTube.authState.hasLoginCookie) return
-
+        val app = runCatching { App.instance }.getOrNull() ?: return
+        val context = app.applicationContext
         val subscribed = bookmarkedAt != null
-        ArtistSubscriptionState.recordLocalIntent(id, channelId, subscribed)
+
+        if (!YouTube.authState.hasLoginCookie) {
+            // A logged-out follow is intentionally local-only. Also make sure a stale queued write
+            // for this same artist cannot leak into a future account session.
+            runBlocking(Dispatchers.IO) {
+                ArtistSubscriptionOutbox.removeForArtist(context, id)
+            }
+            ArtistSubscriptionState.clearLocalIntent(id, channelId)
+            return
+        }
+
+        // Write-ahead: the durable desired state exists before any HTTP request starts. One outbox
+        // row per artist means repeated offline taps collapse to the latest local state.
+        val pending =
+            runBlocking(Dispatchers.IO) {
+                ArtistSubscriptionOutbox.record(
+                    context = context,
+                    artistId = id,
+                    channelId = channelId,
+                    subscribed = subscribed,
+                )
+            }
+
+        ArtistSubscriptionState.recordLocalIntent(
+            artistId = id,
+            channelId = channelId,
+            subscribed = subscribed,
+            nowMs = pending.changedAtMs,
+            durable = true,
+        )
+
+        // WorkManager is the guaranteed path: it waits for connectivity and survives app/process
+        // restarts. The direct flush below is only a latency optimization for the already-online case.
+        ArtistSubscriptionSyncScheduler.enqueue(context)
 
         CoroutineScope(Dispatchers.IO).launch {
-            val resolvedChannelId = channelId ?: YouTube.getChannelId(id)
-            // Register the resolved UC id as an alias before sending the mutation. The library
-            // endpoint returns public channel ids, while some local artist rows use browse ids.
-            ArtistSubscriptionState.recordLocalIntent(id, resolvedChannelId, subscribed)
-            YouTube.subscribeChannel(resolvedChannelId, subscribed)
+            ArtistSubscriptionOutbox.flushLatest(context, id)
             this.cancel()
         }
     }
