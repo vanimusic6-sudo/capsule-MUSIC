@@ -2,13 +2,18 @@ package com.nikhil.yt.ui.screens
 
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.core.tween
 
 /**
- * Route hand-off itself never animates.
+ * Route hand-off itself never moves.
  *
- * Full-screen transitions were the source of both visual stacking and an interrupted-transition
- * lifecycle race when Back was pressed immediately after selecting a top-level tab. Destinations
- * now swap directly; motion belongs only to controls inside the destination via CapsuleSceneMotion.
+ * Navigation Compose can keep the outgoing and incoming destinations composed together for a short
+ * transition window. That is useful for page animations, but Capsule deliberately does not animate
+ * whole pages. Keep the incoming destination fully present and make the outgoing destination
+ * invisible within the same display frame. The 1 ms alpha hand-off is not a visible fade; it is a
+ * rendering guard that prevents stale route content from being drawn over the new destination while
+ * Navigation finishes its lifecycle bookkeeping.
  */
 internal object ScreenTransitions {
     @Suppress("UNUSED_PARAMETER")
@@ -17,5 +22,5 @@ internal object ScreenTransitions {
 
     @Suppress("UNUSED_PARAMETER")
     fun exit(from: String?, to: String?, isPop: Boolean = false): ExitTransition =
-        ExitTransition.None
+        fadeOut(animationSpec = tween(durationMillis = 1), targetAlpha = 0f)
 }
