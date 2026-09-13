@@ -9,14 +9,13 @@ import androidx.compose.animation.slideOutHorizontally
 /**
  * Capsule page motion is opaque, transform-only and spring driven.
  *
- * Both pages use the exact same spring. Their touching edges therefore remain locked together for
- * the entire trip, including the tiny settle at the end: one page can never visually crossfade,
- * overlap or detach from the other. The slight under-damping supplies the tactile "stick" that a
- * one-shot easing curve cannot produce.
+ * Both pages use the exact same spring so their touching edges stay locked together. The spring is
+ * intentionally a little softer than before: it keeps a small magnetic settle, but no longer fires
+ * the whole page across the screen with the nervous snap of the previous high-stiffness setup.
  */
 internal object ScreenTransitions {
-    private const val DAMPING_RATIO = 0.84f
-    private const val STIFFNESS = 390f
+    private const val DAMPING_RATIO = 0.88f
+    private const val STIFFNESS = 270f
 
     fun enter(from: String?, to: String?, isPop: Boolean = false): EnterTransition {
         if (from == to) return EnterTransition.None
