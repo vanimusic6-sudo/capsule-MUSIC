@@ -2,30 +2,32 @@ package com.nikhil.yt.ui.screens
 
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
-import androidx.compose.animation.core.CubicBezierEasing
-import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 
 /**
- * Capsule page motion is intentionally opaque and geometry-only.
+ * Capsule page motion is opaque, transform-only and spring driven.
  *
- * Both pages travel with the same duration and easing. Their touching edges therefore remain
- * locked together for the whole transition: the destination cannot visually overlap the source,
- * and no alpha/scrim/blur is needed to hide the seam. The curve starts from rest, builds momentum,
- * then docks very slowly during the final part of the travel for a dense, "magnetic" feel.
+ * Both pages use the exact same spring. Their touching edges therefore remain locked together for
+ * the entire trip, including the tiny settle at the end: one page can never visually crossfade,
+ * overlap or detach from the other. The slight under-damping supplies the tactile "stick" that a
+ * one-shot easing curve cannot produce.
  */
 internal object ScreenTransitions {
-    const val DURATION_MS = 520
-
-    private val motionEasing = CubicBezierEasing(0.24f, 0f, 0.05f, 1f)
+    private const val DAMPING_RATIO = 0.84f
+    private const val STIFFNESS = 390f
 
     fun enter(from: String?, to: String?, isPop: Boolean = false): EnterTransition {
         if (from == to) return EnterTransition.None
 
         val direction = direction(from, to, isPop)
         return slideInHorizontally(
-            animationSpec = tween(DURATION_MS, easing = motionEasing),
+            animationSpec =
+                spring(
+                    dampingRatio = DAMPING_RATIO,
+                    stiffness = STIFFNESS,
+                ),
             initialOffsetX = { fullWidth -> direction * fullWidth },
         )
     }
@@ -35,7 +37,11 @@ internal object ScreenTransitions {
 
         val direction = direction(from, to, isPop)
         return slideOutHorizontally(
-            animationSpec = tween(DURATION_MS, easing = motionEasing),
+            animationSpec =
+                spring(
+                    dampingRatio = DAMPING_RATIO,
+                    stiffness = STIFFNESS,
+                ),
             targetOffsetX = { fullWidth -> -direction * fullWidth },
         )
     }
