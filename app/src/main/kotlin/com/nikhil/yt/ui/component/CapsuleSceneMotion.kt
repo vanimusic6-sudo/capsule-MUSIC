@@ -16,19 +16,19 @@ import androidx.compose.ui.unit.dp
 /**
  * Small scene-level motion shared by destination content.
  *
- * The route itself never slides. Instead, visible pieces settle independently with a short vertical
- * lift, tiny compression and a restrained spring return. There is deliberately no alpha animation,
- * blur or full-screen transform here.
+ * Whole routes stay visually stationary. Individual pieces arrive with a short lift and tiny depth
+ * response. Motion is intentionally clamped at the resting pose: the destination should feel soft
+ * and assembled, never rubbery or like a stack of cards bouncing past its final geometry.
  */
 @Stable
 class CapsuleSceneMotionState internal constructor(
     internal val progress: Animatable<Float, AnimationVector1D>,
 ) {
     internal fun itemProgress(order: Int): Float {
-        // Long lists still get a real cascade, but the delay stays subtle enough to remain
-        // interruptible. Later items never wait for the first ones to fully settle.
-        val start = (order.coerceAtLeast(0) * 0.028f).coerceAtMost(0.38f)
-        return ((progress.value - start) / (1f - start)).coerceIn(0f, 1.055f)
+        // A very small overlapping stagger is enough to separate hierarchy without making the user
+        // wait for a long cascade. Long lists converge quickly instead of rippling for a second.
+        val start = (order.coerceAtLeast(0) * 0.022f).coerceAtMost(0.18f)
+        return ((progress.value - start) / (1f - start)).coerceIn(0f, 1f)
     }
 }
 
@@ -43,8 +43,8 @@ fun rememberCapsuleSceneMotionState(key: Any? = Unit): CapsuleSceneMotionState {
         state.progress.animateTo(
             targetValue = 1f,
             animationSpec = spring(
-                dampingRatio = 0.82f,
-                stiffness = 150f,
+                dampingRatio = 0.90f,
+                stiffness = 220f,
             ),
         )
     }
@@ -55,15 +55,15 @@ fun rememberCapsuleSceneMotionState(key: Any? = Unit): CapsuleSceneMotionState {
 fun Modifier.capsuleSceneItem(
     state: CapsuleSceneMotionState,
     order: Int,
-    lift: Dp = 18.dp,
-    depth: Float = 0.010f,
+    lift: Dp = 11.dp,
+    depth: Float = 0.0055f,
 ): Modifier =
     graphicsLayer {
         val phase = state.itemProgress(order)
         val residual = 1f - phase
 
         translationY = residual * lift.toPx()
-        scaleX = 1f - residual * (depth * 0.45f)
+        scaleX = 1f - residual * (depth * 0.36f)
         scaleY = 1f - residual * depth
-        transformOrigin = TransformOrigin(0.5f, 0.35f)
+        transformOrigin = TransformOrigin(0.5f, 0.42f)
     }
