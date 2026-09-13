@@ -80,10 +80,11 @@ fun BottomSheetPage(
 ) {
     val focusManager = LocalFocusManager.current
     var dragOffset by remember { mutableFloatStateOf(0f) }
-    val sheetEasing = remember { CubicBezierEasing(0.22f, 1f, 0.36f, 1f) }
 
-    // Keep the outside area visually untouched. It is only a hit target for dismissal; unlike a
-    // traditional modal scrim it never darkens, fades, or blends the screen underneath.
+    // Same zero-velocity, long-settle motion language as the player and navigation pages.
+    val sheetEasing = remember { CubicBezierEasing(0.24f, 0f, 0.05f, 1f) }
+
+    // The outside area is only a dismissal hit target. It never dims or blends the page below.
     if (state.isVisible) {
         BackHandler {
             state.dismiss()
@@ -106,12 +107,12 @@ fun BottomSheetPage(
         enter =
             slideInVertically(
                 initialOffsetY = { it },
-                animationSpec = tween(420, easing = sheetEasing),
+                animationSpec = tween(560, easing = sheetEasing),
             ),
         exit =
             slideOutVertically(
                 targetOffsetY = { it },
-                animationSpec = tween(380, easing = sheetEasing),
+                animationSpec = tween(520, easing = sheetEasing),
             ),
         modifier = modifier,
     ) {
@@ -133,7 +134,7 @@ fun BottomSheetPage(
                                 dragOffset = 0f
                             },
                         ) { _, dragAmount ->
-                            dragOffset += dragAmount
+                            dragOffset = (dragOffset + dragAmount).coerceAtLeast(0f)
                         }
                     },
         ) {
