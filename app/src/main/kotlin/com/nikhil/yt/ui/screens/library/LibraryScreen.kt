@@ -4,8 +4,6 @@
  * Licensed Under GPL-3.0
  */
 
-
-
 package com.nikhil.yt.ui.screens.library
 
 import androidx.compose.foundation.layout.Box
@@ -38,6 +36,8 @@ import com.nikhil.yt.constants.PlaylistTagsFilterKey
 import com.nikhil.yt.constants.ShowTagsInLibraryKey
 import com.nikhil.yt.ui.component.ChipsRow
 import com.nikhil.yt.ui.component.TagsFilterChips
+import com.nikhil.yt.ui.component.capsuleSceneItem
+import com.nikhil.yt.ui.component.rememberCapsuleSceneMotionState
 import com.nikhil.yt.utils.rememberEnumPreference
 import com.nikhil.yt.utils.rememberPreference
 
@@ -45,6 +45,7 @@ import com.nikhil.yt.utils.rememberPreference
 fun LibraryScreen(navController: NavController) {
     var filterType by rememberEnumPreference(ChipSortTypeKey, LibraryFilter.LIBRARY)
     val (disableBlur) = rememberPreference(DisableBlurKey, true)
+    val sceneMotion = rememberCapsuleSceneMotionState(key = filterType)
 
     val database = LocalDatabase.current
     val (showTagsInLibrary) = rememberPreference(ShowTagsInLibraryKey, true)
@@ -55,7 +56,14 @@ fun LibraryScreen(navController: NavController) {
 
     val filterContent = @Composable {
         Column {
-            Row {
+            Row(
+                modifier = Modifier.capsuleSceneItem(
+                    state = sceneMotion,
+                    order = 0,
+                    lift = 10.dp,
+                    depth = 0.006f,
+                ),
+            ) {
                 ChipsRow(
                     chips =
                     listOf(
@@ -89,7 +97,14 @@ fun LibraryScreen(navController: NavController) {
                         }
                         onSelectedTagsFilterChange(newTags.joinToString(","))
                     },
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                    modifier = Modifier
+                        .capsuleSceneItem(
+                            state = sceneMotion,
+                            order = 1,
+                            lift = 12.dp,
+                            depth = 0.006f,
+                        )
+                        .padding(horizontal = 16.dp, vertical = 8.dp),
                 )
             }
         }
@@ -104,7 +119,7 @@ fun LibraryScreen(navController: NavController) {
     val surfaceColor = MaterialTheme.colorScheme.surface
 
     Box(
-        modifier = Modifier.fillMaxSize()
+        modifier = Modifier.fillMaxSize(),
     ) {
         // M3E Mesh gradient background layer at the top
         if (!disableBlur) {
@@ -114,118 +129,132 @@ fun LibraryScreen(navController: NavController) {
                     .fillMaxSize(0.7f) // Cover top 70% of screen
                     .align(Alignment.TopCenter)
                     .zIndex(-1f) // Place behind all content
-                .drawBehind {
-                    val width = size.width
-                    val height = size.height
-                    
-                    // Create mesh gradient with 5 color blobs for more variation
-                    // First color blob - top left
-                    drawRect(
-                        brush = Brush.radialGradient(
-                            colors = listOf(
-                                color1.copy(alpha = 0.38f),
-                                color1.copy(alpha = 0.24f),
-                                color1.copy(alpha = 0.14f),
-                                color1.copy(alpha = 0.06f),
-                                Color.Transparent
+                    .drawBehind {
+                        val width = size.width
+                        val height = size.height
+
+                        // Create mesh gradient with 5 color blobs for more variation
+                        // First color blob - top left
+                        drawRect(
+                            brush = Brush.radialGradient(
+                                colors = listOf(
+                                    color1.copy(alpha = 0.38f),
+                                    color1.copy(alpha = 0.24f),
+                                    color1.copy(alpha = 0.14f),
+                                    color1.copy(alpha = 0.06f),
+                                    Color.Transparent,
+                                ),
+                                center = Offset(width * 0.15f, height * 0.1f),
+                                radius = width * 0.55f,
                             ),
-                            center = Offset(width * 0.15f, height * 0.1f),
-                            radius = width * 0.55f
                         )
-                    )
-                    
-                    // Second color blob - top right
-                    drawRect(
-                        brush = Brush.radialGradient(
-                            colors = listOf(
-                                color2.copy(alpha = 0.34f),
-                                color2.copy(alpha = 0.2f),
-                                color2.copy(alpha = 0.11f),
-                                color2.copy(alpha = 0.05f),
-                                Color.Transparent
+
+                        // Second color blob - top right
+                        drawRect(
+                            brush = Brush.radialGradient(
+                                colors = listOf(
+                                    color2.copy(alpha = 0.34f),
+                                    color2.copy(alpha = 0.2f),
+                                    color2.copy(alpha = 0.11f),
+                                    color2.copy(alpha = 0.05f),
+                                    Color.Transparent,
+                                ),
+                                center = Offset(width * 0.85f, height * 0.2f),
+                                radius = width * 0.65f,
                             ),
-                            center = Offset(width * 0.85f, height * 0.2f),
-                            radius = width * 0.65f
                         )
-                    )
-                    
-                    // Third color blob - middle left
-                    drawRect(
-                        brush = Brush.radialGradient(
-                            colors = listOf(
-                                color3.copy(alpha = 0.3f),
-                                color3.copy(alpha = 0.17f),
-                                color3.copy(alpha = 0.09f),
-                                color3.copy(alpha = 0.04f),
-                                Color.Transparent
+
+                        // Third color blob - middle left
+                        drawRect(
+                            brush = Brush.radialGradient(
+                                colors = listOf(
+                                    color3.copy(alpha = 0.3f),
+                                    color3.copy(alpha = 0.17f),
+                                    color3.copy(alpha = 0.09f),
+                                    color3.copy(alpha = 0.04f),
+                                    Color.Transparent,
+                                ),
+                                center = Offset(width * 0.3f, height * 0.45f),
+                                radius = width * 0.6f,
                             ),
-                            center = Offset(width * 0.3f, height * 0.45f),
-                            radius = width * 0.6f
                         )
-                    )
-                    
-                    // Fourth color blob - middle right
-                    drawRect(
-                        brush = Brush.radialGradient(
-                            colors = listOf(
-                                color4.copy(alpha = 0.26f),
-                                color4.copy(alpha = 0.14f),
-                                color4.copy(alpha = 0.08f),
-                                color4.copy(alpha = 0.03f),
-                                Color.Transparent
+
+                        // Fourth color blob - middle right
+                        drawRect(
+                            brush = Brush.radialGradient(
+                                colors = listOf(
+                                    color4.copy(alpha = 0.26f),
+                                    color4.copy(alpha = 0.14f),
+                                    color4.copy(alpha = 0.08f),
+                                    color4.copy(alpha = 0.03f),
+                                    Color.Transparent,
+                                ),
+                                center = Offset(width * 0.7f, height * 0.5f),
+                                radius = width * 0.7f,
                             ),
-                            center = Offset(width * 0.7f, height * 0.5f),
-                            radius = width * 0.7f
                         )
-                    )
-                    
-                    // Fifth color blob - bottom center (helps with smooth fade)
-                    drawRect(
-                        brush = Brush.radialGradient(
-                            colors = listOf(
-                                color5.copy(alpha = 0.22f),
-                                color5.copy(alpha = 0.12f),
-                                color5.copy(alpha = 0.06f),
-                                color5.copy(alpha = 0.02f),
-                                Color.Transparent
+
+                        // Fifth color blob - bottom center (helps with smooth fade)
+                        drawRect(
+                            brush = Brush.radialGradient(
+                                colors = listOf(
+                                    color5.copy(alpha = 0.22f),
+                                    color5.copy(alpha = 0.12f),
+                                    color5.copy(alpha = 0.06f),
+                                    color5.copy(alpha = 0.02f),
+                                    Color.Transparent,
+                                ),
+                                center = Offset(width * 0.5f, height * 0.75f),
+                                radius = width * 0.8f,
                             ),
-                            center = Offset(width * 0.5f, height * 0.75f),
-                            radius = width * 0.8f
                         )
-                    )
-                    
-                    // Add a final vertical gradient overlay to ensure smooth bottom fade
-                    drawRect(
-                        brush = Brush.verticalGradient(
-                            colors = listOf(
-                                Color.Transparent,
-                                Color.Transparent,
-                                surfaceColor.copy(alpha = 0.22f),
-                                surfaceColor.copy(alpha = 0.55f),
-                                surfaceColor
+
+                        // Add a final vertical gradient overlay to ensure smooth bottom fade
+                        drawRect(
+                            brush = Brush.verticalGradient(
+                                colors = listOf(
+                                    Color.Transparent,
+                                    Color.Transparent,
+                                    surfaceColor.copy(alpha = 0.22f),
+                                    surfaceColor.copy(alpha = 0.55f),
+                                    surfaceColor,
+                                ),
+                                startY = height * 0.4f,
+                                endY = height,
                             ),
-                            startY = height * 0.4f,
-                            endY = height
                         )
-                    )
-                }
-        ) {}
+                    },
+            ) {}
         }
 
-        when (filterType) {
-            LibraryFilter.LIBRARY -> LibraryMixScreen(navController, filterContent)
-            LibraryFilter.PLAYLISTS -> LibraryPlaylistsScreen(navController, filterContent)
-            LibraryFilter.SONGS -> LibrarySongsScreen(
-                navController,
-                { filterType = LibraryFilter.LIBRARY })
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .capsuleSceneItem(
+                    state = sceneMotion,
+                    order = 2,
+                    lift = 18.dp,
+                    depth = 0.007f,
+                ),
+        ) {
+            when (filterType) {
+                LibraryFilter.LIBRARY -> LibraryMixScreen(navController, filterContent)
+                LibraryFilter.PLAYLISTS -> LibraryPlaylistsScreen(navController, filterContent)
+                LibraryFilter.SONGS -> LibrarySongsScreen(
+                    navController,
+                    { filterType = LibraryFilter.LIBRARY },
+                )
 
-            LibraryFilter.ALBUMS -> LibraryAlbumsScreen(
-                navController,
-                { filterType = LibraryFilter.LIBRARY })
+                LibraryFilter.ALBUMS -> LibraryAlbumsScreen(
+                    navController,
+                    { filterType = LibraryFilter.LIBRARY },
+                )
 
-            LibraryFilter.ARTISTS -> LibraryArtistsScreen(
-                navController,
-                { filterType = LibraryFilter.LIBRARY })
+                LibraryFilter.ARTISTS -> LibraryArtistsScreen(
+                    navController,
+                    { filterType = LibraryFilter.LIBRARY },
+                )
+            }
         }
     }
 }
