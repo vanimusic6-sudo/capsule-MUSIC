@@ -101,6 +101,7 @@ internal fun ArtistHero(
 ) {
     val loadingLabel = stringResource(R.string.loading)
     var artworkFailed by remember(thumbnailUrl) { mutableStateOf(thumbnailUrl.isNullOrBlank()) }
+    val sceneMotion = rememberCapsuleSceneMotionState(key = thumbnailUrl ?: name)
 
     // A follow/unfollow tap is a local user intent. Keep that intent visually authoritative for
     // the lifetime of this hero instead of letting a delayed database/server snapshot undo the
@@ -118,11 +119,20 @@ internal fun ArtistHero(
         background = background,
         topSafePadding = topSafePadding,
         artwork = {
-            Box(Modifier.fillMaxSize().background(background), contentAlignment = Alignment.Center) {
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .capsuleSceneItem(sceneMotion, order = 0, lift = 8.dp, depth = 0.006f)
+                    .background(background),
+                contentAlignment = Alignment.Center,
+            ) {
                 if (artworkFailed) {
-                    Icon(painterResource(R.drawable.person), null,
+                    Icon(
+                        painterResource(R.drawable.person),
+                        null,
                         Modifier.size(88.dp).testTag("artist-artwork-placeholder"),
-                        tint = StandardChrome.muted.copy(alpha = 0.35f))
+                        tint = StandardChrome.muted.copy(alpha = 0.35f),
+                    )
                 }
                 AsyncImage(
                     model = thumbnailUrl,
@@ -138,8 +148,14 @@ internal fun ArtistHero(
         },
         title = {
             if (loading && name.isBlank()) {
-                Box(Modifier.fillMaxWidth(0.66f).height(38.dp).clip(RoundedCornerShape(10.dp))
-                    .background(StandardChrome.muted.copy(alpha = 0.18f)))
+                Box(
+                    Modifier
+                        .fillMaxWidth(0.66f)
+                        .height(38.dp)
+                        .capsuleSceneItem(sceneMotion, order = 1, lift = 14.dp, depth = 0.008f)
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(StandardChrome.muted.copy(alpha = 0.18f)),
+                )
             } else {
                 Text(
                     text = name,
@@ -149,7 +165,9 @@ internal fun ArtistHero(
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                     // Alpha belongs to the glyphs, so the photograph shows through the letters.
-                    modifier = Modifier.semantics { heading() },
+                    modifier = Modifier
+                        .capsuleSceneItem(sceneMotion, order = 1, lift = 14.dp, depth = 0.008f)
+                        .semantics { heading() },
                 )
             }
         },
@@ -161,7 +179,9 @@ internal fun ArtistHero(
                     icon = R.drawable.add,
                     label = subscribeLabel,
                     onClick = onSubscribeClick,
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .capsuleSceneItem(sceneMotion, order = 2, lift = 16.dp),
                     enabled = !loading && canSubscribe,
                     selected = displayedSubscribed,
                     subscribeState = displayedSubscribed,
@@ -171,7 +191,9 @@ internal fun ArtistHero(
                     R.drawable.shuffle,
                     stringResource(R.string.shuffle),
                     onShuffle,
-                    Modifier.fillMaxWidth(),
+                    Modifier
+                        .fillMaxWidth()
+                        .capsuleSceneItem(sceneMotion, order = 3, lift = 16.dp),
                     !loading && canShuffle,
                 )
             } else {
@@ -180,7 +202,9 @@ internal fun ArtistHero(
                         icon = R.drawable.add,
                         label = subscribeLabel,
                         onClick = onSubscribeClick,
-                        modifier = Modifier.weight(1f),
+                        modifier = Modifier
+                            .weight(1f)
+                            .capsuleSceneItem(sceneMotion, order = 2, lift = 16.dp),
                         enabled = !loading && canSubscribe,
                         selected = displayedSubscribed,
                         subscribeState = displayedSubscribed,
@@ -189,7 +213,9 @@ internal fun ArtistHero(
                         R.drawable.shuffle,
                         stringResource(R.string.shuffle),
                         onShuffle,
-                        Modifier.weight(1f),
+                        Modifier
+                            .weight(1f)
+                            .capsuleSceneItem(sceneMotion, order = 3, lift = 16.dp),
                         !loading && canShuffle,
                     )
                 }
@@ -200,7 +226,9 @@ internal fun ArtistHero(
                     R.drawable.radio,
                     stringResource(R.string.radio),
                     onRadio,
-                    Modifier.fillMaxWidth(),
+                    Modifier
+                        .fillMaxWidth()
+                        .capsuleSceneItem(sceneMotion, order = 4, lift = 16.dp),
                     !loading && canRadio,
                 )
             }
