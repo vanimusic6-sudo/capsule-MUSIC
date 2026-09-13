@@ -239,7 +239,13 @@ class BottomSheetState(
     }
 
     private fun collapse() {
-        collapse(BottomSheetCollapseAnimationSpec)
+        collapse(
+            if (collapsedBound == dismissedBound) {
+                BottomSheetAnimationSpec
+            } else {
+                BottomSheetCollapseAnimationSpec
+            },
+        )
     }
 
     private fun expand() {
@@ -247,7 +253,13 @@ class BottomSheetState(
     }
 
     fun collapseSoft() {
-        collapse(BottomSheetSoftCollapseAnimationSpec)
+        collapse(
+            if (collapsedBound == dismissedBound) {
+                BottomSheetSoftAnimationSpec
+            } else {
+                BottomSheetSoftCollapseAnimationSpec
+            },
+        )
     }
 
     fun expandSoft() {
