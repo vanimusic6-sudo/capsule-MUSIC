@@ -4,12 +4,12 @@
  * Licensed Under GPL-3.0
  */
 
-
-
 package com.nikhil.yt.constants
 
+import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 
@@ -41,16 +41,27 @@ val GridThumbnailCornerRadius = 8.dp
 val PlayerHorizontalPadding = 32.dp
 
 val NavigationBarAnimationSpec = spring<Dp>(
-	dampingRatio = Spring.DampingRatioNoBouncy,
-	stiffness = Spring.StiffnessLow
+    dampingRatio = Spring.DampingRatioNoBouncy,
+    stiffness = Spring.StiffnessLow,
 )
 
+/*
+ * Drag release should feel weighty, but must still follow the user's velocity. A tiny amount of
+ * under-damping gives the sheet a soft magnetic dock instead of an abrupt stop.
+ */
 val BottomSheetAnimationSpec = spring<Dp>(
-	dampingRatio = Spring.DampingRatioNoBouncy,
-	stiffness = Spring.StiffnessMediumLow
+    dampingRatio = 0.90f,
+    stiffness = 360f,
 )
 
-val BottomSheetSoftAnimationSpec = spring<Dp>(
-	dampingRatio = Spring.DampingRatioNoBouncy,
-	stiffness = Spring.StiffnessLow
+/*
+ * Programmatic open/close uses a zero-velocity start and a long, dense settle. The curve begins
+ * gently, gains speed in the middle, then spends the final part of the travel docking into place.
+ * There is no alpha animation: all softness comes from real movement.
+ */
+private val CapsuleSheetEasing = CubicBezierEasing(0.24f, 0f, 0.05f, 1f)
+
+val BottomSheetSoftAnimationSpec = tween<Dp>(
+    durationMillis = 560,
+    easing = CapsuleSheetEasing,
 )
