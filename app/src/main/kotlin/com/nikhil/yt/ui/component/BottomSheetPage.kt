@@ -8,8 +8,7 @@ package com.nikhil.yt.ui.component
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.CubicBezierEasing
-import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
@@ -81,9 +80,6 @@ fun BottomSheetPage(
     val focusManager = LocalFocusManager.current
     var dragOffset by remember { mutableFloatStateOf(0f) }
 
-    // Same zero-velocity, long-settle motion language as the player and navigation pages.
-    val sheetEasing = remember { CubicBezierEasing(0.24f, 0f, 0.05f, 1f) }
-
     // The outside area is only a dismissal hit target. It never dims or blends the page below.
     if (state.isVisible) {
         BackHandler {
@@ -102,17 +98,30 @@ fun BottomSheetPage(
         )
     }
 
+    /*
+     * This sheet uses the same under-damped motion language as the player and lyrics. The movement
+     * can briefly pass the mathematical resting point and return, creating a soft magnetic dock
+     * instead of the sterile end-of-tween stop. There is still no alpha or blur anywhere.
+     */
     AnimatedVisibility(
         visible = state.isVisible,
         enter =
             slideInVertically(
                 initialOffsetY = { it },
-                animationSpec = tween(560, easing = sheetEasing),
+                animationSpec =
+                    spring(
+                        dampingRatio = 0.82f,
+                        stiffness = 300f,
+                    ),
             ),
         exit =
             slideOutVertically(
                 targetOffsetY = { it },
-                animationSpec = tween(520, easing = sheetEasing),
+                animationSpec =
+                    spring(
+                        dampingRatio = 0.86f,
+                        stiffness = 360f,
+                    ),
             ),
         modifier = modifier,
     ) {
