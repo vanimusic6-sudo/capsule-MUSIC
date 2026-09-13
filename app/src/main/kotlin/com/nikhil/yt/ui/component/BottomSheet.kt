@@ -502,4 +502,3 @@ fun Modifier.bottomSheetDraggable(
             },
         )
     }
-}
