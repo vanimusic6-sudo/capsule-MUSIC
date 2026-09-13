@@ -4,16 +4,16 @@
  * Licensed Under GPL-3.0
  */
 
-
-
 package com.nikhil.yt.ui.screens
 
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AlertDialogDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -84,37 +84,50 @@ import com.nikhil.yt.ui.utils.ShowMediaInfo
 import com.nikhil.yt.utils.rememberEnumPreference
 import com.nikhil.yt.utils.rememberPreference
 
+/**
+ * Navigation Compose may keep outgoing and incoming destinations composed at the same time while it
+ * settles lifecycle state. Every Capsule route therefore owns an opaque full-screen canvas. Any
+ * transparent areas in a screen reveal this destination's surface, never pixels from the previous
+ * route underneath it.
+ */
+@Composable
+private fun CapsuleRouteSurface(content: @Composable () -> Unit) {
+    Surface(
+        modifier = Modifier.fillMaxSize(),
+        color = MaterialTheme.colorScheme.background,
+        content = content,
+    )
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 fun NavGraphBuilder.navigationBuilder(
     navController: NavHostController,
     scrollBehavior: TopAppBarScrollBehavior,
 ) {
     composable(Screens.Home.route) {
-        HomeScreen(navController)
+        CapsuleRouteSurface { HomeScreen(navController) }
     }
-    composable(
-        Screens.Library.route,
-    ) {
-        LibraryScreen(navController)
+    composable(Screens.Library.route) {
+        CapsuleRouteSurface { LibraryScreen(navController) }
     }
     composable("history") {
-        HistoryScreen(navController)
+        CapsuleRouteSurface { HistoryScreen(navController) }
     }
     composable("stats") {
-        StatsScreen(navController)
+        CapsuleRouteSurface { StatsScreen(navController) }
     }
     composable("year_in_music") {
-        YearInMusicScreen(navController)
+        CapsuleRouteSurface { YearInMusicScreen(navController) }
     }
     composable("mood_and_genres") {
-        MoodAndGenresScreen(navController, scrollBehavior)
+        CapsuleRouteSurface { MoodAndGenresScreen(navController, scrollBehavior) }
     }
 
     composable("new_release") {
-        NewReleaseScreen(navController, scrollBehavior)
+        CapsuleRouteSurface { NewReleaseScreen(navController, scrollBehavior) }
     }
     composable("charts_screen") {
-       ChartsScreen(navController)
+        CapsuleRouteSurface { ChartsScreen(navController) }
     }
     composable(
         route = "browse/{browseId}",
@@ -124,11 +137,13 @@ fun NavGraphBuilder.navigationBuilder(
             }
         )
     ) {
-        BrowseScreen(
-            navController,
-            scrollBehavior,
-            it.arguments?.getString("browseId")
-        )
+        CapsuleRouteSurface {
+            BrowseScreen(
+                navController,
+                scrollBehavior,
+                it.arguments?.getString("browseId")
+            )
+        }
     }
     composable(
         route = "search/{query}",
@@ -139,7 +154,7 @@ fun NavGraphBuilder.navigationBuilder(
             },
         ),
     ) {
-        OnlineSearchResult(navController)
+        CapsuleRouteSurface { OnlineSearchResult(navController) }
     }
     composable(
         route = "album/{albumId}",
@@ -150,7 +165,7 @@ fun NavGraphBuilder.navigationBuilder(
             },
         ),
     ) {
-        AlbumScreen(navController, scrollBehavior)
+        CapsuleRouteSurface { AlbumScreen(navController, scrollBehavior) }
     }
     composable(
         route = "artist/{artistId}",
@@ -161,7 +176,7 @@ fun NavGraphBuilder.navigationBuilder(
             },
         ),
     ) {
-        ArtistScreen(navController, scrollBehavior)
+        CapsuleRouteSurface { ArtistScreen(navController, scrollBehavior) }
     }
     composable(
         route = "artist/{artistId}/songs",
@@ -172,7 +187,7 @@ fun NavGraphBuilder.navigationBuilder(
             },
         ),
     ) {
-        ArtistSongsScreen(navController, scrollBehavior)
+        CapsuleRouteSurface { ArtistSongsScreen(navController, scrollBehavior) }
     }
     composable(
         route = "artist/{artistId}/albums",
@@ -182,7 +197,7 @@ fun NavGraphBuilder.navigationBuilder(
             }
         )
     ) {
-        ArtistAlbumsScreen(navController, scrollBehavior)
+        CapsuleRouteSurface { ArtistAlbumsScreen(navController, scrollBehavior) }
     }
     composable(
         route = "artist/{artistId}/items?browseId={browseId}&params={params}",
@@ -201,7 +216,7 @@ fun NavGraphBuilder.navigationBuilder(
             },
         ),
     ) {
-        ArtistItemsScreen(navController, scrollBehavior)
+        CapsuleRouteSurface { ArtistItemsScreen(navController, scrollBehavior) }
     }
     composable(
         route = "online_playlist/{playlistId}",
@@ -212,7 +227,7 @@ fun NavGraphBuilder.navigationBuilder(
             },
         ),
     ) {
-        OnlinePlaylistScreen(navController, scrollBehavior)
+        CapsuleRouteSurface { OnlinePlaylistScreen(navController, scrollBehavior) }
     }
     composable(
         route = "local_playlist/{playlistId}",
@@ -223,7 +238,7 @@ fun NavGraphBuilder.navigationBuilder(
             },
         ),
     ) {
-        LocalPlaylistScreen(navController, scrollBehavior)
+        CapsuleRouteSurface { LocalPlaylistScreen(navController, scrollBehavior) }
     }
     composable(
         route = "auto_playlist/{playlist}",
@@ -234,18 +249,18 @@ fun NavGraphBuilder.navigationBuilder(
             },
         ),
     ) {
-        AutoPlaylistScreen(navController, scrollBehavior)
+        CapsuleRouteSurface { AutoPlaylistScreen(navController, scrollBehavior) }
     }
     composable(
         route = "cache_playlist/{playlist}",
         arguments =
             listOf(
                 navArgument("playlist") {
-                    type = NavType.StringType
+                type = NavType.StringType
             },
         ),
     ) {
-        CachePlaylistScreen(navController, scrollBehavior)
+        CapsuleRouteSurface { CachePlaylistScreen(navController, scrollBehavior) }
     }
     composable(
         route = "top_playlist/{top}",
@@ -256,7 +271,7 @@ fun NavGraphBuilder.navigationBuilder(
             },
         ),
     ) {
-        TopPlaylistScreen(navController, scrollBehavior)
+        CapsuleRouteSurface { TopPlaylistScreen(navController, scrollBehavior) }
     }
     composable(
         route = "youtube_browse/{browseId}?params={params}",
@@ -272,73 +287,73 @@ fun NavGraphBuilder.navigationBuilder(
             },
         ),
     ) {
-        YouTubeBrowseScreen(navController)
+        CapsuleRouteSurface { YouTubeBrowseScreen(navController) }
     }
     composable("settings") {
-        VeluneSettingsScreen(navController)
+        CapsuleRouteSurface { VeluneSettingsScreen(navController) }
     }
     composable("settings/account") {
-        VeluneAccountSettingsScreen(navController)
+        CapsuleRouteSurface { VeluneAccountSettingsScreen(navController) }
     }
     composable("settings/appearance") {
-        AppearanceSettings(navController, scrollBehavior)
+        CapsuleRouteSurface { AppearanceSettings(navController, scrollBehavior) }
     }
     composable("settings/appearance/palette_picker") {
-        PalettePickerScreen(navController)
+        CapsuleRouteSurface { PalettePickerScreen(navController) }
     }
     composable("settings/appearance/theme_creator") {
-        ThemeCreatorScreen(navController)
+        CapsuleRouteSurface { ThemeCreatorScreen(navController) }
     }
     composable("settings/content") {
-        ContentSettings(navController, scrollBehavior)
+        CapsuleRouteSurface { ContentSettings(navController, scrollBehavior) }
     }
     composable("settings/player") {
-        PlayerSettings(navController, scrollBehavior)
+        CapsuleRouteSurface { PlayerSettings(navController, scrollBehavior) }
     }
     composable("settings/video_playback") {
-        VideoPlaybackSettings(navController)
+        CapsuleRouteSurface { VideoPlaybackSettings(navController) }
     }
     composable("settings/storage") {
-        StorageSettings(navController, scrollBehavior)
+        CapsuleRouteSurface { StorageSettings(navController, scrollBehavior) }
     }
     composable("settings/privacy") {
-        PrivacySettings(navController, scrollBehavior)
+        CapsuleRouteSurface { PrivacySettings(navController, scrollBehavior) }
     }
     composable("settings/backup_restore") {
-        BackupAndRestore(navController, scrollBehavior)
+        CapsuleRouteSurface { BackupAndRestore(navController, scrollBehavior) }
     }
     composable("settings/discord") {
-        DiscordSettings(navController, scrollBehavior)
+        CapsuleRouteSurface { DiscordSettings(navController, scrollBehavior) }
     }
     composable("settings/integration") {
-        IntegrationScreen(navController, scrollBehavior)
+        CapsuleRouteSurface { IntegrationScreen(navController, scrollBehavior) }
     }
     composable("settings/music_together") {
-        MusicTogetherScreen(navController, scrollBehavior)
+        CapsuleRouteSurface { MusicTogetherScreen(navController, scrollBehavior) }
     }
     composable("settings/lastfm") {
-        LastFMSettings(navController, scrollBehavior)
+        CapsuleRouteSurface { LastFMSettings(navController, scrollBehavior) }
     }
     composable("settings/discord/experimental") {
-        com.nikhil.yt.ui.screens.settings.DiscordExperimental(navController)
+        CapsuleRouteSurface { com.nikhil.yt.ui.screens.settings.DiscordExperimental(navController) }
     }
     composable("settings/misc") {
-        DebugSettings(navController)
+        CapsuleRouteSurface { DebugSettings(navController) }
     }
 
     composable("settings/changelog") {
-        ChangelogScreen(navController, scrollBehavior)
+        CapsuleRouteSurface { ChangelogScreen(navController, scrollBehavior) }
     }
     composable("settings/discord/login") {
-        DiscordLoginScreen(navController)
+        CapsuleRouteSurface { DiscordLoginScreen(navController) }
     }
     composable("settings/about") {
-        AboutScreen(navController, scrollBehavior)
+        CapsuleRouteSurface { AboutScreen(navController, scrollBehavior) }
     }
     composable("settings/po_token") {
-        PoTokenScreen(navController, scrollBehavior)
+        CapsuleRouteSurface { PoTokenScreen(navController, scrollBehavior) }
     }
     composable("login") {
-        LoginScreen(navController)
+        CapsuleRouteSurface { LoginScreen(navController) }
     }
 }
