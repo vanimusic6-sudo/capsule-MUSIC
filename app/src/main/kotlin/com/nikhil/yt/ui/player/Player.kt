@@ -11,8 +11,7 @@ package com.nikhil.yt.ui.player
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.CubicBezierEasing
-import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.isSystemInDarkTheme
@@ -328,16 +327,6 @@ private fun CapsulePlayerLyricsHost(
     onHideLyrics: () -> Unit,
     onShowMenu: () -> Unit,
 ) {
-    /*
-     * Zero initial velocity is important here. The previous ease-out curve launched the lyrics
-     * sheet immediately at high speed, which read as a hard shove. This curve starts from rest,
-     * develops momentum through the middle, then spends a generous final segment magnetically
-     * docking to the top edge. The player itself remains alive and perfectly still underneath.
-     */
-    val pageEasing = remember {
-        CubicBezierEasing(0.24f, 0f, 0.05f, 1f)
-    }
-
     Box(modifier = Modifier.fillMaxSize()) {
         CapsulePlayerContent(
             design = design,
@@ -366,16 +355,29 @@ private fun CapsulePlayerLyricsHost(
             bottomPadding = 0.dp,
         )
 
+        /*
+         * Lyrics is a real spring-driven surface now, not a timed interpolation. It carries a small
+         * amount of momentum past the target and settles back into it, which gives the same tactile
+         * release as the favourite icon without introducing alpha, blur or a translucent overlay.
+         */
         AnimatedVisibility(
             visible = showLyrics,
             enter =
                 slideInVertically(
-                    animationSpec = tween(580, easing = pageEasing),
+                    animationSpec =
+                        spring(
+                            dampingRatio = 0.82f,
+                            stiffness = 300f,
+                        ),
                     initialOffsetY = { fullHeight -> fullHeight },
                 ),
             exit =
                 slideOutVertically(
-                    animationSpec = tween(540, easing = pageEasing),
+                    animationSpec =
+                        spring(
+                            dampingRatio = 0.86f,
+                            stiffness = 360f,
+                        ),
                     targetOffsetY = { fullHeight -> fullHeight },
                 ),
             modifier = Modifier.fillMaxSize(),
