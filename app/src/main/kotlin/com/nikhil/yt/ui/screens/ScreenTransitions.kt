@@ -8,24 +8,22 @@ import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 
 /**
- * Opaque, transform-only navigation motion.
+ * Capsule page motion is intentionally opaque and geometry-only.
  *
- * Forward navigation lets the destination physically cover the current screen while the
- * underlying screen stays still. Back navigation does the inverse: the current screen moves away
- * and reveals the already-positioned previous screen. There is deliberately no alpha/scale
- * animation here, so two pages never visually blend or dim each other.
+ * Both pages travel with the same duration and easing. Their touching edges therefore remain
+ * locked together for the whole transition: the destination cannot visually overlap the source,
+ * and no alpha/scrim/blur is needed to hide the seam. The curve starts from rest, builds momentum,
+ * then docks very slowly during the final part of the travel for a dense, "magnetic" feel.
  */
 internal object ScreenTransitions {
-    const val DURATION_MS = 420
+    const val DURATION_MS = 520
 
-    // "Quint-like" ease-out: fast enough at the start to feel responsive, very soft at rest.
-    private val motionEasing = CubicBezierEasing(0.22f, 1f, 0.36f, 1f)
+    private val motionEasing = CubicBezierEasing(0.24f, 0f, 0.05f, 1f)
 
     fun enter(from: String?, to: String?, isPop: Boolean = false): EnterTransition {
         if (from == to) return EnterTransition.None
-        if (isPop) return EnterTransition.None
 
-        val direction = direction(from, to, isPop = false)
+        val direction = direction(from, to, isPop)
         return slideInHorizontally(
             animationSpec = tween(DURATION_MS, easing = motionEasing),
             initialOffsetX = { fullWidth -> direction * fullWidth },
@@ -34,9 +32,8 @@ internal object ScreenTransitions {
 
     fun exit(from: String?, to: String?, isPop: Boolean = false): ExitTransition {
         if (from == to) return ExitTransition.None
-        if (!isPop) return ExitTransition.None
 
-        val direction = direction(from, to, isPop = true)
+        val direction = direction(from, to, isPop)
         return slideOutHorizontally(
             animationSpec = tween(DURATION_MS, easing = motionEasing),
             targetOffsetX = { fullWidth -> -direction * fullWidth },
@@ -45,8 +42,10 @@ internal object ScreenTransitions {
 
     private fun direction(from: String?, to: String?, isPop: Boolean): Int {
         if (from == to) return 0
+
         val fromIndex = Screens.MainScreens.indexOfFirst { it.route == from }
         val toIndex = Screens.MainScreens.indexOfFirst { it.route == to }
+
         return if (fromIndex >= 0 && toIndex >= 0) {
             if (toIndex > fromIndex) 1 else -1
         } else if (isPop) {
