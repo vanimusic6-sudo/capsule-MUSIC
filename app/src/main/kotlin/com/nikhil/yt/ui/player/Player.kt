@@ -163,8 +163,8 @@ fun BottomSheetPlayer(
             delay(
                 when {
                     !isPlaying -> 1_000L
-                    state.isExpanded -> 250L
-                    else -> 500L
+                    state.isExpanded -> 300L
+                    else -> 550L
                 },
             )
         }
@@ -328,38 +328,47 @@ private fun CapsulePlayerLyricsHost(
     onHideLyrics: () -> Unit,
     onShowMenu: () -> Unit,
 ) {
-    /*
-     * The lyrics layer keeps one continuous physical state, so a reversal starts from the current
-     * position and velocity. Its spring is deliberately under-damped again, but positional overshoot
-     * is clamped at the dock: the extra energy becomes a short squash/rebound instead of a crooked
-     * vertical jump through the top edge.
-     */
     val lyricsMotion = remember {
         Animatable(if (showLyrics) 1f else 0f)
     }
+    var lyricsLayerMounted by remember {
+        mutableStateOf(showLyrics)
+    }
 
+    /*
+     * Mount/unmount only at the ends of the transition. The animated Float and velocity are read by
+     * graphicsLayer below, so the expensive player/lyrics subtrees are not recomposed on every frame.
+     * The spring stays under-damped for impact, but lower stiffness makes that impact arrive softly.
+     */
     LaunchedEffect(showLyrics) {
+        if (showLyrics) {
+            lyricsLayerMounted = true
+        }
+
         lyricsMotion.animateTo(
             targetValue = if (showLyrics) 1f else 0f,
             animationSpec =
                 spring(
                     dampingRatio = if (showLyrics) 0.80f else 0.84f,
-                    stiffness = if (showLyrics) 220f else 255f,
+                    stiffness = if (showLyrics) 160f else 190f,
                 ),
         )
+
+        if (!showLyrics) {
+            lyricsLayerMounted = false
+        }
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
-        val playerReaction = lyricsMotion.value.coerceIn(0f, 1f)
-
         Box(
             modifier =
                 Modifier
                     .fillMaxSize()
                     .graphicsLayer {
-                        translationY = -3.25f * playerReaction
-                        scaleX = 1f - 0.00085f * playerReaction
-                        scaleY = 1f - 0.00125f * playerReaction
+                        val reaction = lyricsMotion.value.coerceIn(0f, 1f)
+                        translationY = -2.75f * reaction
+                        scaleX = 1f - 0.00070f * reaction
+                        scaleY = 1f - 0.00100f * reaction
                         transformOrigin = TransformOrigin(0.5f, 0.5f)
                     },
         ) {
@@ -392,46 +401,51 @@ private fun CapsulePlayerLyricsHost(
         }
 
         BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
-            val progress = lyricsMotion.value
-            val visualProgress = progress.coerceIn(0f, 1f)
             val fullHeightPx = constraints.maxHeight.toFloat()
-            val baseTranslation = (1f - visualProgress) * fullHeightPx
-            val velocity = lyricsMotion.velocity
-            val incomingVelocityWeight =
-                (velocity.coerceAtLeast(0f) / 4.6f).coerceIn(0f, 1f)
-            val landingWeight =
-                ((visualProgress - 0.66f) / 0.34f).coerceIn(0f, 1f)
-            val overshootWeight =
-                ((progress - 1f) / 0.045f).coerceIn(0f, 1f)
-            val impactWeight =
-                maxOf(
-                    incomingVelocityWeight * landingWeight,
-                    overshootWeight,
-                )
 
-            /*
-             * Only incoming velocity may add a few pixels of lag. Rebound velocity never moves the
-             * surface above its dock, so the landing still has a visible hit without the old skewed
-             * bounce. The squash is the impact; geometry remains perfectly aligned.
-             */
-            val incomingLag =
-                if (velocity > 0f) {
-                    (velocity * 2.0f).coerceIn(0f, 7.5f) * landingWeight
-                } else {
-                    0f
-                }
-            val shouldComposeLyrics =
-                showLyrics || lyricsMotion.isRunning || progress > 0.001f
-
-            if (shouldComposeLyrics) {
+            if (lyricsLayerMounted) {
                 Box(
                     modifier =
                         Modifier
                             .fillMaxSize()
                             .graphicsLayer {
+                                val progress = lyricsMotion.value
+                                val visualProgress = progress.coerceIn(0f, 1f)
+                                val velocity = lyricsMotion.velocity
+                                val baseTranslation = (1f - visualProgress) * fullHeightPx
+
+                                val rawLanding =
+                                    ((visualProgress - 0.62f) / 0.38f).coerceIn(0f, 1f)
+                                val landingWeight =
+                                    rawLanding * rawLanding * (3f - 2f * rawLanding)
+
+                                val rawOvershoot =
+                                    ((progress - 1f) / 0.048f).coerceIn(0f, 1f)
+                                val overshootWeight =
+                                    rawOvershoot * rawOvershoot * (3f - 2f * rawOvershoot)
+
+                                val incomingVelocityWeight =
+                                    (velocity.coerceAtLeast(0f) / 3.6f).coerceIn(0f, 1f)
+                                val rawImpact =
+                                    maxOf(
+                                        incomingVelocityWeight * landingWeight,
+                                        overshootWeight,
+                                    )
+                                val impact =
+                                    rawImpact * rawImpact * (3f - 2f * rawImpact)
+
+                                val incomingLag =
+                                    if (velocity > 0f) {
+                                        (velocity * 2.1f)
+                                            .coerceIn(0f, 6.5f) *
+                                            landingWeight
+                                    } else {
+                                        0f
+                                    }
+
                                 translationY = (baseTranslation + incomingLag).coerceAtLeast(0f)
-                                scaleX = 1f + 0.00220f * impactWeight
-                                scaleY = 1f - 0.00480f * impactWeight
+                                scaleX = 1f + 0.00195f * impact
+                                scaleY = 1f - 0.00425f * impact
                                 transformOrigin = TransformOrigin(0.5f, 1f)
                             },
                 ) {
