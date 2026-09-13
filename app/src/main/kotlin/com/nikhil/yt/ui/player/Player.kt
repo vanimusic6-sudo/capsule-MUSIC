@@ -10,16 +10,11 @@
 package com.nikhil.yt.ui.player
 
 import androidx.activity.compose.BackHandler
-import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.tween
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.scaleIn
-import androidx.compose.animation.scaleOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
-import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -223,11 +218,7 @@ fun BottomSheetPlayer(
     BottomSheet(
         state = state,
         modifier = modifier,
-        backgroundColor = playerSurfaceColor(
-            state = state,
-            playerBackground = playerBackground,
-            useBlackBackground = useBlackBackground,
-        ),
+        backgroundColor = playerSurfaceColor(useBlackBackground),
         onDismiss = {
             playerConnection.service.stopAndClearPlayback()
         },
@@ -338,120 +329,69 @@ private fun CapsulePlayerLyricsHost(
     onShowMenu: () -> Unit,
 ) {
     val easing = remember {
-        CubicBezierEasing(0.35f, 0f, 0.20f, 1f)
+        CubicBezierEasing(0.22f, 1f, 0.36f, 1f)
     }
 
-    AnimatedContent(
-        targetState = showLyrics,
-        transitionSpec = {
-            val enterDuration = 330
-            val exitDuration = 300
-            val scale = 0.994f
+    /*
+     * Keep the player alive underneath the lyrics page. Lyrics behaves as one opaque physical
+     * sheet: it rises over the player and slides back down to reveal the player exactly where it
+     * was. No alpha, scale, or two-screen crossfade is involved.
+     */
+    Box(modifier = Modifier.fillMaxSize()) {
+        CapsulePlayerContent(
+            design = design,
+            mediaMetadata = mediaMetadata,
+            sliderPosition = sliderPosition,
+            positionMs = position,
+            durationMs = duration,
+            onSeekPreview = onSeekPreview,
+            onSeekFinished = onSeekFinished,
+            textColor = textColor,
+            liked = liked,
+            playerConnection = playerConnection,
+            onToggleLike = playerConnection::toggleLike,
+            onExpandQueue = queueState::expandSoft,
+            onCollapse = playerState::collapseSoft,
+            onArtworkClick = onShowLyrics,
+            onArtistSelected = { artist ->
+                artist.id?.let { artistId ->
+                    onHideLyrics()
+                    navController.navigate("artist/$artistId")
+                    playerState.collapseSoft()
+                }
+            },
+            onMenuClick = onShowMenu,
+            context = LocalContext.current,
+            bottomPadding = 0.dp,
+        )
 
-            if (targetState) {
-                (
-                    fadeIn(tween(enterDuration, easing = easing)) +
-                        slideInVertically(
-                            animationSpec = tween(enterDuration, easing = easing),
-                            initialOffsetY = { fullHeight -> fullHeight / 28 },
-                        ) +
-                        scaleIn(
-                            animationSpec = tween(enterDuration, easing = easing),
-                            initialScale = scale,
-                        )
-                ).togetherWith(
-                    fadeOut(tween(exitDuration, easing = easing)) +
-                        slideOutVertically(
-                            animationSpec = tween(exitDuration, easing = easing),
-                            targetOffsetY = { fullHeight -> -fullHeight / 36 },
-                        ) +
-                        scaleOut(
-                            animationSpec = tween(exitDuration, easing = easing),
-                            targetScale = scale,
-                        ),
-                )
-            } else {
-                (
-                    fadeIn(tween(enterDuration, easing = easing)) +
-                        slideInVertically(
-                            animationSpec = tween(enterDuration, easing = easing),
-                            initialOffsetY = { fullHeight -> -fullHeight / 36 },
-                        ) +
-                        scaleIn(
-                            animationSpec = tween(enterDuration, easing = easing),
-                            initialScale = scale,
-                        )
-                ).togetherWith(
-                    fadeOut(tween(exitDuration, easing = easing)) +
-                        slideOutVertically(
-                            animationSpec = tween(exitDuration, easing = easing),
-                            targetOffsetY = { fullHeight -> fullHeight / 28 },
-                        ) +
-                        scaleOut(
-                            animationSpec = tween(exitDuration, easing = easing),
-                            targetScale = scale,
-                        ),
-                )
-            }
-        },
-        label = "CapsulePlayerLyricsTransition",
-    ) { lyricsVisible ->
-        if (lyricsVisible) {
+        AnimatedVisibility(
+            visible = showLyrics,
+            enter =
+                slideInVertically(
+                    animationSpec = tween(420, easing = easing),
+                    initialOffsetY = { fullHeight -> fullHeight },
+                ),
+            exit =
+                slideOutVertically(
+                    animationSpec = tween(380, easing = easing),
+                    targetOffsetY = { fullHeight -> fullHeight },
+                ),
+            modifier = Modifier.fillMaxSize(),
+        ) {
             LyricsScreen(
                 mediaMetadata = mediaMetadata,
                 onBackClick = onHideLyrics,
-            )
-        } else {
-            CapsulePlayerContent(
-                design = design,
-                mediaMetadata = mediaMetadata,
-                sliderPosition = sliderPosition,
-                positionMs = position,
-                durationMs = duration,
-                onSeekPreview = onSeekPreview,
-                onSeekFinished = onSeekFinished,
-                textColor = textColor,
-                liked = liked,
-                playerConnection = playerConnection,
-                onToggleLike = playerConnection::toggleLike,
-                onExpandQueue = queueState::expandSoft,
-                onCollapse = playerState::collapseSoft,
-                onArtworkClick = onShowLyrics,
-                onArtistSelected = { artist ->
-                    artist.id?.let { artistId ->
-                        onHideLyrics()
-                        navController.navigate("artist/$artistId")
-                        playerState.collapseSoft()
-                    }
-                },
-                onMenuClick = onShowMenu,
-                context = LocalContext.current,
-                bottomPadding = 0.dp,
+                modifier = Modifier.fillMaxSize(),
             )
         }
     }
 }
 
 @Composable
-private fun playerSurfaceColor(
-    state: BottomSheetState,
-    playerBackground: PlayerBackgroundStyle,
-    useBlackBackground: Boolean,
-): Color {
-    val progress =
-        ((state.value - state.collapsedBound) /
-            (state.expandedBound - state.collapsedBound))
-            .coerceIn(0f, 1f)
-    val fadeProgress =
-        if (progress < 0.2f) {
-            ((0.2f - progress) / 0.2f).coerceIn(0f, 1f)
-        } else {
-            0f
-        }
-
-    return if (useBlackBackground) {
-        Color.Black.copy(alpha = 1f - fadeProgress)
+private fun playerSurfaceColor(useBlackBackground: Boolean): Color =
+    if (useBlackBackground) {
+        Color.Black
     } else {
-        MaterialTheme.colorScheme.surface.copy(alpha = 1f - fadeProgress)
+        MaterialTheme.colorScheme.surface
     }
-}
