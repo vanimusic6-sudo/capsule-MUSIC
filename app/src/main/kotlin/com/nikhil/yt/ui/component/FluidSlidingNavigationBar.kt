@@ -168,14 +168,17 @@ private fun CapsuleNavigationBar(
     val dockTopRadius by
         animateDpAsState(
             targetValue = if (connectedToMiniPlayer) 0.dp else 26.dp,
-            animationSpec = spring(dampingRatio = 0.90f, stiffness = 125f),
+            animationSpec = spring(dampingRatio = 0.92f, stiffness = 110f),
             label = "capsuleDockTopRadius",
         )
 
+    // A spring ending at 0.dp may numerically overshoot by a tiny negative amount. RoundedCornerShape
+    // rejects any negative radius on Android 16, so keep the rendered geometry inside its legal range.
+    val safeDockTopRadius = dockTopRadius.coerceAtLeast(0.dp)
     val dockShape =
         RoundedCornerShape(
-            topStart = dockTopRadius,
-            topEnd = dockTopRadius,
+            topStart = safeDockTopRadius,
+            topEnd = safeDockTopRadius,
             bottomStart = 26.dp,
             bottomEnd = 26.dp,
         )
@@ -230,7 +233,7 @@ private fun CapsuleNavigationBar(
                 val indicatorOffset by
                     animateDpAsState(
                         targetValue = itemWidth * selectedIndex.toFloat(),
-                        animationSpec = spring(dampingRatio = 0.84f, stiffness = 165f),
+                        animationSpec = spring(dampingRatio = 0.90f, stiffness = 145f),
                         label = "capsuleDockIndicatorOffset",
                     )
 
@@ -266,7 +269,7 @@ private fun CapsuleNavigationBar(
                             animateColorAsState(
                                 targetValue =
                                     if (isSelected) Color(0xFF121219) else dockMutedContent,
-                                animationSpec = spring(dampingRatio = 0.90f, stiffness = 150f),
+                                animationSpec = spring(dampingRatio = 0.92f, stiffness = 135f),
                                 label = "capsuleDockItemColor",
                             )
 
@@ -331,7 +334,7 @@ internal fun StandardNavigationBar(
         val pillWidth = 54.dp
         val indicatorOffset by animateDpAsState(
             targetValue = tabWidth * selectedIndex + (tabWidth - pillWidth) / 2,
-            animationSpec = spring(dampingRatio = 0.86f, stiffness = 145f),
+            animationSpec = spring(dampingRatio = 0.90f, stiffness = 135f),
             label = "standardNavigationIndicator",
         )
         Box(
