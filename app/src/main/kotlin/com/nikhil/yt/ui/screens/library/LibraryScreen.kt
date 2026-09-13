@@ -6,6 +6,7 @@
 
 package com.nikhil.yt.ui.screens.library
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -119,7 +120,9 @@ fun LibraryScreen(navController: NavController) {
     val surfaceColor = MaterialTheme.colorScheme.surface
 
     Box(
-        modifier = Modifier.fillMaxSize(),
+        modifier = Modifier
+            .fillMaxSize()
+            .background(surfaceColor),
     ) {
         // M3E Mesh gradient background layer at the top
         if (!disableBlur) {
