@@ -99,9 +99,9 @@ fun BottomSheetPage(
     }
 
     /*
-     * Lower stiffness keeps the motion readable; lower damping restores the small overshoot that
-     * makes a menu feel like a physical sheet instead of a sterile translateY. It is intentionally
-     * subtle: one soft hit and settle, never a cartoon bounce.
+     * The menu keeps one small rebound, but its natural frequency is lower than before. That gives
+     * the sheet time to accelerate, land and magnetically settle instead of looking like a fast
+     * translate with a bounce bolted onto the end.
      */
     AnimatedVisibility(
         visible = state.isVisible,
@@ -111,7 +111,7 @@ fun BottomSheetPage(
                 animationSpec =
                     spring(
                         dampingRatio = 0.80f,
-                        stiffness = 225f,
+                        stiffness = 165f,
                     ),
             ),
         exit =
@@ -120,7 +120,7 @@ fun BottomSheetPage(
                 animationSpec =
                     spring(
                         dampingRatio = 0.84f,
-                        stiffness = 255f,
+                        stiffness = 195f,
                     ),
             ),
         modifier = modifier,
