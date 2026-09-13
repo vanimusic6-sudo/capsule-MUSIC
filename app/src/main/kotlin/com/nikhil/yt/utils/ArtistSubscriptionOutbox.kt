@@ -15,6 +15,8 @@ import androidx.work.WorkerParameters
 import com.nikhil.yt.db.ArtistSubscriptionState
 import com.nikhil.yt.innertube.YouTube
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import org.json.JSONArray
 import org.json.JSONObject
 import timber.log.Timber
@@ -31,6 +33,7 @@ import java.util.concurrent.TimeUnit
  */
 internal object ArtistSubscriptionOutbox {
     private val OutboxKey = stringPreferencesKey("artist_subscription_outbox_v1")
+    private val flushMutex = Mutex()
 
     internal data class Pending(
         val artistId: String,
@@ -73,10 +76,18 @@ internal object ArtistSubscriptionOutbox {
         }
     }
 
+    suspend fun clear(context: Context) {
+        context.dataStore.edit { preferences ->
+            preferences.remove(OutboxKey)
+        }
+    }
+
     suspend fun snapshot(context: Context): List<Pending> =
         decode(context.dataStore.data.first()[OutboxKey])
             .values
             .sortedBy(Pending::changedAtMs)
+
+    suspend fun hasPending(context: Context): Boolean = snapshot(context).isNotEmpty()
 
     suspend fun flushLatest(context: Context, artistId: String): Boolean {
         val pending = snapshot(context).firstOrNull { it.artistId == artistId } ?: return true
@@ -95,47 +106,61 @@ internal object ArtistSubscriptionOutbox {
         return allSucceeded
     }
 
-    private suspend fun flush(context: Context, snapshot: Pending): Boolean {
-        if (!YouTube.authState.hasLoginCookie) return false
+    private suspend fun flush(context: Context, queued: Pending): Boolean =
+        flushMutex.withLock {
+            if (!YouTube.authState.hasLoginCookie) return@withLock false
 
-        // Re-read before sending. A newer offline tap must always win over this snapshot.
-        val current = snapshot(context).firstOrNull { it.artistId == snapshot.artistId } ?: return true
-        if (current.revision != snapshot.revision) return true
+            // Re-read after taking the mutex. A newer tap must always be sent after an older one;
+            // otherwise two in-flight HTTP calls could complete out of order and leave YouTube in
+            // the wrong state even though the local queue contained the correct final state.
+            val current = snapshot(context).firstOrNull { it.artistId == queued.artistId }
+                ?: return@withLock true
+            if (current.revision != queued.revision) return@withLock true
 
-        val resolvedChannelId =
-            current.channelId
-                ?.takeIf(String::isNotBlank)
-                ?: current.artistId.takeIf { it.startsWith("UC") }
-                ?: YouTube.getChannelId(current.artistId).takeIf(String::isNotBlank)
-                ?: return false
+            val resolvedChannelId =
+                current.channelId
+                    ?.takeIf { it.isNotBlank() }
+                    ?: current.artistId.takeIf { it.startsWith("UC") }
+                    ?: YouTube.getChannelId(current.artistId).takeIf { it.isNotBlank() }
+                    ?: return@withLock false
 
-        ArtistSubscriptionState.recordLocalIntent(
-            artistId = current.artistId,
-            channelId = resolvedChannelId,
-            subscribed = current.subscribed,
-            nowMs = current.changedAtMs,
-            durable = true,
-        )
-
-        val result = YouTube.subscribeChannel(resolvedChannelId, current.subscribed)
-        if (result.isFailure) {
-            Timber.w(
-                result.exceptionOrNull(),
-                "Artist subscription outbox: remote mutation failed for ${current.artistId}",
-            )
-            return false
-        }
-
-        val removed = removeIfRevision(context, current.artistId, current.revision)
-        if (removed) {
-            ArtistSubscriptionState.clearLocalIntent(
+            ArtistSubscriptionState.recordLocalIntent(
                 artistId = current.artistId,
                 channelId = resolvedChannelId,
-                expectedSubscribed = current.subscribed,
+                subscribed = current.subscribed,
+                nowMs = current.changedAtMs,
+                durable = true,
             )
+
+            val result = YouTube.subscribeChannel(resolvedChannelId, current.subscribed)
+            if (result.isFailure) {
+                Timber.w(
+                    result.exceptionOrNull(),
+                    "Artist subscription outbox: remote mutation failed for ${current.artistId}",
+                )
+                return@withLock false
+            }
+
+            val removed = removeIfRevision(context, current.artistId, current.revision)
+            if (removed) {
+                // The durable write has reached YouTube. Keep a short-lived in-memory intent so a
+                // stale library snapshot cannot immediately undo the UI while YouTube propagates
+                // the successful mutation through its browse endpoints.
+                ArtistSubscriptionState.clearLocalIntent(
+                    artistId = current.artistId,
+                    channelId = resolvedChannelId,
+                    expectedSubscribed = current.subscribed,
+                )
+                ArtistSubscriptionState.recordLocalIntent(
+                    artistId = current.artistId,
+                    channelId = resolvedChannelId,
+                    subscribed = current.subscribed,
+                    nowMs = System.currentTimeMillis(),
+                    durable = false,
+                )
+            }
+            true
         }
-        return true
-    }
 
     private suspend fun removeIfRevision(
         context: Context,
@@ -239,7 +264,7 @@ internal object ArtistSubscriptionSyncScheduler {
     }
 }
 
-internal class ArtistSubscriptionSyncWorker(
+class ArtistSubscriptionSyncWorker(
     appContext: Context,
     workerParameters: WorkerParameters,
 ) : CoroutineWorker(appContext, workerParameters) {
