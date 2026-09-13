@@ -1,6 +1,6 @@
 package com.nikhil.yt.ui.component
 
-import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
@@ -10,8 +10,11 @@ import androidx.compose.foundation.interaction.InteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
@@ -23,8 +26,14 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import com.nikhil.yt.R
+import kotlinx.coroutines.delay
 
-/** The existing heart contour squeezes on press; its inner opening closes smoothly on like. */
+/**
+ * Capsule heart with interaction-driven motion.
+ *
+ * Database/track restoration is snapped directly to the final state. The fill animation is only
+ * armed by a real press, so opening a song that is already liked never replays the like animation.
+ */
 @Composable
 internal fun CapsuleFavoriteIcon(
     liked: Boolean,
@@ -38,15 +47,48 @@ internal fun CapsuleFavoriteIcon(
         spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMedium),
         label = "favoritePress",
     )
-    val fill by animateFloatAsState(if (liked) 1f else 0f, tween(260), label = "favoriteFill")
-    val color by animateColorAsState(tint, tween(220), label = "favoriteTint")
+
+    val fill = remember { Animatable(if (liked) 1f else 0f) }
+    var userInteractionPending by remember { mutableStateOf(false) }
+
+    LaunchedEffect(pressed) {
+        if (pressed) {
+            userInteractionPending = true
+        } else if (userInteractionPending) {
+            // Room/network state can land a little after ACTION_UP. Keep a short interaction window
+            // so a genuine tap still gets its animation, then disarm to prevent unrelated updates
+            // (track restore/sync) from animating later.
+            delay(900)
+            userInteractionPending = false
+        }
+    }
+
+    LaunchedEffect(liked) {
+        val target = if (liked) 1f else 0f
+        if (fill.value == target) return@LaunchedEffect
+
+        if (userInteractionPending) {
+            userInteractionPending = false
+            fill.animateTo(target, tween(260))
+        } else {
+            fill.snapTo(target)
+        }
+    }
+
+    val color = if (liked) CapsuleFavoriteColors.active else tint
     val label = stringResource(if (liked) R.string.action_remove_like else R.string.action_like)
     val path = remember { Path() }
+
     Canvas(modifier.size(24.dp).semantics { contentDescription = label }) {
-        val progress = fill.coerceIn(0f, 1f)
-        // Also deform when activated from accessibility, without a physical pointer press.
-        val morph = (press + 0.65f * 4f * progress * (1f - progress) * (1f - press)).coerceIn(-0.16f, 1f)
+        val progress = fill.value.coerceIn(0f, 1f)
+        // Also deform while the fill travels, preserving the tactile squeeze from the Capsule skin.
+        val morph =
+            (
+                press +
+                    0.65f * 4f * progress * (1f - progress) * (1f - press)
+            ).coerceIn(-0.16f, 1f)
         val opening = 1f - progress
+
         path.reset()
         path.fillType = PathFillType.EvenOdd
         path.moveTo(12f, 21.35f - morph * 1.1f)
@@ -58,9 +100,11 @@ internal fun CapsuleFavoriteIcon(
         path.cubicTo(19.58f, 3f, 22f, 5.42f, 22f, 8.5f)
         path.cubicTo(22f, 12.28f, 18.6f, 15.36f, 13.45f, 20.04f)
         path.close()
+
         if (opening > 0f) {
             fun x(value: Float) = 12f + (value - 12f) * opening
             fun y(value: Float) = 11.8f + (value - 11.8f) * opening
+
             path.moveTo(x(12f), y(18.65f))
             path.cubicTo(x(7.14f), y(14.24f), x(4f), y(11.39f), x(4f), y(8.5f))
             path.cubicTo(x(4f), y(6.5f), x(5.5f), y(5f), x(7.5f), y(5f))
@@ -71,10 +115,15 @@ internal fun CapsuleFavoriteIcon(
             path.cubicTo(x(20f), y(11.39f), x(16.86f), y(14.24f), x(12f), y(18.65f))
             path.close()
         }
+
         val unit = minOf(size.width, size.height) / 24f
         translate((size.width - 24f * unit) / 2f, (size.height - 24f * unit) / 2f) {
             scale(unit, unit, pivot = androidx.compose.ui.geometry.Offset.Zero) {
-                scale(1f + 0.07f * morph, 1f - 0.12f * morph, pivot = androidx.compose.ui.geometry.Offset(12f, 12f)) {
+                scale(
+                    1f + 0.07f * morph,
+                    1f - 0.12f * morph,
+                    pivot = androidx.compose.ui.geometry.Offset(12f, 12f),
+                ) {
                     drawPath(path, color)
                 }
             }
