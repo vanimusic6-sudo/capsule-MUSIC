@@ -12,9 +12,7 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.AnimationSpec
 import androidx.compose.animation.core.AnimationVector1D
-import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.VectorConverter
-import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.DraggableState
@@ -41,7 +39,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.pointer.pointerInput
@@ -54,7 +51,6 @@ import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
 import com.nikhil.yt.constants.BottomSheetAnimationSpec
 import com.nikhil.yt.constants.BottomSheetSoftAnimationSpec
-import com.nikhil.yt.utils.rememberPreference
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.launch
@@ -62,6 +58,10 @@ import kotlinx.coroutines.launch
 /**
  * Bottom Sheet
  * Modified from [ViMusic](https://github.com/vfsfitvnm/ViMusic)
+ *
+ * The sheet is intentionally transform-only: it remains fully opaque while moving and never
+ * crossfades the collapsed and expanded layers. This keeps the motion physical and prevents the
+ * content underneath from being darkened or blended through the arriving surface.
  */
 @Composable
 fun BottomSheet(
@@ -74,55 +74,50 @@ fun BottomSheet(
 ) {
     Box(
         modifier =
-        modifier
-            .fillMaxSize()
-            .offset {
-                val y =
-                    (state.expandedBound - state.value)
-                        .roundToPx()
-                        .coerceAtLeast(0)
-                IntOffset(x = 0, y = y)
-            }
-            .bottomSheetDraggable(state, onDismiss)
-            .clip(
-                RoundedCornerShape(
-                    topStart = if (!state.isExpanded) 16.dp else 0.dp,
-                    topEnd = if (!state.isExpanded) 16.dp else 0.dp,
-                ),
-            ).background(
-                backgroundColor.copy(
-                    alpha = backgroundColor.alpha * state.progress.coerceIn(0f, 1f)
+            modifier
+                .fillMaxSize()
+                .offset {
+                    val y =
+                        (state.expandedBound - state.value)
+                            .roundToPx()
+                            .coerceAtLeast(0)
+                    IntOffset(x = 0, y = y)
+                }
+                .bottomSheetDraggable(state, onDismiss)
+                .clip(
+                    RoundedCornerShape(
+                        topStart = if (!state.isExpanded) 16.dp else 0.dp,
+                        topEnd = if (!state.isExpanded) 16.dp else 0.dp,
+                    ),
                 )
-            ),
+                .background(backgroundColor),
     ) {
         if (!state.isCollapsed && !state.isDismissed) {
             BackHandler(onBack = state::collapseSoft)
         }
 
+        // Keep the full page attached to the moving surface for the complete travel. It replaces
+        // the mini surface as soon as expansion starts and remains until collapse fully settles.
         if (!state.isCollapsed) {
             BoxWithConstraints(
-                modifier =
-                Modifier
-                    .fillMaxSize()
-                    .graphicsLayer {
-                        alpha = ((state.progress - 0.25f) * 4).coerceIn(0f, 1f)
-                    },
+                modifier = Modifier.fillMaxSize(),
                 content = content,
             )
         }
 
-        if (!state.isExpanded && (onDismiss == null || !state.isDismissed)) {
+        // Do not overlap/crossfade mini and full player. At the collapsed anchor the mini player is
+        // already in its final state; the next gesture starts moving the opaque full surface.
+        if (state.isCollapsed && (onDismiss == null || !state.isDismissed)) {
             Box(
                 modifier =
-                Modifier
-                    .graphicsLayer {
-                        alpha = 1f - (state.progress * 4).coerceAtMost(1f)
-                    }.clickable(
-                        interactionSource = remember { MutableInteractionSource() },
-                        indication = null,
-                        onClick = state::expandSoft,
-                    ).fillMaxWidth()
-                    .height(state.collapsedBound),
+                    Modifier
+                        .clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null,
+                            onClick = state::expandSoft,
+                        )
+                        .fillMaxWidth()
+                        .height(state.collapsedBound),
                 content = collapsedContent,
             )
         }
@@ -336,11 +331,11 @@ fun rememberBottomSheetState(
 
         BottomSheetState(
             draggableState =
-            DraggableState { delta ->
-                coroutineScope.launch(start = CoroutineStart.UNDISPATCHED) {
-                    animatable.snapTo(animatable.value - with(density) { delta.toDp() })
-                }
-            },
+                DraggableState { delta ->
+                    coroutineScope.launch(start = CoroutineStart.UNDISPATCHED) {
+                        animatable.snapTo(animatable.value - with(density) { delta.toDp() })
+                    }
+                },
             onAnchorChanged = { previousAnchor = it },
             coroutineScope = coroutineScope,
             animatable = animatable,
