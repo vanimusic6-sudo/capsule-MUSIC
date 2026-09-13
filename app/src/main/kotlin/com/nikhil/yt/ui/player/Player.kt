@@ -10,12 +10,11 @@
 package com.nikhil.yt.ui.player
 
 import androidx.activity.compose.BackHandler
-import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.spring
-import androidx.compose.animation.slideInVertically
-import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
@@ -30,6 +29,8 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.media3.common.C
@@ -52,6 +53,7 @@ import com.nikhil.yt.ui.utils.ShowMediaInfo
 import com.nikhil.yt.utils.rememberEnumPreference
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
+import kotlin.math.abs
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -327,66 +329,98 @@ private fun CapsulePlayerLyricsHost(
     onHideLyrics: () -> Unit,
     onShowMenu: () -> Unit,
 ) {
-    Box(modifier = Modifier.fillMaxSize()) {
-        CapsulePlayerContent(
-            design = design,
-            mediaMetadata = mediaMetadata,
-            sliderPosition = sliderPosition,
-            positionMs = position,
-            durationMs = duration,
-            onSeekPreview = onSeekPreview,
-            onSeekFinished = onSeekFinished,
-            textColor = textColor,
-            liked = liked,
-            playerConnection = playerConnection,
-            onToggleLike = playerConnection::toggleLike,
-            onExpandQueue = queueState::expandSoft,
-            onCollapse = playerState::collapseSoft,
-            onArtworkClick = onShowLyrics,
-            onArtistSelected = { artist ->
-                artist.id?.let { artistId ->
-                    onHideLyrics()
-                    navController.navigate("artist/$artistId")
-                    playerState.collapseSoft()
-                }
-            },
-            onMenuClick = onShowMenu,
-            context = LocalContext.current,
-            bottomPadding = 0.dp,
-        )
+    /*
+     * Unlike AnimatedVisibility, this keeps one continuous physical state. If the user reverses the
+     * transition before it finishes, Animatable starts from the current position and velocity rather
+     * than spawning a second entrance/exit animation. That continuity is a large part of the tactile
+     * feeling of the favourite-heart interaction.
+     */
+    val lyricsMotion = remember {
+        Animatable(if (showLyrics) 1f else 0f)
+    }
 
-        /*
-         * Lyrics is a real spring-driven surface now, not a timed interpolation. It carries a small
-         * amount of momentum past the target and settles back into it, which gives the same tactile
-         * release as the favourite icon without introducing alpha, blur or a translucent overlay.
-         */
-        AnimatedVisibility(
-            visible = showLyrics,
-            enter =
-                slideInVertically(
-                    animationSpec =
-                        spring(
-                            dampingRatio = 0.82f,
-                            stiffness = 300f,
-                        ),
-                    initialOffsetY = { fullHeight -> fullHeight },
+    LaunchedEffect(showLyrics) {
+        lyricsMotion.animateTo(
+            targetValue = if (showLyrics) 1f else 0f,
+            animationSpec =
+                spring(
+                    dampingRatio = if (showLyrics) 0.80f else 0.86f,
+                    stiffness = if (showLyrics) 270f else 350f,
                 ),
-            exit =
-                slideOutVertically(
-                    animationSpec =
-                        spring(
-                            dampingRatio = 0.86f,
-                            stiffness = 360f,
-                        ),
-                    targetOffsetY = { fullHeight -> fullHeight },
-                ),
-            modifier = Modifier.fillMaxSize(),
+        )
+    }
+
+    Box(modifier = Modifier.fillMaxSize()) {
+        val playerReaction = lyricsMotion.value.coerceIn(0f, 1f)
+
+        Box(
+            modifier =
+                Modifier
+                    .fillMaxSize()
+                    .graphicsLayer {
+                        translationY = -4f * playerReaction
+                        scaleX = 1f - 0.0012f * playerReaction
+                        scaleY = 1f - 0.0018f * playerReaction
+                        transformOrigin = TransformOrigin(0.5f, 0.5f)
+                    },
         ) {
-            LyricsScreen(
+            CapsulePlayerContent(
+                design = design,
                 mediaMetadata = mediaMetadata,
-                onBackClick = onHideLyrics,
-                modifier = Modifier.fillMaxSize(),
+                sliderPosition = sliderPosition,
+                positionMs = position,
+                durationMs = duration,
+                onSeekPreview = onSeekPreview,
+                onSeekFinished = onSeekFinished,
+                textColor = textColor,
+                liked = liked,
+                playerConnection = playerConnection,
+                onToggleLike = playerConnection::toggleLike,
+                onExpandQueue = queueState::expandSoft,
+                onCollapse = playerState::collapseSoft,
+                onArtworkClick = onShowLyrics,
+                onArtistSelected = { artist ->
+                    artist.id?.let { artistId ->
+                        onHideLyrics()
+                        navController.navigate("artist/$artistId")
+                        playerState.collapseSoft()
+                    }
+                },
+                onMenuClick = onShowMenu,
+                context = LocalContext.current,
+                bottomPadding = 0.dp,
             )
+        }
+
+        BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+            val progress = lyricsMotion.value
+            val fullHeightPx = constraints.maxHeight.toFloat()
+            val baseTranslation = (1f - progress) * fullHeightPx
+            val velocity = lyricsMotion.velocity
+            val velocityWeight = (abs(velocity) / 4.5f).coerceIn(0f, 1f)
+            val inertialLag = (velocity * 4.5f).coerceIn(-14f, 14f)
+            val shouldComposeLyrics =
+                showLyrics || lyricsMotion.isRunning || progress > 0.001f
+
+            if (shouldComposeLyrics) {
+                Box(
+                    modifier =
+                        Modifier
+                            .fillMaxSize()
+                            .graphicsLayer {
+                                translationY = baseTranslation + inertialLag
+                                scaleX = 1f + 0.0015f * velocityWeight
+                                scaleY = 1f - 0.0035f * velocityWeight
+                                transformOrigin = TransformOrigin(0.5f, 1f)
+                            },
+                ) {
+                    LyricsScreen(
+                        mediaMetadata = mediaMetadata,
+                        onBackClick = onHideLyrics,
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                }
+            }
         }
     }
 }
