@@ -2,31 +2,25 @@ package com.nikhil.yt.ui.screens
 
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
-import androidx.compose.animation.core.tween
-import androidx.compose.animation.scaleIn
-import androidx.compose.animation.scaleOut
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.core.snap
 
 /**
- * Route navigation never visibly moves a whole page.
+ * Route hand-off is intentionally invisible.
  *
- * Navigation Compose still needs a real, finite transition so the outgoing destination can leave
- * STARTED and be disposed. Returning EnterTransition.None/ExitTransition.None left both route
- * contents alive together on some fast changes, which made translucent destinations visibly stack.
- * A 1 ms identity-scale transition has no visible motion, alpha or slide, but gives NavHost a clean
- * transition boundary. Individual destinations remain responsible for their own element motion.
+ * Returning EnterTransition.None/ExitTransition.None can leave both destinations active together
+ * during fast navigation, while an identity scale transition still draws both pages for a frame.
+ * A snapped alpha transition gives Navigation Compose a real transition boundary and immediately
+ * makes the outgoing destination invisible. There is no perceptible page fade, slide or scale;
+ * only destination-owned element motion is visible.
  */
 internal object ScreenTransitions {
     @Suppress("UNUSED_PARAMETER")
     fun enter(from: String?, to: String?, isPop: Boolean = false): EnterTransition =
-        scaleIn(
-            initialScale = 1f,
-            animationSpec = tween(durationMillis = 1),
-        )
+        fadeIn(animationSpec = snap())
 
     @Suppress("UNUSED_PARAMETER")
     fun exit(from: String?, to: String?, isPop: Boolean = false): ExitTransition =
-        scaleOut(
-            targetScale = 1f,
-            animationSpec = tween(durationMillis = 1),
-        )
+        fadeOut(animationSpec = snap())
 }
