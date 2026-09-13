@@ -29,7 +29,6 @@ import androidx.compose.ui.graphics.drawscope.scale
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
-import com.nikhil.yt.ui.component.LocalCapsuleBackgroundMotionEnabled
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlin.math.abs
@@ -114,9 +113,8 @@ internal fun CapsuleProceduralBackground(
                 colors.getOrElse(2) { tertiary },
             ).map(::capsuleMutedArtworkColor)
         }
-    val motionEnabled = LocalCapsuleBackgroundMotionEnabled.current
     val time =
-        if (animated && motionEnabled) {
+        if (animated) {
             rememberCapsuleAnimationTime(compact = compact)
         } else {
             null

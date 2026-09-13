@@ -31,8 +31,6 @@ import androidx.compose.ui.platform.LocalContext
 import com.nikhil.yt.App.Companion.forgetAccount
 import com.nikhil.yt.utils.rememberPreference
 import com.nikhil.yt.constants.InnerTubeCookieKey
-import com.nikhil.yt.ui.component.capsuleSceneItem
-import com.nikhil.yt.ui.component.rememberCapsuleSceneMotionState
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -46,17 +44,10 @@ fun VeluneSettingsScreen(
     val isLoggedIn = accountName != "Guest" && !accountName.isNullOrEmpty()
     var showLogoutDialog by remember { mutableStateOf(false) }
     val (innerTubeCookie, onInnerTubeCookieChange) = rememberPreference(InnerTubeCookieKey, "")
-    val sceneMotion = rememberCapsuleSceneMotionState(key = "settings")
 
     Scaffold(
         topBar = {
             TopAppBar(
-                modifier = Modifier.capsuleSceneItem(
-                    state = sceneMotion,
-                    order = 0,
-                    lift = 3.dp,
-                    depth = 0.0012f,
-                ),
                 title = { Text("Settings", fontSize = 20.sp) },
                 navigationIcon = {
                     IconButton(onClick = { navController.popBackStack() }) {
@@ -84,12 +75,6 @@ fun VeluneSettingsScreen(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .capsuleSceneItem(
-                            state = sceneMotion,
-                            order = 1,
-                            lift = 5.dp,
-                            depth = 0.0016f,
-                        )
                         .padding(vertical = 16.dp, horizontal = 4.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
@@ -129,8 +114,7 @@ fun VeluneSettingsScreen(
                 SettingsItemScreenshotStyle(
                     icon = painterResource(R.drawable.palette),
                     title = "Appearance",
-                    onClick = { navController.navigate("settings/appearance") },
-                    modifier = Modifier.capsuleSceneItem(sceneMotion, order = 2),
+                    onClick = { navController.navigate("settings/appearance") }
                 )
             }
 
@@ -140,15 +124,13 @@ fun VeluneSettingsScreen(
                         model = accountImageUrl,
                         fallbackText = accountName?.firstOrNull()?.uppercase() ?: "",
                         title = "Account",
-                        onClick = { navController.navigate("settings/account") },
-                        modifier = Modifier.capsuleSceneItem(sceneMotion, order = 3),
+                        onClick = { navController.navigate("settings/account") }
                     )
                 } else {
                     SettingsItemScreenshotStyle(
                         icon = painterResource(R.drawable.account),
                         title = "Account",
-                        onClick = { navController.navigate("settings/account") },
-                        modifier = Modifier.capsuleSceneItem(sceneMotion, order = 3),
+                        onClick = { navController.navigate("settings/account") }
                     )
                 }
             }
@@ -157,8 +139,7 @@ fun VeluneSettingsScreen(
                 SettingsItemScreenshotStyle(
                     icon = painterResource(R.drawable.multi_user),
                     title = "Listen Together",
-                    onClick = { navController.navigate("settings/music_together") },
-                    modifier = Modifier.capsuleSceneItem(sceneMotion, order = 4),
+                    onClick = { navController.navigate("settings/music_together") }
                 )
             }
 
@@ -166,8 +147,7 @@ fun VeluneSettingsScreen(
                 SettingsItemScreenshotStyle(
                     icon = painterResource(R.drawable.play),
                     title = "Player and audio",
-                    onClick = { navController.navigate("settings/player") },
-                    modifier = Modifier.capsuleSceneItem(sceneMotion, order = 5),
+                    onClick = { navController.navigate("settings/player") }
                 )
             }
 
@@ -175,8 +155,7 @@ fun VeluneSettingsScreen(
                 SettingsItemScreenshotStyle(
                     icon = painterResource(R.drawable.play),
                     title = "Video playback",
-                    onClick = { navController.navigate("settings/video_playback") },
-                    modifier = Modifier.capsuleSceneItem(sceneMotion, order = 6),
+                    onClick = { navController.navigate("settings/video_playback") }
                 )
             }
 
@@ -184,8 +163,7 @@ fun VeluneSettingsScreen(
                 SettingsItemScreenshotStyle(
                     icon = painterResource(R.drawable.language),
                     title = "Content",
-                    onClick = { navController.navigate("settings/content") },
-                    modifier = Modifier.capsuleSceneItem(sceneMotion, order = 7),
+                    onClick = { navController.navigate("settings/content") }
                 )
             }
 
@@ -193,8 +171,7 @@ fun VeluneSettingsScreen(
                 SettingsItemScreenshotStyle(
                     icon = painterResource(R.drawable.discord),
                     title = "Discord",
-                    onClick = { navController.navigate("settings/discord") },
-                    modifier = Modifier.capsuleSceneItem(sceneMotion, order = 8),
+                    onClick = { navController.navigate("settings/discord") }
                 )
             }
 
@@ -202,8 +179,7 @@ fun VeluneSettingsScreen(
                 SettingsItemScreenshotStyle(
                     icon = painterResource(R.drawable.integration),
                     title = "Integration",
-                    onClick = { navController.navigate("settings/integration") },
-                    modifier = Modifier.capsuleSceneItem(sceneMotion, order = 9),
+                    onClick = { navController.navigate("settings/integration") }
                 )
             }
 
@@ -211,8 +187,7 @@ fun VeluneSettingsScreen(
                 SettingsItemScreenshotStyle(
                     icon = painterResource(R.drawable.security),
                     title = "Privacy",
-                    onClick = { navController.navigate("settings/privacy") },
-                    modifier = Modifier.capsuleSceneItem(sceneMotion, order = 10),
+                    onClick = { navController.navigate("settings/privacy") }
                 )
             }
 
@@ -220,8 +195,7 @@ fun VeluneSettingsScreen(
                 SettingsItemScreenshotStyle(
                     icon = painterResource(R.drawable.storage),
                     title = "Storage",
-                    onClick = { navController.navigate("settings/storage") },
-                    modifier = Modifier.capsuleSceneItem(sceneMotion, order = 11),
+                    onClick = { navController.navigate("settings/storage") }
                 )
             }
 
@@ -229,17 +203,19 @@ fun VeluneSettingsScreen(
                 SettingsItemScreenshotStyle(
                     icon = painterResource(R.drawable.backup),
                     title = "Backup and restore",
-                    onClick = { navController.navigate("settings/backup_restore") },
-                    modifier = Modifier.capsuleSceneItem(sceneMotion, order = 12),
+                    onClick = { navController.navigate("settings/backup_restore") }
                 )
             }
 
+            /*
+             * The debug screen was registered on settings/misc but nothing
+             * linked to it, so the log viewer was unreachable from the app.
+             */
             item {
                 SettingsItemScreenshotStyle(
                     icon = painterResource(R.drawable.experiment),
                     title = "Developer",
-                    onClick = { navController.navigate("settings/misc") },
-                    modifier = Modifier.capsuleSceneItem(sceneMotion, order = 13),
+                    onClick = { navController.navigate("settings/misc") }
                 )
             }
 
@@ -247,8 +223,7 @@ fun VeluneSettingsScreen(
                 SettingsItemScreenshotStyle(
                     icon = painterResource(R.drawable.info),
                     title = "About",
-                    onClick = { navController.navigate("settings/about") },
-                    modifier = Modifier.capsuleSceneItem(sceneMotion, order = 14),
+                    onClick = { navController.navigate("settings/about") }
                 )
             }
 
@@ -283,11 +258,10 @@ fun VeluneSettingsScreen(
 private fun SettingsItemScreenshotStyle(
     icon: Painter,
     title: String,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier,
+    onClick: () -> Unit
 ) {
     Row(
-        modifier = modifier
+        modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onClick)
             .padding(vertical = 30.dp, horizontal = 4.dp),
@@ -321,11 +295,10 @@ private fun SettingsItemAccountStyle(
     model: String?,
     fallbackText: String,
     title: String,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier,
+    onClick: () -> Unit
 ) {
     Row(
-        modifier = modifier
+        modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onClick)
             .padding(vertical = 22.dp, horizontal = 4.dp),

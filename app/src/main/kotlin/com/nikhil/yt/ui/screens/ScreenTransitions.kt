@@ -2,25 +2,61 @@ package com.nikhil.yt.ui.screens
 
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
 
 /**
- * Route hand-off itself never moves.
+ * Capsule page motion is opaque, transform-only and spring driven.
  *
- * Navigation Compose can keep the outgoing and incoming destinations composed together for a short
- * transition window. That is useful for page animations, but Capsule deliberately does not animate
- * whole pages. Keep the incoming destination fully present and make the outgoing destination
- * invisible within the same display frame. The 1 ms alpha hand-off is not a visible fade; it is a
- * rendering guard that prevents stale route content from being drawn over the new destination while
- * Navigation finishes its lifecycle bookkeeping.
+ * Both pages use the exact same spring so their touching edges stay locked together. Lower natural
+ * frequency gives the eye time to read acceleration and mass, while the slightly under-damped settle
+ * preserves the tiny magnetic return that keeps the transition alive instead of sterile.
  */
 internal object ScreenTransitions {
-    @Suppress("UNUSED_PARAMETER")
-    fun enter(from: String?, to: String?, isPop: Boolean = false): EnterTransition =
-        EnterTransition.None
+    private const val DAMPING_RATIO = 0.82f
+    private const val STIFFNESS = 185f
 
-    @Suppress("UNUSED_PARAMETER")
-    fun exit(from: String?, to: String?, isPop: Boolean = false): ExitTransition =
-        fadeOut(animationSpec = tween(durationMillis = 1), targetAlpha = 0f)
+    fun enter(from: String?, to: String?, isPop: Boolean = false): EnterTransition {
+        if (from == to) return EnterTransition.None
+
+        val direction = direction(from, to, isPop)
+        return slideInHorizontally(
+            animationSpec =
+                spring(
+                    dampingRatio = DAMPING_RATIO,
+                    stiffness = STIFFNESS,
+                ),
+            initialOffsetX = { fullWidth -> direction * fullWidth },
+        )
+    }
+
+    fun exit(from: String?, to: String?, isPop: Boolean = false): ExitTransition {
+        if (from == to) return ExitTransition.None
+
+        val direction = direction(from, to, isPop)
+        return slideOutHorizontally(
+            animationSpec =
+                spring(
+                    dampingRatio = DAMPING_RATIO,
+                    stiffness = STIFFNESS,
+                ),
+            targetOffsetX = { fullWidth -> -direction * fullWidth },
+        )
+    }
+
+    private fun direction(from: String?, to: String?, isPop: Boolean): Int {
+        if (from == to) return 0
+
+        val fromIndex = Screens.MainScreens.indexOfFirst { it.route == from }
+        val toIndex = Screens.MainScreens.indexOfFirst { it.route == to }
+
+        return if (fromIndex >= 0 && toIndex >= 0) {
+            if (toIndex > fromIndex) 1 else -1
+        } else if (isPop) {
+            -1
+        } else {
+            1
+        }
+    }
 }

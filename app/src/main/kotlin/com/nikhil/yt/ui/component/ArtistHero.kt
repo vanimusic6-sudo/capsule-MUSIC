@@ -62,6 +62,8 @@ internal fun ArtistHeroLayout(
     topSafePadding: Dp = 0.dp,
 ) {
     BoxWithConstraints(modifier.fillMaxWidth().background(background)) {
+        // Keep the reference's bottom-aligned actions, lowered by 16 dp.
+        // Artwork itself reaches the physical top edge; only overlay content respects safe insets.
         val referenceWidth = maxWidth.coerceAtMost(450.dp)
         val heroHeight = referenceWidth * 1.69f + 16.dp
         Box(Modifier.fillMaxWidth().height(referenceWidth * 1.36f)) {
@@ -99,10 +101,11 @@ internal fun ArtistHero(
 ) {
     val loadingLabel = stringResource(R.string.loading)
     var artworkFailed by remember(thumbnailUrl) { mutableStateOf(thumbnailUrl.isNullOrBlank()) }
-    // Keep the entrance tied to this composition, not to async metadata. Keying by thumbnail/name
-    // replayed the whole hero when the network response arrived after the screen was already visible.
-    val sceneMotion = rememberCapsuleSceneMotionState()
 
+    // A follow/unfollow tap is a local user intent. Keep that intent visually authoritative for
+    // the lifetime of this hero instead of letting a delayed database/server snapshot undo the
+    // button a frame later. The database + durable subscription outbox still reconcile in the
+    // background, so this only removes the misleading subscribe -> unsubscribe flicker.
     var localSubscribedIntent by remember { mutableStateOf<Boolean?>(null) }
     val displayedSubscribed = localSubscribedIntent ?: subscribed
     val onSubscribeClick = {
@@ -115,20 +118,11 @@ internal fun ArtistHero(
         background = background,
         topSafePadding = topSafePadding,
         artwork = {
-            Box(
-                Modifier
-                    .fillMaxSize()
-                    .capsuleSceneItem(sceneMotion, order = 0, lift = 2.dp, depth = 0.0012f)
-                    .background(background),
-                contentAlignment = Alignment.Center,
-            ) {
+            Box(Modifier.fillMaxSize().background(background), contentAlignment = Alignment.Center) {
                 if (artworkFailed) {
-                    Icon(
-                        painterResource(R.drawable.person),
-                        null,
+                    Icon(painterResource(R.drawable.person), null,
                         Modifier.size(88.dp).testTag("artist-artwork-placeholder"),
-                        tint = StandardChrome.muted.copy(alpha = 0.35f),
-                    )
+                        tint = StandardChrome.muted.copy(alpha = 0.35f))
                 }
                 AsyncImage(
                     model = thumbnailUrl,
@@ -144,14 +138,8 @@ internal fun ArtistHero(
         },
         title = {
             if (loading && name.isBlank()) {
-                Box(
-                    Modifier
-                        .fillMaxWidth(0.66f)
-                        .height(38.dp)
-                        .capsuleSceneItem(sceneMotion, order = 1, lift = 4.dp, depth = 0.0015f)
-                        .clip(RoundedCornerShape(10.dp))
-                        .background(StandardChrome.muted.copy(alpha = 0.18f)),
-                )
+                Box(Modifier.fillMaxWidth(0.66f).height(38.dp).clip(RoundedCornerShape(10.dp))
+                    .background(StandardChrome.muted.copy(alpha = 0.18f)))
             } else {
                 Text(
                     text = name,
@@ -160,9 +148,8 @@ internal fun ArtistHero(
                     color = StandardChrome.text.copy(alpha = 0.72f),
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier
-                        .capsuleSceneItem(sceneMotion, order = 1, lift = 4.dp, depth = 0.0015f)
-                        .semantics { heading() },
+                    // Alpha belongs to the glyphs, so the photograph shows through the letters.
+                    modifier = Modifier.semantics { heading() },
                 )
             }
         },
@@ -174,9 +161,7 @@ internal fun ArtistHero(
                     icon = R.drawable.add,
                     label = subscribeLabel,
                     onClick = onSubscribeClick,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .capsuleSceneItem(sceneMotion, order = 2, lift = 5.dp),
+                    modifier = Modifier.fillMaxWidth(),
                     enabled = !loading && canSubscribe,
                     selected = displayedSubscribed,
                     subscribeState = displayedSubscribed,
@@ -186,9 +171,7 @@ internal fun ArtistHero(
                     R.drawable.shuffle,
                     stringResource(R.string.shuffle),
                     onShuffle,
-                    Modifier
-                        .fillMaxWidth()
-                        .capsuleSceneItem(sceneMotion, order = 3, lift = 5.dp),
+                    Modifier.fillMaxWidth(),
                     !loading && canShuffle,
                 )
             } else {
@@ -197,9 +180,7 @@ internal fun ArtistHero(
                         icon = R.drawable.add,
                         label = subscribeLabel,
                         onClick = onSubscribeClick,
-                        modifier = Modifier
-                            .weight(1f)
-                            .capsuleSceneItem(sceneMotion, order = 2, lift = 5.dp),
+                        modifier = Modifier.weight(1f),
                         enabled = !loading && canSubscribe,
                         selected = displayedSubscribed,
                         subscribeState = displayedSubscribed,
@@ -208,9 +189,7 @@ internal fun ArtistHero(
                         R.drawable.shuffle,
                         stringResource(R.string.shuffle),
                         onShuffle,
-                        Modifier
-                            .weight(1f)
-                            .capsuleSceneItem(sceneMotion, order = 3, lift = 5.dp),
+                        Modifier.weight(1f),
                         !loading && canShuffle,
                     )
                 }
@@ -221,9 +200,7 @@ internal fun ArtistHero(
                     R.drawable.radio,
                     stringResource(R.string.radio),
                     onRadio,
-                    Modifier
-                        .fillMaxWidth()
-                        .capsuleSceneItem(sceneMotion, order = 4, lift = 5.dp),
+                    Modifier.fillMaxWidth(),
                     !loading && canRadio,
                 )
             }

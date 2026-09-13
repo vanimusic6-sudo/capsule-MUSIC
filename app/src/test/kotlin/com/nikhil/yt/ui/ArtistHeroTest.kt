@@ -72,12 +72,10 @@ class ArtistHeroTest {
         val title = compose.onNodeWithTag("title").fetchSemanticsNode().boundsInRoot
         val actions = compose.onNodeWithTag("actions").fetchSemanticsNode().boundsInRoot
         val dp = hero.width / 360f
-        // The current Capsule hero lets artwork reach the physical top edge and uses the matte
-        // overlay itself to soften the status/navigation area. Text/actions keep their reference
-        // anchors so the magnetic lower composition remains unchanged.
+        // The original reference composition is lowered by 16 dp, without a separate title offset.
         assertEquals(hero.width * 1.69f + 16f * dp, hero.height, 2f)
-        assertEquals(hero.top, portrait.top, 2f)
-        assertEquals(hero.width * 1.36f, portrait.height, 2f)
+        assertEquals(hero.top + hero.width * 0.06f, portrait.top, 2f)
+        assertEquals(hero.width * 1.30f, portrait.height, 2f)
         assertEquals(hero.width, portrait.width, 1f)
         assertEquals(hero.top + 440.4f * dp, title.top, 2f)
         assertEquals(hero.left + 14f * dp, title.left, 1f)

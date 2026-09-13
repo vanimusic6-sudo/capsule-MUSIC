@@ -6,10 +6,8 @@
 
 package com.nikhil.yt.constants
 
-import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
-import androidx.compose.animation.core.tween
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 
@@ -41,39 +39,35 @@ val GridThumbnailCornerRadius = 8.dp
 val PlayerHorizontalPadding = 32.dp
 
 /*
- * Route chrome follows the same calm curve as tab selection. A deterministic tween prevents the
- * bottom bar from snapping or briefly overshooting while the new destination is already visible.
+ * Keep the magnetic return, but lower natural frequency so navigation accelerates and settles
+ * instead of snapping. Damping stays under one, therefore the tactile overshoot is still present.
  */
-val NavigationBarAnimationSpec = tween<Dp>(
-    durationMillis = 380,
-    easing = CubicBezierEasing(0.22f, 0f, 0.18f, 1f),
+val NavigationBarAnimationSpec = spring<Dp>(
+    dampingRatio = 0.82f,
+    stiffness = 185f,
 )
 
 /*
  * The outer anchors are hard Animatable bounds, so expansion/dismissal remain critically damped.
- * Large surfaces should read as mass, not as a translated card.
+ * Lower stiffness makes the large surface read as mass instead of a fast translate. The interior
+ * collapse anchor has room for a small safe overshoot and therefore keeps the sticky dock impact.
  */
 val BottomSheetAnimationSpec = spring<Dp>(
     dampingRatio = Spring.DampingRatioNoBouncy,
-    stiffness = 225f,
+    stiffness = 235f,
 )
 
 val BottomSheetSoftAnimationSpec = spring<Dp>(
     dampingRatio = Spring.DampingRatioNoBouncy,
-    stiffness = 158f,
+    stiffness = 165f,
 )
 
-/*
- * Collapse still gets a little physical follow-through, but the old 0.78 damping was visibly rubbery
- * next to the dock. These values keep the impact while preventing the mini-player/nav seam from
- * overshooting and looking broken.
- */
 val BottomSheetCollapseAnimationSpec = spring<Dp>(
-    dampingRatio = 0.86f,
-    stiffness = 188f,
+    dampingRatio = 0.78f,
+    stiffness = 215f,
 )
 
 val BottomSheetSoftCollapseAnimationSpec = spring<Dp>(
-    dampingRatio = 0.89f,
-    stiffness = 152f,
+    dampingRatio = 0.80f,
+    stiffness = 175f,
 )
