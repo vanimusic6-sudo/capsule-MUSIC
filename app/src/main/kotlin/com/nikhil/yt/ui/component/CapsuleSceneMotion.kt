@@ -33,12 +33,7 @@ class CapsuleSceneMotionState internal constructor(
     }
 }
 
-private val CapsuleSceneEasing = CubicBezierEasing(
-    a = 0.18f,
-    b = 0.72f,
-    c = 0.22f,
-    d = 1f,
-)
+private val CapsuleSceneEasing = CubicBezierEasing(0.18f, 0.72f, 0.22f, 1f)
 
 @Composable
 fun rememberCapsuleSceneMotionState(key: Any? = Unit): CapsuleSceneMotionState {
