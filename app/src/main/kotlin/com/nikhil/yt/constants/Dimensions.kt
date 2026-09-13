@@ -38,22 +38,34 @@ val GridThumbnailCornerRadius = 8.dp
 
 val PlayerHorizontalPadding = 32.dp
 
+/* Slower travel than the old snap, but deliberately under-damped so navigation still has life. */
 val NavigationBarAnimationSpec = spring<Dp>(
-    dampingRatio = 0.90f,
-    stiffness = 270f,
+    dampingRatio = 0.82f,
+    stiffness = 250f,
 )
 
 /*
- * The sheet itself stays critically damped because its Animatable is bounded. Impact comes from
- * small child/surface reactions instead of slamming an under-damped spring into those bounds.
- * Lower stiffness gives the movement enough time to accelerate and settle without feeling delayed.
+ * Expanding and dismissing can hit the Animatable's hard outer bounds, so those motions remain
+ * critically damped. Collapsing targets the interior mini-player anchor instead, which gives us
+ * room for a tiny safe overshoot: the full player can physically dock, compress and settle rather
+ * than merely drifting downward to a stop.
  */
 val BottomSheetAnimationSpec = spring<Dp>(
     dampingRatio = Spring.DampingRatioNoBouncy,
-    stiffness = 300f,
+    stiffness = 310f,
 )
 
 val BottomSheetSoftAnimationSpec = spring<Dp>(
     dampingRatio = Spring.DampingRatioNoBouncy,
-    stiffness = 205f,
+    stiffness = 220f,
+)
+
+val BottomSheetCollapseAnimationSpec = spring<Dp>(
+    dampingRatio = 0.78f,
+    stiffness = 330f,
+)
+
+val BottomSheetSoftCollapseAnimationSpec = spring<Dp>(
+    dampingRatio = 0.80f,
+    stiffness = 280f,
 )
