@@ -37,7 +37,6 @@ import com.nikhil.yt.ui.component.AlbumArtworkLayers
 import com.nikhil.yt.ui.component.ScrollActionButton
 import com.nikhil.yt.ui.component.createAlbumArtworkBlur
 import java.io.File
-import kotlin.math.abs
 import kotlin.math.roundToInt
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -80,34 +79,44 @@ class ArtworkAndScrollMotionTest {
         }
         val frame = capture("album", "album-reference-fade")
         val x = frame.width / 2
-        assertTrue("Top navigation retains a scrim", red(frame, x, 0) in 100..160)
-        assertTrue("Upper portrait stays clear", red(frame, x, frame.height / 4) > 245)
+        assertTrue("Top edge must merge into the matte page surface", red(frame, x, 0) in 8..12)
+        assertTrue("Upper portrait stays clear after the navigation matte", red(frame, x, frame.height / 4) > 245)
         assertTrue("Bottom joins the page without a seam", red(frame, x, frame.height - 1) in 8..12)
         for (y in frame.height / 3 until frame.height - 1) {
             assertTrue("Fade must not brighten again at row $y", red(frame, x, y + 1) <= red(frame, x, y) + 1)
         }
     }
 
-    @Test fun albumBlurSoftensOnlyTheEdgesAndKeepsTheCentreSharp() {
+    @Test fun albumUsesMatteDissolveWithoutRenderingABlurredDuplicate() {
         val bitmap = Bitmap.createBitmap(200, 236, Bitmap.Config.ARGB_8888)
         for (y in 0 until bitmap.height) for (x in 0 until bitmap.width) {
             bitmap.setPixel(x, y, if (x / 4 % 2 == 0) android.graphics.Color.WHITE else android.graphics.Color.BLACK)
         }
         val cover = bitmap.asImageBitmap()
         val blurred = createAlbumArtworkBlur(bitmap).asImageBitmap()
-        var useBlur by mutableStateOf(false)
+        var provideLegacyBlur by mutableStateOf(false)
         compose.setContent {
-            AlbumArtworkLayers(BitmapPainter(cover), if (useBlur) blurred else null, Color.Black, Modifier.width(200.dp).testTag("album"))
+            AlbumArtworkLayers(
+                BitmapPainter(cover),
+                if (provideLegacyBlur) blurred else null,
+                Color.Black,
+                Modifier.width(200.dp).testTag("album"),
+            )
         }
-        val sharp = capture("album")
-        compose.runOnIdle { useBlur = true }
-        val softEdges = capture("album", "album-soft-edges-sharp-centre")
-        fun detail(frame: Bitmap, y: Int): Long = (1 until frame.width - 1).sumOf { x -> abs(red(frame, x, y) - red(frame, x - 1, y)).toLong() }
-        for (y in listOf(sharp.height * 3 / 4, sharp.height - 1 - sharp.height / 8)) {
-            assertTrue("Edges should soften beyond the darkening alone", detail(softEdges, y) < detail(sharp, y) * 0.85)
-        }
-        for (x in 0 until sharp.width) {
-            assertEquals("Upper portrait must retain the original pixels", sharp.getPixel(x, sharp.height / 3), softEdges.getPixel(x, softEdges.height / 3))
+        val matteOnly = capture("album")
+        compose.runOnIdle { provideLegacyBlur = true }
+        val withLegacyBlurArgument = capture("album", "album-matte-sharp-centre")
+
+        assertEquals(matteOnly.width, withLegacyBlurArgument.width)
+        assertEquals(matteOnly.height, withLegacyBlurArgument.height)
+        for (y in 0 until matteOnly.height step 3) {
+            for (x in 0 until matteOnly.width step 3) {
+                assertEquals(
+                    "Legacy blurred bitmap must not alter the matte artwork at ($x,$y)",
+                    matteOnly.getPixel(x, y),
+                    withLegacyBlurArgument.getPixel(x, y),
+                )
+            }
         }
     }
 
