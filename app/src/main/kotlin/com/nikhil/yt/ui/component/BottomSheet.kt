@@ -11,6 +11,7 @@ import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.AnimationSpec
 import androidx.compose.animation.core.AnimationVector1D
 import androidx.compose.animation.core.VectorConverter
+import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.DraggableState
@@ -32,6 +33,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
@@ -53,6 +55,9 @@ import com.nikhil.yt.constants.BottomSheetSoftAnimationSpec
 import com.nikhil.yt.constants.BottomSheetSoftCollapseAnimationSpec
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 
 /**
@@ -79,7 +84,7 @@ fun BottomSheet(
                 exists &&
                     (
                         state.isCollapsed ||
-                            state.progress < 0.46f
+                            state.visualProgress < 0.46f
                     )
             }
         }
@@ -87,7 +92,7 @@ fun BottomSheet(
         remember(state, onDismiss) {
             derivedStateOf {
                 (onDismiss == null || !state.isDismissed) &&
-                    state.progress < 0.46f
+                    state.visualProgress < 0.46f
             }
         }
 
@@ -104,7 +109,7 @@ fun BottomSheet(
                 }
                 .bottomSheetDraggable(state, onDismiss)
                 .graphicsLayer {
-                    val motionProgress = state.progress
+                    val motionProgress = state.visualProgress
                     val topCornerRadius = 22.dp * (1f - motionProgress)
                     shape =
                         RoundedCornerShape(
@@ -139,7 +144,7 @@ fun BottomSheet(
                         }
                         .graphicsLayer {
                             val rawProgress = state.rawProgress
-                            val motionProgress = state.progress
+                            val motionProgress = state.visualProgress
                             val closingVelocity =
                                 (-state.animationVelocity.value).coerceAtLeast(0f)
                             val closingVelocityWeight =
@@ -181,7 +186,7 @@ fun BottomSheet(
                     Modifier
                         .fillMaxSize()
                         .offset {
-                            val motionProgress = state.progress
+                            val motionProgress = state.visualProgress
                             val revealOffset =
                                 state.collapsedBound *
                                     (1f - motionProgress)
@@ -191,7 +196,7 @@ fun BottomSheet(
                             )
                         }
                         .graphicsLayer {
-                            val motionProgress = state.progress
+                            val motionProgress = state.visualProgress
                             val openingVelocity =
                                 state.animationVelocity.value.coerceAtLeast(0f)
                             val openingVelocityWeight =
@@ -243,19 +248,69 @@ class BottomSheetState(
         value == animatable.upperBound
     }
 
+    private fun currentRawProgress(): Float {
+        val range = animatable.upperBound!! - collapsedBound
+        if (range == 0.dp) return 0f
+        return 1f - (animatable.upperBound!! - animatable.value) / range
+    }
+
     /** Physical anchor progress, intentionally allowed to overshoot for impact calculations. */
     val rawProgress by derivedStateOf {
-        1f - (animatable.upperBound!! - animatable.value) / (animatable.upperBound!! - collapsedBound)
+        currentRawProgress()
     }
 
     /**
-     * Visual docking progress. Quintic smootherstep keeps position, velocity and acceleration calm at
-     * both ends. External chrome (especially the bottom navigation) therefore no longer inherits a
-     * sharp start/stop from the large player surface while the raw spring remains available above.
+     * Smooth physical progress used by the player itself. This follows every drag/spring frame, but
+     * reaches both anchors with zero visual acceleration so large surfaces do not look abrupt.
      */
-    val progress by derivedStateOf {
+    val visualProgress by derivedStateOf {
         val p = rawProgress.coerceIn(0f, 1f)
         p * p * p * (p * (p * 6f - 15f) + 10f)
+    }
+
+    /*
+     * Bottom navigation is deliberately NOT tied pixel-for-pixel to the player anymore. It yields
+     * after the player has clearly started opening and begins returning before the player reaches
+     * the mini-player dock. The two pieces therefore rendezvous instead of one mechanically pushing
+     * the other. Direction-sensitive thresholds provide hysteresis during drag reversals.
+     */
+    private val chromeProgress =
+        Animatable(if (currentRawProgress() > 0.16f) 1f else 0f)
+    private var chromeYielded = chromeProgress.value > 0.5f
+
+    /** Independent progress consumed by external chrome such as MainActivity's bottom navigation. */
+    val progress by chromeProgress.asState()
+
+    init {
+        coroutineScope.launch {
+            var previous = currentRawProgress()
+            snapshotFlow { currentRawProgress() }
+                .map { current ->
+                    val opening = current > previous + 0.001f
+                    val closing = current < previous - 0.001f
+                    previous = current
+
+                    when {
+                        opening && current >= 0.14f -> true
+                        closing && current <= 0.34f -> false
+                        current >= 0.78f -> true
+                        current <= 0.02f -> false
+                        else -> chromeYielded
+                    }
+                }
+                .distinctUntilChanged()
+                .collectLatest { shouldYield ->
+                    chromeYielded = shouldYield
+                    chromeProgress.animateTo(
+                        targetValue = if (shouldYield) 1f else 0f,
+                        animationSpec =
+                            spring(
+                                dampingRatio = 0.90f,
+                                stiffness = 125f,
+                            ),
+                    )
+                }
+        }
     }
 
     fun collapse(animationSpec: AnimationSpec<Dp>) {
