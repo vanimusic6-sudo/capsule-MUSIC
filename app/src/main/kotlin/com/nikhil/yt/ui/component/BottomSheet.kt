@@ -60,7 +60,8 @@ import kotlinx.coroutines.launch
  *
  * Animated value/velocity reads deliberately live in layout/layer lambdas. That lets Compose
  * invalidate only position or the GPU layer on each frame instead of recomposing the whole player.
- * The mini-player stays mounted behind the full surface, preserving icon state and instant reversal.
+ * The mini-player is mounted only near its docking zone, so its slow procedural background does not
+ * keep drawing invisibly behind the full player. Stateful icons snap to their real restored state.
  */
 @Composable
 fun BottomSheet(
@@ -71,11 +72,22 @@ fun BottomSheet(
     collapsedContent: @Composable BoxScope.() -> Unit,
     content: @Composable BoxScope.() -> Unit,
 ) {
-    val canReopen by
-        remember(state) {
+    val shouldComposeMini by
+        remember(state, onDismiss) {
             derivedStateOf {
-                state.progress.coerceIn(0f, 1f) < 0.42f &&
-                    !state.isDismissed
+                val exists = onDismiss == null || !state.isDismissed
+                exists &&
+                    (
+                        state.isCollapsed ||
+                            state.progress.coerceIn(0f, 1f) < 0.46f
+                    )
+            }
+        }
+    val canReopen by
+        remember(state, onDismiss) {
+            derivedStateOf {
+                (onDismiss == null || !state.isDismissed) &&
+                    state.progress.coerceIn(0f, 1f) < 0.46f
             }
         }
 
@@ -107,11 +119,12 @@ fun BottomSheet(
         }
 
         /*
-         * The mini-player is always alive while playback exists. Per-frame docking deformation is
-         * evaluated directly by the layer, so the mini-player subtree does not recompose just because
-         * the spring velocity changed.
+         * Compose the mini-player before it becomes visible so docking/reversal are continuous, but
+         * stop its flows and procedural background while it is completely hidden by the full page.
+         * The subscription and favourite glyphs initialise from real state, so remounting here does
+         * not replay fake state-change animations.
          */
-        if (onDismiss == null || !state.isDismissed) {
+        if (shouldComposeMini) {
             Box(
                 modifier =
                     Modifier
