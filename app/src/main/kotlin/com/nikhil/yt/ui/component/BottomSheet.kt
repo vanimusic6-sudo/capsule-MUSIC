@@ -18,7 +18,6 @@ import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -54,15 +53,14 @@ import com.nikhil.yt.constants.BottomSheetSoftAnimationSpec
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.launch
-import kotlin.math.abs
 
 /**
  * A single physical Capsule sheet.
  *
- * The mini-player is visually pinned to its collapsed position while the opaque full page rises
- * from below the viewport and covers it. The reverse happens on collapse. No alpha, scrim or blur
- * is involved. The inner player reacts to the spring's real velocity, so its tiny follow-through is
- * caused by movement itself instead of a synthetic progress curve.
+ * The full player and its background now travel as one surface. The root itself stays transparent,
+ * so collapsing the player cannot expose a second flat plate under the mini-player. The mini-player
+ * is only composed near the docking zone, while the full surface is still covering it, and is then
+ * revealed naturally as that surface finishes its travel. No alpha, scrim or blur is involved.
  */
 @Composable
 fun BottomSheet(
@@ -77,14 +75,14 @@ fun BottomSheet(
     val topCornerRadius = 22.dp * (1f - motionProgress)
 
     /*
-     * Animatable velocity is expressed in dp/s. Converting roughly ten milliseconds of travel into
-     * a visual offset gives the inner layer just enough inertia to be felt without looking detached
-     * from the surface. Snap/drag operations report no spring velocity, so finger tracking remains
-     * perfectly direct.
+     * Keep the exit absolutely cohesive: during collapse there is no independent content lag or
+     * album-art deformation. Opening retains a very small velocity-driven compression near the top
+     * of the travel so the player still has mass, but the background and every child deform together.
      */
-    val velocity = state.animationVelocity.value
-    val contentLag = (velocity * 0.010f).coerceIn(-7f, 7f).dp
-    val velocityWeight = (abs(velocity) / 1150f).coerceIn(0f, 1f)
+    val openingVelocity = state.animationVelocity.value.coerceAtLeast(0f)
+    val openingVelocityWeight = (openingVelocity / 1450f).coerceIn(0f, 1f)
+    val dockingWeight = ((motionProgress - 0.68f) / 0.32f).coerceIn(0f, 1f)
+    val openingImpact = openingVelocityWeight * dockingWeight
 
     Box(
         modifier =
@@ -103,14 +101,19 @@ fun BottomSheet(
                         topStart = topCornerRadius,
                         topEnd = topCornerRadius,
                     ),
-                )
-                .background(backgroundColor),
+                ),
     ) {
         if (!state.isCollapsed && !state.isDismissed) {
             BackHandler(onBack = state::collapseSoft)
         }
 
-        if (!state.isExpanded && (onDismiss == null || !state.isDismissed)) {
+        // Compose the mini-player only close to the docking point. Earlier in the transition the
+        // full player is still the only visible surface, avoiding the old layered/underlay look.
+        val shouldComposeMini =
+            state.isCollapsed ||
+                (!state.isExpanded && motionProgress < 0.28f && (onDismiss == null || !state.isDismissed))
+
+        if (shouldComposeMini) {
             val miniPinOffset =
                 (state.value - state.collapsedBound)
                     .coerceAtLeast(0.dp)
@@ -136,32 +139,27 @@ fun BottomSheet(
             )
         }
 
-        /*
-         * Surface position and inner content are deliberately not identical while the spring has
-         * speed. On the way up the content trails a few dp below; on the way down it trails above.
-         * As velocity naturally decays, translation and micro-compression disappear continuously.
-         * This is the large-surface equivalent of the favourite heart's tactile deformation.
-         */
         if (!state.isCollapsed) {
             val revealOffset =
                 state.collapsedBound *
                     (1f - motionProgress)
 
-            BoxWithConstraints(
+            Box(
                 modifier =
                     Modifier
                         .fillMaxSize()
                         .offset {
                             IntOffset(
                                 x = 0,
-                                y = (revealOffset + contentLag).roundToPx(),
+                                y = revealOffset.roundToPx(),
                             )
                         }
                         .graphicsLayer {
-                            scaleX = 1f + 0.0018f * velocityWeight
-                            scaleY = 1f - 0.0042f * velocityWeight
+                            scaleX = 1f - 0.00045f * openingImpact
+                            scaleY = 1f + 0.00115f * openingImpact
                             transformOrigin = TransformOrigin(0.5f, 1f)
-                        },
+                        }
+                        .background(backgroundColor),
                 content = content,
             )
         }
