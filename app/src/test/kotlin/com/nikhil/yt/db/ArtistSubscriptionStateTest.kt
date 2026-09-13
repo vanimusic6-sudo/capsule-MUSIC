@@ -121,4 +121,66 @@ class ArtistSubscriptionStateTest {
             ),
         )
     }
+
+    @Test
+    fun durableOfflineIntentDoesNotExpireBeforeDelivery() {
+        ArtistSubscriptionState.recordLocalIntent(
+            artistId = "FEmusic_artist",
+            channelId = "UC123",
+            subscribed = false,
+            nowMs = 1_000L,
+            durable = true,
+        )
+
+        assertEquals(
+            false,
+            ArtistSubscriptionState.pendingDesiredState(
+                artistId = "UC123",
+                channelId = null,
+                nowMs = 24 * 60 * 60_000L,
+            ),
+        )
+        assertFalse(
+            ArtistSubscriptionState.shouldApplyRemoteAbsence(
+                artistId = "FEmusic_artist",
+                channelId = "UC123",
+                nowMs = 24 * 60 * 60_000L,
+            ),
+        )
+    }
+
+    @Test
+    fun deliveredDurableIntentCanBeReplacedByPropagationWindow() {
+        ArtistSubscriptionState.recordLocalIntent(
+            artistId = "FEmusic_artist",
+            channelId = "UC123",
+            subscribed = true,
+            nowMs = 1_000L,
+            durable = true,
+        )
+        ArtistSubscriptionState.clearLocalIntent(
+            artistId = "FEmusic_artist",
+            channelId = "UC123",
+            expectedSubscribed = true,
+        )
+        ArtistSubscriptionState.recordLocalIntent(
+            artistId = "FEmusic_artist",
+            channelId = "UC123",
+            subscribed = true,
+            nowMs = 2_000L,
+            durable = false,
+        )
+
+        assertEquals(
+            true,
+            ArtistSubscriptionState.pendingDesiredState("UC123", null, 2_001L),
+        )
+        assertNull(
+            ArtistSubscriptionState.pendingDesiredState(
+                artistId = "UC123",
+                channelId = null,
+                nowMs = 2_000L + 5 * 60_000L,
+            ),
+        )
+    }
 }
