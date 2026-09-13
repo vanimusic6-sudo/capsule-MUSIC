@@ -99,8 +99,9 @@ fun BottomSheetPage(
     }
 
     /*
-     * Keep a tiny magnetic settle, but give the sheet enough travel time for the eye to read its
-     * mass. The previous high-stiffness spring was physically lively but visually nervous.
+     * Lower stiffness keeps the motion readable; lower damping restores the small overshoot that
+     * makes a menu feel like a physical sheet instead of a sterile translateY. It is intentionally
+     * subtle: one soft hit and settle, never a cartoon bounce.
      */
     AnimatedVisibility(
         visible = state.isVisible,
@@ -109,8 +110,8 @@ fun BottomSheetPage(
                 initialOffsetY = { it },
                 animationSpec =
                     spring(
-                        dampingRatio = 0.88f,
-                        stiffness = 235f,
+                        dampingRatio = 0.80f,
+                        stiffness = 225f,
                     ),
             ),
         exit =
@@ -118,8 +119,8 @@ fun BottomSheetPage(
                 targetOffsetY = { it },
                 animationSpec =
                     spring(
-                        dampingRatio = 0.90f,
-                        stiffness = 280f,
+                        dampingRatio = 0.84f,
+                        stiffness = 255f,
                     ),
             ),
         modifier = modifier,
