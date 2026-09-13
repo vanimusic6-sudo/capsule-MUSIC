@@ -60,8 +60,8 @@ fun LibraryScreen(navController: NavController) {
                 modifier = Modifier.capsuleSceneItem(
                     state = sceneMotion,
                     order = 0,
-                    lift = 10.dp,
-                    depth = 0.006f,
+                    lift = 8.dp,
+                    depth = 0.004f,
                 ),
             ) {
                 ChipsRow(
@@ -101,8 +101,8 @@ fun LibraryScreen(navController: NavController) {
                         .capsuleSceneItem(
                             state = sceneMotion,
                             order = 1,
-                            lift = 12.dp,
-                            depth = 0.006f,
+                            lift = 9.dp,
+                            depth = 0.004f,
                         )
                         .padding(horizontal = 16.dp, vertical = 8.dp),
                 )
@@ -126,15 +126,13 @@ fun LibraryScreen(navController: NavController) {
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .fillMaxSize(0.7f) // Cover top 70% of screen
+                    .fillMaxSize(0.7f)
                     .align(Alignment.TopCenter)
-                    .zIndex(-1f) // Place behind all content
+                    .zIndex(-1f)
                     .drawBehind {
                         val width = size.width
                         val height = size.height
 
-                        // Create mesh gradient with 5 color blobs for more variation
-                        // First color blob - top left
                         drawRect(
                             brush = Brush.radialGradient(
                                 colors = listOf(
@@ -149,7 +147,6 @@ fun LibraryScreen(navController: NavController) {
                             ),
                         )
 
-                        // Second color blob - top right
                         drawRect(
                             brush = Brush.radialGradient(
                                 colors = listOf(
@@ -164,7 +161,6 @@ fun LibraryScreen(navController: NavController) {
                             ),
                         )
 
-                        // Third color blob - middle left
                         drawRect(
                             brush = Brush.radialGradient(
                                 colors = listOf(
@@ -179,7 +175,6 @@ fun LibraryScreen(navController: NavController) {
                             ),
                         )
 
-                        // Fourth color blob - middle right
                         drawRect(
                             brush = Brush.radialGradient(
                                 colors = listOf(
@@ -194,7 +189,6 @@ fun LibraryScreen(navController: NavController) {
                             ),
                         )
 
-                        // Fifth color blob - bottom center (helps with smooth fade)
                         drawRect(
                             brush = Brush.radialGradient(
                                 colors = listOf(
@@ -209,7 +203,6 @@ fun LibraryScreen(navController: NavController) {
                             ),
                         )
 
-                        // Add a final vertical gradient overlay to ensure smooth bottom fade
                         drawRect(
                             brush = Brush.verticalGradient(
                                 colors = listOf(
@@ -227,15 +220,11 @@ fun LibraryScreen(navController: NavController) {
             ) {}
         }
 
+        // The destination canvas never moves. Only the actual controls above use scene motion.
+        // Moving this whole container exposed the previous route underneath and looked like two
+        // screens were physically stacked on top of each other.
         Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .capsuleSceneItem(
-                    state = sceneMotion,
-                    order = 2,
-                    lift = 18.dp,
-                    depth = 0.007f,
-                ),
+            modifier = Modifier.fillMaxSize(),
         ) {
             when (filterType) {
                 LibraryFilter.LIBRARY -> LibraryMixScreen(navController, filterContent)
