@@ -1,5 +1,6 @@
 package com.nikhil.yt.ui.component
 
+import android.os.SystemClock
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
@@ -15,10 +16,10 @@ import androidx.compose.ui.graphics.StrokeCap
 /**
  * A real geometric morph between the subscribe plus and the subscribed check mark.
  *
- * Both glyphs are represented by the same two strokes, so changing state never swaps one
- * drawable for another. The animation starts from the actual subscription state on first
- * composition; only a real later state change triggers the morph. Reopening/remounting the
- * mini-player therefore cannot replay a fake plus-to-check animation.
+ * Room-backed subscription state may briefly start from `null` when a mini-player subtree is
+ * restored. That bootstrap is data restoration, not user intent, so state changes during the short
+ * restore window snap to the truth. Once the icon has actually been on screen, later changes keep
+ * the full morph animation.
  */
 @Composable
 internal fun CapsuleSubscribeIcon(
@@ -26,15 +27,23 @@ internal fun CapsuleSubscribeIcon(
     tint: Color,
     modifier: Modifier = Modifier,
 ) {
+    val mountedAt = remember { SystemClock.uptimeMillis() }
     val progress = remember {
         Animatable(if (subscribed) 1f else 0f)
     }
 
     LaunchedEffect(subscribed) {
-        progress.animateTo(
-            targetValue = if (subscribed) 1f else 0f,
-            animationSpec = tween(durationMillis = 280, easing = FastOutSlowInEasing),
-        )
+        val target = if (subscribed) 1f else 0f
+        val restoringState = SystemClock.uptimeMillis() - mountedAt < 240L
+
+        if (restoringState) {
+            progress.snapTo(target)
+        } else {
+            progress.animateTo(
+                targetValue = target,
+                animationSpec = tween(durationMillis = 280, easing = FastOutSlowInEasing),
+            )
+        }
     }
 
     Canvas(modifier) {
