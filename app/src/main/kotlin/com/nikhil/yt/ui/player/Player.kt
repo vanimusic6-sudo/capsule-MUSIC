@@ -328,15 +328,16 @@ private fun CapsulePlayerLyricsHost(
     onHideLyrics: () -> Unit,
     onShowMenu: () -> Unit,
 ) {
-    val easing = remember {
-        CubicBezierEasing(0.22f, 1f, 0.36f, 1f)
+    /*
+     * Zero initial velocity is important here. The previous ease-out curve launched the lyrics
+     * sheet immediately at high speed, which read as a hard shove. This curve starts from rest,
+     * develops momentum through the middle, then spends a generous final segment magnetically
+     * docking to the top edge. The player itself remains alive and perfectly still underneath.
+     */
+    val pageEasing = remember {
+        CubicBezierEasing(0.24f, 0f, 0.05f, 1f)
     }
 
-    /*
-     * Keep the player alive underneath the lyrics page. Lyrics behaves as one opaque physical
-     * sheet: it rises over the player and slides back down to reveal the player exactly where it
-     * was. No alpha, scale, or two-screen crossfade is involved.
-     */
     Box(modifier = Modifier.fillMaxSize()) {
         CapsulePlayerContent(
             design = design,
@@ -369,12 +370,12 @@ private fun CapsulePlayerLyricsHost(
             visible = showLyrics,
             enter =
                 slideInVertically(
-                    animationSpec = tween(420, easing = easing),
+                    animationSpec = tween(580, easing = pageEasing),
                     initialOffsetY = { fullHeight -> fullHeight },
                 ),
             exit =
                 slideOutVertically(
-                    animationSpec = tween(380, easing = easing),
+                    animationSpec = tween(540, easing = pageEasing),
                     targetOffsetY = { fullHeight -> fullHeight },
                 ),
             modifier = Modifier.fillMaxSize(),
