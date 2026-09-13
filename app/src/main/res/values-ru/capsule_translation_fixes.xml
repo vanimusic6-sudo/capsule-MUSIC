@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Keep Capsule/Velune-only UI from silently falling back to English in Russian locale. -->
+    <string name="show_home_category_chips">Показывать категории на главной</string>
+    <string name="show_home_category_chips_desc">Показывать фильтры категорий на главном экране</string>
+    <string name="glass_navigation_bar">Стеклянная панель навигации (бета)</string>
+    <string name="glass_mini_player">Стеклянный мини-плеер (бета)</string>
+
+    <string name="album_not_found">Альбом не найден</string>
+    <string name="album_not_found_desc">Не удалось загрузить запрошенный альбом</string>
+    <string name="empty_album">Пустой альбом</string>
+    <string name="empty_album_desc">В этом альбоме нет песен</string>
+
+    <string name="error_no_song_playing">Сейчас ничего не воспроизводится</string>
+    <string name="error_no_similar_songs">Похожие песни не найдены</string>
+    <string name="error_automix_failed">Не удалось загрузить похожие песни</string>
+</resources>
