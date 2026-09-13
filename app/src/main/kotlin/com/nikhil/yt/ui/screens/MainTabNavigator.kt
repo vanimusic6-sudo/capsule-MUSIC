@@ -1,136 +1,50 @@
 package com.nikhil.yt.ui.screens
 
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.withFrameNanos
-import androidx.navigation.NavBackStackEntry
-import androidx.navigation.NavController
 import androidx.navigation.NavHostController
-import androidx.navigation.compose.ComposeNavigator
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.CoroutineStart
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.launch
 
 @Composable
-internal fun rememberMainTabNavigator(navController: NavHostController): MainTabNavigator {
-    val scope = rememberCoroutineScope()
-    val navigator = remember(navController, scope) { MainTabNavigator(navController, scope) }
-
-    DisposableEffect(navigator) {
-        navigator.attach()
-        onDispose { navigator.detach() }
-    }
-
-    return navigator
-}
+internal fun rememberMainTabNavigator(navController: NavHostController): MainTabNavigator =
+    remember(navController) { MainTabNavigator(navController) }
 
 /**
- * Top-level tabs coalesce only taps that land before the next UI frame. Capsule deliberately has no
- * route-level transition: the destination canvas swaps directly and destination-owned controls do
- * the visible scene motion. ComposeNavigator still tracks navigation as a transition even when the
- * NavHost returns Enter/ExitTransition.None, so we settle that invisible bookkeeping ourselves on
- * the following frame. Entries are captured synchronously on every destination change so an
- * immediate Back cannot lose the just-popped destination before it is marked complete.
+ * Bottom-bar tab selection, expressed as the ordinary Navigation Compose bottom-navigation pattern.
  *
- * The navigator helper can be composed before NavHost attaches ComposeNavigator. Navigator.state is
- * illegal to read before that attachment, so every state access is guarded by isAttached. This is
- * especially important during cold start where composition/layout ordering can expose the window.
+ * This class deliberately owns no state, no coroutines and no navigator internals. Two earlier
+ * attempts at being clever here caused production defects, and both are the reason this is now
+ * plain:
+ *
+ * 1. Reading `ComposeNavigator.backStack` / calling `onTransitionComplete` from a composition-scoped
+ *    effect. `NavHost` lives inside the `Scaffold` content, which Material 3 subcomposes during the
+ *    measure pass, so effects declared next to [rememberMainTabNavigator] run *before* `NavHost`
+ *    assigns `navController.graph`. Touching navigator state in that window throws
+ *    `IllegalStateException: You cannot access the Navigator's state until the Navigator is attached`
+ *    on every cold start. `NavHost` completes its own transitions; nothing here has to help it.
+ *
+ * 2. Deferring the actual `navigate` call into a `withFrameNanos` callback to coalesce same-frame
+ *    taps. Mutating the back stack from inside a frame callback means the entering destination's
+ *    transition is never given an animation frame, and an interleaved Back then leaves `NavHost`
+ *    with an orphaned transition: the destination stays at `STARTED` instead of `RESUMED` and the
+ *    popped entry is never destroyed. Compose already coalesces a same-frame tap burst for free,
+ *    because it recomposes once per frame: intermediate entries are created and popped without ever
+ *    being composed, so no destination work is wasted.
  */
-internal class MainTabNavigator(
-    private val navController: NavHostController,
-    private val scope: CoroutineScope,
-) {
-    private var pendingNavigation: Job? = null
-    private var transitionCompletion: Job? = null
-    private var attached = false
-    private var knownComposeEntries: Set<NavBackStackEntry> = emptySet()
-
-    private val destinationListener =
-        NavController.OnDestinationChangedListener { _, _, _ ->
-            captureComposeEntries()
-            scheduleTransitionCompletion()
-        }
-
-    fun attach() {
-        if (attached) return
-        attached = true
-        captureComposeEntries()
-        navController.addOnDestinationChangedListener(destinationListener)
-        scheduleTransitionCompletion()
-    }
-
-    fun detach() {
-        if (!attached) return
-        attached = false
-        navController.removeOnDestinationChangedListener(destinationListener)
-        pendingNavigation?.cancel()
-        transitionCompletion?.cancel()
-        pendingNavigation = null
-        transitionCompletion = null
-        knownComposeEntries = emptySet()
-    }
-
+internal class MainTabNavigator(private val navController: NavHostController) {
     fun select(route: String, onReselected: () -> Unit = {}) {
-        pendingNavigation?.cancel()
+        // Null until NavHost has set the graph. Bailing out keeps a tap that races the first frame
+        // (or arrives during state restoration) from reading a graph that does not exist yet.
+        val currentEntry = navController.currentBackStackEntry ?: return
 
-        val originEntry = navController.currentBackStackEntry ?: return
-        pendingNavigation =
-            scope.launch(start = CoroutineStart.UNDISPATCHED) {
-                withFrameNanos { }
-
-                if (navController.currentBackStackEntry !== originEntry) return@launch
-
-                if (originEntry.destination.route == route) {
-                    onReselected()
-                    return@launch
-                }
-
-                navController.navigate(route) {
-                    popUpTo(navController.graph.startDestinationId) { saveState = true }
-                    launchSingleTop = true
-                    restoreState = true
-                }
-            }
-    }
-
-    private fun captureComposeEntries() {
-        if (!attached) return
-        val composeNavigator = composeNavigator()
-        if (!composeNavigator.isAttached) return
-
-        val currentEntries = composeNavigator.backStack.value.toSet()
-        knownComposeEntries = knownComposeEntries + currentEntries
-    }
-
-    private fun scheduleTransitionCompletion() {
-        if (!attached) return
-        transitionCompletion?.cancel()
-        transitionCompletion =
-            scope.launch(start = CoroutineStart.UNDISPATCHED) {
-                withFrameNanos { }
-                completeComposeTransitions()
-            }
-    }
-
-    private fun completeComposeTransitions() {
-        if (!attached) return
-
-        val composeNavigator = composeNavigator()
-        if (!composeNavigator.isAttached) return
-
-        val currentEntries = composeNavigator.backStack.value.toSet()
-        val entriesToComplete = knownComposeEntries + currentEntries
-
-        entriesToComplete.forEach { entry ->
-            runCatching { composeNavigator.onTransitionComplete(entry) }
+        if (currentEntry.destination.route == route) {
+            onReselected()
+            return
         }
 
-        knownComposeEntries = currentEntries
+        navController.navigate(route) {
+            popUpTo(navController.graph.startDestinationId) { saveState = true }
+            launchSingleTop = true
+            restoreState = true
+        }
     }
-
-    private fun composeNavigator(): ComposeNavigator =
-        navController.navigatorProvider.getNavigator(ComposeNavigator::class.java)
 }

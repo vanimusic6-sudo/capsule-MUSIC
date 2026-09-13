@@ -8,8 +8,8 @@ import androidx.compose.animation.ExitTransition
  *
  * Capsule motion belongs to controls and content inside the destination, not to the whole screen.
  * Keeping route motion at None prevents two full pages from sliding over each other while preserving
- * immediate, interruptible input. MainTabNavigator settles ComposeNavigator's invisible transition
- * bookkeeping on the following frame so lifecycle state still reaches RESUMED deterministically.
+ * immediate, interruptible input. NavHost still completes its own AnimatedContent within the frame,
+ * so every destination lifecycle still reaches RESUMED deterministically.
  */
 internal object ScreenTransitions {
     @Suppress("UNUSED_PARAMETER")

@@ -45,8 +45,15 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 
+/**
+ * Behaviour of the bottom-bar tab navigator under the frame pacing a device actually produces.
+ *
+ * The clock is left on auto-advance on purpose: pinning it and stepping single frames by hand
+ * models an input burst that no touch pipeline can deliver, and it hides the fact that Compose
+ * already collapses a same-frame tap burst into one recomposition.
+ */
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [35], application = Application::class)
+@Config(sdk = [35, 36], application = Application::class)
 class MainTabNavigatorTest {
     @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
     private lateinit var controller: NavHostController
@@ -95,17 +102,22 @@ class MainTabNavigatorTest {
             }
         }
         compose.waitForIdle()
-        compose.mainClock.autoAdvance = false
     }
 
-    private fun select(route: String) = compose.runOnIdle { tabs.select(route) { reselected++ } }
+    private fun select(route: String) {
+        compose.runOnIdle { tabs.select(route) { reselected++ } }
+        compose.waitForIdle()
+    }
 
-    private fun settle() {
-        // The pending last request may start a second transition after the first resumes.
-        repeat(3) {
-            compose.mainClock.advanceTimeBy(400)
-            compose.waitForIdle()
-        }
+    /** Taps delivered without a frame in between, i.e. the fastest burst the UI can receive. */
+    private fun selectBurst(vararg routes: String) {
+        compose.runOnIdle { routes.forEach { route -> tabs.select(route) { reselected++ } } }
+        compose.waitForIdle()
+    }
+
+    private fun back() {
+        compose.runOnIdle { controller.popBackStack() }
+        compose.waitForIdle()
     }
 
     private fun assertSettled(route: String) {
@@ -116,68 +128,66 @@ class MainTabNavigatorTest {
         }
     }
 
-    @Test fun rapidReversalsOpenOnlyTheLastRequestedTab() {
+    private fun backStackRoutes(): List<String> =
+        compose.runOnIdle { controller.currentBackStack.value.mapNotNull { it.destination.route } }
+
+    @Test fun aBurstOfTapsSettlesOnTheLastRequestedTabWithoutStackingEntries() {
         showNavigation()
-        select("history")
-        compose.mainClock.advanceTimeByFrame()
-        select("library")
-        select("stats")
-        select("home")
-        select("library")
-        compose.runOnIdle { assertEquals("history", controller.currentDestination?.route) }
-        settle()
+        selectBurst("history", "library", "stats", "home", "library")
         assertSettled("library")
-        assertEquals(listOf("home", "history", "library"), visited)
-        compose.runOnIdle { controller.popBackStack() }
-        settle()
+        // popUpTo(start) + launchSingleTop keeps the stack flat no matter how fast the burst was.
+        assertEquals(listOf("home", "library"), backStackRoutes())
+        back()
         assertSettled("home")
     }
 
-    @Test fun reselectingTheCurrentTabCancelsAnOlderPendingTab() {
+    @Test fun reselectingTheCurrentTabReportsAReselectionInsteadOfNavigating() {
         showNavigation()
         select("history")
-        compose.mainClock.advanceTimeByFrame()
-        select("library")
+        assertSettled("history")
         select("history")
-        settle()
         assertSettled("history")
         assertEquals(listOf("home", "history"), visited)
         assertEquals(1, reselected)
     }
 
-    @Test fun backDuringTransitionInvalidatesThePendingTab() {
+    @Test fun backRightAfterATabSwitchReturnsToASettledStartDestination() {
         showNavigation()
-        select("history")
-        compose.mainClock.advanceTimeByFrame()
         select("library")
-        compose.runOnIdle { controller.popBackStack() }
-        settle()
+        assertSettled("library")
+        back()
         assertSettled("home")
-        assertFalse(visited.contains("library"))
     }
 
-    @Test fun backDuringADetailTransitionReturnsToASettledMainScreen() {
+    @Test fun backDuringABurstOfTabSwitchesStillSettles() {
         showNavigation()
-        compose.runOnIdle { controller.navigate("details") }
-        compose.mainClock.advanceTimeByFrame()
-        compose.mainClock.advanceTimeBy(64)
-        compose.runOnIdle { controller.popBackStack() }
-        settle()
+        selectBurst("history", "library")
+        back()
         assertSettled("home")
+        assertFalse(controller.currentBackStack.value.any { it.destination.route == "library" })
+    }
+
+    @Test fun backAfterOpeningANestedScreenReturnsToASettledTab() {
+        showNavigation()
+        select("history")
+        compose.runOnIdle { controller.navigate("details") }
+        compose.waitForIdle()
+        compose.onNodeWithTag("details").assertIsDisplayed()
+        back()
+        assertSettled("history")
     }
 
     @Test fun tabStateSurvivesRoundTripsWhenLibraryIsTheStartDestination() {
         showNavigation(start = "library")
         select("history")
-        settle()
+        assertSettled("history")
         compose.onNodeWithText("history:0").performClick()
         select("home")
-        settle()
+        assertSettled("home")
         select("history")
-        settle()
+        assertSettled("history")
         compose.onNodeWithText("history:1").assertIsDisplayed()
-        compose.runOnIdle { controller.popBackStack() }
-        settle()
+        back()
         assertSettled("library")
     }
 }
