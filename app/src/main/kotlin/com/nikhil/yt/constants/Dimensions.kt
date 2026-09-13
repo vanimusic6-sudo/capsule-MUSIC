@@ -38,36 +38,37 @@ val GridThumbnailCornerRadius = 8.dp
 
 val PlayerHorizontalPadding = 32.dp
 
-/*
- * Navigation is structural chrome, not a toy spring. Keep it slower and almost critically damped so
- * showing/hiding the dock feels like one soft piece of hardware rather than a bar snapping into place.
- */
+/* Navigation chrome should settle softly and never snap into the mini-player. */
 val NavigationBarAnimationSpec = spring<Dp>(
-    dampingRatio = 0.90f,
-    stiffness = 130f,
+    dampingRatio = 0.92f,
+    stiffness = 125f,
 )
 
 /*
  * The outer anchors are hard Animatable bounds, so expansion/dismissal remain critically damped.
- * Lower stiffness makes the large surface read as mass instead of a fast translate. The interior
- * collapse anchor has room for a small safe overshoot and therefore keeps the sticky dock impact.
+ * Large surfaces should read as mass, not as a translated card.
  */
 val BottomSheetAnimationSpec = spring<Dp>(
     dampingRatio = Spring.DampingRatioNoBouncy,
-    stiffness = 235f,
+    stiffness = 225f,
 )
 
 val BottomSheetSoftAnimationSpec = spring<Dp>(
     dampingRatio = Spring.DampingRatioNoBouncy,
-    stiffness = 165f,
+    stiffness = 158f,
 )
 
+/*
+ * Collapse still gets a little physical follow-through, but the old 0.78 damping was visibly rubbery
+ * next to the dock. These values keep the impact while preventing the mini-player/nav seam from
+ * overshooting and looking broken.
+ */
 val BottomSheetCollapseAnimationSpec = spring<Dp>(
-    dampingRatio = 0.78f,
-    stiffness = 215f,
+    dampingRatio = 0.86f,
+    stiffness = 188f,
 )
 
 val BottomSheetSoftCollapseAnimationSpec = spring<Dp>(
-    dampingRatio = 0.80f,
-    stiffness = 175f,
+    dampingRatio = 0.89f,
+    stiffness = 152f,
 )
