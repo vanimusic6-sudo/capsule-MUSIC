@@ -1,10 +1,14 @@
 package com.nikhil.yt.ui.screens
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.withFrameNanos
+import androidx.navigation.NavBackStackEntry
+import androidx.navigation.NavController
 import androidx.navigation.NavHostController
+import androidx.navigation.compose.ComposeNavigator
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
@@ -13,24 +17,58 @@ import kotlinx.coroutines.launch
 @Composable
 internal fun rememberMainTabNavigator(navController: NavHostController): MainTabNavigator {
     val scope = rememberCoroutineScope()
-    return remember(navController, scope) { MainTabNavigator(navController, scope) }
+    val navigator = remember(navController, scope) { MainTabNavigator(navController, scope) }
+
+    DisposableEffect(navigator) {
+        navigator.attach()
+        onDispose { navigator.detach() }
+    }
+
+    return navigator
 }
 
 /**
- * Coalesce only taps that land before the next UI frame; never wait for an animation to finish.
- *
- * The old implementation waited for Lifecycle.RESUMED, which created a very noticeable cooldown
- * between tabs. Fully synchronous navigation removed that delay but could briefly visit every route
- * in a burst of taps. Waiting for exactly one Compose frame lets a same-frame burst collapse into
- * the newest request, while a tap on the following frame can immediately retarget an in-flight
- * NavHost transition. In practice the input latency is one frame rather than the lifetime of a
- * spring animation.
+ * Top-level tabs coalesce only taps that land before the next UI frame. Capsule deliberately has no
+ * route-level transition: the destination canvas swaps directly and destination-owned controls do
+ * the visible scene motion. Because ComposeNavigator still tracks navigation as a transition even
+ * when the NavHost returns Enter/ExitTransition.None, we explicitly settle that invisible transition
+ * on the following frame. This keeps entries out of STARTED without bringing back an animation
+ * cooldown or blocking rapid retargeting.
  */
 internal class MainTabNavigator(
     private val navController: NavHostController,
     private val scope: CoroutineScope,
 ) {
     private var pendingNavigation: Job? = null
+    private var transitionCompletion: Job? = null
+    private var attached = false
+    private var knownComposeEntries: Set<NavBackStackEntry> = emptySet()
+
+    private val destinationListener =
+        NavController.OnDestinationChangedListener { _, _, _ ->
+            scheduleTransitionCompletion()
+        }
+
+    fun attach() {
+        if (attached) return
+        attached = true
+
+        val composeNavigator = composeNavigator()
+        knownComposeEntries = composeNavigator.backStack.value.toSet()
+        navController.addOnDestinationChangedListener(destinationListener)
+        scheduleTransitionCompletion()
+    }
+
+    fun detach() {
+        if (!attached) return
+        attached = false
+        navController.removeOnDestinationChangedListener(destinationListener)
+        pendingNavigation?.cancel()
+        transitionCompletion?.cancel()
+        pendingNavigation = null
+        transitionCompletion = null
+        knownComposeEntries = emptySet()
+    }
 
     fun select(route: String, onReselected: () -> Unit = {}) {
         pendingNavigation?.cancel()
@@ -40,8 +78,8 @@ internal class MainTabNavigator(
             scope.launch(start = CoroutineStart.UNDISPATCHED) {
                 withFrameNanos { }
 
-                // A back press or unrelated navigation during this one-frame window invalidates the
-                // stale request instead of reopening a destination the user has already left.
+                // Back or unrelated navigation during this one-frame coalescing window invalidates
+                // the stale tab request instead of reopening a destination the user has already left.
                 if (navController.currentBackStackEntry !== originEntry) return@launch
 
                 if (originEntry.destination.route == route) {
@@ -56,4 +94,34 @@ internal class MainTabNavigator(
                 }
             }
     }
+
+    private fun scheduleTransitionCompletion() {
+        if (!attached) return
+        transitionCompletion?.cancel()
+        transitionCompletion =
+            scope.launch(start = CoroutineStart.UNDISPATCHED) {
+                // Let NavHost consume the destination change first, then settle the otherwise
+                // invisible ComposeNavigator transition. One frame is input-neutral and also lets us
+                // retain the just-popped entry so it can be completed together with the new top.
+                withFrameNanos { }
+                completeComposeTransitions()
+            }
+    }
+
+    private fun completeComposeTransitions() {
+        if (!attached) return
+
+        val composeNavigator = composeNavigator()
+        val currentEntries = composeNavigator.backStack.value.toSet()
+        val entriesToComplete = knownComposeEntries + currentEntries
+
+        entriesToComplete.forEach { entry ->
+            runCatching { composeNavigator.onTransitionComplete(entry) }
+        }
+
+        knownComposeEntries = currentEntries
+    }
+
+    private fun composeNavigator(): ComposeNavigator =
+        navController.navigatorProvider.getNavigator(ComposeNavigator::class.java)
 }
