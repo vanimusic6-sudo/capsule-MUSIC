@@ -38,9 +38,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -78,7 +76,6 @@ fun BottomSheetPage(
     background: Color = MaterialTheme.colorScheme.surfaceColorAtElevation(NavigationBarDefaults.Elevation),
 ) {
     val focusManager = LocalFocusManager.current
-    var dragOffset by remember { mutableFloatStateOf(0f) }
 
     // The outside area is only a dismissal hit target. It never dims or blends the page below.
     if (state.isVisible) {
@@ -135,9 +132,17 @@ fun BottomSheetPage(
                     .clip(ShapeDefaults.Large.top())
                     .background(background)
                     .pointerInput(Unit) {
+                        var dragOffset = 0f
+
                         detectVerticalDragGestures(
+                            onDragStart = {
+                                dragOffset = 0f
+                            },
+                            onDragCancel = {
+                                dragOffset = 0f
+                            },
                             onDragEnd = {
-                                if (dragOffset > 100) {
+                                if (dragOffset > 100f) {
                                     state.dismiss()
                                 }
                                 dragOffset = 0f
