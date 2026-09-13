@@ -18,6 +18,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
@@ -27,6 +28,7 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.unit.dp
 import com.nikhil.yt.R
+import com.nikhil.yt.ui.component.CapsuleFavoriteColors
 import com.nikhil.yt.ui.component.CapsuleFavoriteIcon
 import kotlin.math.roundToInt
 import org.junit.Assert.assertEquals
@@ -74,7 +76,11 @@ class CapsuleFavoriteAnimationTest {
         compose.mainClock.advanceTimeBy(1000)
         val filled = capture()
         assertEquals(1, clicks)
-        assertTrue(AndroidColor.red(filled.getPixel(filled.width / 2, filled.height / 2)) > 240)
+        val active = CapsuleFavoriteColors.active.toArgb()
+        val filledCenter = filled.getPixel(filled.width / 2, filled.height / 2)
+        assertEquals(AndroidColor.red(active), AndroidColor.red(filledCenter))
+        assertEquals(AndroidColor.green(active), AndroidColor.green(filledCenter))
+        assertEquals(AndroidColor.blue(active), AndroidColor.blue(filledCenter))
         compose.onNodeWithContentDescription(compose.activity.getString(R.string.action_remove_like)).assertIsDisplayed()
         compose.onNodeWithTag("like-button").performClick()
         compose.mainClock.advanceTimeBy(1000)
