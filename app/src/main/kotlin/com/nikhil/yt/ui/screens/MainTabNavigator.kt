@@ -34,6 +34,11 @@ internal fun rememberMainTabNavigator(navController: NavHostController): MainTab
  * NavHost returns Enter/ExitTransition.None, so we settle that invisible bookkeeping ourselves on
  * the following frame. Entries are captured synchronously on every destination change so an
  * immediate Back cannot lose the just-popped destination before it is marked complete.
+ *
+ * MainTabNavigator can enter composition before NavHost has attached ComposeNavigator to the
+ * NavController. Navigator.state deliberately throws before that attachment, so every state access
+ * is guarded by ComposeNavigator.isAttached. This is especially important during a cold start where
+ * DisposableEffect ordering can differ from the steady-state navigation path.
  */
 internal class MainTabNavigator(
     private val navController: NavHostController,
@@ -96,7 +101,10 @@ internal class MainTabNavigator(
 
     private fun captureComposeEntries() {
         if (!attached) return
-        val currentEntries = composeNavigator().backStack.value.toSet()
+        val composeNavigator = composeNavigator()
+        if (!composeNavigator.isAttached) return
+
+        val currentEntries = composeNavigator.backStack.value.toSet()
         knownComposeEntries = knownComposeEntries + currentEntries
     }
 
@@ -117,6 +125,8 @@ internal class MainTabNavigator(
         if (!attached) return
 
         val composeNavigator = composeNavigator()
+        if (!composeNavigator.isAttached) return
+
         val currentEntries = composeNavigator.backStack.value.toSet()
         val entriesToComplete = knownComposeEntries + currentEntries
 
