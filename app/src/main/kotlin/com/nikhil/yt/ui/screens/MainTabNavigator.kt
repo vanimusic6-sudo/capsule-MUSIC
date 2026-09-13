@@ -30,10 +30,10 @@ internal fun rememberMainTabNavigator(navController: NavHostController): MainTab
 /**
  * Top-level tabs coalesce only taps that land before the next UI frame. Capsule deliberately has no
  * route-level transition: the destination canvas swaps directly and destination-owned controls do
- * the visible scene motion. Because ComposeNavigator still tracks navigation as a transition even
- * when the NavHost returns Enter/ExitTransition.None, we explicitly settle that invisible transition
- * on the following frame. This keeps entries out of STARTED without bringing back an animation
- * cooldown or blocking rapid retargeting.
+ * the visible scene motion. ComposeNavigator still tracks navigation as a transition even when the
+ * NavHost returns Enter/ExitTransition.None, so we settle that invisible bookkeeping ourselves on
+ * the following frame. Entries are captured synchronously on every destination change so an
+ * immediate Back cannot lose the just-popped destination before it is marked complete.
  */
 internal class MainTabNavigator(
     private val navController: NavHostController,
@@ -46,15 +46,14 @@ internal class MainTabNavigator(
 
     private val destinationListener =
         NavController.OnDestinationChangedListener { _, _, _ ->
+            captureComposeEntries()
             scheduleTransitionCompletion()
         }
 
     fun attach() {
         if (attached) return
         attached = true
-
-        val composeNavigator = composeNavigator()
-        knownComposeEntries = composeNavigator.backStack.value.toSet()
+        captureComposeEntries()
         navController.addOnDestinationChangedListener(destinationListener)
         scheduleTransitionCompletion()
     }
@@ -95,14 +94,20 @@ internal class MainTabNavigator(
             }
     }
 
+    private fun captureComposeEntries() {
+        if (!attached) return
+        val currentEntries = composeNavigator().backStack.value.toSet()
+        knownComposeEntries = knownComposeEntries + currentEntries
+    }
+
     private fun scheduleTransitionCompletion() {
         if (!attached) return
         transitionCompletion?.cancel()
         transitionCompletion =
             scope.launch(start = CoroutineStart.UNDISPATCHED) {
                 // Let NavHost consume the destination change first, then settle the otherwise
-                // invisible ComposeNavigator transition. One frame is input-neutral and also lets us
-                // retain the just-popped entry so it can be completed together with the new top.
+                // invisible ComposeNavigator transition. The captured set already includes the
+                // outgoing entry, even when a Back press removes it before this frame arrives.
                 withFrameNanos { }
                 completeComposeTransitions()
             }
