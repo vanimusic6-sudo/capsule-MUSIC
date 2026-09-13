@@ -3,8 +3,10 @@ package com.nikhil.yt.ui.component
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.ui.semantics.Role
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -58,6 +60,8 @@ import com.nikhil.yt.ui.player.rememberCapsuleArtworkColors
 import com.nikhil.yt.ui.theme.CapsuleBottomBarEnabledKey
 import com.nikhil.yt.utils.rememberEnumPreference
 import com.nikhil.yt.utils.rememberPreference
+
+private val CapsuleTabEasing = CubicBezierEasing(0.22f, 0f, 0.18f, 1f)
 
 @Composable
 fun FluidSlidingNavigationBar(
@@ -172,8 +176,6 @@ private fun CapsuleNavigationBar(
             label = "capsuleDockTopRadius",
         )
 
-    // A spring ending at 0.dp may numerically overshoot by a tiny negative amount. RoundedCornerShape
-    // rejects any negative radius on Android 16, so keep the rendered geometry inside its legal range.
     val safeDockTopRadius = dockTopRadius.coerceAtLeast(0.dp)
     val dockShape =
         RoundedCornerShape(
@@ -218,7 +220,6 @@ private fun CapsuleNavigationBar(
                 pureBlack = pureBlack,
                 colors = artworkColors,
                 modifier = Modifier.fillMaxSize(),
-                // Mini-player owns the live procedural clock; dock keeps the matching static phase.
                 animated = false,
             )
 
@@ -233,7 +234,7 @@ private fun CapsuleNavigationBar(
                 val indicatorOffset by
                     animateDpAsState(
                         targetValue = itemWidth * selectedIndex.toFloat(),
-                        animationSpec = spring(dampingRatio = 0.90f, stiffness = 145f),
+                        animationSpec = tween(durationMillis = 420, easing = CapsuleTabEasing),
                         label = "capsuleDockIndicatorOffset",
                     )
 
@@ -269,7 +270,7 @@ private fun CapsuleNavigationBar(
                             animateColorAsState(
                                 targetValue =
                                     if (isSelected) Color(0xFF121219) else dockMutedContent,
-                                animationSpec = spring(dampingRatio = 0.92f, stiffness = 135f),
+                                animationSpec = tween(durationMillis = 300, easing = CapsuleTabEasing),
                                 label = "capsuleDockItemColor",
                             )
 
@@ -334,7 +335,7 @@ internal fun StandardNavigationBar(
         val pillWidth = 54.dp
         val indicatorOffset by animateDpAsState(
             targetValue = tabWidth * selectedIndex + (tabWidth - pillWidth) / 2,
-            animationSpec = spring(dampingRatio = 0.90f, stiffness = 135f),
+            animationSpec = tween(durationMillis = 420, easing = CapsuleTabEasing),
             label = "standardNavigationIndicator",
         )
         Box(
