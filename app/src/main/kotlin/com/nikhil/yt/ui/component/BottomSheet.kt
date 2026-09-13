@@ -24,7 +24,9 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.Stable
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -54,6 +56,12 @@ import com.nikhil.yt.constants.BottomSheetSoftCollapseAnimationSpec
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.launch
+
+/**
+ * Lets a mounted child keep its state while suspending purely decorative procedural clocks.
+ * The mini-player uses this while it is completely covered by the expanded full player.
+ */
+internal val LocalCapsuleBackgroundMotionEnabled = compositionLocalOf { true }
 
 /**
  * A single physical Capsule sheet.
@@ -86,6 +94,14 @@ fun BottomSheet(
             derivedStateOf {
                 (onDismiss == null || !state.isDismissed) &&
                     state.progress < 0.46f
+            }
+        }
+    val miniBackgroundMotionEnabled by
+        remember(state) {
+            derivedStateOf {
+                // Keep the subtree and all Room/player state alive. Only the decorative clock sleeps
+                // at the fully expanded anchor and wakes on the first closing/drag frame.
+                !state.isExpanded
             }
         }
 
@@ -163,8 +179,13 @@ fun BottomSheet(
                         )
                         .fillMaxWidth()
                         .height(state.collapsedBound),
-                content = collapsedContent,
-            )
+            ) {
+                CompositionLocalProvider(
+                    LocalCapsuleBackgroundMotionEnabled provides miniBackgroundMotionEnabled,
+                ) {
+                    collapsedContent()
+                }
+            }
         }
 
         if (!state.isCollapsed) {
@@ -481,3 +502,4 @@ fun Modifier.bottomSheetDraggable(
             },
         )
     }
+}
