@@ -18,22 +18,22 @@ import androidx.compose.ui.unit.dp
  * Slow, low-amplitude scene motion for destination-owned controls.
  *
  * Whole destinations never move. A scene starts once when its destination is composed and controls
- * settle over a shared long curve with a very small overlapping stagger. A deterministic tween is
- * intentional here: short high-stiffness springs made 4-8 dp movements feel like abrupt snaps and
- * could visibly change character with frame pacing. This curve gives the eye time to follow the
- * hierarchy without making the interface feel delayed.
+ * settle over a shared long curve with a very small overlapping stagger. The curve starts and ends
+ * with near-zero velocity so short 3-5 dp movements read as weight, not as a snap. A deterministic
+ * tween also avoids the frame-pacing sensitivity that made the previous small spring movements feel
+ * nervous on real devices.
  */
 @Stable
 class CapsuleSceneMotionState internal constructor(
     internal val progress: Animatable<Float, AnimationVector1D>,
 ) {
     internal fun itemProgress(order: Int): Float {
-        val start = (order.coerceAtLeast(0) * 0.022f).coerceAtMost(0.16f)
+        val start = (order.coerceAtLeast(0) * 0.018f).coerceAtMost(0.12f)
         return ((progress.value - start) / (1f - start)).coerceIn(0f, 1f)
     }
 }
 
-private val CapsuleSceneEasing = CubicBezierEasing(0.18f, 0.72f, 0.22f, 1f)
+private val CapsuleSceneEasing = CubicBezierEasing(0.22f, 0f, 0.18f, 1f)
 
 @Composable
 fun rememberCapsuleSceneMotionState(key: Any? = Unit): CapsuleSceneMotionState {
@@ -46,7 +46,7 @@ fun rememberCapsuleSceneMotionState(key: Any? = Unit): CapsuleSceneMotionState {
         state.progress.animateTo(
             targetValue = 1f,
             animationSpec = tween(
-                durationMillis = 640,
+                durationMillis = 700,
                 easing = CapsuleSceneEasing,
             ),
         )
