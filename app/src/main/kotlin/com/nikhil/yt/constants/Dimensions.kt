@@ -39,12 +39,12 @@ val GridThumbnailCornerRadius = 8.dp
 val PlayerHorizontalPadding = 32.dp
 
 /*
- * Keep the magnetic return, but lower natural frequency so navigation accelerates and settles
- * instead of snapping. Damping stays under one, therefore the tactile overshoot is still present.
+ * Navigation is structural chrome, not a toy spring. Keep it slower and almost critically damped so
+ * showing/hiding the dock feels like one soft piece of hardware rather than a bar snapping into place.
  */
 val NavigationBarAnimationSpec = spring<Dp>(
-    dampingRatio = 0.82f,
-    stiffness = 185f,
+    dampingRatio = 0.90f,
+    stiffness = 130f,
 )
 
 /*
