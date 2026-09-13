@@ -33,7 +33,6 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.TransformOrigin
@@ -59,11 +58,9 @@ import kotlinx.coroutines.launch
 /**
  * A single physical Capsule sheet.
  *
- * The full player and its background move as one opaque surface. The mini-player stays composed
- * behind it for the entire lifetime of playback, so its internal icon state is never recreated when
- * the full player closes. The surface reveals that already-alive mini-player only at the docking
- * point, then a small under-damped settle provides the same sort of sticky physical response as the
- * favourite interaction. No alpha, scrim or blur is involved.
+ * Animated value/velocity reads deliberately live in layout/layer lambdas. That lets Compose
+ * invalidate only position or the GPU layer on each frame instead of recomposing the whole player.
+ * The mini-player stays mounted behind the full surface, preserving icon state and instant reversal.
  */
 @Composable
 fun BottomSheet(
@@ -74,31 +71,13 @@ fun BottomSheet(
     collapsedContent: @Composable BoxScope.() -> Unit,
     content: @Composable BoxScope.() -> Unit,
 ) {
-    val rawProgress = state.progress
-    val motionProgress = rawProgress.coerceIn(0f, 1f)
-    val topCornerRadius = 22.dp * (1f - motionProgress)
-
-    val signedVelocity = state.animationVelocity.value
-    val openingVelocity = signedVelocity.coerceAtLeast(0f)
-    val closingVelocity = (-signedVelocity).coerceAtLeast(0f)
-
-    /*
-     * Opening cannot overshoot the hard expanded bound, so its impact is expressed as a tiny
-     * whole-surface deformation. Closing targets the interior mini-player anchor and can safely
-     * overshoot it by a few dp; the mini-player absorbs that energy and settles back like a dock.
-     */
-    val openingVelocityWeight = (openingVelocity / 1250f).coerceIn(0f, 1f)
-    val openingDockWeight = ((motionProgress - 0.60f) / 0.40f).coerceIn(0f, 1f)
-    val openingImpact = openingVelocityWeight * openingDockWeight
-
-    val closingVelocityWeight = (closingVelocity / 1150f).coerceIn(0f, 1f)
-    val closingDockWeight = ((0.36f - motionProgress) / 0.36f).coerceIn(0f, 1f)
-    val collapseOvershootWeight = ((-rawProgress) / 0.055f).coerceIn(0f, 1f)
-    val miniDockImpact =
-        maxOf(
-            closingVelocityWeight * closingDockWeight,
-            collapseOvershootWeight,
-        )
+    val canReopen by
+        remember(state) {
+            derivedStateOf {
+                state.progress.coerceIn(0f, 1f) < 0.42f &&
+                    !state.isDismissed
+            }
+        }
 
     Box(
         modifier =
@@ -112,42 +91,59 @@ fun BottomSheet(
                     IntOffset(x = 0, y = y)
                 }
                 .bottomSheetDraggable(state, onDismiss)
-                .clip(
-                    RoundedCornerShape(
-                        topStart = topCornerRadius,
-                        topEnd = topCornerRadius,
-                    ),
-                ),
+                .graphicsLayer {
+                    val motionProgress = state.progress.coerceIn(0f, 1f)
+                    val topCornerRadius = 22.dp * (1f - motionProgress)
+                    shape =
+                        RoundedCornerShape(
+                            topStart = topCornerRadius,
+                            topEnd = topCornerRadius,
+                        )
+                    clip = true
+                },
     ) {
         if (!state.isCollapsed && !state.isDismissed) {
             BackHandler(onBack = state::collapseSoft)
         }
 
         /*
-         * Keep the mini-player mounted even while the full player covers it. Besides eliminating the
-         * subscribe-icon replay, this makes the close/open reversal continuous: once the mini-player
-         * is visibly exposed, tapping it immediately retargets the same Animatable back upward.
+         * The mini-player is always alive while playback exists. Per-frame docking deformation is
+         * evaluated directly by the layer, so the mini-player subtree does not recompose just because
+         * the spring velocity changed.
          */
         if (onDismiss == null || !state.isDismissed) {
-            val miniPinOffset =
-                (state.value - state.collapsedBound)
-                    .coerceAtLeast(0.dp)
-            val canReopen =
-                motionProgress < 0.42f &&
-                    !state.isDismissed
-
             Box(
                 modifier =
                     Modifier
                         .offset {
+                            val miniPinOffset =
+                                (state.value - state.collapsedBound)
+                                    .coerceAtLeast(0.dp)
                             IntOffset(
                                 x = 0,
                                 y = miniPinOffset.roundToPx(),
                             )
                         }
                         .graphicsLayer {
-                            scaleX = 1f + 0.0042f * miniDockImpact
-                            scaleY = 1f - 0.0070f * miniDockImpact
+                            val rawProgress = state.progress
+                            val motionProgress = rawProgress.coerceIn(0f, 1f)
+                            val closingVelocity =
+                                (-state.animationVelocity.value).coerceAtLeast(0f)
+                            val closingVelocityWeight =
+                                (closingVelocity / 980f).coerceIn(0f, 1f)
+                            val closingDockWeight =
+                                ((0.40f - motionProgress) / 0.40f).coerceIn(0f, 1f)
+                            val collapseOvershootWeight =
+                                ((-rawProgress) / 0.060f).coerceIn(0f, 1f)
+                            val rawImpact =
+                                maxOf(
+                                    closingVelocityWeight * closingDockWeight,
+                                    collapseOvershootWeight,
+                                )
+                            val impact = rawImpact * rawImpact * (3f - 2f * rawImpact)
+
+                            scaleX = 1f + 0.0038f * impact
+                            scaleY = 1f - 0.0062f * impact
                             transformOrigin = TransformOrigin(0.5f, 0.5f)
                         }
                         .clickable(
@@ -162,24 +158,38 @@ fun BottomSheet(
             )
         }
 
+        /*
+         * Full content is not kept alive at rest while collapsed, so animated backgrounds and player
+         * internals still cost nothing there. During travel only offset/layer properties are updated.
+         */
         if (!state.isCollapsed) {
-            val revealOffset =
-                state.collapsedBound *
-                    (1f - motionProgress)
-
             Box(
                 modifier =
                     Modifier
                         .fillMaxSize()
                         .offset {
+                            val motionProgress = state.progress.coerceIn(0f, 1f)
+                            val revealOffset =
+                                state.collapsedBound *
+                                    (1f - motionProgress)
                             IntOffset(
                                 x = 0,
                                 y = revealOffset.roundToPx(),
                             )
                         }
                         .graphicsLayer {
-                            scaleX = 1f - 0.00115f * openingImpact
-                            scaleY = 1f + 0.00310f * openingImpact
+                            val motionProgress = state.progress.coerceIn(0f, 1f)
+                            val openingVelocity =
+                                state.animationVelocity.value.coerceAtLeast(0f)
+                            val openingVelocityWeight =
+                                (openingVelocity / 1080f).coerceIn(0f, 1f)
+                            val openingDockWeight =
+                                ((motionProgress - 0.58f) / 0.42f).coerceIn(0f, 1f)
+                            val rawImpact = openingVelocityWeight * openingDockWeight
+                            val impact = rawImpact * rawImpact * (3f - 2f * rawImpact)
+
+                            scaleX = 1f - 0.00105f * impact
+                            scaleY = 1f + 0.00275f * impact
                             transformOrigin = TransformOrigin(0.5f, 1f)
                         }
                         .background(backgroundColor),
