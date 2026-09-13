@@ -9,13 +9,13 @@ import androidx.compose.animation.slideOutHorizontally
 /**
  * Capsule page motion is opaque, transform-only and spring driven.
  *
- * Both pages use the exact same spring so their touching edges stay locked together. The travel is
- * intentionally slower than the old high-stiffness snap, while lower damping restores the tiny
- * overshoot/return that made menus feel alive. Rapid navigation can still retarget the transition.
+ * Both pages use the exact same spring so their touching edges stay locked together. Lower natural
+ * frequency gives the eye time to read acceleration and mass, while the slightly under-damped settle
+ * preserves the tiny magnetic return that keeps the transition alive instead of sterile.
  */
 internal object ScreenTransitions {
-    private const val DAMPING_RATIO = 0.81f
-    private const val STIFFNESS = 250f
+    private const val DAMPING_RATIO = 0.82f
+    private const val STIFFNESS = 185f
 
     fun enter(from: String?, to: String?, isPop: Boolean = false): EnterTransition {
         if (from == to) return EnterTransition.None
