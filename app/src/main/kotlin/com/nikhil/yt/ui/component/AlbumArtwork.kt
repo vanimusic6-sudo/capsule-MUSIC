@@ -95,6 +95,7 @@ internal fun AlbumArtworkLayers(
                     },
             )
         }
-        ArtworkSurfaceFade(background, Modifier.matchParentSize())
+        // Reuse the same long matte dissolve as the artist hero so both detail pages feel continuous.
+        ArtworkSurfaceFade(background, Modifier.matchParentSize(), portrait = true)
     }
 }

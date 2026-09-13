@@ -62,15 +62,11 @@ internal fun ArtistHeroLayout(
 ) {
     BoxWithConstraints(modifier.fillMaxWidth().background(background)) {
         // Keep the reference's bottom-aligned actions, lowered by 16 dp.
-        // The fade and photograph end together; no uncovered strip below the image.
+        // Artwork itself reaches the physical top edge; only overlay content respects safe insets.
         val referenceWidth = maxWidth.coerceAtMost(450.dp)
         val heroHeight = referenceWidth * 1.69f + 16.dp
         Box(Modifier.fillMaxWidth().height(referenceWidth * 1.36f)) {
-            Box(
-                Modifier.fillMaxWidth()
-                    .padding(top = referenceWidth * 0.06f)
-                    .height(referenceWidth * 1.30f),
-            ) { artwork() }
+            Box(Modifier.fillMaxSize()) { artwork() }
             ArtworkSurfaceFade(background, Modifier.matchParentSize(), portrait = true)
         }
         Column(

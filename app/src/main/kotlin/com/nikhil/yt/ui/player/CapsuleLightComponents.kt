@@ -1,6 +1,8 @@
 package com.nikhil.yt.ui.player
 
 import com.nikhil.yt.ui.component.CapsuleFavoriteIcon
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
@@ -31,6 +33,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -44,7 +47,7 @@ import com.nikhil.yt.constants.CapsulePlayerDesign
 private val LocalCapsuleLightMenu = staticCompositionLocalOf<() -> Unit> { {} }
 
 /** Soft corners for Capsule Light's low-contrast controls. */
-internal val CapsuleLightPanelShape = RoundedCornerShape(14.dp)
+internal val CapsuleLightPanelShape = RoundedCornerShape(18.dp)
 
 /** Both designs host the same artwork, metadata and playback actions. */
 @Composable
@@ -164,13 +167,19 @@ internal fun CapsuleLightControls(
     onMenuClick: (() -> Unit)? = null,
 ) {
     val menuAction = onMenuClick ?: LocalCapsuleLightMenu.current
+    val transportSurface = textColor.copy(alpha = 0.035f)
+    val transportOutline = textColor.copy(alpha = 0.16f)
 
     Row(
         modifier =
             Modifier
                 .fillMaxWidth()
+                .padding(horizontal = 4.dp)
                 .height(84.dp)
-                .padding(horizontal = 2.dp),
+                .clip(CapsuleLightPanelShape)
+                .background(transportSurface)
+                .border(1.dp, transportOutline, CapsuleLightPanelShape)
+                .padding(horizontal = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         CapsuleLightTransportIcon(
