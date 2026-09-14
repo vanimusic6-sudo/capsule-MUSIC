@@ -6,8 +6,11 @@
 
 package com.nikhil.yt.constants
 
+import androidx.compose.animation.core.AnimationSpec
+import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 
@@ -38,11 +41,25 @@ val GridThumbnailCornerRadius = 8.dp
 
 val PlayerHorizontalPadding = 32.dp
 
-/* Navigation chrome should settle softly and never snap into the mini-player. */
-val NavigationBarAnimationSpec = spring<Dp>(
-    dampingRatio = 0.92f,
-    stiffness = 125f,
-)
+/*
+ * How the navigation bar leaves and returns.
+ *
+ * A tween, not a spring, and that is the point. A spring approaches its target asymptotically: the
+ * last fraction of the travel is spent creeping, which is both invisible and never quite finished,
+ * and code that waits for the value to reach its resting point exactly is waiting on a limit. A
+ * finite curve arrives, and arrives when it says it will.
+ *
+ * The curve is the one the destination entrances use — eased in slightly so it does not leave from a
+ * standing start at full speed, with a long tail so the end of the movement can be seen happening
+ * rather than simply stopping. The duration is chosen to match what the old spring took to become
+ * visually settled, so nothing about the bar feels slower than it did.
+ */
+val NavigationBarAnimationMillis = 400
+val NavigationBarAnimationSpec: AnimationSpec<Float> =
+    tween(
+        durationMillis = NavigationBarAnimationMillis,
+        easing = CubicBezierEasing(0.2f, 0.05f, 0.35f, 1f),
+    )
 
 /*
  * The outer anchors are hard Animatable bounds, so expansion/dismissal remain critically damped.

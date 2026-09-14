@@ -30,6 +30,28 @@ object CapsuleMotion {
         return smooth((progress.coerceIn(0f, 1f) / window).coerceIn(0f, 1f))
     }
 
+    /**
+     * Combines two independent reasons for the same surface to be hidden.
+     *
+     * The navigation bar has two: the player expanding over it, and the bar itself being taken away.
+     * They overlap constantly — closing the player while the bar comes back is the single most
+     * common thing that happens at the bottom of this app — and the obvious ways to combine them
+     * are both wrong. Adding them lets the total exceed the travel, so the bar is shoved twice as
+     * far as it can go and then has to come all the way back. Taking the larger of the two puts a
+     * corner in the motion at the moment the other one takes over: the speed changes instantly,
+     * which is exactly what reads as the movement tearing.
+     *
+     * This is the probabilistic OR, and it is what those two want to be. It equals either input
+     * when the other is zero, reaches 1 only when one of them does, and its slope moves
+     * continuously as the balance shifts between them — so two overlapping animations read as one
+     * movement rather than as a handoff.
+     */
+    fun either(first: Float, second: Float): Float {
+        val a = if (first.isFinite()) first.coerceIn(0f, 1f) else 0f
+        val b = if (second.isFinite()) second.coerceIn(0f, 1f) else 0f
+        return (a + b - a * b).coerceIn(0f, 1f)
+    }
+
     /** Smoothstep. Zero slope at both ends, so motion neither starts nor stops abruptly. */
     fun smooth(value: Float): Float {
         if (!value.isFinite()) return 1f

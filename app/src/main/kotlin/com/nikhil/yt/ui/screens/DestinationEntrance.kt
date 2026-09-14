@@ -107,10 +107,17 @@ private val DetailSpec =
         fromAlpha = 0.86f,
     )
 
+/*
+ * Slower than the others, and on the same long-tailed curve as the tabs.
+ *
+ * It was on the steep decelerate, which put nearly all of the sideways travel into the first moments
+ * and made stepping into a settings page read as a flick. Settings is the one place in the app where
+ * you move through a structure rather than open something, and that wants to be unhurried.
+ */
 private val SettingsSpec =
     DestinationMotionSpec(
-        durationMillis = 340,
-        easing = CubicBezierEasing(0.3f, 0.06f, 0.05f, 1f),
+        durationMillis = 440,
+        easing = CubicBezierEasing(0.2f, 0.05f, 0.35f, 1f),
         lift = 0.dp,
         shift = 30.dp,
         overscale = 0f,

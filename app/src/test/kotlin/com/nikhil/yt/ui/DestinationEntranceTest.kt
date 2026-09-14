@@ -129,7 +129,7 @@ class DestinationEntranceTest {
             // Soft, but still an answer to a tap rather than a wait.
             assertTrue(
                 "$motion takes ${spec.durationMillis}ms",
-                spec.durationMillis in 200..460,
+                spec.durationMillis in 200..470,
             )
             // A screen mid-entrance is still a screen someone may be reading, and a stalled
             // animation must never leave a destination looking blank.

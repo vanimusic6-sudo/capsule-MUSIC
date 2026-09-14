@@ -36,7 +36,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.Spring
-import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
@@ -202,6 +202,7 @@ import com.nikhil.yt.ui.component.TopSearch
 import com.nikhil.yt.ui.component.rememberBottomSheetState
 import com.nikhil.yt.ui.component.shimmer.ShimmerTheme
 import com.nikhil.yt.ui.menu.YouTubeSongMenu
+import com.nikhil.yt.ui.motion.CapsuleMotion
 import com.nikhil.yt.ui.player.BottomSheetPlayer
 import com.nikhil.yt.ui.player.LocalCapsuleDockVisible
 import com.nikhil.yt.ui.screens.Screens
@@ -745,15 +746,18 @@ class MainActivity : ComponentActivity() {
                             else -> NavigationBarHeight
                         }
 
-                    val bottomNavigationBarHeight by animateDpAsState(
-                        targetValue =
-                            if (shouldShowNavigationBar && !useRail) {
-                                navVisibleHeight
-                            } else {
-                                0.dp
-                            },
+                    /*
+                     * How much of the navigation bar is on screen, 1 fully shown and 0 fully gone.
+                     *
+                     * This used to be an animated Dp that was then divided back into a fraction at
+                     * the point of use. A fraction is what the position actually wants, and keeping
+                     * it as one removes a rounding step and, more importantly, removes the need for
+                     * any test against an exact resting value.
+                     */
+                    val navigationBarReveal by animateFloatAsState(
+                        targetValue = if (shouldShowNavigationBar && !useRail) 1f else 0f,
                         animationSpec = NavigationBarAnimationSpec,
-                        label = "",
+                        label = "navigationBarReveal",
                     )
 
                     val capsuleConnected =
@@ -1436,26 +1440,39 @@ class MainActivity : ComponentActivity() {
                                                     .align(Alignment.BottomCenter)
                                                     .height(navSlideDistance)
                                                     .offset {
-                                                        if (bottomNavigationBarHeight == 0.dp) {
-                                                            IntOffset(
-                                                                x = 0,
-                                                                y = navSlideDistance.roundToPx(),
+                                                        /*
+                                                         * One position, from two reasons to be out
+                                                         * of the way: the player expanding over the
+                                                         * bar, and the bar itself being taken away.
+                                                         *
+                                                         * These used to be added together, with a
+                                                         * branch on the bar's animated height being
+                                                         * exactly zero to stop the sum running past
+                                                         * the end of the travel. Both parts of that
+                                                         * were felt. The sum meant the two springs
+                                                         * drove the bar at once and it moved at
+                                                         * neither one's speed; the branch meant that
+                                                         * the instant the height left zero the bar
+                                                         * jumped by its whole travel. Closing the
+                                                         * player while the bar comes back does both
+                                                         * at the same time, which is why the swap
+                                                         * with the mini-player was the worst of it.
+                                                         *
+                                                         * CapsuleMotion.either keeps whichever is
+                                                         * happening in charge, stays within the
+                                                         * travel, and changes speed continuously
+                                                         * when the two overlap, so there is nothing
+                                                         * left to snap or to tear.
+                                                         */
+                                                        val hidden =
+                                                            CapsuleMotion.either(
+                                                                playerBottomSheetState.progress,
+                                                                1f - navigationBarReveal,
                                                             )
-                                                        } else {
-                                                            val slideOffset =
-                                                                navSlideDistance *
-                                                                        playerBottomSheetState.progress.coerceIn(
-                                                                            0f,
-                                                                            1f,
-                                                                        )
-                                                            val hideOffset =
-                                                                navSlideDistance *
-                                                                        (1 - bottomNavigationBarHeight / navVisibleHeight)
-                                                            IntOffset(
-                                                                x = 0,
-                                                                y = (slideOffset + hideOffset).roundToPx(),
-                                                            )
-                                                        }
+                                                        IntOffset(
+                                                            x = 0,
+                                                            y = (navSlideDistance * hidden).roundToPx(),
+                                                        )
                                                     },
                                         ) {
                                             if (pureBlack) Color.Black
