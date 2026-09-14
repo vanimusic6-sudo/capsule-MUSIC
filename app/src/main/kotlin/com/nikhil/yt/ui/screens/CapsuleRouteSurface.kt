@@ -8,6 +8,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.compositionLocalOf
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.navigation.NamedNavArgument
 import androidx.navigation.NavBackStackEntry
@@ -35,8 +36,13 @@ internal fun NavGraphBuilder.routeComposable(
     content: @Composable AnimatedContentScope.(NavBackStackEntry) -> Unit,
 ) = composable(route, arguments, deepLinks) { entry ->
     val contentScope = this
+    val motion = remember(route) { destinationMotionFor(route) }
     CompositionLocalProvider(LocalNavBackStackEntry provides entry) {
-        CapsuleRouteSurface { with(contentScope) { content(entry) } }
+        CapsuleRouteSurface {
+            Box(modifier = Modifier.destinationEntrance(motion)) {
+                with(contentScope) { content(entry) }
+            }
+        }
     }
 }
 

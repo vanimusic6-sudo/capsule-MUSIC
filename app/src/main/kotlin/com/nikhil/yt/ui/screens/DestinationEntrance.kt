@@ -1,0 +1,142 @@
+package com.nikhil.yt.ui.screens
+
+import android.provider.Settings
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.CubicBezierEasing
+import androidx.compose.animation.core.Easing
+import androidx.compose.animation.core.tween
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
+
+/**
+ * How a destination arrives.
+ *
+ * Route transitions themselves stay at None, so two destinations are never composed together and
+ * navigation keeps costing one screen. The character lives inside the destination instead: the
+ * incoming screen plays a short entrance on its own layer, which is draw-only work on a layer that
+ * already exists.
+ *
+ * The two characters exist because the two kinds of navigation mean different things. Moving
+ * between tabs is lateral and habitual — it should feel quick and slightly kinetic, not ceremonial.
+ * Opening an artist, an album or a settings page is going *into* something, and wants to resolve
+ * softly so the swap does not land as a hard cut.
+ */
+internal enum class DestinationMotion {
+    /** Lateral, habitual, frequent. Brisk, with a little travel so it reads as momentum. */
+    Tab,
+
+    /** Going into something. Settles out of a slightly oversized state rather than snapping in. */
+    Detail,
+}
+
+internal data class DestinationMotionSpec(
+    val durationMillis: Int,
+    val easing: Easing,
+    /** Distance the content rises through. Zero for motion that resolves by scale instead. */
+    val lift: Dp,
+    /** Size the content resolves down from. 0f keeps it at its true size throughout. */
+    val overscale: Float,
+    /**
+     * Opacity the content starts at.
+     *
+     * Deliberately well clear of zero. A screen part-way through its entrance is still a screen the
+     * user may be reading, and if this animation ever failed to finish, a low floor would leave a
+     * destination looking blank rather than merely soft.
+     */
+    val fromAlpha: Float,
+)
+
+private val TabSpec =
+    DestinationMotionSpec(
+        durationMillis = 200,
+        // Decelerate only: commits immediately, settles without ever speeding back up.
+        easing = CubicBezierEasing(0.05f, 0.7f, 0.1f, 1f),
+        lift = 12.dp,
+        overscale = 0f,
+        fromAlpha = 0.65f,
+    )
+
+private val DetailSpec =
+    DestinationMotionSpec(
+        durationMillis = 290,
+        easing = CubicBezierEasing(0.16f, 0.84f, 0.24f, 1f),
+        lift = 0.dp,
+        overscale = 0.035f,
+        fromAlpha = 0.45f,
+    )
+
+/**
+ * Tabs are the four bottom-bar destinations. Everything else is something the user opened.
+ *
+ * Note what is deliberately absent: a real blur. It would suit the detail entrance, but a
+ * `RenderEffect` forces an offscreen buffer for the whole screen and allocating it the first time
+ * is what made opening the player stall on device. Resolving down from a slightly oversized state
+ * reads soft for the same reason a blur does — the edges are not where they will end up — and costs
+ * nothing beyond the layer that already exists.
+ */
+internal fun destinationMotionFor(route: String?): DestinationMotion =
+    if (route != null && Screens.MainScreens.any { it.route == route }) {
+        DestinationMotion.Tab
+    } else {
+        DestinationMotion.Detail
+    }
+
+internal fun DestinationMotion.spec(): DestinationMotionSpec =
+    when (this) {
+        DestinationMotion.Tab -> TabSpec
+        DestinationMotion.Detail -> DetailSpec
+    }
+
+/**
+ * Plays a destination's entrance once.
+ *
+ * Draw-phase only: no measurement changes, so this cannot disturb a screen's layout, its scrolling
+ * or its neighbours. The animation is a finite tween that completes and leaves nothing running.
+ */
+@Composable
+internal fun Modifier.destinationEntrance(motion: DestinationMotion): Modifier {
+    if (!systemAnimationsEnabled()) return this
+
+    val spec = motion.spec()
+    val progress = remember(spec) { Animatable(0f) }
+    LaunchedEffect(spec) {
+        progress.animateTo(1f, tween(spec.durationMillis, easing = spec.easing))
+    }
+
+    val liftPx = with(LocalDensity.current) { spec.lift.toPx() }
+
+    return graphicsLayer {
+        // The tween has already applied the easing; clamping here guards only against a value
+        // arriving out of range, which a cancelled or restored animation can produce.
+        val settled = progress.value.let { if (it.isFinite()) it.coerceIn(0f, 1f) else 1f }
+        val remaining = 1f - settled
+
+        alpha = spec.fromAlpha + (1f - spec.fromAlpha) * settled
+        translationY = remaining * liftPx
+        if (spec.overscale != 0f) {
+            scaleX = 1f + spec.overscale * remaining
+            scaleY = 1f + spec.overscale * remaining
+        }
+    }
+}
+
+@Composable
+private fun systemAnimationsEnabled(): Boolean {
+    val context = LocalContext.current
+    return remember(context) {
+        runCatching {
+            Settings.Global.getFloat(
+                context.contentResolver,
+                Settings.Global.ANIMATOR_DURATION_SCALE,
+                1f,
+            )
+        }.getOrDefault(1f) > 0f
+    }
+}

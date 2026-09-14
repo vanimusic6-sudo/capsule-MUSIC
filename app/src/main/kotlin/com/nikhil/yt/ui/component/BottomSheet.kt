@@ -71,16 +71,26 @@ internal val LocalCapsuleBackgroundMotionEnabled = compositionLocalOf { true }
  */
 private const val PlayerFoldWindow = 0.34f
 private const val PlayerFoldScale = 0.055f
-private const val PlayerFoldFade = 0.85f
+
+/** How much smaller the dock sits while the player covers it, so it grows as the player folds in. */
+private const val MiniHandoverScale = 0.035f
 
 /*
- * The mini-player is deliberately never transformed.
+ * The dock and the player hand over to each other; they do not animate independently.
  *
- * It has now been tried three ways — a squash driven by closing velocity, a pull driven by the
- * sheet's progress, and a rock impulse on arrival — and every one of them read as the mini-player
- * twitching. The dock is the thing that stays put; the player is the thing that moves. Giving the
- * fixed object its own motion is what made the pair look unsynchronised, because two independently
- * animated surfaces can only ever agree by coincidence.
+ * Earlier versions gave the dock motion of its own — a squash from closing velocity, a pull, an
+ * arrival rock — and each read as twitching, because two separately animated surfaces can only
+ * agree by coincidence. Then the dock was left completely static, which read as *late*: the player
+ * faded to a low alpha while the dock stayed fully opaque underneath, so for most of the close the
+ * two were simply stacked, and the dock only looked clean once the player had almost gone.
+ *
+ * Now their opacities are complements of one value. The player hands its opacity to the dock as it
+ * folds, so the pair always sums to a solid surface and the exchange has no seam. The dock's only
+ * other motion is growing the last few percent into place, which is what reads as the player being
+ * absorbed rather than merely disappearing over it.
+ *
+ * Both are monotonic functions of the sheet's own progress, so neither can overshoot, reverse, or
+ * lag the other, and both are exactly identity at the dock.
  */
 
 /**
@@ -169,6 +179,20 @@ fun BottomSheet(
                                 y = miniPinOffset.roundToPx(),
                             )
                         }
+                        .graphicsLayer {
+                            // The complement of the player's fold: the dock takes on exactly the
+                            // opacity the player gives up, and finishes growing into place as the
+                            // player lands on it.
+                            val fold =
+                                CapsuleMotion.approach(
+                                    progress = state.progress,
+                                    window = PlayerFoldWindow,
+                                )
+
+                            alpha = (1f - fold).coerceIn(0f, 1f)
+                            scaleX = 1f - MiniHandoverScale * fold
+                            scaleY = 1f - MiniHandoverScale * fold
+                        }
                         .clickable(
                             enabled = canReopen,
                             interactionSource = remember { MutableInteractionSource() },
@@ -227,7 +251,10 @@ fun BottomSheet(
                             val folded = 1f - fold
                             scaleX = 1f - PlayerFoldScale * folded
                             scaleY = 1f - PlayerFoldScale * folded
-                            alpha = 1f - PlayerFoldFade * folded
+                            // Handed straight to the dock below, which takes 1 - fold. Reaching zero
+                            // rather than stopping short is what removes the stacked-surfaces look
+                            // that made the dock seem to arrive late.
+                            alpha = fold.coerceIn(0f, 1f)
                             transformOrigin = TransformOrigin(0.5f, 1f)
                         }
                         .background(backgroundColor),
