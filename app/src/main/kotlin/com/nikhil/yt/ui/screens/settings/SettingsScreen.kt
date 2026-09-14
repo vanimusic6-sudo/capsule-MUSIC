@@ -17,8 +17,6 @@ import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
-import com.nikhil.yt.ui.motion.rememberSettingsEntrance
-import com.nikhil.yt.ui.motion.settingsEntranceItem
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
@@ -200,9 +198,6 @@ private fun filterIntegrations(
     return integrations.filter { it.label.contains(query, ignoreCase = true) }
 }
 
-/** Hero and account card take the first slots; the integrations row follows; categories come after. */
-private const val SettingsCategoryStaggerBase = 3
-
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(
@@ -274,12 +269,6 @@ fun SettingsScreen(
      * first frame; otherwise their old delayed fade/slide cascade runs on top of the route spring
      * and makes Settings look like several animations are fighting each other.
      */
-    /*
-     * One entrance drives the whole cascade. The per-card flags this replaced were all `= true`
-     * constants, so the AnimatedVisibility transitions keyed to them started already visible and
-     * never actually ran.
-     */
-    val settingsEntrance = rememberSettingsEntrance()
     val bannerVisible = true
 
     val quickActions = listOf(
@@ -747,7 +736,6 @@ fun SettingsScreen(
                 item(key = "hero") {
                     SettingsHeroHeader(
                         modifier = Modifier
-                            .settingsEntranceItem(settingsEntrance, 0)
                             .padding(horizontal = 16.dp)
                             .padding(top = 4.dp, bottom = 14.dp),
                     )
@@ -768,7 +756,6 @@ fun SettingsScreen(
                                 forgetAccount(context)
                             },
                             modifier = Modifier
-                                .settingsEntranceItem(settingsEntrance, 1)
                                 .padding(horizontal = 16.dp)
                                 .padding(bottom = 14.dp),
                         )
@@ -821,7 +808,6 @@ fun SettingsScreen(
                             SettingsIntegrationsRow(
                                 integrations = toShow,
                                 modifier = Modifier
-                                    .settingsEntranceItem(settingsEntrance, 2)
                                     .padding(horizontal = 16.dp)
                                     .padding(bottom = 12.dp),
                             )
@@ -863,7 +849,6 @@ fun SettingsScreen(
                         PremiumSettingsSection(
                             category = category,
                             modifier = Modifier
-                                .settingsEntranceItem(settingsEntrance, SettingsCategoryStaggerBase + index)
                                 .padding(horizontal = 16.dp)
                                 .padding(bottom = 12.dp),
                         )

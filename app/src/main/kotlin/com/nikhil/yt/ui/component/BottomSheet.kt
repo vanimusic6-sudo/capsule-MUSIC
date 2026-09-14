@@ -11,6 +11,7 @@ import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.AnimationSpec
 import androidx.compose.animation.core.AnimationVector1D
 import androidx.compose.animation.core.VectorConverter
+import androidx.compose.animation.core.spring
 import android.os.Build
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -31,6 +32,7 @@ import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -67,20 +69,25 @@ import kotlinx.coroutines.launch
  */
 internal val LocalCapsuleBackgroundMotionEnabled = compositionLocalOf { true }
 
-/** How much of the sheet's travel the mini-player stays coupled to the player for. */
-private const val MiniDockCouplingWindow = 0.42f
-private const val MiniDockDrawX = 0.014f
-private const val MiniDockDrawY = 0.022f
-private const val MiniDockDrawLiftPx = 5.5f
+/**
+ * The last stretch of travel, where the player reads as folding into the mini-player: it shrinks
+ * towards the dock and fades out, so the mini-player is what is left behind rather than something
+ * that was underneath all along.
+ */
+private const val PlayerFoldWindow = 0.34f
+private const val PlayerFoldScale = 0.055f
+private const val PlayerFoldFade = 0.85f
 
-/** The closing stretch of the opening player's travel, where it settles and its blur resolves. */
-private const val PlayerSettleWindow = 0.40f
-private const val PlayerSettleX = 0.0016f
-private const val PlayerSettleY = 0.0036f
-private val PlayerOpenBlurRadius = 7.dp
-
-/** RenderEffect needs API 31; below it the surfaces simply move without the blur. */
-private val supportsRenderEffect = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
+/**
+ * The mini-player's arrival rock, played once when the player finishes its travel.
+ *
+ * This is an impulse, not a reaction: it starts at full strength the moment the player lands and
+ * decays to exactly zero. The previous version derived a transform from the sheet's progress, so
+ * the mini-player moved throughout the close and trailed the player the whole way down — the lag
+ * and the shimmer both came from that.
+ */
+private const val MiniArrivalRockDegrees = 0.85f
+private const val MiniArrivalRockLiftPx = 6f
 
 /**
  * A single physical Capsule sheet.
@@ -123,6 +130,21 @@ fun BottomSheet(
                 !state.isExpanded
             }
         }
+
+    /*
+     * One shot when the player finishes docking. Under-damped on purpose: this is a rock, and it is
+     * safe to be springy precisely because it is an impulse with a fixed start rather than a
+     * reaction to a velocity that keeps changing sign.
+     */
+    val arrivalRock = remember { Animatable(0f) }
+    LaunchedEffect(state.isCollapsed) {
+        if (state.isCollapsed) {
+            arrivalRock.snapTo(1f)
+            arrivalRock.animateTo(0f, spring(dampingRatio = 0.34f, stiffness = 900f))
+        } else {
+            arrivalRock.snapTo(0f)
+        }
+    }
 
     Box(
         modifier =
@@ -170,23 +192,13 @@ fun BottomSheet(
                         }
                         .graphicsLayer {
                             /*
-                             * The player draws the mini-player in as it docks.
-                             *
-                             * This is a pure function of the sheet's own progress, so it is the same
-                             * clock the player's travel runs on and the two move as one piece. The
-                             * previous version reacted to closing velocity and to spring overshoot
-                             * instead: both trail the motion they respond to and both change sign,
-                             * which is why the mini-player read as shaking while the player left.
+                             * Still for the whole close, then one rock as the player lands on it.
+                             * The impulse decays to exactly zero, so the mini-player holds its
+                             * resting shape the rest of the time.
                              */
-                            val draw =
-                                CapsuleMotion.pullToward(
-                                    progress = state.progress,
-                                    window = MiniDockCouplingWindow,
-                                )
-
-                            scaleX = 1f - MiniDockDrawX * draw
-                            scaleY = 1f - MiniDockDrawY * draw
-                            translationY = MiniDockDrawLiftPx * draw
+                            val rock = arrivalRock.value
+                            rotationZ = MiniArrivalRockDegrees * rock
+                            translationY = MiniArrivalRockLiftPx * rock
                             transformOrigin = TransformOrigin(0.5f, 1f)
                         }
                         .clickable(
@@ -223,33 +235,27 @@ fun BottomSheet(
                         }
                         .graphicsLayer {
                             /*
-                             * The opening player settles the last of its travel and carries a short
-                             * blur that reads as speed. Both are driven by progress, so they are
-                             * exactly zero once the player is open and exactly zero once it is
-                             * closed — a settled surface carries no transform and no RenderEffect,
-                             * and therefore costs nothing at rest.
+                             * The player folds into the dock over the last of its travel: it scales
+                             * down towards the mini-player and fades, so closing reads as the player
+                             * going *into* it.
+                             *
+                             * There is deliberately no blur here. A full-screen RenderEffect forces
+                             * an offscreen buffer for the entire player every frame, and allocating
+                             * it is what made the very first open stall. Scale and alpha are free by
+                             * comparison — the layer already exists — and both are exactly identity
+                             * once the player is open, so an open player costs nothing.
                              */
-                            val settle =
-                                CapsuleMotion.pullAway(
+                            val fold =
+                                CapsuleMotion.approach(
                                     progress = state.progress,
-                                    window = PlayerSettleWindow,
+                                    window = PlayerFoldWindow,
                                 )
 
-                            scaleX = 1f - PlayerSettleX * settle
-                            scaleY = 1f + PlayerSettleY * settle
+                            val folded = 1f - fold
+                            scaleX = 1f - PlayerFoldScale * folded
+                            scaleY = 1f - PlayerFoldScale * folded
+                            alpha = 1f - PlayerFoldFade * folded
                             transformOrigin = TransformOrigin(0.5f, 1f)
-
-                            val blurPx =
-                                CapsuleMotion.speedBlurPx(
-                                    weight = settle,
-                                    maxRadiusPx = PlayerOpenBlurRadius.toPx(),
-                                )
-                            renderEffect =
-                                if (blurPx > 0f && supportsRenderEffect) {
-                                    BlurEffect(blurPx, blurPx, TileMode.Decal)
-                                } else {
-                                    null
-                                }
                         }
                         .background(backgroundColor),
                 content = content,

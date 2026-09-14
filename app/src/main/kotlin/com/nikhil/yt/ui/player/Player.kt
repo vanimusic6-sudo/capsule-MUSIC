@@ -12,8 +12,10 @@ package com.nikhil.yt.ui.player
 import android.os.Build
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -313,14 +315,20 @@ fun BottomSheetPlayer(
     }
 }
 
-/** The closing stretch of the lyrics travel, where it settles and its speed blur resolves. */
-private const val LyricsSettleWindow = 0.38f
-private const val LyricsSettleX = 0.0016f
-private const val LyricsSettleY = 0.0034f
-private val LyricsBlurRadius = 6.dp
+/**
+ * The lyrics sheet has a character of its own, deliberately unlike the player's.
+ *
+ * The player folds: it scales down towards the dock. The lyrics do the opposite — they rise and
+ * *open out*, easing down from slightly oversized to their true size while the text fades up. Two
+ * surfaces that squashed the same way read as one animation played twice.
+ */
+private const val LyricsOpenWindow = 0.55f
+private const val LyricsOpenOverscale = 0.030f
+private const val LyricsOpenFade = 0.90f
+private const val LyricsTravelMillis = 330
 
-/** RenderEffect needs API 31; below it the sheet simply moves without the blur. */
-private val supportsRenderEffect = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
+/** Decelerate only: it never speeds back up, so it cannot read as being pulled in at the end. */
+private val LyricsEasing = CubicBezierEasing(0.16f, 0.84f, 0.24f, 1f)
 
 @Composable
 private fun CapsulePlayerLyricsHost(
@@ -360,17 +368,14 @@ private fun CapsulePlayerLyricsHost(
         }
 
         /*
-         * Critically damped on purpose. The old under-damped spring overshot its target, and the
-         * layer below reacted to that overshoot and to the spring's velocity, so the lyrics sheet
-         * jittered as it landed. Nothing overshoots now, so nothing has to be compensated for.
+         * A decelerating tween, not a spring. A critically damped spring approaches its target
+         * asymptotically and is cut off at its visibility threshold, so the last pixels are covered
+         * by a jump — the sheet appeared to snap onto the edge as if magnetised. A tween lands on
+         * the value exactly, at a known time, with its speed already down to nothing.
          */
         lyricsMotion.animateTo(
             targetValue = if (showLyrics) 1f else 0f,
-            animationSpec =
-                spring(
-                    dampingRatio = Spring.DampingRatioNoBouncy,
-                    stiffness = if (showLyrics) 200f else 240f,
-                ),
+            animationSpec = tween(durationMillis = LyricsTravelMillis, easing = LyricsEasing),
         )
 
         if (!showLyrics) {
@@ -439,26 +444,22 @@ private fun CapsulePlayerLyricsHost(
                                 translationY =
                                     ((1f - travelled) * fullHeightPx).coerceAtLeast(0f)
 
-                                val settle =
-                                    CapsuleMotion.pullAway(
+                                /*
+                                 * Opening out, not settling: oversized and soft at the start,
+                                 * exact and solid by the end. No blur — a full-screen RenderEffect
+                                 * costs an offscreen buffer every frame, which is what made these
+                                 * surfaces stall the first time they were used.
+                                 */
+                                val opening =
+                                    CapsuleMotion.approach(
                                         progress = travelled,
-                                        window = LyricsSettleWindow,
+                                        window = LyricsOpenWindow,
                                     )
-                                scaleX = 1f + LyricsSettleX * settle
-                                scaleY = 1f - LyricsSettleY * settle
-                                transformOrigin = TransformOrigin(0.5f, 1f)
-
-                                val blurPx =
-                                    CapsuleMotion.speedBlurPx(
-                                        weight = settle,
-                                        maxRadiusPx = LyricsBlurRadius.toPx(),
-                                    )
-                                renderEffect =
-                                    if (blurPx > 0f && supportsRenderEffect) {
-                                        BlurEffect(blurPx, blurPx, TileMode.Decal)
-                                    } else {
-                                        null
-                                    }
+                                val remaining = 1f - opening
+                                scaleX = 1f + LyricsOpenOverscale * remaining
+                                scaleY = 1f + LyricsOpenOverscale * remaining
+                                alpha = 1f - LyricsOpenFade * remaining
+                                transformOrigin = TransformOrigin(0.5f, 0.5f)
                             },
                 ) {
                     LyricsScreen(
