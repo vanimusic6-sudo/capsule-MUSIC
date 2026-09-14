@@ -48,7 +48,6 @@ import androidx.compose.ui.zIndex
 import androidx.compose.material3.MaterialTheme
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.navigation.NavController
-import androidx.navigation.compose.currentBackStackEntryAsState
 import com.nikhil.yt.innertube.models.AlbumItem
 import com.nikhil.yt.innertube.models.ArtistItem
 import com.nikhil.yt.innertube.models.PlaylistItem

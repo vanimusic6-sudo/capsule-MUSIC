@@ -1,9 +1,10 @@
 package com.nikhil.yt.ui.screens
 
 import androidx.compose.animation.AnimatedContentScope
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.compositionLocalOf
@@ -60,9 +61,26 @@ val LocalNavBackStackEntry = compositionLocalOf<NavBackStackEntry?> { null }
 
 @Composable
 internal fun CapsuleRouteSurface(content: @Composable () -> Unit) {
-    Surface(
-        modifier = Modifier.fillMaxSize(),
-        color = MaterialTheme.colorScheme.background,
-        content = content,
-    )
+    /*
+     * A plain background layer, not a Surface.
+     *
+     * Surface would also take over LocalContentColor, which the activity sets deliberately — pure
+     * black mode forces white content that `contentColorFor(surface)` would undo — and it adds
+     * semantics and an empty pointerInput that this layer has no business introducing. The colour
+     * is the surface the activity paints its own root with, so a destination and the window behind
+     * it can never disagree.
+     *
+     * Minimum constraints are deliberately not propagated. NavHost hands its content a zero
+     * minimum and aligns it top-start, so a screen sees exactly the constraints and the position it
+     * saw before this wrapper existed; the only difference is that there is now an opaque colour
+     * behind it. Forcing a minimum size instead would silently stretch any screen that does not
+     * fill the window, and this wrapper has no business changing layout at all.
+     */
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.surface),
+    ) {
+        content()
+    }
 }

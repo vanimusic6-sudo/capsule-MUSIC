@@ -51,7 +51,6 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.navigation.NavController
-import androidx.navigation.compose.currentBackStackEntryAsState
 import com.nikhil.yt.LocalPlayerAwareWindowInsets
 import com.nikhil.yt.ui.screens.LocalNavBackStackEntry
 import com.nikhil.yt.ui.utils.liveSavedStateHandle

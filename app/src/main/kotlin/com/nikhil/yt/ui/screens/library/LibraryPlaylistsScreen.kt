@@ -76,7 +76,6 @@ import com.nikhil.yt.ui.screens.LocalNavBackStackEntry
 import com.nikhil.yt.ui.utils.liveSavedStateHandle
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.navigation.NavController
-import androidx.navigation.compose.currentBackStackEntryAsState
 import com.nikhil.yt.innertube.utils.parseCookieString
 import com.nikhil.yt.LocalPlayerAwareWindowInsets
 import com.nikhil.yt.R

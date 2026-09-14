@@ -11,8 +11,6 @@ import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.AnimationSpec
 import androidx.compose.animation.core.AnimationVector1D
 import androidx.compose.animation.core.VectorConverter
-import androidx.compose.animation.core.spring
-import android.os.Build
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.DraggableState
@@ -32,7 +30,6 @@ import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -40,8 +37,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.BlurEffect
-import androidx.compose.ui.graphics.TileMode
 import com.nikhil.yt.ui.motion.CapsuleMotion
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
@@ -258,9 +253,6 @@ class BottomSheetState(
 
     val value by animatable.asState()
 
-    val animationVelocity: Dp
-        get() = animatable.velocity
-
     val isDismissed by derivedStateOf {
         value == animatable.lowerBound!!
     }
@@ -273,7 +265,10 @@ class BottomSheetState(
         value == animatable.upperBound
     }
 
-    /** Physical anchor progress, intentionally allowed to overshoot for impact calculations. */
+    /**
+     * Physical anchor progress, before easing. May sit slightly outside 0..1 while a spring settles,
+     * which is why every consumer clamps; [progress] is the value surfaces should read.
+     */
     val rawProgress by derivedStateOf {
         val range = animatable.upperBound!! - collapsedBound
         if (range == 0.dp) {

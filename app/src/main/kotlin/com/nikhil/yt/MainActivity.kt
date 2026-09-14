@@ -187,6 +187,7 @@ import com.nikhil.yt.playback.MusicService.MusicBinder
 import com.nikhil.yt.playback.PlayerConnection
 import com.nikhil.yt.playback.queues.ListQueue
 
+import com.nikhil.yt.ui.component.BackRepeatGuard
 import com.nikhil.yt.ui.component.BottomSheetMenu
 import com.nikhil.yt.ui.component.BottomSheetPage
 import com.nikhil.yt.ui.component.COLLAPSED_ANCHOR
@@ -634,6 +635,11 @@ class MainActivity : ComponentActivity() {
                     val navBackStackEntry by navController.currentBackStackEntryAsState()
                     val (_) = rememberSaveable { mutableStateOf("home") }
                     val currentRoute = navBackStackEntry?.destination?.route
+
+                    // Only meaningful when a back press would actually pop something; see
+                    // BackRepeatGuard. Recomputed whenever the current entry changes.
+                    val canPopBack =
+                        navBackStackEntry != null && navController.previousBackStackEntry != null
                     val isYearInMusicScreen = currentRoute == "year_in_music"
 
                     val navigationItems = remember { Screens.MainScreens }
@@ -1524,6 +1530,16 @@ class MainActivity : ComponentActivity() {
                                         topAppBarScrollBehavior,
                                     )
                                 }
+
+                                /*
+                                 * Must sit here, after the NavHost and inside the same
+                                 * subcomposition. Back callbacks are consulted newest-first, and
+                                 * Material's Scaffold subcomposes its content during the measure
+                                 * pass — so a guard registered in the outer composition would be
+                                 * registered *before* navigation's own callback and never see a
+                                 * back event at all.
+                                 */
+                                BackRepeatGuard(enabled = canPopBack)
                             }
                         }
 
