@@ -37,6 +37,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.navigation.NavGraphBuilder
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
+import androidx.navigation.compose.composable
 import androidx.navigation.navArgument
 import com.nikhil.yt.R
 import com.nikhil.yt.constants.DarkModeKey
@@ -88,34 +89,34 @@ fun NavGraphBuilder.navigationBuilder(
     navController: NavHostController,
     scrollBehavior: TopAppBarScrollBehavior,
 ) {
-    destinationComposable(Screens.Home.route) {
+    composable(Screens.Home.route) {
         HomeScreen(navController)
     }
-    destinationComposable(
+    composable(
         Screens.Library.route,
     ) {
         LibraryScreen(navController)
     }
-    destinationComposable("history") {
+    composable("history") {
         HistoryScreen(navController)
     }
-    destinationComposable("stats") {
+    composable("stats") {
         StatsScreen(navController)
     }
-    destinationComposable("year_in_music") {
+    composable("year_in_music") {
         YearInMusicScreen(navController)
     }
-    destinationComposable("mood_and_genres") {
+    composable("mood_and_genres") {
         MoodAndGenresScreen(navController, scrollBehavior)
     }
 
-    destinationComposable("new_release") {
+    composable("new_release") {
         NewReleaseScreen(navController, scrollBehavior)
     }
-    destinationComposable("charts_screen") {
+    composable("charts_screen") {
        ChartsScreen(navController)
     }
-    destinationComposable(
+    composable(
         route = "browse/{browseId}",
         arguments = listOf(
             navArgument("browseId") {
@@ -129,7 +130,7 @@ fun NavGraphBuilder.navigationBuilder(
             it.arguments?.getString("browseId")
         )
     }
-    destinationComposable(
+    composable(
         route = "search/{query}",
         arguments =
         listOf(
@@ -140,7 +141,7 @@ fun NavGraphBuilder.navigationBuilder(
     ) {
         OnlineSearchResult(navController)
     }
-    destinationComposable(
+    composable(
         route = "album/{albumId}",
         arguments =
         listOf(
@@ -151,7 +152,7 @@ fun NavGraphBuilder.navigationBuilder(
     ) {
         AlbumScreen(navController, scrollBehavior)
     }
-    destinationComposable(
+    composable(
         route = "artist/{artistId}",
         arguments =
         listOf(
@@ -162,7 +163,7 @@ fun NavGraphBuilder.navigationBuilder(
     ) {
         ArtistScreen(navController, scrollBehavior)
     }
-    destinationComposable(
+    composable(
         route = "artist/{artistId}/songs",
         arguments =
         listOf(
@@ -173,7 +174,7 @@ fun NavGraphBuilder.navigationBuilder(
     ) {
         ArtistSongsScreen(navController, scrollBehavior)
     }
-    destinationComposable(
+    composable(
         route = "artist/{artistId}/albums",
         arguments = listOf(
             navArgument("artistId") {
@@ -183,7 +184,7 @@ fun NavGraphBuilder.navigationBuilder(
     ) {
         ArtistAlbumsScreen(navController, scrollBehavior)
     }
-    destinationComposable(
+    composable(
         route = "artist/{artistId}/items?browseId={browseId}&params={params}",
         arguments =
         listOf(
@@ -202,7 +203,7 @@ fun NavGraphBuilder.navigationBuilder(
     ) {
         ArtistItemsScreen(navController, scrollBehavior)
     }
-    destinationComposable(
+    composable(
         route = "online_playlist/{playlistId}",
         arguments =
         listOf(
@@ -213,7 +214,7 @@ fun NavGraphBuilder.navigationBuilder(
     ) {
         OnlinePlaylistScreen(navController, scrollBehavior)
     }
-    destinationComposable(
+    composable(
         route = "local_playlist/{playlistId}",
         arguments =
         listOf(
@@ -224,7 +225,7 @@ fun NavGraphBuilder.navigationBuilder(
     ) {
         LocalPlaylistScreen(navController, scrollBehavior)
     }
-    destinationComposable(
+    composable(
         route = "auto_playlist/{playlist}",
         arguments =
         listOf(
@@ -235,7 +236,7 @@ fun NavGraphBuilder.navigationBuilder(
     ) {
         AutoPlaylistScreen(navController, scrollBehavior)
     }
-    destinationComposable(
+    composable(
         route = "cache_playlist/{playlist}",
         arguments =
             listOf(
@@ -246,7 +247,7 @@ fun NavGraphBuilder.navigationBuilder(
     ) {
         CachePlaylistScreen(navController, scrollBehavior)
     }
-    destinationComposable(
+    composable(
         route = "top_playlist/{top}",
         arguments =
         listOf(
@@ -257,7 +258,7 @@ fun NavGraphBuilder.navigationBuilder(
     ) {
         TopPlaylistScreen(navController, scrollBehavior)
     }
-    destinationComposable(
+    composable(
         route = "youtube_browse/{browseId}?params={params}",
         arguments =
         listOf(
@@ -273,71 +274,71 @@ fun NavGraphBuilder.navigationBuilder(
     ) {
         YouTubeBrowseScreen(navController)
     }
-    destinationComposable("settings") {
+    composable("settings") {
         VeluneSettingsScreen(navController)
     }
-    destinationComposable("settings/account") {
+    composable("settings/account") {
         VeluneAccountSettingsScreen(navController)
     }
-    destinationComposable("settings/appearance") {
+    composable("settings/appearance") {
         AppearanceSettings(navController, scrollBehavior)
     }
-    destinationComposable("settings/appearance/palette_picker") {
+    composable("settings/appearance/palette_picker") {
         PalettePickerScreen(navController)
     }
-    destinationComposable("settings/appearance/theme_creator") {
+    composable("settings/appearance/theme_creator") {
         ThemeCreatorScreen(navController)
     }
-    destinationComposable("settings/content") {
+    composable("settings/content") {
         ContentSettings(navController, scrollBehavior)
     }
-    destinationComposable("settings/player") {
+    composable("settings/player") {
         PlayerSettings(navController, scrollBehavior)
     }
-    destinationComposable("settings/video_playback") {
+    composable("settings/video_playback") {
         VideoPlaybackSettings(navController)
     }
-    destinationComposable("settings/storage") {
+    composable("settings/storage") {
         StorageSettings(navController, scrollBehavior)
     }
-    destinationComposable("settings/privacy") {
+    composable("settings/privacy") {
         PrivacySettings(navController, scrollBehavior)
     }
-    destinationComposable("settings/backup_restore") {
+    composable("settings/backup_restore") {
         BackupAndRestore(navController, scrollBehavior)
     }
-    destinationComposable("settings/discord") {
+    composable("settings/discord") {
         DiscordSettings(navController, scrollBehavior)
     }
-    destinationComposable("settings/integration") {
+    composable("settings/integration") {
         IntegrationScreen(navController, scrollBehavior)
     }
-    destinationComposable("settings/music_together") {
+    composable("settings/music_together") {
         MusicTogetherScreen(navController, scrollBehavior)
     }
-    destinationComposable("settings/lastfm") {
+    composable("settings/lastfm") {
         LastFMSettings(navController, scrollBehavior)
     }
-    destinationComposable("settings/discord/experimental") {
+    composable("settings/discord/experimental") {
         com.nikhil.yt.ui.screens.settings.DiscordExperimental(navController)
     }
-    destinationComposable("settings/misc") {
+    composable("settings/misc") {
         DebugSettings(navController)
     }
 
-    destinationComposable("settings/changelog") {
+    composable("settings/changelog") {
         ChangelogScreen(navController, scrollBehavior)
     }
-    destinationComposable("settings/discord/login") {
+    composable("settings/discord/login") {
         DiscordLoginScreen(navController)
     }
-    destinationComposable("settings/about") {
+    composable("settings/about") {
         AboutScreen(navController, scrollBehavior)
     }
-    destinationComposable("settings/po_token") {
+    composable("settings/po_token") {
         PoTokenScreen(navController, scrollBehavior)
     }
-    destinationComposable("login") {
+    composable("login") {
         LoginScreen(navController)
     }
 }

@@ -52,7 +52,6 @@ import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.navigation.NavController
 import androidx.navigation.compose.currentBackStackEntryAsState
 import com.nikhil.yt.LocalPlayerAwareWindowInsets
-import com.nikhil.yt.ui.utils.calmItemMotion
 import com.nikhil.yt.R
 import com.nikhil.yt.constants.ArtistFilter
 import com.nikhil.yt.constants.ArtistFilterKey
@@ -246,7 +245,7 @@ fun LibraryArtistsScreen(
                                 EmptyPlaceholder(
                                     icon = R.drawable.artist,
                                     text = stringResource(R.string.library_artist_empty),
-                                    modifier = Modifier.then(calmItemMotion())
+                                    modifier = Modifier.animateItem()
                                 )
                             }
                         }
@@ -260,7 +259,7 @@ fun LibraryArtistsScreen(
                                 navController = navController,
                                 menuState = menuState,
                                 coroutineScope = coroutineScope,
-                                modifier = Modifier.then(calmItemMotion()),
+                                modifier = Modifier.animateItem(),
                                 artist = artist
                             )
                         }
@@ -298,7 +297,7 @@ fun LibraryArtistsScreen(
                                 EmptyPlaceholder(
                                     icon = R.drawable.artist,
                                     text = stringResource(R.string.library_artist_empty),
-                                    modifier = Modifier.then(calmItemMotion())
+                                    modifier = Modifier.animateItem()
                                 )
                             }
                         }
@@ -312,7 +311,7 @@ fun LibraryArtistsScreen(
                                 navController = navController,
                                 menuState = menuState,
                                 coroutineScope = coroutineScope,
-                                modifier = Modifier.then(calmItemMotion()),
+                                modifier = Modifier.animateItem(),
                                 artist = artist
                             )
                         }
