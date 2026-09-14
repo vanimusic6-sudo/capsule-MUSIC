@@ -72,6 +72,8 @@ import coil3.request.ImageRequest
 import coil3.request.allowHardware
 import coil3.toBitmap
 import com.nikhil.yt.ui.theme.PlayerColorExtractor
+import com.nikhil.yt.ui.screens.LocalNavBackStackEntry
+import com.nikhil.yt.ui.utils.liveSavedStateHandle
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.navigation.NavController
 import androidx.navigation.compose.currentBackStackEntryAsState
@@ -278,9 +280,11 @@ fun LibraryPlaylistsScreen(
         if (!canEnterReorderMode) reorderEnabled = false
     }
 
-    val backStackEntry by navController.currentBackStackEntryAsState()
+    // This screen's own entry: it cannot be destroyed while this composition is alive,
+    // and observing it does not recompose the screen on unrelated navigation.
+    val backStackEntry = LocalNavBackStackEntry.current
     val scrollToTop =
-        backStackEntry?.savedStateHandle?.getStateFlow("scrollToTop", false)?.collectAsState()
+        backStackEntry?.liveSavedStateHandle()?.getStateFlow("scrollToTop", false)?.collectAsState()
 
     val (innerTubeCookie) = rememberPreference(InnerTubeCookieKey, "")
     val isLoggedIn = remember(innerTubeCookie) {
@@ -304,7 +308,7 @@ fun LibraryPlaylistsScreen(
                 LibraryViewType.LIST -> lazyListState.animateScrollToItem(0)
                 LibraryViewType.GRID -> lazyGridState.animateScrollToItem(0)
             }
-            backStackEntry?.savedStateHandle?.set("scrollToTop", false)
+            backStackEntry?.liveSavedStateHandle()?.set("scrollToTop", false)
         }
     }
 

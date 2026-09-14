@@ -78,16 +78,15 @@ private const val PlayerFoldWindow = 0.34f
 private const val PlayerFoldScale = 0.055f
 private const val PlayerFoldFade = 0.85f
 
-/**
- * The mini-player's arrival rock, played once when the player finishes its travel.
+/*
+ * The mini-player is deliberately never transformed.
  *
- * This is an impulse, not a reaction: it starts at full strength the moment the player lands and
- * decays to exactly zero. The previous version derived a transform from the sheet's progress, so
- * the mini-player moved throughout the close and trailed the player the whole way down — the lag
- * and the shimmer both came from that.
+ * It has now been tried three ways — a squash driven by closing velocity, a pull driven by the
+ * sheet's progress, and a rock impulse on arrival — and every one of them read as the mini-player
+ * twitching. The dock is the thing that stays put; the player is the thing that moves. Giving the
+ * fixed object its own motion is what made the pair look unsynchronised, because two independently
+ * animated surfaces can only ever agree by coincidence.
  */
-private const val MiniArrivalRockDegrees = 0.85f
-private const val MiniArrivalRockLiftPx = 6f
 
 /**
  * A single physical Capsule sheet.
@@ -130,21 +129,6 @@ fun BottomSheet(
                 !state.isExpanded
             }
         }
-
-    /*
-     * One shot when the player finishes docking. Under-damped on purpose: this is a rock, and it is
-     * safe to be springy precisely because it is an impulse with a fixed start rather than a
-     * reaction to a velocity that keeps changing sign.
-     */
-    val arrivalRock = remember { Animatable(0f) }
-    LaunchedEffect(state.isCollapsed) {
-        if (state.isCollapsed) {
-            arrivalRock.snapTo(1f)
-            arrivalRock.animateTo(0f, spring(dampingRatio = 0.34f, stiffness = 900f))
-        } else {
-            arrivalRock.snapTo(0f)
-        }
-    }
 
     Box(
         modifier =
@@ -190,17 +174,6 @@ fun BottomSheet(
                                 y = miniPinOffset.roundToPx(),
                             )
                         }
-                        .graphicsLayer {
-                            /*
-                             * Still for the whole close, then one rock as the player lands on it.
-                             * The impulse decays to exactly zero, so the mini-player holds its
-                             * resting shape the rest of the time.
-                             */
-                            val rock = arrivalRock.value
-                            rotationZ = MiniArrivalRockDegrees * rock
-                            translationY = MiniArrivalRockLiftPx * rock
-                            transformOrigin = TransformOrigin(0.5f, 1f)
-                        }
                         .clickable(
                             enabled = canReopen,
                             interactionSource = remember { MutableInteractionSource() },
@@ -238,6 +211,11 @@ fun BottomSheet(
                              * The player folds into the dock over the last of its travel: it scales
                              * down towards the mini-player and fades, so closing reads as the player
                              * going *into* it.
+                             *
+                             * This is the only thing that moves during a close. It reads the same
+                             * progress that positions the sheet, so the fold and the travel are one
+                             * motion by construction, and it reaches exactly identity at the moment
+                             * the sheet reaches the dock.
                              *
                              * There is deliberately no blur here. A full-screen RenderEffect forces
                              * an offscreen buffer for the entire player every frame, and allocating

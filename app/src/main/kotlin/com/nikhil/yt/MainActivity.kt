@@ -9,6 +9,7 @@
 package com.nikhil.yt
 
 import com.nikhil.yt.ui.component.StandardHeaderTitle
+import com.nikhil.yt.ui.utils.liveSavedStateHandle
 import com.nikhil.yt.ui.screens.ScreenTransitions
 import com.nikhil.yt.ui.screens.rememberMainTabNavigator
 import androidx.compose.ui.draw.clipToBounds
@@ -1121,7 +1122,7 @@ class MainActivity : ComponentActivity() {
 
                                                 mainTabNavigator.select(screen.route) {
                                                     if (!wasPlayerActive) {
-                                                        navController.currentBackStackEntry?.savedStateHandle?.set("scrollToTop", true)
+                                                        navController.currentBackStackEntry?.liveSavedStateHandle()?.set("scrollToTop", true)
                                                         coroutineScope.launch {
                                                             searchBarScrollBehavior.state.resetHeightOffset()
                                                         }
@@ -1472,7 +1473,7 @@ class MainActivity : ComponentActivity() {
                                                         onActiveChange(true)
                                                     } else {
                                                         mainTabNavigator.select(screen.route) {
-                                                            navController.currentBackStackEntry?.savedStateHandle?.set("scrollToTop", true)
+                                                            navController.currentBackStackEntry?.liveSavedStateHandle()?.set("scrollToTop", true)
                                                             coroutineScope.launch {
                                                                 searchBarScrollBehavior.state.resetHeightOffset()
                                                             }

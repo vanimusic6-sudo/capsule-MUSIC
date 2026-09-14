@@ -9,6 +9,7 @@
 package com.nikhil.yt.ui.screens
 
 import com.nikhil.yt.ui.component.StandardHomeChips
+import com.nikhil.yt.ui.utils.liveSavedStateHandle
 import com.nikhil.yt.ui.component.StandardChrome
 import com.nikhil.yt.ui.theme.CapsuleBottomBarEnabledKey
 import androidx.compose.foundation.background
@@ -128,14 +129,16 @@ fun HomeScreen(
 
     val scope = rememberCoroutineScope()
     val lazylistState = rememberLazyListState()
-    val backStackEntry by navController.currentBackStackEntryAsState()
+    // This screen's own entry: it cannot be destroyed while this composition is alive,
+    // and observing it does not recompose the screen on unrelated navigation.
+    val backStackEntry = LocalNavBackStackEntry.current
     val scrollToTop =
-        backStackEntry?.savedStateHandle?.getStateFlow("scrollToTop", false)?.collectAsState()
+        backStackEntry?.liveSavedStateHandle()?.getStateFlow("scrollToTop", false)?.collectAsState()
 
     LaunchedEffect(scrollToTop?.value) {
         if (scrollToTop?.value == true) {
             lazylistState.animateScrollToItem(0)
-            backStackEntry?.savedStateHandle?.set("scrollToTop", false)
+            backStackEntry?.liveSavedStateHandle()?.set("scrollToTop", false)
         }
     }
 

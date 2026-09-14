@@ -50,6 +50,8 @@ import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.navigation.NavController
 import androidx.navigation.compose.currentBackStackEntryAsState
 import com.nikhil.yt.LocalDatabase
+import com.nikhil.yt.ui.screens.LocalNavBackStackEntry
+import com.nikhil.yt.ui.utils.liveSavedStateHandle
 import com.nikhil.yt.LocalPlayerAwareWindowInsets
 import com.nikhil.yt.LocalPlayerConnection
 import com.nikhil.yt.R
@@ -338,9 +340,11 @@ fun LibraryMixScreen(
             }
         }
 
-    val backStackEntry by navController.currentBackStackEntryAsState()
+    // This screen's own entry: it cannot be destroyed while this composition is alive,
+    // and observing it does not recompose the screen on unrelated navigation.
+    val backStackEntry = LocalNavBackStackEntry.current
     val scrollToTop =
-        backStackEntry?.savedStateHandle?.getStateFlow("scrollToTop", false)?.collectAsState()
+        backStackEntry?.liveSavedStateHandle()?.getStateFlow("scrollToTop", false)?.collectAsState()
 
     LaunchedEffect(scrollToTop?.value) {
         if (scrollToTop?.value == true) {
@@ -348,7 +352,7 @@ fun LibraryMixScreen(
                 LibraryViewType.LIST -> lazyListState.animateScrollToItem(0)
                 LibraryViewType.GRID -> lazyGridState.animateScrollToItem(0)
             }
-            backStackEntry?.savedStateHandle?.set("scrollToTop", false)
+            backStackEntry?.liveSavedStateHandle()?.set("scrollToTop", false)
         }
     }
 
