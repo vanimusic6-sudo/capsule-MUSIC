@@ -34,6 +34,15 @@ internal enum class DestinationMotion {
 
     /** Going into something. Settles out of a slightly oversized state rather than snapping in. */
     Detail,
+
+    /**
+     * Moving between pages of one structure.
+     *
+     * Settings is a tree, not a series of places you open, so it moves sideways: the new page comes
+     * in from the edge you are heading towards. Scaling suited it badly — it made each page look
+     * like something being presented rather than the next step along a path.
+     */
+    Settings,
 }
 
 internal data class DestinationMotionSpec(
@@ -41,14 +50,20 @@ internal data class DestinationMotionSpec(
     val easing: Easing,
     /** Distance the content rises through. Zero for motion that resolves by scale instead. */
     val lift: Dp,
+    /** Distance the content travels in from the trailing edge. Zero for motion that does not. */
+    val shift: Dp = 0.dp,
     /** Size the content resolves down from. 0f keeps it at its true size throughout. */
     val overscale: Float,
     /**
      * Opacity the content starts at.
      *
-     * Deliberately well clear of zero. A screen part-way through its entrance is still a screen the
-     * user may be reading, and if this animation ever failed to finish, a low floor would leave a
-     * destination looking blank rather than merely soft.
+     * Kept high, and for a reason that is easy to get wrong. Route transitions are None, so the
+     * screen being left disappears at once; if the arriving screen started faint, those first
+     * frames would show neither screen properly and the change would land as a flash of bare
+     * canvas. That flash is what reads as a flicker, and as harshness. The character has to come
+     * from the movement, not from fading up out of nothing.
+     *
+     * It also means a stalled animation would leave a readable screen rather than a blank one.
      */
     val fromAlpha: Float,
 )
@@ -67,7 +82,7 @@ private val TabSpec =
         easing = CubicBezierEasing(0.25f, 0.1f, 0.08f, 1f),
         lift = 14.dp,
         overscale = 0f,
-        fromAlpha = 0.55f,
+        fromAlpha = 0.82f,
     )
 
 private val DetailSpec =
@@ -75,8 +90,18 @@ private val DetailSpec =
         durationMillis = 400,
         easing = CubicBezierEasing(0.3f, 0.06f, 0.05f, 1f),
         lift = 0.dp,
-        overscale = 0.032f,
-        fromAlpha = 0.4f,
+        overscale = 0.028f,
+        fromAlpha = 0.86f,
+    )
+
+private val SettingsSpec =
+    DestinationMotionSpec(
+        durationMillis = 340,
+        easing = CubicBezierEasing(0.3f, 0.06f, 0.05f, 1f),
+        lift = 0.dp,
+        shift = 30.dp,
+        overscale = 0f,
+        fromAlpha = 0.86f,
     )
 
 /**
@@ -89,16 +114,18 @@ private val DetailSpec =
  * nothing beyond the layer that already exists.
  */
 internal fun destinationMotionFor(route: String?): DestinationMotion =
-    if (route != null && Screens.MainScreens.any { it.route == route }) {
-        DestinationMotion.Tab
-    } else {
-        DestinationMotion.Detail
+    when {
+        route == null -> DestinationMotion.Detail
+        Screens.MainScreens.any { it.route == route } -> DestinationMotion.Tab
+        route.startsWith("settings") -> DestinationMotion.Settings
+        else -> DestinationMotion.Detail
     }
 
 internal fun DestinationMotion.spec(): DestinationMotionSpec =
     when (this) {
         DestinationMotion.Tab -> TabSpec
         DestinationMotion.Detail -> DetailSpec
+        DestinationMotion.Settings -> SettingsSpec
     }
 
 /**
@@ -117,7 +144,9 @@ internal fun Modifier.destinationEntrance(motion: DestinationMotion): Modifier {
         progress.animateTo(1f, tween(spec.durationMillis, easing = spec.easing))
     }
 
-    val liftPx = with(LocalDensity.current) { spec.lift.toPx() }
+    val density = LocalDensity.current
+    val liftPx = with(density) { spec.lift.toPx() }
+    val shiftPx = with(density) { spec.shift.toPx() }
 
     return graphicsLayer {
         // The tween has already applied the easing; clamping here guards only against a value
@@ -126,6 +155,7 @@ internal fun Modifier.destinationEntrance(motion: DestinationMotion): Modifier {
         val remaining = 1f - settled
 
         alpha = spec.fromAlpha + (1f - spec.fromAlpha) * settled
+        translationX = remaining * shiftPx
         translationY = remaining * liftPx
         if (spec.overscale != 0f) {
             scaleX = 1f + spec.overscale * remaining

@@ -2,7 +2,9 @@ package com.nikhil.yt.ui
 
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
+import com.nikhil.yt.ui.screens.DestinationMotion
 import com.nikhil.yt.ui.screens.ScreenTransitions
+import com.nikhil.yt.ui.screens.destinationMotionFor
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
@@ -75,6 +77,19 @@ class ScreenTransitionsTest {
         assertEquals(
             ExitTransition.None,
             ScreenTransitions.exit("settings", "settings/appearance"),
+        )
+    }
+
+    @Test fun `the settings exit and entrance move along the same axis`() {
+        // The page being left steps towards the leading edge while the arriving page comes in from
+        // the trailing edge; together they read as one path rather than a replacement.
+        assertNotEquals(
+            ExitTransition.None,
+            ScreenTransitions.exit("settings/appearance", "settings", isPop = true),
+        )
+        assertEquals(
+            DestinationMotion.Settings,
+            destinationMotionFor("settings/appearance"),
         )
     }
 

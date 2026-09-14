@@ -86,11 +86,9 @@ internal const val ANCHOR_EPSILON_DP = 0.05f
 internal fun isAtSheetAnchor(value: Dp, anchor: Dp): Boolean =
     (value - anchor).value.absoluteValue <= ANCHOR_EPSILON_DP
 
-private const val PlayerFoldWindow = 0.58f
+private const val PlayerFoldWindow = 0.76f
 private const val PlayerFoldScale = 0.05f
 
-/** How much smaller the dock sits while the player covers it, so it grows as the player folds in. */
-private const val MiniHandoverScale = 0.03f
 
 /*
  * The dock and the player hand over to each other; they do not animate independently.
@@ -103,13 +101,17 @@ private const val MiniHandoverScale = 0.03f
  *
  * Now their opacities are complements of one value. The player hands its opacity to the dock as it
  * folds, so the pair always sums to a solid surface and the exchange has no seam. The window is
- * deliberately wide: a late handover reads as the dock dropping in at the last moment, so it starts
- * while the player is still well clear of the dock and resolves gradually. The dock's only
- * other motion is growing the last few percent into place, which is what reads as the player being
- * absorbed rather than merely disappearing over it.
+ * deliberately wide: a late handover reads as the dock dropping in at the last moment, so it begins
+ * while the player is still well clear of the dock and resolves over most of the travel.
  *
- * Both are monotonic functions of the sheet's own progress, so neither can overshoot, reverse, or
- * lag the other, and both are exactly identity at the dock.
+ * The dock is given opacity and nothing else. Every geometric treatment tried on it — a velocity
+ * squash, a pull, an arrival rock, and finally growing a few percent into place — read as trembling,
+ * and the last one explains the rest: transforming a layer full of text and artwork re-rasterises it
+ * every frame, and that sub-pixel shimmer looks like shaking however smooth the underlying motion
+ * is. A cross-fade cannot shimmer.
+ *
+ * Both sides are monotonic in the sheet's own progress, so neither can overshoot, reverse, or lag
+ * the other, and both are exactly identity at the dock.
  */
 
 /**
@@ -199,18 +201,21 @@ fun BottomSheet(
                             )
                         }
                         .graphicsLayer {
-                            // The complement of the player's fold: the dock takes on exactly the
-                            // opacity the player gives up, and finishes growing into place as the
-                            // player lands on it.
                             val fold =
                                 CapsuleMotion.approach(
                                     progress = state.progress,
                                     window = PlayerFoldWindow,
                                 )
 
+                            // Opacity only. The complement of the player's fold, so the dock takes
+                            // on exactly what the player gives up.
+                            //
+                            // It used to grow the last few percent into place as well, and that is
+                            // what read as trembling: scaling a layer full of text and artwork
+                            // re-rasterises it every frame, and the sub-pixel shimmer that produces
+                            // looks like the dock shaking even though it is moving perfectly
+                            // smoothly. A pure cross-fade cannot shimmer.
                             alpha = (1f - fold).coerceIn(0f, 1f)
-                            scaleX = 1f - MiniHandoverScale * fold
-                            scaleY = 1f - MiniHandoverScale * fold
                         }
                         .clickable(
                             enabled = canReopen,

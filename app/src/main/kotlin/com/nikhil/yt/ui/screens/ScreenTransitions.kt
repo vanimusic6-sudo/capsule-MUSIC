@@ -5,7 +5,7 @@ import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeOut
-import androidx.compose.animation.scaleOut
+import androidx.compose.animation.slideOutHorizontally
 
 /**
  * Route changes are instant, and that is a stability decision as much as a visual one.
@@ -52,11 +52,15 @@ object ScreenTransitions {
     fun exit(from: String?, to: String?, isPop: Boolean = false): ExitTransition {
         if (!isLeavingSettings(from, to)) return ExitTransition.None
 
-        // The arriving screen plays its own entrance from inside the destination, so this only has
-        // to get the settings page out of the way — a fade and a slight recede, which together read
-        // as the page stepping back rather than being cut.
+        // The arriving page comes in from the trailing edge, so this one leaves towards the
+        // leading edge: the pair reads as moving along a path rather than one page being replaced
+        // by another. Scaling was tried here and suited it badly — it made each page look like
+        // something being presented instead of the next step in a tree.
         val spec = tween<Float>(SettingsExitMillis, easing = Leaving)
-        return fadeOut(spec) + scaleOut(spec, targetScale = SettingsExitScale)
+        return fadeOut(spec) +
+            slideOutHorizontally(
+                animationSpec = tween(SettingsExitMillis, easing = Leaving),
+            ) { width -> -(width * SettingsExitShift).toInt().coerceAtLeast(0) }
     }
 
     /**
@@ -70,6 +74,6 @@ object ScreenTransitions {
         return leaving && (arrivingElsewhere || from.length > (to?.length ?: 0))
     }
 
-    /** A recede, not a shrink: just enough to separate the leaving page from the one behind it. */
-    private const val SettingsExitScale = 0.97f
+    /** A step, not a push: just enough to show which way the page went. */
+    private const val SettingsExitShift = 0.06f
 }

@@ -68,14 +68,45 @@ class DestinationEntranceTest {
     }
 
     @Test fun anythingTheUserOpenedUsesTheDetailCharacter() {
-        listOf("artist/abc", "album/xyz", "settings", "settings/appearance", "search/q", null)
+        listOf("artist/abc", "album/xyz", "search/q", null).forEach { route ->
+            assertEquals(
+                "$route should settle like an opened screen",
+                DestinationMotion.Detail,
+                destinationMotionFor(route),
+            )
+        }
+    }
+
+    @Test fun settingsPagesMoveSidewaysBecauseTheyAreOneStructure() {
+        listOf("settings", "settings/appearance", "settings/appearance/palette_picker")
             .forEach { route ->
                 assertEquals(
-                    "$route should settle like an opened screen",
-                    DestinationMotion.Detail,
+                    "$route should step along a path, not be presented",
+                    DestinationMotion.Settings,
                     destinationMotionFor(route),
                 )
             }
+
+        val settings = DestinationMotion.Settings.spec()
+        assertTrue("settings should travel sideways", settings.shift.value > 0f)
+        assertEquals("settings should not scale", 0f, settings.overscale, 0f)
+    }
+
+    /**
+     * Route transitions are None, so the screen being left disappears at once. An arriving screen
+     * that started faint would leave those first frames showing neither screen properly — a flash
+     * of bare canvas, which is what reads as a flicker and as harshness. Character has to come from
+     * movement, not from fading up out of nothing.
+     */
+    @Test fun noEntranceStartsFaintEnoughToFlashTheBareCanvas() {
+        DestinationMotion.entries.forEach { motion ->
+            val spec = motion.spec()
+            assertTrue(
+                "$motion starts at ${spec.fromAlpha}, which would dip to the canvas",
+                spec.fromAlpha >= 0.8f,
+            )
+            assertTrue("$motion starts opaque", spec.fromAlpha < 1f)
+        }
     }
 
     @Test fun bothCharactersStayShortEnoughToFeelImmediate() {
@@ -88,10 +119,9 @@ class DestinationEntranceTest {
             )
             // A screen mid-entrance is still a screen someone may be reading, and a stalled
             // animation must never leave a destination looking blank.
-            assertTrue("$motion starts too faint at ${spec.fromAlpha}", spec.fromAlpha >= 0.35f)
-            assertTrue("$motion starts opaque", spec.fromAlpha < 1f)
             // Restraint is part of the brief: this is character, not a page transition.
             assertTrue("$motion travels too far", spec.lift.value <= 18f)
+            assertTrue("$motion slides too far", spec.shift.value <= 40f)
             assertTrue("$motion scales too much", spec.overscale <= 0.06f)
         }
     }
