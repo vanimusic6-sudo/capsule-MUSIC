@@ -109,6 +109,20 @@ class DestinationEntranceTest {
         }
     }
 
+    /**
+     * A decelerate that dumps almost all its travel into the first moments finishes somewhere the
+     * eye cannot follow, so the screen looks like it jumps into place and stops dead. Keeping real
+     * distance for the last third of the duration is what makes the end read as an arrival.
+     */
+    @Test fun theTabEntranceIsStillVisiblyMovingNearTheEnd() {
+        val tab = DestinationMotion.Tab.spec()
+        val remaining = 1f - tab.easing.transform(2f / 3f)
+        assertTrue(
+            "only ${remaining * 100}% of the travel is left for the final third",
+            remaining >= 0.08f,
+        )
+    }
+
     @Test fun bothCharactersStayShortEnoughToFeelImmediate() {
         DestinationMotion.entries.forEach { motion ->
             val spec = motion.spec()

@@ -2,78 +2,41 @@ package com.nikhil.yt.ui.screens
 
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
-import androidx.compose.animation.core.CubicBezierEasing
-import androidx.compose.animation.core.tween
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideOutHorizontally
 
 /**
- * Route changes are instant, and that is a stability decision as much as a visual one.
+ * Route changes are instant. No destination is ever drawn on top of another one.
  *
- * A timed route transition keeps both destinations composed for its whole duration, and a delay in
- * front of the enter extends the whole `AnimatedContent` transition rather than just postponing the
- * incoming screen. The previous version held the outgoing destination alive for ~290ms on every
- * navigation, which cost three things at once:
+ * A timed route transition keeps both destinations composed for its whole duration, and that costs
+ * three things at once:
  *
- * - a hitch on each tab switch, because two full destinations were composed and drawn together;
- * - transitions that felt different per tab, because the cost depended on what each screen builds;
- * - a crash. Once an entry is destroyed, touching its ViewModels throws, and a destination that is
- *   still composed 290ms after it was popped will recompose inside that window. Rapid tab switching
+ * - a hitch on each tab switch, because two full destinations are composed and drawn together;
+ * - transitions that feel different per tab, because the cost depends on what each screen builds;
+ * - a crash. Once an entry is destroyed, touching its ViewModels throws, and a destination still
+ *   composed 290ms after it was popped will recompose inside that window. Rapid tab switching
  *   destroys entries while they are still on screen, and that is exactly the
  *   `IllegalStateException: You cannot access the NavBackStackEntry's ViewModels after the
  *   NavBackStackEntry is destroyed` seen on device.
  *
  * With no transition the outgoing destination is gone within a frame, so the window closes.
  *
- * Overlap is solved where it actually comes from: [CapsuleRouteSurface] gives every destination an
- * opaque canvas. Two screens showing through each other was never a timing problem — transparent
- * screens show through each other no matter how the timing is arranged.
+ * There used to be one exception: leaving a settings page faded and slid out, so that stepping back
+ * out of the tree read as movement rather than a page ceasing to exist. It is gone, and it is worth
+ * saying why, because the reasoning applies to any future exit. An exit transition is by definition
+ * two destinations on screen at once, and a *fading* exit is by definition the screen behind showing
+ * through the one leaving. However brief and however slight the opacity, that is one screen pasted
+ * over another, which is the single effect this app does not want anywhere.
  *
- * One exception earns its cost: leaving a settings page. Without an exit the page simply ceases to
- * exist under the screen behind it, which is the one place in the app where a change of screen reads
- * as wooden. Everything else still arrives with the entrance its own destination plays.
+ * The feel it was there for is kept, and kept honestly: leaving a settings page is now expressed by
+ * the page that *arrives*, which slides in from the leading edge — the direction you came from —
+ * instead of the trailing edge it uses going deeper. One screen moves, one screen is on display, and
+ * the pair still reads as a step along a path. See [DestinationMotion.Settings].
  */
 object ScreenTransitions {
-    /**
-     * Long enough to be felt, short enough that the two destinations overlap only briefly.
-     *
-     * This is the one place a route change costs two composed screens, so it is spent where it is
-     * worth the most: leaving a settings page, which otherwise vanishes instantly under the screen
-     * behind it and reads as wooden. Ordinary navigation keeps costing one screen.
-     */
-    const val SettingsExitMillis = 260
-
-    private val Leaving = CubicBezierEasing(0.4f, 0f, 0.7f, 1f)
-
     @Suppress("UNUSED_PARAMETER")
     fun enter(from: String?, to: String?, isPop: Boolean = false): EnterTransition =
         EnterTransition.None
 
-    fun exit(from: String?, to: String?, isPop: Boolean = false): ExitTransition {
-        if (!isLeavingSettings(from, to)) return ExitTransition.None
-
-        // The arriving page comes in from the trailing edge, so this one leaves towards the
-        // leading edge: the pair reads as moving along a path rather than one page being replaced
-        // by another. Scaling was tried here and suited it badly — it made each page look like
-        // something being presented instead of the next step in a tree.
-        val spec = tween<Float>(SettingsExitMillis, easing = Leaving)
-        return fadeOut(spec) +
-            slideOutHorizontally(
-                animationSpec = tween(SettingsExitMillis, easing = Leaving),
-            ) { width -> -(width * SettingsExitShift).toInt().coerceAtLeast(0) }
-    }
-
-    /**
-     * Leaving the settings tree, in either direction: stepping back out of a settings page, and
-     * closing settings altogether. Moving deeper into settings is an arrival, and the destination's
-     * own entrance already covers that.
-     */
-    private fun isLeavingSettings(from: String?, to: String?): Boolean {
-        val leaving = from?.startsWith("settings") == true
-        val arrivingElsewhere = to?.startsWith("settings") != true
-        return leaving && (arrivingElsewhere || from.length > (to?.length ?: 0))
-    }
-
-    /** A step, not a push: just enough to show which way the page went. */
-    private const val SettingsExitShift = 0.06f
+    @Suppress("UNUSED_PARAMETER")
+    fun exit(from: String?, to: String?, isPop: Boolean = false): ExitTransition =
+        ExitTransition.None
 }

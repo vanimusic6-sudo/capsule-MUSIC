@@ -41,6 +41,11 @@ internal enum class DestinationMotion {
      * Settings is a tree, not a series of places you open, so it moves sideways: the new page comes
      * in from the edge you are heading towards. Scaling suited it badly — it made each page look
      * like something being presented rather than the next step along a path.
+     *
+     * It is the one motion that is directional. Going deeper, the page arrives from the trailing
+     * edge; stepping back out, the page you return to arrives from the leading edge instead. That
+     * is what carries the sense of leaving a settings page, and it carries it without an exit
+     * transition — which would mean two screens on screen at once, one showing through the other.
      */
     Settings,
 }
@@ -69,18 +74,26 @@ internal data class DestinationMotionSpec(
 )
 
 /*
- * Both curves ease in a little before they decelerate.
+ * Every curve eases in a little before it decelerates.
  *
  * A pure decelerate leaves at full speed from a standing start, and that instant is what reads as
  * hard however short the animation is. Giving the first few percent somewhere to accelerate from
  * removes the edge without making anything feel slower to respond — the screen still commits
  * immediately, it just stops snapping.
+ *
+ * The tab curve also gets a long tail on purpose. A steep decelerate puts almost all of the travel
+ * into the first quarter of the duration, and what is left is too small and too brief to be seen
+ * finishing: the screen appears to jump into place and then stop, which reads as a flick at the end
+ * rather than an arrival. Pulling the second control point back out (0.35 instead of 0.08) spreads
+ * the travel far more evenly — a quarter of the distance is still to come at the halfway point, and
+ * a tenth of it at two thirds — so the screen is visibly still settling when it stops. That, plus
+ * the longer duration, is the difference between coming to rest and being cut off.
  */
 private val TabSpec =
     DestinationMotionSpec(
-        durationMillis = 300,
-        easing = CubicBezierEasing(0.25f, 0.1f, 0.08f, 1f),
-        lift = 14.dp,
+        durationMillis = 380,
+        easing = CubicBezierEasing(0.2f, 0.05f, 0.35f, 1f),
+        lift = 16.dp,
         overscale = 0f,
         fromAlpha = 0.82f,
     )
@@ -135,7 +148,10 @@ internal fun DestinationMotion.spec(): DestinationMotionSpec =
  * or its neighbours. The animation is a finite tween that completes and leaves nothing running.
  */
 @Composable
-internal fun Modifier.destinationEntrance(motion: DestinationMotion): Modifier {
+internal fun Modifier.destinationEntrance(
+    motion: DestinationMotion,
+    direction: RouteDirection = RouteDirection.Forward,
+): Modifier {
     if (!systemAnimationsEnabled()) return this
 
     val spec = motion.spec()
@@ -146,7 +162,7 @@ internal fun Modifier.destinationEntrance(motion: DestinationMotion): Modifier {
 
     val density = LocalDensity.current
     val liftPx = with(density) { spec.lift.toPx() }
-    val shiftPx = with(density) { spec.shift.toPx() }
+    val shiftPx = with(density) { spec.shift.toPx() * direction.sign }
 
     return graphicsLayer {
         // The tween has already applied the easing; clamping here guards only against a value
@@ -175,5 +191,57 @@ private fun systemAnimationsEnabled(): Boolean {
                 1f,
             )
         }.getOrDefault(1f) > 0f
+    }
+}
+
+/**
+ * Which way along a route tree a destination was reached.
+ *
+ * Only lateral motion uses it: the sign of the edge a page travels in from.
+ */
+internal enum class RouteDirection(val sign: Float) {
+    /** Deeper in, or somewhere new. The page arrives from the trailing edge. */
+    Forward(1f),
+
+    /** Back out towards the root. The page arrives from the leading edge it left by. */
+    Backward(-1f),
+}
+
+/**
+ * Backward when [to] is an ancestor of [from] in a slash-separated route tree.
+ *
+ * Deliberately narrow. It answers "did we step back out of a page that lives under this one", which
+ * is the only case with a direction to it; a sideways move between two pages at the same depth, or
+ * anything outside the tree, is an arrival and reads as Forward. The boundary check matters: without
+ * it "settings_backup" would count as being inside "settings".
+ */
+internal fun routeDirection(from: String?, to: String): RouteDirection =
+    if (from != null &&
+        from.length > to.length &&
+        from.startsWith(to) &&
+        from[to.length] == '/'
+    ) {
+        RouteDirection.Backward
+    } else {
+        RouteDirection.Forward
+    }
+
+/**
+ * Remembers which route was composed last, so the next one knows which way it was reached.
+ *
+ * NavHost composes one destination at a time here — route transitions are None, so the outgoing
+ * screen is gone within a frame — which makes "the route before this one" a well defined thing to
+ * record. Composition runs on the main thread, so no synchronisation is involved.
+ *
+ * A stale value cannot do damage: the worst outcome is a single settings page travelling in from
+ * the wrong edge once, after which the history is correct again.
+ */
+internal class RouteHistory {
+    private var previousRoute: String? = null
+
+    fun enter(route: String): RouteDirection {
+        val direction = routeDirection(previousRoute, route)
+        previousRoute = route
+        return direction
     }
 }

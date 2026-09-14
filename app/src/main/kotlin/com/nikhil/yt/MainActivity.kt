@@ -892,8 +892,11 @@ class MainActivity : ComponentActivity() {
                                 currentRoute == Screens.Library.route
 
                         if (wasOnNonTopLevelScreen && isReturningToHomeOrLibrary) {
-                            searchBarScrollBehavior.state.resetHeightOffset()
-                            topAppBarScrollBehavior.state.resetHeightOffset()
+                            // Snapped, not animated: this runs because the destination changed, and
+                            // an animated return would slide the bar down the screen on top of the
+                            // arriving destination's own entrance. See resetHeightOffset.
+                            searchBarScrollBehavior.state.resetHeightOffset(animated = false)
+                            topAppBarScrollBehavior.state.resetHeightOffset(animated = false)
                         }
 
                         previousRoute = currentRoute
@@ -924,8 +927,11 @@ class MainActivity : ComponentActivity() {
                         } else if (navigationItems.fastAny { it.route == navBackStackEntry?.destination?.route } || navBackStackEntry?.destination?.route in topLevelScreens) {
                             onQueryChange(TextFieldValue())
                             if (navBackStackEntry?.destination?.route != Screens.Home.route) {
-                                searchBarScrollBehavior.state.resetHeightOffset()
-                                topAppBarScrollBehavior.state.resetHeightOffset()
+                                // Snapped for the same reason: this is a change of destination, so
+                                // the bar belongs in place by the first frame rather than arriving
+                                // from above while the screen itself is rising into place.
+                                searchBarScrollBehavior.state.resetHeightOffset(animated = false)
+                                topAppBarScrollBehavior.state.resetHeightOffset(animated = false)
                             }
                         }
                     }

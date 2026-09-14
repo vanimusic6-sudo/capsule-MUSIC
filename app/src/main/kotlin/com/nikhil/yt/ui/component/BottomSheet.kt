@@ -86,8 +86,27 @@ internal const val ANCHOR_EPSILON_DP = 0.05f
 internal fun isAtSheetAnchor(value: Dp, anchor: Dp): Boolean =
     (value - anchor).value.absoluteValue <= ANCHOR_EPSILON_DP
 
-private const val PlayerFoldWindow = 0.76f
+internal const val PlayerFoldWindow = 0.76f
 private const val PlayerFoldScale = 0.05f
+
+/**
+ * How much of the close the dock takes to come up: all of it.
+ *
+ * The dock kept reading as late, and widening its window helped each time, so it is now as wide as
+ * it can be — it begins the instant the player leaves the top of its travel and is complete at the
+ * bottom. There is no earlier than this; the handover already spans the whole gesture.
+ *
+ * A window this wide is only usable because the curve is a smoothstep, which has zero slope at both
+ * ends. The dock therefore does not blink into existence at the start of the close — it is
+ * mathematically still invisible for the first frames and arrives without an edge — where a linear
+ * ramp this wide would put a visible seam at the very moment the player starts moving.
+ *
+ * The two layers still cover each other. The dock's window is wider than the player's, so
+ * `approach` is never smaller for the player than for the dock, which makes the two opacities sum to
+ * at least one at every point in the travel: there is no instant where the wallpaper can show
+ * between them.
+ */
+internal const val DockHandoverWindow = 1f
 
 
 /*
@@ -99,10 +118,11 @@ private const val PlayerFoldScale = 0.05f
  * faded to a low alpha while the dock stayed fully opaque underneath, so for most of the close the
  * two were simply stacked, and the dock only looked clean once the player had almost gone.
  *
- * Now their opacities are complements of one value. The player hands its opacity to the dock as it
- * folds, so the pair always sums to a solid surface and the exchange has no seam. The window is
- * deliberately wide: a late handover reads as the dock dropping in at the last moment, so it begins
- * while the player is still well clear of the dock and resolves over most of the travel.
+ * Now both opacities are read off the same progress, so the exchange has no seam and neither side
+ * can lag the other. They are not strict complements any more: the dock rises over the whole travel
+ * while the player holds on over the last three quarters of it, which keeps the pair opaque (see
+ * DockHandoverWindow) and means the dock is already coming up from the moment the player starts
+ * down, rather than dropping in near the end.
  *
  * The dock is given opacity and nothing else. Every geometric treatment tried on it — a velocity
  * squash, a pull, an arrival rock, and finally growing a few percent into place — read as trembling,
@@ -204,11 +224,12 @@ fun BottomSheet(
                             val fold =
                                 CapsuleMotion.approach(
                                     progress = state.progress,
-                                    window = PlayerFoldWindow,
+                                    window = DockHandoverWindow,
                                 )
 
-                            // Opacity only. The complement of the player's fold, so the dock takes
-                            // on exactly what the player gives up.
+                            // Opacity only, over the whole travel, so the dock is already on its way
+                            // in while the player is still near the top rather than appearing once
+                            // the player has nearly gone.
                             //
                             // It used to grow the last few percent into place as well, and that is
                             // what read as trembling: scaling a layer full of text and artwork

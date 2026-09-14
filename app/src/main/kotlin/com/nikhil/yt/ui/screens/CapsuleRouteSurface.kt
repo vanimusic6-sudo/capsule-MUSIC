@@ -37,14 +37,26 @@ internal fun NavGraphBuilder.routeComposable(
 ) = composable(route, arguments, deepLinks) { entry ->
     val contentScope = this
     val motion = remember(route) { destinationMotionFor(route) }
+    // Recorded once per composition of this destination, which is once per arrival: with route
+    // transitions at None a destination is disposed as soon as it is left, so a screen that comes
+    // back has genuinely been re-entered.
+    val direction = remember(entry) { NavigationHistory.enter(route) }
     CompositionLocalProvider(LocalNavBackStackEntry provides entry) {
         CapsuleRouteSurface {
-            Box(modifier = Modifier.destinationEntrance(motion)) {
+            Box(modifier = Modifier.destinationEntrance(motion, direction)) {
                 with(contentScope) { content(entry) }
             }
         }
     }
 }
+
+/**
+ * The single history shared by every destination in the graph.
+ *
+ * There is one NavHost in the app, and destinations are siblings with no composition between them to
+ * hold shared state, so this is where "the route before this one" can live.
+ */
+private val NavigationHistory = RouteHistory()
 
 /**
  * The entry that owns the destination currently being composed.
