@@ -72,3 +72,25 @@ val BottomSheetSoftCollapseAnimationSpec = spring<Dp>(
     dampingRatio = 0.89f,
     stiffness = 152f,
 )
+
+/*
+ * Destinations settle into place instead of arriving from somewhere.
+ *
+ * Route motion stays None on purpose — no screen ever slides over another — so this is the only
+ * entrance movement in the app: content lifts the last few dp and fades in the last of its opacity.
+ * Critically damped, so it never overshoots and never reads as a page transition. It runs once per
+ * destination entrance and then the animation coroutine completes; nothing keeps ticking.
+ */
+val DestinationEntranceSpec = spring<Float>(
+    dampingRatio = Spring.DampingRatioNoBouncy,
+    stiffness = 800f,
+)
+
+/** Travel of the entrance lift. Small enough to read as settling, not as sliding. */
+val DestinationEntranceOffset = 6.dp
+
+/**
+ * Entrance opacity floor. Starting from a high alpha rather than from zero keeps a tab switch from
+ * flashing an empty canvas, which matters because the outgoing destination disappears instantly.
+ */
+const val DestinationEntranceMinAlpha = 0.7f
