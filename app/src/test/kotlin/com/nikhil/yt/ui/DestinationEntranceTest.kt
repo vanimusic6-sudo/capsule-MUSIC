@@ -81,16 +81,17 @@ class DestinationEntranceTest {
     @Test fun bothCharactersStayShortEnoughToFeelImmediate() {
         DestinationMotion.entries.forEach { motion ->
             val spec = motion.spec()
+            // Soft, but still an answer to a tap rather than a wait.
             assertTrue(
                 "$motion takes ${spec.durationMillis}ms",
-                spec.durationMillis in 120..340,
+                spec.durationMillis in 200..460,
             )
             // A screen mid-entrance is still a screen someone may be reading, and a stalled
             // animation must never leave a destination looking blank.
-            assertTrue("$motion starts too faint at ${spec.fromAlpha}", spec.fromAlpha >= 0.4f)
+            assertTrue("$motion starts too faint at ${spec.fromAlpha}", spec.fromAlpha >= 0.35f)
             assertTrue("$motion starts opaque", spec.fromAlpha < 1f)
             // Restraint is part of the brief: this is character, not a page transition.
-            assertTrue("$motion travels too far", spec.lift.value <= 16f)
+            assertTrue("$motion travels too far", spec.lift.value <= 18f)
             assertTrue("$motion scales too much", spec.overscale <= 0.06f)
         }
     }

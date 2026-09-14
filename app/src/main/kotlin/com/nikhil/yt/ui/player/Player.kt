@@ -318,13 +318,18 @@ fun BottomSheetPlayer(
  * *open out*, easing down from slightly oversized to their true size while the text fades up. Two
  * surfaces that squashed the same way read as one animation played twice.
  */
-private const val LyricsOpenWindow = 0.55f
+private const val LyricsOpenWindow = 0.70f
 private const val LyricsOpenOverscale = 0.030f
 private const val LyricsOpenFade = 0.90f
-private const val LyricsTravelMillis = 330
+private const val LyricsTravelMillis = 420
 
-/** Decelerate only: it never speeds back up, so it cannot read as being pulled in at the end. */
-private val LyricsEasing = CubicBezierEasing(0.16f, 0.84f, 0.24f, 1f)
+/**
+ * Eases in a little, then decelerates the rest of the way.
+ *
+ * It still never speeds back up, so it cannot read as being pulled onto the edge at the end, but
+ * leaving from a standing start rather than at full speed takes the hard edge off the beginning.
+ */
+private val LyricsEasing = CubicBezierEasing(0.3f, 0.06f, 0.05f, 1f)
 
 @Composable
 private fun CapsulePlayerLyricsHost(

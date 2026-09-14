@@ -53,23 +53,30 @@ internal data class DestinationMotionSpec(
     val fromAlpha: Float,
 )
 
+/*
+ * Both curves ease in a little before they decelerate.
+ *
+ * A pure decelerate leaves at full speed from a standing start, and that instant is what reads as
+ * hard however short the animation is. Giving the first few percent somewhere to accelerate from
+ * removes the edge without making anything feel slower to respond — the screen still commits
+ * immediately, it just stops snapping.
+ */
 private val TabSpec =
     DestinationMotionSpec(
-        durationMillis = 200,
-        // Decelerate only: commits immediately, settles without ever speeding back up.
-        easing = CubicBezierEasing(0.05f, 0.7f, 0.1f, 1f),
-        lift = 12.dp,
+        durationMillis = 300,
+        easing = CubicBezierEasing(0.25f, 0.1f, 0.08f, 1f),
+        lift = 14.dp,
         overscale = 0f,
-        fromAlpha = 0.65f,
+        fromAlpha = 0.55f,
     )
 
 private val DetailSpec =
     DestinationMotionSpec(
-        durationMillis = 290,
-        easing = CubicBezierEasing(0.16f, 0.84f, 0.24f, 1f),
+        durationMillis = 400,
+        easing = CubicBezierEasing(0.3f, 0.06f, 0.05f, 1f),
         lift = 0.dp,
-        overscale = 0.035f,
-        fromAlpha = 0.45f,
+        overscale = 0.032f,
+        fromAlpha = 0.4f,
     )
 
 /**

@@ -57,6 +57,7 @@ import com.nikhil.yt.constants.BottomSheetSoftCollapseAnimationSpec
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.launch
+import kotlin.math.absoluteValue
 
 /**
  * Lets a mounted child keep its state while suspending purely decorative procedural clocks.
@@ -69,11 +70,27 @@ internal val LocalCapsuleBackgroundMotionEnabled = compositionLocalOf { true }
  * towards the dock and fades out, so the mini-player is what is left behind rather than something
  * that was underneath all along.
  */
-private const val PlayerFoldWindow = 0.34f
-private const val PlayerFoldScale = 0.055f
+/** Sub-pixel at every density: only a rest that is already invisible counts as being on an anchor. */
+internal const val ANCHOR_EPSILON_DP = 0.05f
+
+/**
+ * Whether a sheet resting at [value] should be treated as sitting on [anchor].
+ *
+ * Exact equality assumes a sheet only ever stops because an animation finished on its target. It
+ * also stops when a settle is interrupted — a drag caught mid-animation, bounds changing under it —
+ * and then rests a fraction of a dp away. That is invisible, but it used to leave `isCollapsed`
+ * false for good, and the player's BackHandler is armed on exactly that: the first Back press then
+ * ran collapseSoft() on an already-collapsed sheet, travelled those few hundredths of a dp, and was
+ * swallowed. Pressing Back twice to leave a screen is that bug.
+ */
+internal fun isAtSheetAnchor(value: Dp, anchor: Dp): Boolean =
+    (value - anchor).value.absoluteValue <= ANCHOR_EPSILON_DP
+
+private const val PlayerFoldWindow = 0.58f
+private const val PlayerFoldScale = 0.05f
 
 /** How much smaller the dock sits while the player covers it, so it grows as the player folds in. */
-private const val MiniHandoverScale = 0.035f
+private const val MiniHandoverScale = 0.03f
 
 /*
  * The dock and the player hand over to each other; they do not animate independently.
@@ -85,7 +102,9 @@ private const val MiniHandoverScale = 0.035f
  * two were simply stacked, and the dock only looked clean once the player had almost gone.
  *
  * Now their opacities are complements of one value. The player hands its opacity to the dock as it
- * folds, so the pair always sums to a solid surface and the exchange has no seam. The dock's only
+ * folds, so the pair always sums to a solid surface and the exchange has no seam. The window is
+ * deliberately wide: a late handover reads as the dock dropping in at the last moment, so it starts
+ * while the player is still well clear of the dock and resolves gradually. The dock's only
  * other motion is growing the last few percent into place, which is what reads as the player being
  * absorbed rather than merely disappearing over it.
  *
@@ -280,16 +299,17 @@ class BottomSheetState(
 
     val value by animatable.asState()
 
+    // Anchors are matched with a tolerance rather than by exact equality; see [isAtSheetAnchor].
     val isDismissed by derivedStateOf {
-        value == animatable.lowerBound!!
+        isAtSheetAnchor(value, animatable.lowerBound!!)
     }
 
     val isCollapsed by derivedStateOf {
-        value == collapsedBound
+        isAtSheetAnchor(value, collapsedBound)
     }
 
     val isExpanded by derivedStateOf {
-        value == animatable.upperBound
+        isAtSheetAnchor(value, animatable.upperBound!!)
     }
 
     /**
