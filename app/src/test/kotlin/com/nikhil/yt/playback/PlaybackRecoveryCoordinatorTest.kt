@@ -39,6 +39,54 @@ class PlaybackRecoveryCoordinatorTest {
         assertEquals(1_500L, coordinator.nextRetryDelayMs("track"))
     }
 
+    /**
+     * A rejected signed URL names one URL on one CDN node, so the first one buys the same client a
+     * different node; only the second implicates the client. These counts are what
+     * MusicService compares against SIGNED_URL_REJECTIONS_BEFORE_CLIENT_ROLLOVER.
+     */
+    @Test
+    fun signedUrlRejectionsAreCountedPerSong() {
+        val coordinator = coordinator()
+
+        assertEquals(1, coordinator.recordSignedUrlRejection("track"))
+        assertEquals(2, coordinator.recordSignedUrlRejection("track"))
+        assertEquals(3, coordinator.recordSignedUrlRejection("track"))
+
+        // Another song starts clean: one node rejecting one URL says nothing about the next song.
+        assertEquals(1, coordinator.recordSignedUrlRejection("other"))
+        assertEquals(4, coordinator.recordSignedUrlRejection("track"))
+    }
+
+    @Test
+    fun signedUrlRejectionsAreForgottenWhenTheSongRecovers() {
+        val coordinator = coordinator()
+
+        assertEquals(1, coordinator.recordSignedUrlRejection("track"))
+        assertEquals(2, coordinator.recordSignedUrlRejection("track"))
+
+        // Healthy playback and explicit user action both route through resetRetry, so a song that
+        // played fine must not carry its old rejections into a later failure.
+        coordinator.resetRetry("track")
+        assertEquals(1, coordinator.recordSignedUrlRejection("track"))
+
+        coordinator.recordSignedUrlRejection("other")
+        coordinator.clearRetryBudget()
+        assertEquals(1, coordinator.recordSignedUrlRejection("track"))
+        assertEquals(1, coordinator.recordSignedUrlRejection("other"))
+    }
+
+    @Test
+    fun signedUrlRejectionMemoryStaysBounded() {
+        val coordinator = coordinator()
+
+        // A long queue must not turn this into an unbounded map.
+        repeat(400) { coordinator.recordSignedUrlRejection("track-$it") }
+
+        // The oldest entries are evicted, so they simply start over rather than leaking.
+        assertEquals(1, coordinator.recordSignedUrlRejection("track-0"))
+        assertEquals(2, coordinator.recordSignedUrlRejection("track-399"))
+    }
+
     @Test
     fun duplicateTerminalCallbackNeverSkipsTwice() {
         val coordinator = coordinator()

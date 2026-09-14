@@ -269,6 +269,14 @@ internal const val NORMALIZATION_TARGET_LUFS = -14.0
 internal const val MIN_NORMALIZATION_GAIN_DB = -12.0
 internal const val SIGNED_URL_CIPHER_REFRESH_THRESHOLD_MS = 3_000L
 internal const val SIGNED_URL_MAX_FRESH_RESOLVE_DELAY_MS = 3_000L
+
+/**
+ * A song's signed URL may be rejected once before its extraction client is blamed for it.
+ *
+ * One rejection means one bad URL on one CDN node. Two for the same song, each with a freshly
+ * resolved URL, is the point where the client becomes the likelier explanation.
+ */
+internal const val SIGNED_URL_REJECTIONS_BEFORE_CLIENT_ROLLOVER = 2
 internal const val AUDIO_PREFETCH_LEAD_TIME_MS = 45_000L
 internal const val AUDIO_PREFETCH_MIN_CURRENT_PROGRESS_MS = 3_000L
 internal const val AUDIO_PREFETCH_RECHECK_MS = 2_000L
@@ -307,6 +315,16 @@ internal fun shouldRefreshCipherConfigAfterSignedUrlRejection(
 ): Boolean =
     httpStatusCode in setOf(403, 410) &&
         budgetDelayMs >= SIGNED_URL_CIPHER_REFRESH_THRESHOLD_MS
+
+/**
+ * Whether this song's extraction client should be retired after its signed URL was rejected.
+ *
+ * False for the first rejection: it buys the same client a freshly resolved URL, which almost
+ * always means a different CDN node. True from the second onwards, where the client has now failed
+ * with two independently resolved URLs and is the likelier explanation.
+ */
+internal fun shouldRollOverClientAfterSignedUrlRejection(rejectionCount: Int): Boolean =
+    rejectionCount >= SIGNED_URL_REJECTIONS_BEFORE_CLIENT_ROLLOVER
 
 internal fun shouldRetryRejectedSignedUrl(
     httpStatusCode: Int?,
@@ -3487,18 +3505,38 @@ class MusicService :
                 handleTerminalPlaybackError()
                 return
             }
-            // A CDN 403/410 is attached to the stream generation and the
-            // extraction profile that produced it. Match Metrolist's recovery
-            // model: quarantine only that profile for this mediaId, then let the
-            // existing bounded foreground plan try the next maintained profile.
-            // Never rotate visitorData/account identity here, and never use this
-            // path for rate limits or bot-checks (handled above as hard stops).
+            // A CDN 403/410 names one signed URL on one CDN node. It is not, on its own, evidence
+            // against the extraction profile that produced it: a re-resolve almost always lands on
+            // a different node, and the URL cache is dropped just below, so the retry gets a fresh
+            // URL either way. Retiring the profile immediately — as this did — gave up a working
+            // client, typically the PoToken-carrying one, to fix something the new URL alone would
+            // usually have fixed, and left the song on a weaker fallback for the rest of playback.
+            //
+            // So the first rejection buys the same client another node. Only a second rejection for
+            // the same song implicates the client, and quarantines it for this mediaId so the
+            // bounded foreground plan moves to the next maintained profile.
+            //
+            // Never rotate visitorData/account identity here, and never use this path for rate
+            // limits or bot-checks (handled above as hard stops). Note that the skipped call is
+            // harmless for this status: its only side effect beyond the quarantine is
+            // markHttpStatusFailure, which acts on 429 alone.
             if (httpStatusCode in setOf(403, 410)) {
-                CapsuleAudioEngine.markStreamClientFailed(
-                    videoId = currentMediaId,
-                    clientKey = null,
-                    httpStatusCode = httpStatusCode,
-                )
+                val rejections =
+                    playbackRecoveryCoordinator.recordSignedUrlRejection(currentMediaId)
+                if (shouldRollOverClientAfterSignedUrlRejection(rejections)) {
+                    CapsuleAudioEngine.markStreamClientFailed(
+                        videoId = currentMediaId,
+                        clientKey = null,
+                        httpStatusCode = httpStatusCode,
+                    )
+                } else {
+                    Timber.tag("MusicService").i(
+                        "Signed URL rejected id=%s http=%d rejections=%d; retrying the same client for a different CDN node",
+                        currentMediaId,
+                        httpStatusCode,
+                        rejections,
+                    )
+                }
             } else {
                 CapsuleAudioEngine.clearTrackClientFailures(currentMediaId)
             }

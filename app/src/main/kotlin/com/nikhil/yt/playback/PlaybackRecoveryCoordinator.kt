@@ -44,6 +44,12 @@ internal class PlaybackRecoveryCoordinator(
 ) {
     private val retryBudget = PlaybackRetryBudget()
     private val noPlayableFreshResolveUsed = LinkedHashSet<String>()
+
+    /**
+     * How many times a signed URL has been rejected for a song, counted separately from the retry
+     * budget because the budget also counts failures that say nothing about the stream URL.
+     */
+    private val signedUrlRejections = LinkedHashMap<String, Int>()
     private val failureGuard = ConsecutiveTrackFailureGuard(maxConsecutiveTrackFailures)
 
     private var networkRecoveryJob: Job? = null
@@ -56,11 +62,31 @@ internal class PlaybackRecoveryCoordinator(
     fun resetRetry(mediaId: String) {
         retryBudget.reset(mediaId)
         noPlayableFreshResolveUsed.remove(mediaId)
+        signedUrlRejections.remove(mediaId)
     }
 
     fun clearRetryBudget() {
         retryBudget.clear()
         noPlayableFreshResolveUsed.clear()
+        signedUrlRejections.clear()
+    }
+
+    /**
+     * Records a 403/410 on this song's signed URL and returns how many there have now been.
+     *
+     * The count is what decides whether the extraction client is still trusted. A rejected signed
+     * URL names one URL on one CDN node; it is not evidence against the client that produced it,
+     * and a re-resolve almost always lands on a different node. Retiring the client on the first
+     * rejection therefore gave up a working profile — in practice a PoToken-carrying one — to fix
+     * something the new URL alone would usually have fixed.
+     */
+    fun recordSignedUrlRejection(mediaId: String): Int {
+        val count = (signedUrlRejections.remove(mediaId) ?: 0) + 1
+        signedUrlRejections[mediaId] = count
+        if (signedUrlRejections.size > SIGNED_URL_REJECTION_MEMORY) {
+            signedUrlRejections.remove(signedUrlRejections.keys.first())
+        }
+        return count
     }
 
     /** Exactly one clean playback resolve may follow a deterministic no-stream result. */
@@ -181,6 +207,11 @@ internal class PlaybackRecoveryCoordinator(
             return
         }
         scheduleHealthyReset(mediaId)
+    }
+
+    private companion object {
+        /** Bounded like the other per-song maps here; a queue is not a leak budget. */
+        const val SIGNED_URL_REJECTION_MEMORY = 128
     }
 
     private fun scheduleHealthyReset(mediaId: String) {

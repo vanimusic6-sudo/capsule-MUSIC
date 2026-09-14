@@ -4,6 +4,7 @@ import android.app.Application
 import androidx.activity.ComponentActivity
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.test.core.app.ApplicationProvider
@@ -38,6 +39,23 @@ class PreferenceInitialValueTest {
             context.dataStore.edit { it[ChipSortTypeKey] = LibraryFilter.PLAYLISTS.name }
         }
         PreferenceStore.start(context)
+        awaitSnapshot(ChipSortTypeKey, LibraryFilter.PLAYLISTS.name)
+    }
+
+    /**
+     * PreferenceStore.start() primes the snapshot once per process, so a key written after the
+     * first call reaches it through the background collector instead. This test is about what the
+     * Compose helpers read *from* a primed snapshot, so wait for the value to be in it rather than
+     * racing the collector — otherwise the test measures scheduling luck.
+     */
+    private fun awaitSnapshot(key: Preferences.Key<String>, expected: String) {
+        val deadlineMs = System.currentTimeMillis() + SNAPSHOT_TIMEOUT_MS
+        while (PreferenceStore.get(key) != expected) {
+            check(System.currentTimeMillis() < deadlineMs) {
+                "PreferenceStore snapshot never observed $key"
+            }
+            Thread.sleep(SNAPSHOT_POLL_MS)
+        }
     }
 
     @Test fun anEnumPreferenceIsCorrectOnTheVeryFirstComposition() {
@@ -62,6 +80,7 @@ class PreferenceInitialValueTest {
         val key = stringPreferencesKey("capsule.test.first.frame")
         runBlocking { context.dataStore.edit { it[key] = "stored" } }
         PreferenceStore.start(context)
+        awaitSnapshot(key, "stored")
 
         val seen = mutableListOf<String>()
         compose.setContent {
@@ -85,5 +104,10 @@ class PreferenceInitialValueTest {
 
         assertEquals("fallback", seen.first())
         assertEquals("fallback", seen.last())
+    }
+
+    private companion object {
+        const val SNAPSHOT_TIMEOUT_MS = 5_000L
+        const val SNAPSHOT_POLL_MS = 10L
     }
 }
