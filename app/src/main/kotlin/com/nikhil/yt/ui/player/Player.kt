@@ -9,8 +9,10 @@
 
 package com.nikhil.yt.ui.player
 
+import android.os.Build
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
@@ -29,6 +31,9 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.BlurEffect
+import androidx.compose.ui.graphics.TileMode
+import com.nikhil.yt.ui.motion.CapsuleMotion
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
@@ -308,6 +313,15 @@ fun BottomSheetPlayer(
     }
 }
 
+/** The closing stretch of the lyrics travel, where it settles and its speed blur resolves. */
+private const val LyricsSettleWindow = 0.38f
+private const val LyricsSettleX = 0.0016f
+private const val LyricsSettleY = 0.0034f
+private val LyricsBlurRadius = 6.dp
+
+/** RenderEffect needs API 31; below it the sheet simply moves without the blur. */
+private val supportsRenderEffect = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
+
 @Composable
 private fun CapsulePlayerLyricsHost(
     design: CapsulePlayerDesign,
@@ -345,12 +359,17 @@ private fun CapsulePlayerLyricsHost(
             lyricsLayerMounted = true
         }
 
+        /*
+         * Critically damped on purpose. The old under-damped spring overshot its target, and the
+         * layer below reacted to that overshoot and to the spring's velocity, so the lyrics sheet
+         * jittered as it landed. Nothing overshoots now, so nothing has to be compensated for.
+         */
         lyricsMotion.animateTo(
             targetValue = if (showLyrics) 1f else 0f,
             animationSpec =
                 spring(
-                    dampingRatio = if (showLyrics) 0.80f else 0.84f,
-                    stiffness = if (showLyrics) 160f else 190f,
+                    dampingRatio = Spring.DampingRatioNoBouncy,
+                    stiffness = if (showLyrics) 200f else 240f,
                 ),
         )
 
@@ -409,44 +428,37 @@ private fun CapsulePlayerLyricsHost(
                         Modifier
                             .fillMaxSize()
                             .graphicsLayer {
-                                val progress = lyricsMotion.value
-                                val visualProgress = progress.coerceIn(0f, 1f)
-                                val velocity = lyricsMotion.velocity
-                                val baseTranslation = (1f - visualProgress) * fullHeightPx
+                                /*
+                                 * Travel, settle and blur all read the same progress, so the lyrics
+                                 * sheet lands exactly once and holds still. The previous version
+                                 * added a velocity-derived lag to its translation and a squash
+                                 * driven by spring overshoot; both fought the travel they were
+                                 * layered on and produced the jitter at the end of the transition.
+                                 */
+                                val travelled = lyricsMotion.value.coerceIn(0f, 1f)
+                                translationY =
+                                    ((1f - travelled) * fullHeightPx).coerceAtLeast(0f)
 
-                                val rawLanding =
-                                    ((visualProgress - 0.62f) / 0.38f).coerceIn(0f, 1f)
-                                val landingWeight =
-                                    rawLanding * rawLanding * (3f - 2f * rawLanding)
-
-                                val rawOvershoot =
-                                    ((progress - 1f) / 0.048f).coerceIn(0f, 1f)
-                                val overshootWeight =
-                                    rawOvershoot * rawOvershoot * (3f - 2f * rawOvershoot)
-
-                                val incomingVelocityWeight =
-                                    (velocity.coerceAtLeast(0f) / 3.6f).coerceIn(0f, 1f)
-                                val rawImpact =
-                                    maxOf(
-                                        incomingVelocityWeight * landingWeight,
-                                        overshootWeight,
+                                val settle =
+                                    CapsuleMotion.pullAway(
+                                        progress = travelled,
+                                        window = LyricsSettleWindow,
                                     )
-                                val impact =
-                                    rawImpact * rawImpact * (3f - 2f * rawImpact)
-
-                                val incomingLag =
-                                    if (velocity > 0f) {
-                                        (velocity * 2.1f)
-                                            .coerceIn(0f, 6.5f) *
-                                            landingWeight
-                                    } else {
-                                        0f
-                                    }
-
-                                translationY = (baseTranslation + incomingLag).coerceAtLeast(0f)
-                                scaleX = 1f + 0.00195f * impact
-                                scaleY = 1f - 0.00425f * impact
+                                scaleX = 1f + LyricsSettleX * settle
+                                scaleY = 1f - LyricsSettleY * settle
                                 transformOrigin = TransformOrigin(0.5f, 1f)
+
+                                val blurPx =
+                                    CapsuleMotion.speedBlurPx(
+                                        weight = settle,
+                                        maxRadiusPx = LyricsBlurRadius.toPx(),
+                                    )
+                                renderEffect =
+                                    if (blurPx > 0f && supportsRenderEffect) {
+                                        BlurEffect(blurPx, blurPx, TileMode.Decal)
+                                    } else {
+                                        null
+                                    }
                             },
                 ) {
                     LyricsScreen(

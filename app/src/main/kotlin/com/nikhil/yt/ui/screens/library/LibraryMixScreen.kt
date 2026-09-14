@@ -50,6 +50,7 @@ import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.navigation.NavController
 import androidx.navigation.compose.currentBackStackEntryAsState
 import com.nikhil.yt.LocalDatabase
+import com.nikhil.yt.ui.motion.calmItemMotion
 import com.nikhil.yt.LocalPlayerAwareWindowInsets
 import com.nikhil.yt.LocalPlayerConnection
 import com.nikhil.yt.R
@@ -450,7 +451,7 @@ fun LibraryMixScreen(
                                     .clickable {
                                         navController.navigate("auto_playlist/liked")
                                     }
-                                    .animateItem(),
+                                    .then(calmItemMotion()),
                             )
                         }
                     }
@@ -469,7 +470,7 @@ fun LibraryMixScreen(
                                     .clickable {
                                         navController.navigate("auto_playlist/downloaded")
                                     }
-                                    .animateItem(),
+                                    .then(calmItemMotion()),
                             )
                         }
                     }
@@ -488,7 +489,7 @@ fun LibraryMixScreen(
                                     .clickable {
                                         navController.navigate("top_playlist/$topSize")
                                     }
-                                    .animateItem(),
+                                    .then(calmItemMotion()),
                             )
                         }
                     }
@@ -507,7 +508,7 @@ fun LibraryMixScreen(
                                     .clickable {
                                         navController.navigate("cache_playlist/cached")
                                     }
-                                    .animateItem(),
+                                    .then(calmItemMotion()),
                             )
                         }
                     }
@@ -531,7 +532,7 @@ fun LibraryMixScreen(
                                         useNewDesign = useNewLibraryDesign,
                                         showDragHandle = true,
                                         dragHandleModifier = Modifier.draggableHandle(),
-                                        modifier = Modifier.animateItem(),
+                                        modifier = Modifier.then(calmItemMotion()),
                                     )
                                 }
                             }
@@ -547,7 +548,7 @@ fun LibraryMixScreen(
                                     coroutineScope = coroutineScope,
                                     playlist = item,
                                     useNewDesign = useNewLibraryDesign,
-                                    modifier = Modifier.animateItem(),
+                                    modifier = Modifier.then(calmItemMotion()),
                                 )
                             }
                         }
@@ -597,7 +598,7 @@ fun LibraryMixScreen(
                                                     }
                                                 },
                                             )
-                                            .animateItem(),
+                                            .then(calmItemMotion()),
                                     )
                                 }
 
@@ -642,7 +643,7 @@ fun LibraryMixScreen(
                                                     }
                                                 },
                                             )
-                                            .animateItem(),
+                                            .then(calmItemMotion()),
                                     )
                                 }
 
@@ -663,7 +664,7 @@ fun LibraryMixScreen(
                                         coroutineScope = coroutineScope,
                                         playlist = item,
                                         useNewDesign = useNewLibraryDesign,
-                                        modifier = Modifier.animateItem(),
+                                        modifier = Modifier.then(calmItemMotion()),
                                     )
                                 }
 
@@ -706,7 +707,7 @@ fun LibraryMixScreen(
                                                     }
                                                 },
                                             )
-                                            .animateItem(),
+                                            .then(calmItemMotion()),
                                     )
                                 }
 
@@ -751,7 +752,7 @@ fun LibraryMixScreen(
                                                     }
                                                 },
                                             )
-                                            .animateItem(),
+                                            .then(calmItemMotion()),
                                     )
                                 }
 
@@ -803,7 +804,7 @@ fun LibraryMixScreen(
                                             navController.navigate("auto_playlist/liked")
                                         },
                                     )
-                                    .animateItem(),
+                                    .then(calmItemMotion()),
                             )
                         }
                     }
@@ -825,7 +826,7 @@ fun LibraryMixScreen(
                                             navController.navigate("auto_playlist/downloaded")
                                         },
                                     )
-                                    .animateItem(),
+                                    .then(calmItemMotion()),
                             )
                         }
                     }
@@ -847,7 +848,7 @@ fun LibraryMixScreen(
                                             navController.navigate("top_playlist/$topSize")
                                         },
                                     )
-                                    .animateItem(),
+                                    .then(calmItemMotion()),
                             )
                         }
                     }
@@ -869,7 +870,7 @@ fun LibraryMixScreen(
                                             navController.navigate("cache_playlist/cached")
                                         },
                                     )
-                                    .animateItem(),
+                                    .then(calmItemMotion()),
                             )
                         }
                     }
@@ -886,7 +887,7 @@ fun LibraryMixScreen(
                                     menuState = menuState,
                                     coroutineScope = coroutineScope,
                                     playlist = item,
-                                    modifier = Modifier.animateItem(),
+                                    modifier = Modifier.then(calmItemMotion()),
                                 )
                             }
 
@@ -912,7 +913,7 @@ fun LibraryMixScreen(
                                                 }
                                             },
                                         )
-                                        .animateItem(),
+                                        .then(calmItemMotion()),
                                 )
                             }
 
@@ -941,7 +942,7 @@ fun LibraryMixScreen(
                                                 }
                                             },
                                         )
-                                        .animateItem(),
+                                        .then(calmItemMotion()),
                                 )
                             }
 

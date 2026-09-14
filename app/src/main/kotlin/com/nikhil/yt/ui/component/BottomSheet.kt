@@ -11,6 +11,7 @@ import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.AnimationSpec
 import androidx.compose.animation.core.AnimationVector1D
 import androidx.compose.animation.core.VectorConverter
+import android.os.Build
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.DraggableState
@@ -37,6 +38,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.BlurEffect
+import androidx.compose.ui.graphics.TileMode
+import com.nikhil.yt.ui.motion.CapsuleMotion
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
@@ -62,6 +66,21 @@ import kotlinx.coroutines.launch
  * The mini-player uses this while it is completely covered by the expanded full player.
  */
 internal val LocalCapsuleBackgroundMotionEnabled = compositionLocalOf { true }
+
+/** How much of the sheet's travel the mini-player stays coupled to the player for. */
+private const val MiniDockCouplingWindow = 0.42f
+private const val MiniDockDrawX = 0.014f
+private const val MiniDockDrawY = 0.022f
+private const val MiniDockDrawLiftPx = 5.5f
+
+/** The closing stretch of the opening player's travel, where it settles and its blur resolves. */
+private const val PlayerSettleWindow = 0.40f
+private const val PlayerSettleX = 0.0016f
+private const val PlayerSettleY = 0.0036f
+private val PlayerOpenBlurRadius = 7.dp
+
+/** RenderEffect needs API 31; below it the surfaces simply move without the blur. */
+private val supportsRenderEffect = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
 
 /**
  * A single physical Capsule sheet.
@@ -150,26 +169,25 @@ fun BottomSheet(
                             )
                         }
                         .graphicsLayer {
-                            val rawProgress = state.rawProgress
-                            val motionProgress = state.progress.coerceIn(0f, 1f)
-                            val closingVelocity =
-                                (-state.animationVelocity.value).coerceAtLeast(0f)
-                            val closingVelocityWeight =
-                                (closingVelocity / 980f).coerceIn(0f, 1f)
-                            val closingDockWeight =
-                                ((0.40f - motionProgress) / 0.40f).coerceIn(0f, 1f)
-                            val collapseOvershootWeight =
-                                ((-rawProgress) / 0.060f).coerceIn(0f, 1f)
-                            val rawImpact =
-                                maxOf(
-                                    closingVelocityWeight * closingDockWeight,
-                                    collapseOvershootWeight,
+                            /*
+                             * The player draws the mini-player in as it docks.
+                             *
+                             * This is a pure function of the sheet's own progress, so it is the same
+                             * clock the player's travel runs on and the two move as one piece. The
+                             * previous version reacted to closing velocity and to spring overshoot
+                             * instead: both trail the motion they respond to and both change sign,
+                             * which is why the mini-player read as shaking while the player left.
+                             */
+                            val draw =
+                                CapsuleMotion.pullToward(
+                                    progress = state.progress,
+                                    window = MiniDockCouplingWindow,
                                 )
-                            val impact = rawImpact * rawImpact * (3f - 2f * rawImpact)
 
-                            scaleX = 1f + 0.0032f * impact
-                            scaleY = 1f - 0.0052f * impact
-                            transformOrigin = TransformOrigin(0.5f, 0.5f)
+                            scaleX = 1f - MiniDockDrawX * draw
+                            scaleY = 1f - MiniDockDrawY * draw
+                            translationY = MiniDockDrawLiftPx * draw
+                            transformOrigin = TransformOrigin(0.5f, 1f)
                         }
                         .clickable(
                             enabled = canReopen,
@@ -204,19 +222,34 @@ fun BottomSheet(
                             )
                         }
                         .graphicsLayer {
-                            val motionProgress = state.progress.coerceIn(0f, 1f)
-                            val openingVelocity =
-                                state.animationVelocity.value.coerceAtLeast(0f)
-                            val openingVelocityWeight =
-                                (openingVelocity / 1080f).coerceIn(0f, 1f)
-                            val openingDockWeight =
-                                ((motionProgress - 0.58f) / 0.42f).coerceIn(0f, 1f)
-                            val rawImpact = openingVelocityWeight * openingDockWeight
-                            val impact = rawImpact * rawImpact * (3f - 2f * rawImpact)
+                            /*
+                             * The opening player settles the last of its travel and carries a short
+                             * blur that reads as speed. Both are driven by progress, so they are
+                             * exactly zero once the player is open and exactly zero once it is
+                             * closed — a settled surface carries no transform and no RenderEffect,
+                             * and therefore costs nothing at rest.
+                             */
+                            val settle =
+                                CapsuleMotion.pullAway(
+                                    progress = state.progress,
+                                    window = PlayerSettleWindow,
+                                )
 
-                            scaleX = 1f - 0.00085f * impact
-                            scaleY = 1f + 0.0022f * impact
+                            scaleX = 1f - PlayerSettleX * settle
+                            scaleY = 1f + PlayerSettleY * settle
                             transformOrigin = TransformOrigin(0.5f, 1f)
+
+                            val blurPx =
+                                CapsuleMotion.speedBlurPx(
+                                    weight = settle,
+                                    maxRadiusPx = PlayerOpenBlurRadius.toPx(),
+                                )
+                            renderEffect =
+                                if (blurPx > 0f && supportsRenderEffect) {
+                                    BlurEffect(blurPx, blurPx, TileMode.Decal)
+                                } else {
+                                    null
+                                }
                         }
                         .background(backgroundColor),
                 content = content,

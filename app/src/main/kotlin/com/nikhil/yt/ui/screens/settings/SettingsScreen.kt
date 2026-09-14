@@ -17,6 +17,8 @@ import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
+import com.nikhil.yt.ui.motion.rememberSettingsEntrance
+import com.nikhil.yt.ui.motion.settingsEntranceItem
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
@@ -198,6 +200,9 @@ private fun filterIntegrations(
     return integrations.filter { it.label.contains(query, ignoreCase = true) }
 }
 
+/** Hero and account card take the first slots; the integrations row follows; categories come after. */
+private const val SettingsCategoryStaggerBase = 3
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(
@@ -269,11 +274,13 @@ fun SettingsScreen(
      * first frame; otherwise their old delayed fade/slide cascade runs on top of the route spring
      * and makes Settings look like several animations are fighting each other.
      */
-    val heroVisible = true
+    /*
+     * One entrance drives the whole cascade. The per-card flags this replaced were all `= true`
+     * constants, so the AnimatedVisibility transitions keyed to them started already visible and
+     * never actually ran.
+     */
+    val settingsEntrance = rememberSettingsEntrance()
     val bannerVisible = true
-    val quickActionsVisible = true
-    val integrationsVisible = true
-    val categoriesVisible = true
 
     val quickActions = listOf(
         SettingsQuickAction(
@@ -738,34 +745,16 @@ fun SettingsScreen(
                 }
 
                 item(key = "hero") {
-                    AnimatedVisibility(
-                        visible = heroVisible,
-                        enter = fadeIn(spring(stiffness = Spring.StiffnessLow)) +
-                                slideInVertically(
-                                    initialOffsetY = { it / 5 },
-                                    animationSpec = spring(
-                                        stiffness = Spring.StiffnessLow,
-                                        dampingRatio = 0.85f,
-                                    ),
-                                ),
-                    ) {
-                        SettingsHeroHeader(
-                            modifier = Modifier
-                                .padding(horizontal = 16.dp)
-                                .padding(top = 4.dp, bottom = 14.dp),
-                        )
-                    }
+                    SettingsHeroHeader(
+                        modifier = Modifier
+                            .settingsEntranceItem(settingsEntrance, 0)
+                            .padding(horizontal = 16.dp)
+                            .padding(top = 4.dp, bottom = 14.dp),
+                    )
                 }
 
                 item(key = "account") {
-                    AnimatedVisibility(
-                        visible = heroVisible,
-                        enter = fadeIn(spring(stiffness = Spring.StiffnessLow)) +
-                                slideInVertically(
-                                    initialOffsetY = { it / 5 },
-                                    animationSpec = spring(stiffness = Spring.StiffnessLow, dampingRatio = 0.85f),
-                                ),
-                    ) {
+                    run {
                         SettingsAccountCard(
                             isLoggedIn = isLoggedIn,
                             accountName = accountName ?: "Guest",
@@ -779,6 +768,7 @@ fun SettingsScreen(
                                 forgetAccount(context)
                             },
                             modifier = Modifier
+                                .settingsEntranceItem(settingsEntrance, 1)
                                 .padding(horizontal = 16.dp)
                                 .padding(bottom = 14.dp),
                         )
@@ -822,17 +812,7 @@ fun SettingsScreen(
 
                 if (queryText.isBlank() || filteredIntegrations.isNotEmpty()) {
                     item(key = "integrations") {
-                        AnimatedVisibility(
-                            visible = integrationsVisible,
-                            enter = fadeIn(spring(stiffness = Spring.StiffnessLow)) +
-                                    slideInVertically(
-                                        initialOffsetY = { it / 6 },
-                                        animationSpec = spring(
-                                            stiffness = Spring.StiffnessLow,
-                                            dampingRatio = 0.85f,
-                                        ),
-                                    ),
-                        ) {
+                        run {
                             val toShow = if (queryText.isBlank()) {
                                 wrappedIntegrations
                             } else {
@@ -841,6 +821,7 @@ fun SettingsScreen(
                             SettingsIntegrationsRow(
                                 integrations = toShow,
                                 modifier = Modifier
+                                    .settingsEntranceItem(settingsEntrance, 2)
                                     .padding(horizontal = 16.dp)
                                     .padding(bottom = 12.dp),
                             )
@@ -879,21 +860,13 @@ fun SettingsScreen(
                         key = { categoriesToShow[it].title },
                     ) { index ->
                         val category = categoriesToShow[index]
-                        AnimatedVisibility(
-                            visible = categoriesVisible,
-                            enter = fadeIn(tween(420, delayMillis = index * 60)) +
-                                    slideInVertically(
-                                        initialOffsetY = { it / 5 },
-                                        animationSpec = tween(420, delayMillis = index * 60),
-                                    ),
-                        ) {
-                            PremiumSettingsSection(
-                                category = category,
-                                modifier = Modifier
-                                    .padding(horizontal = 16.dp)
-                                    .padding(bottom = 12.dp),
-                            )
-                        }
+                        PremiumSettingsSection(
+                            category = category,
+                            modifier = Modifier
+                                .settingsEntranceItem(settingsEntrance, SettingsCategoryStaggerBase + index)
+                                .padding(horizontal = 16.dp)
+                                .padding(bottom = 12.dp),
+                        )
                     }
                 }
             }
