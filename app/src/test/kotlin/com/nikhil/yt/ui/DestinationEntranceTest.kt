@@ -21,7 +21,7 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import com.nikhil.yt.constants.DestinationEntranceMinAlpha
-import com.nikhil.yt.ui.screens.destinationEntrance
+import com.nikhil.yt.ui.screens.DestinationCanvas
 import com.nikhil.yt.ui.screens.destinationEntranceAlpha
 import com.nikhil.yt.ui.screens.destinationEntranceLift
 import com.nikhil.yt.ui.screens.rememberDestinationEntranceProgress
@@ -89,8 +89,8 @@ class DestinationEntranceTest {
             elapsed += 16L
         }
 
-        // Calm, but not slow: the brief rules out both a snap and a noticeable wait.
-        assertTrue("entrance took ${elapsed}ms", elapsed in 1L..260L)
+        // Pinned from both sides: a snap reads as harsh, a long settle reads as sluggish.
+        assertTrue("entrance took ${elapsed}ms", elapsed in 240L..380L)
     }
 
     @Test fun theEntranceDoesNotRemountOrResetTheScreenItAnimates() {
@@ -99,7 +99,7 @@ class DestinationEntranceTest {
         compose.mainClock.autoAdvance = false
         compose.setContent {
             MaterialTheme {
-                Box(Modifier.destinationEntrance(), propagateMinConstraints = true) {
+                DestinationCanvas {
                     // A remember block runs again only if this subtree is actually remounted.
                     remember { mounts++ }
                     var count by rememberSaveable { mutableIntStateOf(0) }
@@ -133,9 +133,7 @@ class DestinationEntranceTest {
     @Test fun theWrapperIsLayoutNeutralSoAFullSizeScreenStillFills() {
         compose.setContent {
             Box(Modifier.fillMaxSize().testTag("host")) {
-                Box(Modifier.destinationEntrance(), propagateMinConstraints = true) {
-                    Box(Modifier.fillMaxSize().testTag("screen"))
-                }
+                DestinationCanvas { Box(Modifier.fillMaxSize().testTag("screen")) }
             }
         }
         compose.waitForIdle()
@@ -147,20 +145,17 @@ class DestinationEntranceTest {
         assertEquals(host, screen)
     }
 
-    @Test fun entranceIsSkippedWhenTheSystemHasAnimationsTurnedOff() {
+    @Test fun theScreenIsStillShownWhenTheSystemHasAnimationsTurnedOff() {
         android.provider.Settings.Global.putFloat(
             compose.activity.contentResolver,
             android.provider.Settings.Global.ANIMATOR_DURATION_SCALE,
             0f,
         )
-        var modifier: Modifier? = null
         compose.setContent {
-            modifier = Modifier.destinationEntrance()
-            Box(Modifier.fillMaxSize().testTag("screen"))
+            MaterialTheme { DestinationCanvas { Box(Modifier.fillMaxSize().testTag("screen")) } }
         }
         compose.waitForIdle()
-        // No graphicsLayer is attached at all, so there is nothing to animate and nothing to clamp.
-        assertEquals(Modifier, modifier)
+        // The entrance is skipped entirely; the destination must simply be there.
         compose.onNodeWithTag("screen").assertIsDisplayed()
     }
 }
