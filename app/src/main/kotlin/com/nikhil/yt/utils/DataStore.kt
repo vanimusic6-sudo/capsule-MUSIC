@@ -162,6 +162,19 @@ inline fun <reified T : Enum<T>> enumPreference(
     defaultValue: T,
 ) = ReadOnlyProperty<Any?, T> { _, _ -> context.dataStore[key].toEnum(defaultValue) }
 
+/**
+ * A preference as Compose state, correct from the very first composition.
+ *
+ * The initial value comes from [PreferenceStore]'s in-memory snapshot rather than from
+ * [defaultValue]. DataStore's flow is asynchronous, so seeding with the default meant every screen
+ * whose shape depends on a setting rendered the *default* shape first and corrected itself a frame
+ * or more later. Opening the library with a saved filter showed the stock tab and then jumped to
+ * the real one; the same flash applied to anything else keyed off a preference.
+ *
+ * The snapshot is primed before the first screen is composed, so this is a real value, not a guess.
+ * [defaultValue] still applies when the key has never been written, and while the snapshot is
+ * somehow unavailable.
+ */
 @Composable
 fun <T> rememberPreference(
     key: Preferences.Key<T>,
@@ -169,12 +182,13 @@ fun <T> rememberPreference(
 ): MutableState<T> {
     val context = LocalContext.current
 
+    val initialValue = remember(key) { PreferenceStore.get(key) ?: defaultValue }
     val state =
         remember {
             context.dataStore.data
                 .map { it[key] ?: defaultValue }
                 .distinctUntilChanged()
-        }.collectAsState(defaultValue)
+        }.collectAsState(initialValue)
 
     return remember {
         object : MutableState<T> {
@@ -193,6 +207,7 @@ fun <T> rememberPreference(
     }
 }
 
+/** As [rememberPreference], seeded from the primed snapshot so no screen flashes its default. */
 @Composable
 inline fun <reified T : Enum<T>> rememberEnumPreference(
     key: Preferences.Key<String>,
@@ -200,12 +215,13 @@ inline fun <reified T : Enum<T>> rememberEnumPreference(
 ): MutableState<T> {
     val context = LocalContext.current
 
+    val initialValue = remember(key) { PreferenceStore.get(key).toEnum(defaultValue) }
     val state =
         remember {
             context.dataStore.data
                 .map { it[key].toEnum(defaultValue = defaultValue) }
                 .distinctUntilChanged()
-        }.collectAsState(defaultValue)
+        }.collectAsState(initialValue)
 
     return remember {
         object : MutableState<T> {
