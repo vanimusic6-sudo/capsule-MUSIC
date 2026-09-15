@@ -66,7 +66,6 @@ import com.nikhil.yt.R
 import com.nikhil.yt.extensions.togglePlayPause
 import com.nikhil.yt.models.MediaMetadata
 import com.nikhil.yt.ui.component.Lyrics
-import com.nikhil.yt.ui.component.LyricsV2
 import com.nikhil.yt.utils.makeTimeString
 import kotlinx.coroutines.isActive
 import kotlin.math.cos
@@ -98,7 +97,6 @@ fun CapsuleLyricsContent(
     sliderPosition: Long?,
     positionMs: Long,
     durationMs: Long,
-    useLyricsV2: Boolean,
     onClose: () -> Unit,
     onMenuClick: () -> Unit,
     onSeekPreview: (Long) -> Unit,
@@ -313,19 +311,11 @@ fun CapsuleLyricsContent(
                         bottom = 8.dp,
                     ),
         ) {
-            if (useLyricsV2) {
-                LyricsV2(
-                    sliderPositionProvider = {
-                        sliderPosition
-                    },
-                )
-            } else {
-                Lyrics(
-                    sliderPositionProvider = {
-                        sliderPosition
-                    },
-                )
-            }
+            Lyrics(
+                sliderPositionProvider = {
+                    sliderPosition
+                },
+            )
         }
 
         CapsuleThinSlider(

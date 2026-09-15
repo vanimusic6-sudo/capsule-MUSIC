@@ -5,7 +5,6 @@
  */
 
 
-
 package com.nikhil.yt.ui.utils
 
 fun String.resize(
@@ -26,4 +25,16 @@ fun String.resize(
         return "$this-s${width ?: height}"
     }
     return this
+}
+
+private val ArtistArtworkHost = Regex("^https://(?:lh[0-9]+\\.googleusercontent\\.com|yt3\\.(?:ggpht\\.com|googleusercontent\\.com))/")
+private val ArtistArtworkSizing = Regex("=(?:w[0-9]+|s[0-9]+)[^/]*$")
+
+/** Ask Google's image service for the complete portrait, without a square/face crop. */
+internal fun String.artistPortraitUrl(maxSize: Int = 1600): String {
+    require(maxSize > 0)
+    val supported = ArtistArtworkHost.containsMatchIn(this)
+    if (!supported || contains('?')) return this
+    val original = replace(ArtistArtworkSizing, "")
+    return "$original=s$maxSize"
 }

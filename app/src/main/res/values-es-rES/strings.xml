@@ -14,6 +14,7 @@
     <!-- Top bar -->
     <plurals name="n_selected">
         <item quantity="one">%d selected</item>
+        <item quantity="many">%d selected</item>
         <item quantity="other">%d selected</item>
     </plurals>
     <!-- Home -->
@@ -176,30 +177,37 @@
     <!-- Noun -->
     <plurals name="n_song">
         <item quantity="one">%d song</item>
+        <item quantity="many">%d songs</item>
         <item quantity="other">%d songs</item>
     </plurals>
     <plurals name="n_artist">
         <item quantity="one">%d artist</item>
+        <item quantity="many">%d artists</item>
         <item quantity="other">%d artists</item>
     </plurals>
     <plurals name="n_album">
         <item quantity="one">%d album</item>
+        <item quantity="many">%d albums</item>
         <item quantity="other">%d albums</item>
     </plurals>
     <plurals name="n_playlist">
         <item quantity="one">%d playlist</item>
+        <item quantity="many">%d playlists</item>
         <item quantity="other">%d playlists</item>
     </plurals>
     <plurals name="n_week">
         <item quantity="one">%d week</item>
+        <item quantity="many">%d weeks</item>
         <item quantity="other">%d weeks</item>
     </plurals>
     <plurals name="n_month">
         <item quantity="one">%d month</item>
+        <item quantity="many">%d months</item>
         <item quantity="other">%d months</item>
     </plurals>
     <plurals name="n_year">
         <item quantity="one">%d year</item>
+        <item quantity="many">%d years</item>
         <item quantity="other">%d years</item>
     </plurals>
     <!-- Snackbar -->
@@ -217,6 +225,7 @@
     <string name="end_of_song">End of song</string>
     <plurals name="minute">
         <item quantity="one">1 minute</item>
+        <item quantity="many">%d minutes</item>
         <item quantity="other">%d minutes</item>
     </plurals>
     <string name="error_no_stream">No stream available</string>
@@ -333,7 +342,6 @@
     <string name="palette_spring">Spring</string>
     <string name="palette_summer">Summer</string>
     <string name="palette_twilight">Twilight</string>
-    <string name="palette_aurora">Aurora</string>
     <string name="palette_candy">Candy</string>
     <string name="palette_rainbow">Rainbow</string>
     <!-- Additional Palettes -->
@@ -360,8 +368,6 @@
     <string name="ok_button">OK</string>
     <string name="custom_radius">Customize thumbnail corner radius</string>
     <string name="custom">Custom</string>
-    <string name="customized_background">Customized background</string>
-    <string name="customize_background_title">Customize background</string>
     <string name="add_image">Add image</string>
     <string name="blur">Blur</string>
     <string name="contrast">Contrast</string>

@@ -33,9 +33,10 @@ import com.nikhil.yt.extensions.tryOrNull
 import com.nikhil.yt.extensions.zipInputStream
 import com.nikhil.yt.extensions.zipOutputStream
 import com.nikhil.yt.playback.MusicService
-import com.nikhil.yt.playback.MusicService.Companion.PERSISTENT_QUEUE_FILE
+import com.nikhil.yt.playback.PERSISTENT_QUEUE_FILE
 import com.nikhil.yt.utils.dataStore
 import com.nikhil.yt.utils.reportException
+import com.nikhil.yt.utils.reportRecoverableException
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -361,7 +362,11 @@ class BackupRestoreViewModel @Inject constructor(
                     Toast.makeText(context, R.string.restore_success, Toast.LENGTH_SHORT).show()
                 }
 
-                try { context.filesDir.resolve(PERSISTENT_QUEUE_FILE).delete() } catch (_: Exception) {}
+                try {
+                    context.filesDir.resolve(PERSISTENT_QUEUE_FILE).delete()
+                } catch (error: Exception) {
+                    reportRecoverableException("BackupRestore", "delete stale persistent queue", error)
+                }
 
                 _backupRestoreProgress.value = null
                 context.startActivity(Intent(context, MainActivity::class.java))

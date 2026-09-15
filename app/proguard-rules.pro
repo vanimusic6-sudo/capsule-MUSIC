@@ -95,17 +95,28 @@
 -keep class com.atilika.kuromoji.** { *; }
 
 ## Queue Persistence Rules
-# Keep queue-related classes to prevent serialization issues in release builds
+# These Java-Serializable models are written to app-private files and must keep
+# stable binary identities across R8-obfuscated release upgrades.
 -keep class com.nikhil.yt.models.PersistQueue { *; }
 -keep class com.nikhil.yt.models.PersistPlayerState { *; }
+-keep class com.nikhil.yt.models.MediaMetadata { *; }
+-keep class com.nikhil.yt.models.MediaMetadata$Artist { *; }
+-keep class com.nikhil.yt.models.MediaMetadata$Album { *; }
 -keep class com.nikhil.yt.models.QueueData { *; }
+-keep class com.nikhil.yt.models.QueueData$* { *; }
 -keep class com.nikhil.yt.models.QueueType { *; }
+-keep class com.nikhil.yt.models.QueueType$* { *; }
 -keep class com.nikhil.yt.playback.queues.** { *; }
 
-# Keep serialization methods for queue persistence
+# Java serialization discovers these members reflectively. R8 must not strip
+# or rename the protocol members even when there is no direct bytecode call.
 -keepclassmembers class * implements java.io.Serializable {
+    static final long serialVersionUID;
+    private static final java.io.ObjectStreamField[] serialPersistentFields;
     private void writeObject(java.io.ObjectOutputStream);
     private void readObject(java.io.ObjectInputStream);
+    java.lang.Object writeReplace();
+    java.lang.Object readResolve();
 }
 
 ## Media3 Protection Rules

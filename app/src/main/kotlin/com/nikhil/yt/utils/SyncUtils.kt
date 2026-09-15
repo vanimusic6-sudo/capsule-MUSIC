@@ -20,6 +20,7 @@ import com.nikhil.yt.innertube.models.PlaylistItem
 import com.nikhil.yt.innertube.models.SongItem
 import com.nikhil.yt.innertube.utils.completed
 import com.nikhil.yt.innertube.utils.parseCookieString
+import com.nikhil.yt.db.ArtistSubscriptionState
 import com.nikhil.yt.db.MusicDatabase
 import com.nikhil.yt.db.entities.ArtistEntity
 import com.nikhil.yt.db.entities.PlaylistEntity
@@ -41,6 +42,7 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.async
 import kotlinx.coroutines.supervisorScope
@@ -64,6 +66,8 @@ class SyncUtils @Inject constructor(
     private val playlistSyncMutex = Mutex()
     private val dbWriteSemaphore = Semaphore(2)
     private val isSyncing = AtomicBoolean(false)
+    private val automaticSyncTimes = mutableMapOf<String, Long>()
+    private val automaticSyncLock = Any()
 
     init {
         syncScope.launch {
@@ -79,12 +83,11 @@ class SyncUtils @Inject constructor(
         }
     }
     
-    suspend fun performFullSync() = withContext(Dispatchers.IO) {
+    suspend fun performFullSync(automatic: Boolean = false) = withContext(Dispatchers.IO) {
         if (!isSyncing.compareAndSet(false, true)) {
             Timber.d("Sync already in progress, skipping")
             return@withContext
         }
-        
         try {
             syncMutex.withLock {
                 if (!isLoggedIn()) {
@@ -95,18 +98,15 @@ class SyncUtils @Inject constructor(
                     Timber.w("Skipping full sync - sync disabled")
                     return@withLock
                 }
-                
                 supervisorScope {
-                    syncLikedSongs()
-                    syncLibrarySongs()
-
+                    syncLikedSongs(automatic = automatic)
+                    syncLibrarySongs(automatic = automatic)
                     listOf(
-                        async { syncLikedAlbums() },
-                        async { syncArtistsSubscriptions() },
+                        async { syncLikedAlbums(automatic = automatic) },
+                        async { syncArtistsSubscriptions(automatic = automatic) },
                     ).awaitAll()
-                    
-                    syncSavedPlaylists()
-                    syncAutoSyncPlaylists()
+                    syncSavedPlaylists(automatic = automatic)
+                    syncAutoSyncPlaylists(automatic = automatic)
                 }
             }
         } catch (e: Exception) {
@@ -128,7 +128,6 @@ class SyncUtils @Inject constructor(
                     Timber.w("Found ${playlists.size} duplicate playlists for browseId: $browseId")
                     val toKeep = playlists.maxByOrNull { it.songCount }
                         ?: playlists.first()
-                    
                     playlists.filter { it.id != toKeep.id }.forEach { duplicate ->
                         Timber.d("Removing duplicate playlist: ${duplicate.playlist.name} (${duplicate.id})")
                         database.clearPlaylist(duplicate.id)
@@ -145,10 +144,31 @@ class SyncUtils @Inject constructor(
      * Check if user is properly logged in with a valid SAPISID cookie
      */
     private suspend fun isLoggedIn(): Boolean {
-        val cookie = context.dataStore.data
-            .map { it[InnerTubeCookieKey] }
-            .first()
-        return cookie?.let { "SAPISID" in parseCookieString(it) } ?: false
+        val cookie =
+            context.dataStore.data
+                .map { it[InnerTubeCookieKey] }
+                .first()
+                ?.trim()
+                .orEmpty()
+
+        if (cookie.isBlank() || "SAPISID" !in parseCookieString(cookie)) return false
+
+        if (YouTube.authState.cookie == cookie && YouTube.authState.hasLoginCookie) return true
+
+        val published =
+            withTimeoutOrNull(AUTH_PUBLICATION_TIMEOUT_MS) {
+                YouTube.authStates.first { state ->
+                    state.cookie == cookie && state.hasLoginCookie
+                }
+            } != null
+
+        if (!published) {
+            // DataStore already committed this exact cookie. This only heals a
+            // stalled application collector; it never invents or replaces auth.
+            YouTube.cookie = cookie
+        }
+
+        return YouTube.authState.cookie == cookie && YouTube.authState.hasLoginCookie
     }
 
     private suspend fun isYtmSyncEnabled(): Boolean {
@@ -167,6 +187,30 @@ class SyncUtils @Inject constructor(
         return syncEnabled.value && syncGeneration.get() == gen
     }
 
+    private fun claimAutomaticSync(key: String): Boolean =
+        synchronized(automaticSyncLock) {
+            val nowMs = System.currentTimeMillis()
+            val lastMs = automaticSyncTimes[key]
+            if (lastMs != null && nowMs - lastMs in 0 until AUTO_SYNC_MIN_INTERVAL_MS) {
+                false
+            } else {
+                automaticSyncTimes[key] = nowMs
+                true
+            }
+        }
+
+    private fun isExpectedPrivatePlaylistFailure(error: Throwable): Boolean {
+        val text =
+            generateSequence(error as Throwable?) { it?.cause }
+                .take(8)
+                .mapNotNull { it?.message }
+                .joinToString(" ")
+                .uppercase()
+        return "PLAYLIST_PRIVATE" in text ||
+            "PRIVATE PLAYLIST" in text ||
+            "PLAYLIST IS PRIVATE" in text
+    }
+
     fun likeSong(s: SongEntity) {
         syncScope.launch {
             if (!isLoggedIn()) {
@@ -183,13 +227,17 @@ class SyncUtils @Inject constructor(
         }
     }
 
-    suspend fun syncLikedSongs() = coroutineScope {
+    suspend fun syncLikedSongs(automatic: Boolean = false) = coroutineScope {
         if (!isLoggedIn()) {
             Timber.w("Skipping syncLikedSongs - user not logged in")
             return@coroutineScope
         }
         if (!isYtmSyncEnabled()) {
             Timber.w("Skipping syncLikedSongs - sync disabled")
+            return@coroutineScope
+        }
+        if (automatic && !claimAutomaticSync(AUTO_SYNC_LIKED_SONGS)) {
+            Timber.d("syncLikedSongs: automatic refresh skipped inside cooldown")
             return@coroutineScope
         }
         val gen = syncGeneration.get()
@@ -225,13 +273,17 @@ class SyncUtils @Inject constructor(
         }
     }
 
-    suspend fun syncLibrarySongs() = coroutineScope {
+    suspend fun syncLibrarySongs(automatic: Boolean = false) = coroutineScope {
         if (!isLoggedIn()) {
             Timber.w("Skipping syncLibrarySongs - user not logged in")
             return@coroutineScope
         }
         if (!isYtmSyncEnabled()) {
             Timber.w("Skipping syncLibrarySongs - sync disabled")
+            return@coroutineScope
+        }
+        if (automatic && !claimAutomaticSync(AUTO_SYNC_LIBRARY_SONGS)) {
+            Timber.d("syncLibrarySongs: automatic refresh skipped inside cooldown")
             return@coroutineScope
         }
         val gen = syncGeneration.get()
@@ -271,7 +323,7 @@ class SyncUtils @Inject constructor(
         }
     }
 
-    suspend fun syncLikedAlbums() = coroutineScope {
+    suspend fun syncLikedAlbums(automatic: Boolean = false) = coroutineScope {
         if (!isLoggedIn()) {
             Timber.w("Skipping syncLikedAlbums - user not logged in")
             return@coroutineScope
@@ -280,12 +332,16 @@ class SyncUtils @Inject constructor(
             Timber.w("Skipping syncLikedAlbums - sync disabled")
             return@coroutineScope
         }
+        if (automatic && !claimAutomaticSync(AUTO_SYNC_LIKED_ALBUMS)) {
+            Timber.d("syncLikedAlbums: automatic refresh skipped inside cooldown")
+            return@coroutineScope
+        }
         val gen = syncGeneration.get()
         YouTube.library("FEmusic_liked_albums").completed().onSuccess { page ->
             if (!isSyncStillEnabled(gen)) return@onSuccess
             val remoteAlbums = page.items.filterIsInstance<AlbumItem>().reversed()
             if (remoteAlbums.isEmpty()) {
-                Timber.w("syncLikedAlbums: No liked albums found")
+                Timber.d("syncLikedAlbums: No liked albums found")
                 return@onSuccess
             }
             val remoteIds = remoteAlbums.map { it.id }.toSet()
@@ -326,60 +382,159 @@ class SyncUtils @Inject constructor(
         }
     }
 
-    suspend fun syncArtistsSubscriptions() = coroutineScope {
+    suspend fun syncArtistsSubscriptions(automatic: Boolean = false) = coroutineScope {
         if (!isLoggedIn()) {
-            Timber.w("Skipping syncArtistsSubscriptions - user not logged in")
+            Timber.w("Skipping syncArtistsSubscriptions - user not logged in; local subscriptions stay untouched")
             return@coroutineScope
         }
         if (!isYtmSyncEnabled()) {
             Timber.w("Skipping syncArtistsSubscriptions - sync disabled")
             return@coroutineScope
         }
+        if (automatic && !claimAutomaticSync(AUTO_SYNC_ARTISTS)) {
+            Timber.d("syncArtistsSubscriptions: automatic refresh skipped inside cooldown")
+            return@coroutineScope
+        }
+
         val gen = syncGeneration.get()
+        // Snapshot before the request so a late response can never overwrite a newer local tap.
+        val localBeforeRequest = database.artistsBookmarkedByNameAsc().first()
+
         YouTube.library("FEmusic_library_corpus_artists").completed().onSuccess { page ->
             if (!isSyncStillEnabled(gen)) return@onSuccess
             val remoteArtists = page.items.filterIsInstance<ArtistItem>()
             if (remoteArtists.isEmpty()) {
-                Timber.w("syncArtistsSubscriptions: No artist subscriptions found")
-                return@onSuccess
+                Timber.d("syncArtistsSubscriptions: remote subscription snapshot is empty")
             }
-            val remoteIds = remoteArtists.map { it.id }.toSet()
-            val localArtists = database.artistsBookmarkedByNameAsc().first()
 
             if (!isSyncStillEnabled(gen)) return@onSuccess
-            localArtists.filterNot { it.id in remoteIds }
-                .forEach { database.update(it.artist.localToggleLike()) }
 
-            remoteArtists.forEach { artist ->
+            // Remote absence is destructive, so require confirmation. A freshly sent subscribe is
+            // protected for a propagation window and cannot be erased by a stale library snapshot.
+            localBeforeRequest.forEach { localArtist ->
+                val local = localArtist.artist
+                val remoteMatch =
+                    remoteArtists.firstOrNull { remote ->
+                        ArtistSubscriptionState.identitiesMatch(
+                            localId = local.id,
+                            localChannelId = local.channelId,
+                            remoteId = remote.id,
+                            remoteChannelId = remote.channelId,
+                        )
+                    }
+
+                if (remoteMatch != null) {
+                    ArtistSubscriptionState.observeRemotePresence(local.id, local.channelId)
+                    ArtistSubscriptionState.confirmRemoteState(
+                        artistId = local.id,
+                        channelId = local.channelId ?: remoteMatch.channelId,
+                        subscribed = true,
+                    )
+                    return@forEach
+                }
+
+                val pendingState =
+                    ArtistSubscriptionState.pendingDesiredState(local.id, local.channelId)
+                if (pendingState == true) {
+                    Timber.d("syncArtistsSubscriptions: keeping fresh local subscribe for ${local.id}")
+                    return@forEach
+                }
+                if (pendingState == false) {
+                    ArtistSubscriptionState.confirmRemoteState(local.id, local.channelId, subscribed = false)
+                }
+
+                if (!ArtistSubscriptionState.shouldApplyRemoteAbsence(local.id, local.channelId)) {
+                    Timber.d("syncArtistsSubscriptions: waiting for a second remote absence for ${local.id}")
+                    return@forEach
+                }
+
+                database.withTransaction {
+                    if (!isSyncStillEnabled(gen)) return@withTransaction
+                    val current = getArtistById(local.id) ?: return@withTransaction
+                    current.bookmarkedAt?.let { bookmark ->
+                        if (clearArtistBookmarkIfUnchanged(current.id, bookmark) > 0) {
+                            Timber.d("syncArtistsSubscriptions: confirmed remote unsubscribe for ${current.id}")
+                        }
+                    }
+                }
+            }
+
+            // Remote presence is positive evidence. Restore a locally missing bookmark immediately,
+            // unless the user has a fresh local unsubscribe that has not propagated yet.
+            remoteArtists.forEach { remote ->
                 launch {
                     if (!isSyncStillEnabled(gen)) return@launch
                     dbWriteSemaphore.withPermit {
                         if (!isSyncStillEnabled(gen)) return@withPermit
-                        val dbArtist = database.artist(artist.id).firstOrNull()
                         database.withTransaction {
                             if (!isSyncStillEnabled(gen)) return@withTransaction
-                            if (dbArtist == null) {
+
+                            if (
+                                ArtistSubscriptionState.pendingDesiredState(
+                                    artistId = remote.id,
+                                    channelId = remote.channelId,
+                                ) == false
+                            ) {
+                                Timber.d("syncArtistsSubscriptions: ignoring stale remote presence for ${remote.id}")
+                                return@withTransaction
+                            }
+
+                            val snapshotMatch =
+                                localBeforeRequest.firstOrNull { localArtist ->
+                                    ArtistSubscriptionState.identitiesMatch(
+                                        localId = localArtist.artist.id,
+                                        localChannelId = localArtist.artist.channelId,
+                                        remoteId = remote.id,
+                                        remoteChannelId = remote.channelId,
+                                    )
+                                }?.artist
+                            val existing =
+                                getArtistById(remote.id)
+                                    ?: snapshotMatch?.let { getArtistById(it.id) }
+                            val now = LocalDateTime.now()
+
+                            if (existing == null) {
                                 insert(
                                     ArtistEntity(
-                                        id = artist.id,
-                                        name = artist.title,
-                                        thumbnailUrl = artist.thumbnail,
-                                        channelId = artist.channelId,
-                                    )
+                                        id = remote.id,
+                                        name = remote.title,
+                                        thumbnailUrl = remote.thumbnail,
+                                        channelId = remote.channelId,
+                                        bookmarkedAt = now,
+                                    ),
                                 )
-                            } else {
-                                val existing = dbArtist.artist
-                                if (existing.name != artist.title || existing.thumbnailUrl != artist.thumbnail || existing.channelId != artist.channelId) {
-                                    update(
-                                        existing.copy(
-                                            name = artist.title,
-                                            thumbnailUrl = artist.thumbnail,
-                                            channelId = artist.channelId,
-                                            lastUpdateTime = java.time.LocalDateTime.now()
-                                        )
-                                    )
-                                }
+                                ArtistSubscriptionState.observeRemotePresence(remote.id, remote.channelId)
+                                ArtistSubscriptionState.confirmRemoteState(
+                                    artistId = remote.id,
+                                    channelId = remote.channelId,
+                                    subscribed = true,
+                                )
+                                return@withTransaction
                             }
+
+                            val mergedChannelId = remote.channelId ?: existing.channelId
+                            val metadataChanged =
+                                existing.name != remote.title ||
+                                    existing.thumbnailUrl != remote.thumbnail ||
+                                    existing.channelId != mergedChannelId
+                            if (existing.bookmarkedAt == null || metadataChanged) {
+                                update(
+                                    existing.copy(
+                                        name = remote.title,
+                                        thumbnailUrl = remote.thumbnail,
+                                        channelId = mergedChannelId,
+                                        bookmarkedAt = existing.bookmarkedAt ?: now,
+                                        lastUpdateTime = if (metadataChanged) now else existing.lastUpdateTime,
+                                    ),
+                                )
+                            }
+
+                            ArtistSubscriptionState.observeRemotePresence(existing.id, mergedChannelId)
+                            ArtistSubscriptionState.confirmRemoteState(
+                                artistId = existing.id,
+                                channelId = mergedChannelId,
+                                subscribed = true,
+                            )
                         }
                     }
                 }
@@ -389,13 +544,17 @@ class SyncUtils @Inject constructor(
         }
     }
 
-    suspend fun syncSavedPlaylists() = playlistSyncMutex.withLock {
+    suspend fun syncSavedPlaylists(automatic: Boolean = false) = playlistSyncMutex.withLock {
         if (!isLoggedIn()) {
             Timber.w("Skipping syncSavedPlaylists - user not logged in")
             return@withLock
         }
         if (!isYtmSyncEnabled()) {
             Timber.w("Skipping syncSavedPlaylists - sync disabled")
+            return@withLock
+        }
+        if (automatic && !claimAutomaticSync(AUTO_SYNC_SAVED_PLAYLISTS)) {
+            Timber.d("syncSavedPlaylists: automatic refresh skipped inside cooldown")
             return@withLock
         }
         val gen = syncGeneration.get()
@@ -460,13 +619,17 @@ class SyncUtils @Inject constructor(
         }
     }
 
-    suspend fun syncAutoSyncPlaylists() = coroutineScope {
+    suspend fun syncAutoSyncPlaylists(automatic: Boolean = false) = coroutineScope {
         if (!isLoggedIn()) {
             Timber.w("Skipping syncAutoSyncPlaylists - user not logged in")
             return@coroutineScope
         }
         if (!isYtmSyncEnabled()) {
             Timber.w("Skipping syncAutoSyncPlaylists - sync disabled")
+            return@coroutineScope
+        }
+        if (automatic && !claimAutomaticSync(AUTO_SYNC_AUTO_PLAYLISTS)) {
+            Timber.d("syncAutoSyncPlaylists: automatic refresh skipped inside cooldown")
             return@coroutineScope
         }
         val gen = syncGeneration.get()
@@ -516,18 +679,15 @@ class SyncUtils @Inject constructor(
             if (!isSyncStillEnabled(gen)) return@onSuccess
             val songs = page.songs.orEmpty().map(SongItem::toMediaMetadata)
             Timber.d("syncPlaylist: Fetched ${songs.size} songs from remote")
-
             if (songs.isEmpty()) {
                 Timber.w("syncPlaylist: Remote playlist is empty, skipping sync")
                 return@onSuccess
             }
-
             val remoteIds = songs.mapNotNull { it.id }
             if (remoteIds.isEmpty()) {
                 Timber.w("syncPlaylist: No valid song IDs found, skipping sync")
                 return@onSuccess
             }
-
             val localIds = try {
                 database.playlistSongs(playlistId).first()
                     .sortedBy { it.map.position }
@@ -536,14 +696,12 @@ class SyncUtils @Inject constructor(
                 Timber.w("syncPlaylist: Failed to fetch local songs", e)
                 emptyList()
             }
-
             if (remoteIds == localIds) {
                 Timber.d("syncPlaylist: Local and remote are in sync, no changes needed")
                 return@onSuccess
             }
 
             Timber.d("syncPlaylist: Updating local playlist (remote: ${remoteIds.size}, local: ${localIds.size})")
-
             try {
                 database.withTransaction {
                     if (!isSyncStillEnabled(gen)) return@withTransaction
@@ -561,7 +719,7 @@ class SyncUtils @Inject constructor(
                                 position = idx,
                                 setVideoId = song.setVideoId
                             )
-                        )
+                         )
                     }
                 }
                 Timber.d("syncPlaylist: Successfully synced playlist")
@@ -569,8 +727,23 @@ class SyncUtils @Inject constructor(
                 Timber.e(e, "syncPlaylist: Error during database transaction")
             }
         }.onFailure { e ->
-            Timber.e(e, "syncPlaylist: Failed to fetch playlist from YouTube")
+            if (isExpectedPrivatePlaylistFailure(e)) {
+                Timber.w("syncPlaylist: Skipping private/inaccessible playlist browseId=$browseId")
+            } else {
+                Timber.e(e, "syncPlaylist: Failed to fetch playlist from YouTube")
+            }
         }
+    }
+
+    private companion object {
+        const val AUTH_PUBLICATION_TIMEOUT_MS = 1_500L
+        const val AUTO_SYNC_MIN_INTERVAL_MS = 60_000L
+        const val AUTO_SYNC_LIKED_SONGS = "liked-songs"
+        const val AUTO_SYNC_LIBRARY_SONGS = "library-songs"
+        const val AUTO_SYNC_LIKED_ALBUMS = "liked-albums"
+        const val AUTO_SYNC_ARTISTS = "artists"
+        const val AUTO_SYNC_SAVED_PLAYLISTS = "saved-playlists"
+        const val AUTO_SYNC_AUTO_PLAYLISTS = "auto-playlists"
     }
 }
 

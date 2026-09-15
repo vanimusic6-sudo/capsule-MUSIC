@@ -303,7 +303,6 @@
     <string name="palette_spring">Bahar</string>
     <string name="palette_summer">Yaz</string>
     <string name="palette_twilight">Alacakaranlık</string>
-    <string name="palette_aurora">Aurora</string>
     <string name="palette_candy">Şeker</string>
     <string name="palette_rainbow">Gökkuşağı</string>
     <!-- Additional Palettes -->
@@ -331,8 +330,6 @@
     <string name="ok_button">tamam</string>
     <string name="custom_radius">Küçük resim köşe yarıçapını özelleştirin</string>
     <string name="custom">Özel</string>
-    <string name="customized_background">Özelleştirilmiş arka plan</string>
-    <string name="customize_background_title">Arka planı özelleştir</string>
     <string name="add_image">Resim ekle</string>
     <string name="blur">Bulanıklaştırma</string>
     <string name="contrast">Kontrast</string>

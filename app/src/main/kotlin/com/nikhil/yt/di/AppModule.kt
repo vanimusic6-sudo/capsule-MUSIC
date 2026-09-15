@@ -150,7 +150,7 @@ object AppModule {
         @ApplicationContext context: Context,
         databaseProvider: DatabaseProvider,
     ): Cache {
-        val cacheSize = context.dataStore.get(MaxSongCacheSizeKey, 1024)
+        val cacheSize = context.dataStore.get(MaxSongCacheSizeKey, 256)
         val evictor =
             when (cacheSize) {
                 -1 -> NoOpCacheEvictor()

@@ -114,13 +114,11 @@
     <string name="player_design_v3">Napp</string>
     <string name="player_design_v4">Kinolaadne</string>
     <string name="new_mini_player_design">Pleieri uus välimus</string>
-    <string name="player_background_blur">Hägustamine</string>
     <string name="player_buttons_style">Pleieri nuppude värvid</string>
     <string name="swipe_sensitivity">Pleieri väikese vaate nuppude tundlikkus</string>
     <string name="settings_section_player">Pleier ja meedium</string>
     <string name="settings_section_player_content">Pleier ja sisu</string>
     <string name="coloring">Värvid</string>
-    <string name="blur_gradient">Hägustatud gradient</string>
     <string name="glow">Kuma</string>
     <string name="default_style">Vaikimisi</string>
     <string name="secondary_color_style">Teisene</string>

@@ -356,7 +356,6 @@
     <string name="palette_spring">迎春绿</string>
     <string name="palette_summer">夏日黄</string>
     <string name="palette_twilight">暮光紫</string>
-    <string name="palette_aurora">极光绿</string>
     <string name="palette_candy">糖果粉</string>
     <string name="palette_rainbow">七彩红</string>
     <string name="grid_cell_size">网格单元大小</string>
@@ -443,8 +442,6 @@
     <string name="cancel_button">取消</string>
     <string name="ok_button">好的</string>
     <string name="custom_radius">自定义缩略图角落半径</string>
-    <string name="customized_background">定制背景</string>
-    <string name="customize_background_title">自定义背景标题</string>
     <string name="add_image">添加图片</string>
     <string name="blur">模糊</string>
     <string name="contrast">对比</string>

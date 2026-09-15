@@ -39,8 +39,8 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.navigation.NavController
-import androidx.navigation.compose.currentBackStackEntryAsState
 import com.nikhil.yt.innertube.models.*
+import com.nikhil.yt.ui.utils.liveSavedStateHandle
 import com.nikhil.yt.LocalPlayerAwareWindowInsets
 import com.nikhil.yt.LocalPlayerConnection
 import com.nikhil.yt.R
@@ -81,9 +81,15 @@ fun ExploreScreen(
     val coroutineScope = rememberCoroutineScope()
     val scrollState = rememberScrollState()
 
-    val backStackEntry by navController.currentBackStackEntryAsState()
-    val scrollToTop by backStackEntry?.savedStateHandle
-        ?.getStateFlow("scrollToTop", false)?.collectAsState() ?: return
+    // This screen's own entry: it cannot be destroyed while this composition is alive,
+    // and observing it does not recompose the screen on unrelated navigation.
+    val backStackEntry = LocalNavBackStackEntry.current
+    // Never an early return: this used to bail out of the composable when there was no handle,
+    // which renders the screen as nothing at all. A missing handle just means no pending request.
+    val scrollToTopState =
+        backStackEntry?.liveSavedStateHandle()
+            ?.getStateFlow("scrollToTop", false)?.collectAsState()
+    val scrollToTop = scrollToTopState?.value == true
 
     LaunchedEffect(Unit) {
         if (chartsPage == null) {
@@ -94,7 +100,7 @@ fun ExploreScreen(
     LaunchedEffect(scrollToTop) {
         if (scrollToTop) {
             scrollState.animateScrollTo(0)
-            backStackEntry?.savedStateHandle?.set("scrollToTop", false)
+            backStackEntry?.liveSavedStateHandle()?.set("scrollToTop", false)
         }
     }
 

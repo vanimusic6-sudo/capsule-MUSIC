@@ -19,6 +19,7 @@ import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.RequestBody.Companion.toRequestBody
 import java.util.concurrent.atomic.AtomicBoolean
 import timber.log.Timber
+import com.nikhil.yt.utils.reportRecoverableException
 
 object ListenBrainzManager {
     private val logTag = "ListenBrainzManager"
@@ -42,6 +43,7 @@ object ListenBrainzManager {
                         return result
                     }
                 } catch (e: Exception) {
+                    reportRecoverableException(logTag, "read artist name method $methodName", e)
                 }
             }
 
@@ -55,6 +57,7 @@ object ListenBrainzManager {
                         return result
                     }
                 } catch (e: Exception) {
+                    reportRecoverableException(logTag, "read artist name field $fieldName", e)
                 }
             }
 

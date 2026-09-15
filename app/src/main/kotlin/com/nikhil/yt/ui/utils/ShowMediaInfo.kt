@@ -66,6 +66,7 @@ import com.nikhil.yt.constants.DarkModeKey
 import com.nikhil.yt.constants.PureBlackKey
 import com.nikhil.yt.db.entities.FormatEntity
 import com.nikhil.yt.db.entities.Song
+import com.nikhil.yt.playback.measuredLoudnessLufs
 import com.nikhil.yt.ui.component.LocalMenuState
 import com.nikhil.yt.ui.component.MenuState
 import com.nikhil.yt.ui.component.shimmer.ShimmerHost
@@ -75,6 +76,7 @@ import com.nikhil.yt.utils.rememberEnumPreference
 import com.nikhil.yt.utils.rememberPreference
 import android.content.ClipData
 import android.content.ClipboardManager
+import java.util.Locale
 
 @Composable
 fun ShowMediaInfo(videoId: String) {
@@ -156,7 +158,14 @@ fun ShowMediaInfo(videoId: String) {
                             stringResource(R.string.codecs) to currentFormat?.codecs,
                             stringResource(R.string.bitrate) to currentFormat?.bitrate?.let { "${it / 1000} Kbps" },
                             stringResource(R.string.sample_rate) to currentFormat?.sampleRate?.let { "$it Hz" },
-                            stringResource(R.string.loudness) to currentFormat?.loudnessDb?.let { "$it dB" },
+                            stringResource(R.string.loudness) to currentFormat?.let { format ->
+                                measuredLoudnessLufs(
+                                    loudnessDb = format.loudnessDb,
+                                    perceptualLoudnessDb = format.perceptualLoudnessDb,
+                                )?.let { measured ->
+                                    String.format(Locale.getDefault(), "%.2f LUFS", measured)
+                                }
+                            },
                             stringResource(R.string.volume) to if (playerConnection != null)
                                 "${(playerConnection.player.volume * 100).toInt()}%" else null,
                             stringResource(R.string.file_size) to

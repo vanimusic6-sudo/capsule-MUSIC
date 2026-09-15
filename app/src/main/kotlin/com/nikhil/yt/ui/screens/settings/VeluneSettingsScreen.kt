@@ -7,6 +7,8 @@ package com.nikhil.yt.ui.screens.settings
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.only
+import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
@@ -24,6 +26,7 @@ import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
 import coil3.compose.AsyncImage
+import com.nikhil.yt.LocalPlayerAwareWindowInsets
 import com.nikhil.yt.BuildConfig
 import com.nikhil.yt.R
 import com.nikhil.yt.viewmodels.HomeViewModel
@@ -46,6 +49,10 @@ fun VeluneSettingsScreen(
     val (innerTubeCookie, onInnerTubeCookieChange) = rememberPreference(InnerTubeCookieKey, "")
 
     Scaffold(
+        // Content stops above the dock and the navigation bar instead of running under them.
+        contentWindowInsets =
+            LocalPlayerAwareWindowInsets.current
+                .only(WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom),
         topBar = {
             TopAppBar(
                 title = { Text("Settings", fontSize = 20.sp) },

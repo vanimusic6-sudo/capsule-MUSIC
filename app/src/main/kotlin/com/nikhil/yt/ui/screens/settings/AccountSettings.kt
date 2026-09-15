@@ -9,6 +9,7 @@
 package com.nikhil.yt.ui.screens.settings
 
 import androidx.compose.animation.AnimatedContent
+import com.nikhil.yt.LocalPlayerAwareWindowInsets
 import com.nikhil.yt.ui.component.VeluneLoader
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
@@ -23,6 +24,9 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.only
+import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -146,6 +150,13 @@ fun AccountSettings(
     Column(
         modifier = Modifier
             .background(MaterialTheme.colorScheme.surface)
+            // Horizontal and bottom only: this screen draws its own header, so the top inset is
+            // already the header's business. The bottom is not — that is where the dock and the
+            // navigation bar are.
+            .windowInsetsPadding(
+                LocalPlayerAwareWindowInsets.current
+                    .only(WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom),
+            )
             .verticalScroll(rememberScrollState())
     ) {
         // Header Section

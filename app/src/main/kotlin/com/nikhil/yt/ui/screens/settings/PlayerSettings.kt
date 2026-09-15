@@ -6,6 +6,7 @@
 
 package com.nikhil.yt.ui.screens.settings
 
+import android.widget.Toast
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -32,14 +33,19 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
 import com.nikhil.yt.LocalDatabase
+import com.nikhil.yt.LocalPlayerConnection
 import com.nikhil.yt.LocalPlayerAwareWindowInsets
 import com.nikhil.yt.R
 import com.nikhil.yt.constants.ArtistSeparatorsKey
+import com.nikhil.yt.constants.AudioClientOrder
+import com.nikhil.yt.constants.AudioClientOrderKey
 import com.nikhil.yt.constants.AudioCrossfadeDurationKey
 import com.nikhil.yt.constants.AudioNormalizationKey
 import com.nikhil.yt.constants.AudioOffload
@@ -55,13 +61,14 @@ import com.nikhil.yt.constants.NetworkMeteredKey
 import com.nikhil.yt.constants.PauseOnDeviceMuteKey
 import com.nikhil.yt.constants.PermanentShuffleKey
 import com.nikhil.yt.constants.PersistentQueueKey
-import com.nikhil.yt.constants.SeekExtraSeconds
 import com.nikhil.yt.constants.SkipSilenceKey
 import com.nikhil.yt.constants.StopMusicOnTaskClearKey
 import com.nikhil.yt.innertube.models.YouTubeClientUpstream
+import com.nikhil.yt.extensions.CapsuleAudioOffloadAvailability
+import com.nikhil.yt.extensions.currentAudioOffloadAvailability
 import com.nikhil.yt.ui.component.ArtistSeparatorsDialog
 import com.nikhil.yt.ui.component.CrossfadeSliderPreference
-import com.nikhil.yt.ui.component.EnumListPreference
+import com.nikhil.yt.ui.component.ListPreference
 import com.nikhil.yt.ui.component.IconButton
 import com.nikhil.yt.ui.component.ListDialog
 import com.nikhil.yt.ui.component.PreferenceEntry
@@ -73,46 +80,73 @@ import com.nikhil.yt.ui.utils.backToMain
 import com.nikhil.yt.utils.rememberEnumPreference
 import com.nikhil.yt.utils.rememberPreference
 
-private fun AudioStreamPolicy.title(): String =
-    when (this) {
-        AudioStreamPolicy.AUTO_SAFE -> "Safe automatic"
-        AudioStreamPolicy.VISIONOS ->
-            "visionOS ${YouTubeClientUpstream.VISIONOS_VERSION}"
-        AudioStreamPolicy.WEB_EMBEDDED ->
-            "Web Embedded ${YouTubeClientUpstream.WEB_EMBEDDED_VERSION}"
-        AudioStreamPolicy.IOS ->
-            "iOS ${YouTubeClientUpstream.IOS_VERSION}"
-        AudioStreamPolicy.IOS_MUSIC -> "iOS Music"
-        AudioStreamPolicy.TV_DOWNGRADED ->
-            "TV compatibility ${YouTubeClientUpstream.TV_DOWNGRADED_VERSION}"
-        AudioStreamPolicy.TVHTML5 ->
-            "TV HTML5 ${YouTubeClientUpstream.TV_VERSION}"
-    }
-
-private fun AudioStreamPolicy.description(): String =
+@Composable
+private fun AudioStreamPolicy.localizedTitle(): String =
     when (this) {
         AudioStreamPolicy.AUTO_SAFE ->
-            "Recommended. visionOS → Web Embedded → TV compatibility → TV. " +
-                "Clients that currently require a GVS PO-token are skipped."
+            stringResource(R.string.audio_stream_policy_auto)
+        AudioStreamPolicy.VISIONOS ->
+            stringResource(
+                R.string.audio_stream_policy_visionos,
+                YouTubeClientUpstream.VISIONOS_VERSION,
+            )
+        AudioStreamPolicy.WEB_EMBEDDED ->
+            stringResource(R.string.audio_stream_policy_web_embedded)
+        AudioStreamPolicy.WEB ->
+            stringResource(R.string.audio_stream_policy_web)
+        AudioStreamPolicy.MWEB ->
+            stringResource(
+                R.string.audio_stream_policy_mweb,
+                YouTubeClientUpstream.MWEB_VERSION,
+            )
+        AudioStreamPolicy.IOS ->
+            stringResource(
+                R.string.audio_stream_policy_ios,
+                YouTubeClientUpstream.IOS_VERSION,
+            )
+        AudioStreamPolicy.IOS_MUSIC ->
+            stringResource(R.string.audio_stream_policy_ios_music)
+        AudioStreamPolicy.TV_DOWNGRADED ->
+            stringResource(
+                R.string.audio_stream_policy_tv_compatibility,
+                YouTubeClientUpstream.TV_DOWNGRADED_VERSION,
+            )
+        AudioStreamPolicy.TVHTML5 ->
+            stringResource(
+                R.string.audio_stream_policy_tv,
+                YouTubeClientUpstream.TV_VERSION,
+            )
+    }
+
+@Composable
+private fun AudioStreamPolicy.localizedDescription(): String =
+    when (this) {
+        AudioStreamPolicy.AUTO_SAFE ->
+            stringResource(R.string.audio_stream_policy_auto_description)
 
         AudioStreamPolicy.VISIONOS ->
-            "Prefer the current visionOS identity, then use the reviewed safe fallbacks. " +
-                "This is what field runs resolve fastest."
+            stringResource(R.string.audio_stream_policy_visionos_description)
 
         AudioStreamPolicy.WEB_EMBEDDED ->
-            "Prefer the anonymous Web Embedded identity, then use visionOS and TV fallbacks."
+            stringResource(R.string.audio_stream_policy_web_embedded_description)
+
+        AudioStreamPolicy.WEB ->
+            stringResource(R.string.audio_stream_policy_web_description)
+
+        AudioStreamPolicy.MWEB ->
+            stringResource(R.string.audio_stream_policy_mweb_description)
 
         AudioStreamPolicy.IOS ->
-            "Manual compatibility mode. Current iOS media URLs can require a real PO-token."
+            stringResource(R.string.audio_stream_policy_ios_description)
 
         AudioStreamPolicy.IOS_MUSIC ->
-            "Manual compatibility mode. The identity is pinned and can require a real PO-token."
+            stringResource(R.string.audio_stream_policy_ios_music_description)
 
         AudioStreamPolicy.TV_DOWNGRADED ->
-            "Prefer yt-dlp's downgraded TV compatibility identity, then use safe fallbacks."
+            stringResource(R.string.audio_stream_policy_tv_compatibility_description)
 
         AudioStreamPolicy.TVHTML5 ->
-            "Prefer the current TV HTML5 identity, then use safe fallbacks."
+            stringResource(R.string.audio_stream_policy_tv_description)
     }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -126,18 +160,34 @@ fun PlayerSettings(
             AudioQualityKey,
             defaultValue = AudioQuality.AUTO,
         )
+    // HIGHEST used to be exposed as “maximum”, but the playback backend maps
+    // it to exactly the same InnerTubeX tier as HIGH. Keep the enum only as a
+    // migration tombstone so existing installs do not break.
+    val effectiveAudioQuality =
+        if (audioQuality == AudioQuality.HIGHEST) AudioQuality.HIGH else audioQuality
 
     /*
      * This is intentionally a new setting key.
      *
-     * Old values such as ANDROID_VR / IOS / ANDROID_MUSIC are not migrated
-     * automatically because their upstream playback requirements changed.
-     * Everyone starts on AUTO_SAFE after the new core is installed.
+     * Old and retired client values are kept only as migration tombstones and
+     * normalize to AUTO_SAFE at the playback boundary. They are never shown to
+     * users again.
      */
-    val (audioStreamPolicy, onAudioStreamPolicyChange) =
+    val (audioStreamPolicy, _) =
         rememberEnumPreference(
             AudioStreamPolicyKey,
-            defaultValue = AudioStreamPolicy.AUTO_SAFE,
+            defaultValue = AudioStreamPolicy.VISIONOS,
+        )
+
+    val (rawAudioClientOrder, onAudioClientOrderChange) =
+        rememberPreference(
+            AudioClientOrderKey,
+            defaultValue = "",
+        )
+    val audioClientOrder =
+        AudioClientOrder.resolve(
+            raw = rawAudioClientOrder,
+            legacyPolicy = audioStreamPolicy,
         )
 
     val (networkMetered, onNetworkMeteredChange) =
@@ -168,11 +218,6 @@ fun PlayerSettings(
     val (audioOffload, onAudioOffloadChange) =
         rememberPreference(
             AudioOffload,
-            defaultValue = false,
-        )
-    val (seekExtraSeconds, onSeekExtraSeconds) =
-        rememberPreference(
-            SeekExtraSeconds,
             defaultValue = false,
         )
     val (autoDownloadOnLike, onAutoDownloadOnLikeChange) =
@@ -218,8 +263,11 @@ fun PlayerSettings(
 
     var showArtistSeparatorsDialog by remember { mutableStateOf(false) }
     var showTagsManagementDialog by remember { mutableStateOf(false) }
-    var showAudioStreamPolicyDialog by remember { mutableStateOf(false) }
+    var showAudioClientPriorityDialog by remember { mutableStateOf(false) }
     val database = LocalDatabase.current
+    val context = LocalContext.current
+    val resources = LocalResources.current
+    val playerConnection = LocalPlayerConnection.current
 
     if (showArtistSeparatorsDialog) {
         ArtistSeparatorsDialog(
@@ -239,47 +287,15 @@ fun PlayerSettings(
         )
     }
 
-    if (showAudioStreamPolicyDialog) {
-        ListDialog(
-            onDismiss = { showAudioStreamPolicyDialog = false },
-            modifier = Modifier.padding(horizontal = 8.dp),
-        ) {
-            items(AudioStreamPolicy.entries) { value ->
-                Row(
-                    modifier =
-                        Modifier
-                            .fillMaxWidth()
-                            .clickable {
-                                onAudioStreamPolicyChange(value)
-                                showAudioStreamPolicyDialog = false
-                            }
-                            .padding(
-                                horizontal = 16.dp,
-                                vertical = 12.dp,
-                            ),
-                ) {
-                    RadioButton(
-                        selected = value == audioStreamPolicy,
-                        onClick = null,
-                    )
-
-                    Column(
-                        modifier = Modifier.padding(start = 16.dp),
-                    ) {
-                        Text(
-                            text = value.title(),
-                            style = MaterialTheme.typography.bodyLarge,
-                        )
-                        Spacer(Modifier.height(4.dp))
-                        Text(
-                            text = value.description(),
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.secondary,
-                        )
-                    }
-                }
-            }
-        }
+    if (showAudioClientPriorityDialog) {
+        AudioClientPriorityDialog(
+            currentOrder = audioClientOrder,
+            resetOrder = AudioClientOrder.legacyOrder(audioStreamPolicy),
+            onDismiss = { showAudioClientPriorityDialog = false },
+            onOrderChange = { newOrder ->
+                onAudioClientOrderChange(AudioClientOrder.encode(newOrder))
+            },
+        )
     }
 
     Column(
@@ -304,7 +320,7 @@ fun PlayerSettings(
             title = stringResource(R.string.player),
         )
 
-        EnumListPreference(
+        ListPreference(
             title = { Text(stringResource(R.string.audio_quality)) },
             icon = {
                 Icon(
@@ -312,14 +328,19 @@ fun PlayerSettings(
                     null,
                 )
             },
-            selectedValue = audioQuality,
+            selectedValue = effectiveAudioQuality,
+            values =
+                listOf(
+                    AudioQuality.AUTO,
+                    AudioQuality.HIGH,
+                    AudioQuality.LOW,
+                ),
             onValueSelected = onAudioQualityChange,
             valueText = {
                 when (it) {
-                    AudioQuality.HIGHEST ->
-                        stringResource(R.string.audio_quality_max)
-                    AudioQuality.HIGH ->
-                        stringResource(R.string.audio_quality_high)
+                    AudioQuality.HIGHEST,
+                    AudioQuality.HIGH,
+                    -> stringResource(R.string.audio_quality_high)
                     AudioQuality.AUTO ->
                         stringResource(R.string.audio_quality_auto)
                     AudioQuality.LOW ->
@@ -329,10 +350,13 @@ fun PlayerSettings(
         )
 
         PreferenceEntry(
-            title = { Text("AUDIO stream policy") },
+            title = { Text(stringResource(R.string.audio_client_priority_title)) },
             description =
-                "${audioStreamPolicy.title()} • " +
-                    "upstream ${YouTubeClientUpstream.SOURCE_SNAPSHOT}",
+                stringResource(
+                    R.string.audio_client_priority_summary,
+                    audioClientOrder.firstOrNull() ?: AudioClientOrder.VISIONOS,
+                    audioClientOrder.size,
+                ),
             icon = {
                 Icon(
                     painterResource(R.drawable.integration),
@@ -340,16 +364,12 @@ fun PlayerSettings(
                 )
             },
             onClick = {
-                showAudioStreamPolicyDialog = true
+                showAudioClientPriorityDialog = true
             },
         )
 
         Text(
-            text =
-                "Capsule Safe AUDIO Core uses only the reviewed client allowlist. " +
-                    "Android VR and Android Music remain hidden because their current " +
-                    "upstream PO-token requirements are different. " +
-                    "Client identities are synchronized by CI, not changed live during playback.",
+            text = stringResource(R.string.audio_client_priority_note),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.secondary,
             modifier =
@@ -441,33 +461,47 @@ fun PlayerSettings(
             },
             checked = audioOffload,
             onCheckedChange = { enabled ->
-                onAudioOffloadChange(enabled)
-                if (enabled) {
-                    onSkipSilenceChange(false)
+                if (!enabled) {
+                    onAudioOffloadChange(false)
+                    return@SwitchPreference
+                }
+
+                val availability =
+                    playerConnection?.player?.currentAudioOffloadAvailability()
+                        ?: CapsuleAudioOffloadAvailability.UNKNOWN
+
+                when (availability) {
+                    CapsuleAudioOffloadAvailability.SUPPORTED -> {
+                        // Both features require software processing. Do not let
+                        // the UI say offload is enabled while runtime policy has
+                        // silently disabled it because of an old crossfade value.
+                        onAudioCrossfadeSecondsChange(0)
+                        onSkipSilenceChange(false)
+                        onAudioOffloadChange(true)
+                        Toast.makeText(
+                            context,
+                            resources.getString(R.string.audio_offload_supported),
+                            Toast.LENGTH_SHORT,
+                        ).show()
+                    }
+                    CapsuleAudioOffloadAvailability.UNSUPPORTED -> {
+                        onAudioOffloadChange(false)
+                        Toast.makeText(
+                            context,
+                            resources.getString(R.string.audio_offload_unsupported),
+                            Toast.LENGTH_LONG,
+                        ).show()
+                    }
+                    CapsuleAudioOffloadAvailability.UNKNOWN -> {
+                        onAudioOffloadChange(false)
+                        Toast.makeText(
+                            context,
+                            resources.getString(R.string.audio_offload_unknown),
+                            Toast.LENGTH_LONG,
+                        ).show()
+                    }
                 }
             },
-        )
-
-        SwitchPreference(
-            title = {
-                Text(
-                    stringResource(
-                        R.string.seek_seconds_addup,
-                    ),
-                )
-            },
-            description =
-                stringResource(
-                    R.string.seek_seconds_addup_description,
-                ),
-            icon = {
-                Icon(
-                    painterResource(R.drawable.arrow_forward),
-                    null,
-                )
-            },
-            checked = seekExtraSeconds,
-            onCheckedChange = onSeekExtraSeconds,
         )
 
         SwitchPreference(

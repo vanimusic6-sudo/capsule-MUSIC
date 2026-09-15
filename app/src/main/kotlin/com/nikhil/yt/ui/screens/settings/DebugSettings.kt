@@ -11,6 +11,9 @@ package com.nikhil.yt.ui.screens.settings
 import android.content.Intent
 import android.text.format.DateFormat
 import android.util.Log
+import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateFloatAsState
@@ -23,6 +26,8 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.layout.only
+import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -80,6 +85,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.platform.rememberNestedScrollInteropConnection
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -96,6 +102,7 @@ import androidx.navigation.NavController
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import com.nikhil.yt.LocalPlayerAwareWindowInsets
 import com.nikhil.yt.LocalPlayerConnection
 import com.nikhil.yt.R
 import com.nikhil.yt.constants.DebugLoggingEnabledKey
@@ -137,6 +144,11 @@ fun DebugSettings(
     val playerConnection = LocalPlayerConnection.current
 
     Scaffold(
+        // The player's dock and the navigation bar sit over the bottom of every screen, so the
+        // content has to stop above them rather than scroll underneath.
+        contentWindowInsets =
+            LocalPlayerAwareWindowInsets.current
+                .only(WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom),
         topBar = {
             TopAppBar(
                 title = {
@@ -408,7 +420,30 @@ private fun LogViewerPanel() {
     LaunchedEffect(Unit) { GlobalLog.refresh() }
     val coroutineScope = rememberCoroutineScope()
     val context = LocalContext.current
+    val resources = LocalResources.current
     val clipboard = LocalClipboardManager.current
+    var pendingLogExportText by remember { mutableStateOf("") }
+    val saveLogsLauncher =
+        rememberLauncherForActivityResult(
+            contract = ActivityResultContracts.CreateDocument("text/plain")
+        ) { uri ->
+            if (uri != null) {
+                val saved =
+                    runCatching {
+                        context.contentResolver.openOutputStream(uri)
+                            ?.bufferedWriter(Charsets.UTF_8)
+                            ?.use { writer -> writer.write(pendingLogExportText) }
+                            ?: error("Unable to open selected log export destination")
+                    }.isSuccess
+                Toast.makeText(
+                    context,
+                    resources.getString(
+                        if (saved) R.string.logs_saved_to_file else R.string.logs_save_failed
+                    ),
+                    Toast.LENGTH_SHORT
+                ).show()
+            }
+        }
 
     /*
      * 0 = Discord, 1 = YouTube core, 2 = everything.
@@ -428,8 +463,7 @@ private fun LogViewerPanel() {
                         entry.message.contains("DiscordPresenceManager") ||
                         entry.message.contains("DiscordRPC")
 
-                1 -> (entry.tag?.contains("YTPlayerUtils", true) == true) ||
-                        (entry.tag?.contains("Capsule", true) == true) ||
+                1 -> (entry.tag?.contains("Capsule", true) == true) ||
                         (entry.tag?.contains("YouTubeVideoResolver", true) == true) ||
                         (entry.tag?.contains("MusicService", true) == true)
 
@@ -667,7 +701,7 @@ private fun LogViewerPanel() {
                             type = "text/plain"
                             putExtra(Intent.EXTRA_TEXT, sb.toString())
                         }
-                        context.startActivity(Intent.createChooser(send, context.getString(R.string.share_logs)))
+                        context.startActivity(Intent.createChooser(send, resources.getString(R.string.share_logs)))
                     },
                     enabled = filtered.isNotEmpty(),
                     modifier = Modifier.weight(1f)
@@ -680,6 +714,34 @@ private fun LogViewerPanel() {
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(stringResource(R.string.share))
                 }
+            }
+
+            FilledTonalButton(
+                onClick = {
+                    if (filtered.isEmpty()) return@FilledTonalButton
+                    val exportedAt = System.currentTimeMillis()
+                    pendingLogExportText =
+                        buildString {
+                            appendLine("=== Capsule Debug Logs ===")
+                            appendLine(
+                                "Exported: ${DateFormat.format("yyyy-MM-dd HH:mm:ss", exportedAt)}"
+                            )
+                            appendLine(
+                                "Filter: ${when (filterMode) { 0 -> "Discord"; 1 -> "YouTube core"; else -> "All" }}"
+                            )
+                            appendLine("Count: ${filtered.size}")
+                            appendLine("==========================")
+                            appendLine()
+                            filtered.forEach { entry -> appendLine(GlobalLog.format(entry)) }
+                        }
+                    val fileStamp =
+                        DateFormat.format("yyyy-MM-dd_HH-mm-ss", exportedAt).toString()
+                    saveLogsLauncher.launch("capsule-logs-$fileStamp.txt")
+                },
+                enabled = filtered.isNotEmpty(),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(stringResource(R.string.save_logs_to_file))
             }
         }
     }

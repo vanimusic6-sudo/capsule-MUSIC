@@ -68,7 +68,8 @@ object DiscordPresenceManager {
     }
 
     suspend fun getOrCreateRpc(context: Context, token: String): DiscordRPC {
-        if (rpcInstance == null || rpcToken != token) {
+        val current = rpcInstance
+        if (current == null || rpcToken != token) {
             try {
                 rpcInstance?.stopActivity()
             } catch (ex: Exception) {
@@ -81,10 +82,12 @@ object DiscordPresenceManager {
                 Timber.tag(logTag).v(ex, "failed to close previous RPC instance")
             }
 
-            rpcInstance = DiscordRPC(context, token)
+            val replacement = DiscordRPC(context, token)
+            rpcInstance = replacement
             rpcToken = token
+            return replacement
         }
-        return rpcInstance!!
+        return current
     }
 
     /**
@@ -161,6 +164,12 @@ object DiscordPresenceManager {
         isPausedProvider: () -> Boolean,
         intervalProvider: () -> Long
     ) {
+        if (token.isBlank()) {
+            Timber.tag(logTag).w("start skipped (token missing)")
+            stop()
+            return
+        }
+
         lastStartContext = context
         lastToken = token
         lastSongProvider = songProvider
@@ -171,8 +180,9 @@ object DiscordPresenceManager {
         if (started.getAndSet(true)) return
 
         resetFailureCount()
-        scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-        job = scope!!.launch {
+        val updaterScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+        scope = updaterScope
+        job = updaterScope.launch {
             // Perform an immediate first update (or at the first second of the interval).
             try {
                 // switch to Main for player access
@@ -235,12 +245,13 @@ object DiscordPresenceManager {
             }
         }
 
-        lifecycleObserver = LifecycleEventObserver { _, event ->
+        val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_DESTROY) {
                 stop()
             }
         }
-        ProcessLifecycleOwner.get().lifecycle.addObserver(lifecycleObserver!!)
+        lifecycleObserver = observer
+        ProcessLifecycleOwner.get().lifecycle.addObserver(observer)
     }
 
     /**

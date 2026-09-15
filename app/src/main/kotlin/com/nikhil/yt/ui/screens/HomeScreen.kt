@@ -8,6 +8,11 @@
 
 package com.nikhil.yt.ui.screens
 
+import com.nikhil.yt.ui.component.StandardHomeChips
+import com.nikhil.yt.ui.utils.liveSavedStateHandle
+import com.nikhil.yt.ui.component.StandardChrome
+import com.nikhil.yt.ui.theme.CapsuleBottomBarEnabledKey
+import androidx.compose.foundation.background
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.layout.Box
@@ -43,7 +48,6 @@ import androidx.compose.ui.zIndex
 import androidx.compose.material3.MaterialTheme
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.navigation.NavController
-import androidx.navigation.compose.currentBackStackEntryAsState
 import com.nikhil.yt.innertube.models.AlbumItem
 import com.nikhil.yt.innertube.models.ArtistItem
 import com.nikhil.yt.innertube.models.PlaylistItem
@@ -124,14 +128,16 @@ fun HomeScreen(
 
     val scope = rememberCoroutineScope()
     val lazylistState = rememberLazyListState()
-    val backStackEntry by navController.currentBackStackEntryAsState()
+    // This screen's own entry: it cannot be destroyed while this composition is alive,
+    // and observing it does not recompose the screen on unrelated navigation.
+    val backStackEntry = LocalNavBackStackEntry.current
     val scrollToTop =
-        backStackEntry?.savedStateHandle?.getStateFlow("scrollToTop", false)?.collectAsState()
+        backStackEntry?.liveSavedStateHandle()?.getStateFlow("scrollToTop", false)?.collectAsState()
 
     LaunchedEffect(scrollToTop?.value) {
         if (scrollToTop?.value == true) {
             lazylistState.animateScrollToItem(0)
-            backStackEntry?.savedStateHandle?.set("scrollToTop", false)
+            backStackEntry?.liveSavedStateHandle()?.set("scrollToTop", false)
         }
     }
 
@@ -170,8 +176,9 @@ fun HomeScreen(
     val color5 = MaterialTheme.colorScheme.secondaryContainer
     val surfaceColor = MaterialTheme.colorScheme.surface
     
+    val capsuleDock by rememberPreference(CapsuleBottomBarEnabledKey, false)
     Box(
-        modifier = Modifier.fillMaxSize()
+        modifier = Modifier.fillMaxSize().background(if (capsuleDock) MaterialTheme.colorScheme.surface else StandardChrome.background)
     ) {
 
         if (!disableBlur) {
@@ -301,13 +308,19 @@ fun HomeScreen(
             ) {
                 if (showHomeCategoryChips) {
                     item {
-                        ChipsRow(
-                            chips = homePage?.chips.orEmpty().map { it to it.title },
-                            currentValue = selectedChip,
-                            onValueUpdate = {
-                                viewModel.toggleChip(it)
-                            }
-                        )
+                        if (capsuleDock) {
+                            ChipsRow(
+                                chips = homePage?.chips.orEmpty().map { it to it.title },
+                                currentValue = selectedChip,
+                                onValueUpdate = viewModel::toggleChip,
+                            )
+                        } else {
+                            StandardHomeChips(
+                                chips = homePage?.chips.orEmpty().map { it to it.title },
+                                currentValue = selectedChip,
+                                onValueUpdate = viewModel::toggleChip,
+                            )
+                        }
                     }
                 }
 
