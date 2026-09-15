@@ -11,6 +11,8 @@ package com.nikhil.yt.ui.screens.settings
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.layout.only
+import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -23,6 +25,7 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
+import com.nikhil.yt.LocalPlayerAwareWindowInsets
 import com.nikhil.yt.R
 import com.nikhil.yt.constants.*
 import com.nikhil.yt.ui.component.ListItem
@@ -37,7 +40,12 @@ import com.nikhil.yt.utils.rememberPreference
 fun DiscordExperimental(
     navController: NavController,
 ) {
-    Scaffold { inner ->
+    Scaffold(
+        // Content stops above the dock and the navigation bar instead of running under them.
+        contentWindowInsets =
+            LocalPlayerAwareWindowInsets.current
+                .only(WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom),
+    ) { inner ->
         Column(Modifier.fillMaxSize()) {
             TopAppBar(
                 title = { Text(stringResource(R.string.experiment_settings)) },
@@ -49,9 +57,15 @@ fun DiscordExperimental(
             )
 
             LazyColumn(
-                modifier = Modifier
-                    .padding(inner.calculateBottomPadding())
-                    .padding(bottom = 80.dp) // extra space for mini player
+                /*
+                 * Bottom only, and from the real inset.
+                 *
+                 * This used to be `padding(inner.calculateBottomPadding())`, which applies a
+                 * *bottom* measurement to all four sides, plus a hardcoded 80dp guess at the
+                 * mini-player's height. The inset already knows the dock, the mini-player and the
+                 * navigation bar, and it knows when each of them is actually there.
+                 */
+                modifier = Modifier.padding(bottom = inner.calculateBottomPadding()),
             ) {
                 item {
                     Text(
