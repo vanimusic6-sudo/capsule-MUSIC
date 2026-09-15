@@ -16,10 +16,12 @@ import androidx.navigation.compose.rememberNavController
 import com.nikhil.yt.ui.screens.DestinationMotion
 import com.nikhil.yt.ui.screens.Screens
 import com.nikhil.yt.ui.screens.destinationMotionFor
+import com.nikhil.yt.ui.screens.resetNavigationHistory
 import com.nikhil.yt.ui.screens.routeComposable
 import com.nikhil.yt.ui.screens.spec
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
+import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -40,6 +42,13 @@ class DestinationEntranceTest {
     @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
 
     private lateinit var controller: NavHostController
+
+    /**
+     * The route history is process-wide, so without this a test inherits wherever the previous one
+     * left off — and since the motion now depends on what a destination was reached *from*, that
+     * silently changes what is being measured.
+     */
+    @Before fun startFromNowhere() = resetNavigationHistory()
 
     private fun showGraph() {
         compose.setContent {
@@ -78,18 +87,63 @@ class DestinationEntranceTest {
     }
 
     @Test fun settingsPagesMoveSidewaysBecauseTheyAreOneStructure() {
-        listOf("settings", "settings/appearance", "settings/appearance/palette_picker")
+        listOf("settings/appearance", "settings/appearance/palette_picker")
             .forEach { route ->
                 assertEquals(
                     "$route should step along a path, not be presented",
                     DestinationMotion.Settings,
-                    destinationMotionFor(route),
+                    destinationMotionFor(route, from = "settings"),
                 )
             }
 
         val settings = DestinationMotion.Settings.spec()
         assertTrue("settings should travel sideways", settings.shift.value > 0f)
         assertEquals("settings should not scale", 0f, settings.overscale, 0f)
+    }
+
+    /**
+     * Crossing into or out of settings is an arrival, and arrivals scale. The distinction matters:
+     * a sideways slide into settings reads as if you were already inside it, and a tab's lift on
+     * the way out reads as the library rather than as settings closing.
+     */
+    @Test fun crossingTheSettingsBoundaryIsAnArrival() {
+        listOf(
+            "settings" to "home",
+            "settings/appearance" to "library",
+            "home" to "settings",
+            "library" to "settings/appearance",
+        ).forEach { (route, from) ->
+            assertEquals(
+                "$from -> $route crosses the boundary",
+                DestinationMotion.Section,
+                destinationMotionFor(route, from = from),
+            )
+        }
+
+        val section = DestinationMotion.Section.spec()
+        val detail = DestinationMotion.Detail.spec()
+        assertTrue("a section should scale, like opening an artist", section.overscale > 0f)
+        assertEquals("a section should not travel", 0f, section.lift.value, 0f)
+        assertEquals("a section should not slide", 0f, section.shift.value, 0f)
+        // A whole area of the app is a bigger thing to arrive at than one artist.
+        assertTrue("a section should scale more than a detail", section.overscale > detail.overscale)
+        assertTrue(
+            "a section should take longer than a detail",
+            section.durationMillis > detail.durationMillis,
+        )
+    }
+
+    /**
+     * Two large surfaces that rise from the bottom and resolve a uniform scale read as one animation
+     * played twice, however the constants differ. What separates the player from the lyrics is the
+     * geometry: opposite anchors, and the lyrics move on one axis only.
+     */
+    @Test fun theSettingsEntranceLeansAwayBeforeItGoes() {
+        val settings = DestinationMotion.Settings.spec()
+        // Covering a sixteenth of the travel in the first tenth of the time is enough to feel like
+        // being thrown into the animation rather than leaving the page you were on.
+        val startedBy = settings.easing.transform(0.1f)
+        assertTrue("a tenth in, $startedBy of the travel is already spent", startedBy < 0.04f)
     }
 
     /**

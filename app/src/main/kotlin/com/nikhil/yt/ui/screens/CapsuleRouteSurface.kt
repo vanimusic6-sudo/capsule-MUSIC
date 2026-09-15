@@ -36,14 +36,16 @@ internal fun NavGraphBuilder.routeComposable(
     content: @Composable AnimatedContentScope.(NavBackStackEntry) -> Unit,
 ) = composable(route, arguments, deepLinks) { entry ->
     val contentScope = this
-    val motion = remember(route) { destinationMotionFor(route) }
     // Recorded once per composition of this destination, which is once per arrival: with route
     // transitions at None a destination is disposed as soon as it is left, so a screen that comes
     // back has genuinely been re-entered.
-    val direction = remember(entry) { NavigationHistory.enter(route) }
+    val arrival = remember(entry) { NavigationHistory.enter(route) }
+    // The motion depends on where the destination was reached from, not only on what it is: opening
+    // settings and stepping back to its root are different events landing on the same route.
+    val motion = remember(arrival) { destinationMotionFor(route, arrival.from) }
     CompositionLocalProvider(LocalNavBackStackEntry provides entry) {
         CapsuleRouteSurface {
-            Box(modifier = Modifier.destinationEntrance(motion, direction)) {
+            Box(modifier = Modifier.destinationEntrance(motion, arrival.direction)) {
                 with(contentScope) { content(entry) }
             }
         }
@@ -54,9 +56,23 @@ internal fun NavGraphBuilder.routeComposable(
  * The single history shared by every destination in the graph.
  *
  * There is one NavHost in the app, and destinations are siblings with no composition between them to
- * hold shared state, so this is where "the route before this one" can live.
+ * hold shared state, so this is where "the route before this one" can live. Composition runs on the
+ * main thread, so nothing here needs synchronising.
+ *
+ * Being process-wide has one consequence worth naming: it outlives the NavHost that filled it. A
+ * history left over from a previous graph can only ever cost a single entrance the wrong direction,
+ * after which it is correct again — but it also means a test that never navigates still inherits
+ * whatever the last one did, which is why [resetNavigationHistory] exists.
  */
 private val NavigationHistory = RouteHistory()
+
+/**
+ * Forgets which route was composed last.
+ *
+ * Call this when a new navigation graph starts, so its first destination is treated as a beginning
+ * rather than as a step away from whatever the previous graph ended on.
+ */
+internal fun resetNavigationHistory() = NavigationHistory.clear()
 
 /**
  * The entry that owns the destination currently being composed.

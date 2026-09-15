@@ -36,22 +36,46 @@ internal enum class DestinationMotion {
     Detail,
 
     /**
-     * Moving between pages of one structure.
+     * Moving between pages *inside* one structure.
      *
-     * Settings is a tree, not a series of places you open, so it moves sideways: the new page comes
-     * in from the edge you are heading towards. Scaling suited it badly — it made each page look
-     * like something being presented rather than the next step along a path.
+     * Settings is a tree, and stepping between its pages is following a path, so it moves sideways:
+     * the page comes in from the edge you are heading towards. Scaling suited this badly — it made
+     * each page look like something being presented rather than the next step along the way.
      *
      * It is the one motion that is directional. Going deeper, the page arrives from the trailing
-     * edge; stepping back out, the page you return to arrives from the leading edge instead. That
-     * is what carries the sense of leaving a settings page, and it carries it without an exit
-     * transition — which would mean two screens on screen at once, one showing through the other.
+     * edge; stepping back out, the page you return to arrives from the leading edge instead, and a
+     * little quicker, because retracing a step should not take as long as taking it. That is what
+     * carries the sense of leaving a settings page, and it carries it without an exit transition —
+     * which would mean two screens on screen at once, one showing through the other.
      */
     Settings,
+
+    /**
+     * Crossing the boundary of a structure, in either direction.
+     *
+     * Opening settings is not a step along the settings path — it is arriving at a different part of
+     * the app — and leaving settings is not a tab switch, even though it lands on a tab. Both were
+     * taking the motion of where they ended up, which is why opening settings slid sideways as if it
+     * were already one of its own pages, and why closing settings made the screen behind rise like a
+     * library tab.
+     *
+     * So the boundary gets its own motion, and it is the one used for opening something: a scale.
+     * A little larger and a little longer than [Detail], because a whole area of the app is a bigger
+     * thing to arrive at than one artist.
+     */
+    Section,
 }
 
 internal data class DestinationMotionSpec(
     val durationMillis: Int,
+    /**
+     * Duration when the destination is reached by stepping back out of something.
+     *
+     * Retracing a step should not take as long as taking it: going back is a move you have already
+     * seen, and making it wait the full duration reads as the screen being slow to let you leave.
+     * Defaults to the forward duration for motions where there is no "back".
+     */
+    val backwardDurationMillis: Int = durationMillis,
     val easing: Easing,
     /** Distance the content rises through. Zero for motion that resolves by scale instead. */
     val lift: Dp,
@@ -108,19 +132,43 @@ private val DetailSpec =
     )
 
 /*
- * Slower than the others, and on the same long-tailed curve as the tabs.
+ * Slower than the others, and softer off the mark than anything else here.
  *
- * It was on the steep decelerate, which put nearly all of the sideways travel into the first moments
- * and made stepping into a settings page read as a flick. Settings is the one place in the app where
- * you move through a structure rather than open something, and that wants to be unhurried.
+ * Two separate corrections live in this curve. It was first on a steep decelerate, which put nearly
+ * all of the sideways travel into the opening moments and made stepping into a settings page read as
+ * a flick. Moving it to the long-tailed curve fixed the end but not the beginning: at a tenth of the
+ * way through the duration the page had already covered a sixteenth of its travel, which is enough
+ * to feel like being thrown into the animation from the page you were on rather than leaving it.
+ *
+ * Pulling the first control point out to 0.38 and its height down to 0.02 spends barely two percent
+ * of the distance in the first tenth of the time. The page leans away before it goes, so one page
+ * becomes the next without either of them appearing to be flung.
  */
 private val SettingsSpec =
     DestinationMotionSpec(
         durationMillis = 440,
-        easing = CubicBezierEasing(0.2f, 0.05f, 0.35f, 1f),
+        backwardDurationMillis = 370,
+        easing = CubicBezierEasing(0.38f, 0.02f, 0.3f, 1f),
         lift = 0.dp,
         shift = 30.dp,
         overscale = 0f,
+        fromAlpha = 0.86f,
+    )
+
+/*
+ * The boundary of a section: opening settings, and coming back out of it.
+ *
+ * Deliberately the [DetailSpec] gesture — a scale settling down to true size — because arriving at a
+ * whole area of the app is the same *kind* of event as opening an artist, not a step along a path
+ * and not a tab switch. Bigger and longer than Detail by a little, since what is being arrived at is
+ * bigger.
+ */
+private val SectionSpec =
+    DestinationMotionSpec(
+        durationMillis = 460,
+        easing = CubicBezierEasing(0.24f, 0.04f, 0.32f, 1f),
+        lift = 0.dp,
+        overscale = 0.045f,
         fromAlpha = 0.86f,
     )
 
@@ -133,19 +181,46 @@ private val SettingsSpec =
  * reads soft for the same reason a blur does — the edges are not where they will end up — and costs
  * nothing beyond the layer that already exists.
  */
-internal fun destinationMotionFor(route: String?): DestinationMotion =
-    when {
-        route == null -> DestinationMotion.Detail
+/**
+ * Which character a destination arrives with, given where it was reached from.
+ *
+ * The route alone is not enough, and that is the correction here. "settings" reached from the app is
+ * an arrival at a new area; reached from one of its own sub-pages it is a step back along a path.
+ * "home" reached from another tab is a tab switch; reached from settings it is an area closing. The
+ * same destination, two meanings, and taking the motion from the destination alone got both of them
+ * wrong in the same way.
+ */
+internal fun destinationMotionFor(route: String?, from: String? = null): DestinationMotion {
+    if (route == null) return DestinationMotion.Detail
+
+    val arriving = route.isInSettings()
+    val leaving = from?.isInSettings() == true
+
+    return when {
+        // Crossing the boundary either way: into settings, or back out to the app.
+        arriving != leaving -> DestinationMotion.Section
+        // Moving between pages within settings.
+        arriving -> DestinationMotion.Settings
         Screens.MainScreens.any { it.route == route } -> DestinationMotion.Tab
-        route.startsWith("settings") -> DestinationMotion.Settings
         else -> DestinationMotion.Detail
     }
+}
+
+/**
+ * The settings tree: its root and everything under it.
+ *
+ * The separator check keeps a route that merely begins with the same letters — "settings_backup" —
+ * from counting as part of the tree.
+ */
+private fun String.isInSettings(): Boolean =
+    this == "settings" || startsWith("settings/")
 
 internal fun DestinationMotion.spec(): DestinationMotionSpec =
     when (this) {
         DestinationMotion.Tab -> TabSpec
         DestinationMotion.Detail -> DetailSpec
         DestinationMotion.Settings -> SettingsSpec
+        DestinationMotion.Section -> SectionSpec
     }
 
 /**
@@ -162,9 +237,14 @@ internal fun Modifier.destinationEntrance(
     if (!systemAnimationsEnabled()) return this
 
     val spec = motion.spec()
-    val progress = remember(spec) { Animatable(0f) }
-    LaunchedEffect(spec) {
-        progress.animateTo(1f, tween(spec.durationMillis, easing = spec.easing))
+    val durationMillis =
+        when (direction) {
+            RouteDirection.Forward -> spec.durationMillis
+            RouteDirection.Backward -> spec.backwardDurationMillis
+        }
+    val progress = remember(spec, direction) { Animatable(0f) }
+    LaunchedEffect(spec, direction) {
+        progress.animateTo(1f, tween(durationMillis, easing = spec.easing))
     }
 
     val density = LocalDensity.current
@@ -243,12 +323,24 @@ internal fun routeDirection(from: String?, to: String): RouteDirection =
  * A stale value cannot do damage: the worst outcome is a single settings page travelling in from
  * the wrong edge once, after which the history is correct again.
  */
+/** A destination being entered, and what it was entered from. */
+internal data class RouteArrival(
+    val route: String,
+    val from: String?,
+    val direction: RouteDirection,
+)
+
 internal class RouteHistory {
     private var previousRoute: String? = null
 
-    fun enter(route: String): RouteDirection {
-        val direction = routeDirection(previousRoute, route)
+    fun enter(route: String): RouteArrival {
+        val arrival = RouteArrival(route, previousRoute, routeDirection(previousRoute, route))
         previousRoute = route
-        return direction
+        return arrival
+    }
+
+    /** Forgets the last route, so the next arrival is treated as a beginning. */
+    fun clear() {
+        previousRoute = null
     }
 }

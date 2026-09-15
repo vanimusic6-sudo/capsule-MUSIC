@@ -70,22 +70,44 @@ val BottomSheetAnimationSpec = spring<Dp>(
     stiffness = 225f,
 )
 
-val BottomSheetSoftAnimationSpec = spring<Dp>(
-    dampingRatio = Spring.DampingRatioNoBouncy,
-    stiffness = 158f,
-)
+/*
+ * How the player opens and closes when it is tapped rather than dragged.
+ *
+ * These were springs, and a spring is what made the movement start with a jolt. A critically damped
+ * spring leaves rest at zero speed but at *maximum acceleration* — the force is largest at the very
+ * first frame and decays from there. The eye does not read acceleration, it reads the change in it,
+ * and that change is instantaneous at t=0. However smooth the rest of the travel is, the departure
+ * snaps.
+ *
+ * A tween on a curve that eases in has no such instant: the first frames spend almost no distance,
+ * so the player leaves the dock softly, commits through the middle, and settles at the end. It also
+ * arrives, where a spring only approaches.
+ *
+ * Dragging is untouched, and deliberately. A fling already carries the finger's velocity into the
+ * animation, and a spring continuing that velocity is exactly right there — there is no standing
+ * start to soften.
+ */
+val PlayerTapTravelMillis = 460
+private val PlayerTapEasing = CubicBezierEasing(0.36f, 0f, 0.24f, 1f)
+
+val BottomSheetSoftAnimationSpec: AnimationSpec<Dp> =
+    tween(durationMillis = PlayerTapTravelMillis, easing = PlayerTapEasing)
 
 /*
- * Collapse still gets a little physical follow-through, but the old 0.78 damping was visibly rubbery
- * next to the dock. These values keep the impact while preventing the mini-player/nav seam from
- * overshooting and looking broken.
+ * Collapse after a drag still gets a little physical follow-through, but the old 0.78 damping was
+ * visibly rubbery next to the dock. These values keep the impact while preventing the
+ * mini-player/nav seam from overshooting and looking broken.
  */
 val BottomSheetCollapseAnimationSpec = spring<Dp>(
     dampingRatio = 0.86f,
     stiffness = 188f,
 )
 
-val BottomSheetSoftCollapseAnimationSpec = spring<Dp>(
-    dampingRatio = 0.89f,
-    stiffness = 152f,
-)
+/*
+ * A tapped close, like a tapped open: soft departure, and no dip past the dock.
+ *
+ * This one was under-damped, so the sheet went slightly below the dock and came back. That reads as
+ * weight when it is driven by a finger, and as a wobble when it is driven by a tap out of nowhere.
+ */
+val BottomSheetSoftCollapseAnimationSpec: AnimationSpec<Dp> =
+    tween(durationMillis = PlayerTapTravelMillis, easing = PlayerTapEasing)

@@ -8,7 +8,9 @@ import com.nikhil.yt.ui.screens.RouteHistory
 import com.nikhil.yt.ui.screens.ScreenTransitions
 import com.nikhil.yt.ui.screens.destinationMotionFor
 import com.nikhil.yt.ui.screens.routeDirection
+import com.nikhil.yt.ui.screens.spec
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
@@ -95,16 +97,100 @@ class ScreenTransitionsTest {
     @Test fun `history reports the direction of each arrival in turn`() {
         val history = RouteHistory()
 
-        assertEquals(RouteDirection.Forward, history.enter("home"))
-        assertEquals(RouteDirection.Forward, history.enter("settings"))
-        assertEquals(RouteDirection.Forward, history.enter("settings/appearance"))
+        assertEquals(RouteDirection.Forward, history.enter("home").direction)
+        assertEquals(RouteDirection.Forward, history.enter("settings").direction)
+        assertEquals(RouteDirection.Forward, history.enter("settings/appearance").direction)
         // Back out of the tree, one step at a time.
-        assertEquals(RouteDirection.Backward, history.enter("settings"))
-        assertEquals(RouteDirection.Forward, history.enter("home"))
+        assertEquals(RouteDirection.Backward, history.enter("settings").direction)
+        assertEquals(RouteDirection.Forward, history.enter("home").direction)
     }
 
-    @Test fun `settings pages are the ones that move laterally`() {
-        assertEquals(DestinationMotion.Settings, destinationMotionFor("settings"))
-        assertEquals(DestinationMotion.Settings, destinationMotionFor("settings/appearance"))
+    @Test fun `history remembers what each destination was reached from`() {
+        val history = RouteHistory()
+
+        assertEquals(null, history.enter("home").from)
+        assertEquals("home", history.enter("settings").from)
+        assertEquals("settings", history.enter("settings/appearance").from)
+    }
+
+    /**
+     * The route alone does not say what a navigation means, and taking the motion from the
+     * destination alone got both ends of the settings tree wrong: opening settings slid sideways as
+     * if it were already one of its own pages, and closing settings made the screen behind rise like
+     * a library tab.
+     */
+    @Test fun `entering and leaving settings both cross a boundary`() {
+        assertEquals(
+            "opening settings is an arrival, not a step along its path",
+            DestinationMotion.Section,
+            destinationMotionFor("settings", from = "home"),
+        )
+        assertEquals(
+            "closing settings is an area closing, not a tab switch",
+            DestinationMotion.Section,
+            destinationMotionFor("home", from = "settings"),
+        )
+        assertEquals(
+            DestinationMotion.Section,
+            destinationMotionFor("library", from = "settings/appearance"),
+        )
+    }
+
+    @Test fun `moving inside settings is a step along a path`() {
+        assertEquals(
+            DestinationMotion.Settings,
+            destinationMotionFor("settings/appearance", from = "settings"),
+        )
+        assertEquals(
+            DestinationMotion.Settings,
+            destinationMotionFor("settings", from = "settings/appearance"),
+        )
+        assertEquals(
+            DestinationMotion.Settings,
+            destinationMotionFor("settings/content", from = "settings/appearance"),
+        )
+    }
+
+    @Test fun `a tab reached from another tab still moves like a tab`() {
+        assertEquals(DestinationMotion.Tab, destinationMotionFor("home", from = "library"))
+        assertEquals(DestinationMotion.Tab, destinationMotionFor("stats", from = "home"))
+        // Cold start: nothing was on screen before, so nothing was crossed.
+        assertEquals(DestinationMotion.Tab, destinationMotionFor("home", from = null))
+    }
+
+    @Test fun `a route that merely starts with settings is outside the tree`() {
+        // Otherwise opening it from settings would look like a step inside it.
+        assertEquals(
+            DestinationMotion.Section,
+            destinationMotionFor("settings_backup", from = "settings"),
+        )
+    }
+
+    /**
+     * Retracing a step should not take as long as taking it.
+     */
+    @Test fun `stepping back out of a settings page is quicker than stepping in`() {
+        val settings = DestinationMotion.Settings.spec()
+        assertTrue(
+            "back takes ${settings.backwardDurationMillis}ms against ${settings.durationMillis}ms",
+            settings.backwardDurationMillis < settings.durationMillis,
+        )
+        // But not so much quicker that the pair stops reading as one movement reversed.
+        assertTrue(
+            "back is ${settings.backwardDurationMillis}ms, too far from ${settings.durationMillis}ms",
+            settings.backwardDurationMillis >= settings.durationMillis * 3 / 4,
+        )
+    }
+
+    @Test fun `motions with no direction take the same time either way`() {
+        listOf(DestinationMotion.Tab, DestinationMotion.Detail, DestinationMotion.Section)
+            .forEach { motion ->
+                val spec = motion.spec()
+                assertEquals(
+                    "$motion should not change speed with direction",
+                    spec.durationMillis,
+                    spec.backwardDurationMillis,
+                )
+            }
     }
 }

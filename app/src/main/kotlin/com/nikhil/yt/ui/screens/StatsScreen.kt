@@ -93,6 +93,7 @@ import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.zIndex
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.WindowInsets
@@ -386,7 +387,11 @@ fun StatsScreen(
             }
 
             // HighLights Section
-            item {
+            // Keyed, like its neighbours. Without a key this item is identified by its index, and
+            // the highlights arrive asynchronously — so the item that follows it inherits this
+            // one's identity until the data lands, and any animateItem below it plays against the
+            // wrong slot.
+            item(key = "statsHighlights") {
                 StatsHighlightsSection(
                     topArtist = mostPlayedArtists.firstOrNull(),
                     topSong = mostPlayedSongsStats.firstOrNull(),
@@ -740,7 +745,26 @@ fun StatsHighlightCard(
             .clickable(onClick = onClick),
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+            /*
+             * The blend, computed — not the same colour left half transparent.
+             *
+             * These cards used to be surfaceVariant at 50% opacity, and that made them the one thing
+             * on the screen whose colour depended on the layer it was drawn into. A destination
+             * plays its entrance on a graphicsLayer whose alpha rises to 1, and that alpha
+             * multiplies into every draw: an opaque element simply fades up, but a half-transparent
+             * one shows *more* of the background as well as less of itself, so its final colour
+             * moves along a different curve from everything around it. The card therefore looked
+             * washed out for the length of the entrance and then snapped to its real colour at the
+             * end, which is the flash on the favourites cards.
+             *
+             * Mixing the two colours here gives exactly the same result at rest, and an opaque
+             * surface that fades like its neighbours. It is also cheaper: no blending at draw time.
+             */
+            containerColor = lerp(
+                MaterialTheme.colorScheme.surface,
+                MaterialTheme.colorScheme.surfaceVariant,
+                0.5f,
+            )
         )
     ) {
         Row(

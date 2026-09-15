@@ -312,24 +312,36 @@ fun BottomSheetPlayer(
 }
 
 /**
- * The lyrics sheet has a character of its own, deliberately unlike the player's.
+ * The lyrics sheet has a character of its own, and it had to be made more than nominally different.
  *
- * The player folds: it scales down towards the dock. The lyrics do the opposite — they rise and
- * *open out*, easing down from slightly oversized to their true size while the text fades up. Two
- * surfaces that squashed the same way read as one animation played twice.
+ * Both surfaces used to rise from the bottom and resolve a uniform scale, which is one animation
+ * played twice however the numbers differ — the eye reads the *geometry*, not the constants. What
+ * separates them now is where each one is anchored and along which axis it moves:
+ *
+ * - the player is anchored at the **bottom**, at the dock it folds into, and scales on both axes. It
+ *   is an object shrinking towards a place.
+ * - the lyrics are anchored at the **top** and stretch on the vertical axis alone. Nothing about
+ *   them gets wider or narrower; the sheet unrolls downward from its own top edge, the way a page
+ *   is pulled out rather than a card zoomed in.
+ *
+ * Those are opposite anchors and different axes, so the two cannot be mistaken for each other even
+ * though the idea — rise, open out, settle — is the one that was there before.
  */
 private const val LyricsOpenWindow = 0.70f
-private const val LyricsOpenOverscale = 0.030f
+
+/** Vertical only. The horizontal axis is left at exactly 1 throughout, which is the whole point. */
+private const val LyricsUnrollStretch = 0.045f
 private const val LyricsOpenFade = 0.90f
-private const val LyricsTravelMillis = 420
+private const val LyricsTravelMillis = 480
 
 /**
- * Eases in a little, then decelerates the rest of the way.
+ * Softer off the mark than the player's, and a touch longer.
  *
- * It still never speeds back up, so it cannot read as being pulled onto the edge at the end, but
- * leaving from a standing start rather than at full speed takes the hard edge off the beginning.
+ * The sheet should feel lighter than the thing it covers: the player is a slab being moved, the
+ * lyrics are a page being drawn out. Spending even less distance in the first frames is what carries
+ * that difference in time as well as in shape.
  */
-private val LyricsEasing = CubicBezierEasing(0.3f, 0.06f, 0.05f, 1f)
+private val LyricsEasing = CubicBezierEasing(0.42f, 0f, 0.28f, 1f)
 
 @Composable
 private fun CapsulePlayerLyricsHost(
@@ -446,10 +458,14 @@ private fun CapsulePlayerLyricsHost(
                                     ((1f - travelled) * fullHeightPx).coerceAtLeast(0f)
 
                                 /*
-                                 * Opening out, not settling: oversized and soft at the start,
-                                 * exact and solid by the end. No blur — a full-screen RenderEffect
-                                 * costs an offscreen buffer every frame, which is what made these
-                                 * surfaces stall the first time they were used.
+                                 * Unrolling, not settling. The sheet is over-tall at the start and
+                                 * draws down to its true height from its own top edge; its width
+                                 * never changes at all. That is what keeps it from reading as the
+                                 * player's fold played in reverse.
+                                 *
+                                 * No blur — a full-screen RenderEffect costs an offscreen buffer
+                                 * every frame, which is what made these surfaces stall the first
+                                 * time they were used.
                                  */
                                 val opening =
                                     CapsuleMotion.approach(
@@ -457,10 +473,10 @@ private fun CapsulePlayerLyricsHost(
                                         window = LyricsOpenWindow,
                                     )
                                 val remaining = 1f - opening
-                                scaleX = 1f + LyricsOpenOverscale * remaining
-                                scaleY = 1f + LyricsOpenOverscale * remaining
+                                scaleX = 1f
+                                scaleY = 1f + LyricsUnrollStretch * remaining
                                 alpha = 1f - LyricsOpenFade * remaining
-                                transformOrigin = TransformOrigin(0.5f, 0.5f)
+                                transformOrigin = TransformOrigin(0.5f, 0f)
                             },
                 ) {
                     LyricsScreen(
