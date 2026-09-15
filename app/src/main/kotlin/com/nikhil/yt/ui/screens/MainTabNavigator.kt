@@ -31,6 +31,8 @@ internal fun rememberMainTabNavigator(navController: NavHostController): MainTab
  *    being composed, so no destination work is wasted.
  */
 internal class MainTabNavigator(private val navController: NavHostController) {
+    private val tabRoutes: Set<String> = Screens.MainScreens.mapTo(mutableSetOf()) { it.route }
+
     fun select(route: String, onReselected: () -> Unit = {}) {
         // Null until NavHost has set the graph. Bailing out keeps a tap that races the first frame
         // (or arrives during state restoration) from reading a graph that does not exist yet.
@@ -41,10 +43,41 @@ internal class MainTabNavigator(private val navController: NavHostController) {
             return
         }
 
+        leaveAnythingOpenedOnTopOfTheTabs()
+
+        // Stripping may already have landed on the tab that was asked for — it was underneath all
+        // along. Navigating again would only save and restore state for no reason.
+        if (navController.currentDestination?.route == route) return
+
         navController.navigate(route) {
             popUpTo(navController.graph.startDestinationId) { saveState = true }
             launchSingleTop = true
             restoreState = true
+        }
+    }
+
+    /**
+     * Pops artists, playlists, settings pages — anything that is not a tab — before switching.
+     *
+     * This is what makes a tab button mean the tab. `saveState`/`restoreState` are worth keeping:
+     * they are why a tab still has its scroll position and its ViewModels when you come back to it.
+     * But in a flat graph they save *everything stacked above the start destination*, which is not
+     * "this tab's own stack" — it is whatever the user happened to have open. So a tap on Home
+     * saved the settings page under Home's key and then restored it in the same call, leaving the
+     * user exactly where they were; and a tap on Library after opening an artist saved that artist,
+     * so the next tap on Home brought the artist back instead of Home.
+     *
+     * Popping those entries first, and deliberately *without* saving them, means the saved stacks
+     * only ever contain tabs. A tab tap can then restore a tab and nothing else.
+     *
+     * The pops happen in one synchronous burst, so no intermediate destination is ever composed —
+     * Compose recomposes once per frame, and only the final state reaches it.
+     */
+    private fun leaveAnythingOpenedOnTopOfTheTabs() {
+        while (navController.currentDestination?.route !in tabRoutes) {
+            // False once there is nothing left to pop, which also stops this at the graph root if
+            // the start destination is somehow not one of the tabs.
+            if (!navController.popBackStack()) return
         }
     }
 }

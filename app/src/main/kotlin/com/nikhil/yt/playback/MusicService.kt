@@ -187,6 +187,7 @@ import com.nikhil.yt.playback.video.CapsuleVideoStreamInterceptor
 import com.nikhil.yt.playback.video.YouTubeVideoResolver
 import com.nikhil.yt.playback.video.CapsuleVideoResolveCoordinator
 import com.nikhil.yt.playback.video.CapsuleVideoResolveRequest
+import androidx.media3.session.CacheBitmapLoader
 import com.nikhil.yt.utils.CoilBitmapLoader
 import com.nikhil.yt.utils.NetworkConnectivityObserver
 import com.nikhil.yt.utils.StreamClientUtils
@@ -1227,7 +1228,12 @@ class MusicService :
                         Intent(this, MainActivity::class.java),
                         PendingIntent.FLAG_IMMUTABLE,
                     ),
-                ).setBitmapLoader(CoilBitmapLoader(this, scope))
+                ).setBitmapLoader(
+                    // Wrapped, because the session, the notification and whatever the OEM builds on
+                    // top of them each ask for the same artwork. Without a cache in front, one track
+                    // change is several identical loads.
+                    CacheBitmapLoader(CoilBitmapLoader(this, scope)),
+                )
                 .build()
         setMediaNotificationProvider(
             DefaultMediaNotificationProvider(
