@@ -716,12 +716,23 @@ class MainActivity : ComponentActivity() {
                                     navBackStackEntry?.destination?.route?.startsWith("search/") == true
                         }
 
-                    val shouldShowNavigationBar =
-                        remember(navBackStackEntry, active) {
-                            navBackStackEntry?.destination?.route == null ||
-                                    navigationItems.fastAny { it.route == navBackStackEntry?.destination?.route } &&
-                                    !active
-                        }
+                    /*
+                     * The navigation bar belongs to the app, not to four of its screens.
+                     *
+                     * It used to appear only on the bottom-bar destinations, so opening an artist, a
+                     * playlist or settings took it away and coming back brought it in. That is a
+                     * chrome element flickering in and out of a session, and it also moved the
+                     * ground under the player: collapsedBound below is built from the bar's height,
+                     * and rememberBottomSheetState recreates and re-snaps the sheet whenever that
+                     * bound changes. Every navigation between a tab and anything else was therefore
+                     * snapping the mini-player to a new resting place. Keeping the bar means the
+                     * bound is the same everywhere and that snap cannot happen at all.
+                     *
+                     * Two things still take it away, and neither is a destination. The search
+                     * overlay is a full-screen input mode with a keyboard over everything, and Year
+                     * in Music is a full-bleed story that hides the system bars as well.
+                     */
+                    val shouldShowNavigationBar = !active && !isYearInMusicScreen
 
                     fun getBottomNavPadding(): Dp {
                         return if (shouldShowNavigationBar && !useRail) {

@@ -96,6 +96,38 @@ fun FluidSlidingNavigationBar(
     }
 }
 
+/**
+ * Which tab the highlight sits on, including on screens that are not tabs at all.
+ *
+ * The bar is now on screen everywhere, and an artist, a playlist or a settings page matches no tab.
+ * Both call sites used to end in `.coerceAtLeast(0)`, which turns "no match" into index 0 — so
+ * opening an artist from the library would have slid the highlight across to Home and opening
+ * anything from Home would have looked correct by luck. That was invisible while the bar hid itself
+ * on those screens; it is not invisible any more.
+ *
+ * Holding the last tab that did match is both the honest answer and the useful one: the screen you
+ * opened came from somewhere, and the bar keeps saying where.
+ */
+@Composable
+internal fun selectedTabIndex(
+    currentRoute: String?,
+    items: List<Screens>,
+): Int {
+    val lastMatched = remember(items) { LastSelectedTab() }
+    val matched = items.indexOfFirst { isRouteSelected(currentRoute, it.route, items) }
+    if (matched >= 0) lastMatched.index = matched
+    return lastMatched.index
+}
+
+/**
+ * Deliberately a plain object rather than snapshot state.
+ *
+ * It is written during composition, and a snapshot write read back in the same pass schedules
+ * another composition for no reason. Nothing needs to observe this: the route it is derived from is
+ * already observed upstream, so a change of route recomposes this bar anyway.
+ */
+private class LastSelectedTab(var index: Int = 0)
+
 private fun isRouteSelected(
     currentRoute: String?,
     screenRoute: String,
@@ -221,21 +253,7 @@ private fun CapsuleNavigationBar(
                 26.dp,
         )
 
-    val selectedIndex =
-        remember(
-            currentRoute,
-            items,
-        ) {
-            items
-                .indexOfFirst { screen ->
-                    isRouteSelected(
-                        currentRoute,
-                        screen.route,
-                        items,
-                    )
-                }
-                .coerceAtLeast(0)
-        }
+    val selectedIndex = selectedTabIndex(currentRoute, items)
 
     Box(
         modifier =
@@ -476,7 +494,7 @@ internal fun StandardNavigationBar(
     currentRoute: String,
     onTabSelected: (Screens) -> Unit,
 ) {
-    val selectedIndex = items.indexOfFirst { isRouteSelected(currentRoute, it.route, items) }.coerceAtLeast(0)
+    val selectedIndex = selectedTabIndex(currentRoute, items)
     BoxWithConstraints(
         modifier = modifier
             .clip(RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
