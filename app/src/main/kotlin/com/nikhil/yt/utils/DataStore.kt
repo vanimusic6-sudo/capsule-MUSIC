@@ -24,6 +24,7 @@ import com.nikhil.yt.constants.AudioOffload
 import com.nikhil.yt.extensions.toEnum
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -45,6 +46,8 @@ object PreferenceStore {
 
     @Volatile
     private var started = false
+
+    private var collector: Job? = null
 
     /**
      * Prime the in-memory snapshot before exposing the store as started.
@@ -91,11 +94,36 @@ object PreferenceStore {
             }
 
             started = true
-            scope.launch {
-                context.dataStore.data.collect { preferences ->
-                    _prefs.value = preferences
+            collector =
+                scope.launch {
+                    context.dataStore.data.collect { preferences ->
+                        _prefs.value = preferences
+                    }
                 }
-            }
+        }
+    }
+
+    /**
+     * Unbinds the store from the DataStore it was started with.
+     *
+     * This exists for tests, and for a reason that is not a detail. The store is a process-wide
+     * singleton that guards itself with a one-shot `started` flag, so the *first* call to [start]
+     * decides which DataStore feeds the snapshot for the life of the JVM. That is exactly right in
+     * an app, which has one. It is wrong under a test runner, where every test gets a fresh
+     * Application and therefore a fresh DataStore: the second test onwards calls [start], gets a
+     * silent no-op, and then reads a snapshot fed by a collector still attached to a DataStore that
+     * no longer exists. Values written by that test never arrive, and whether a given test notices
+     * depends on what the previous one happened to leave behind — which is a test that passes or
+     * fails on execution order.
+     *
+     * Nothing in the app should call this.
+     */
+    internal fun resetForTesting() {
+        synchronized(this) {
+            collector?.cancel()
+            collector = null
+            _prefs.value = null
+            started = false
         }
     }
 

@@ -4,7 +4,6 @@ import android.app.Application
 import androidx.activity.ComponentActivity
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
-import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.test.core.app.ApplicationProvider
@@ -34,27 +33,35 @@ class PreferenceInitialValueTest {
 
     private val context: Application = ApplicationProvider.getApplicationContext()
 
+    /**
+     * Every value this class reads is written *before* the store is started, and started against
+     * this test's own context.
+     *
+     * Both halves matter. PreferenceStore is a process-wide singleton whose `started` flag makes
+     * the first call the binding one, so without the reset a test gets a silent no-op and then
+     * reads a snapshot fed from a previous test's DataStore — which is what made this class fail on
+     * CI and pass locally, purely on execution order. And writing first means start()'s own
+     * blocking initial read picks the values up, so nothing here waits on the asynchronous
+     * collector. There is no polling, no sleep and no timeout left in this test: it either has the
+     * snapshot before the first composition or it fails saying so.
+     */
     @Before fun primeStore() {
+        PreferenceStore.resetForTesting()
         runBlocking {
-            context.dataStore.edit { it[ChipSortTypeKey] = LibraryFilter.PLAYLISTS.name }
+            context.dataStore.edit {
+                it[ChipSortTypeKey] = LibraryFilter.PLAYLISTS.name
+                it[StoredKey] = STORED_VALUE
+            }
         }
         PreferenceStore.start(context)
-        awaitSnapshot(ChipSortTypeKey, LibraryFilter.PLAYLISTS.name)
-    }
 
-    /**
-     * PreferenceStore.start() primes the snapshot once per process, so a key written after the
-     * first call reaches it through the background collector instead. This test is about what the
-     * Compose helpers read *from* a primed snapshot, so wait for the value to be in it rather than
-     * racing the collector — otherwise the test measures scheduling luck.
-     */
-    private fun awaitSnapshot(key: Preferences.Key<String>, expected: String) {
-        val deadlineMs = System.currentTimeMillis() + SNAPSHOT_TIMEOUT_MS
-        while (PreferenceStore.get(key) != expected) {
-            check(System.currentTimeMillis() < deadlineMs) {
-                "PreferenceStore snapshot never observed $key"
-            }
-            Thread.sleep(SNAPSHOT_POLL_MS)
+        // A precondition, not an assertion about the code under test: if the snapshot is not primed
+        // then this test cannot say anything about what Compose reads from a primed snapshot.
+        check(PreferenceStore.get(ChipSortTypeKey) == LibraryFilter.PLAYLISTS.name) {
+            "PreferenceStore did not prime its snapshot from this test's DataStore"
+        }
+        check(PreferenceStore.get(StoredKey) == STORED_VALUE) {
+            "PreferenceStore did not prime its snapshot from this test's DataStore"
         }
     }
 
@@ -77,19 +84,15 @@ class PreferenceInitialValueTest {
     }
 
     @Test fun aPlainPreferenceIsCorrectOnTheVeryFirstComposition() {
-        val key = stringPreferencesKey("capsule.test.first.frame")
-        runBlocking { context.dataStore.edit { it[key] = "stored" } }
-        PreferenceStore.start(context)
-        awaitSnapshot(key, "stored")
-
         val seen = mutableListOf<String>()
         compose.setContent {
-            val value by rememberPreference(key, "fallback")
+            val value by rememberPreference(StoredKey, "fallback")
             seen += value
         }
         compose.waitForIdle()
 
-        assertEquals("fallback was rendered before the stored value", "stored", seen.first())
+        assertEquals("fallback was rendered before the stored value", STORED_VALUE, seen.first())
+        assertEquals(STORED_VALUE, seen.last())
     }
 
     @Test fun anUnwrittenPreferenceStillFallsBackToItsDefault() {
@@ -107,7 +110,7 @@ class PreferenceInitialValueTest {
     }
 
     private companion object {
-        const val SNAPSHOT_TIMEOUT_MS = 5_000L
-        const val SNAPSHOT_POLL_MS = 10L
+        val StoredKey = stringPreferencesKey("capsule.test.first.frame")
+        const val STORED_VALUE = "stored"
     }
 }
