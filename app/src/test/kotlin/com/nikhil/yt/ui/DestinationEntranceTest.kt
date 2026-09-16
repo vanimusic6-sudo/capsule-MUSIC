@@ -20,8 +20,10 @@ import com.nikhil.yt.ui.screens.resetNavigationHistory
 import com.nikhil.yt.ui.screens.routeComposable
 import com.nikhil.yt.ui.screens.spec
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Before
+import java.io.File
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -98,13 +100,13 @@ class DestinationEntranceTest {
 
         val settings = DestinationMotion.Settings.spec()
         assertTrue("settings should travel sideways", settings.shift.value > 0f)
-        assertEquals("settings should not scale", 0f, settings.overscale, 0f)
+        assertEquals("settings should not rise", 0f, settings.lift.value, 0f)
     }
 
     /**
-     * Crossing into or out of settings is an arrival, and arrivals scale. The distinction matters:
-     * a sideways slide into settings reads as if you were already inside it, and a tab's lift on
-     * the way out reads as the library rather than as settings closing.
+     * Crossing into or out of settings is an arrival, and arrivals rise. The distinction matters:
+     * a sideways slide into settings reads as if you were already inside it, and a tab's shorter
+     * lift on the way out reads as the library rather than as settings closing.
      */
     @Test fun crossingTheSettingsBoundaryIsAnArrival() {
         listOf(
@@ -122,11 +124,14 @@ class DestinationEntranceTest {
 
         val section = DestinationMotion.Section.spec()
         val detail = DestinationMotion.Detail.spec()
-        assertTrue("a section should scale, like opening an artist", section.overscale > 0f)
-        assertEquals("a section should not travel", 0f, section.lift.value, 0f)
+        val tab = DestinationMotion.Tab.spec()
+        assertTrue("a section should rise, like opening an artist", section.lift.value > 0f)
         assertEquals("a section should not slide", 0f, section.shift.value, 0f)
-        // A whole area of the app is a bigger thing to arrive at than one artist.
-        assertTrue("a section should scale more than a detail", section.overscale > detail.overscale)
+        // A whole area of the app is a bigger thing to arrive at than one artist, and one artist is
+        // a bigger thing to arrive at than the tab next door. That ordering is the only thing
+        // separating the three rises now that none of them scales, so it is pinned.
+        assertTrue("a section should rise further than a detail", section.lift.value > detail.lift.value)
+        assertTrue("a detail should rise further than a tab", detail.lift.value > tab.lift.value)
         assertTrue(
             "a section should take longer than a detail",
             section.durationMillis > detail.durationMillis,
@@ -165,7 +170,7 @@ class DestinationEntranceTest {
             // belongs to the content, not to the entrance.
             assertTrue(
                 "$motion moves nothing, so it is a layer created for no reason",
-                spec.lift.value > 0f || spec.shift.value > 0f || spec.overscale > 0f,
+                spec.lift.value > 0f || spec.shift.value > 0f,
             )
         }
     }
@@ -195,9 +200,8 @@ class DestinationEntranceTest {
             // A screen mid-entrance is still a screen someone may be reading, and a stalled
             // animation must never leave a destination looking blank.
             // Restraint is part of the brief: this is character, not a page transition.
-            assertTrue("$motion travels too far", spec.lift.value <= 18f)
+            assertTrue("$motion travels too far", spec.lift.value <= 32f)
             assertTrue("$motion slides too far", spec.shift.value <= 40f)
-            assertTrue("$motion scales too much", spec.overscale <= 0.06f)
         }
     }
 
@@ -235,5 +239,38 @@ class DestinationEntranceTest {
         // position rather than leaving the screen permanently offset.
         assertTrue("the entrance did not travel at all", topDuring > topSettled)
         assertEquals(0f, topSettled, 0.01f)
+    }
+
+    /**
+     * No entrance scales, and none ever should again.
+     *
+     * A scale resamples every edge in the frame for the length of the animation, so an edge where
+     * two opaque fills meet — the bottom of an artist header, for one — crawls and flickers until
+     * the screen lands. It also draws outside its own bounds, because `graphicsLayer` does not
+     * clip, so an oversized screen overhangs its neighbours and then retracts.
+     *
+     * This is a source check rather than a spec check on purpose: the spec no longer has a field to
+     * assert against, which is exactly why a scale could come back as a line in the layer block
+     * without anything here noticing.
+     */
+    @Test fun noEntranceScalesTheScreen() {
+        val source =
+            listOf(
+                File("src/main/kotlin/com/nikhil/yt/ui/screens/DestinationEntrance.kt"),
+                File("app/src/main/kotlin/com/nikhil/yt/ui/screens/DestinationEntrance.kt"),
+            ).firstOrNull { it.isFile }
+        assertTrue(
+            "Could not find DestinationEntrance.kt from ${File(".").absolutePath}",
+            source != null,
+        )
+        source!!.readLines().forEachIndexed { index, line ->
+            val trimmed = line.trim()
+            val isComment =
+                trimmed.startsWith("*") || trimmed.startsWith("//") || trimmed.startsWith("/*")
+            assertFalse(
+                "DestinationEntrance.kt:${index + 1} scales the screen again: $trimmed",
+                !isComment && (trimmed.contains("scaleX") || trimmed.contains("scaleY")),
+            )
+        }
     }
 }

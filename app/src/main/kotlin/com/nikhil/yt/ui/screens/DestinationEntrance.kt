@@ -35,7 +35,7 @@ internal enum class DestinationMotion {
     /** Lateral, habitual, frequent. Brisk, with a little travel so it reads as momentum. */
     Tab,
 
-    /** Going into something. Settles out of a slightly oversized state rather than snapping in. */
+    /** Going into something. Rises further and settles later than a tab does. */
     Detail,
 
     /**
@@ -62,9 +62,9 @@ internal enum class DestinationMotion {
      * were already one of its own pages, and why closing settings made the screen behind rise like a
      * library tab.
      *
-     * So the boundary gets its own motion, and it is the one used for opening something: a scale.
-     * A little larger and a little longer than [Detail], because a whole area of the app is a bigger
-     * thing to arrive at than one artist.
+     * So the boundary gets its own motion, and it is the one used for opening something: the same
+     * rise as [Detail], carried a little further and a little longer, because a whole area of the
+     * app is a bigger thing to arrive at than one artist.
      */
     Section,
 }
@@ -80,13 +80,34 @@ internal data class DestinationMotionSpec(
      */
     val backwardDurationMillis: Int = durationMillis,
     val easing: Easing,
-    /** Distance the content rises through. Zero for motion that resolves by scale instead. */
-    val lift: Dp,
+    /** Distance the content rises through. Zero for motion that travels sideways instead. */
+    val lift: Dp = 0.dp,
     /** Distance the content travels in from the trailing edge. Zero for motion that does not. */
     val shift: Dp = 0.dp,
-    /** Size the content resolves down from. 0f keeps it at its true size throughout. */
-    val overscale: Float,
 )
+
+/*
+ * Why nothing here scales any more.
+ *
+ * The detail and section entrances used to resolve down from a slightly oversized state, and it was
+ * the wrong tool twice over.
+ *
+ * It was visibly broken. A scale resamples the whole frame: for the length of the animation every
+ * edge inside the screen sits on a fractional pixel and is redrawn from a different set of source
+ * pixels each frame. Where two opaque fills meet — the bottom edge of the artist header against the
+ * page under it — that shows up as a seam that crawls and flickers until the screen lands. A
+ * translation cannot do this: it moves the whole layer by one offset, so every edge inside it keeps
+ * the same relationship to every other edge for the entire animation.
+ *
+ * It also drew outside its own bounds. `graphicsLayer` does not clip, so an oversized screen
+ * overhung its neighbours on all four sides and then retracted, which is the second half of what
+ * made the bottom edge unstable.
+ *
+ * The replacement is not a compromise. All four characters are now one gesture — a rise — separated
+ * by how far and how long, which is the same vocabulary the tab entrance was already using and the
+ * one nobody had a complaint about. It costs strictly less: a translation is a matrix the GPU
+ * applies while drawing, with no resampling at all.
+ */
 
 /*
  * Every curve eases in a little before it decelerates.
@@ -109,26 +130,24 @@ private val TabSpec =
         durationMillis = 380,
         easing = CubicBezierEasing(0.2f, 0.05f, 0.35f, 1f),
         lift = 16.dp,
-        overscale = 0f,
     )
 
 /*
- * The scale characters share the gentlest lead-in of anything here, and they had the harshest.
- *
- * This one kept the original steep decelerate long after the tabs and settings were moved off it:
- * a twentieth of the duration in and a fifth of the scale was already spent, so opening an artist
- * began with a lurch and then coasted. A scale is far less forgiving of that than a translation —
- * the whole frame changes size at once, so the opening rate is read directly as force.
+ * The gentlest lead-in of anything here, and the longest settle of the two rises.
  *
  * (0.42, 0) spends almost nothing in the first frames. The screen leans into the movement instead
- * of being thrown into it, which is the "lead-in" that was missing.
+ * of being thrown into it. The curve is kept exactly as it was when this was a scale — it was the
+ * part of that animation that was right — and only the gesture under it changed.
+ *
+ * It rises further than a tab and takes longer over it. That difference is the whole distinction
+ * now, and it is enough: a tab switch is a flick sideways in the same place, opening an artist is
+ * arriving somewhere, and a deeper, slower rise is what separates them.
  */
 private val DetailSpec =
     DestinationMotionSpec(
         durationMillis = 460,
         easing = CubicBezierEasing(0.42f, 0f, 0.28f, 1f),
-        lift = 0.dp,
-        overscale = 0.028f,
+        lift = 22.dp,
     )
 
 /*
@@ -149,36 +168,31 @@ private val SettingsSpec =
         durationMillis = 440,
         backwardDurationMillis = 370,
         easing = CubicBezierEasing(0.38f, 0.02f, 0.3f, 1f),
-        lift = 0.dp,
         shift = 30.dp,
-        overscale = 0f,
-        // Lighter than the others: a lateral step has no first-render settle to hide, it only needs
     )
 
 /*
  * The boundary of a section: opening settings, and coming back out of it.
  *
- * Deliberately the [DetailSpec] gesture — a scale settling down to true size — because arriving at a
- * whole area of the app is the same *kind* of event as opening an artist, not a step along a path
- * and not a tab switch. Bigger and longer than Detail by a little, since what is being arrived at is
- * bigger.
+ * Deliberately the [DetailSpec] gesture, because arriving at a whole area of the app is the same
+ * *kind* of event as opening an artist, not a step along a path and not a tab switch. Carried
+ * further and held longer than Detail, since what is being arrived at is bigger.
  */
 private val SectionSpec =
     DestinationMotionSpec(
         durationMillis = 500,
         easing = CubicBezierEasing(0.42f, 0f, 0.28f, 1f),
-        lift = 0.dp,
-        overscale = 0.045f,
+        lift = 28.dp,
     )
 
 /**
  * Tabs are the four bottom-bar destinations. Everything else is something the user opened.
  *
- * Note what is deliberately absent: a real blur. It would suit the detail entrance, but a
- * `RenderEffect` forces an offscreen buffer for the whole screen and allocating it the first time
- * is what made opening the player stall on device. Resolving down from a slightly oversized state
- * reads soft for the same reason a blur does — the edges are not where they will end up — and costs
- * nothing beyond the layer that already exists.
+ * Note what is deliberately absent: a real blur, and a scale. A `RenderEffect` forces an offscreen
+ * buffer for the whole screen and allocating it the first time is what made opening the player
+ * stall on device. A scale costs no buffer but resamples every edge in the frame for the length of
+ * the animation, which is worse in its own way: it is visible. What is left is a translation, which
+ * is the one transform that changes nothing inside the picture it moves.
  */
 /**
  * Which character a destination arrives with, given where it was reached from.
@@ -276,8 +290,8 @@ internal fun Modifier.destinationEntrance(
      * That distinction is what makes this cheap rather than merely small. A layer carrying an alpha
      * below 1, or a RenderEffect, has to be composited through an offscreen buffer: the content is
      * rendered into a texture the size of the screen and then blended. A layer carrying only a
-     * translation and a scale is a display list with a matrix attached, which the GPU applies for
-     * free while drawing it. Same code path as scrolling.
+     * translation is a display list with a matrix attached, which the GPU applies for free while
+     * drawing it. Same code path as scrolling.
      */
     return this.graphicsLayer {
         // The tween has already applied the easing; clamping here guards only against a value
@@ -287,10 +301,6 @@ internal fun Modifier.destinationEntrance(
 
         translationX = remaining * shiftPx
         translationY = remaining * liftPx
-        if (spec.overscale != 0f) {
-            scaleX = 1f + spec.overscale * remaining
-            scaleY = 1f + spec.overscale * remaining
-        }
     }
 }
 
