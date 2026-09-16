@@ -44,6 +44,7 @@ import com.nikhil.yt.ui.player.CapsulePlayerLayout
 import com.nikhil.yt.ui.player.capsuleLightLyricLineAt
 import com.nikhil.yt.ui.player.capsuleLightLyricLines
 import org.junit.Assert.*
+import java.io.File
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -254,5 +255,93 @@ class CapsuleLightLayoutTest {
         assertEquals("left band", inset, segment.left - shell.left, 1f)
         assertEquals("top band", inset, segment.top - shell.top, 1f)
         assertEquals("bottom band", inset, shell.bottom - segment.bottom, 1f)
+    }
+
+    @Test fun theSoundingLineStartsAtTheCardsLeadingEdge() {
+        compose.setContent {
+            MaterialTheme {
+                CapsulePlayerLayout(
+                    CapsulePlayerDesign.LIGHT, Color.White, {}, {},
+                    Modifier.size(360.dp, 860.dp),
+                    lyricLine = { Box(Modifier.fillMaxWidth().height(CapsuleLightLyricLineHeight).testTag("lyric")) },
+                    artwork = { Box(Modifier.fillMaxSize().testTag("cover")) },
+                    details = { Box(Modifier.fillMaxWidth().height(320.dp).testTag("details")) },
+                )
+            }
+        }
+        val cover = compose.onNodeWithTag("cover").fetchSemanticsNode().boundsInRoot
+        val lyric = compose.onNodeWithTag("lyric").fetchSemanticsNode().boundsInRoot
+        assertEquals("the line starts where the card starts", cover.left, lyric.left, 1f)
+        assertEquals("and ends where the card ends", cover.right, lyric.right, 1f)
+    }
+
+    @Test fun switchingTheLineOffTakesItsGapsWithIt() {
+        var withLine by mutableStateOf(true)
+        compose.setContent {
+            MaterialTheme {
+                CapsulePlayerLayout(
+                    CapsulePlayerDesign.LIGHT, Color.White, {}, {},
+                    Modifier.size(360.dp, 860.dp),
+                    lyricLine =
+                        if (withLine) {
+                            { Box(Modifier.fillMaxWidth().height(CapsuleLightLyricLineHeight).testTag("lyric")) }
+                        } else {
+                            null
+                        },
+                    artwork = { Box(Modifier.fillMaxSize().testTag("cover")) },
+                    details = { Box(Modifier.fillMaxWidth().height(320.dp).testTag("details")) },
+                )
+            }
+        }
+        fun gap(): Float {
+            val cover = compose.onNodeWithTag("cover").fetchSemanticsNode().boundsInRoot
+            val details = compose.onNodeWithTag("details").fetchSemanticsNode().boundsInRoot
+            return details.top - cover.bottom
+        }
+        val on = gap()
+        compose.runOnIdle { withLine = false }
+        compose.waitForIdle()
+        compose.onNodeWithTag("lyric").assertDoesNotExist()
+        val off = gap()
+        assertTrue("switching the line off must not leave its space behind", off < on)
+        assertEquals(with(Density(compose.activity)) { 20.dp.toPx() }, off, 1f)
+    }
+
+    /**
+     * A line too long for the card wraps downwards instead of being cut off.
+     *
+     * This is a source check, and it has to be: Robolectric's font stub reports zero-width glyphs,
+     * so a thousand-character string measures as fitting on one line and a rendered test would pass
+     * whatever maxLines said. What is checkable is the two things that let it wrap at all — the row
+     * reserves a minimum rather than a fixed height, and the text is allowed more than one line.
+     */
+    @Test fun theSoundingLineIsAllowedToWrapDownwards() {
+        val source =
+            listOf(
+                File("src/main/kotlin/com/nikhil/yt/ui/player/CapsuleLightLyricLine.kt"),
+                File("app/src/main/kotlin/com/nikhil/yt/ui/player/CapsuleLightLyricLine.kt"),
+            ).firstOrNull { it.isFile }
+        assertTrue("Could not find CapsuleLightLyricLine.kt from " + File(".").absolutePath, source != null)
+        val code =
+            source!!.readLines()
+                .map { it.trim() }
+                .filterNot { it.startsWith("*") || it.startsWith("//") || it.startsWith("/*") }
+
+        assertTrue(
+            "the row must reserve a minimum height, not a fixed one, or a second line has nowhere to go",
+            code.any { it.contains("heightIn(min = CapsuleLightLyricLineHeight)") },
+        )
+        assertFalse(
+            "a fixed height on the row would cut the second line off again",
+            code.any { it.contains(".height(CapsuleLightLyricLineHeight)") },
+        )
+        assertFalse(
+            "one line means a long line is ellipsised instead of wrapping",
+            code.any { it.contains("maxLines = 1") },
+        )
+        assertTrue(
+            "and the wrap has to stop somewhere, or one line could take the screen",
+            code.any { it.contains("MAX_LINES = 2") },
+        )
     }
 }

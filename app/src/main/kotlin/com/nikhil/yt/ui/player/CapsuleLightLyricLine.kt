@@ -14,8 +14,7 @@ import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -31,11 +30,19 @@ import com.nikhil.yt.lyrics.LyricsUtils
 import com.nikhil.yt.utils.reportException
 
 /**
- * The row keeps its height whether or not the track has synced lyrics.
- * Reserving it is deliberate: the metadata, the progress bar and the transport
- * panel must not jump downwards the moment lyrics finish loading mid-track.
+ * The height the row holds even with nothing in it.
+ *
+ * Reserving one line is deliberate: the metadata, the progress bar and the
+ * transport panel must not jump downwards the moment lyrics finish loading
+ * mid-track. A line too long for the width wraps to a second one and the row
+ * grows for as long as that line is sounding — wrapping downwards is the point,
+ * and the alternative, reserving two lines for every track, would keep
+ * everything below pushed down for a line that usually fits in one.
  */
-internal val CapsuleLightLyricLineHeight = 34.dp
+internal val CapsuleLightLyricLineHeight = 24.dp
+
+/** A long line wraps once. Beyond that it is ellipsised rather than taking the screen. */
+private const val MAX_LINES = 2
 
 /** The line is shown this long before it is due, matching the full lyrics screen. */
 private const val LINE_LEAD_MS = 300L
@@ -91,8 +98,8 @@ internal fun CapsuleLightLyricLine(
     modifier: Modifier = Modifier,
 ) {
     Box(
-        modifier = modifier.fillMaxWidth().height(CapsuleLightLyricLineHeight),
-        contentAlignment = Alignment.Center,
+        modifier = modifier.fillMaxWidth().heightIn(min = CapsuleLightLyricLineHeight),
+        contentAlignment = Alignment.CenterStart,
     ) {
         AnimatedContent(
             targetState = line.orEmpty(),
@@ -110,10 +117,10 @@ internal fun CapsuleLightLyricLine(
                 fontSize = 15.sp,
                 lineHeight = 19.sp,
                 fontWeight = FontWeight.Medium,
-                textAlign = TextAlign.Center,
-                maxLines = 1,
+                textAlign = TextAlign.Start,
+                maxLines = MAX_LINES,
                 overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp),
+                modifier = Modifier.fillMaxWidth(),
             )
         }
     }

@@ -60,9 +60,9 @@ internal val CapsuleLightToggleInset = 4.dp
 
 /**
  * Capsule Light's artwork card is slightly taller than it is wide.
- * Kept close to 1 on purpose: a portrait card, not a poster.
+ * Kept very close to 1 on purpose: a hint of portrait, not a poster.
  */
-internal const val CapsuleLightArtworkAspect = 1.12f
+internal const val CapsuleLightArtworkAspect = 1.06f
 
 /** Both designs host the same artwork, metadata and playback actions. */
 @Composable
@@ -73,7 +73,13 @@ internal fun CapsulePlayerLayout(
     onMenuClick: () -> Unit,
     modifier: Modifier = Modifier,
     onExpandQueue: () -> Unit = {},
-    lyricLine: @Composable () -> Unit = {},
+    /**
+     * The sounding lyric line, or null when it is switched off.
+     *
+     * Null rather than an empty lambda because the row's gaps go with it: a layout that reserved
+     * the space either way would keep the controls pushed down for a feature that is not there.
+     */
+    lyricLine: (@Composable () -> Unit)? = null,
     artwork: @Composable () -> Unit,
     details: @Composable () -> Unit,
 ) {
@@ -81,8 +87,9 @@ internal fun CapsulePlayerLayout(
     if (light) {
         BoxWithConstraints(modifier = modifier.fillMaxWidth()) {
             val fontScale = LocalDensity.current.fontScale.coerceIn(1f, 1.6f)
-            // The details column now also carries the sounding lyric line above it.
-            val detailsSpace = (320.dp + CapsuleLightLyricLineHeight) * fontScale
+            // The details column also carries the sounding lyric line above it, when it is on.
+            val lyricSpace = if (lyricLine != null) CapsuleLightLyricLineHeight else 0.dp
+            val detailsSpace = (320.dp + lyricSpace) * fontScale
             /*
              * The card is sized by its width and then grown by the aspect, so the
              * height budget has to be divided by the aspect before it is compared.
@@ -140,9 +147,18 @@ internal fun CapsulePlayerLayout(
                     Modifier.width(artworkWidth).height(artworkHeight),
                     contentAlignment = Alignment.Center,
                 ) { artwork() }
-                Spacer(Modifier.height(14.dp))
-                lyricLine()
-                Spacer(Modifier.height(18.dp))
+                if (lyricLine == null) {
+                    Spacer(Modifier.height(20.dp))
+                } else {
+                    /*
+                     * The line is held to the card's width and starts at the card's leading edge,
+                     * so its first character lines up with the artwork rather than floating in the
+                     * middle of a wider column.
+                     */
+                    Spacer(Modifier.height(10.dp))
+                    Box(Modifier.width(artworkWidth)) { lyricLine() }
+                    Spacer(Modifier.height(12.dp))
+                }
                 CompositionLocalProvider(LocalCapsuleLightMenu provides onMenuClick) { details() }
             }
         }

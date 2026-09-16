@@ -788,6 +788,8 @@
     <string name="capsule_player_design">Дизайн плеера</string>
     <string name="capsule_player_super">Capsule Dense</string>
     <string name="capsule_player_light">Capsule Light</string>
+    <string name="capsule_light_lyric_line">Строка текста песни</string>
+    <string name="capsule_light_lyric_line_description">Показывать под обложкой одну строку текста, следующую за воспроизведением. У треков без синхронизированного текста строка остаётся пустой.</string>
     <string name="background_capsule_glow">Capsule Glow</string>
     <string name="capsule_choose_artist">Выбор исполнителя</string>
     <string name="capsule_collapse_player">Свернуть плеер</string>

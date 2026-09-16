@@ -91,6 +91,7 @@ import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 import coil3.compose.AsyncImage
 import com.nikhil.yt.R
+import com.nikhil.yt.constants.CapsuleLightLyricLineKey
 import com.nikhil.yt.constants.CapsulePlayerDesign
 import com.nikhil.yt.db.entities.LyricsEntity
 import com.nikhil.yt.ui.component.ArtistSelectionItem
@@ -215,9 +216,17 @@ fun CapsulePlayerContent(
         (sliderPosition ?: positionMs)
             .coerceAtLeast(0L)
 
-    // Capsule Light draws the sounding line under the artwork card.
+    // Capsule Light draws the sounding line under the artwork card, unless it is switched off.
+    val showLyricLine by
+        rememberPreference(
+            CapsuleLightLyricLineKey,
+            defaultValue = true,
+        )
+
+    val lyricLineEnabled = isLight && showLyricLine
+
     val lyricsEntity by
-        if (isLight) {
+        if (lyricLineEnabled) {
             playerConnection.currentLyrics.collectAsState(initial = null)
         } else {
             remember { mutableStateOf<LyricsEntity?>(null) }
@@ -359,20 +368,23 @@ fun CapsulePlayerContent(
         onCollapse = onCollapse,
         onMenuClick = onMenuClick,
         onExpandQueue = onExpandQueue,
-        lyricLine = {
-            if (isLight) {
-                /*
-                 * positionMs already ticks for the progress bar, so following the
-                 * lyrics adds no timer of its own: the line is derived from the
-                 * position that is here anyway, and only the line text is handed
-                 * down, so the row recomposes when the line changes, not per tick.
-                 */
-                CapsuleLightLyricLine(
-                    line = capsuleLightLyricLineAt(syncedLyricLines, displayPosition),
-                    textColor = textColor,
-                )
-            }
-        },
+        lyricLine =
+            if (!lyricLineEnabled) {
+                null
+            } else {
+                {
+                    /*
+                     * positionMs already ticks for the progress bar, so following the
+                     * lyrics adds no timer of its own: the line is derived from the
+                     * position that is here anyway, and only the line text is handed
+                     * down, so the row recomposes when the line changes, not per tick.
+                     */
+                    CapsuleLightLyricLine(
+                        line = capsuleLightLyricLineAt(syncedLyricLines, displayPosition),
+                        textColor = textColor,
+                    )
+                }
+            },
         modifier =
             Modifier
                 .fillMaxSize()

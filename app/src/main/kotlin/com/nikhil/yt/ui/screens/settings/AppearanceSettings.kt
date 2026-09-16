@@ -39,6 +39,7 @@ import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
 import com.nikhil.yt.LocalPlayerAwareWindowInsets
 import com.nikhil.yt.R
+import com.nikhil.yt.constants.CapsuleLightLyricLineKey
 import com.nikhil.yt.constants.CapsulePlayerDesign
 import com.nikhil.yt.constants.CapsulePlayerDesignKey
 import com.nikhil.yt.constants.ChipSortTypeKey
@@ -99,6 +100,12 @@ fun AppearanceSettings(
         CapsulePlayerDesignKey,
         defaultValue = CapsulePlayerDesign.SUPER,
     )
+
+    val (lyricLineEnabled, onLyricLineEnabledChange) =
+        rememberPreference(
+            CapsuleLightLyricLineKey,
+            defaultValue = true,
+        )
     /*
      * =========================
      * Capsule
@@ -763,6 +770,17 @@ fun AppearanceSettings(
                 })
             },
         )
+
+        // Only Capsule Light draws the sounding line, so the switch follows the design.
+        AnimatedVisibility(visible = playerDesign == CapsulePlayerDesign.LIGHT) {
+            SwitchPreference(
+                title = { Text(stringResource(R.string.capsule_light_lyric_line)) },
+                description = stringResource(R.string.capsule_light_lyric_line_description),
+                icon = { Icon(painterResource(R.drawable.lyrics), contentDescription = null) },
+                checked = lyricLineEnabled,
+                onCheckedChange = onLyricLineEnabledChange,
+            )
+        }
 
         EnumListPreference(
             title = {

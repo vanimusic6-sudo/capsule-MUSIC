@@ -397,6 +397,7 @@ val HistoryDuration = floatPreferencesKey("historyDuration")
 
 val PlayerBackgroundStyleKey = stringPreferencesKey("playerBackgroundStyle")
 val CapsulePlayerDesignKey = stringPreferencesKey("capsulePlayerDesign")
+val CapsuleLightLyricLineKey = booleanPreferencesKey("capsuleLightLyricLine")
 val MiniPlayerBackgroundStyleKey = stringPreferencesKey("capsuleMiniPlayerBackgroundStyle")
 val LyricsTextPositionKey = stringPreferencesKey("lyricsTextPosition")
 val LyricsClickKey = booleanPreferencesKey("lyricsClick")
