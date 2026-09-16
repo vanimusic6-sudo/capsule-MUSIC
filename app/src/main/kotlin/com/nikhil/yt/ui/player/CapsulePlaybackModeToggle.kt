@@ -14,6 +14,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
@@ -26,6 +27,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -45,7 +47,23 @@ fun CapsuleAudioVideoToggle(
     modifier: Modifier = Modifier,
     lightStyle: Boolean = false,
 ) {
+    /*
+     * Capsule Light draws this switch directly above the transport panel, so it
+     * has to carry the panel's corner arc exactly, and the selected segment has
+     * to be concentric with it: an inner radius of
+     * CapsuleLightPanelRadius - CapsuleLightToggleInset leaves a constant-width
+     * band of shell around the segment on every corner. A segment rounded to
+     * some unrelated radius is what reads as visual noise next to the panel.
+     */
     val shape = if (lightStyle) CapsuleLightPanelShape else RoundedCornerShape(10.dp)
+    val segmentShape =
+        if (lightStyle) {
+            RoundedCornerShape(
+                (CapsuleLightPanelRadius - CapsuleLightToggleInset).coerceAtLeast(0.dp),
+            )
+        } else {
+            RoundedCornerShape(10.dp)
+        }
     val videoResolving =
         state.preferredMode == CapsulePlaybackMode.VIDEO &&
             state.phase == CapsuleVideoPhase.RESOLVING
@@ -61,22 +79,26 @@ fun CapsuleAudioVideoToggle(
 
     Row(
         modifier =
-            modifier
-                .width(if (lightStyle) 200.dp else 190.dp)
-                .height(if (lightStyle) 48.dp else 36.dp)
+            (if (lightStyle) modifier else modifier.width(190.dp))
+                .height(if (lightStyle) CapsuleLightToggleHeight else 36.dp)
                 .clip(shape)
                 .background(textColor.copy(alpha = if (lightStyle) 0.035f else 0.018f))
-                .border(
-                    1.dp,
-                    textColor.copy(alpha = if (lightStyle) 0f else 0.18f),
-                    shape,
+                .then(
+                    if (lightStyle) {
+                        Modifier
+                    } else {
+                        Modifier.border(1.dp, textColor.copy(alpha = 0.18f), shape)
+                    },
                 )
-                .padding(horizontal = 3.dp, vertical = if (lightStyle) 3.dp else 0.dp),
+                .padding(
+                    if (lightStyle) CapsuleLightToggleInset else 0.dp,
+                ),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         CapsuleModeSegment(
             text = if (lightStyle) "audio" else "AUDIO",
             lightStyle = lightStyle,
+            shape = segmentShape,
             selected = audioSelected,
             loading = false,
             unavailable = false,
@@ -87,15 +109,18 @@ fun CapsuleAudioVideoToggle(
             modifier = Modifier.weight(1f),
         )
 
-        Box(
-            Modifier
-                .width(1.dp)
-                .height(if (lightStyle) 22.dp else 18.dp)
-                .background(textColor.copy(alpha = if (lightStyle) 0f else 0.16f)),
-        )
+        if (!lightStyle) {
+            Box(
+                Modifier
+                    .width(1.dp)
+                    .height(18.dp)
+                    .background(textColor.copy(alpha = 0.16f)),
+            )
+        }
 
         CapsuleModeSegment(
             lightStyle = lightStyle,
+            shape = segmentShape,
             text =
                 when {
                     videoRequestError -> "VIDEO ERROR"
@@ -117,6 +142,7 @@ fun CapsuleAudioVideoToggle(
 @Composable
 private fun CapsuleModeSegment(
     text: String,
+    shape: Shape,
     selected: Boolean,
     loading: Boolean,
     unavailable: Boolean,
@@ -133,17 +159,17 @@ private fun CapsuleModeSegment(
             animationSpec = tween(160),
             label = "capsuleModeScale",
         )
-    val segmentShape = RoundedCornerShape(10.dp)
-
     Box(
         modifier =
             modifier
-                .height(if (lightStyle) 40.dp else 34.dp)
+                .then(
+                    if (lightStyle) Modifier.fillMaxHeight() else Modifier.height(34.dp),
+                )
                 .graphicsLayer {
                     scaleX = scale
                     scaleY = scale
                 }
-                .clip(segmentShape)
+                .clip(shape)
                 .background(if (lightStyle && selected) textColor.copy(alpha = 0.08f) else Color.Transparent)
                 .clickable(
                     enabled = enabled && !loading,

@@ -25,6 +25,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
@@ -50,7 +51,18 @@ import com.nikhil.yt.constants.CapsulePlayerDesign
 private val LocalCapsuleLightMenu = staticCompositionLocalOf<() -> Unit> { {} }
 
 /** Soft corners for Capsule Light's low-contrast controls. */
-internal val CapsuleLightPanelShape = RoundedCornerShape(18.dp)
+internal val CapsuleLightPanelRadius = 18.dp
+internal val CapsuleLightPanelShape = RoundedCornerShape(CapsuleLightPanelRadius)
+
+/** The AUDIO/VIDEO switch shares the transport panel's shell, so it shares its geometry. */
+internal val CapsuleLightToggleHeight = 48.dp
+internal val CapsuleLightToggleInset = 4.dp
+
+/**
+ * Capsule Light's artwork card is slightly taller than it is wide.
+ * Kept close to 1 on purpose: a portrait card, not a poster.
+ */
+internal const val CapsuleLightArtworkAspect = 1.12f
 
 /** Both designs host the same artwork, metadata and playback actions. */
 @Composable
@@ -61,6 +73,7 @@ internal fun CapsulePlayerLayout(
     onMenuClick: () -> Unit,
     modifier: Modifier = Modifier,
     onExpandQueue: () -> Unit = {},
+    lyricLine: @Composable () -> Unit = {},
     artwork: @Composable () -> Unit,
     details: @Composable () -> Unit,
 ) {
@@ -68,11 +81,19 @@ internal fun CapsulePlayerLayout(
     if (light) {
         BoxWithConstraints(modifier = modifier.fillMaxWidth()) {
             val fontScale = LocalDensity.current.fontScale.coerceIn(1f, 1.6f)
-            val detailsSpace = 320.dp * fontScale
-            val artworkSide = minOf(
+            // The details column now also carries the sounding lyric line above it.
+            val detailsSpace = (320.dp + CapsuleLightLyricLineHeight) * fontScale
+            /*
+             * The card is sized by its width and then grown by the aspect, so the
+             * height budget has to be divided by the aspect before it is compared.
+             * Both ends are clamped, so a short or fontScale-heavy window can never
+             * ask for a negative or unbounded card.
+             */
+            val artworkWidth = minOf(
                 (maxWidth - 48.dp).coerceAtLeast(120.dp),
-                (maxHeight - detailsSpace).coerceIn(180.dp, 420.dp),
+                ((maxHeight - detailsSpace) / CapsuleLightArtworkAspect).coerceIn(150.dp, 340.dp),
             )
+            val artworkHeight = artworkWidth * CapsuleLightArtworkAspect
             val scrollState = rememberScrollState()
             val openQueue by rememberUpdatedState(onExpandQueue)
             val queueThreshold = with(LocalDensity.current) { 64.dp.toPx() }
@@ -115,8 +136,13 @@ internal fun CapsulePlayerLayout(
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
                 Spacer(Modifier.height(8.dp))
-                Box(Modifier.size(artworkSide), contentAlignment = Alignment.Center) { artwork() }
-                Spacer(Modifier.height(20.dp))
+                Box(
+                    Modifier.width(artworkWidth).height(artworkHeight),
+                    contentAlignment = Alignment.Center,
+                ) { artwork() }
+                Spacer(Modifier.height(14.dp))
+                lyricLine()
+                Spacer(Modifier.height(18.dp))
                 CompositionLocalProvider(LocalCapsuleLightMenu provides onMenuClick) { details() }
             }
         }

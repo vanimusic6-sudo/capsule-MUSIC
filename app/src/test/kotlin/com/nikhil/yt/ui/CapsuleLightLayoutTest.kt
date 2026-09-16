@@ -29,8 +29,20 @@ import androidx.compose.ui.unit.dp
 import androidx.media3.common.Player
 import com.nikhil.yt.R
 import com.nikhil.yt.constants.CapsulePlayerDesign
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.width
+import androidx.compose.ui.test.hasClickAction
+import androidx.compose.ui.unit.Density
+import com.nikhil.yt.playback.video.CapsuleVideoPlaybackState
+import com.nikhil.yt.ui.player.CapsuleAudioVideoToggle
+import com.nikhil.yt.ui.player.CapsuleLightArtworkAspect
 import com.nikhil.yt.ui.player.CapsuleLightControls
+import com.nikhil.yt.ui.player.CapsuleLightLyricLineHeight
+import com.nikhil.yt.ui.player.CapsuleLightToggleHeight
+import com.nikhil.yt.ui.player.CapsuleLightToggleInset
 import com.nikhil.yt.ui.player.CapsulePlayerLayout
+import com.nikhil.yt.ui.player.capsuleLightLyricLineAt
+import com.nikhil.yt.ui.player.capsuleLightLyricLines
 import org.junit.Assert.*
 import org.junit.Rule
 import org.junit.Test
@@ -158,5 +170,89 @@ class CapsuleLightLayoutTest {
             swipeDown(startY = height * 0.2f, endY = height * 0.7f, durationMillis = 600)
         }
         compose.runOnIdle { assertEquals("A pull down from the top opens the queue once", 1, queueOpens) }
+    }
+
+    @Test fun lightArtworkCardIsTallerThanWideButStaysCloseToASquare() {
+        compose.setContent {
+            MaterialTheme {
+                CapsulePlayerLayout(
+                    CapsulePlayerDesign.LIGHT, Color.White, {}, {},
+                    Modifier.size(360.dp, 860.dp),
+                    lyricLine = { Box(Modifier.fillMaxWidth().height(CapsuleLightLyricLineHeight).testTag("lyric")) },
+                    artwork = { Box(Modifier.fillMaxSize().testTag("cover")) },
+                    details = { Box(Modifier.fillMaxWidth().height(320.dp).testTag("details")) },
+                )
+            }
+        }
+        val cover = compose.onNodeWithTag("cover").fetchSemanticsNode().boundsInRoot
+        assertTrue("the card must have a size at all", cover.width > 0f)
+        val aspect = cover.height / cover.width
+        assertEquals(CapsuleLightArtworkAspect, aspect, 0.01f)
+        assertTrue("the card must not turn into a poster", aspect < 1.25f)
+        assertTrue("the card must still be taller than wide", aspect > 1f)
+    }
+
+    @Test fun lightDrawsTheSoundingLineBetweenTheCardAndTheDetails() {
+        compose.setContent {
+            MaterialTheme {
+                CapsulePlayerLayout(
+                    CapsulePlayerDesign.LIGHT, Color.White, {}, {},
+                    Modifier.size(360.dp, 860.dp),
+                    lyricLine = { Box(Modifier.fillMaxWidth().height(CapsuleLightLyricLineHeight).testTag("lyric")) },
+                    artwork = { Box(Modifier.fillMaxSize().testTag("cover")) },
+                    details = { Box(Modifier.fillMaxWidth().height(320.dp).testTag("details")) },
+                )
+            }
+        }
+        val cover = compose.onNodeWithTag("cover").fetchSemanticsNode().boundsInRoot
+        val lyric = compose.onNodeWithTag("lyric").fetchSemanticsNode().boundsInRoot
+        val details = compose.onNodeWithTag("details").fetchSemanticsNode().boundsInRoot
+        assertTrue("the line belongs under the card", lyric.top >= cover.bottom)
+        assertTrue("the line belongs above the metadata", lyric.bottom <= details.top)
+        val gap = details.top - cover.bottom
+        val lineHeight = with(Density(compose.activity)) { CapsuleLightLyricLineHeight.toPx() }
+        assertTrue("the details must sit lower than the bare line height", gap > lineHeight)
+    }
+
+    @Test fun theSoundingLineFollowsThePlaybackPosition() {
+        val lines = capsuleLightLyricLines("[00:10.00]first line\n[00:20.00]second line\n[00:30.00]third line")
+        assertEquals(3, lines.size)
+        assertNull("nothing is sounding before the first line", capsuleLightLyricLineAt(lines, 0L))
+        assertEquals("first line", capsuleLightLyricLineAt(lines, 12_000L))
+        assertEquals("second line", capsuleLightLyricLineAt(lines, 25_000L))
+        assertEquals("third line", capsuleLightLyricLineAt(lines, 999_000L))
+    }
+
+    @Test fun lyricsThatCannotBeFollowedLeaveTheLineEmpty() {
+        for (source in listOf(null, "", "   ", "LYRICS_NOT_FOUND", "a plain unsynced verse\nand another")) {
+            val lines = capsuleLightLyricLines(source)
+            assertEquals("'" + source + "' carries no timing", emptyList<Any>(), lines)
+            assertNull(capsuleLightLyricLineAt(lines, 30_000L))
+        }
+    }
+
+    @Test fun lightModeSwitchSitsConcentricallyInsideItsShell() {
+        compose.setContent {
+            MaterialTheme {
+                CapsuleAudioVideoToggle(
+                    state = CapsuleVideoPlaybackState(),
+                    textColor = Color.White,
+                    enabled = true,
+                    onAudioClick = {},
+                    onVideoClick = {},
+                    modifier = Modifier.width(220.dp).testTag("toggle"),
+                    lightStyle = true,
+                )
+            }
+        }
+        val density = Density(compose.activity)
+        val shell = compose.onNodeWithTag("toggle").fetchSemanticsNode().boundsInRoot
+        // AUDIO is the selected segment, so it carries no scale and its bounds are exact.
+        val segment = compose.onAllNodes(hasClickAction())[0].fetchSemanticsNode().boundsInRoot
+        val inset = with(density) { CapsuleLightToggleInset.toPx() }
+        assertEquals(with(density) { CapsuleLightToggleHeight.toPx() }, shell.height, 1f)
+        assertEquals("left band", inset, segment.left - shell.left, 1f)
+        assertEquals("top band", inset, segment.top - shell.top, 1f)
+        assertEquals("bottom band", inset, shell.bottom - segment.bottom, 1f)
     }
 }

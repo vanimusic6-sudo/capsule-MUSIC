@@ -92,6 +92,7 @@ import androidx.media3.ui.PlayerView
 import coil3.compose.AsyncImage
 import com.nikhil.yt.R
 import com.nikhil.yt.constants.CapsulePlayerDesign
+import com.nikhil.yt.db.entities.LyricsEntity
 import com.nikhil.yt.ui.component.ArtistSelectionItem
 import com.nikhil.yt.constants.CropThumbnailToSquareKey
 import com.nikhil.yt.constants.HidePlayerThumbnailKey
@@ -213,6 +214,17 @@ fun CapsulePlayerContent(
     val displayPosition =
         (sliderPosition ?: positionMs)
             .coerceAtLeast(0L)
+
+    // Capsule Light draws the sounding line under the artwork card.
+    val lyricsEntity by
+        if (isLight) {
+            playerConnection.currentLyrics.collectAsState(initial = null)
+        } else {
+            remember { mutableStateOf<LyricsEntity?>(null) }
+        }
+
+    val syncedLyricLines =
+        remember(lyricsEntity) { capsuleLightLyricLines(lyricsEntity?.lyrics) }
 
     val safeDuration =
         durationMs
@@ -347,6 +359,20 @@ fun CapsulePlayerContent(
         onCollapse = onCollapse,
         onMenuClick = onMenuClick,
         onExpandQueue = onExpandQueue,
+        lyricLine = {
+            if (isLight) {
+                /*
+                 * positionMs already ticks for the progress bar, so following the
+                 * lyrics adds no timer of its own: the line is derived from the
+                 * position that is here anyway, and only the line text is handed
+                 * down, so the row recomposes when the line changes, not per tick.
+                 */
+                CapsuleLightLyricLine(
+                    line = capsuleLightLyricLineAt(syncedLyricLines, displayPosition),
+                    textColor = textColor,
+                )
+            }
+        },
         modifier =
             Modifier
                 .fillMaxSize()
@@ -453,7 +479,12 @@ fun CapsulePlayerContent(
                         Modifier
                             .fillMaxWidth()
                             .aspectRatio(
-                                if (isCapsuleVideoPlaying) 16f / 9f else 1f,
+                                when {
+                                    isCapsuleVideoPlaying -> 16f / 9f
+                                    // Capsule Light's card is slightly taller than wide.
+                                    isLight -> 1f / CapsuleLightArtworkAspect
+                                    else -> 1f
+                                },
                             )
                             .offset(
                                 y = if (isCapsuleVideoPlaying || isLight) 0.dp else (-5).dp,
