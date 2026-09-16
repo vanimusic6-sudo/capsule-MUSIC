@@ -144,7 +144,13 @@ fun LibraryAlbumsScreen(
         }
     }
 
-    val albums by viewModel.allAlbums.collectAsState()
+    /*
+     * Null means the query has not answered yet, which is not the same as owning no albums. Drawing
+     * the empty state before the answer arrives is what made the tab open with a centred placeholder
+     * and then swap it for a grid a frame later.
+     */
+    val loadedAlbums by viewModel.allAlbums.collectAsState()
+    val albums = loadedAlbums.orEmpty()
     val isRefreshing by viewModel.isRefreshing.collectAsState()
 
     val coroutineScope = rememberCoroutineScope()
@@ -249,7 +255,7 @@ fun LibraryAlbumsScreen(
                     }
 
                     albums.let { albums ->
-                        if (albums.isEmpty()) {
+                        if (loadedAlbums != null && albums.isEmpty()) {
                             item {
                                 EmptyPlaceholder(
                                     icon = R.drawable.album,
@@ -305,7 +311,7 @@ fun LibraryAlbumsScreen(
                     }
 
                     albums.let { albums ->
-                        if (albums.isEmpty()) {
+                        if (loadedAlbums != null && albums.isEmpty()) {
                             item(span = { GridItemSpan(maxLineSpan) }) {
                                 EmptyPlaceholder(
                                     icon = R.drawable.album,

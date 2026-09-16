@@ -136,7 +136,12 @@ fun LibraryArtistsScreen(
         }
     }
 
-    val artists by viewModel.allArtists.collectAsState()
+    /*
+     * Null means the query has not answered yet, which is not the same as following nobody. See
+     * LibraryAlbumsScreen for why that distinction is visible.
+     */
+    val loadedArtists by viewModel.allArtists.collectAsState()
+    val artists = loadedArtists.orEmpty()
     val isRefreshing by viewModel.isRefreshing.collectAsState()
     val coroutineScope = rememberCoroutineScope()
 
@@ -243,7 +248,7 @@ fun LibraryArtistsScreen(
                     }
 
                     artists.let { artists ->
-                        if (artists.isEmpty()) {
+                        if (loadedArtists != null && artists.isEmpty()) {
                             item {
                                 EmptyPlaceholder(
                                     icon = R.drawable.artist,
@@ -294,7 +299,7 @@ fun LibraryArtistsScreen(
                     }
 
                     artists.let { artists ->
-                        if (artists.isEmpty()) {
+                        if (loadedArtists != null && artists.isEmpty()) {
                             item(span = { GridItemSpan(maxLineSpan) }) {
                                 EmptyPlaceholder(
                                     icon = R.drawable.artist,

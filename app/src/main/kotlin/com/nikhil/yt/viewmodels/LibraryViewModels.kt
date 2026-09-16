@@ -66,6 +66,7 @@ import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import java.text.Collator
@@ -184,6 +185,19 @@ constructor(
     private val _isRefreshing = MutableStateFlow(false)
     val isRefreshing = _isRefreshing.asStateFlow()
 
+
+/*
+ * Seeded with null, not with an empty list, and the difference is the whole point.
+ *
+ * `SharingStarted.Lazily` starts the query when the first screen subscribes, so the first value a
+ * screen sees is whatever the seed was — and Room's real answer arrives at least a frame later. With
+ * an empty list as the seed, "nothing here yet" and "you own nothing" are the same value, so every
+ * library tab opened by drawing its *empty state* and then replacing it with the content a frame
+ * later. That flash of a centred placeholder giving way to a grid is what reads as a lurch in the
+ * first moments of the tab.
+ *
+ * Null says "not known yet", which is the truth, and lets a screen draw neither.
+ */
     val allArtists =
         context.dataStore.data
             .map {
@@ -198,7 +212,7 @@ constructor(
                     ArtistFilter.LIBRARY -> database.artists(sortType, descending)
                     ArtistFilter.LIKED -> database.artistsBookmarked(sortType, descending)
                 }
-            }.stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
+            }.stateIn(viewModelScope, SharingStarted.Lazily, null)
 
     fun refresh(filter: ArtistFilter, automatic: Boolean = false) {
         if (filter != ArtistFilter.LIKED) return
@@ -221,7 +235,9 @@ constructor(
 
     init {
         viewModelScope.launch(Dispatchers.IO) {
-            allArtists.collect { artists ->
+            // Null is "the query has not answered", not "no artists" — there is nothing to sync
+            // until it has.
+            allArtists.filterNotNull().collect { artists ->
                 artists
                     .map { it.artist }
                     .filter {
@@ -253,6 +269,8 @@ constructor(
     private val _isRefreshing = MutableStateFlow(false)
     val isRefreshing = _isRefreshing.asStateFlow()
 
+
+    /** Null until the query answers. See [allArtists]. */
     val allAlbums =
         context.dataStore.data
             .map {
@@ -307,7 +325,7 @@ constructor(
                     AlbumFilter.LIBRARY -> database.albums(sortType, descending).map { it.filterExplicitAlbums(hideExplicit) }
                     AlbumFilter.LIKED -> database.albumsLiked(sortType, descending).map { it.filterExplicitAlbums(hideExplicit) }
                 }
-            }.stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
+            }.stateIn(viewModelScope, SharingStarted.Lazily, null)
 
     fun refresh(filter: AlbumFilter, automatic: Boolean = false) {
         if (filter != AlbumFilter.LIKED) return
@@ -330,7 +348,8 @@ constructor(
 
     init {
         viewModelScope.launch(Dispatchers.IO) {
-            allAlbums.collect { albums ->
+            // Null is "the query has not answered", not "no albums".
+            allAlbums.filterNotNull().collect { albums ->
                 albums
                     .filter {
                         it.album.songCount == 0
