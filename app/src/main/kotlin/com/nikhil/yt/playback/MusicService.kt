@@ -5058,6 +5058,18 @@ class MusicService :
                     player.play()
                 }
             }
+            "com.nikhil.yt.ACTION_SEEK_FRACTION" -> {
+                /*
+                 * A widget cannot drag, so it sends the point it was tapped at instead.
+                 * A fraction rather than a position, because the widget does not reliably know the
+                 * duration: the service does, always, and can clamp against it here.
+                 */
+                val fraction = intent.getFloatExtra("fraction", -1f)
+                val duration = player.duration
+                if (fraction in 0f..1f && duration > 0L) {
+                    player.seekTo((duration * fraction).toLong().coerceIn(0L, duration))
+                }
+            }
             "com.nikhil.yt.ACTION_REWIND" -> {
                 // Jumps back exactly 10,000 milliseconds (10 seconds)
                 val newPos = (player.currentPosition - 10000).coerceAtLeast(0)

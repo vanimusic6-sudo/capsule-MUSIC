@@ -847,7 +847,7 @@ Velune will only extract your token, and everything else is stored locally.</str
     <string name="error_network_problem_title">Network problem</string>
     <string name="error_network_problem_description">Check your internet connection. If you use a VPN, try reconnecting or restarting it.</string>
     <string name="capsule_player_design">Player design</string>
-    <string name="capsule_player_super">Capsule Dense</string>
+    <string name="capsule_player_super">Capsule Cosmo</string>
     <string name="capsule_player_light">Capsule Light</string>
     <string name="capsule_light_lyric_line">Sounding lyric line</string>
     <string name="capsule_light_lyric_line_description">Show one line of the lyrics under the artwork, following playback. Tracks without synced lyrics leave it empty.</string>
@@ -872,8 +872,4 @@ Velune will only extract your token, and everything else is stored locally.</str
     <string name="welcome_follow_count">Follow %1$d</string>
     <string name="widget_bar_name">Capsule</string>
     <string name="widget_bar_description">What is playing, with previous, play and next.</string>
-    <string name="widget_shelf_name">Capsule + playlists</string>
-    <string name="widget_shelf_description">The player, with your saved playlists underneath.</string>
-    <string name="widget_vinyl_name">Capsule vinyl</string>
-    <string name="widget_vinyl_description">Just the cover, as a record.</string>
 </resources>

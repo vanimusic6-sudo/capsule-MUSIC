@@ -47,8 +47,18 @@ internal enum class CapsuleBackgroundEffect {
     CAPSULE_GLOW,
 }
 
-private const val COMPACT_BACKGROUND_FPS = 15
-private const val FULL_BACKGROUND_FPS = 24
+/*
+ * These are decorative clocks, and a decorative clock's frame rate is a battery setting.
+ *
+ * The compact one is the expensive one: it drives the mini-player's background, which is on screen
+ * on every page of the app for as long as something is playing. At 15fps it was the last thing
+ * keeping the frame clock awake during ordinary use — not enough to feel, enough to warm the SoC
+ * over an evening. These effects are slow drifts and washes; nothing in them moves fast enough for
+ * the eye to tell 15 from 8, or 24 from 14, which is why the frame rate was the thing to cut
+ * rather than the effect.
+ */
+private const val COMPACT_BACKGROUND_FPS = 8
+private const val FULL_BACKGROUND_FPS = 14
 private const val STATIC_BACKGROUND_TIME_MS = 6_480L
 
 /**

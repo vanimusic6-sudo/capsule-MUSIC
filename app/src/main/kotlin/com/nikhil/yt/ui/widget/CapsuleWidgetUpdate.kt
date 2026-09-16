@@ -10,19 +10,14 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import androidx.datastore.preferences.core.MutablePreferences
-import androidx.glance.appwidget.GlanceAppWidget
 import androidx.glance.appwidget.GlanceAppWidgetManager
 import androidx.glance.appwidget.state.getAppWidgetState
 import androidx.glance.appwidget.state.updateAppWidgetState
 import androidx.glance.state.PreferencesGlanceStateDefinition
 import androidx.palette.graphics.Palette
-import com.nikhil.yt.db.MusicDatabase
-import com.nikhil.yt.di.WidgetEntryPoint
-import dagger.hilt.android.EntryPointAccessors
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import java.io.File
 import java.io.FileOutputStream
@@ -38,15 +33,7 @@ private val widgetScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
 private const val ART_SIDE = 256
 
-/** How many playlists the shelf widget shows. */
-private const val SHELF_LIMIT = 5
 
-private val widgetClasses: List<Class<out GlanceAppWidget>> =
-    listOf(
-        CapsuleBarWidget::class.java,
-        CapsuleShelfWidget::class.java,
-        CapsuleVinylWidget::class.java,
-    )
 
 /**
  * Pushes the current track to every placed Capsule widget.
@@ -64,10 +51,10 @@ fun updateCapsuleWidgets(
 ) {
     widgetScope.launch {
         val manager = GlanceAppWidgetManager(context)
-        val placed = widgetClasses.associateWith { manager.getGlanceIds(it) }
-        if (placed.values.all { it.isEmpty() }) return@launch
+        val placed = manager.getGlanceIds(CapsuleBarWidget::class.java)
+        if (placed.isEmpty()) return@launch
 
-        val anyId = placed.values.firstOrNull { it.isNotEmpty() }?.first() ?: return@launch
+        val anyId = placed.first()
         val existing =
             getAppWidgetState(
                 context = context,
@@ -96,13 +83,6 @@ fun updateCapsuleWidgets(
             }
         }
 
-        val playlists =
-            if (placed[CapsuleShelfWidget::class.java].orEmpty().isEmpty()) {
-                existing[widgetPlaylistsKey]
-            } else {
-                runCatching { shelfPlaylists(context) }.getOrNull() ?: existing[widgetPlaylistsKey]
-            }
-
         val write: MutablePreferences.() -> Unit = {
             this[widgetTitleKey] = title
             this[widgetArtistKey] = artist
@@ -111,25 +91,13 @@ fun updateCapsuleWidgets(
             this[widgetBgColorKey] = surface
             this[widgetTextColorKey] = CAPSULE_WIDGET_INK
             artPath?.let { this[widgetArtPathKey] = it }
-            playlists?.let { this[widgetPlaylistsKey] = it }
         }
 
-        placed.forEach { (widgetClass, ids) ->
-            ids.forEach { glanceId ->
-                updateAppWidgetState(context, glanceId, write)
-                widgetClass.getDeclaredConstructor().newInstance().update(context, glanceId)
-            }
+        val widget = CapsuleBarWidget()
+        placed.forEach { glanceId ->
+            updateAppWidgetState(context, glanceId, write)
+            widget.update(context, glanceId)
         }
     }
 }
 
-private suspend fun shelfPlaylists(context: Context): String {
-    val database: MusicDatabase =
-        EntryPointAccessors
-            .fromApplication(context.applicationContext, WidgetEntryPoint::class.java)
-            .database()
-    val saved = database.playlistsByCreateDateAsc().first()
-    return encodeWidgetPlaylists(
-        saved.take(SHELF_LIMIT).map { it.playlist.id to it.playlist.name },
-    )
-}

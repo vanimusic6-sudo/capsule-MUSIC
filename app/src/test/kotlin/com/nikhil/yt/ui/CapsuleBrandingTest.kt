@@ -26,8 +26,15 @@ import org.robolectric.annotation.GraphicsMode
 class CapsuleBrandingTest {
     private val context get() = RuntimeEnvironment.getApplication()
 
-    @Test fun persistedSuperSkinIsDisplayedAsCapsuleDense() {
-        assertEquals("Capsule Dense", context.getString(R.string.capsule_player_super))
+    /**
+     * The skin stored as SUPER is shown as Capsule Cosmo.
+     *
+     * The enum constant deliberately keeps its old name: it is the value written into everybody's
+     * settings, and renaming it would reset the skin of every user who had chosen it. The display
+     * name is the part that was meant to change.
+     */
+    @Test fun persistedSuperSkinIsDisplayedAsCapsuleCosmo() {
+        assertEquals("Capsule Cosmo", context.getString(R.string.capsule_player_super))
     }
 
     @Test fun composeBrandAliasesResolveToTheOriginalRaster() {

@@ -4,9 +4,6 @@ import android.app.Application
 import android.graphics.Color
 import com.nikhil.yt.ui.widget.CAPSULE_WIDGET_INK
 import com.nikhil.yt.ui.widget.capsuleWidgetSurface
-import com.nikhil.yt.ui.widget.decodeWidgetPlaylists
-import com.nikhil.yt.ui.widget.encodeWidgetPlaylists
-import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -68,22 +65,5 @@ class CapsuleWidgetSurfaceTest {
             "a blue cover must still give a blue panel, got #${Integer.toHexString(blue)}",
             Color.blue(blue) > Color.red(blue) && Color.blue(blue) > Color.green(blue),
         )
-    }
-
-    /** Playlist names are the user's text, so the shelf cannot be delimited by a lucky character. */
-    @Test fun theShelfSurvivesNamesWithAwkwardCharacters() {
-        val shelf =
-            listOf(
-                "PL1" to "road trip, vol. 2",
-                "PL2" to "\"quotes\" and \\backslashes\\",
-                "PL3" to "line\nbreak\ttab",
-            )
-        assertEquals(shelf, decodeWidgetPlaylists(encodeWidgetPlaylists(shelf)))
-    }
-
-    @Test fun anEmptyOrBrokenShelfIsJustEmpty() {
-        assertEquals(emptyList<Pair<String, String>>(), decodeWidgetPlaylists(null))
-        assertEquals(emptyList<Pair<String, String>>(), decodeWidgetPlaylists(""))
-        assertEquals(emptyList<Pair<String, String>>(), decodeWidgetPlaylists("not json at all"))
     }
 }

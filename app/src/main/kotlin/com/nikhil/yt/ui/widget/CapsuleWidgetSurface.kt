@@ -76,5 +76,8 @@ const val CAPSULE_WIDGET_FALLBACK_SURFACE: Int = 0xFF16181C.toInt()
 /** Always light, because the panel is always dark by construction. */
 const val CAPSULE_WIDGET_INK: Int = 0xFFF2F3F5.toInt()
 
-/** The unfilled half of the progress line, and the outline on the playlist tiles. */
+/** The unplayed part of the progress line. */
 const val CAPSULE_WIDGET_INK_DIM: Int = 0x59F2F3F5
+
+/** The comet while playback is stopped: grey, and half there. */
+const val CAPSULE_WIDGET_COMET_PAUSED: Int = 0x7A9AA0A8

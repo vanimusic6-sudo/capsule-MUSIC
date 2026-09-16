@@ -1,6 +1,6 @@
 /**
  * Capsule MUSIC
- * The three home-screen widgets: bar, shelf and vinyl.
+ * The home-screen widget.
  * GPL-3.0
  */
 
@@ -11,7 +11,6 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.graphics.BitmapFactory
-import android.net.Uri
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color as ComposeColor
 import androidx.compose.ui.unit.dp
@@ -27,14 +26,12 @@ import androidx.glance.GlanceModifier
 import androidx.glance.Image
 import androidx.glance.ImageProvider
 import androidx.glance.LocalContext
-import androidx.glance.LocalSize
 import androidx.glance.action.Action
 import androidx.glance.action.actionStartActivity
 import androidx.glance.action.clickable
 import androidx.glance.appwidget.GlanceAppWidget
 import androidx.glance.appwidget.GlanceAppWidgetReceiver
 import androidx.glance.appwidget.SizeMode
-import androidx.glance.appwidget.action.actionStartActivity as actionStartActivityIntent
 import androidx.glance.appwidget.action.actionStartService
 import androidx.glance.appwidget.appWidgetBackground
 import androidx.glance.appwidget.cornerRadius
@@ -59,7 +56,6 @@ import androidx.glance.text.TextStyle
 import androidx.glance.unit.ColorProvider
 import com.nikhil.yt.R
 import com.nikhil.yt.playback.MusicService
-import org.json.JSONArray
 
 /*
  * The state the launcher holds for a placed widget.
@@ -78,36 +74,16 @@ val widgetTextColorKey = intPreferencesKey("widget_text_color")
 val widgetProgressKey = floatPreferencesKey("widget_progress")
 
 /**
- * The playlist shelf.
+ * How many pieces the progress line is cut into.
  *
- * Glance state is a Preferences bag with no list type, so the shelf is stored as a JSON array of
- * [id, name] pairs. JSON rather than a separator because a playlist name is the user's text and
- * can contain anything, including whatever character seemed safe to delimit on.
+ * Glance has no drag gesture and no way to learn where inside a view a tap landed, so the line is
+ * built from segments that are each clickable and each know their own fraction. Tapping anywhere
+ * on it seeks there. Twenty is the trade: fine enough that a tap lands within about three seconds
+ * of a three-minute song, coarse enough that the widget stays twenty views rather than a hundred.
  */
-val widgetPlaylistsKey = stringPreferencesKey("widget_playlists")
+private const val SEEK_STEPS = 20
 
-/** id to name, in shelf order. */
-internal fun encodeWidgetPlaylists(playlists: List<Pair<String, String>>): String {
-    val array = JSONArray()
-    playlists.forEach { (id, name) ->
-        array.put(JSONArray().put(id).put(name))
-    }
-    return array.toString()
-}
-
-internal fun decodeWidgetPlaylists(packed: String?): List<Pair<String, String>> {
-    if (packed.isNullOrEmpty()) return emptyList()
-    return runCatching {
-        val array = JSONArray(packed)
-        (0 until array.length()).mapNotNull { index ->
-            val record = array.optJSONArray(index) ?: return@mapNotNull null
-            val id = record.optString(0)
-            if (id.isEmpty()) null else id to record.optString(1)
-        }
-    }.getOrDefault(emptyList())
-}
-
-/** Everything the three widgets read, resolved once per render. */
+/** Everything the widget reads, resolved once per render. */
 private class WidgetState(prefs: Preferences) {
     val title: String = prefs[widgetTitleKey]?.takeIf { it.isNotBlank() } ?: "Capsule"
     val artist: String = prefs[widgetArtistKey].orEmpty()
@@ -115,23 +91,22 @@ private class WidgetState(prefs: Preferences) {
     val artPath: String? = prefs[widgetArtPathKey]
     val progress: Float = (prefs[widgetProgressKey] ?: 0f).coerceIn(0f, 1f)
     val surface: Int = prefs[widgetBgColorKey] ?: CAPSULE_WIDGET_FALLBACK_SURFACE
-    val playlists: List<Pair<String, String>> = decodeWidgetPlaylists(prefs[widgetPlaylistsKey])
 
     val panel = ColorProvider(ComposeColor(surface))
     val ink = ColorProvider(ComposeColor(CAPSULE_WIDGET_INK))
     val inkDim = ColorProvider(ComposeColor(CAPSULE_WIDGET_INK_DIM))
 
     /**
-     * The comet is white while something is playing and grey while it is not.
+     * The comet is solid white while something is playing, and grey and half there while it is not.
      *
      * That is the whole of its animation, on purpose. A widget cannot move without waking the
-     * launcher to redraw it, and a mark that turns forever on someone's home screen is a cost with
-     * no information in it: the one thing it has to say is whether the music is running, and a
-     * colour says that for free.
+     * launcher to redraw it, and a mark turning forever on someone's home screen is a cost with no
+     * information in it: the one thing it has to say is whether the music is running, and a colour
+     * says that for free.
      */
     val comet =
         ColorProvider(
-            ComposeColor(if (isPlaying) CAPSULE_WIDGET_INK else CAPSULE_WIDGET_INK_DIM),
+            ComposeColor(if (isPlaying) CAPSULE_WIDGET_INK else CAPSULE_WIDGET_COMET_PAUSED),
         )
 }
 
@@ -148,21 +123,22 @@ private fun openAppAction(): Action =
     )
 
 @Composable
-private fun openPlaylistAction(playlistId: String): Action {
-    val context = LocalContext.current
-    val intent =
-        Intent(Intent.ACTION_VIEW, Uri.parse("velune://playlist/" + playlistId)).apply {
-            component = ComponentName(context.packageName, "com.nikhil.yt.MainActivity")
-            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
-        }
-    return actionStartActivityIntent(intent)
-}
-
-@Composable
 private fun transportAction(action: String): Action {
     val context = LocalContext.current
     return actionStartService(
         Intent(context, MusicService::class.java).apply { this.action = action },
+        isForegroundService = true,
+    )
+}
+
+@Composable
+private fun seekAction(fraction: Float): Action {
+    val context = LocalContext.current
+    return actionStartService(
+        Intent(context, MusicService::class.java).apply {
+            action = "com.nikhil.yt.ACTION_SEEK_FRACTION"
+            putExtra("fraction", fraction)
+        },
         isForegroundService = true,
     )
 }
@@ -189,7 +165,7 @@ private fun TransportIcon(
     }
 }
 
-/** Previous, comet, next: the row every widget shares. */
+/** Previous, comet, next. */
 @Composable
 private fun Transport(state: WidgetState) {
     Row(
@@ -201,7 +177,7 @@ private fun Transport(state: WidgetState) {
             description = "Previous",
             tint = state.ink,
             action = "com.nikhil.yt.ACTION_PREV",
-            boxSize = 42,
+            boxSize = 40,
             iconSize = 24,
         )
         TransportIcon(
@@ -209,7 +185,7 @@ private fun Transport(state: WidgetState) {
             description = if (state.isPlaying) "Pause" else "Play",
             tint = state.comet,
             action = "com.nikhil.yt.ACTION_PLAY_PAUSE",
-            boxSize = 54,
+            boxSize = 52,
             iconSize = 44,
         )
         TransportIcon(
@@ -217,51 +193,50 @@ private fun Transport(state: WidgetState) {
             description = "Next",
             tint = state.ink,
             action = "com.nikhil.yt.ACTION_NEXT",
-            boxSize = 42,
+            boxSize = 40,
             iconSize = 24,
         )
     }
 }
 
 /**
- * The progress line.
+ * The progress line, and the only way to move through a track from the home screen.
  *
- * Two boxes rather than a ProgressBar: it only ever needs to be two rectangles whose split moves
- * when the service says so, and every widget redraw is a round trip through the launcher.
+ * Each segment carries its own fraction and seeks to it. The played ones are drawn solid and the
+ * rest dim, so the line reads as progress rather than as a row of buttons; the taller transparent
+ * box around each is the touch target, because a 3dp line is not one.
  */
 @Composable
 private fun ProgressLine(state: WidgetState) {
-    Box(
-        modifier = GlanceModifier.fillMaxWidth().height(3.dp),
-        contentAlignment = Alignment.CenterStart,
+    val playedSteps = (state.progress * SEEK_STEPS).toInt().coerceIn(0, SEEK_STEPS)
+    Row(
+        modifier = GlanceModifier.fillMaxWidth().height(18.dp),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        Box(
-            modifier =
-                GlanceModifier
-                    .fillMaxWidth()
-                    .height(2.dp)
-                    .cornerRadius(1.dp)
-                    .background(state.inkDim),
-        ) {}
-        // Glance has no fractional width, so the filled part is measured against the widget size
-        // the launcher reports rather than taken as a weight.
-        val filled = (LocalSize.current.width.value * state.progress).toInt().coerceAtLeast(0)
-        Box(
-            modifier =
-                GlanceModifier
-                    .width(filled.dp)
-                    .height(2.dp)
-                    .cornerRadius(1.dp)
-                    .background(state.ink),
-        ) {}
+        repeat(SEEK_STEPS) { step ->
+            Box(
+                modifier =
+                    GlanceModifier
+                        .defaultWeight()
+                        .height(18.dp)
+                        // Mid-segment, so a tap lands on what it looks like it points at.
+                        .clickable(seekAction((step + 0.5f) / SEEK_STEPS)),
+                contentAlignment = Alignment.Center,
+            ) {
+                Box(
+                    modifier =
+                        GlanceModifier
+                            .fillMaxWidth()
+                            .height(3.dp)
+                            .background(if (step < playedSteps) state.ink else state.inkDim),
+                ) {}
+            }
+        }
     }
 }
 
 @Composable
-private fun NowPlaying(
-    state: WidgetState,
-    artSize: Int,
-) {
+private fun NowPlaying(state: WidgetState) {
     Row(
         modifier = GlanceModifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically,
@@ -271,7 +246,7 @@ private fun NowPlaying(
             contentDescription = state.title,
             modifier =
                 GlanceModifier
-                    .size(artSize.dp)
+                    .size(54.dp)
                     .cornerRadius(14.dp)
                     .clickable(openAppAction()),
         )
@@ -299,54 +274,7 @@ private fun NowPlaying(
     }
 }
 
-@Composable
-private fun WidgetPanel(
-    state: WidgetState,
-    content: @Composable () -> Unit,
-) {
-    Column(
-        modifier =
-            GlanceModifier
-                .fillMaxSize()
-                .appWidgetBackground()
-                .cornerRadius(26.dp)
-                .background(state.panel)
-                .padding(14.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        content()
-    }
-}
-
-private const val SHELF_TILES = 5
-
-@Composable
-private fun PlaylistShelf(state: WidgetState) {
-    Row(modifier = GlanceModifier.fillMaxWidth()) {
-        state.playlists.take(SHELF_TILES).forEachIndexed { index, entry ->
-            if (index > 0) Spacer(GlanceModifier.width(8.dp))
-            Box(
-                modifier =
-                    GlanceModifier
-                        .defaultWeight()
-                        .height(58.dp)
-                        .cornerRadius(14.dp)
-                        .background(state.inkDim)
-                        .clickable(openPlaylistAction(entry.first))
-                        .padding(6.dp),
-                contentAlignment = Alignment.BottomStart,
-            ) {
-                Text(
-                    text = entry.second,
-                    style = TextStyle(color = state.ink, fontSize = 10.sp),
-                    maxLines = 2,
-                )
-            }
-        }
-    }
-}
-
-/** The plain one: what is playing, and the three controls. */
+/** What is playing, the three controls, and a line you can tap to move through the track. */
 class CapsuleBarWidget : GlanceAppWidget() {
     override val sizeMode = SizeMode.Exact
 
@@ -357,77 +285,20 @@ class CapsuleBarWidget : GlanceAppWidget() {
     ) {
         provideContent {
             val state = WidgetState(currentState())
-            WidgetPanel(state) {
-                NowPlaying(state, artSize = 58)
-                Spacer(GlanceModifier.height(10.dp))
-                ProgressLine(state)
-            }
-        }
-    }
-}
-
-/** The same, with the playlists you have saved underneath. */
-class CapsuleShelfWidget : GlanceAppWidget() {
-    override val sizeMode = SizeMode.Exact
-
-    @SuppressLint("RestrictedApi")
-    override suspend fun provideGlance(
-        context: Context,
-        id: GlanceId,
-    ) {
-        provideContent {
-            val state = WidgetState(currentState())
-            WidgetPanel(state) {
-                NowPlaying(state, artSize = 58)
-                Spacer(GlanceModifier.height(10.dp))
-                ProgressLine(state)
-                Spacer(GlanceModifier.height(12.dp))
-                PlaylistShelf(state)
-            }
-        }
-    }
-}
-
-/** The record: a round cover with the comet resting on its edge. */
-class CapsuleVinylWidget : GlanceAppWidget() {
-    override val sizeMode = SizeMode.Exact
-
-    @SuppressLint("RestrictedApi")
-    override suspend fun provideGlance(
-        context: Context,
-        id: GlanceId,
-    ) {
-        provideContent {
-            val state = WidgetState(currentState())
-            val side = minOf(LocalSize.current.width.value, LocalSize.current.height.value).toInt()
-            Box(
-                modifier = GlanceModifier.fillMaxSize().appWidgetBackground(),
-                contentAlignment = Alignment.Center,
+            Column(
+                modifier =
+                    GlanceModifier
+                        .fillMaxSize()
+                        .appWidgetBackground()
+                        .cornerRadius(26.dp)
+                        .background(state.panel)
+                        // Tight top and bottom: the panel is the frame, and the launcher already
+                        // puts its own margin around it.
+                        .padding(horizontal = 14.dp, vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically,
             ) {
-                Image(
-                    provider = artworkProvider(state),
-                    contentDescription = state.title,
-                    modifier =
-                        GlanceModifier
-                            .size(side.dp)
-                            // Glance has no circle shape; half the side as a corner radius is one.
-                            .cornerRadius((side / 2).dp)
-                            .clickable(openAppAction()),
-                )
-                Box(
-                    modifier = GlanceModifier.fillMaxSize(),
-                    contentAlignment = Alignment.BottomEnd,
-                ) {
-                    Image(
-                        provider = ImageProvider(R.drawable.ic_capsule_orbit),
-                        contentDescription = if (state.isPlaying) "Pause" else "Play",
-                        colorFilter = ColorFilter.tint(state.comet),
-                        modifier =
-                            GlanceModifier
-                                .size((side * 2 / 5).dp)
-                                .clickable(transportAction("com.nikhil.yt.ACTION_PLAY_PAUSE")),
-                    )
-                }
+                NowPlaying(state)
+                ProgressLine(state)
             }
         }
     }
@@ -435,12 +306,4 @@ class CapsuleVinylWidget : GlanceAppWidget() {
 
 class CapsuleBarWidgetReceiver : GlanceAppWidgetReceiver() {
     override val glanceAppWidget: GlanceAppWidget = CapsuleBarWidget()
-}
-
-class CapsuleShelfWidgetReceiver : GlanceAppWidgetReceiver() {
-    override val glanceAppWidget: GlanceAppWidget = CapsuleShelfWidget()
-}
-
-class CapsuleVinylWidgetReceiver : GlanceAppWidgetReceiver() {
-    override val glanceAppWidget: GlanceAppWidget = CapsuleVinylWidget()
 }

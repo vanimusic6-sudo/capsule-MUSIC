@@ -71,6 +71,20 @@ internal val LocalCapsuleBackgroundMotionEnabled = compositionLocalOf { true }
  * that was underneath all along.
  */
 /** Sub-pixel at every density: only a rest that is already invisible counts as being on an anchor. */
+/**
+ * Whether the mini-player's decorative background clock is allowed to run.
+ *
+ * Named because the terms are easy to lose and expensive to lose. The mini-player is on screen on
+ * every page of the app for as long as something is playing, so its clock is the one that keeps the
+ * frame clock awake during ordinary use. It has no business running where nobody can see it: not
+ * behind the fully expanded player, and not once the sheet has been dismissed, where it used to
+ * carry on drawing against nothing at all.
+ */
+internal fun miniPlayerClockShouldRun(
+    isExpanded: Boolean,
+    isDismissed: Boolean,
+): Boolean = !isExpanded && !isDismissed
+
 internal const val ANCHOR_EPSILON_DP = 0.05f
 
 /**
@@ -194,9 +208,9 @@ fun BottomSheet(
     val miniBackgroundMotionEnabled by
         remember(state) {
             derivedStateOf {
-                // Keep the subtree and all Room/player state alive. Only the decorative clock sleeps
-                // at the fully expanded anchor and wakes on the first closing/drag frame.
-                !state.isExpanded
+                // Keep the subtree and all Room/player state alive; only the decorative clock
+                // sleeps.
+                miniPlayerClockShouldRun(state.isExpanded, state.isDismissed)
             }
         }
 
