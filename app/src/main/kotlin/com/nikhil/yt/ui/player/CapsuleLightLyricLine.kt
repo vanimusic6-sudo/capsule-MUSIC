@@ -33,21 +33,24 @@ import com.nikhil.yt.lyrics.LyricsUtils
 import com.nikhil.yt.utils.reportException
 
 /**
- * The height the row holds even with nothing in it.
+ * The height the row always holds: two lines' worth, whether it has two or none.
  *
- * Reserving one line is deliberate: the metadata, the progress bar and the
- * transport panel must not jump downwards the moment lyrics finish loading
- * mid-track. A line too long for the width wraps to a second one and the row
- * grows for as long as that line is sounding — wrapping downwards is the point,
- * and the alternative, reserving two lines for every track, would keep
- * everything below pushed down for a line that usually fits in one.
+ * Reserving the full wrap is what keeps the layout still. One line was enough
+ * for the common case, but a long line then grew the row and pushed the title,
+ * the progress bar and the transport panel down for as long as it was sounding,
+ * so the controls moved under the thumb every few seconds. Holding the space up
+ * front costs a little height once instead of moving everything repeatedly.
+ *
+ * Two lines of LINE_SIZE at LINE_HEIGHT come to 38dp; the rest is breathing room.
  */
-internal val CapsuleLightLyricLineHeight = 24.dp
+internal val CapsuleLightLyricLineHeight = 44.dp
 
 /** A long line wraps once. Beyond that it is ellipsised rather than taking the screen. */
 private const val MAX_LINES = 2
 
 private const val LINE_ALPHA = 0.66f
+private val LINE_SIZE = 15.sp
+private val LINE_HEIGHT = 19.sp
 private const val FADE_OUT_MILLIS = 150
 private const val FADE_IN_MILLIS = 240
 
@@ -136,8 +139,8 @@ internal fun CapsuleLightLyricLine(
         Text(
             text = shown,
             color = textColor.copy(alpha = LINE_ALPHA * arrived),
-            fontSize = 15.sp,
-            lineHeight = 19.sp,
+            fontSize = LINE_SIZE,
+            lineHeight = LINE_HEIGHT,
             fontWeight = FontWeight.Medium,
             textAlign = TextAlign.Start,
             maxLines = MAX_LINES,

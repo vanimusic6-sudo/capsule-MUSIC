@@ -140,14 +140,21 @@ fun CapsulePlayerContent(
     context: Context,
     bottomPadding: Dp,
     /**
-     * Whether the full player is actually open.
+     * Whether the player is open — anywhere above the collapsed anchor, not only fully expanded.
      *
      * This content stays composed behind the collapsed sheet, so anything it does while closed is
-     * work nobody can see. The lyric line is gated on it: closed, there is no database flow
-     * collected, nothing parsed and no lyrics requested.
+     * work nobody can see: no lyrics flow collected, nothing parsed, no lyrics requested, and no
+     * orbit clock running.
+     *
+     * Deliberately "not collapsed" rather than "expanded". A strict expanded flag flips at the
+     * anchor, which is the end of the open animation and the start of the close one, so the lyric
+     * row would pop in late and vanish early and the layout would visibly reset on both.
      */
-    expanded: Boolean = true,
+    open: Boolean = true,
 ) {
+    // Composition keeps running behind a backgrounded app; only drawing stops.
+    val onScreen = appIsOnScreen()
+    val visible = open && onScreen
     val isLight = design == CapsulePlayerDesign.LIGHT
     val shuffleEnabled by playerConnection.shuffleModeEnabled.collectAsState()
     val isPlaying by
@@ -231,7 +238,7 @@ fun CapsulePlayerContent(
             defaultValue = true,
         )
 
-    val lyricLineEnabled = isLight && showLyricLine && expanded
+    val lyricLineEnabled = isLight && showLyricLine && visible
 
     val lyricsEntity by
         if (lyricLineEnabled) {
@@ -896,7 +903,7 @@ fun CapsulePlayerContent(
                         onPrevious = playerConnection::seekToPrevious,
                         onNext = playerConnection::seekToNext,
                         onRepeat = { playerConnection.player.toggleRepeatMode() },
-                        orbit = { CapsuleOrbitButton(isPlaying, isLoading, textColor, onPlayPause) },
+                        orbit = { CapsuleOrbitButton(isPlaying, isLoading, visible, textColor, onPlayPause) },
                     )
                 } else {
                     Column(
@@ -952,6 +959,7 @@ fun CapsulePlayerContent(
                                         isPlaying,
                                     isLoading =
                                         isLoading,
+                                    visible = visible,
                                     color =
                                         textColor,
                                     onClick = onPlayPause,
@@ -1547,6 +1555,19 @@ private fun CapsuleAuxButton(
 }
 
 /**
+ * Whether the comet is allowed to turn.
+ *
+ * Named and separated because the visibility term is the whole point and is easy to lose: without
+ * it the clock runs for as long as anything is playing, on a button behind a collapsed sheet or
+ * behind a backgrounded app, requesting a frame every vsync the entire time.
+ */
+internal fun orbitShouldTurn(
+    isPlaying: Boolean,
+    isLoading: Boolean,
+    visible: Boolean,
+): Boolean = isPlaying && !isLoading && visible
+
+/**
  * Donor Capsule comet button.
  *
  * Animatable deliberately survives Play/Pause changes.
@@ -1557,6 +1578,7 @@ private fun CapsuleAuxButton(
 private fun CapsuleOrbitButton(
     isPlaying: Boolean,
     isLoading: Boolean,
+    visible: Boolean,
     color: Color,
     onClick: () -> Unit,
 ) {
@@ -1565,14 +1587,25 @@ private fun CapsuleOrbitButton(
             Animatable(0f)
         }
 
+    /*
+     * The comet only turns while it can be seen.
+     *
+     * It used to turn whenever anything was playing, and this content stays composed behind the
+     * collapsed sheet — so putting on an album and using the rest of the app left a continuous
+     * animation clock running on a button nobody was looking at. A running Animatable requests a
+     * frame every vsync, which means the whole window recomposed and redrew at the display rate,
+     * for hours, for a dot going round a circle off screen. That is the most expensive thing an
+     * idle screen can do.
+     *
+     * The Animatable itself still survives across all of this, so the documented behaviour is
+     * unchanged: the dot holds its exact angle while stopped and carries on from there.
+     */
     LaunchedEffect(
         isPlaying,
         isLoading,
+        visible,
     ) {
-        if (
-            isPlaying &&
-            !isLoading
-        ) {
+        if (orbitShouldTurn(isPlaying, isLoading, visible)) {
             while (isActive) {
                 rotation.animateTo(
                     targetValue =

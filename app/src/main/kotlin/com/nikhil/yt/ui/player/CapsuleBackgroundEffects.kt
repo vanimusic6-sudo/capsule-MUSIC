@@ -58,30 +58,11 @@ private const val STATIC_BACKGROUND_TIME_MS = 6_480L
  */
 @Composable
 private fun rememberCapsuleAnimationTime(compact: Boolean): State<Long> {
-    val lifecycleOwner = LocalLifecycleOwner.current
     val time = remember { mutableLongStateOf(SystemClock.elapsedRealtime()) }
-    var isVisible by
-        remember(lifecycleOwner) {
-            mutableStateOf(
-                lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED),
-            )
-        }
+    val isVisible = appIsOnScreen()
     val framesPerSecond =
         if (compact) COMPACT_BACKGROUND_FPS else FULL_BACKGROUND_FPS
     val frameDelayMs = 1_000L / framesPerSecond
-
-    DisposableEffect(lifecycleOwner) {
-        val observer =
-            LifecycleEventObserver { _, _ ->
-                isVisible =
-                    lifecycleOwner.lifecycle.currentState
-                        .isAtLeast(Lifecycle.State.STARTED)
-            }
-        lifecycleOwner.lifecycle.addObserver(observer)
-        onDispose {
-            lifecycleOwner.lifecycle.removeObserver(observer)
-        }
-    }
 
     LaunchedEffect(compact, isVisible) {
         if (!isVisible) return@LaunchedEffect

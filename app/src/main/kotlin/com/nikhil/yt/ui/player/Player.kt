@@ -154,8 +154,19 @@ fun BottomSheetPlayer(
         mutableStateOf<Long?>(null)
     }
 
-    LaunchedEffect(mediaMetadata?.id, playbackState, isPlaying, sliderPosition) {
+    /*
+     * The clock that drives the progress bar and the time readouts stops with the screen.
+     *
+     * Composition does not stop when the app is backgrounded, so this loop used to keep waking
+     * every 300ms to read a position nobody could see and recompose the whole player around it.
+     * Playback position is the service's business, not this screen's; this is only the readout.
+     * Coming back restarts the loop, which reads immediately, so nothing is stale on return.
+     */
+    val onScreen = appIsOnScreen()
+
+    LaunchedEffect(mediaMetadata?.id, playbackState, isPlaying, sliderPosition, onScreen) {
         if (sliderPosition != null) return@LaunchedEffect
+        if (!onScreen) return@LaunchedEffect
 
         while (isActive) {
             position = playerConnection.player.currentPosition.coerceAtLeast(0L)
@@ -434,7 +445,7 @@ private fun CapsulePlayerLyricsHost(
                 onMenuClick = onShowMenu,
                 context = LocalContext.current,
                 bottomPadding = 0.dp,
-                expanded = playerState.isExpanded,
+                open = !playerState.isCollapsed,
             )
         }
 

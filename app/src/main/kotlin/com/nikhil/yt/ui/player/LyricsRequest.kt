@@ -52,8 +52,19 @@ internal fun RequestLyricsIfMissing(
     val context = LocalContext.current
     val database = LocalDatabase.current
 
-    LaunchedEffect(mediaMetadata.id, currentLyrics) {
+    /*
+     * Never from the background.
+     *
+     * Composition keeps running behind a backgrounded app, so without this a queue playing through
+     * the night would send this screen to a lyrics provider for every track it reached, for a row
+     * nobody could see. Coming back to the app restarts the effect and asks then, which is the only
+     * moment the answer is wanted.
+     */
+    val onScreen = appIsOnScreen()
+
+    LaunchedEffect(mediaMetadata.id, currentLyrics, onScreen) {
         if (currentLyrics != null) return@LaunchedEffect
+        if (!onScreen) return@LaunchedEffect
 
         delay(REQUEST_DELAY_MS)
 

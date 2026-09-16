@@ -141,9 +141,9 @@ internal fun CapsulePlayerLayout(
                      * so its first character lines up with the artwork rather than floating in the
                      * middle of a wider column.
                      */
-                    Spacer(Modifier.height(10.dp))
+                    Spacer(Modifier.height(8.dp))
                     Box(Modifier.width(artworkSide)) { lyricLine() }
-                    Spacer(Modifier.height(12.dp))
+                    Spacer(Modifier.height(10.dp))
                 }
                 CompositionLocalProvider(LocalCapsuleLightMenu provides onMenuClick) { details() }
             }

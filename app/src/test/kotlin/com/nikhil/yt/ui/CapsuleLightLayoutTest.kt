@@ -36,6 +36,7 @@ import androidx.compose.ui.unit.Density
 import com.nikhil.yt.playback.video.CapsuleVideoPlaybackState
 import com.nikhil.yt.ui.player.CapsuleAudioVideoToggle
 import com.nikhil.yt.ui.player.CapsuleLightControls
+import com.nikhil.yt.ui.player.CapsuleLightLyricLine
 import com.nikhil.yt.ui.player.CapsuleLightLyricLineHeight
 import com.nikhil.yt.ui.player.CapsuleLightToggleHeight
 import com.nikhil.yt.ui.player.CapsuleLightToggleInset
@@ -311,17 +312,43 @@ class CapsuleLightLayoutTest {
      * whatever maxLines said. What is checkable is the two things that let it wrap at all — the row
      * reserves a minimum rather than a fixed height, and the text is allowed more than one line.
      */
+    /**
+     * Two lines fit in the reserved row without it growing.
+     *
+     * The row holds the full wrap up front so a long line never pushes the title, the progress bar
+     * and the transport panel down while it is sounding. Robolectric's font stub reports zero-width
+     * glyphs, so a long string cannot be made to wrap here — but an explicit newline lays out as
+     * two lines regardless of glyph widths, which measures the thing that matters: whether two
+     * lines fit in the space that is always reserved.
+     */
+    @Test fun twoLinesFitTheReservedRowWithoutGrowingIt() {
+        var line by mutableStateOf("one")
+        compose.setContent {
+            MaterialTheme {
+                Box(Modifier.width(240.dp)) {
+                    CapsuleLightLyricLine(line, Color.White, Modifier.testTag("line"))
+                }
+            }
+        }
+        val reserved = with(Density(compose.activity)) { CapsuleLightLyricLineHeight.toPx() }
+        fun height() = compose.onNodeWithTag("line").fetchSemanticsNode().boundsInRoot.height
+
+        assertEquals("one line uses the reserved row", reserved, height(), 1f)
+        compose.runOnIdle { line = "one\ntwo" }
+        compose.mainClock.advanceTimeBy(1_000L)
+        compose.waitForIdle()
+        assertEquals("two lines must fit it too", reserved, height(), 1f)
+    }
+
+    /**
+     * A line longer than the row wraps rather than being cut off.
+     *
+     * A source check, and it has to be: Robolectric's font stub reports zero-width glyphs, so a
+     * thousand-character string measures as fitting on one line and a rendered assertion would
+     * pass whatever maxLines said. That was measured, not assumed.
+     */
     @Test fun theSoundingLineIsAllowedToWrapDownwards() {
         val code = lyricLineSource()
-
-        assertTrue(
-            "the row must reserve a minimum height, not a fixed one, or a second line has nowhere to go",
-            code.any { it.contains("heightIn(min = CapsuleLightLyricLineHeight)") },
-        )
-        assertFalse(
-            "a fixed height on the row would cut the second line off again",
-            code.any { it.contains(".height(CapsuleLightLyricLineHeight)") },
-        )
         assertFalse(
             "one line means a long line is ellipsised instead of wrapping",
             code.any { it.contains("maxLines = 1") },
