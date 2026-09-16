@@ -73,6 +73,17 @@
 
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
+
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+
+                <data
+                    android:host="playlist"
+                    android:scheme="velune" />
+            </intent-filter>
+
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
                 <action android:name="android.media.action.MEDIA_PLAY_FROM_SEARCH" />
                 <action android:name="android.nfc.action.NDEF_DISCOVERED" />
 
@@ -197,15 +208,41 @@
             android:process=":crash"
             android:theme="@style/Theme.VeluneApp">
         </activity>
+
         <receiver
-            android:name=".ui.widget.VeluneWidgetReceiver"
+            android:name=".ui.widget.CapsuleBarWidgetReceiver"
+            android:label="@string/widget_bar_name"
             android:exported="true">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
             </intent-filter>
             <meta-data
                 android:name="android.appwidget.provider"
-                android:resource="@xml/velune_widget_info" />
+                android:resource="@xml/capsule_bar_widget_info" />
+        </receiver>
+
+        <receiver
+            android:name=".ui.widget.CapsuleShelfWidgetReceiver"
+            android:label="@string/widget_shelf_name"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/capsule_shelf_widget_info" />
+        </receiver>
+
+        <receiver
+            android:name=".ui.widget.CapsuleVinylWidgetReceiver"
+            android:label="@string/widget_vinyl_name"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/capsule_vinyl_widget_info" />
         </receiver>
 
         <activity

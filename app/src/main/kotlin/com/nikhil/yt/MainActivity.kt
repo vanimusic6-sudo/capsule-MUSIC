@@ -1662,6 +1662,13 @@ class MainActivity : ComponentActivity() {
         val coroutineScope = lifecycleScope
 
         val authority = uri.authority?.lowercase()
+        // A playlist tile on the shelf widget.
+        if (uri.scheme.equals("velune", ignoreCase = true) && authority == "playlist") {
+            uri.lastPathSegment?.takeIf { it.isNotBlank() }?.let { playlistId ->
+                navController.navigate("local_playlist/$playlistId")
+            }
+            return
+        }
         if (uri.scheme.equals("velune", ignoreCase = true) && authority == "together") {
             pendingTogetherJoinLink = uri.toString()
             startMusicServiceSafely()

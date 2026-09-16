@@ -809,4 +809,10 @@
     <string name="welcome_artists_none">Ничего не нашлось. Попробуйте другое имя.</string>
     <string name="welcome_skip">Пропустить</string>
     <string name="welcome_follow_count">Подписаться на %1$d</string>
+    <string name="widget_bar_name">Capsule</string>
+    <string name="widget_bar_description">Что играет, с кнопками назад, пуск и вперёд.</string>
+    <string name="widget_shelf_name">Capsule + плейлисты</string>
+    <string name="widget_shelf_description">Плеер, а под ним сохранённые плейлисты.</string>
+    <string name="widget_vinyl_name">Capsule винил</string>
+    <string name="widget_vinyl_description">Только обложка, как пластинка.</string>
 </resources>

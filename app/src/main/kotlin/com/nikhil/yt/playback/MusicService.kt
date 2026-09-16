@@ -220,7 +220,7 @@ import com.nikhil.yt.utils.getAsync
 import com.nikhil.yt.utils.getPresenceIntervalMillis
 import com.nikhil.yt.utils.reportException
 import com.nikhil.yt.utils.reportRecoverableException
-import com.nikhil.yt.ui.widget.updateVeluneWidgetState
+import com.nikhil.yt.ui.widget.updateCapsuleWidgets
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
@@ -3294,12 +3294,20 @@ class MusicService :
             val currentPosition = player.currentPosition
             val isPlaying = player.isPlaying
 
-            updateVeluneWidgetState(
+            val trackDuration = player.duration.takeIf { it > 0L } ?: 0L
+
+            updateCapsuleWidgets(
                 context = this@MusicService,
                 title = currentMetadata?.title ?: "Not Playing",
-                artist = currentMetadata?.artists?.joinToString(", ") { it.name } ?: "Velune",
+                artist = currentMetadata?.artists?.joinToString(", ") { it.name }.orEmpty(),
                 isPlaying = isPlaying,
-                thumbnailUrl = currentMetadata?.thumbnailUrl
+                thumbnailUrl = currentMetadata?.thumbnailUrl,
+                progress =
+                    if (trackDuration > 0L) {
+                        (currentPosition.toFloat() / trackDuration).coerceIn(0f, 1f)
+                    } else {
+                        0f
+                    },
             )
 
 

@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The Capsule comet: a tilted ring with a body at its centre.
+
+  Deliberately one static shape. A widget cannot animate anyway, and the whole point of this mark
+  on the home screen is that it costs nothing to show: it is tinted white while something is
+  playing and grey while it is not, and that is the entire state it carries.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="48dp"
+    android:height="48dp"
+    android:viewportWidth="48"
+    android:viewportHeight="48"
+    android:tint="#FFFFFF">
+    <group
+        android:pivotX="24"
+        android:pivotY="24"
+        android:rotation="-20">
+        <path
+            android:strokeColor="#FFFFFF"
+            android:strokeWidth="2"
+            android:fillColor="#00000000"
+            android:pathData="M24,13.5 C34.2,13.5 42.5,18.2 42.5,24 C42.5,29.8 34.2,34.5 24,34.5 C13.8,34.5 5.5,29.8 5.5,24 C5.5,18.2 13.8,13.5 24,13.5 Z" />
+    </group>
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M24,24 m-6.4,0 a6.4,6.4 0 1,0 12.8,0 a6.4,6.4 0 1,0 -12.8,0" />
+</vector>
