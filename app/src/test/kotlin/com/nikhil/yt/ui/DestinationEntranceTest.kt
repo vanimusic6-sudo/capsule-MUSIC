@@ -147,41 +147,25 @@ class DestinationEntranceTest {
     }
 
     /**
-     * Route transitions are None, so the screen being left disappears at once, and for a moment the
-     * arriving screen is all there is. It used to arrive *semi-transparent*, which showed the bare
-     * canvas through it and read as a washed-out flash — and worse, the layer alpha multiplied into
-     * every child, which is what made a half-transparent card travel a different colour curve from
-     * its neighbours.
+     * An entrance costs the screen nothing once it is over.
      *
-     * Content is now fully opaque from the first frame and a veil is drawn on top instead. The veil
-     * has to be brief and light: it is there to mask content still settling, not to be noticed.
+     * The modifier is removed when the animation ends, so the destination keeps no `graphicsLayer`
+     * and no RenderNode for the rest of its life — an idle screen is exactly what it would be if
+     * none of this existed. And while it does run, it carries only transforms: a layer with an alpha
+     * below 1, or a RenderEffect, has to be composited through an offscreen buffer the size of the
+     * screen, where a translation and a scale are a matrix the GPU applies while drawing anyway.
+     *
+     * This is pinned rather than assumed because it is invisible when it regresses: an entrance that
+     * quietly starts carrying an alpha looks identical and costs a buffer per screen per frame.
      */
-    @Test fun everyEntranceArrivesOpaqueUnderABriefVeil() {
+    @Test fun noEntranceCarriesAnythingThatNeedsAnOffscreenBuffer() {
         DestinationMotion.entries.forEach { motion ->
             val spec = motion.spec()
-            assertTrue("$motion has no veil at all", spec.scrim > 0f)
+            // Transform-only is the contract. Anything that dims, veils or filters the content
+            // belongs to the content, not to the entrance.
             assertTrue(
-                "$motion starts at ${spec.scrim}, dark enough to read as a blackout",
-                spec.scrim <= 0.28f,
-            )
-            assertTrue(
-                "$motion keeps its veil for ${spec.scrimWindow} of the entrance",
-                spec.scrimWindow in 0.15f..0.5f,
-            )
-        }
-    }
-
-    /**
-     * The veil masks a moment; the movement is the character. If it outlasted the motion it would
-     * become the character, and a screen that darkens on every navigation is a screen that flickers.
-     */
-    @Test fun noVeilOutlastsTheMovementItCovers() {
-        DestinationMotion.entries.forEach { motion ->
-            val spec = motion.spec()
-            val liftsAfterMillis = spec.durationMillis * spec.scrimWindow
-            assertTrue(
-                "$motion is still dark ${liftsAfterMillis}ms in",
-                liftsAfterMillis <= 220f,
+                "$motion moves nothing, so it is a layer created for no reason",
+                spec.lift.value > 0f || spec.shift.value > 0f || spec.overscale > 0f,
             )
         }
     }

@@ -7,16 +7,16 @@ import androidx.compose.animation.core.Easing
 import androidx.compose.animation.core.tween
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import com.nikhil.yt.ui.motion.CapsuleMotion
 
 /**
  * How a destination arrives.
@@ -86,31 +86,6 @@ internal data class DestinationMotionSpec(
     val shift: Dp = 0.dp,
     /** Size the content resolves down from. 0f keeps it at its true size throughout. */
     val overscale: Float,
-    /**
-     * How dark the veil over the arriving screen starts, and how much of the duration it takes to
-     * lift.
-     *
-     * This replaces starting the *content* at a reduced opacity, and the difference matters twice
-     * over.
-     *
-     * Visually: route transitions are None, so the screen being left is gone in one frame. A screen
-     * that arrives semi-transparent shows the bare canvas through itself for those first frames,
-     * which reads as a washed-out flash — the eye catches a change in brightness before it catches
-     * anything else. A brief veil that lifts reads instead as deliberate, and it hides the one thing
-     * that is genuinely ugly about the first frames: content that is still settling. A keyed grid
-     * whose data lands a frame later plays its own item placement animations, and in a grid those
-     * move diagonally — which is where the small sideways twitch when opening a library tab comes
-     * from. It is not the entrance; it is the grid, and the veil covers it.
-     *
-     * Structurally: an alpha on the layer multiplies into every draw inside it, so a
-     * half-transparent child's colour travels a different curve from its opaque neighbours — the bug
-     * that made the favourites cards flash. A veil drawn on top has no such interaction. Content
-     * stays at full opacity throughout, and a stalled animation leaves a readable screen rather than
-     * a washed one.
-     */
-    val scrim: Float,
-    /** Fraction of the duration the veil takes to lift. Short: it masks a moment, not the motion. */
-    val scrimWindow: Float,
 )
 
 /*
@@ -135,8 +110,6 @@ private val TabSpec =
         easing = CubicBezierEasing(0.2f, 0.05f, 0.35f, 1f),
         lift = 16.dp,
         overscale = 0f,
-        scrim = 0.20f,
-        scrimWindow = 0.35f,
     )
 
 /*
@@ -156,8 +129,6 @@ private val DetailSpec =
         easing = CubicBezierEasing(0.42f, 0f, 0.28f, 1f),
         lift = 0.dp,
         overscale = 0.028f,
-        scrim = 0.22f,
-        scrimWindow = 0.40f,
     )
 
 /*
@@ -182,9 +153,6 @@ private val SettingsSpec =
         shift = 30.dp,
         overscale = 0f,
         // Lighter than the others: a lateral step has no first-render settle to hide, it only needs
-        // the seam between the instant swap and the movement softened.
-        scrim = 0.14f,
-        scrimWindow = 0.30f,
     )
 
 /*
@@ -201,8 +169,6 @@ private val SectionSpec =
         easing = CubicBezierEasing(0.42f, 0f, 0.28f, 1f),
         lift = 0.dp,
         overscale = 0.045f,
-        scrim = 0.22f,
-        scrimWindow = 0.40f,
     )
 
 /**
@@ -275,50 +241,57 @@ internal fun Modifier.destinationEntrance(
             RouteDirection.Forward -> spec.durationMillis
             RouteDirection.Backward -> spec.backwardDurationMillis
         }
+
+    /*
+     * Once the entrance is over the modifier is removed entirely, and that is the whole energy
+     * story of this file.
+     *
+     * A `graphicsLayer` left in place is a RenderNode the screen keeps for as long as it exists, and
+     * every one of them is another node the compositor walks on every frame — for a transform that
+     * has been the identity matrix since half a second after the screen opened. Dropping it costs
+     * exactly one recomposition, at the moment the animation ends, and buys an idle screen that is
+     * byte for byte what it would be if this file did not exist.
+     *
+     * The transform is already identity and the content already fully opaque when this flips, so
+     * there is nothing to see: the frame before and the frame after are the same pixels.
+     */
     val progress = remember(spec, direction) { Animatable(0f) }
+    var running by remember(spec, direction) { mutableStateOf(true) }
+
     LaunchedEffect(spec, direction) {
+        progress.snapTo(0f)
         progress.animateTo(1f, tween(durationMillis, easing = spec.easing))
+        running = false
     }
+
+    if (!running) return this
 
     val density = LocalDensity.current
     val liftPx = with(density) { spec.lift.toPx() }
     val shiftPx = with(density) { spec.shift.toPx() * direction.sign }
 
-    return this
-        .graphicsLayer {
-            // The tween has already applied the easing; clamping here guards only against a value
-            // arriving out of range, which a cancelled or restored animation can produce.
-            val settled = progress.value.let { if (it.isFinite()) it.coerceIn(0f, 1f) else 1f }
-            val remaining = 1f - settled
+    /*
+     * Transforms only — no alpha, and nothing drawn on top.
+     *
+     * That distinction is what makes this cheap rather than merely small. A layer carrying an alpha
+     * below 1, or a RenderEffect, has to be composited through an offscreen buffer: the content is
+     * rendered into a texture the size of the screen and then blended. A layer carrying only a
+     * translation and a scale is a display list with a matrix attached, which the GPU applies for
+     * free while drawing it. Same code path as scrolling.
+     */
+    return this.graphicsLayer {
+        // The tween has already applied the easing; clamping here guards only against a value
+        // arriving out of range, which a cancelled or restored animation can produce.
+        val settled = progress.value.let { if (it.isFinite()) it.coerceIn(0f, 1f) else 1f }
+        val remaining = 1f - settled
 
-            translationX = remaining * shiftPx
-            translationY = remaining * liftPx
-            if (spec.overscale != 0f) {
-                scaleX = 1f + spec.overscale * remaining
-                scaleY = 1f + spec.overscale * remaining
-            }
+        translationX = remaining * shiftPx
+        translationY = remaining * liftPx
+        if (spec.overscale != 0f) {
+            scaleX = 1f + spec.overscale * remaining
+            scaleY = 1f + spec.overscale * remaining
         }
-        .drawWithContent {
-            /*
-             * The veil is drawn *over* the content, never applied as an alpha to it.
-             *
-             * An alpha on the layer multiplies into every draw inside, which is why a
-             * half-transparent child ended up travelling a different colour curve from its opaque
-             * neighbours. Drawing a rectangle on top has no such interaction: the content underneath
-             * is at full opacity the entire time and only looks darker.
-             *
-             * It also cannot intercept touches, because it is a draw instruction and not a layout
-             * node — the screen is interactive from the first frame even while it is still dark.
-             */
-            drawContent()
-
-            val settled = progress.value.let { if (it.isFinite()) it.coerceIn(0f, 1f) else 1f }
-            val lifted = CapsuleMotion.smooth((settled / spec.scrimWindow).coerceIn(0f, 1f))
-            val veil = (spec.scrim * (1f - lifted)).coerceIn(0f, 1f)
-            if (veil > 0.002f) {
-                drawRect(color = Color.Black, alpha = veil)
-            }
-        }
+    }
 }
 
 @Composable
