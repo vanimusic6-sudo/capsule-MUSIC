@@ -398,6 +398,14 @@ val HistoryDuration = floatPreferencesKey("historyDuration")
 val PlayerBackgroundStyleKey = stringPreferencesKey("playerBackgroundStyle")
 val CapsulePlayerDesignKey = stringPreferencesKey("capsulePlayerDesign")
 val CapsuleLightLyricLineKey = booleanPreferencesKey("capsuleLightLyricLine")
+
+/**
+ * False until the welcome flow has been finished or skipped once.
+ *
+ * Lives in DataStore, which a clean install starts empty, so the flow appears on a genuinely first
+ * launch and never again — not on an update, not on a restart, not when the caches are cleared.
+ */
+val OnboardingCompletedKey = booleanPreferencesKey("onboardingCompleted")
 val MiniPlayerBackgroundStyleKey = stringPreferencesKey("capsuleMiniPlayerBackgroundStyle")
 val LyricsTextPositionKey = stringPreferencesKey("lyricsTextPosition")
 val LyricsClickKey = booleanPreferencesKey("lyricsClick")

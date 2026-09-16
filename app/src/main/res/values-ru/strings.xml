@@ -799,4 +799,14 @@
     <string name="show_less">Свернуть</string>
     <string name="show_more">Подробнее</string>
     <string name="start_mix">Микс плейлиста</string>
+    <string name="welcome_account_title">Добро пожаловать в Capsule</string>
+    <string name="welcome_account_description">Войдите, чтобы открыть свою библиотеку YouTube Music, или продолжайте без аккаунта — всё остальное работает и так.</string>
+    <string name="welcome_sign_in">Авторизоваться</string>
+    <string name="welcome_continue">Продолжить</string>
+    <string name="welcome_artists_title">Выберите любимых исполнителей</string>
+    <string name="welcome_artists_search_hint">Найти исполнителя</string>
+    <string name="welcome_artists_loading">Ищем исполнителей…</string>
+    <string name="welcome_artists_none">Ничего не нашлось. Попробуйте другое имя.</string>
+    <string name="welcome_skip">Пропустить</string>
+    <string name="welcome_follow_count">Подписаться на %1$d</string>
 </resources>

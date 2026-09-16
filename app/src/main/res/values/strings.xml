@@ -860,4 +860,14 @@ Velune will only extract your token, and everything else is stored locally.</str
     <string name="show_less">Show less</string>
     <string name="show_more">Show more</string>
     <string name="start_mix">Start mix</string>
+    <string name="welcome_account_title">Welcome to Capsule</string>
+    <string name="welcome_account_description">Sign in to reach your YouTube Music library, or carry on without an account — everything else works either way.</string>
+    <string name="welcome_sign_in">Sign in</string>
+    <string name="welcome_continue">Continue</string>
+    <string name="welcome_artists_title">Pick the artists you love</string>
+    <string name="welcome_artists_search_hint">Search for an artist</string>
+    <string name="welcome_artists_loading">Looking for artists…</string>
+    <string name="welcome_artists_none">Nothing found. Try another name.</string>
+    <string name="welcome_skip">Skip for now</string>
+    <string name="welcome_follow_count">Follow %1$d</string>
 </resources>

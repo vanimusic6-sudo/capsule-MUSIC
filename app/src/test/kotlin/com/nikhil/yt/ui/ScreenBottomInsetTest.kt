@@ -28,6 +28,11 @@ class ScreenBottomInsetTest {
     private val shownWithoutBottomChrome = setOf(
         "search/OnlineSearchScreen.kt",
         "search/LocalSearchScreen.kt",
+        // The welcome flow is an opaque layer over the entire window on a first launch. There is
+        // no navigation bar and no mini-player beneath it to collide with — there is no app
+        // beneath it — so the player-aware inset would be the wrong measurement, not a missing
+        // one. It uses the system bars directly.
+        "onboarding/CapsuleWelcome.kt",
     )
 
     /** Files under screens/ that are not screens: dialogs, managers, activities. */

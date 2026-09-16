@@ -153,6 +153,7 @@ import com.nikhil.yt.utils.PreferenceStore
 import kotlinx.coroutines.withContext
 import com.nikhil.yt.constants.AppBarHeight
 import com.nikhil.yt.constants.AppLanguageKey
+import com.nikhil.yt.constants.OnboardingCompletedKey
 import com.nikhil.yt.constants.CustomThemeColorKey
 import com.nikhil.yt.constants.DarkModeKey
 import com.nikhil.yt.constants.DefaultOpenTabKey
@@ -206,6 +207,7 @@ import com.nikhil.yt.ui.motion.CapsuleMotion
 import com.nikhil.yt.ui.player.BottomSheetPlayer
 import com.nikhil.yt.ui.player.LocalCapsuleDockVisible
 import com.nikhil.yt.ui.screens.Screens
+import com.nikhil.yt.ui.screens.onboarding.CapsuleWelcome
 import com.nikhil.yt.ui.screens.navigationBuilder
 import com.nikhil.yt.ui.screens.search.LocalSearchScreen
 import com.nikhil.yt.ui.screens.search.OnlineSearchScreen
@@ -1097,6 +1099,13 @@ class MainActivity : ComponentActivity() {
                         }
                     }
 
+                    /*
+                     * False only on a genuinely first launch: DataStore starts empty on a clean
+                     * install, so a reinstall shows the flow and nothing else does.
+                     */
+                    val (onboardingCompleted, onOnboardingCompletedChange) =
+                        rememberPreference(OnboardingCompletedKey, defaultValue = false)
+
                     CompositionLocalProvider(
                         LocalDatabase provides database,
                         LocalContentColor provides if (pureBlack) Color.White else contentColorFor(MaterialTheme.colorScheme.surface),
@@ -1575,6 +1584,23 @@ class MainActivity : ComponentActivity() {
                                  */
                                 BackRepeatGuard(enabled = canPopBack)
                             }
+                        }
+
+                        /*
+                         * The welcome flow covers the app rather than replacing it.
+                         *
+                         * It is an opaque layer over the whole window, not a destination and not a
+                         * different start destination: the graph here is flat, so a first-run
+                         * screen inside it would become somewhere the bottom bar could pop back
+                         * to. As a layer it cannot be navigated to, cannot be returned to, and
+                         * leaves nothing behind when it is done.
+                         *
+                         * `onboardingCompleted` comes from the primed preference snapshot, so it
+                         * is already correct on the first composed frame — an update never opens
+                         * on a flash of this.
+                         */
+                        if (!onboardingCompleted) {
+                            CapsuleWelcome(onFinished = { onOnboardingCompletedChange(true) })
                         }
 
                         BottomSheetMenu(
