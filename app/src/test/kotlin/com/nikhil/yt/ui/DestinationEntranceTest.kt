@@ -24,7 +24,6 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
-import java.io.File
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -116,9 +115,10 @@ class DestinationEntranceTest {
     }
 
     /**
-     * Crossing into or out of settings is an arrival, and arrivals rise. The distinction matters:
-     * a sideways slide into settings reads as if you were already inside it, and a tab's shorter
-     * lift on the way out reads as the library rather than as settings closing.
+     * Crossing into or out of settings is an arrival, and it is the one arrival that scales.
+     *
+     * The distinction matters: a sideways slide into settings reads as if you were already inside
+     * it, and a rise reads as one more page arriving rather than as an area of the app opening.
      */
     @Test fun crossingTheSettingsBoundaryIsAnArrival() {
         listOf(
@@ -136,12 +136,9 @@ class DestinationEntranceTest {
 
         val section = requireNotNull(DestinationMotion.Section.spec())
         val tab = requireNotNull(DestinationMotion.Tab.spec())
-        assertTrue("a section should rise", section.lift.value > 0f)
+        assertTrue("a section should scale", section.overscale > 0f)
+        assertEquals("a section should not travel", 0f, section.lift.value, 0f)
         assertEquals("a section should not slide", 0f, section.shift.value, 0f)
-        // A whole area of the app is a bigger thing to arrive at than the tab next door. With
-        // nothing scaling and the detail screens not animating at all, that ordering is the only
-        // thing separating the two rises, so it is pinned.
-        assertTrue("a section should rise further than a tab", section.lift.value > tab.lift.value)
         assertTrue(
             "a section should take longer than a tab",
             section.durationMillis > tab.durationMillis,
@@ -180,7 +177,7 @@ class DestinationEntranceTest {
             // belongs to the content, not to the entrance.
             assertTrue(
                 "$motion moves nothing, so it is a layer created for no reason",
-                spec.lift.value > 0f || spec.shift.value > 0f,
+                spec.lift.value > 0f || spec.shift.value > 0f || spec.overscale > 0f,
             )
         }
     }
@@ -212,6 +209,7 @@ class DestinationEntranceTest {
             // Restraint is part of the brief: this is character, not a page transition.
             assertTrue("$motion travels too far", spec.lift.value <= 32f)
             assertTrue("$motion slides too far", spec.shift.value <= 40f)
+            assertTrue("$motion scales too much", spec.overscale <= 0.06f)
         }
     }
 
@@ -263,24 +261,29 @@ class DestinationEntranceTest {
      * assert against, which is exactly why a scale could come back as a line in the layer block
      * without anything here noticing.
      */
-    @Test fun noEntranceScalesTheScreen() {
-        val source =
-            listOf(
-                File("src/main/kotlin/com/nikhil/yt/ui/screens/DestinationEntrance.kt"),
-                File("app/src/main/kotlin/com/nikhil/yt/ui/screens/DestinationEntrance.kt"),
-            ).firstOrNull { it.isFile }
-        assertTrue(
-            "Could not find DestinationEntrance.kt from ${File(".").absolutePath}",
-            source != null,
-        )
-        source!!.readLines().forEachIndexed { index, line ->
-            val trimmed = line.trim()
-            val isComment =
-                trimmed.startsWith("*") || trimmed.startsWith("//") || trimmed.startsWith("/*")
-            assertFalse(
-                "DestinationEntrance.kt:${index + 1} scales the screen again: $trimmed",
-                !isComment && (trimmed.contains("scaleX") || trimmed.contains("scaleY")),
-            )
+    /**
+     * The settings boundary scales; nothing else does, and the detail screens do not animate at all.
+     *
+     * A scale resamples every edge in the frame, so on a screen with full-bleed artwork the seam
+     * between two opaque fills crawls until it lands. Settings pages are flat lists on a flat
+     * background and show none of that, which is the whole reason this one is allowed to keep it.
+     */
+    @Test fun onlyTheSettingsBoundaryScales() {
+        DestinationMotion.entries.forEach { motion ->
+            val spec = motion.spec()
+            when (motion) {
+                DestinationMotion.Section ->
+                    assertTrue("the settings boundary must keep its scale", spec!!.overscale > 0f)
+                DestinationMotion.Detail ->
+                    assertNull("a detail screen must not get a layer at all", spec)
+                else ->
+                    assertEquals(
+                        "$motion must not scale: its screens can carry artwork",
+                        0f,
+                        spec!!.overscale,
+                        0f,
+                    )
+            }
         }
     }
 }

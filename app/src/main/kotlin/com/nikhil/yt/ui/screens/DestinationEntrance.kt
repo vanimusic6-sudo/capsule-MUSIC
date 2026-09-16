@@ -95,33 +95,37 @@ internal data class DestinationMotionSpec(
     val lift: Dp = 0.dp,
     /** Distance the content travels in from the trailing edge. Zero for motion that does not. */
     val shift: Dp = 0.dp,
+    /**
+     * Size the content resolves down from. 0f keeps it at its true size throughout.
+     *
+     * Only the settings boundary uses it, and only because those pages are plain — see below.
+     */
+    val overscale: Float = 0f,
 )
 
 /*
- * Why nothing here scales, and why the detail screens are not animated at all.
+ * Where a scale is allowed, and where it is not.
  *
- * The detail and section entrances used to resolve down from a slightly oversized state, and it was
- * the wrong tool twice over.
+ * The detail and section entrances both used to resolve down from a slightly oversized state, and
+ * on the detail screens that was visibly broken.
  *
- * It was visibly broken. A scale resamples the whole frame: for the length of the animation every
- * edge inside the screen sits on a fractional pixel and is redrawn from a different set of source
- * pixels each frame. Where two opaque fills meet — the bottom edge of the artist header against the
- * page under it — that shows up as a seam that crawls and flickers until the screen lands. A
- * translation cannot do this: it moves the whole layer by one offset, so every edge inside it keeps
- * the same relationship to every other edge for the entire animation.
+ * A scale resamples the whole frame: for the length of the animation every edge inside the screen
+ * sits on a fractional pixel and is redrawn from a different set of source pixels each frame. Where
+ * two opaque fills meet — the bottom edge of the artist header against the page under it — that
+ * shows up as a seam that crawls and flickers until the screen lands. It also draws outside its own
+ * bounds, because `graphicsLayer` does not clip, so an oversized screen overhangs its neighbours
+ * and then retracts.
  *
- * It also drew outside its own bounds. `graphicsLayer` does not clip, so an oversized screen
- * overhung its neighbours on all four sides and then retracted, which is the second half of what
- * made the bottom edge unstable.
+ * The detail screens were first moved to a rise, and their bottom edge came apart under that too. A
+ * defect that survives the transform being swapped is not a defect of the transform: what both
+ * versions shared was the layer, and those are the screens that fill it with full-bleed artwork,
+ * gradients and frame-sized fades. So they get no layer at all now, and arrive as a cut.
  *
- * The replacement was a rise: a matrix the GPU applies while drawing, with no resampling at all.
- * That fixed the tabs and the settings boundary. It did not fix the artist screen, whose bottom
- * edge came apart under the translation too — and a defect that survives the transform being
- * swapped is not a defect of the transform. What both versions shared was the layer itself, and
- * these screens are the ones that fill it with full-bleed artwork, gradients and frame-sized fades.
- * So the detail screens no longer get a layer, and appear as a cut.
- *
- * Which is also the cheapest thing this file can do for the screens that cost the most to draw.
+ * The settings boundary is the opposite case and keeps its scale. Those pages are flat lists on a
+ * flat background — no artwork, no gradients, nothing with a high-contrast internal edge for the
+ * resampling to show up on — and the scale is what makes opening settings read as arriving at an
+ * area of the app rather than as another page sliding in. Replacing it with a rise broke that, so
+ * it is back, unchanged.
  */
 
 /*
@@ -171,24 +175,24 @@ private val SettingsSpec =
 /*
  * The boundary of a section: opening settings, and coming back out of it.
  *
- * A rise, because arriving at a whole area of the app is neither a step along a path nor a tab
- * switch. Carried further and held longer than a tab's, since what is being arrived at is bigger.
+ * A scale, because arriving at a whole area of the app is neither a step along a path nor a tab
+ * switch, and neither travel direction says that — a rise here read as one more page arriving.
+ * Slower and gentler off the mark than the rest, since what is being arrived at is bigger.
  */
 private val SectionSpec =
     DestinationMotionSpec(
         durationMillis = 500,
         easing = CubicBezierEasing(0.42f, 0f, 0.28f, 1f),
-        lift = 28.dp,
+        overscale = 0.045f,
     )
 
 /**
  * Tabs are the four bottom-bar destinations. Everything else is something the user opened.
  *
- * Note what is deliberately absent: a real blur, and a scale. A `RenderEffect` forces an offscreen
- * buffer for the whole screen and allocating it the first time is what made opening the player
- * stall on device. A scale costs no buffer but resamples every edge in the frame for the length of
- * the animation, which is worse in its own way: it is visible. What is left is a translation, which
- * is the one transform that changes nothing inside the picture it moves.
+ * Note what is deliberately absent: a real blur. A `RenderEffect` forces an offscreen buffer for
+ * the whole screen and allocating it the first time is what made opening the player stall on
+ * device. The scale that survives costs no buffer, and is confined to the one place whose content
+ * does not show the resampling.
  */
 /**
  * Which character a destination arrives with, given where it was reached from.
@@ -288,8 +292,8 @@ internal fun Modifier.destinationEntrance(
      * That distinction is what makes this cheap rather than merely small. A layer carrying an alpha
      * below 1, or a RenderEffect, has to be composited through an offscreen buffer: the content is
      * rendered into a texture the size of the screen and then blended. A layer carrying only a
-     * translation is a display list with a matrix attached, which the GPU applies for free while
-     * drawing it. Same code path as scrolling.
+     * translation and a scale is a display list with a matrix attached, which the GPU applies for
+     * free while drawing it. Same code path as scrolling.
      */
     return this.graphicsLayer {
         // The tween has already applied the easing; clamping here guards only against a value
@@ -299,6 +303,10 @@ internal fun Modifier.destinationEntrance(
 
         translationX = remaining * shiftPx
         translationY = remaining * liftPx
+        if (spec.overscale != 0f) {
+            scaleX = 1f + spec.overscale * remaining
+            scaleY = 1f + spec.overscale * remaining
+        }
     }
 }
 
