@@ -21,6 +21,7 @@ import com.nikhil.yt.ui.screens.routeComposable
 import com.nikhil.yt.ui.screens.spec
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import java.io.File
@@ -78,14 +79,25 @@ class DestinationEntranceTest {
         }
     }
 
-    @Test fun anythingTheUserOpenedUsesTheDetailCharacter() {
+    /**
+     * Opening an artist, an album or a playlist plays nothing at all.
+     *
+     * These screens carry full-bleed artwork, gradients and frame-sized fades, and their bottom
+     * edge came apart under a scale and again under a translation. A defect that survives the
+     * transform being swapped is not a defect of the transform, so the layer itself is gone.
+     */
+    @Test fun anythingTheUserOpenedArrivesWithoutAnEntrance() {
         listOf("artist/abc", "album/xyz", "search/q", null).forEach { route ->
             assertEquals(
-                "$route should settle like an opened screen",
+                "$route should be an opened screen",
                 DestinationMotion.Detail,
                 destinationMotionFor(route),
             )
         }
+        assertNull(
+            "opening a detail screen must not create a layer at all",
+            DestinationMotion.Detail.spec(),
+        )
     }
 
     @Test fun settingsPagesMoveSidewaysBecauseTheyAreOneStructure() {
@@ -98,7 +110,7 @@ class DestinationEntranceTest {
                 )
             }
 
-        val settings = DestinationMotion.Settings.spec()
+        val settings = requireNotNull(DestinationMotion.Settings.spec())
         assertTrue("settings should travel sideways", settings.shift.value > 0f)
         assertEquals("settings should not rise", 0f, settings.lift.value, 0f)
     }
@@ -122,19 +134,17 @@ class DestinationEntranceTest {
             )
         }
 
-        val section = DestinationMotion.Section.spec()
-        val detail = DestinationMotion.Detail.spec()
-        val tab = DestinationMotion.Tab.spec()
-        assertTrue("a section should rise, like opening an artist", section.lift.value > 0f)
+        val section = requireNotNull(DestinationMotion.Section.spec())
+        val tab = requireNotNull(DestinationMotion.Tab.spec())
+        assertTrue("a section should rise", section.lift.value > 0f)
         assertEquals("a section should not slide", 0f, section.shift.value, 0f)
-        // A whole area of the app is a bigger thing to arrive at than one artist, and one artist is
-        // a bigger thing to arrive at than the tab next door. That ordering is the only thing
-        // separating the three rises now that none of them scales, so it is pinned.
-        assertTrue("a section should rise further than a detail", section.lift.value > detail.lift.value)
-        assertTrue("a detail should rise further than a tab", detail.lift.value > tab.lift.value)
+        // A whole area of the app is a bigger thing to arrive at than the tab next door. With
+        // nothing scaling and the detail screens not animating at all, that ordering is the only
+        // thing separating the two rises, so it is pinned.
+        assertTrue("a section should rise further than a tab", section.lift.value > tab.lift.value)
         assertTrue(
-            "a section should take longer than a detail",
-            section.durationMillis > detail.durationMillis,
+            "a section should take longer than a tab",
+            section.durationMillis > tab.durationMillis,
         )
     }
 
@@ -144,7 +154,7 @@ class DestinationEntranceTest {
      * geometry: opposite anchors, and the lyrics move on one axis only.
      */
     @Test fun theSettingsEntranceLeansAwayBeforeItGoes() {
-        val settings = DestinationMotion.Settings.spec()
+        val settings = requireNotNull(DestinationMotion.Settings.spec())
         // Covering a sixteenth of the travel in the first tenth of the time is enough to feel like
         // being thrown into the animation rather than leaving the page you were on.
         val startedBy = settings.easing.transform(0.1f)
@@ -165,7 +175,7 @@ class DestinationEntranceTest {
      */
     @Test fun noEntranceCarriesAnythingThatNeedsAnOffscreenBuffer() {
         DestinationMotion.entries.forEach { motion ->
-            val spec = motion.spec()
+            val spec = motion.spec() ?: return@forEach
             // Transform-only is the contract. Anything that dims, veils or filters the content
             // belongs to the content, not to the entrance.
             assertTrue(
@@ -181,7 +191,7 @@ class DestinationEntranceTest {
      * distance for the last third of the duration is what makes the end read as an arrival.
      */
     @Test fun theTabEntranceIsStillVisiblyMovingNearTheEnd() {
-        val tab = DestinationMotion.Tab.spec()
+        val tab = requireNotNull(DestinationMotion.Tab.spec())
         val remaining = 1f - tab.easing.transform(2f / 3f)
         assertTrue(
             "only ${remaining * 100}% of the travel is left for the final third",
@@ -191,7 +201,7 @@ class DestinationEntranceTest {
 
     @Test fun bothCharactersStayShortEnoughToFeelImmediate() {
         DestinationMotion.entries.forEach { motion ->
-            val spec = motion.spec()
+            val spec = motion.spec() ?: return@forEach
             // Soft, but still an answer to a tap rather than a wait.
             assertTrue(
                 "$motion takes ${spec.durationMillis}ms",

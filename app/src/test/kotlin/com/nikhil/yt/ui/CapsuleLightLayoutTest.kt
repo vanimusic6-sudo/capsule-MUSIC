@@ -35,7 +35,6 @@ import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.unit.Density
 import com.nikhil.yt.playback.video.CapsuleVideoPlaybackState
 import com.nikhil.yt.ui.player.CapsuleAudioVideoToggle
-import com.nikhil.yt.ui.player.CapsuleLightArtworkAspect
 import com.nikhil.yt.ui.player.CapsuleLightControls
 import com.nikhil.yt.ui.player.CapsuleLightLyricLineHeight
 import com.nikhil.yt.ui.player.CapsuleLightToggleHeight
@@ -173,7 +172,7 @@ class CapsuleLightLayoutTest {
         compose.runOnIdle { assertEquals("A pull down from the top opens the queue once", 1, queueOpens) }
     }
 
-    @Test fun lightArtworkCardIsTallerThanWideButStaysCloseToASquare() {
+    @Test fun lightArtworkCardIsSquare() {
         compose.setContent {
             MaterialTheme {
                 CapsulePlayerLayout(
@@ -187,10 +186,7 @@ class CapsuleLightLayoutTest {
         }
         val cover = compose.onNodeWithTag("cover").fetchSemanticsNode().boundsInRoot
         assertTrue("the card must have a size at all", cover.width > 0f)
-        val aspect = cover.height / cover.width
-        assertEquals(CapsuleLightArtworkAspect, aspect, 0.01f)
-        assertTrue("the card must not turn into a poster", aspect < 1.25f)
-        assertTrue("the card must still be taller than wide", aspect > 1f)
+        assertEquals("the card is square", cover.width, cover.height, 1f)
     }
 
     @Test fun lightDrawsTheSoundingLineBetweenTheCardAndTheDetails() {
@@ -316,16 +312,7 @@ class CapsuleLightLayoutTest {
      * reserves a minimum rather than a fixed height, and the text is allowed more than one line.
      */
     @Test fun theSoundingLineIsAllowedToWrapDownwards() {
-        val source =
-            listOf(
-                File("src/main/kotlin/com/nikhil/yt/ui/player/CapsuleLightLyricLine.kt"),
-                File("app/src/main/kotlin/com/nikhil/yt/ui/player/CapsuleLightLyricLine.kt"),
-            ).firstOrNull { it.isFile }
-        assertTrue("Could not find CapsuleLightLyricLine.kt from " + File(".").absolutePath, source != null)
-        val code =
-            source!!.readLines()
-                .map { it.trim() }
-                .filterNot { it.startsWith("*") || it.startsWith("//") || it.startsWith("/*") }
+        val code = lyricLineSource()
 
         assertTrue(
             "the row must reserve a minimum height, not a fixed one, or a second line has nowhere to go",
@@ -343,5 +330,42 @@ class CapsuleLightLayoutTest {
             "and the wrap has to stop somewhere, or one line could take the screen",
             code.any { it.contains("MAX_LINES = 2") },
         )
+    }
+
+    /**
+     * The sounding line must not cost an offscreen buffer.
+     *
+     * `AnimatedContent` composes both lines for the length of every change and animates each one
+     * through `alpha`, and a layer with an alpha below 1 is composited through a buffer allocated
+     * and blended every frame. For a line that changes every few seconds, all day, on a screen the
+     * user leaves open while listening, that is the expensive way to fade one string. The fade
+     * belongs in the text colour, which is a paint value, and the rise on a layer that stays opaque.
+     */
+    @Test fun theSoundingLineFadesWithoutAnOffscreenBuffer() {
+        val code = lyricLineSource()
+        assertFalse(
+            "AnimatedContent brings a second composed line and an alpha layer with it",
+            code.any { it.contains("AnimatedContent") },
+        )
+        assertFalse(
+            "an alpha below 1 on the layer is exactly the buffer this avoids",
+            code.any { it.contains("alpha =") && it.contains("graphicsLayer") },
+        )
+        assertTrue(
+            "the fade has to live in the text colour instead",
+            code.any { it.contains("alpha = LINE_ALPHA * arrived") },
+        )
+    }
+
+    private fun lyricLineSource(): List<String> {
+        val source =
+            listOf(
+                File("src/main/kotlin/com/nikhil/yt/ui/player/CapsuleLightLyricLine.kt"),
+                File("app/src/main/kotlin/com/nikhil/yt/ui/player/CapsuleLightLyricLine.kt"),
+            ).firstOrNull { it.isFile }
+        assertTrue("Could not find CapsuleLightLyricLine.kt from " + File(".").absolutePath, source != null)
+        return source!!.readLines()
+            .map { it.trim() }
+            .filterNot { it.startsWith("*") || it.startsWith("//") || it.startsWith("/*") }
     }
 }

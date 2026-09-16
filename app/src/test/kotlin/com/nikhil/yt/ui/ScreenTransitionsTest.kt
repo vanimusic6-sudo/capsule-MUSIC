@@ -170,7 +170,7 @@ class ScreenTransitionsTest {
      * Retracing a step should not take as long as taking it.
      */
     @Test fun `stepping back out of a settings page is quicker than stepping in`() {
-        val settings = DestinationMotion.Settings.spec()
+        val settings = requireNotNull(DestinationMotion.Settings.spec())
         assertTrue(
             "back takes ${settings.backwardDurationMillis}ms against ${settings.durationMillis}ms",
             settings.backwardDurationMillis < settings.durationMillis,
@@ -185,7 +185,7 @@ class ScreenTransitionsTest {
     @Test fun `motions with no direction take the same time either way`() {
         listOf(DestinationMotion.Tab, DestinationMotion.Detail, DestinationMotion.Section)
             .forEach { motion ->
-                val spec = motion.spec()
+                val spec = motion.spec() ?: return@forEach
                 assertEquals(
                     "$motion should not change speed with direction",
                     spec.durationMillis,

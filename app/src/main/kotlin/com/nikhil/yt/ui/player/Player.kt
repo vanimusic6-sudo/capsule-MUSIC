@@ -434,6 +434,7 @@ private fun CapsulePlayerLyricsHost(
                 onMenuClick = onShowMenu,
                 context = LocalContext.current,
                 bottomPadding = 0.dp,
+                expanded = playerState.isExpanded,
             )
         }
 

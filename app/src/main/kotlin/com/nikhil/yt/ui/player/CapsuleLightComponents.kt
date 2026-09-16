@@ -58,12 +58,6 @@ internal val CapsuleLightPanelShape = RoundedCornerShape(CapsuleLightPanelRadius
 internal val CapsuleLightToggleHeight = 48.dp
 internal val CapsuleLightToggleInset = 4.dp
 
-/**
- * Capsule Light's artwork card is slightly taller than it is wide.
- * Kept very close to 1 on purpose: a hint of portrait, not a poster.
- */
-internal const val CapsuleLightArtworkAspect = 1.06f
-
 /** Both designs host the same artwork, metadata and playback actions. */
 @Composable
 internal fun CapsulePlayerLayout(
@@ -90,17 +84,12 @@ internal fun CapsulePlayerLayout(
             // The details column also carries the sounding lyric line above it, when it is on.
             val lyricSpace = if (lyricLine != null) CapsuleLightLyricLineHeight else 0.dp
             val detailsSpace = (320.dp + lyricSpace) * fontScale
-            /*
-             * The card is sized by its width and then grown by the aspect, so the
-             * height budget has to be divided by the aspect before it is compared.
-             * Both ends are clamped, so a short or fontScale-heavy window can never
-             * ask for a negative or unbounded card.
-             */
-            val artworkWidth = minOf(
+            // Square. Both ends are clamped, so a short or fontScale-heavy window can never ask
+            // for a negative or unbounded card.
+            val artworkSide = minOf(
                 (maxWidth - 48.dp).coerceAtLeast(120.dp),
-                ((maxHeight - detailsSpace) / CapsuleLightArtworkAspect).coerceIn(150.dp, 340.dp),
+                (maxHeight - detailsSpace).coerceIn(160.dp, 360.dp),
             )
-            val artworkHeight = artworkWidth * CapsuleLightArtworkAspect
             val scrollState = rememberScrollState()
             val openQueue by rememberUpdatedState(onExpandQueue)
             val queueThreshold = with(LocalDensity.current) { 64.dp.toPx() }
@@ -143,10 +132,7 @@ internal fun CapsulePlayerLayout(
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
                 Spacer(Modifier.height(8.dp))
-                Box(
-                    Modifier.width(artworkWidth).height(artworkHeight),
-                    contentAlignment = Alignment.Center,
-                ) { artwork() }
+                Box(Modifier.size(artworkSide), contentAlignment = Alignment.Center) { artwork() }
                 if (lyricLine == null) {
                     Spacer(Modifier.height(20.dp))
                 } else {
@@ -156,7 +142,7 @@ internal fun CapsulePlayerLayout(
                      * middle of a wider column.
                      */
                     Spacer(Modifier.height(10.dp))
-                    Box(Modifier.width(artworkWidth)) { lyricLine() }
+                    Box(Modifier.width(artworkSide)) { lyricLine() }
                     Spacer(Modifier.height(12.dp))
                 }
                 CompositionLocalProvider(LocalCapsuleLightMenu provides onMenuClick) { details() }

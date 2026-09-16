@@ -6,19 +6,22 @@
 
 package com.nikhil.yt.ui.player
 
-import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInVertically
-import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -43,6 +46,13 @@ internal val CapsuleLightLyricLineHeight = 24.dp
 
 /** A long line wraps once. Beyond that it is ellipsised rather than taking the screen. */
 private const val MAX_LINES = 2
+
+private const val LINE_ALPHA = 0.66f
+private const val FADE_OUT_MILLIS = 150
+private const val FADE_IN_MILLIS = 240
+
+/** A few pixels of rise as the line arrives. Small enough not to need a dp, cheap as a matrix. */
+private const val RISE_PX = 10f
 
 /** The line is shown this long before it is due, matching the full lyrics screen. */
 private const val LINE_LEAD_MS = 300L
@@ -86,10 +96,16 @@ internal fun capsuleLightLyricLineAt(
 }
 
 /**
- * Draws [line] and cross-fades to the next one.
+ * Draws [line], fading to the next one as playback moves.
  *
- * The animation is driven by the line changing, not by a clock: once a line has
- * settled the row is idle and costs nothing per frame.
+ * Deliberately not `AnimatedContent`. That composes both lines at once for the length of the
+ * change and animates each through `alpha`, and a layer with an alpha below 1 has to be composited
+ * through an offscreen buffer — a buffer allocated and blended every frame of every line change,
+ * for one line of text. Here the fade is the text colour's own alpha, which is a paint value the
+ * glyphs are drawn with, and the small rise is a translation on a layer that stays fully opaque.
+ * One text node, no buffer, same result on screen.
+ *
+ * It is driven by the line changing, not by a clock: once a line has settled nothing is running.
  */
 @Composable
 internal fun CapsuleLightLyricLine(
@@ -97,31 +113,39 @@ internal fun CapsuleLightLyricLine(
     textColor: Color,
     modifier: Modifier = Modifier,
 ) {
+    val settled = remember { Animatable(1f) }
+    var shown by remember { mutableStateOf(line.orEmpty()) }
+
+    LaunchedEffect(line) {
+        val next = line.orEmpty()
+        if (next == shown) return@LaunchedEffect
+        if (shown.isNotEmpty()) settled.animateTo(0f, tween(FADE_OUT_MILLIS))
+        shown = next
+        // Nothing to fade in during an instrumental gap: the row is simply empty.
+        if (next.isEmpty()) return@LaunchedEffect
+        settled.snapTo(0f)
+        settled.animateTo(1f, tween(FADE_IN_MILLIS))
+    }
+
+    val arrived = settled.value.coerceIn(0f, 1f)
+
     Box(
         modifier = modifier.fillMaxWidth().heightIn(min = CapsuleLightLyricLineHeight),
         contentAlignment = Alignment.CenterStart,
     ) {
-        AnimatedContent(
-            targetState = line.orEmpty(),
-            transitionSpec = {
-                (
-                    fadeIn(tween(240)) +
-                        slideInVertically(tween(280)) { height -> height / 3 }
-                ) togetherWith fadeOut(tween(170)) using null
-            },
-            label = "capsuleLightLyricLine",
-        ) { text ->
-            androidx.compose.material3.Text(
-                text = text,
-                color = textColor.copy(alpha = 0.66f),
-                fontSize = 15.sp,
-                lineHeight = 19.sp,
-                fontWeight = FontWeight.Medium,
-                textAlign = TextAlign.Start,
-                maxLines = MAX_LINES,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.fillMaxWidth(),
-            )
-        }
+        Text(
+            text = shown,
+            color = textColor.copy(alpha = LINE_ALPHA * arrived),
+            fontSize = 15.sp,
+            lineHeight = 19.sp,
+            fontWeight = FontWeight.Medium,
+            textAlign = TextAlign.Start,
+            maxLines = MAX_LINES,
+            overflow = TextOverflow.Ellipsis,
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .graphicsLayer { translationY = (1f - arrived) * RISE_PX },
+        )
     }
 }

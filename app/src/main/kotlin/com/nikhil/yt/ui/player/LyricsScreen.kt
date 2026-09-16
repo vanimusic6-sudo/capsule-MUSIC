@@ -49,43 +49,9 @@ fun LyricsScreen(
     val currentLyrics by
         playerConnection.currentLyrics.collectAsState(initial = null)
 
-    /*
-     * Keep lyrics fetching bound to the currently displayed song. Switching
-     * tracks cancels the previous request instead of leaving an orphan preload
-     * running in the background.
-     */
-    LaunchedEffect(mediaMetadata.id, currentLyrics) {
-        if (currentLyrics != null) return@LaunchedEffect
-
-        delay(800)
-
-        try {
-            val lyrics =
-                withContext(Dispatchers.IO) {
-                    val entryPoint =
-                        EntryPointAccessors.fromApplication(
-                            context.applicationContext,
-                            com.nikhil.yt.di.LyricsHelperEntryPoint::class.java,
-                        )
-                    entryPoint.lyricsHelper().getLyrics(mediaMetadata)
-                }
-
-            withContext(Dispatchers.IO) {
-                database.query {
-                    upsert(
-                        LyricsEntity(
-                            mediaMetadata.id,
-                            lyrics,
-                        ),
-                    )
-                }
-            }
-        } catch (cancelled: CancellationException) {
-            throw cancelled
-        } catch (_: Exception) {
-            // A missing lyric is an expected result; manual refetch stays available.
-        }
-    }
+    // One owner for "fetch these lyrics if we do not have them", shared with the sounding line
+    // under Capsule Light's artwork.
+    RequestLyricsIfMissing(mediaMetadata, currentLyrics)
 
     var position by remember(mediaMetadata.id) {
         mutableLongStateOf(player.currentPosition.coerceAtLeast(0L))

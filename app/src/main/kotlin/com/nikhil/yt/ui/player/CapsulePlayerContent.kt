@@ -139,6 +139,14 @@ fun CapsulePlayerContent(
     onCollapse: () -> Unit,
     context: Context,
     bottomPadding: Dp,
+    /**
+     * Whether the full player is actually open.
+     *
+     * This content stays composed behind the collapsed sheet, so anything it does while closed is
+     * work nobody can see. The lyric line is gated on it: closed, there is no database flow
+     * collected, nothing parsed and no lyrics requested.
+     */
+    expanded: Boolean = true,
 ) {
     val isLight = design == CapsulePlayerDesign.LIGHT
     val shuffleEnabled by playerConnection.shuffleModeEnabled.collectAsState()
@@ -223,7 +231,7 @@ fun CapsulePlayerContent(
             defaultValue = true,
         )
 
-    val lyricLineEnabled = isLight && showLyricLine
+    val lyricLineEnabled = isLight && showLyricLine && expanded
 
     val lyricsEntity by
         if (lyricLineEnabled) {
@@ -234,6 +242,15 @@ fun CapsulePlayerContent(
 
     val syncedLyricLines =
         remember(lyricsEntity) { capsuleLightLyricLines(lyricsEntity?.lyrics) }
+
+    /*
+     * The line has to ask for the lyrics itself. Fetching used to be the lyrics screen's job, so a
+     * track whose lyrics screen was never opened had nothing in the database and the row stayed
+     * empty forever, waiting on a request nobody was going to make.
+     */
+    if (lyricLineEnabled) {
+        RequestLyricsIfMissing(mediaMetadata, lyricsEntity)
+    }
 
     val safeDuration =
         durationMs
@@ -491,12 +508,7 @@ fun CapsulePlayerContent(
                         Modifier
                             .fillMaxWidth()
                             .aspectRatio(
-                                when {
-                                    isCapsuleVideoPlaying -> 16f / 9f
-                                    // Capsule Light's card is slightly taller than wide.
-                                    isLight -> 1f / CapsuleLightArtworkAspect
-                                    else -> 1f
-                                },
+                                if (isCapsuleVideoPlaying) 16f / 9f else 1f,
                             )
                             .offset(
                                 y = if (isCapsuleVideoPlaying || isLight) 0.dp else (-5).dp,

@@ -35,7 +35,18 @@ internal enum class DestinationMotion {
     /** Lateral, habitual, frequent. Brisk, with a little travel so it reads as momentum. */
     Tab,
 
-    /** Going into something. Rises further and settles later than a tab does. */
+    /**
+     * Going into something: an artist, an album, a playlist.
+     *
+     * No entrance at all, and that is the whole of it. This one had a scale, which resampled every
+     * edge in the frame and left the artist header's bottom edge crawling; it was moved to a
+     * translation, and the edge still came apart. Two different transforms producing the same
+     * artefact on the same screen says the fault is not in the choice of transform — it is that
+     * these screens are being drawn into a layer they do not otherwise have. So they are not.
+     *
+     * The screens under this character are the heavy ones: full-bleed artwork, gradients, fades
+     * that are sized to the frame. They arrive as a cut, which costs nothing and cannot glitch.
+     */
     Detail,
 
     /**
@@ -62,9 +73,9 @@ internal enum class DestinationMotion {
      * were already one of its own pages, and why closing settings made the screen behind rise like a
      * library tab.
      *
-     * So the boundary gets its own motion, and it is the one used for opening something: the same
-     * rise as [Detail], carried a little further and a little longer, because a whole area of the
-     * app is a bigger thing to arrive at than one artist.
+     * So the boundary gets its own motion: a rise, carried further and held longer than a tab's,
+     * because a whole area of the app is a bigger thing to arrive at than the tab next door.
+     * Settings pages are plain, so unlike the detail screens they take a layer without artefacts.
      */
     Section,
 }
@@ -87,7 +98,7 @@ internal data class DestinationMotionSpec(
 )
 
 /*
- * Why nothing here scales any more.
+ * Why nothing here scales, and why the detail screens are not animated at all.
  *
  * The detail and section entrances used to resolve down from a slightly oversized state, and it was
  * the wrong tool twice over.
@@ -103,10 +114,14 @@ internal data class DestinationMotionSpec(
  * overhung its neighbours on all four sides and then retracted, which is the second half of what
  * made the bottom edge unstable.
  *
- * The replacement is not a compromise. All four characters are now one gesture — a rise — separated
- * by how far and how long, which is the same vocabulary the tab entrance was already using and the
- * one nobody had a complaint about. It costs strictly less: a translation is a matrix the GPU
- * applies while drawing, with no resampling at all.
+ * The replacement was a rise: a matrix the GPU applies while drawing, with no resampling at all.
+ * That fixed the tabs and the settings boundary. It did not fix the artist screen, whose bottom
+ * edge came apart under the translation too — and a defect that survives the transform being
+ * swapped is not a defect of the transform. What both versions shared was the layer itself, and
+ * these screens are the ones that fill it with full-bleed artwork, gradients and frame-sized fades.
+ * So the detail screens no longer get a layer, and appear as a cut.
+ *
+ * Which is also the cheapest thing this file can do for the screens that cost the most to draw.
  */
 
 /*
@@ -133,24 +148,6 @@ private val TabSpec =
     )
 
 /*
- * The gentlest lead-in of anything here, and the longest settle of the two rises.
- *
- * (0.42, 0) spends almost nothing in the first frames. The screen leans into the movement instead
- * of being thrown into it. The curve is kept exactly as it was when this was a scale — it was the
- * part of that animation that was right — and only the gesture under it changed.
- *
- * It rises further than a tab and takes longer over it. That difference is the whole distinction
- * now, and it is enough: a tab switch is a flick sideways in the same place, opening an artist is
- * arriving somewhere, and a deeper, slower rise is what separates them.
- */
-private val DetailSpec =
-    DestinationMotionSpec(
-        durationMillis = 460,
-        easing = CubicBezierEasing(0.42f, 0f, 0.28f, 1f),
-        lift = 22.dp,
-    )
-
-/*
  * Slower than the others, and softer off the mark than anything else here.
  *
  * Two separate corrections live in this curve. It was first on a steep decelerate, which put nearly
@@ -174,9 +171,8 @@ private val SettingsSpec =
 /*
  * The boundary of a section: opening settings, and coming back out of it.
  *
- * Deliberately the [DetailSpec] gesture, because arriving at a whole area of the app is the same
- * *kind* of event as opening an artist, not a step along a path and not a tab switch. Carried
- * further and held longer than Detail, since what is being arrived at is bigger.
+ * A rise, because arriving at a whole area of the app is neither a step along a path nor a tab
+ * switch. Carried further and held longer than a tab's, since what is being arrived at is bigger.
  */
 private val SectionSpec =
     DestinationMotionSpec(
@@ -228,10 +224,11 @@ internal fun destinationMotionFor(route: String?, from: String? = null): Destina
 private fun String.isInSettings(): Boolean =
     this == "settings" || startsWith("settings/")
 
-internal fun DestinationMotion.spec(): DestinationMotionSpec =
+/** Null means the destination simply appears: no layer, no animation, nothing to go wrong. */
+internal fun DestinationMotion.spec(): DestinationMotionSpec? =
     when (this) {
         DestinationMotion.Tab -> TabSpec
-        DestinationMotion.Detail -> DetailSpec
+        DestinationMotion.Detail -> null
         DestinationMotion.Settings -> SettingsSpec
         DestinationMotion.Section -> SectionSpec
     }
@@ -249,7 +246,8 @@ internal fun Modifier.destinationEntrance(
 ): Modifier {
     if (!systemAnimationsEnabled()) return this
 
-    val spec = motion.spec()
+    // No spec, no layer. The destination is composed exactly as it would be with none of this here.
+    val spec = motion.spec() ?: return this
     val durationMillis =
         when (direction) {
             RouteDirection.Forward -> spec.durationMillis
