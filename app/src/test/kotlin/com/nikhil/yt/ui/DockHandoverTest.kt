@@ -2,6 +2,7 @@ package com.nikhil.yt.ui
 
 import com.nikhil.yt.ui.component.DockHandoverWindow
 import com.nikhil.yt.ui.component.PlayerFoldWindow
+import com.nikhil.yt.ui.component.PlayerTravelSheer
 import com.nikhil.yt.ui.motion.CapsuleMotion
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -18,8 +19,18 @@ import org.junit.Test
  * Both follow from the dock's window being the wider one, and that is what is pinned here.
  */
 class DockHandoverTest {
-    private fun playerAlpha(progress: Float) =
-        CapsuleMotion.approach(progress, PlayerFoldWindow)
+    /**
+     * Mirrors the player layer, sheer included.
+     *
+     * The sheer is the one thing that could break the pair: it takes opacity away from the player
+     * mid-travel, which is exactly where the two surfaces are handing over. Testing the fold alone
+     * would test a formula the app no longer uses.
+     */
+    private fun playerAlpha(progress: Float): Float {
+        val fold = CapsuleMotion.approach(progress, PlayerFoldWindow)
+        val travelling = 4f * fold * (1f - fold)
+        return fold * (1f - PlayerTravelSheer * travelling)
+    }
 
     private fun dockAlpha(progress: Float) =
         1f - CapsuleMotion.approach(progress, DockHandoverWindow)
@@ -53,6 +64,32 @@ class DockHandoverTest {
             assertTrue(
                 "at progress $progress the surfaces sum to $total, so the wallpaper shows through",
                 total >= 1f - 1e-4f,
+            )
+        }
+    }
+
+    /**
+     * The sheer exists to soften the journey, so it must leave both destinations alone: a player
+     * sitting open or sitting docked is fully solid, and only what happens between them is touched.
+     */
+    @Test fun `the sheer is present in the middle and absent at both ends`() {
+        assertEquals("an open player is not fully opaque", 1f, playerAlpha(1f), 1e-4f)
+        assertEquals("a docked player is not fully gone", 0f, playerAlpha(0f), 1e-4f)
+
+        val fold = CapsuleMotion.approach(0.38f, PlayerFoldWindow)
+        assertTrue(
+            "the sheer never applies, so it is decoration that does nothing",
+            playerAlpha(0.38f) < fold,
+        )
+    }
+
+    @Test fun `the sheer stays far too small to see the page through the player`() {
+        (0..200).forEach { step ->
+            val progress = step / 200f
+            val fold = CapsuleMotion.approach(progress, PlayerFoldWindow)
+            assertTrue(
+                "at progress $progress the sheer removed more than a tenth of the player",
+                playerAlpha(progress) >= fold * 0.9f,
             )
         }
     }

@@ -9,11 +9,14 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import com.nikhil.yt.ui.motion.CapsuleMotion
 
 /**
  * How a destination arrives.
@@ -84,17 +87,30 @@ internal data class DestinationMotionSpec(
     /** Size the content resolves down from. 0f keeps it at its true size throughout. */
     val overscale: Float,
     /**
-     * Opacity the content starts at.
+     * How dark the veil over the arriving screen starts, and how much of the duration it takes to
+     * lift.
      *
-     * Kept high, and for a reason that is easy to get wrong. Route transitions are None, so the
-     * screen being left disappears at once; if the arriving screen started faint, those first
-     * frames would show neither screen properly and the change would land as a flash of bare
-     * canvas. That flash is what reads as a flicker, and as harshness. The character has to come
-     * from the movement, not from fading up out of nothing.
+     * This replaces starting the *content* at a reduced opacity, and the difference matters twice
+     * over.
      *
-     * It also means a stalled animation would leave a readable screen rather than a blank one.
+     * Visually: route transitions are None, so the screen being left is gone in one frame. A screen
+     * that arrives semi-transparent shows the bare canvas through itself for those first frames,
+     * which reads as a washed-out flash — the eye catches a change in brightness before it catches
+     * anything else. A brief veil that lifts reads instead as deliberate, and it hides the one thing
+     * that is genuinely ugly about the first frames: content that is still settling. A keyed grid
+     * whose data lands a frame later plays its own item placement animations, and in a grid those
+     * move diagonally — which is where the small sideways twitch when opening a library tab comes
+     * from. It is not the entrance; it is the grid, and the veil covers it.
+     *
+     * Structurally: an alpha on the layer multiplies into every draw inside it, so a
+     * half-transparent child's colour travels a different curve from its opaque neighbours — the bug
+     * that made the favourites cards flash. A veil drawn on top has no such interaction. Content
+     * stays at full opacity throughout, and a stalled animation leaves a readable screen rather than
+     * a washed one.
      */
-    val fromAlpha: Float,
+    val scrim: Float,
+    /** Fraction of the duration the veil takes to lift. Short: it masks a moment, not the motion. */
+    val scrimWindow: Float,
 )
 
 /*
@@ -119,16 +135,29 @@ private val TabSpec =
         easing = CubicBezierEasing(0.2f, 0.05f, 0.35f, 1f),
         lift = 16.dp,
         overscale = 0f,
-        fromAlpha = 0.82f,
+        scrim = 0.20f,
+        scrimWindow = 0.35f,
     )
 
+/*
+ * The scale characters share the gentlest lead-in of anything here, and they had the harshest.
+ *
+ * This one kept the original steep decelerate long after the tabs and settings were moved off it:
+ * a twentieth of the duration in and a fifth of the scale was already spent, so opening an artist
+ * began with a lurch and then coasted. A scale is far less forgiving of that than a translation —
+ * the whole frame changes size at once, so the opening rate is read directly as force.
+ *
+ * (0.42, 0) spends almost nothing in the first frames. The screen leans into the movement instead
+ * of being thrown into it, which is the "lead-in" that was missing.
+ */
 private val DetailSpec =
     DestinationMotionSpec(
-        durationMillis = 400,
-        easing = CubicBezierEasing(0.3f, 0.06f, 0.05f, 1f),
+        durationMillis = 460,
+        easing = CubicBezierEasing(0.42f, 0f, 0.28f, 1f),
         lift = 0.dp,
         overscale = 0.028f,
-        fromAlpha = 0.86f,
+        scrim = 0.22f,
+        scrimWindow = 0.40f,
     )
 
 /*
@@ -152,7 +181,10 @@ private val SettingsSpec =
         lift = 0.dp,
         shift = 30.dp,
         overscale = 0f,
-        fromAlpha = 0.86f,
+        // Lighter than the others: a lateral step has no first-render settle to hide, it only needs
+        // the seam between the instant swap and the movement softened.
+        scrim = 0.14f,
+        scrimWindow = 0.30f,
     )
 
 /*
@@ -165,11 +197,12 @@ private val SettingsSpec =
  */
 private val SectionSpec =
     DestinationMotionSpec(
-        durationMillis = 460,
-        easing = CubicBezierEasing(0.24f, 0.04f, 0.32f, 1f),
+        durationMillis = 500,
+        easing = CubicBezierEasing(0.42f, 0f, 0.28f, 1f),
         lift = 0.dp,
         overscale = 0.045f,
-        fromAlpha = 0.86f,
+        scrim = 0.22f,
+        scrimWindow = 0.40f,
     )
 
 /**
@@ -251,20 +284,41 @@ internal fun Modifier.destinationEntrance(
     val liftPx = with(density) { spec.lift.toPx() }
     val shiftPx = with(density) { spec.shift.toPx() * direction.sign }
 
-    return graphicsLayer {
-        // The tween has already applied the easing; clamping here guards only against a value
-        // arriving out of range, which a cancelled or restored animation can produce.
-        val settled = progress.value.let { if (it.isFinite()) it.coerceIn(0f, 1f) else 1f }
-        val remaining = 1f - settled
+    return this
+        .graphicsLayer {
+            // The tween has already applied the easing; clamping here guards only against a value
+            // arriving out of range, which a cancelled or restored animation can produce.
+            val settled = progress.value.let { if (it.isFinite()) it.coerceIn(0f, 1f) else 1f }
+            val remaining = 1f - settled
 
-        alpha = spec.fromAlpha + (1f - spec.fromAlpha) * settled
-        translationX = remaining * shiftPx
-        translationY = remaining * liftPx
-        if (spec.overscale != 0f) {
-            scaleX = 1f + spec.overscale * remaining
-            scaleY = 1f + spec.overscale * remaining
+            translationX = remaining * shiftPx
+            translationY = remaining * liftPx
+            if (spec.overscale != 0f) {
+                scaleX = 1f + spec.overscale * remaining
+                scaleY = 1f + spec.overscale * remaining
+            }
         }
-    }
+        .drawWithContent {
+            /*
+             * The veil is drawn *over* the content, never applied as an alpha to it.
+             *
+             * An alpha on the layer multiplies into every draw inside, which is why a
+             * half-transparent child ended up travelling a different colour curve from its opaque
+             * neighbours. Drawing a rectangle on top has no such interaction: the content underneath
+             * is at full opacity the entire time and only looks darker.
+             *
+             * It also cannot intercept touches, because it is a draw instruction and not a layout
+             * node — the screen is interactive from the first frame even while it is still dark.
+             */
+            drawContent()
+
+            val settled = progress.value.let { if (it.isFinite()) it.coerceIn(0f, 1f) else 1f }
+            val lifted = CapsuleMotion.smooth((settled / spec.scrimWindow).coerceIn(0f, 1f))
+            val veil = (spec.scrim * (1f - lifted)).coerceIn(0f, 1f)
+            if (veil > 0.002f) {
+                drawRect(color = Color.Black, alpha = veil)
+            }
+        }
 }
 
 @Composable

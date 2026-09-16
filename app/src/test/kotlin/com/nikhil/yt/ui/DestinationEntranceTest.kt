@@ -147,19 +147,42 @@ class DestinationEntranceTest {
     }
 
     /**
-     * Route transitions are None, so the screen being left disappears at once. An arriving screen
-     * that started faint would leave those first frames showing neither screen properly — a flash
-     * of bare canvas, which is what reads as a flicker and as harshness. Character has to come from
-     * movement, not from fading up out of nothing.
+     * Route transitions are None, so the screen being left disappears at once, and for a moment the
+     * arriving screen is all there is. It used to arrive *semi-transparent*, which showed the bare
+     * canvas through it and read as a washed-out flash — and worse, the layer alpha multiplied into
+     * every child, which is what made a half-transparent card travel a different colour curve from
+     * its neighbours.
+     *
+     * Content is now fully opaque from the first frame and a veil is drawn on top instead. The veil
+     * has to be brief and light: it is there to mask content still settling, not to be noticed.
      */
-    @Test fun noEntranceStartsFaintEnoughToFlashTheBareCanvas() {
+    @Test fun everyEntranceArrivesOpaqueUnderABriefVeil() {
         DestinationMotion.entries.forEach { motion ->
             val spec = motion.spec()
+            assertTrue("$motion has no veil at all", spec.scrim > 0f)
             assertTrue(
-                "$motion starts at ${spec.fromAlpha}, which would dip to the canvas",
-                spec.fromAlpha >= 0.8f,
+                "$motion starts at ${spec.scrim}, dark enough to read as a blackout",
+                spec.scrim <= 0.28f,
             )
-            assertTrue("$motion starts opaque", spec.fromAlpha < 1f)
+            assertTrue(
+                "$motion keeps its veil for ${spec.scrimWindow} of the entrance",
+                spec.scrimWindow in 0.15f..0.5f,
+            )
+        }
+    }
+
+    /**
+     * The veil masks a moment; the movement is the character. If it outlasted the motion it would
+     * become the character, and a screen that darkens on every navigation is a screen that flickers.
+     */
+    @Test fun noVeilOutlastsTheMovementItCovers() {
+        DestinationMotion.entries.forEach { motion ->
+            val spec = motion.spec()
+            val liftsAfterMillis = spec.durationMillis * spec.scrimWindow
+            assertTrue(
+                "$motion is still dark ${liftsAfterMillis}ms in",
+                liftsAfterMillis <= 220f,
+            )
         }
     }
 
@@ -183,7 +206,7 @@ class DestinationEntranceTest {
             // Soft, but still an answer to a tap rather than a wait.
             assertTrue(
                 "$motion takes ${spec.durationMillis}ms",
-                spec.durationMillis in 200..470,
+                spec.durationMillis in 200..520,
             )
             // A screen mid-entrance is still a screen someone may be reading, and a stalled
             // animation must never leave a destination looking blank.

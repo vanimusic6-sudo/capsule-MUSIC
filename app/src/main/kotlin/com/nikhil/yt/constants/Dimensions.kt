@@ -88,7 +88,14 @@ val BottomSheetAnimationSpec = spring<Dp>(
  * start to soften.
  */
 val PlayerTapTravelMillis = 460
-private val PlayerTapEasing = CubicBezierEasing(0.36f, 0f, 0.24f, 1f)
+/*
+ * Softer off the mark than anything else in the app, because this surface is the largest.
+ *
+ * A jolt at the start scales with how much is moving, and the player moves the whole screen. Where a
+ * destination entrance can afford to commit quickly, the sheet has to lean into the movement first —
+ * (0.44, 0) spends almost nothing in the opening frames, which is what removes the shove.
+ */
+private val PlayerTapEasing = CubicBezierEasing(0.44f, 0f, 0.26f, 1f)
 
 val BottomSheetSoftAnimationSpec: AnimationSpec<Dp> =
     tween(durationMillis = PlayerTapTravelMillis, easing = PlayerTapEasing)

@@ -90,6 +90,30 @@ internal const val PlayerFoldWindow = 0.76f
 private const val PlayerFoldScale = 0.05f
 
 /**
+ * How far the player keeps descending after it has folded, expressed in dock heights.
+ *
+ * Without it the player simply faded out at the dock line, and that is what read as "disappearing at
+ * a certain height" rather than leaving. A sheet that is pulled down does not evaporate — it goes
+ * *under* whatever is fixed in front of it.
+ *
+ * The navigation bar is a later sibling in the same Box, so it already draws on top; all the player
+ * needed was somewhere to go. Travelling on past the dock lets the bar occlude it, which is the
+ * difference between a screen vanishing and a screen being put away.
+ *
+ * Draw-phase translation only. The sheet's own anchors, and everything measured from them, are
+ * untouched.
+ */
+private const val PlayerDescentBeyondDock = 0.9f
+
+/**
+ * The faintest the player gets while it is on its way, over and above the fold.
+ *
+ * Deliberately tiny. Enough that the edges stop reading as a hard-cut rectangle sliding around, not
+ * enough to see the page through it at any point.
+ */
+internal const val PlayerTravelSheer = 0.06f
+
+/**
  * How much of the close the dock takes to come up: all of it.
  *
  * The dock kept reading as late, and widening its window helped each time, so it is now as wide as
@@ -296,10 +320,23 @@ fun BottomSheet(
                             val folded = 1f - fold
                             scaleX = 1f - PlayerFoldScale * folded
                             scaleY = 1f - PlayerFoldScale * folded
-                            // Handed straight to the dock below, which takes 1 - fold. Reaching zero
-                            // rather than stopping short is what removes the stacked-surfaces look
-                            // that made the dock seem to arrive late.
-                            alpha = fold.coerceIn(0f, 1f)
+
+                            /*
+                             * Keep going past the dock so the navigation bar can take it, instead of
+                             * fading out in mid-air. The bar is a later sibling in the same Box, so
+                             * it is already in front; this only gives the player somewhere to go.
+                             */
+                            translationY =
+                                folded * PlayerDescentBeyondDock * state.collapsedBound.toPx()
+
+                            /*
+                             * Handed straight to the dock below, which takes 1 - fold, plus the
+                             * faintest sheer while it is actually moving. The sheer is shaped so it
+                             * is exactly zero at both ends: a player at rest, open or docked, is
+                             * fully opaque, and only the journey is softened.
+                             */
+                            val travelling = 4f * fold * (1f - fold)
+                            alpha = (fold * (1f - PlayerTravelSheer * travelling)).coerceIn(0f, 1f)
                             transformOrigin = TransformOrigin(0.5f, 1f)
                         }
                         .background(backgroundColor),
