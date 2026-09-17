@@ -10,23 +10,20 @@ import androidx.media3.common.PlaybackException
 import com.nikhil.yt.innertube.YouTubeFailureClassifier
 import com.nikhil.yt.innertube.YouTubeFailureKind
 import timber.log.Timber
-import java.util.Locale
-import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicLong
 
 /**
  * Safety state for explicit YouTube rate-limit / bot-check failures.
  *
- * HTTP 429 is global immediately: rotating identities after a rate limit only makes
- * the situation worse. A bot-check is different: one playback profile can be rejected
- * while another maintained profile still works. The wire interceptor therefore records
- * the signal, the owning resolver quarantines that profile, and only a confirmed/final
- * foreground failure opens the global breaker.
+ * HTTP 429 is the only global breaker at this layer. A /player bot challenge is
+ * deliberately kept local to the serialized resolve that observed it: the resolver
+ * can retire that client for the current media id and, for foreground playback, try
+ * one bounded cross-family fallback. Carrying bot state across tracks made an old
+ * challenge amplify a later transient rejection into a ten-minute app-wide outage.
  */
 internal object CapsulePlaybackSafety {
     private const val TAG = "CapsulePlaybackSafety"
     private const val GLOBAL_BREAKER_MS = 10 * 60 * 1000L
-    private const val PROFILE_BOT_QUARANTINE_MS = 10 * 60 * 1000L
 
     @Volatile
     private var breakerUntilMs: Long = 0L
@@ -35,7 +32,6 @@ internal object CapsulePlaybackSafety {
     private var breakerReason: String? = null
 
     private val wireBotGeneration = AtomicLong(0L)
-    private val botProfileQuarantineUntilMs = ConcurrentHashMap<String, Long>()
 
     @Synchronized
     fun remainingBlockMs(nowMs: Long = System.currentTimeMillis()): Long {
@@ -109,7 +105,7 @@ internal object CapsulePlaybackSafety {
         }
     }
 
-    /** Only rate limiting is global at this layer; bot escalation is profile-aware. */
+    /** Only a real rate-limit signal is allowed to stop all audio resolves. */
     fun observeFailure(error: Throwable) {
         if (classifyFailure(error) == YouTubeFailureKind.RATE_LIMITED) {
             markRateLimited("YouTube returned HTTP 429")
@@ -122,43 +118,33 @@ internal object CapsulePlaybackSafety {
         }
     }
 
-    fun markProfileBotCheck(
-        profileId: String,
-        nowMs: Long = System.currentTimeMillis(),
-    ) {
-        val normalized = normalizeProfileId(profileId)
-        val profiles = CapsuleAudioFallbackPolicy.botQuarantineProfiles(normalized)
-        if (profiles.isEmpty()) return
-        val untilMs = nowMs + PROFILE_BOT_QUARANTINE_MS
-        profiles.forEach { profile ->
-            botProfileQuarantineUntilMs[profile] = untilMs
-        }
+    /**
+     * Compatibility hook for the resolver. Bot-check quarantine is intentionally
+     * per-media in CapsuleInnerTubeXPlayer.failedStreamClients(); never persist a
+     * client-family ban here across unrelated tracks.
+     */
+    fun markProfileBotCheck(profileId: String) {
         Timber.tag(TAG).w(
-            "AUDIO client family quarantined after bot-check triggerProfile=%s profiles=%s durationMs=%d",
-            normalized,
-            profiles.joinToString(","),
-            PROFILE_BOT_QUARANTINE_MS,
+            "AUDIO bot-check kept local to current media resolve profile=%s",
+            profileId,
         )
     }
-    fun quarantinedProfileIds(nowMs: Long = System.currentTimeMillis()): Set<String> {
-        botProfileQuarantineUntilMs.forEach { (profileId, untilMs) ->
-            if (untilMs <= nowMs) {
-                botProfileQuarantineUntilMs.remove(profileId, untilMs)
-            }
-        }
-        return botProfileQuarantineUntilMs.keys.toSet()
-    }
 
+    /**
+     * Kept while older resolver call sites are migrated. A previous track's bot
+     * challenge must never remove a client from a new track's plan.
+     */
+    @Suppress("UNUSED_PARAMETER")
+    fun quarantinedProfileIds(nowMs: Long = System.currentTimeMillis()): Set<String> = emptySet()
+
+    /**
+     * Exhausting the one bounded bot fallback fails only the current resolve.
+     * Do not manufacture an app-wide cooldown: only an actual HTTP 429 may do that.
+     */
     fun markBotDetectionFailure(reason: String? = null) {
-        val cleanReason =
-            reason
-                ?.trim()
-                ?.takeIf { it.isNotBlank() }
-                ?.take(160)
-
-        trip(
-            cleanReason?.let { "YouTube bot-check: $it" }
-                ?: "YouTube requested a bot check",
+        Timber.tag(TAG).w(
+            "AUDIO bot-check exhausted local fallback; global breaker remains closed%s",
+            reason?.let { ": ${it.take(160)}" }.orEmpty(),
         )
     }
 
@@ -172,7 +158,6 @@ internal object CapsulePlaybackSafety {
     fun clear() {
         breakerUntilMs = 0L
         breakerReason = null
-        botProfileQuarantineUntilMs.clear()
     }
 
     private fun markRateLimited(reason: String) {
@@ -192,9 +177,6 @@ internal object CapsulePlaybackSafety {
             reason,
         )
     }
-
-    private fun normalizeProfileId(profileId: String): String =
-        profileId.substringBefore('@').trim().uppercase(Locale.US)
 
     private fun throwableText(error: Throwable): String =
         generateSequence(error as Throwable?) { it?.cause }

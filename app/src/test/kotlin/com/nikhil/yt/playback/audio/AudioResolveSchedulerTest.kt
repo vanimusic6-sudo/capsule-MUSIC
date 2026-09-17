@@ -199,22 +199,21 @@ class AudioResolveSchedulerTest {
         )
     }
 
-    @Test fun stalePrefetchPromotionRestartsAsForeground() = runTest {
+    @Test fun stalePrefetchPromotionReusesTheInFlightExtraction() = runTest {
         val scheduler =
             AudioResolveScheduler(
                 monotonicNowMs = { testScheduler.currentTime },
                 promotedPrefetchRestartAfterMs = 4_000L,
             )
         var calls = 0
+        val observed = mutableListOf<AudioResolvePriority>()
         val prefetch = async {
             scheduler.run("next", AudioResolvePriority.PREFETCH) {
                 calls += 1
-                if (calls == 1) {
-                    delay(10_000)
-                    1
-                } else {
-                    7
-                }
+                observed += scheduler.effectivePriority("next", AudioResolvePriority.PREFETCH)
+                delay(10_000)
+                observed += scheduler.effectivePriority("next", AudioResolvePriority.PREFETCH)
+                7
             }
         }
         runCurrent()
@@ -224,8 +223,14 @@ class AudioResolveSchedulerTest {
         scheduler.promote("next")
         runCurrent()
 
+        assertEquals(AudioResolvePriority.PLAYBACK, scheduler.effectivePriority("next", AudioResolvePriority.PREFETCH))
+        advanceUntilIdle()
         assertEquals(7, prefetch.await())
-        assertEquals(2, calls)
+        assertEquals(1, calls)
+        assertEquals(
+            listOf(AudioResolvePriority.PREFETCH, AudioResolvePriority.PLAYBACK),
+            observed,
+        )
     }
 
     @Test fun parentCancellationIsNeverTreatedAsPreemption() = runTest {

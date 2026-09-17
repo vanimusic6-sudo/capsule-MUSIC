@@ -37,7 +37,7 @@ class CapsulePlaybackSafetyTest {
     }
 
     @Test
-    fun wireBotSignalSurvivesOpaqueExtractorFailure() {
+    fun wireBotSignalSurvivesOpaqueExtractorFailureWithoutOpeningBreaker() {
         val before = CapsulePlaybackSafety.wireBotSignalGeneration()
         CapsulePlaybackSafety.noteWireBotCheck()
 
@@ -48,29 +48,35 @@ class CapsulePlaybackSafetyTest {
                 before,
             ),
         )
+        assertNull(CapsulePlaybackSafety.blockedExceptionOrNull())
     }
 
     @Test
-    fun profileBotCheckQuarantinesWholeIdentityFamilyOnly() {
+    fun botCheckNeverCreatesCrossTrackQuarantineOrGlobalCooldown() {
         CapsulePlaybackSafety.markProfileBotCheck("web_remix")
+        CapsulePlaybackSafety.markBotDetectionFailure("confirmed across multiple AUDIO client profiles")
 
-        assertEquals(
-            setOf("WEB_REMIX", "WEB_CREATOR"),
-            CapsulePlaybackSafety.quarantinedProfileIds(),
-        )
+        assertTrue(CapsulePlaybackSafety.quarantinedProfileIds().isEmpty())
         assertNull(CapsulePlaybackSafety.blockedExceptionOrNull())
     }
 
     @Test
-    fun visionBotCheckQuarantinesBothVisionProfilesWithoutGlobalBreaker() {
-        CapsulePlaybackSafety.markProfileBotCheck("visionos_0_1")
+    fun aLaterBotSignalIsNotPoisonedByAnEarlierTracksCompatibilityHook() {
+        CapsulePlaybackSafety.markProfileBotCheck("visionos")
+        val before = CapsulePlaybackSafety.wireBotSignalGeneration()
+        CapsulePlaybackSafety.noteWireBotCheck()
 
         assertEquals(
-            setOf("VISIONOS", "VISIONOS_0_1"),
-            CapsulePlaybackSafety.quarantinedProfileIds(),
+            YouTubeFailureKind.BOT_CHECK,
+            CapsulePlaybackSafety.classifyFailureSince(
+                IllegalStateException("opaque player failure"),
+                before,
+            ),
         )
+        assertTrue(CapsulePlaybackSafety.quarantinedProfileIds().isEmpty())
         assertNull(CapsulePlaybackSafety.blockedExceptionOrNull())
     }
+
     @Test
     fun ageRestrictionDoesNotLookLikeBotCheck() {
         val error =

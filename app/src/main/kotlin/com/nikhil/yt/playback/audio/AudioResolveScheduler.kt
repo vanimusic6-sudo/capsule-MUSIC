@@ -20,17 +20,17 @@ enum class AudioResolvePriority(internal val schedulingRank: Int) {
         schedulingRank < other.schedulingRank
 }
 
-/** One extraction at a time. Foreground work can interrupt and requeue background work. */
+/** One extraction at a time. Foreground work can interrupt lower-priority work for another media id. */
+@Suppress("UNUSED_PARAMETER")
 internal class AudioResolveScheduler(
     private val monotonicNowMs: () -> Long = { System.nanoTime() / 1_000_000L },
     private val downloadStartSpacingMs: () -> Long = DownloadRequestPacing()::nextSpacingMs,
-    private val promotedPrefetchRestartAfterMs: Long = PROMOTED_PREFETCH_RESTART_AFTER_MS,
+    promotedPrefetchRestartAfterMs: Long = 0L,
 ) {
     private class Preempted : CancellationException("Foreground playback needs the resolver")
     private class Ticket(val mediaId: String, var priority: AudioResolvePriority) {
         val turn = CompletableDeferred<Unit>()
         var worker: Deferred<*>? = null
-        var workerStartedAtMs: Long? = null
         var preempted = false
     }
 
@@ -61,21 +61,16 @@ internal class AudioResolveScheduler(
             }
         }
 
+        /*
+         * Promotion of the exact same media id is a priority upgrade, not a reason
+         * to cancel a healthy in-flight /player request. Restarting an older prefetch
+         * here doubled request volume precisely when playback was waiting for it and
+         * could amplify transient bot challenges. The running resolve observes the
+         * new PLAYBACK priority through effectivePriority() and may use the bounded
+         * foreground fallback chain without issuing a duplicate first attempt.
+         */
         matches.forEach { ticket ->
             ticket.priority = AudioResolvePriority.PLAYBACK
-            val startedAtMs = ticket.workerStartedAtMs
-            if (
-                active === ticket &&
-                startedAtMs != null &&
-                promotedPrefetchRestartAfterMs >= 0L &&
-                nowMs - startedAtMs >= promotedPrefetchRestartAfterMs
-            ) {
-                // A prefetch that has already spent several seconds inside the
-                // extractor must not hold foreground playback hostage. Restart
-                // only this stale request; young prefetches are still reused.
-                ticket.preempted = true
-                ticket.worker?.cancel(Preempted())
-            }
         }
         preemptBackground()
     }
@@ -83,9 +78,9 @@ internal class AudioResolveScheduler(
     /**
      * Returns the priority the resolver should use *now*.
      *
-     * A young shared PREFETCH can be promoted while its extractor call is still
-     * running. The fallback layer must observe that promotion too; otherwise the
-     * scheduler says PLAYBACK while the client plan remains stuck at PREFETCH.
+     * A shared PREFETCH can be promoted while its extractor call is still running.
+     * The fallback layer must observe that promotion too; otherwise the scheduler
+     * says PLAYBACK while the client plan remains stuck at PREFETCH.
      */
     fun effectivePriority(
         mediaId: String,
@@ -140,9 +135,6 @@ internal class AudioResolveScheduler(
                 return coroutineScope {
                     val work = async(start = CoroutineStart.LAZY) {
                         awaitDownloadStartWindow(ticket.priority)
-                        synchronized(lock) {
-                            ticket.workerStartedAtMs = monotonicNowMs()
-                        }
                         block()
                     }
                     synchronized(lock) {
@@ -152,8 +144,8 @@ internal class AudioResolveScheduler(
                     work.await()
                 }
             } catch (_: Preempted) {
-                // Only our own preemption is retried. Parent cancellation always propagates.
-                // A stale PREFETCH promoted by the loader retries as PLAYBACK.
+                // Only scheduler-owned cross-media preemption is retried. Parent
+                // cancellation always propagates. Same-media promotion never lands here.
                 effectivePriority = ticket.priority
                 currentCoroutineContext().ensureActive()
             } finally {
@@ -203,7 +195,6 @@ internal class AudioResolveScheduler(
     }
 
     private companion object {
-        const val PROMOTED_PREFETCH_RESTART_AFTER_MS = 4_000L
         const val PENDING_PLAYBACK_PROMOTION_TTL_MS = 10_000L
     }
 }
