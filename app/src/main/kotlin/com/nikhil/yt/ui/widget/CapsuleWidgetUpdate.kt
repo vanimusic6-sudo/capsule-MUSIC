@@ -38,8 +38,8 @@ private const val ART_SIDE = 256
 /**
  * Pushes the current track to every placed Capsule widget.
  *
- * Artwork is fetched and the panel colour derived only when the track actually changes, so the
- * per-second calls that carry nothing but a new position do no work beyond writing one float.
+ * Artwork is fetched and the panel colour derived only when the track actually changes; a
+ * play/pause carries nothing but a boolean.
  */
 fun updateCapsuleWidgets(
     context: Context,
@@ -47,7 +47,6 @@ fun updateCapsuleWidgets(
     artist: String,
     isPlaying: Boolean,
     thumbnailUrl: String?,
-    progress: Float,
 ) {
     widgetScope.launch {
         val manager = GlanceAppWidgetManager(context)
@@ -87,7 +86,6 @@ fun updateCapsuleWidgets(
             this[widgetTitleKey] = title
             this[widgetArtistKey] = artist
             this[widgetIsPlayingKey] = isPlaying
-            this[widgetProgressKey] = progress.coerceIn(0f, 1f)
             this[widgetBgColorKey] = surface
             this[widgetTextColorKey] = CAPSULE_WIDGET_INK
             artPath?.let { this[widgetArtPathKey] = it }

@@ -3291,10 +3291,7 @@ class MusicService :
             }
             val currentMediaId = player.currentMediaItem?.mediaId
             val currentMetadata = player.currentMetadata
-            val currentPosition = player.currentPosition
             val isPlaying = player.isPlaying
-
-            val trackDuration = player.duration.takeIf { it > 0L } ?: 0L
 
             updateCapsuleWidgets(
                 context = this@MusicService,
@@ -3302,12 +3299,6 @@ class MusicService :
                 artist = currentMetadata?.artists?.joinToString(", ") { it.name }.orEmpty(),
                 isPlaying = isPlaying,
                 thumbnailUrl = currentMetadata?.thumbnailUrl,
-                progress =
-                    if (trackDuration > 0L) {
-                        (currentPosition.toFloat() / trackDuration).coerceIn(0f, 1f)
-                    } else {
-                        0f
-                    },
             )
 
 
@@ -5056,18 +5047,6 @@ class MusicService :
                     player.pause()
                 } else {
                     player.play()
-                }
-            }
-            "com.nikhil.yt.ACTION_SEEK_FRACTION" -> {
-                /*
-                 * A widget cannot drag, so it sends the point it was tapped at instead.
-                 * A fraction rather than a position, because the widget does not reliably know the
-                 * duration: the service does, always, and can clamp against it here.
-                 */
-                val fraction = intent.getFloatExtra("fraction", -1f)
-                val duration = player.duration
-                if (fraction in 0f..1f && duration > 0L) {
-                    player.seekTo((duration * fraction).toLong().coerceIn(0L, duration))
                 }
             }
             "com.nikhil.yt.ACTION_REWIND" -> {

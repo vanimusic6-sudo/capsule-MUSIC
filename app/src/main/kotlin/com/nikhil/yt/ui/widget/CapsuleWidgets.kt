@@ -17,7 +17,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
-import androidx.datastore.preferences.core.floatPreferencesKey
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.glance.ColorFilter
@@ -70,18 +69,18 @@ val widgetIsPlayingKey = booleanPreferencesKey("widget_is_playing")
 val widgetBgColorKey = intPreferencesKey("widget_bg_color")
 val widgetTextColorKey = intPreferencesKey("widget_text_color")
 
-/** How far through the track we are, 0..1. Written when the service reports it, never polled. */
-val widgetProgressKey = floatPreferencesKey("widget_progress")
-
-/**
- * How many pieces the progress line is cut into.
+/*
+ * There is no progress line, and that is a decision rather than an omission.
  *
- * Glance has no drag gesture and no way to learn where inside a view a tap landed, so the line is
- * built from segments that are each clickable and each know their own fraction. Tapping anywhere
- * on it seeks there. Twenty is the trade: fine enough that a tap lands within about three seconds
- * of a three-minute song, coarse enough that the widget stays twenty views rather than a hundred.
+ * A widget only knows what it was last told, and the service tells it on track changes and on
+ * play/pause — so a line drawn from that stands still for the whole song and lies for most of it.
+ * Making it true means something waking up to say "still playing, a bit further along", over and
+ * over, for as long as music runs: a timer whose entire output is a few pixels moving on a home
+ * screen nobody is looking at. That is the same trade we refused for the comet, and the answer is
+ * the same. A wrong line is worse than no line, and a right one costs more than it is worth.
+ *
+ * Losing it also loses seeking by tap, which had nothing else to live on.
  */
-private const val SEEK_STEPS = 20
 
 /** Everything the widget reads, resolved once per render. */
 private class WidgetState(prefs: Preferences) {
@@ -89,7 +88,6 @@ private class WidgetState(prefs: Preferences) {
     val artist: String = prefs[widgetArtistKey].orEmpty()
     val isPlaying: Boolean = prefs[widgetIsPlayingKey] ?: false
     val artPath: String? = prefs[widgetArtPathKey]
-    val progress: Float = (prefs[widgetProgressKey] ?: 0f).coerceIn(0f, 1f)
     val surface: Int = prefs[widgetBgColorKey] ?: CAPSULE_WIDGET_FALLBACK_SURFACE
 
     val panel = ColorProvider(ComposeColor(surface))
@@ -133,18 +131,6 @@ private fun transportAction(action: String): Action {
 }
 
 @Composable
-private fun seekAction(fraction: Float): Action {
-    val context = LocalContext.current
-    return actionStartService(
-        Intent(context, MusicService::class.java).apply {
-            action = "com.nikhil.yt.ACTION_SEEK_FRACTION"
-            putExtra("fraction", fraction)
-        },
-        isForegroundService = true,
-    )
-}
-
-@Composable
 private fun TransportIcon(
     iconRes: Int,
     description: String,
@@ -178,61 +164,25 @@ private fun Transport(state: WidgetState) {
             description = "Previous",
             tint = state.ink,
             action = "com.nikhil.yt.ACTION_PREV",
-            boxSize = 40,
-            iconSize = 24,
+            boxSize = 36,
+            iconSize = 22,
         )
         TransportIcon(
             iconRes = R.drawable.ic_capsule_orbit,
             description = if (state.isPlaying) "Pause" else "Play",
             tint = state.comet,
             action = "com.nikhil.yt.ACTION_PLAY_PAUSE",
-            boxSize = 52,
-            iconSize = 44,
+            boxSize = 46,
+            iconSize = 38,
         )
         TransportIcon(
             iconRes = R.drawable.ic_skip_next,
             description = "Next",
             tint = state.ink,
             action = "com.nikhil.yt.ACTION_NEXT",
-            boxSize = 40,
-            iconSize = 24,
+            boxSize = 36,
+            iconSize = 22,
         )
-    }
-}
-
-/**
- * The progress line, and the only way to move through a track from the home screen.
- *
- * Each segment carries its own fraction and seeks to it. The played ones are drawn solid and the
- * rest dim, so the line reads as progress rather than as a row of buttons; the taller transparent
- * box around each is the touch target, because a 3dp line is not one.
- */
-@Composable
-private fun ProgressLine(state: WidgetState) {
-    val playedSteps = (state.progress * SEEK_STEPS).toInt().coerceIn(0, SEEK_STEPS)
-    Row(
-        modifier = GlanceModifier.fillMaxWidth().height(14.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        repeat(SEEK_STEPS) { step ->
-            Box(
-                modifier =
-                    GlanceModifier
-                        .defaultWeight()
-                        .height(14.dp)
-                        // Mid-segment, so a tap lands on what it looks like it points at.
-                        .clickable(seekAction((step + 0.5f) / SEEK_STEPS)),
-                contentAlignment = Alignment.Center,
-            ) {
-                Box(
-                    modifier =
-                        GlanceModifier
-                            .fillMaxWidth()
-                            .height(3.dp)
-                            .background(if (step < playedSteps) state.ink else state.inkDim),
-                ) {}
-            }
-        }
     }
 }
 
@@ -247,8 +197,8 @@ private fun NowPlaying(state: WidgetState) {
             contentDescription = state.title,
             modifier =
                 GlanceModifier
-                    .size(54.dp)
-                    .cornerRadius(14.dp)
+                    .size(46.dp)
+                    .cornerRadius(12.dp)
                     .clickable(openAppAction()),
         )
         Spacer(GlanceModifier.width(12.dp))
@@ -275,7 +225,7 @@ private fun NowPlaying(state: WidgetState) {
     }
 }
 
-/** What is playing, the three controls, and a line you can tap to move through the track. */
+/** What is playing, and the three controls. One row, nothing that has to be kept true. */
 class CapsuleBarWidget : GlanceAppWidget() {
     override val sizeMode = SizeMode.Exact
 
@@ -293,14 +243,13 @@ class CapsuleBarWidget : GlanceAppWidget() {
                         .appWidgetBackground()
                         .cornerRadius(26.dp)
                         .background(state.panel)
-                        // The panel is the frame, and the launcher already puts its own margin
-                        // around it, so the vertical padding here is nearly nothing: the artwork
-                        // and the progress line set the height between them.
-                        .padding(horizontal = 14.dp, vertical = 2.dp),
+                        // The panel is the frame and the launcher adds its own margin around it,
+                        // so the artwork sets the height and the padding only keeps it off the
+                        // corners.
+                        .padding(horizontal = 12.dp, vertical = 4.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 NowPlaying(state)
-                ProgressLine(state)
             }
         }
     }
