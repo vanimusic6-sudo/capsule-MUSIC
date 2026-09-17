@@ -76,6 +76,24 @@ constructor(
 
         val ordered = orderedProviders()
         val providers = if (preferredProviderOnly) listOf(ordered.first()) else ordered
+
+        /*
+         * The best-synced answer wins, not the first answer.
+         *
+         * Taking the first non-empty result made the order decide quality, which is not what an
+         * order is for: a source near the top returning an untimed wall of text beat a source below
+         * it that lands on the syllable, every time, for every song. That is what "the lyrics rush
+         * or lag" actually is most of the time — not a bad timestamp, but a result that had no
+         * timestamps to begin with, or line ones from a community file nobody checked.
+         *
+         * So every enabled provider is still asked in the user's order, but what comes back is
+         * graded, and the order now only breaks ties between results of equal quality. Word-level
+         * sync stops the search immediately: nothing beats it, so asking anyone else is a request
+         * made for no reason.
+         */
+        var best: LyricsResult? = null
+        var bestQuality = LyricsSyncQuality.PLAIN
+
         for (provider in providers) {
             currentCoroutineContext().ensureActive()
             if (!provider.isEnabled(context)) continue
@@ -92,13 +110,22 @@ constructor(
                 currentCoroutineContext().ensureActive()
                 val lyrics = result.getOrNull()
                 if (lyrics != null && isMeaningfulLyrics(lyrics)) {
-                    cache.put(
-                        mediaMetadata.id,
-                        listOf(LyricsResult(provider.name, lyrics)),
+                    val quality = lyricsSyncQuality(lyrics)
+                    GlobalLog.append(
+                        Log.DEBUG,
+                        "LyricsHelper",
+                        "${provider.name} returned $quality lyrics",
                     )
-                    return lyrics
+                    // Strictly better only: an equal grade leaves the earlier provider in place,
+                    // which is where the user's order still decides.
+                    if (best == null || quality > bestQuality) {
+                        best = LyricsResult(provider.name, lyrics)
+                        bestQuality = quality
+                    }
+                    if (bestQuality == LyricsSyncQuality.WORD) break
+                } else {
+                    result.exceptionOrNull()?.let { reportProviderFailure(provider, it) }
                 }
-                result.exceptionOrNull()?.let { reportProviderFailure(provider, it) }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -106,7 +133,14 @@ constructor(
             }
         }
 
-        return LYRICS_NOT_FOUND
+        val chosen = best ?: return LYRICS_NOT_FOUND
+        GlobalLog.append(
+            Log.DEBUG,
+            "LyricsHelper",
+            "Using ${chosen.providerName} ($bestQuality) for ${mediaMetadata.title}",
+        )
+        cache.put(mediaMetadata.id, listOf(chosen))
+        return chosen.lyrics
     }
 
     suspend fun getAllLyrics(

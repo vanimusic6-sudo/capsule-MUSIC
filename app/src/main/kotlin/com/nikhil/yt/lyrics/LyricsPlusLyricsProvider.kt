@@ -146,29 +146,58 @@ object LyricsPlusLyricsProvider : LyricsProvider {
     }
 
     /**
-     * Plain LRC, deliberately.
+     * Enhanced LRC, so the per-word timings survive.
      *
-     * The response carries per-word timings and multi-voice agents, and our own renderer can use
-     * both — but only through TTML, because LRC parsing here has never had a place to put them. So
-     * rather than inventing an extended dialect that the parser would hand back as literal
-     * "{agent:v1}" in the middle of a line, this emits the timing every part of the app already
-     * understands, and the word data is dropped on purpose rather than mangled.
+     * This used to emit plain line-level LRC and drop the word data, because the LRC parser had
+     * nowhere to put it — only TTML did. It has somewhere now, and that matters more here than
+     * anywhere: word timing is the difference between lyrics that merely keep up and lyrics that
+     * land on the syllable.
+     *
+     *     [00:00.55]<00:00.55>My <00:00.90>day <00:01.83>will come<00:03.19>
+     *
+     * The trailing stamp is where the last word ends, which the response knows and plain LRC has
+     * no way to say.
      */
     private fun toLrc(response: LyricsPlusResponse): String? {
         val lines = response.lyrics?.takeIf { it.isNotEmpty() } ?: return null
         val lrc =
             lines
-                .mapNotNull { line ->
-                    val text = line.text.trim().ifEmpty {
-                        line.syllabus?.joinToString("") { it.text }?.trim().orEmpty()
-                    }
-                    if (text.isEmpty()) return@mapNotNull null
-                    val time = line.time.coerceAtLeast(0L)
-                    val minutes = time / 60_000
-                    val seconds = (time / 1_000) % 60
-                    val hundredths = (time % 1_000) / 10
-                    String.format(Locale.US, "[%02d:%02d.%02d]%s", minutes, seconds, hundredths, text)
-                }.joinToString("\n")
+                .mapNotNull { line -> lineToLrc(line) }
+                .joinToString("\n")
         return lrc.ifBlank { null }
+    }
+
+    private fun lineToLrc(line: LyricsPlusLine): String? {
+        val start = line.time.coerceAtLeast(0L)
+        val words = line.syllabus.orEmpty().filter { it.text.isNotBlank() }
+
+        if (words.isEmpty()) {
+            val text = line.text.trim()
+            if (text.isEmpty()) return null
+            return stamp(start, squareBrackets = true) + text
+        }
+
+        return buildString {
+            append(stamp(start, squareBrackets = true))
+            words.forEach { word ->
+                append(stamp(word.time.coerceAtLeast(0L), squareBrackets = false))
+                append(word.text)
+            }
+            // Where the last word stops. Without it the renderer has to guess.
+            val last = words.last()
+            val end = (last.time + last.duration).coerceAtLeast(last.time)
+            append(stamp(end, squareBrackets = false))
+        }
+    }
+
+    private fun stamp(
+        timeMs: Long,
+        squareBrackets: Boolean,
+    ): String {
+        val minutes = timeMs / 60_000
+        val seconds = (timeMs / 1_000) % 60
+        val hundredths = (timeMs % 1_000) / 10
+        val body = String.format(Locale.US, "%02d:%02d.%02d", minutes, seconds, hundredths)
+        return if (squareBrackets) "[$body]" else "<$body>"
     }
 }
