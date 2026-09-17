@@ -101,6 +101,7 @@ internal object CapsuleAudioFallbackPolicy {
      * A manual client order is allowed to omit WEB_CREATOR from the visible preference list;
      * that must not silently remove Capsule's only authenticated age-gate recovery path. When
      * signed in and REMIX is present, CREATOR is therefore injected as a bounded recovery hop.
+     * If the user already put CREATOR ahead of REMIX, that explicit priority is preserved.
      * Signed-out playback and orders without WEB_REMIX are left untouched.
      */
     private fun preferAuthenticatedWebFallback(
@@ -112,7 +113,7 @@ internal object CapsuleAudioFallbackPolicy {
         if (remixIndex < 0) return order
 
         val creatorIndex = order.indexOf(WEB_CREATOR)
-        if (creatorIndex == remixIndex + 1) return order
+        if (creatorIndex in 0 until remixIndex || creatorIndex == remixIndex + 1) return order
 
         val withoutCreator = order.toMutableList()
         if (creatorIndex >= 0) {
