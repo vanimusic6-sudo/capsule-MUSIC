@@ -6,8 +6,9 @@
 
 package com.nikhil.yt.ui.player
 
+import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -156,7 +157,11 @@ private fun CapsuleModeSegment(
     val scale by
         animateFloatAsState(
             targetValue = if (selected) 1f else 0.985f,
-            animationSpec = tween(160),
+            animationSpec =
+                spring(
+                    dampingRatio = Spring.DampingRatioNoBouncy,
+                    stiffness = Spring.StiffnessMediumLow,
+                ),
             label = "capsuleModeScale",
         )
     Box(
