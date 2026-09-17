@@ -1,102 +1,75 @@
 package com.nikhil.yt.ui
 
-import com.nikhil.yt.ui.component.DockHandoverWindow
-import com.nikhil.yt.ui.component.PlayerFoldWindow
-import com.nikhil.yt.ui.component.PlayerTravelSheer
-import com.nikhil.yt.ui.motion.CapsuleMotion
+import com.nikhil.yt.ui.component.PlayerDescentBeyondDock
+import com.nikhil.yt.ui.component.PlayerFoldScale
+import com.nikhil.yt.ui.component.playerFoldTransform
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * Closing the player is a handover, and the dock kept reading as late.
+ * The full player hands off to the mini player using geometry only.
  *
- * Two things have to hold at once, and they pull against each other. The dock has to start coming up
- * early — that is the whole complaint — but the two surfaces must never both be partly transparent
- * at the same moment, or the wallpaper shows through the seam between a player that has faded and a
- * dock that has not arrived.
- *
- * Both follow from the dock's window being the wider one, and that is what is pinned here.
+ * The mini player is already mounted behind the full player, so the foreground can stay fully
+ * opaque while it shrinks and travels down into the dock. Keeping opacity out of this contract is
+ * important: a screen-sized alpha blend is both more expensive and exactly the visual treatment the
+ * Capsule motion system avoids.
  */
 class DockHandoverTest {
-    /**
-     * Mirrors the player layer, sheer included.
-     *
-     * The sheer is the one thing that could break the pair: it takes opacity away from the player
-     * mid-travel, which is exactly where the two surfaces are handing over. Testing the fold alone
-     * would test a formula the app no longer uses.
-     */
-    private fun playerAlpha(progress: Float): Float {
-        val fold = CapsuleMotion.approach(progress, PlayerFoldWindow)
-        val travelling = 4f * fold * (1f - fold)
-        return fold * (1f - PlayerTravelSheer * travelling)
+    @Test fun `an open player is exactly identity`() {
+        val open = playerFoldTransform(1f)
+        assertEquals(1f, open.scale, 0f)
+        assertEquals(0f, open.descentInDockHeights, 0f)
     }
 
-    private fun dockAlpha(progress: Float) =
-        1f - CapsuleMotion.approach(progress, DockHandoverWindow)
-
-    @Test fun `the dock spans the whole close, so it cannot start any earlier`() {
-        assertEquals(1f, DockHandoverWindow, 0f)
-        assertTrue(
-            "the dock must not hand over later than the player folds",
-            DockHandoverWindow >= PlayerFoldWindow,
-        )
+    @Test fun `a docked player ends at the intended folded geometry`() {
+        val docked = playerFoldTransform(0f)
+        assertEquals(1f - PlayerFoldScale, docked.scale, 1e-6f)
+        assertEquals(PlayerDescentBeyondDock, docked.descentInDockHeights, 1e-6f)
     }
 
-    @Test fun `the dock is already on its way up in the first part of the close`() {
-        // progress runs 1 (open) down to 0 (docked). The old window left the dock at zero until the
-        // player was three quarters of the way down, which is what read as it dropping in late.
-        assertTrue("the dock is still absent at 80% open", dockAlpha(0.8f) > 0f)
-        assertTrue("the dock is still absent at 90% open", dockAlpha(0.9f) > 0f)
-    }
-
-    @Test fun `the dock is invisible while the player is open`() {
-        // Smoothstep has zero slope at the top, so a window this wide still costs nothing at rest
-        // and cannot blink into view the instant the player is touched.
-        assertEquals(0f, dockAlpha(1f), 0f)
-        assertTrue("the dock is visible before the close starts", dockAlpha(0.98f) < 0.01f)
-    }
-
-    @Test fun `the pair is opaque at every point of the travel`() {
+    @Test fun `fold geometry stays bounded for the whole gesture`() {
         (0..200).forEach { step ->
             val progress = step / 200f
-            val total = playerAlpha(progress) + dockAlpha(progress)
+            val transform = playerFoldTransform(progress)
             assertTrue(
-                "at progress $progress the surfaces sum to $total, so the wallpaper shows through",
-                total >= 1f - 1e-4f,
+                "scale escaped its physical range at $progress: ${transform.scale}",
+                transform.scale in (1f - PlayerFoldScale)..1f,
+            )
+            assertTrue(
+                "descent escaped its physical range at $progress: ${transform.descentInDockHeights}",
+                transform.descentInDockHeights in 0f..PlayerDescentBeyondDock,
             )
         }
     }
 
-    /**
-     * The sheer exists to soften the journey, so it must leave both destinations alone: a player
-     * sitting open or sitting docked is fully solid, and only what happens between them is touched.
-     */
-    @Test fun `the sheer is present in the middle and absent at both ends`() {
-        assertEquals("an open player is not fully opaque", 1f, playerAlpha(1f), 1e-4f)
-        assertEquals("a docked player is not fully gone", 0f, playerAlpha(0f), 1e-4f)
+    @Test fun `closing is monotonic with no reversal or wobble`() {
+        var previousScale = 1f
+        var previousDescent = 0f
 
-        val fold = CapsuleMotion.approach(0.38f, PlayerFoldWindow)
-        assertTrue(
-            "the sheer never applies, so it is decoration that does nothing",
-            playerAlpha(0.38f) < fold,
-        )
-    }
-
-    @Test fun `the sheer stays far too small to see the page through the player`() {
-        (0..200).forEach { step ->
+        // Closing runs from progress 1 -> 0.
+        for (step in 199 downTo 0) {
             val progress = step / 200f
-            val fold = CapsuleMotion.approach(progress, PlayerFoldWindow)
+            val transform = playerFoldTransform(progress)
             assertTrue(
-                "at progress $progress the sheer removed more than a tenth of the player",
-                playerAlpha(progress) >= fold * 0.9f,
+                "scale grew again while closing at $progress",
+                transform.scale <= previousScale + 1e-6f,
             )
+            assertTrue(
+                "descent reversed while closing at $progress",
+                transform.descentInDockHeights >= previousDescent - 1e-6f,
+            )
+            previousScale = transform.scale
+            previousDescent = transform.descentInDockHeights
         }
     }
 
-    @Test fun `both sides are exactly identity at the ends of the travel`() {
-        assertEquals("the dock is solid once docked", 1f, dockAlpha(0f), 1e-4f)
-        assertEquals("the player is gone once docked", 0f, playerAlpha(0f), 1e-4f)
-        assertEquals("the player is solid when open", 1f, playerAlpha(1f), 0f)
+    @Test fun `the handoff contract contains geometry only`() {
+        val transform = playerFoldTransform(0.5f)
+        assertTrue(transform.scale.isFinite())
+        assertTrue(transform.descentInDockHeights.isFinite())
+        // The type intentionally exposes only geometry; adding opacity would require changing this
+        // compile-time contract and this test file alongside it rather than sneaking a fade back in.
+        assertEquals(2, transform::class.java.declaredFields.count { !it.isSynthetic })
     }
 }
