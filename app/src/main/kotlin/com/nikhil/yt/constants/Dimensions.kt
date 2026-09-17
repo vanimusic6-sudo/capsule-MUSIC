@@ -101,12 +101,15 @@ val BottomSheetSoftAnimationSpec: AnimationSpec<Dp> =
     tween(durationMillis = PlayerTapTravelMillis, easing = PlayerTapEasing)
 
 /*
- * Collapse after a drag still gets a little physical follow-through, but the old 0.78 damping was
- * visibly rubbery next to the dock. These values keep the impact while preventing the
- * mini-player/nav seam from overshooting and looking broken.
+ * Collapse after a drag keeps the finger's momentum but must not add a second, artificial rebound.
+ *
+ * The previous 0.86 damping still crossed the dock and returned by a few pixels. On a large sheet
+ * that tiny reversal reads as a wobble at the exact point where full player, mini player and nav bar
+ * meet. Critical damping preserves the continuous continuation from the drag while making the
+ * arrival monotonic in every frame.
  */
 val BottomSheetCollapseAnimationSpec = spring<Dp>(
-    dampingRatio = 0.86f,
+    dampingRatio = Spring.DampingRatioNoBouncy,
     stiffness = 188f,
 )
 
