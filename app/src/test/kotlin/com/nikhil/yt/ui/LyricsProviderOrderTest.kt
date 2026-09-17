@@ -19,11 +19,28 @@ class LyricsProviderOrderTest {
     }
 
     @Test fun aStoredOrderIsKept() {
-        val stored = "YOUTUBE,BETTER_LYRICS,LRCLIB,YOUTUBE_SUBTITLE"
-        assertEquals(
-            listOf("YOUTUBE", "BETTER_LYRICS", "LRCLIB", "YOUTUBE_SUBTITLE"),
-            LyricsProviderOrder.resolve(stored),
-        )
+        val stored = "YOUTUBE,BETTER_LYRICS,LRCLIB"
+        val resolved = LyricsProviderOrder.resolve(stored)
+        assertEquals(listOf("YOUTUBE", "BETTER_LYRICS", "LRCLIB"), resolved.take(3))
+    }
+
+    /**
+     * The two YouTube sources have to stay at the back of the default order.
+     *
+     * They are the ones that nearly always return *something*, so anything ranked below them is
+     * never reached — a default that put either above a real lyrics source would quietly turn the
+     * others off for everyone who never opens this setting.
+     */
+    @Test fun theFallbacksAreLastByDefault() {
+        val defaults = LyricsProviderOrder.supportedProviders
+        val lastTwo = defaults.takeLast(2)
+        assertEquals(listOf("YOUTUBE_SUBTITLE", "YOUTUBE"), lastTwo)
+    }
+
+    @Test fun theNewProvidersAreReachable() {
+        val defaults = LyricsProviderOrder.supportedProviders
+        assertTrue("LyricsPlus must be in the order", "LYRICS_PLUS" in defaults)
+        assertTrue("Paxsenix must be in the order", "PAXSENIX" in defaults)
     }
 
     /** SimpMusic and KuGou were removed; their ids must not survive in anybody's stored order. */
@@ -47,8 +64,8 @@ class LyricsProviderOrderTest {
 
     @Test fun duplicatesAndWhitespaceAndCaseAreTolerated() {
         assertEquals(
-            listOf("LRCLIB", "BETTER_LYRICS", "YOUTUBE_SUBTITLE", "YOUTUBE"),
-            LyricsProviderOrder.resolve(" lrclib , LRCLIB,better_lyrics "),
+            listOf("LRCLIB", "BETTER_LYRICS"),
+            LyricsProviderOrder.resolve(" lrclib , LRCLIB,better_lyrics ").take(2),
         )
     }
 
@@ -73,7 +90,7 @@ class LyricsProviderOrderTest {
     }
 
     @Test fun encodingRoundTrips() {
-        val order = listOf("YOUTUBE", "LRCLIB", "YOUTUBE_SUBTITLE", "BETTER_LYRICS")
+        val order = LyricsProviderOrder.supportedProviders.reversed()
         assertEquals(order, LyricsProviderOrder.resolve(LyricsProviderOrder.encode(order)))
     }
 }

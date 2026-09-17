@@ -821,4 +821,10 @@
     <string name="lyrics_sync_offset">Сдвиг синхронизации</string>
     <string name="lyrics_sync_offset_value">%1$+.1f с</string>
     <string name="lyrics_sync_offset_hint">Текст спешит — уменьшите. Отстаёт — увеличьте.</string>
+    <string name="enable_lyricsplus">LyricsPlus</string>
+    <string name="enable_lyricsplus_description">Тексты сообщества с пословным таймингом, на нескольких волонтёрских зеркалах.</string>
+    <string name="enable_paxsenix">Paxsenix</string>
+    <string name="enable_paxsenix_description">Тексты Apple Music через публичный ретранслятор. Использует недокументированный эндпоинт, поэтому по умолчанию выключено.</string>
+    <string name="lyrics_provider_lyricsplus_description">С пословным таймингом, на зеркалах. Обычно самый подробный.</string>
+    <string name="lyrics_provider_paxsenix_description">Apple Music через ретранслятор. Часто есть то, чего нет у остальных.</string>
 </resources>

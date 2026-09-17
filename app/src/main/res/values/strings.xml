@@ -882,4 +882,10 @@ Velune will only extract your token, and everything else is stored locally.</str
     <string name="lyrics_sync_offset">Sync offset</string>
     <string name="lyrics_sync_offset_value">%1$+.1f s</string>
     <string name="lyrics_sync_offset_hint">Ahead of the music? Lower it. Behind? Raise it.</string>
+    <string name="enable_lyricsplus">LyricsPlus</string>
+    <string name="enable_lyricsplus_description">Community word-timed lyrics, mirrored across several volunteer servers.</string>
+    <string name="enable_paxsenix">Paxsenix</string>
+    <string name="enable_paxsenix_description">Apple Music lyrics through a public relay. Uses an undocumented endpoint, so it is off unless you turn it on.</string>
+    <string name="lyrics_provider_lyricsplus_description">Word-timed, mirrored. Usually the most detailed.</string>
+    <string name="lyrics_provider_paxsenix_description">Apple Music, relayed. Often has what the others do not.</string>
 </resources>

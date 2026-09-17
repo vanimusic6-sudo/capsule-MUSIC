@@ -35,7 +35,9 @@ internal fun LyricsProviderPriorityDialog(
 private fun lyricsProviderTitle(providerId: String): String =
     when (providerId) {
         LyricsProviderOrder.LRCLIB -> "LrcLib"
+        LyricsProviderOrder.LYRICS_PLUS -> "LyricsPlus"
         LyricsProviderOrder.BETTER_LYRICS -> "BetterLyrics"
+        LyricsProviderOrder.PAXSENIX -> "Paxsenix"
         LyricsProviderOrder.YOUTUBE_SUBTITLE -> stringResource(R.string.lyrics_provider_youtube_subtitle)
         LyricsProviderOrder.YOUTUBE -> stringResource(R.string.lyrics_provider_youtube)
         else -> providerId
@@ -45,7 +47,9 @@ private fun lyricsProviderTitle(providerId: String): String =
 private fun lyricsProviderDescription(providerId: String): String =
     when (providerId) {
         LyricsProviderOrder.LRCLIB -> stringResource(R.string.lyrics_provider_lrclib_description)
+        LyricsProviderOrder.LYRICS_PLUS -> stringResource(R.string.lyrics_provider_lyricsplus_description)
         LyricsProviderOrder.BETTER_LYRICS -> stringResource(R.string.lyrics_provider_betterlyrics_description)
+        LyricsProviderOrder.PAXSENIX -> stringResource(R.string.lyrics_provider_paxsenix_description)
         LyricsProviderOrder.YOUTUBE_SUBTITLE -> stringResource(R.string.lyrics_provider_youtube_subtitle_description)
         LyricsProviderOrder.YOUTUBE -> stringResource(R.string.lyrics_provider_youtube_description)
         else -> providerId

@@ -37,6 +37,17 @@ val ContentCountryKey = stringPreferencesKey("contentCountry")
 val DebugLoggingEnabledKey = booleanPreferencesKey("debugLoggingEnabled")
 val EnableLrcLibKey = booleanPreferencesKey("enableLrclib")
 val EnableBetterLyricsKey = booleanPreferencesKey("enableBetterLyrics")
+val EnableLyricsPlusKey = booleanPreferencesKey("enableLyricsPlus")
+
+/**
+ * Off by default, deliberately.
+ *
+ * Paxsenix relays Apple Music's lyrics, and reaching their catalogue means using the anonymous
+ * token their own web player mints for itself. Nobody's account is involved and nothing is
+ * decrypted, but it is an API meant for their client rather than ours, so it is something to turn
+ * on knowingly rather than something that is simply on.
+ */
+val EnablePaxsenixKey = booleanPreferencesKey("enablePaxsenix")
 val HideExplicitKey = booleanPreferencesKey("hideExplicit")
 val HideVideoKey = booleanPreferencesKey("hideVideo")
 val ProxyEnabledKey = booleanPreferencesKey("proxyEnabled")

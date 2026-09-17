@@ -75,6 +75,8 @@ fun ContentSettings(
     val (streamBypassProxy, onStreamBypassProxyChange) = rememberPreference(key = StreamBypassProxyKey, defaultValue = false)
     val (enableLrclib, onEnableLrclibChange) = rememberPreference(key = EnableLrcLibKey, defaultValue = true)
     val (enableBetterLyrics, onEnableBetterLyricsChange) = rememberPreference(key = EnableBetterLyricsKey, defaultValue = true)
+    val (enableLyricsPlus, onEnableLyricsPlusChange) = rememberPreference(key = EnableLyricsPlusKey, defaultValue = true)
+    val (enablePaxsenix, onEnablePaxsenixChange) = rememberPreference(key = EnablePaxsenixKey, defaultValue = false)
     val (rawLyricsProviderOrder, onLyricsProviderOrderChange) =
         rememberPreference(key = LyricsProviderOrderKey, defaultValue = "")
     val (legacyPreferredProvider, _) =
@@ -240,6 +242,20 @@ fun ContentSettings(
             icon = { Icon(painterResource(R.drawable.lyrics), null) },
             checked = enableBetterLyrics,
             onCheckedChange = onEnableBetterLyricsChange,
+        )
+        SwitchPreference(
+            title = { Text(stringResource(R.string.enable_lyricsplus)) },
+            description = stringResource(R.string.enable_lyricsplus_description),
+            icon = { Icon(painterResource(R.drawable.lyrics), null) },
+            checked = enableLyricsPlus,
+            onCheckedChange = onEnableLyricsPlusChange,
+        )
+        SwitchPreference(
+            title = { Text(stringResource(R.string.enable_paxsenix)) },
+            description = stringResource(R.string.enable_paxsenix_description),
+            icon = { Icon(painterResource(R.drawable.lyrics), null) },
+            checked = enablePaxsenix,
+            onCheckedChange = onEnablePaxsenixChange,
         )
         PreferenceEntry(
             title = { Text(stringResource(R.string.lyrics_provider_priority_title)) },

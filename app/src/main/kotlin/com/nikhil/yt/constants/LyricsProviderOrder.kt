@@ -20,15 +20,25 @@ package com.nikhil.yt.constants
  */
 object LyricsProviderOrder {
     const val LRCLIB = "LRCLIB"
+    const val LYRICS_PLUS = "LYRICS_PLUS"
     const val BETTER_LYRICS = "BETTER_LYRICS"
+    const val PAXSENIX = "PAXSENIX"
     const val YOUTUBE_SUBTITLE = "YOUTUBE_SUBTITLE"
     const val YOUTUBE = "YOUTUBE"
 
-    /** Default order, best first. LrcLib leads because its lyrics are synced most of the time. */
+    /**
+     * Default order, best first.
+     *
+     * LrcLib leads because it is synced most of the time and asks nothing of anybody. The two
+     * YouTube entries are last because they are the fallbacks that always have *something*: put
+     * either of them higher and everything below it stops being reached at all.
+     */
     val supportedProviders: List<String> =
         listOf(
             LRCLIB,
+            LYRICS_PLUS,
             BETTER_LYRICS,
+            PAXSENIX,
             YOUTUBE_SUBTITLE,
             YOUTUBE,
         )
