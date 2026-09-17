@@ -98,7 +98,10 @@ internal object CapsuleAudioFallbackPolicy {
      * temporarily rejected at the GVS layer. Put it immediately after REMIX for signed-in
      * playback so a 403 never burns the next request on an anonymous identity first.
      *
-     * Signed-out playback and every order that does not contain WEB_REMIX are left untouched.
+     * A manual client order is allowed to omit WEB_CREATOR from the visible preference list;
+     * that must not silently remove Capsule's only authenticated age-gate recovery path. When
+     * signed in and REMIX is present, CREATOR is therefore injected as a bounded recovery hop.
+     * Signed-out playback and orders without WEB_REMIX are left untouched.
      */
     private fun preferAuthenticatedWebFallback(
         order: List<String>,
@@ -106,10 +109,15 @@ internal object CapsuleAudioFallbackPolicy {
     ): List<String> {
         if (!authenticated) return order
         val remixIndex = order.indexOf(WEB_REMIX)
-        val creatorIndex = order.indexOf(WEB_CREATOR)
-        if (remixIndex < 0 || creatorIndex < 0 || creatorIndex == remixIndex + 1) return order
+        if (remixIndex < 0) return order
 
-        val withoutCreator = order.toMutableList().apply { removeAt(creatorIndex) }
+        val creatorIndex = order.indexOf(WEB_CREATOR)
+        if (creatorIndex == remixIndex + 1) return order
+
+        val withoutCreator = order.toMutableList()
+        if (creatorIndex >= 0) {
+            withoutCreator.removeAt(creatorIndex)
+        }
         val newRemixIndex = withoutCreator.indexOf(WEB_REMIX)
         withoutCreator.add(newRemixIndex + 1, WEB_CREATOR)
         return withoutCreator
