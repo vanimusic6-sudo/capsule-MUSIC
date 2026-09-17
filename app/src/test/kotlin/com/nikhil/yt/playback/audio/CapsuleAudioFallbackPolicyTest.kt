@@ -106,6 +106,30 @@ class CapsuleAudioFallbackPolicyTest {
     }
 
     @Test
+    fun authenticatedWebRemixInjectsCreatorWhenManualOrderOmittedIt() {
+        val plan =
+            CapsuleAudioFallbackPolicy.profilePlan(
+                primaryProfileId = "WEB_REMIX",
+                priority = AudioResolvePriority.PLAYBACK,
+                authenticated = true,
+                isUploaded = false,
+                excludedProfiles = emptySet(),
+                preferredProfiles =
+                    listOf(
+                        "WEB_REMIX",
+                        "VISIONOS_0_1",
+                        "WEB_EMBEDDED_PLAYER",
+                        "TVHTML5_SIMPLY",
+                    ),
+            )
+
+        assertEquals(
+            listOf("WEB_REMIX", "WEB_CREATOR", "VISIONOS_0_1"),
+            plan,
+        )
+    }
+
+    @Test
     fun signedOutWebRemixDoesNotInjectCreator() {
         val custom =
             listOf(
