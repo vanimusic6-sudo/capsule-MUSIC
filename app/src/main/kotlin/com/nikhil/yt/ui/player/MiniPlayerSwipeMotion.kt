@@ -6,11 +6,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.unit.LayoutDirection
-import kotlin.math.PI
 import kotlin.math.abs
-import kotlin.math.sin
 
 internal const val MiniPlayerMaxSwipeTilt = 2.5f
+private const val MiniPlayerMaxSwipeDropFraction = 0.02181f
 internal val MiniPlayerSwipeSpring = spring<Float>(
     dampingRatio = Spring.DampingRatioNoBouncy,
     stiffness = Spring.StiffnessMediumLow,
@@ -23,9 +22,18 @@ internal fun miniPlayerSwipeTransform(offsetPx: Float, widthPx: Float, isRtl: Bo
         return MiniPlayerSwipeTransform(0f, 0f, 0f)
     }
     val physicalOffset = if (isRtl) -offsetPx else offsetPx
-    val rotation = (physicalOffset / (widthPx * 0.5f)).coerceIn(-1f, 1f) * MiniPlayerMaxSwipeTilt
-    // A shallow arc keeps the raised corner inside the bottom sheet's top edge.
-    val drop = widthPx * 0.5f * abs(sin(rotation * PI / 180)).toFloat()
+    val normalizedOffset = (physicalOffset / (widthPx * 0.5f)).coerceIn(-1f, 1f)
+    val rotation = normalizedOffset * MiniPlayerMaxSwipeTilt
+
+    // Keep the existing shallow bottom-pivot arc, but make its centre C1-continuous. The old
+    // abs(sin(rotation)) path had a cusp at zero: crossing the resting position instantly flipped
+    // vertical velocity and showed up as a tiny tick on high-refresh displays. Smoothstep of the
+    // absolute normalized travel preserves the same peak drop while easing vertical speed to zero
+    // at the centre. It also removes a per-frame trigonometric call from the hot drag path.
+    val distance = abs(normalizedOffset)
+    val arc = distance * distance * (3f - 2f * distance)
+    val drop = widthPx * MiniPlayerMaxSwipeDropFraction * arc
+
     return MiniPlayerSwipeTransform(physicalOffset, drop, rotation)
 }
 
