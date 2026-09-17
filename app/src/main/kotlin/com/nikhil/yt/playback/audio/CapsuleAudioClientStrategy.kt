@@ -5,6 +5,8 @@ import com.metrolist.innertubex.extraction.strategy.ClientFallbackStrategy
 import com.metrolist.innertubex.extraction.strategy.ClientSelectionRequest
 import com.metrolist.innertubex.extraction.strategy.ClientSelectionResult
 import com.metrolist.innertubex.extraction.strategy.ContentAwareFallbackStrategy
+import com.metrolist.innertubex.extraction.strategy.PoTokenRequirement
+import com.metrolist.innertubex.extraction.strategy.SelectedClient
 import com.metrolist.innertubex.models.YouTubeClient
 
 /**
@@ -24,9 +26,35 @@ internal object CapsuleAudioClientStrategy : ClientFallbackStrategy {
 
     override fun selectClients(request: ClientSelectionRequest): ClientSelectionResult {
         val selection = delegate.selectClients(request)
-        val overrideId = request.hints.playbackClientOverrideId ?: return selection
-        return selection.copy(
-            candidates = selection.candidates.filter { it.manifest?.id == overrideId },
+        val bound = selection.copy(candidates = selection.candidates.map(::bindPlayerPoToken))
+        val overrideId = request.hints.playbackClientOverrideId ?: return bound
+        return bound.copy(
+            candidates = bound.candidates.filter { it.manifest?.id == overrideId },
+        )
+    }
+
+    /**
+     * Send the proof-of-origin token with the player request, not only on the stream URL.
+     *
+     * The WEB clients ship declaring `player = NONE` and `gvs = REQUIRED`, which means the player
+     * request goes out anonymous and the token is appended to the media URL afterwards. YouTube no
+     * longer accepts that: a URL minted by a player request that did not itself carry the token is
+     * refused at the CDN whatever is appended to it later. In a capture of ordinary listening, every
+     * WEB_REMIX stream came back 403 — twenty of them — and every one rolled over to another client.
+     * The token was there the whole time; it was fetched and then not sent where it counts.
+     *
+     * So the player rule is raised to match the gvs rule the same manifest already declares: same
+     * binding, same providers, same bypass, only now required in both places. Nothing is invented —
+     * if a client does not ask for a token on its media URLs, it is left exactly as it is.
+     */
+    private fun bindPlayerPoToken(candidate: SelectedClient): SelectedClient {
+        val manifest = candidate.manifest ?: return candidate
+        val poTokens = manifest.poTokens
+        if (poTokens.gvs.requirement != PoTokenRequirement.REQUIRED) return candidate
+        if (poTokens.player.requirement == PoTokenRequirement.REQUIRED) return candidate
+
+        return candidate.copy(
+            manifest = manifest.copy(poTokens = poTokens.copy(player = poTokens.gvs)),
         )
     }
 }
