@@ -4,7 +4,6 @@ import com.metrolist.innertubex.extraction.ContentHints
 import com.metrolist.innertubex.extraction.strategy.ClientSelectionRequest
 import com.metrolist.innertubex.extraction.strategy.ContentAwareFallbackStrategy
 import com.metrolist.innertubex.extraction.strategy.PoTokenProviderKind
-import com.metrolist.innertubex.extraction.strategy.AuthenticationPolicy
 import com.metrolist.innertubex.extraction.strategy.PoTokenRequirement
 import com.nikhil.yt.constants.AudioStreamPolicy
 import org.junit.Assert.assertEquals
@@ -59,58 +58,64 @@ class CapsuleAudioClientStrategyTest {
 
 
     /**
-     * The proof-of-origin token goes with the player request, not only on the media URL.
+     * Every client keeps the identity the catalogue gives it.
      *
-     * WEB_REMIX is the odd one out in the shipped catalogue: it declares `player = NONE` with
-     * `gvs = REQUIRED`, so the player request went out anonymous and the token was appended to the
-     * media URL afterwards — which YouTube refuses. In a capture of ordinary listening every
-     * WEB_REMIX stream came back 403, twenty of them, and each rolled over to another client.
-     *
-     * Every other client in the catalogue has a consistent pair, and every one of them works:
-     * TVHTML5_SIMPLY is REQUIRED on both and plays, the visionOS clients and WEB_EMBEDDED ask for
-     * no token anywhere and play. WEB_REMIX is the only mismatch and the only failure.
+     * Stripping WEB_REMIX's identity to match the anonymous session its poToken is minted for was
+     * tried against the 403s. On a device it did not fix them, and it broke the account: an
+     * anonymous player request cannot carry the account that is allowed to play age-restricted
+     * tracks, so those started demanding a sign-in that was already there. This pins the identity so
+     * that failure cannot come back by way of a plausible-sounding theory.
      */
     @Test
-    fun aTokenUsingClientAsksAsWhoeverTheTokenWasMintedFor() {
+    fun noClientLosesTheIdentityTheCatalogueGivesIt() {
+        AudioStreamPolicy.entries.filter { it.isUserSelectable }.forEach { policy ->
+            val selection = request(policy.normalizedForPlayback())
+            val fromLibrary =
+                ContentAwareFallbackStrategy()
+                    .selectClients(selection)
+                    .candidates
+                    .single { it.manifest?.id == policy.playbackClientOverrideId }
+            val ours = CapsuleAudioClientStrategy.selectClients(selection).candidates.single()
+
+            assertEquals(
+                "$policy must authenticate exactly as the catalogue describes",
+                requireNotNull(fromLibrary.manifest).authentication,
+                requireNotNull(ours.manifest).authentication,
+            )
+            assertEquals(
+                "$policy must keep its cookies",
+                fromLibrary.manifest!!.request.cookies,
+                ours.manifest!!.request.cookies,
+            )
+            assertEquals(
+                "$policy must keep its login support",
+                fromLibrary.client.loginSupported,
+                ours.client.loginSupported,
+            )
+            assertEquals(
+                "$policy must keep its login requirement",
+                fromLibrary.client.loginRequired,
+                ours.client.loginRequired,
+            )
+        }
+    }
+
+    /**
+     * The one client that carries the account keeps carrying it.
+     *
+     * WEB_REMIX is how signed-in-only content is reached; without its cookies, age-restricted
+     * tracks are refused however the account is linked.
+     */
+    @Test
+    fun theAccountCarryingClientStillCarriesTheAccount() {
         val candidate =
             CapsuleAudioClientStrategy
                 .selectClients(request(AudioStreamPolicy.WEB.normalizedForPlayback()))
                 .candidates
                 .single()
-        val manifest = requireNotNull(candidate.manifest)
 
-        // The token is minted against the anonymous visitor session, so the request that uses it
-        // must be anonymous too. TVHTML5_SIMPLY needs a token and is exactly this shape, and plays;
-        // WEB_REMIX needed a token, signed its request as the account, and got 403 every time.
-        assertEquals(AuthenticationPolicy.UNSUPPORTED, manifest.authentication)
-        assertEquals("no cookies may go with it", false, manifest.request.cookies)
-        assertEquals("and no login either", false, candidate.client.loginSupported)
-        assertEquals(false, candidate.client.loginRequired)
-    }
-
-    /** A client that needs no token keeps whatever identity its manifest describes. */
-    @Test
-    fun aClientThatNeedsNoTokenKeepsItsOwnIdentity() {
-        listOf(AudioStreamPolicy.VISIONOS, AudioStreamPolicy.WEB_EMBEDDED).forEach { policy ->
-            val fromLibrary =
-                ContentAwareFallbackStrategy()
-                    .selectClients(request(policy.normalizedForPlayback()))
-                    .candidates
-                    .single { it.manifest?.id == policy.playbackClientOverrideId }
-            val ours =
-                CapsuleAudioClientStrategy
-                    .selectClients(request(policy.normalizedForPlayback()))
-                    .candidates
-                    .single()
-
-            assertEquals(
-                "$policy must be left exactly as the catalogue describes it",
-                requireNotNull(fromLibrary.manifest).authentication,
-                requireNotNull(ours.manifest).authentication,
-            )
-            assertEquals(fromLibrary.manifest!!.request.cookies, ours.manifest!!.request.cookies)
-            assertEquals(fromLibrary.client.loginSupported, ours.client.loginSupported)
-        }
+        assertTrue("WEB_REMIX must still be able to sign in", candidate.client.loginSupported)
+        assertTrue("and still send its cookies", requireNotNull(candidate.manifest).request.cookies)
     }
 
     @Test
