@@ -19,7 +19,14 @@ private const val CAPSULE_FULL_ARTWORK_PREFETCH_SIZE = 960
 
 /**
  * The full player is normally collapsed when a track begins. Warm its high-res
- * cover immediately instead of waiting for the user to expand the sheet.
+ * cover while Capsule is actually on screen instead of waiting for the user to
+ * expand the sheet.
+ *
+ * Background playback must stay cheap: Composition remains alive when the app
+ * is hidden, so without the lifecycle guard every automatic track change would
+ * still start a 960 px artwork request and artist portrait preloads that nobody
+ * can see. Returning to the app flips [appIsOnScreen] back to true and warms the
+ * current track normally.
  *
  * This uses Coil's normal non-blocking enqueue path and only the thumbnail URL
  * already present in playback metadata. It does not perform any additional
@@ -29,9 +36,10 @@ private const val CAPSULE_FULL_ARTWORK_PREFETCH_SIZE = 960
 internal fun PreloadCapsuleTrackAssets(mediaMetadata: MediaMetadata?) {
     val context = LocalContext.current
     val artworkUrl = mediaMetadata?.thumbnailUrl?.toHighResThumbnail()
+    val onScreen = appIsOnScreen()
 
-    LaunchedEffect(mediaMetadata?.id, artworkUrl) {
-        if (artworkUrl.isNullOrBlank()) return@LaunchedEffect
+    LaunchedEffect(mediaMetadata?.id, artworkUrl, onScreen) {
+        if (!onScreen || artworkUrl.isNullOrBlank()) return@LaunchedEffect
 
         runCatching {
             context.imageLoader.enqueue(
@@ -46,5 +54,7 @@ internal fun PreloadCapsuleTrackAssets(mediaMetadata: MediaMetadata?) {
         }
     }
 
-    PreloadArtistPortraits(mediaMetadata?.artists.orEmpty())
+    if (onScreen) {
+        PreloadArtistPortraits(mediaMetadata?.artists.orEmpty())
+    }
 }
