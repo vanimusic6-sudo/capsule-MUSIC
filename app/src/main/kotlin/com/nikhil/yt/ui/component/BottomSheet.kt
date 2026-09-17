@@ -37,7 +37,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
-import com.nikhil.yt.ui.motion.CapsuleMotion
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
@@ -54,32 +53,15 @@ import com.nikhil.yt.constants.BottomSheetAnimationSpec
 import com.nikhil.yt.constants.BottomSheetCollapseAnimationSpec
 import com.nikhil.yt.constants.BottomSheetSoftAnimationSpec
 import com.nikhil.yt.constants.BottomSheetSoftCollapseAnimationSpec
+import com.nikhil.yt.ui.motion.CapsuleMotion
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.launch
 import kotlin.math.absoluteValue
 
-/**
- * Lets a mounted child keep its state while suspending purely decorative procedural clocks.
- * The mini-player uses this while it is completely covered by the expanded full player.
- */
+/** Keeps a mounted mini-player while allowing its decorative clock to sleep when it is covered. */
 internal val LocalCapsuleBackgroundMotionEnabled = compositionLocalOf { true }
 
-/**
- * The last stretch of travel, where the player reads as folding into the mini-player: it shrinks
- * towards the dock and fades out, so the mini-player is what is left behind rather than something
- * that was underneath all along.
- */
-/** Sub-pixel at every density: only a rest that is already invisible counts as being on an anchor. */
-/**
- * Whether the mini-player's decorative background clock is allowed to run.
- *
- * Named because the terms are easy to lose and expensive to lose. The mini-player is on screen on
- * every page of the app for as long as something is playing, so its clock is the one that keeps the
- * frame clock awake during ordinary use. It has no business running where nobody can see it: not
- * behind the fully expanded player, and not once the sheet has been dismissed, where it used to
- * carry on drawing against nothing at all.
- */
 internal fun miniPlayerClockShouldRun(
     isExpanded: Boolean,
     isDismissed: Boolean,
@@ -87,96 +69,47 @@ internal fun miniPlayerClockShouldRun(
 
 internal const val ANCHOR_EPSILON_DP = 0.05f
 
-/**
- * Whether a sheet resting at [value] should be treated as sitting on [anchor].
- *
- * Exact equality assumes a sheet only ever stops because an animation finished on its target. It
- * also stops when a settle is interrupted — a drag caught mid-animation, bounds changing under it —
- * and then rests a fraction of a dp away. That is invisible, but it used to leave `isCollapsed`
- * false for good, and the player's BackHandler is armed on exactly that: the first Back press then
- * ran collapseSoft() on an already-collapsed sheet, travelled those few hundredths of a dp, and was
- * swallowed. Pressing Back twice to leave a screen is that bug.
- */
-internal fun isAtSheetAnchor(value: Dp, anchor: Dp): Boolean =
+internal fun isAtSheetAnchor(
+    value: Dp,
+    anchor: Dp,
+): Boolean =
     (value - anchor).value.absoluteValue <= ANCHOR_EPSILON_DP
 
 internal const val PlayerFoldWindow = 0.76f
-private const val PlayerFoldScale = 0.05f
+internal const val PlayerFoldScale = 0.05f
+internal const val PlayerDescentBeyondDock = 0.9f
 
 /**
- * How far the player keeps descending after it has folded, expressed in dock heights.
+ * Pure geometry for the full-player -> mini-player handoff.
  *
- * Without it the player simply faded out at the dock line, and that is what read as "disappearing at
- * a certain height" rather than leaving. A sheet that is pulled down does not evaporate — it goes
- * *under* whatever is fixed in front of it.
- *
- * The navigation bar is a later sibling in the same Box, so it already draws on top; all the player
- * needed was somewhere to go. Travelling on past the dock lets the bar occlude it, which is the
- * difference between a screen vanishing and a screen being put away.
- *
- * Draw-phase translation only. The sheet's own anchors, and everything measured from them, are
- * untouched.
+ * There is intentionally no opacity component. The mini-player already lives behind the full
+ * player, so shrinking and moving the opaque foreground reveals it naturally. This avoids a
+ * screen-sized blend buffer while preserving the same physical "put the player into the dock"
+ * motion.
  */
-private const val PlayerDescentBeyondDock = 0.9f
+internal data class PlayerFoldTransform(
+    val scale: Float,
+    val descentInDockHeights: Float,
+)
 
-/**
- * The faintest the player gets while it is on its way, over and above the fold.
- *
- * Deliberately tiny. Enough that the edges stop reading as a hard-cut rectangle sliding around, not
- * enough to see the page through it at any point.
- */
-internal const val PlayerTravelSheer = 0.06f
-
-/**
- * How much of the close the dock takes to come up: all of it.
- *
- * The dock kept reading as late, and widening its window helped each time, so it is now as wide as
- * it can be — it begins the instant the player leaves the top of its travel and is complete at the
- * bottom. There is no earlier than this; the handover already spans the whole gesture.
- *
- * A window this wide is only usable because the curve is a smoothstep, which has zero slope at both
- * ends. The dock therefore does not blink into existence at the start of the close — it is
- * mathematically still invisible for the first frames and arrives without an edge — where a linear
- * ramp this wide would put a visible seam at the very moment the player starts moving.
- *
- * The two layers still cover each other. The dock's window is wider than the player's, so
- * `approach` is never smaller for the player than for the dock, which makes the two opacities sum to
- * at least one at every point in the travel: there is no instant where the wallpaper can show
- * between them.
- */
-internal const val DockHandoverWindow = 1f
-
-
-/*
- * The dock and the player hand over to each other; they do not animate independently.
- *
- * Earlier versions gave the dock motion of its own — a squash from closing velocity, a pull, an
- * arrival rock — and each read as twitching, because two separately animated surfaces can only
- * agree by coincidence. Then the dock was left completely static, which read as *late*: the player
- * faded to a low alpha while the dock stayed fully opaque underneath, so for most of the close the
- * two were simply stacked, and the dock only looked clean once the player had almost gone.
- *
- * Now both opacities are read off the same progress, so the exchange has no seam and neither side
- * can lag the other. They are not strict complements any more: the dock rises over the whole travel
- * while the player holds on over the last three quarters of it, which keeps the pair opaque (see
- * DockHandoverWindow) and means the dock is already coming up from the moment the player starts
- * down, rather than dropping in near the end.
- *
- * The dock is given opacity and nothing else. Every geometric treatment tried on it — a velocity
- * squash, a pull, an arrival rock, and finally growing a few percent into place — read as trembling,
- * and the last one explains the rest: transforming a layer full of text and artwork re-rasterises it
- * every frame, and that sub-pixel shimmer looks like shaking however smooth the underlying motion
- * is. A cross-fade cannot shimmer.
- *
- * Both sides are monotonic in the sheet's own progress, so neither can overshoot, reverse, or lag
- * the other, and both are exactly identity at the dock.
- */
+internal fun playerFoldTransform(progress: Float): PlayerFoldTransform {
+    val fold =
+        CapsuleMotion.approach(
+            progress = progress,
+            window = PlayerFoldWindow,
+        )
+    val folded = 1f - fold
+    return PlayerFoldTransform(
+        scale = 1f - PlayerFoldScale * folded,
+        descentInDockHeights = folded * PlayerDescentBeyondDock,
+    )
+}
 
 /**
  * A single physical Capsule sheet.
  *
- * Animated value/velocity reads deliberately live in layout/layer lambdas. That lets Compose
- * invalidate only position or the GPU layer on each frame instead of recomposing the whole player.
+ * Animated values are consumed from layout/layer lambdas so a drag invalidates position or the GPU
+ * layer rather than recomposing the whole player tree.
  */
 @Composable
 fun BottomSheet(
@@ -187,11 +120,7 @@ fun BottomSheet(
     collapsedContent: @Composable BoxScope.() -> Unit,
     content: @Composable BoxScope.() -> Unit,
 ) {
-    /*
-     * Keep the mini-player composition alive for the lifetime of an active queue. Recreating it
-     * after every full-player close caused Room-backed subscribe state to bootstrap again and replay
-     * the plus -> check morph even though the user had not subscribed again.
-     */
+    /* Keep the mini-player composition alive so Room-backed state and icon morph state survive. */
     val shouldComposeMini by
         remember(state, onDismiss) {
             derivedStateOf {
@@ -201,15 +130,12 @@ fun BottomSheet(
     val canReopen by
         remember(state, onDismiss) {
             derivedStateOf {
-                (onDismiss == null || !state.isDismissed) &&
-                    state.progress < 0.46f
+                (onDismiss == null || !state.isDismissed) && state.progress < 0.46f
             }
         }
     val miniBackgroundMotionEnabled by
         remember(state) {
             derivedStateOf {
-                // Keep the subtree and all Room/player state alive; only the decorative clock
-                // sleeps.
                 miniPlayerClockShouldRun(state.isExpanded, state.isDismissed)
             }
         }
@@ -228,9 +154,6 @@ fun BottomSheet(
                 .bottomSheetDraggable(state, onDismiss)
                 .graphicsLayer {
                     val motionProgress = state.progress.coerceIn(0f, 1f)
-                    // Springs and Float math can land a few ulps above 1f. Android 16 rejects even
-                    // a microscopic negative corner radius, so geometry is clamped independently of
-                    // the animation math as a final safety boundary.
                     val topCornerRadius =
                         (22.dp * (1f - motionProgress)).coerceAtLeast(0.dp)
                     shape =
@@ -258,24 +181,6 @@ fun BottomSheet(
                                 y = miniPinOffset.roundToPx(),
                             )
                         }
-                        .graphicsLayer {
-                            val fold =
-                                CapsuleMotion.approach(
-                                    progress = state.progress,
-                                    window = DockHandoverWindow,
-                                )
-
-                            // Opacity only, over the whole travel, so the dock is already on its way
-                            // in while the player is still near the top rather than appearing once
-                            // the player has nearly gone.
-                            //
-                            // It used to grow the last few percent into place as well, and that is
-                            // what read as trembling: scaling a layer full of text and artwork
-                            // re-rasterises it every frame, and the sub-pixel shimmer that produces
-                            // looks like the dock shaking even though it is moving perfectly
-                            // smoothly. A pure cross-fade cannot shimmer.
-                            alpha = (1f - fold).coerceIn(0f, 1f)
-                        }
                         .clickable(
                             enabled = canReopen,
                             interactionSource = remember { MutableInteractionSource() },
@@ -301,56 +206,18 @@ fun BottomSheet(
                         .offset {
                             val motionProgress = state.progress.coerceIn(0f, 1f)
                             val revealOffset =
-                                state.collapsedBound *
-                                    (1f - motionProgress)
+                                state.collapsedBound * (1f - motionProgress)
                             IntOffset(
                                 x = 0,
                                 y = revealOffset.roundToPx(),
                             )
                         }
                         .graphicsLayer {
-                            /*
-                             * The player folds into the dock over the last of its travel: it scales
-                             * down towards the mini-player and fades, so closing reads as the player
-                             * going *into* it.
-                             *
-                             * This is the only thing that moves during a close. It reads the same
-                             * progress that positions the sheet, so the fold and the travel are one
-                             * motion by construction, and it reaches exactly identity at the moment
-                             * the sheet reaches the dock.
-                             *
-                             * There is deliberately no blur here. A full-screen RenderEffect forces
-                             * an offscreen buffer for the entire player every frame, and allocating
-                             * it is what made the very first open stall. Scale and alpha are free by
-                             * comparison — the layer already exists — and both are exactly identity
-                             * once the player is open, so an open player costs nothing.
-                             */
-                            val fold =
-                                CapsuleMotion.approach(
-                                    progress = state.progress,
-                                    window = PlayerFoldWindow,
-                                )
-
-                            val folded = 1f - fold
-                            scaleX = 1f - PlayerFoldScale * folded
-                            scaleY = 1f - PlayerFoldScale * folded
-
-                            /*
-                             * Keep going past the dock so the navigation bar can take it, instead of
-                             * fading out in mid-air. The bar is a later sibling in the same Box, so
-                             * it is already in front; this only gives the player somewhere to go.
-                             */
+                            val fold = playerFoldTransform(state.progress)
+                            scaleX = fold.scale
+                            scaleY = fold.scale
                             translationY =
-                                folded * PlayerDescentBeyondDock * state.collapsedBound.toPx()
-
-                            /*
-                             * Handed straight to the dock below, which takes 1 - fold, plus the
-                             * faintest sheer while it is actually moving. The sheer is shaped so it
-                             * is exactly zero at both ends: a player at rest, open or docked, is
-                             * fully opaque, and only the journey is softened.
-                             */
-                            val travelling = 4f * fold * (1f - fold)
-                            alpha = (fold * (1f - PlayerTravelSheer * travelling)).coerceIn(0f, 1f)
+                                fold.descentInDockHeights * state.collapsedBound.toPx()
                             transformOrigin = TransformOrigin(0.5f, 1f)
                         }
                         .background(backgroundColor),
@@ -376,41 +243,38 @@ class BottomSheetState(
 
     val value by animatable.asState()
 
-    // Anchors are matched with a tolerance rather than by exact equality; see [isAtSheetAnchor].
-    val isDismissed by derivedStateOf {
-        isAtSheetAnchor(value, animatable.lowerBound!!)
-    }
-
-    val isCollapsed by derivedStateOf {
-        isAtSheetAnchor(value, collapsedBound)
-    }
-
-    val isExpanded by derivedStateOf {
-        isAtSheetAnchor(value, animatable.upperBound!!)
-    }
-
-    /**
-     * Physical anchor progress, before easing. May sit slightly outside 0..1 while a spring settles,
-     * which is why every consumer clamps; [progress] is the value surfaces should read.
-     */
-    val rawProgress by derivedStateOf {
-        val range = animatable.upperBound!! - collapsedBound
-        if (range == 0.dp) {
-            0f
-        } else {
-            1f - (animatable.upperBound!! - animatable.value) / range
+    val isDismissed by
+        derivedStateOf {
+            isAtSheetAnchor(value, animatable.lowerBound!!)
         }
-    }
 
-    /**
-     * Visual docking progress. Quintic smootherstep reaches both anchors with zero velocity and
-     * acceleration without creating a second animation engine inside BottomSheetState.
-     */
-    val progress by derivedStateOf {
-        val p = rawProgress.coerceIn(0f, 1f)
-        val smooth = p * p * p * (p * (p * 6f - 15f) + 10f)
-        smooth.coerceIn(0f, 1f)
-    }
+    val isCollapsed by
+        derivedStateOf {
+            isAtSheetAnchor(value, collapsedBound)
+        }
+
+    val isExpanded by
+        derivedStateOf {
+            isAtSheetAnchor(value, animatable.upperBound!!)
+        }
+
+    val rawProgress by
+        derivedStateOf {
+            val range = animatable.upperBound!! - collapsedBound
+            if (range == 0.dp) {
+                0f
+            } else {
+                1f - (animatable.upperBound!! - animatable.value) / range
+            }
+        }
+
+    /** Quintic smootherstep: zero velocity and acceleration at both visual anchors. */
+    val progress by
+        derivedStateOf {
+            val p = rawProgress.coerceIn(0f, 1f)
+            val smooth = p * p * p * (p * (p * 6f - 15f) + 10f)
+            smooth.coerceIn(0f, 1f)
+        }
 
     fun collapse(animationSpec: AnimationSpec<Dp>) {
         onAnchorChanged(COLLAPSED_ANCHOR)
@@ -492,8 +356,10 @@ class BottomSheetState(
             return
         }
 
-        val dismissMidpoint = dismissedBound + (collapsedBound - dismissedBound) / 2f
-        val expandMidpoint = collapsedBound + (expandedBound - collapsedBound) / 2f
+        val dismissMidpoint =
+            dismissedBound + (collapsedBound - dismissedBound) / 2f
+        val expandMidpoint =
+            collapsedBound + (expandedBound - collapsedBound) / 2f
 
         when {
             value < dismissMidpoint && onDismiss != null -> {
@@ -519,7 +385,11 @@ class BottomSheetState(
                         isTopReached = false
                     }
 
-                    return if (isTopReached && available.y < 0 && source == NestedScrollSource.UserInput) {
+                    return if (
+                        isTopReached &&
+                            available.y < 0 &&
+                            source == NestedScrollSource.UserInput
+                    ) {
                         dispatchRawDelta(available.y)
                         available
                     } else {
@@ -536,7 +406,10 @@ class BottomSheetState(
                         isTopReached = consumed.y == 0f && available.y > 0
                     }
 
-                    return if (isTopReached && source == NestedScrollSource.UserInput) {
+                    return if (
+                        isTopReached &&
+                            source == NestedScrollSource.UserInput
+                    ) {
                         dispatchRawDelta(available.y)
                         available
                     } else {
@@ -577,15 +450,21 @@ fun rememberBottomSheetState(
     val density = LocalDensity.current
     val coroutineScope = rememberCoroutineScope()
 
-    var previousAnchor by rememberSaveable {
-        mutableIntStateOf(initialAnchor)
-    }
+    var previousAnchor by
+        rememberSaveable {
+            mutableIntStateOf(initialAnchor)
+        }
     val animatable =
         remember {
             Animatable(0.dp, Dp.VectorConverter)
         }
 
-    return remember(dismissedBound, expandedBound, collapsedBound, coroutineScope) {
+    return remember(
+        dismissedBound,
+        expandedBound,
+        collapsedBound,
+        coroutineScope,
+    ) {
         val initialValue =
             when (previousAnchor) {
                 EXPANDED_ANCHOR -> expandedBound
@@ -594,7 +473,10 @@ fun rememberBottomSheetState(
                 else -> error("Unknown BottomSheet anchor")
             }
 
-        animatable.updateBounds(dismissedBound.coerceAtMost(expandedBound), expandedBound)
+        animatable.updateBounds(
+            dismissedBound.coerceAtMost(expandedBound),
+            expandedBound,
+        )
         coroutineScope.launch(start = CoroutineStart.UNDISPATCHED) {
             animatable.snapTo(initialValue)
         }
@@ -603,7 +485,9 @@ fun rememberBottomSheetState(
             draggableState =
                 DraggableState { delta ->
                     coroutineScope.launch(start = CoroutineStart.UNDISPATCHED) {
-                        animatable.snapTo(animatable.value - with(density) { delta.toDp() })
+                        animatable.snapTo(
+                            animatable.value - with(density) { delta.toDp() },
+                        )
                     }
                 },
             onAnchorChanged = { previousAnchor = it },
