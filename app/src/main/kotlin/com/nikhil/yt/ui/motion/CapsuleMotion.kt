@@ -10,13 +10,13 @@ package com.nikhil.yt.ui.motion
  * shimmering behind the player instead of being landed on.
  *
  * Two properties hold for every function here and are covered by tests:
- * - the value is exactly identity at the surface's rest state, so nothing keeps a residual scale,
- *   offset or opacity once it has settled, and an idle screen costs nothing;
+ * - the value is exactly identity at the surface's rest state, so nothing keeps a residual scale or
+ *   offset once it has settled, and an idle screen costs nothing;
  * - the value never reverses, so nothing can read as a wobble on the way there.
  *
- * Deliberately absent: blur. A full-screen `RenderEffect` forces an offscreen buffer for the whole
- * surface on every frame, and allocating it the first time is what made opening the player stall.
- * Scale and opacity ride the layer that already exists and cost effectively nothing.
+ * Deliberately absent: blur and animated transparency. Full-screen blur forces an offscreen buffer,
+ * while cross-fading large surfaces keeps two layers blending for the whole handoff. Geometry-only
+ * motion is both cleaner and cheaper on the GPU.
  */
 object CapsuleMotion {
     /**
@@ -52,10 +52,14 @@ object CapsuleMotion {
         return (a + b - a * b).coerceIn(0f, 1f)
     }
 
-    /** Smoothstep. Zero slope at both ends, so motion neither starts nor stops abruptly. */
+    /**
+     * Quintic smootherstep. Velocity and acceleration are both zero at the endpoints, so a
+     * transition can be interrupted or handed to another surface without the tiny start/stop kick
+     * that a cubic smoothstep still leaves in acceleration.
+     */
     fun smooth(value: Float): Float {
         if (!value.isFinite()) return 1f
-        val clamped = value.coerceIn(0f, 1f)
-        return clamped * clamped * (3f - 2f * clamped)
+        val x = value.coerceIn(0f, 1f)
+        return x * x * x * (x * (x * 6f - 15f) + 10f)
     }
 }
