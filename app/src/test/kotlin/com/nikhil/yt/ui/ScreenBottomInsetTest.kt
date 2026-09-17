@@ -38,6 +38,8 @@ class ScreenBottomInsetTest {
     /** Files under screens/ that are not screens: dialogs, managers, activities. */
     private val notAScreen = setOf(
         "settings/AudioClientPriorityDialog.kt",
+        "settings/LyricsProviderPriorityDialog.kt",
+        "settings/PriorityOrderDialog.kt",
         "settings/DiscordPresenceManager.kt",
         "settings/ListenBrainzManager.kt",
         "settings/PoTokenExtractionActivity.kt",

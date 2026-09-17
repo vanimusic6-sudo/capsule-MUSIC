@@ -138,7 +138,6 @@
     <string name="open_supported_links">Apri il collegamento supportato per impostazione predefinita</string>
     <string name="configure_supported_links">Configura i collegamenti supportati</string>
     <string name="intent_supported_links_not_found">Impossibile trovare le impostazioni dei collegamenti supportati, configurale manualmente</string>
-    <string name="set_first_lyrics_provider">Fornitore di testi preferito</string>
     <string name="audio_quality_max">Massimo (beta)</string>
     <string name="enable_similar_content">Abilita contenuti simili</string>
     <string name="similar_content_desc">Aggiungi automaticamente altri brani simili quando viene raggiunta la fine della coda</string>

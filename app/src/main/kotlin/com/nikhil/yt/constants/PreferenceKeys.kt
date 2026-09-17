@@ -35,10 +35,8 @@ val AppLanguageKey = stringPreferencesKey("appLanguage")
 val ContentLanguageKey = stringPreferencesKey("contentLanguage")
 val ContentCountryKey = stringPreferencesKey("contentCountry")
 val DebugLoggingEnabledKey = booleanPreferencesKey("debugLoggingEnabled")
-val EnableKugouKey = booleanPreferencesKey("enableKugou")
 val EnableLrcLibKey = booleanPreferencesKey("enableLrclib")
 val EnableBetterLyricsKey = booleanPreferencesKey("enableBetterLyrics")
-val EnableSimpMusicLyricsKey = booleanPreferencesKey("enableSimpMusicLyrics")
 val HideExplicitKey = booleanPreferencesKey("hideExplicit")
 val HideVideoKey = booleanPreferencesKey("hideVideo")
 val ProxyEnabledKey = booleanPreferencesKey("proxyEnabled")
@@ -195,7 +193,20 @@ val PlaylistViewTypeKey = stringPreferencesKey("playlistViewType")
 
 val PlaylistEditLockKey = booleanPreferencesKey("playlistEditLock")
 val QuickPicksKey = stringPreferencesKey("discover")
+/** The old single-choice setting. Still read once, to seed the order on upgrade. */
 val PreferredLyricsProviderKey = stringPreferencesKey("lyricsProvider")
+
+/** The order providers are tried in, comma separated. See [LyricsProviderOrder]. */
+val LyricsProviderOrderKey = stringPreferencesKey("lyricsProviderOrder")
+
+/**
+ * Milliseconds added to the playback position before a lyric line is chosen.
+ *
+ * Positive shows lines earlier, which is the correction for a file that lags; negative shows them
+ * later, for one that runs ahead. Synced lyrics are pinned to timestamps, so there is no scroll
+ * speed to change — a whole file being early or late is a constant offset, and this is it.
+ */
+val LyricsSyncOffsetKey = intPreferencesKey("lyricsSyncOffsetMs")
 val QueueEditLockKey = booleanPreferencesKey("queueEditLock")
 
 val ShowLikedPlaylistKey = booleanPreferencesKey("show_liked_playlist")
@@ -346,9 +357,7 @@ enum class QuickPicks {
 
 enum class PreferredLyricsProvider {
     LRCLIB,
-    KUGOU,
     BETTER_LYRICS,
-    SIMPMUSIC,
 }
 
 enum class CapsulePlayerDesign {

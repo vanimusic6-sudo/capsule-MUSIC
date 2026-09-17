@@ -26,10 +26,8 @@ dependencyResolutionManagement {
 rootProject.name = "Capsule"
 include(":app")
 include(":innertube")
-include(":kugou")
 include(":lrclib")
 include(":lastfm")
-include("simpmusic")
 include(":betterlyrics")
 include(":kizzy")
 include(":canvas")

@@ -120,7 +120,6 @@
     <string name="open_supported_links">기본적으로 지원되는 링크 열기</string>
     <string name="configure_supported_links">지원되는 링크 구성</string>
     <string name="intent_supported_links_not_found">지원되는 링크 설정을 찾을 수 없습니다. 수동으로 구성하십시오.</string>
-    <string name="set_first_lyrics_provider">선호하는 가사 제공업체</string>
     <string name="audio_quality_max">최대(베타)</string>
     <string name="enable_similar_content">유사한 콘텐츠 활성화</string>
     <string name="similar_content_desc">대기열 끝에 도달하면 유사한 노래를 자동으로 추가합니다.</string>

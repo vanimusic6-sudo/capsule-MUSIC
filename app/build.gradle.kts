@@ -219,12 +219,10 @@ dependencies {
 
     implementation(project(":innertube"))
     implementation(libs.innertubex)
-    implementation(project(":kugou"))
     implementation(project(":lrclib"))
     implementation(project(":lastfm"))
     implementation(project(":betterlyrics"))
     implementation(project(":kizzy"))
-    implementation(project(":simpmusic"))
     implementation(project(":canvas"))
     implementation("com.github.Kyant0:m3color:2025.4")
     implementation(libs.backdrop)

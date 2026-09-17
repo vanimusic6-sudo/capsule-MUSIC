@@ -157,6 +157,7 @@ import com.nikhil.yt.constants.LyricsClickKey
 import com.nikhil.yt.constants.LyricsRomanizeJapaneseKey
 import com.nikhil.yt.constants.LyricsRomanizeKoreanKey
 import com.nikhil.yt.constants.LyricsScrollKey
+import com.nikhil.yt.constants.LyricsSyncOffsetKey
 import com.nikhil.yt.constants.LyricsTextPositionKey
 import com.nikhil.yt.constants.LyricsAnimationStyle
 import com.nikhil.yt.constants.LyricsAnimationStyleKey
@@ -179,6 +180,7 @@ import com.nikhil.yt.lyrics.LyricsUtils.romanizeKorean
 import com.nikhil.yt.ui.component.shimmer.ShimmerHost
 import com.nikhil.yt.ui.component.shimmer.TextPlaceholder
 import com.nikhil.yt.ui.menu.LyricsMenu
+import com.nikhil.yt.ui.menu.clampOffset
 import com.nikhil.yt.ui.screens.settings.DarkMode
 import com.nikhil.yt.ui.screens.settings.LyricsPosition
 import com.nikhil.yt.ui.utils.fadingEdge
@@ -578,11 +580,22 @@ fun Lyrics(
     val lyricsGlowColor = if (useDarkTheme || playerBackground != PlayerBackgroundStyle.DEFAULT) Color.White else Color.Black
     val textColor = lyricsBaseColor
 
-    val wordSyncLeadMs = remember(lyrics) {
-        if (lyrics != null && isTtml(lyrics)) 0L else LyricsWordSyncLeadMs
+    /*
+     * The user's own correction, on top of the built-in lead.
+     *
+     * A lyrics file that is uniformly early or late is the common defect and the only one a single
+     * number can fix, so this is a shift rather than a rate: positive shows lines sooner, negative
+     * later. Clamped on read as well as on write, because a value can also arrive from a restored
+     * backup or an older build.
+     */
+    val syncOffsetMs by rememberPreference(LyricsSyncOffsetKey, defaultValue = 0)
+    val userOffsetMs = clampOffset(syncOffsetMs).toLong()
+
+    val wordSyncLeadMs = remember(lyrics, userOffsetMs) {
+        (if (lyrics != null && isTtml(lyrics)) 0L else LyricsWordSyncLeadMs) + userOffsetMs
     }
-    val lineSyncLeadMs = remember(lyrics) {
-        if (lyrics != null && isTtml(lyrics)) 0L else LyricsWordSyncLeadMs
+    val lineSyncLeadMs = remember(lyrics, userOffsetMs) {
+        (if (lyrics != null && isTtml(lyrics)) 0L else LyricsWordSyncLeadMs) + userOffsetMs
     }
 
     var currentLineIndex by remember {

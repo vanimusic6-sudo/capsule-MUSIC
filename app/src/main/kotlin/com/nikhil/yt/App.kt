@@ -38,7 +38,6 @@ import com.nikhil.yt.innertube.CapsuleAnonymousSession
 import com.nikhil.yt.innertube.YouTube
 import com.nikhil.yt.innertube.models.YouTubeLocale
 import com.nikhil.yt.playback.audio.CapsuleInnerTubeXPlayer
-import com.nikhil.yt.kugou.KuGou
 import com.nikhil.yt.lastfm.LastFM
 import dagger.hilt.android.HiltAndroidApp
 import kotlinx.coroutines.CancellationException
@@ -157,9 +156,6 @@ class App : Application(), SingletonImageLoader.Factory {
                 ?: languageTag.takeIf { it in LanguageCodeToName }
                 ?: "en"
         )
-        if (languageTag == "zh-TW") {
-            KuGou.useTraditionalChinese = true
-        }
         LastFM.initialize(
             apiKey = BuildConfig.LASTFM_API_KEY,
             secret = BuildConfig.LASTFM_SECRET

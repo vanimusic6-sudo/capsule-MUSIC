@@ -403,7 +403,6 @@
     <string name="disable_screenshot">禁用截图</string>
     <string name="disable_screenshot_desc">开启该选项时，截图和应用的最近查看功能会被禁用.</string>
     <string name="enable_lrclib">启用LrcLib歌词提供</string>
-    <string name="enable_kugou">启用KuGou歌词提供</string>
     <string name="hide_explicit">隐藏露骨内容</string>
     <string name="hide_video">隐藏音乐视频</string>
     <string name="backup_restore">备份与恢复</string>
@@ -492,7 +491,6 @@
     <string name="karaoke">逐字模式</string>
     <string name="restart_to_take_effect">重启后生效</string>
     <string name="enable_betterlyrics">启用BetterLyrics</string>
-    <string name="enable_simpmusic_lyrics">启用SimpMusic lyrics</string>
     <string name="player_and_audio">播放器与音频</string>
     <string name="network_metered_title">设为按流量计费网络</string>
     <string name="network_metered_description">开启后，应用在计费网络下将优先使用低音质串流</string>

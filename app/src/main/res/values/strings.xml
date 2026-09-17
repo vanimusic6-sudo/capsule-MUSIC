@@ -423,7 +423,6 @@
     <string name="stream_bypass_proxy_desc">Use your direct IP for stream playback to avoid IP mismatch</string>
     <string name="restart_to_take_effect">Restart to take effect</string>
     <string name="enable_betterlyrics">Enable BetterLyrics</string>
-    <string name="enable_simpmusic_lyrics">Enable SimpMusic lyrics</string>
     <string name="player_and_audio">Player and audio</string>
     <string name="audio_quality">Audio quality</string>
     <string name="audio_quality_auto">Auto</string>
@@ -535,7 +534,6 @@
     <string name="disable_screenshot">Disable screenshot</string>
     <string name="disable_screenshot_desc">When this option is on, screenshots and the app\'s view in Recents are disabled.</string>
     <string name="enable_lrclib">Enable LrcLib lyrics provider</string>
-    <string name="enable_kugou">Enable KuGou lyrics provider</string>
     <string name="preload_queue_lyrics">Preload queue lyrics</string>
     <string name="queue_lyrics_preload_count">Number of songs to preload</string>
     <string name="hide_explicit">Hide explicit content</string>
@@ -872,4 +870,16 @@ Velune will only extract your token, and everything else is stored locally.</str
     <string name="welcome_follow_count">Follow %1$d</string>
     <string name="widget_bar_name">Capsule</string>
     <string name="widget_bar_description">What is playing, with previous, play and next.</string>
+    <string name="lyrics_provider_priority_title">Lyrics provider order</string>
+    <string name="lyrics_provider_priority_summary">%1$d sources, tried in your order</string>
+    <string name="lyrics_provider_priority_description">Drag to rank them. Each is tried in turn until one returns lyrics, so the order decides both which source wins and what happens when it has nothing.</string>
+    <string name="lyrics_provider_youtube_subtitle">YouTube subtitles</string>
+    <string name="lyrics_provider_youtube">YouTube</string>
+    <string name="lyrics_provider_lrclib_description">Community timed lyrics. Synced most of the time.</string>
+    <string name="lyrics_provider_betterlyrics_description">Aggregator, often word by word.</string>
+    <string name="lyrics_provider_youtube_subtitle_description">Closed captions from the video. Timed, but not always the lyrics.</string>
+    <string name="lyrics_provider_youtube_description">Whatever the track description carries. Plain text.</string>
+    <string name="lyrics_sync_offset">Sync offset</string>
+    <string name="lyrics_sync_offset_value">%1$+.1f s</string>
+    <string name="lyrics_sync_offset_hint">Ahead of the music? Lower it. Behind? Raise it.</string>
 </resources>

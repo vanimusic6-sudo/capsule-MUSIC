@@ -376,7 +376,6 @@
     <string name="proxy_url">URL de proxy</string>
     <string name="restart_to_take_effect">Reinicia para que tome efecto</string>
     <string name="enable_betterlyrics">Activar BetterLyrics</string>
-    <string name="enable_simpmusic_lyrics">Activar letras de SimpMusic</string>
     <string name="player_and_audio">Reproductor y audio</string>
     <string name="audio_quality">Calidad de audio</string>
     <string name="audio_quality_auto">Automático</string>
@@ -459,7 +458,6 @@
     <string name="disable_screenshot">Desactivar capturas de pantalla</string>
     <string name="disable_screenshot_desc">Cuando esta opción este activa, las capturas de pantalla y la vista en recientes se desactivaran.</string>
     <string name="enable_lrclib">Activar el proveedor de letras LrcLib</string>
-    <string name="enable_kugou">Activar el proveedor de letras KuGou</string>
     <string name="hide_explicit">Ocultar contenido explicito</string>
     <string name="hide_video">Ocultar vídeos musicales</string>
     <string name="backup_restore">Copia de seguridad y restauración</string>

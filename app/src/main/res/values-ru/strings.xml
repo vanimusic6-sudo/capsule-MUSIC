@@ -391,7 +391,6 @@
     <string name="proxy_url">URL прокси</string>
     <string name="restart_to_take_effect">Перезапустите приложение для применения</string>
     <string name="enable_betterlyrics">Включить BetterLyrics</string>
-    <string name="enable_simpmusic_lyrics">Включить SimpMusic lyrics</string>
     <string name="player_and_audio">Плеер и аудио</string>
     <string name="audio_quality">Качество аудио</string>
     <string name="audio_quality_auto">Авто</string>
@@ -491,7 +490,6 @@
     <string name="disable_screenshot">Отключить скриншоты</string>
     <string name="disable_screenshot_desc">При включении, скриншоты и предпросмотр приложения в списке недавних будут отключены.</string>
     <string name="enable_lrclib">Включить провайдера текста песен LrcLib</string>
-    <string name="enable_kugou">Включить провайдера текста песен KuGou</string>
     <string name="hide_explicit">Скрывать нецензурный контент</string>
     <string name="hide_video">Скрывать музыкальные клипы</string>
     <string name="backup_restore">Резервное копирование и восстановление</string>
@@ -811,4 +809,16 @@
     <string name="welcome_follow_count">Подписаться на %1$d</string>
     <string name="widget_bar_name">Capsule</string>
     <string name="widget_bar_description">Что играет, с кнопками назад, пуск и вперёд.</string>
+    <string name="lyrics_provider_priority_title">Порядок источников текста</string>
+    <string name="lyrics_provider_priority_summary">Источников: %1$d, в вашем порядке</string>
+    <string name="lyrics_provider_priority_description">Перетащите, чтобы расставить. Источники опрашиваются по очереди, пока один не вернёт текст — порядок решает и кто главный, и что будет, когда у него ничего нет.</string>
+    <string name="lyrics_provider_youtube_subtitle">Субтитры YouTube</string>
+    <string name="lyrics_provider_youtube">YouTube</string>
+    <string name="lyrics_provider_lrclib_description">Тексты сообщества с таймингом. Чаще всего синхронные.</string>
+    <string name="lyrics_provider_betterlyrics_description">Агрегатор, нередко по словам.</string>
+    <string name="lyrics_provider_youtube_subtitle_description">Субтитры видео. С таймингом, но не всегда это текст песни.</string>
+    <string name="lyrics_provider_youtube_description">То, что лежит в описании трека. Без тайминга.</string>
+    <string name="lyrics_sync_offset">Сдвиг синхронизации</string>
+    <string name="lyrics_sync_offset_value">%1$+.1f с</string>
+    <string name="lyrics_sync_offset_hint">Текст спешит — уменьшите. Отстаёт — увеличьте.</string>
 </resources>

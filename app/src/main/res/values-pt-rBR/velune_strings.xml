@@ -143,7 +143,6 @@
     <string name="open_supported_links">Abrir links compatíveis por padrão</string>
     <string name="configure_supported_links">Configurar links suportados</string>
     <string name="intent_supported_links_not_found">Não foi possível encontrar as configurações de links compatíveis. Configure-as manualmente</string>
-    <string name="set_first_lyrics_provider">Provedor de letras preferido</string>
     <string name="audio_quality_max">Máximo (beta)</string>
     <string name="enable_similar_content">Ativar conteúdo semelhante</string>
     <string name="similar_content_desc">Adicionar automaticamente mais músicas semelhantes quando o final da fila for atingido</string>

@@ -145,7 +145,6 @@
     <string name="open_supported_links">Open supported link by default</string>
     <string name="configure_supported_links">Configure supported links</string>
     <string name="intent_supported_links_not_found">Couldn\'t find supported links settings, please configure them manually</string>
-    <string name="set_first_lyrics_provider">Preferred lyrics provider</string>
     <string name="audio_quality_max">Max (beta)</string>
     <string name="enable_similar_content">Enable similar content</string>
     <string name="similar_content_desc">Automatically add more similar songs when the end of the queue is reached</string>

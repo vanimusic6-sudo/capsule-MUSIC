@@ -139,7 +139,6 @@
     <string name="open_supported_links">Buka tautan yang didukung secara default</string>
     <string name="configure_supported_links">Konfigurasikan tautan yang didukung</string>
     <string name="intent_supported_links_not_found">Tidak dapat menemukan setelan tautan yang didukung, harap konfigurasikan secara manual</string>
-    <string name="set_first_lyrics_provider">Penyedia lirik pilihan</string>
     <string name="audio_quality_max">Maks (beta)</string>
     <string name="enable_similar_content">Aktifkan konten serupa</string>
     <string name="similar_content_desc">Secara otomatis menambahkan lebih banyak lagu serupa ketika akhir antrian tercapai</string>

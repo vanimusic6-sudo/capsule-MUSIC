@@ -119,7 +119,6 @@
     <string name="open_supported_links">デフォルトでサポートされているリンクを開く</string>
     <string name="configure_supported_links">サポートされているリンクを構成する</string>
     <string name="intent_supported_links_not_found">サポートされているリンク設定が見つかりませんでした。手動で設定してください</string>
-    <string name="set_first_lyrics_provider">優先歌詞プロバイダー</string>
     <string name="audio_quality_max">マックス（ベータ版）</string>
     <string name="enable_similar_content">同様のコンテンツを有効にする</string>
     <string name="similar_content_desc">キューの終わりに達すると、類似した曲を自動的に追加します</string>

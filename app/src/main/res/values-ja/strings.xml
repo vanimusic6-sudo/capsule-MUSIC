@@ -432,7 +432,6 @@
     <string name="disable_screenshot">スクリーンショットを無効にする</string>
     <string name="disable_screenshot_desc">このオプションがオンの場合、スクリーンショットと最近のアプリ画面でのアプリの表示が無効になります。</string>
     <string name="enable_lrclib">LrcLib 歌詞プロバイダーを有効にする</string>
-    <string name="enable_kugou">KuGou 歌詞プロバイダーを有効にする</string>
     <string name="hide_explicit">露骨なコンテンツを非表示にする</string>
     <string name="backup_restore">バックアップと復元</string>
     <string name="action_backup">バックアップ</string>
@@ -583,7 +582,6 @@
     <string name="added_n_songs_to_n_playlists">%1$d 曲を %2$d 個のプレイリストに追加しました</string>
     <string name="use_system_font">システムフォントを使用する</string>
     <string name="use_system_font_desc">アプリフォントの代わりにデバイスフォントを使用する</string>
-    <string name="enable_simpmusic_lyrics">SimpMusicの歌詞を有効にする</string>
     <string name="permanent_shuffle">恒久的なシャッフルモード</string>
     <string name="permanent_shuffle_desc">新しい曲を再生する際にシャッフルを有効にしたままにする</string>
     <string name="eq_waiting_for_audio_session">オーディオセッションを待機中…</string>

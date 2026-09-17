@@ -384,7 +384,6 @@
     <string name="proxy_url">Proxy URL\'si</string>
     <string name="restart_to_take_effect">Etkili olması için yeniden başlatın</string>
     <string name="enable_betterlyrics">BetterLyrics\'i etkinleştir</string>
-    <string name="enable_simpmusic_lyrics">SimpMusic şarkı sözlerini etkinleştir</string>
     <string name="player_and_audio">Oynatıcı ve ses</string>
     <string name="audio_quality">Ses kalitesi</string>
     <string name="audio_quality_auto">Otomatik</string>
@@ -461,7 +460,6 @@
     <string name="disable_screenshot">Ekran görüntüsünü devre dışı bırak</string>
     <string name="disable_screenshot_desc">Bu seçenek açıkken ekran görüntüleri ve uygulamanın Son Kullanılanlar\'daki görünümü devre dışı bırakılır.</string>
     <string name="enable_lrclib">LrcLib şarkı sözü sağlayıcısını etkinleştir</string>
-    <string name="enable_kugou">KuGou şarkı sözü sağlayıcısını etkinleştir</string>
     <string name="hide_explicit">Uygunsuz içeriği gizle</string>
     <string name="hide_video">Müzik videolarını gizle</string>
     <string name="backup_restore">Yedekleme ve geri yükleme</string>

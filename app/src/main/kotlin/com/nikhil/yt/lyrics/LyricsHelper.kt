@@ -12,10 +12,10 @@ import android.content.Context
 import android.util.Log
 import android.util.LruCache
 import com.nikhil.yt.utils.GlobalLog
-import com.nikhil.yt.constants.PreferredLyricsProvider
+import com.nikhil.yt.constants.LyricsProviderOrder
+import com.nikhil.yt.constants.LyricsProviderOrderKey
 import com.nikhil.yt.constants.PreferredLyricsProviderKey
 import com.nikhil.yt.db.entities.LyricsEntity.Companion.LYRICS_NOT_FOUND
-import com.nikhil.yt.extensions.toEnum
 import com.nikhil.yt.models.MediaMetadata
 import com.nikhil.yt.utils.dataStore
 import com.nikhil.yt.utils.reportException
@@ -38,14 +38,13 @@ constructor(
     @ApplicationContext private val context: Context,
     private val networkConnectivity: NetworkConnectivityObserver,
 ) {
-    private val baseProviders =
-        listOf(
-            SimpMusicLyricsProvider,
-            BetterLyricsProvider,
-            LrcLibLyricsProvider,
-            KuGouLyricsProvider,
-            YouTubeSubtitleLyricsProvider,
-            YouTubeLyricsProvider,
+    /** Every provider there is, by its id in [LyricsProviderOrder]. */
+    private val providersById: Map<String, LyricsProvider> =
+        mapOf(
+            LyricsProviderOrder.LRCLIB to LrcLibLyricsProvider,
+            LyricsProviderOrder.BETTER_LYRICS to BetterLyricsProvider,
+            LyricsProviderOrder.YOUTUBE_SUBTITLE to YouTubeSubtitleLyricsProvider,
+            LyricsProviderOrder.YOUTUBE to YouTubeLyricsProvider,
         )
 
     private val cache = LruCache<String, List<LyricsResult>>(MAX_CACHE_SIZE)
@@ -179,21 +178,20 @@ constructor(
         }
     }
 
+    /**
+     * The providers to try, in the order the user put them.
+     *
+     * The old single-choice setting is read as a seed so an upgrade keeps whichever provider
+     * somebody had already chosen as their first, rather than resetting them to the default.
+     * [LyricsProviderOrder.resolve] appends anything missing, so this can never come back short.
+     */
     private suspend fun orderedProviders(): List<LyricsProvider> {
-        val preferred =
-            context.dataStore.data
-                .first()[PreferredLyricsProviderKey]
-                .toEnum(PreferredLyricsProvider.LRCLIB)
-
-        val first =
-            when (preferred) {
-                PreferredLyricsProvider.LRCLIB -> LrcLibLyricsProvider
-                PreferredLyricsProvider.KUGOU -> KuGouLyricsProvider
-                PreferredLyricsProvider.BETTER_LYRICS -> BetterLyricsProvider
-                PreferredLyricsProvider.SIMPMUSIC -> SimpMusicLyricsProvider
-            }
-
-        return listOf(first) + baseProviders.filterNot { provider -> provider == first }
+        val preferences = context.dataStore.data.first()
+        return LyricsProviderOrder
+            .resolve(
+                raw = preferences[LyricsProviderOrderKey],
+                legacyPreferred = preferences[PreferredLyricsProviderKey],
+            ).mapNotNull(providersById::get)
     }
 
     private fun isMeaningfulLyrics(lyrics: String): Boolean {

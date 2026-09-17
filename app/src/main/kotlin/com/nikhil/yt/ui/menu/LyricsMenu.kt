@@ -632,5 +632,11 @@ fun LyricsMenu(
                 modifier = Modifier.padding(horizontal = 4.dp, vertical = 16.dp)
             )
         }
+
+        item {
+            // Position and sync live here because you find out a file is early while it is playing.
+            LyricsTuning()
+            Spacer(Modifier.height(8.dp))
+        }
     }
 }

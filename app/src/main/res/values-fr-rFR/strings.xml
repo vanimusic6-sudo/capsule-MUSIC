@@ -431,7 +431,6 @@
     <string name="stream_bypass_proxy_desc">Utilisez votre adresse IP directe pour la lecture en streaming afin d\'éviter toute incompatibilité d\'adresse IP</string>
     <string name="restart_to_take_effect">Restart to take effect</string>
     <string name="enable_betterlyrics">Enable BetterLyrics</string>
-    <string name="enable_simpmusic_lyrics">Enable SimpMusic lyrics</string>
     <string name="player_and_audio">Lecteur et Audio</string>
     <string name="audio_quality">Audio quality</string>
     <string name="audio_quality_auto">Auto</string>
@@ -514,7 +513,6 @@
     <string name="disable_screenshot">Disable screenshot</string>
     <string name="disable_screenshot_desc">When this option is on, screenshots and the app\'s view in Recents are disabled.</string>
     <string name="enable_lrclib">Enable LrcLib lyrics provider</string>
-    <string name="enable_kugou">Enable KuGou lyrics provider</string>
     <string name="preload_queue_lyrics">Preload queue lyrics</string>
     <string name="queue_lyrics_preload_count">Number of songs to preload</string>
     <string name="hide_explicit">Masquer le contenu explicite</string>

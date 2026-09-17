@@ -92,6 +92,7 @@ import androidx.media3.ui.PlayerView
 import coil3.compose.AsyncImage
 import com.nikhil.yt.R
 import com.nikhil.yt.constants.CapsuleLightLyricLineKey
+import com.nikhil.yt.constants.LyricsSyncOffsetKey
 import com.nikhil.yt.constants.CapsulePlayerDesign
 import com.nikhil.yt.db.entities.LyricsEntity
 import com.nikhil.yt.ui.component.ArtistSelectionItem
@@ -107,6 +108,7 @@ import com.nikhil.yt.playback.video.CapsuleVideoPhase
 import com.nikhil.yt.together.TogetherRole
 import com.nikhil.yt.together.TogetherSessionState
 import com.nikhil.yt.utils.makeTimeString
+import com.nikhil.yt.ui.menu.clampOffset
 import com.nikhil.yt.utils.rememberPreference
 import kotlinx.coroutines.isActive
 import kotlin.math.cos
@@ -249,6 +251,9 @@ fun CapsulePlayerContent(
 
     val syncedLyricLines =
         remember(lyricsEntity) { capsuleLightLyricLines(lyricsEntity?.lyrics) }
+
+    // The same correction the lyrics screen applies: one song, one answer about its timing.
+    val lyricSyncOffsetMs by rememberPreference(LyricsSyncOffsetKey, defaultValue = 0)
 
     /*
      * The line has to ask for the lyrics itself. Fetching used to be the lyrics screen's job, so a
@@ -404,7 +409,11 @@ fun CapsulePlayerContent(
                      * down, so the row recomposes when the line changes, not per tick.
                      */
                     CapsuleLightLyricLine(
-                        line = capsuleLightLyricLineAt(syncedLyricLines, displayPosition),
+                        line =
+                            capsuleLightLyricLineAt(
+                                syncedLyricLines,
+                                displayPosition + clampOffset(lyricSyncOffsetMs),
+                            ),
                         textColor = textColor,
                     )
                 }

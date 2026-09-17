@@ -105,7 +105,6 @@
     <string name="open_supported_links">默认打开支持的链接</string>
     <string name="configure_supported_links">配置支持的链接</string>
     <string name="intent_supported_links_not_found">找不到支持的链接设置，请手动配置</string>
-    <string name="set_first_lyrics_provider">首选歌词提供者</string>
     <string name="enable_similar_content">启用类似内容</string>
     <string name="similar_content_desc">当排队结束时，自动添加更多相似歌曲</string>
     <string name="min_playback_duration_title">最小播放时长</string>
