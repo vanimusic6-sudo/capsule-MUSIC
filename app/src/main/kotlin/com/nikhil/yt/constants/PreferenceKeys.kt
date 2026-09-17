@@ -40,6 +40,11 @@ val EnableBetterLyricsKey = booleanPreferencesKey("enableBetterLyrics")
 val EnableLyricsPlusKey = booleanPreferencesKey("enableLyricsPlus")
 
 /**
+ * On by default: it asks nothing of anybody and answers for tracks the western sources do not have.
+ */
+val EnableNetEaseKey = booleanPreferencesKey("enableNetEase")
+
+/**
  * Off by default, deliberately.
  *
  * Paxsenix relays Apple Music's lyrics, and reaching their catalogue means using the anonymous

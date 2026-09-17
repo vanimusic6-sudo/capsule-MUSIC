@@ -827,4 +827,7 @@
     <string name="enable_paxsenix_description">Тексты Apple Music через публичный ретранслятор. Использует недокументированный эндпоинт, поэтому по умолчанию выключено.</string>
     <string name="lyrics_provider_lyricsplus_description">С пословным таймингом, на зеркалах. Обычно самый подробный.</string>
     <string name="lyrics_provider_paxsenix_description">Apple Music через ретранслятор. Часто есть то, чего нет у остальных.</string>
+    <string name="enable_netease">NetEase Cloud Music</string>
+    <string name="enable_netease_description">Очень большой каталог. Построчный тайминг, и нередко единственный источник, у которого трек вообще есть.</string>
+    <string name="lyrics_provider_netease_description">Огромный каталог, построчный тайминг. Отвечает, когда не отвечает никто.</string>
 </resources>

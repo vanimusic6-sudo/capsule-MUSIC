@@ -45,6 +45,7 @@ constructor(
             LyricsProviderOrder.LYRICS_PLUS to LyricsPlusLyricsProvider,
             LyricsProviderOrder.BETTER_LYRICS to BetterLyricsProvider,
             LyricsProviderOrder.PAXSENIX to PaxsenixLyricsProvider,
+            LyricsProviderOrder.NETEASE to NetEaseLyricsProvider,
             LyricsProviderOrder.YOUTUBE_SUBTITLE to YouTubeSubtitleLyricsProvider,
             LyricsProviderOrder.YOUTUBE to YouTubeLyricsProvider,
         )

@@ -23,6 +23,7 @@ object LyricsProviderOrder {
     const val LYRICS_PLUS = "LYRICS_PLUS"
     const val BETTER_LYRICS = "BETTER_LYRICS"
     const val PAXSENIX = "PAXSENIX"
+    const val NETEASE = "NETEASE"
     const val YOUTUBE_SUBTITLE = "YOUTUBE_SUBTITLE"
     const val YOUTUBE = "YOUTUBE"
 
@@ -39,6 +40,7 @@ object LyricsProviderOrder {
             LYRICS_PLUS,
             BETTER_LYRICS,
             PAXSENIX,
+            NETEASE,
             YOUTUBE_SUBTITLE,
             YOUTUBE,
         )

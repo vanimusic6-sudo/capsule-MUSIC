@@ -77,6 +77,7 @@ fun ContentSettings(
     val (enableBetterLyrics, onEnableBetterLyricsChange) = rememberPreference(key = EnableBetterLyricsKey, defaultValue = true)
     val (enableLyricsPlus, onEnableLyricsPlusChange) = rememberPreference(key = EnableLyricsPlusKey, defaultValue = true)
     val (enablePaxsenix, onEnablePaxsenixChange) = rememberPreference(key = EnablePaxsenixKey, defaultValue = false)
+    val (enableNetEase, onEnableNetEaseChange) = rememberPreference(key = EnableNetEaseKey, defaultValue = true)
     val (rawLyricsProviderOrder, onLyricsProviderOrderChange) =
         rememberPreference(key = LyricsProviderOrderKey, defaultValue = "")
     val (legacyPreferredProvider, _) =
@@ -256,6 +257,13 @@ fun ContentSettings(
             icon = { Icon(painterResource(R.drawable.lyrics), null) },
             checked = enablePaxsenix,
             onCheckedChange = onEnablePaxsenixChange,
+        )
+        SwitchPreference(
+            title = { Text(stringResource(R.string.enable_netease)) },
+            description = stringResource(R.string.enable_netease_description),
+            icon = { Icon(painterResource(R.drawable.lyrics), null) },
+            checked = enableNetEase,
+            onCheckedChange = onEnableNetEaseChange,
         )
         PreferenceEntry(
             title = { Text(stringResource(R.string.lyrics_provider_priority_title)) },
