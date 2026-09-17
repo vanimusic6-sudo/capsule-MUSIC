@@ -4,6 +4,7 @@ import com.metrolist.innertubex.extraction.ContentHints
 import com.metrolist.innertubex.extraction.strategy.ClientSelectionRequest
 import com.metrolist.innertubex.extraction.strategy.ContentAwareFallbackStrategy
 import com.metrolist.innertubex.extraction.strategy.PoTokenProviderKind
+import com.metrolist.innertubex.extraction.strategy.AuthenticationPolicy
 import com.metrolist.innertubex.extraction.strategy.PoTokenRequirement
 import com.nikhil.yt.constants.AudioStreamPolicy
 import org.junit.Assert.assertEquals
@@ -70,6 +71,49 @@ class CapsuleAudioClientStrategyTest {
      * no token anywhere and play. WEB_REMIX is the only mismatch and the only failure.
      */
     @Test
+    fun aTokenUsingClientAsksAsWhoeverTheTokenWasMintedFor() {
+        val candidate =
+            CapsuleAudioClientStrategy
+                .selectClients(request(AudioStreamPolicy.WEB.normalizedForPlayback()))
+                .candidates
+                .single()
+        val manifest = requireNotNull(candidate.manifest)
+
+        // The token is minted against the anonymous visitor session, so the request that uses it
+        // must be anonymous too. TVHTML5_SIMPLY needs a token and is exactly this shape, and plays;
+        // WEB_REMIX needed a token, signed its request as the account, and got 403 every time.
+        assertEquals(AuthenticationPolicy.UNSUPPORTED, manifest.authentication)
+        assertEquals("no cookies may go with it", false, manifest.request.cookies)
+        assertEquals("and no login either", false, candidate.client.loginSupported)
+        assertEquals(false, candidate.client.loginRequired)
+    }
+
+    /** A client that needs no token keeps whatever identity its manifest describes. */
+    @Test
+    fun aClientThatNeedsNoTokenKeepsItsOwnIdentity() {
+        listOf(AudioStreamPolicy.VISIONOS, AudioStreamPolicy.WEB_EMBEDDED).forEach { policy ->
+            val fromLibrary =
+                ContentAwareFallbackStrategy()
+                    .selectClients(request(policy.normalizedForPlayback()))
+                    .candidates
+                    .single { it.manifest?.id == policy.playbackClientOverrideId }
+            val ours =
+                CapsuleAudioClientStrategy
+                    .selectClients(request(policy.normalizedForPlayback()))
+                    .candidates
+                    .single()
+
+            assertEquals(
+                "$policy must be left exactly as the catalogue describes it",
+                requireNotNull(fromLibrary.manifest).authentication,
+                requireNotNull(ours.manifest).authentication,
+            )
+            assertEquals(fromLibrary.manifest!!.request.cookies, ours.manifest!!.request.cookies)
+            assertEquals(fromLibrary.client.loginSupported, ours.client.loginSupported)
+        }
+    }
+
+    @Test
     fun theWebRemixPlayerRequestNowCarriesItsPoToken() {
         val candidate =
             CapsuleAudioClientStrategy
@@ -99,7 +143,7 @@ class CapsuleAudioClientStrategyTest {
     }
 
     /**
-     * A client that never wanted a token is left exactly as its manifest describes it.
+     * A client that never wanted a token is not given one.
      *
      * Adding one where the catalogue says none is needed would be inventing a requirement, and a
      * client that cannot satisfy an invented requirement is a client that stops being usable.
