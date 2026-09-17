@@ -13,7 +13,6 @@ import com.nikhil.yt.db.entities.ArtistEntity
 import com.nikhil.yt.innertube.YouTube
 import com.nikhil.yt.innertube.models.ArtistItem
 import dagger.hilt.android.lifecycle.HiltViewModel
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -21,7 +20,6 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import javax.inject.Inject
 
 /**
@@ -56,8 +54,18 @@ class WelcomeViewModel
         private val _loading = MutableStateFlow(true)
         val loading = _loading.asStateFlow()
 
-        /** Ids the user has picked. Held here so it survives the keyboard and rotation. */
-        private val _selected = MutableStateFlow<Set<String>>(emptySet())
+        /**
+         * The artists picked, kept whole rather than as ids.
+         *
+         * Ids were the bug. The grid is replaced by every search, so an artist picked before the
+         * next search was no longer in it — and subscribing worked by filtering the *current* grid
+         * by the picked ids, which quietly threw away everyone found by an earlier query. Search a
+         * name, tap, search the next name, tap, and only the last one was ever subscribed.
+         *
+         * Keeping the item means a pick is complete the moment it is made and does not depend on
+         * anything still being on screen.
+         */
+        private val _selected = MutableStateFlow<Map<String, ArtistItem>>(emptyMap())
         val selected = _selected.asStateFlow()
 
         private var searchJob: Job? = null
@@ -66,9 +74,11 @@ class WelcomeViewModel
             search("")
         }
 
-        fun toggle(id: String) {
+        fun toggle(artist: ArtistItem) {
             _selected.value =
-                _selected.value.let { if (id in it) it - id else it + id }
+                _selected.value.let {
+                    if (artist.id in it) it - artist.id else it + (artist.id to artist)
+                }
         }
 
         /** Replaces the grid with matches for [query], or the suggestions when it is blank. */
@@ -94,13 +104,20 @@ class WelcomeViewModel
          * signed in.
          */
         suspend fun subscribeToSelection() {
-            val picked = _selected.value
-            if (picked.isEmpty()) return
-            val chosen = _artists.value.filter { it.id in picked }
-            withContext(Dispatchers.IO) {
+            val chosen = _selected.value.values.toList()
+            if (chosen.isEmpty()) return
+            /*
+             * One awaited transaction, not a fan-out of fire-and-forget ones.
+             *
+             * setArtistSubscribed posts its work to Room's transaction executor and returns, which
+             * is fine on a screen that stays open — but this screen closes the instant it returns,
+             * so the writes were racing the teardown of the thing that ordered them. withTransaction
+             * suspends until they are actually committed, and does all of them at once.
+             */
+            database.withTransaction {
                 chosen.forEach { item ->
                     runCatching {
-                        database.setArtistSubscribed(
+                        setArtistBookmarked(
                             ArtistEntity(
                                 id = item.id,
                                 name = item.title,
@@ -108,7 +125,7 @@ class WelcomeViewModel
                                 channelId = item.channelId,
                             ),
                             true,
-                        )
+                        )?.syncSubscription()
                     }
                 }
             }

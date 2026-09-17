@@ -212,7 +212,7 @@ private fun WelcomeArtistsPage(
                 WelcomeArtist(
                     artist = artist,
                     selected = artist.id in selected,
-                    onClick = { viewModel.toggle(artist.id) },
+                    onClick = { viewModel.toggle(artist) },
                 )
             }
         }

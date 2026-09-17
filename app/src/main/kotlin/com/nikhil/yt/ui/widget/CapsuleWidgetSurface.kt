@@ -79,5 +79,11 @@ const val CAPSULE_WIDGET_INK: Int = 0xFFF2F3F5.toInt()
 /** The unplayed part of the progress line. */
 const val CAPSULE_WIDGET_INK_DIM: Int = 0x59F2F3F5
 
-/** The comet while playback is stopped: grey, and half there. */
-const val CAPSULE_WIDGET_COMET_PAUSED: Int = 0x7A9AA0A8
+/**
+ * The comet while playback is stopped: plainly grey, and well under half there.
+ *
+ * It has one job — to be unmistakably the off state at a glance, from across a home screen full of
+ * other icons. The first attempt kept most of the ink's brightness at half opacity and read as
+ * "slightly dimmer", which is not a state anyone notices.
+ */
+const val CAPSULE_WIDGET_COMET_PAUSED: Int = 0x4D8A8F96

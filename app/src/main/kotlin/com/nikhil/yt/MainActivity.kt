@@ -474,7 +474,23 @@ class MainActivity : ComponentActivity() {
                     }
                 }
 
-            LaunchedEffect(Unit) {
+            /*
+             * False only on a genuinely first launch: DataStore starts empty on a clean install,
+             * so a reinstall shows the welcome flow and nothing else does.
+             */
+            val (onboardingCompleted, onOnboardingCompletedChange) =
+                rememberPreference(OnboardingCompletedKey, defaultValue = false)
+
+            /*
+             * The notification prompt waits for the welcome flow.
+             *
+             * It used to fire on the first frame of the first launch, which put a system dialog on
+             * top of the welcome screen before the app had said a word about itself — the worst
+             * possible moment to ask, and the one most likely to get a no. Keying the effect on the
+             * flag means it runs when the flow finishes, and immediately on every later launch.
+             */
+            LaunchedEffect(onboardingCompleted) {
+                if (!onboardingCompleted) return@LaunchedEffect
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
                     ContextCompat.checkSelfPermission(
                         this@MainActivity,
@@ -1098,13 +1114,6 @@ class MainActivity : ComponentActivity() {
                             else -> null
                         }
                     }
-
-                    /*
-                     * False only on a genuinely first launch: DataStore starts empty on a clean
-                     * install, so a reinstall shows the flow and nothing else does.
-                     */
-                    val (onboardingCompleted, onOnboardingCompletedChange) =
-                        rememberPreference(OnboardingCompletedKey, defaultValue = false)
 
                     CompositionLocalProvider(
                         LocalDatabase provides database,

@@ -38,14 +38,20 @@ internal enum class DestinationMotion {
     /**
      * Going into something: an artist, an album, a playlist.
      *
-     * No entrance at all, and that is the whole of it. This one had a scale, which resampled every
-     * edge in the frame and left the artist header's bottom edge crawling; it was moved to a
-     * translation, and the edge still came apart. Two different transforms producing the same
-     * artefact on the same screen says the fault is not in the choice of transform — it is that
-     * these screens are being drawn into a layer they do not otherwise have. So they are not.
+     * A short fade, and nothing else — no travel, no scale.
      *
-     * The screens under this character are the heavy ones: full-bleed artwork, gradients, fades
-     * that are sized to the frame. They arrive as a cut, which costs nothing and cannot glitch.
+     * This one had a scale, which resampled every edge in the frame and left the artist header's
+     * bottom edge crawling. It was moved to a translation and the edge still came apart, so for a
+     * while it had no entrance at all, which is honest but lands as a hard cut.
+     *
+     * What both broken versions had in common was that they moved geometry, and these are the
+     * screens that fill the frame with artwork, gradients and frame-sized fades — the ones with
+     * high-contrast edges for a moving layer to tear against. A fade moves nothing: every edge is
+     * exactly where it lands, for every frame of the animation, so there is nothing to come apart.
+     *
+     * It is the one entrance here that costs an offscreen buffer, because an alpha below 1 has to
+     * be composited through one. That is accepted knowingly and kept small: a fifth of a second,
+     * starting over half visible, once, when a screen opens.
      */
     Detail,
 
@@ -96,6 +102,13 @@ internal data class DestinationMotionSpec(
     /** Distance the content travels in from the trailing edge. Zero for motion that does not. */
     val shift: Dp = 0.dp,
     /**
+     * How faint the content starts, as a fraction. 0f means fully opaque throughout.
+     *
+     * The one thing here that is not a transform, and the only motion the detail screens can have —
+     * see below.
+     */
+    val fade: Float = 0f,
+    /**
      * Size the content resolves down from. 0f keeps it at its true size throughout.
      *
      * Only the settings boundary uses it, and only because those pages are plain — see below.
@@ -118,8 +131,9 @@ internal data class DestinationMotionSpec(
  *
  * The detail screens were first moved to a rise, and their bottom edge came apart under that too. A
  * defect that survives the transform being swapped is not a defect of the transform: what both
- * versions shared was the layer, and those are the screens that fill it with full-bleed artwork,
- * gradients and frame-sized fades. So they get no layer at all now, and arrive as a cut.
+ * versions shared was that they moved geometry, on the screens that fill the frame with artwork,
+ * gradients and frame-sized fades. So those screens do not move at all now — they fade, which is
+ * the only entrance that leaves every edge exactly where it lands.
  *
  * The settings boundary is the opposite case and keeps its scale. Those pages are flat lists on a
  * flat background — no artwork, no gradients, nothing with a high-contrast internal edge for the
@@ -149,6 +163,20 @@ private val TabSpec =
         durationMillis = 380,
         easing = CubicBezierEasing(0.2f, 0.05f, 0.35f, 1f),
         lift = 16.dp,
+    )
+
+/*
+ * The detail screens: brief, shallow, and the only thing here that fades.
+ *
+ * Short because it is meant to take the edge off a cut, not to be an event, and shallow because
+ * starting from nothing would make the screen flash rather than arrive. Half a fade over a fifth of
+ * a second is enough for the eye to register that something opened.
+ */
+private val DetailSpec =
+    DestinationMotionSpec(
+        durationMillis = 200,
+        easing = CubicBezierEasing(0.42f, 0f, 0.28f, 1f),
+        fade = 0.45f,
     )
 
 /*
@@ -228,11 +256,11 @@ internal fun destinationMotionFor(route: String?, from: String? = null): Destina
 private fun String.isInSettings(): Boolean =
     this == "settings" || startsWith("settings/")
 
-/** Null means the destination simply appears: no layer, no animation, nothing to go wrong. */
+/** Null would mean a destination simply appears; nothing uses that now. */
 internal fun DestinationMotion.spec(): DestinationMotionSpec? =
     when (this) {
         DestinationMotion.Tab -> TabSpec
-        DestinationMotion.Detail -> null
+        DestinationMotion.Detail -> DetailSpec
         DestinationMotion.Settings -> SettingsSpec
         DestinationMotion.Section -> SectionSpec
     }
@@ -303,6 +331,9 @@ internal fun Modifier.destinationEntrance(
 
         translationX = remaining * shiftPx
         translationY = remaining * liftPx
+        if (spec.fade != 0f) {
+            alpha = (1f - spec.fade * remaining).coerceIn(0f, 1f)
+        }
         if (spec.overscale != 0f) {
             scaleX = 1f + spec.overscale * remaining
             scaleY = 1f + spec.overscale * remaining

@@ -97,7 +97,8 @@ private class WidgetState(prefs: Preferences) {
     val inkDim = ColorProvider(ComposeColor(CAPSULE_WIDGET_INK_DIM))
 
     /**
-     * The comet is solid white while something is playing, and grey and half there while it is not.
+     * The comet is solid white while something is playing, and plainly grey and mostly faded out
+     * while it is not.
      *
      * That is the whole of its animation, on purpose. A widget cannot move without waking the
      * launcher to redraw it, and a mark turning forever on someone's home screen is a cost with no
@@ -210,7 +211,7 @@ private fun Transport(state: WidgetState) {
 private fun ProgressLine(state: WidgetState) {
     val playedSteps = (state.progress * SEEK_STEPS).toInt().coerceIn(0, SEEK_STEPS)
     Row(
-        modifier = GlanceModifier.fillMaxWidth().height(18.dp),
+        modifier = GlanceModifier.fillMaxWidth().height(14.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         repeat(SEEK_STEPS) { step ->
@@ -218,7 +219,7 @@ private fun ProgressLine(state: WidgetState) {
                 modifier =
                     GlanceModifier
                         .defaultWeight()
-                        .height(18.dp)
+                        .height(14.dp)
                         // Mid-segment, so a tap lands on what it looks like it points at.
                         .clickable(seekAction((step + 0.5f) / SEEK_STEPS)),
                 contentAlignment = Alignment.Center,
@@ -292,9 +293,10 @@ class CapsuleBarWidget : GlanceAppWidget() {
                         .appWidgetBackground()
                         .cornerRadius(26.dp)
                         .background(state.panel)
-                        // Tight top and bottom: the panel is the frame, and the launcher already
-                        // puts its own margin around it.
-                        .padding(horizontal = 14.dp, vertical = 6.dp),
+                        // The panel is the frame, and the launcher already puts its own margin
+                        // around it, so the vertical padding here is nearly nothing: the artwork
+                        // and the progress line set the height between them.
+                        .padding(horizontal = 14.dp, vertical = 2.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 NowPlaying(state)

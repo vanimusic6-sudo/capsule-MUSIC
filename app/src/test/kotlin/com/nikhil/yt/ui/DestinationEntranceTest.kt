@@ -21,7 +21,6 @@ import com.nikhil.yt.ui.screens.routeComposable
 import com.nikhil.yt.ui.screens.spec
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
-import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Rule
@@ -79,13 +78,15 @@ class DestinationEntranceTest {
     }
 
     /**
-     * Opening an artist, an album or a playlist plays nothing at all.
+     * Opening an artist, an album or a playlist fades, and does not move.
      *
      * These screens carry full-bleed artwork, gradients and frame-sized fades, and their bottom
      * edge came apart under a scale and again under a translation. A defect that survives the
-     * transform being swapped is not a defect of the transform, so the layer itself is gone.
+     * transform being swapped is not a defect of the transform: it is that geometry moved at all.
+     * A fade leaves every edge exactly where it lands, which is why it is the only entrance these
+     * screens are allowed.
      */
-    @Test fun anythingTheUserOpenedArrivesWithoutAnEntrance() {
+    @Test fun anythingTheUserOpenedArrivesWithAFadeAndNothingElse() {
         listOf("artist/abc", "album/xyz", "search/q", null).forEach { route ->
             assertEquals(
                 "$route should be an opened screen",
@@ -93,9 +94,14 @@ class DestinationEntranceTest {
                 destinationMotionFor(route),
             )
         }
-        assertNull(
-            "opening a detail screen must not create a layer at all",
-            DestinationMotion.Detail.spec(),
+        val detail = requireNotNull(DestinationMotion.Detail.spec())
+        assertTrue("a detail screen must fade", detail.fade > 0f)
+        assertEquals("and must not travel", 0f, detail.lift.value, 0f)
+        assertEquals("nor slide", 0f, detail.shift.value, 0f)
+        assertEquals("nor scale", 0f, detail.overscale, 0f)
+        assertTrue(
+            "a fade from nothing is a flash, not an arrival: it starts at ${1f - detail.fade}",
+            detail.fade <= 0.6f,
         )
     }
 
@@ -170,15 +176,24 @@ class DestinationEntranceTest {
      * This is pinned rather than assumed because it is invisible when it regresses: an entrance that
      * quietly starts carrying an alpha looks identical and costs a buffer per screen per frame.
      */
-    @Test fun noEntranceCarriesAnythingThatNeedsAnOffscreenBuffer() {
+    @Test fun onlyTheDetailScreensPayForAnOffscreenBuffer() {
         DestinationMotion.entries.forEach { motion ->
             val spec = motion.spec() ?: return@forEach
-            // Transform-only is the contract. Anything that dims, veils or filters the content
-            // belongs to the content, not to the entrance.
             assertTrue(
-                "$motion moves nothing, so it is a layer created for no reason",
-                spec.lift.value > 0f || spec.shift.value > 0f || spec.overscale > 0f,
+                "$motion does nothing, so it is a layer created for no reason",
+                spec.lift.value > 0f || spec.shift.value > 0f || spec.overscale > 0f ||
+                    spec.fade > 0f,
             )
+            /*
+             * An alpha below 1 has to be composited through an offscreen buffer the size of the
+             * screen, where a transform is a matrix applied while drawing. The detail screens pay
+             * that knowingly, because they are the ones a moving layer tears; nothing else may
+             * start paying it quietly, which is invisible when it regresses — an entrance that
+             * gains an alpha looks identical and costs a buffer per screen per frame.
+             */
+            if (motion != DestinationMotion.Detail) {
+                assertEquals("$motion must not fade", 0f, spec.fade, 0f)
+            }
         }
     }
 
@@ -210,6 +225,7 @@ class DestinationEntranceTest {
             assertTrue("$motion travels too far", spec.lift.value <= 32f)
             assertTrue("$motion slides too far", spec.shift.value <= 40f)
             assertTrue("$motion scales too much", spec.overscale <= 0.06f)
+            assertTrue("$motion fades too deeply", spec.fade <= 0.6f)
         }
     }
 
@@ -271,18 +287,16 @@ class DestinationEntranceTest {
     @Test fun onlyTheSettingsBoundaryScales() {
         DestinationMotion.entries.forEach { motion ->
             val spec = motion.spec()
-            when (motion) {
-                DestinationMotion.Section ->
-                    assertTrue("the settings boundary must keep its scale", spec!!.overscale > 0f)
-                DestinationMotion.Detail ->
-                    assertNull("a detail screen must not get a layer at all", spec)
-                else ->
-                    assertEquals(
-                        "$motion must not scale: its screens can carry artwork",
-                        0f,
-                        spec!!.overscale,
-                        0f,
-                    )
+            requireNotNull(spec)
+            if (motion == DestinationMotion.Section) {
+                assertTrue("the settings boundary must keep its scale", spec.overscale > 0f)
+            } else {
+                assertEquals(
+                    "$motion must not scale: its screens can carry artwork",
+                    0f,
+                    spec.overscale,
+                    0f,
+                )
             }
         }
     }
