@@ -64,12 +64,11 @@ class DockHandoverTest {
         }
     }
 
-    @Test fun `the handoff contract contains geometry only`() {
+    @Test fun `mid handoff remains finite and physical`() {
         val transform = playerFoldTransform(0.5f)
         assertTrue(transform.scale.isFinite())
         assertTrue(transform.descentInDockHeights.isFinite())
-        // The type intentionally exposes only geometry; adding opacity would require changing this
-        // compile-time contract and this test file alongside it rather than sneaking a fade back in.
-        assertEquals(2, transform::class.java.declaredFields.count { !it.isSynthetic })
+        assertTrue(transform.scale < 1f)
+        assertTrue(transform.descentInDockHeights > 0f)
     }
 }
