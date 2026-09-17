@@ -50,7 +50,7 @@ internal object CapsuleAudioFallbackPolicy {
                 .filter { profileEligible(it, authenticated, isUploaded) }
         }
 
-        val ordered =
+        val baseOrder =
             if (configured.isNotEmpty()) {
                 configured
             } else {
@@ -68,6 +68,8 @@ internal object CapsuleAudioFallbackPolicy {
                     add(TVHTML5_SIMPLY)
                 }
             }
+
+        val ordered = preferAuthenticatedWebFallback(baseOrder, authenticated)
 
         val eligible =
             ordered
@@ -88,6 +90,29 @@ internal object CapsuleAudioFallbackPolicy {
         // only maintained authenticated music profile. This preserves restricted/uploaded
         // playback without restoring the old six-client waterfall.
         return eligible.take(MAX_FOREGROUND_ATTEMPTS - 1) + WEB_CREATOR
+    }
+
+    /**
+     * WEB_REMIX and WEB_CREATOR share the authenticated web-music family, but CREATOR keeps
+     * an account-backed player path that can still satisfy login/age gates when REMIX is
+     * temporarily rejected at the GVS layer. Put it immediately after REMIX for signed-in
+     * playback so a 403 never burns the next request on an anonymous identity first.
+     *
+     * Signed-out playback and every order that does not contain WEB_REMIX are left untouched.
+     */
+    private fun preferAuthenticatedWebFallback(
+        order: List<String>,
+        authenticated: Boolean,
+    ): List<String> {
+        if (!authenticated) return order
+        val remixIndex = order.indexOf(WEB_REMIX)
+        val creatorIndex = order.indexOf(WEB_CREATOR)
+        if (remixIndex < 0 || creatorIndex < 0 || creatorIndex == remixIndex + 1) return order
+
+        val withoutCreator = order.toMutableList().apply { removeAt(creatorIndex) }
+        val newRemixIndex = withoutCreator.indexOf(WEB_REMIX)
+        withoutCreator.add(newRemixIndex + 1, WEB_CREATOR)
+        return withoutCreator
     }
 
     fun fallbackDelayMs(kind: YouTubeFailureKind): Long =
