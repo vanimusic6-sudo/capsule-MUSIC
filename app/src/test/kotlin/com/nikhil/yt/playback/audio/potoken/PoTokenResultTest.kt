@@ -5,14 +5,17 @@ import org.junit.Test
 
 class PoTokenResultTest {
     @Test
-    fun botGuardFactoryKeepsPlayerAndGvsTokenScopes() {
+    fun botGuardFactoryMapsInnerTubeXBindingScopes() {
         val result =
             PoTokenResult.fromBotGuard(
                 videoIdPoToken = "video-id-token",
                 visitorDataPoToken = "visitor-data-token",
             )
 
-        assertEquals("video-id-token", result.playerRequestPoToken)
-        assertEquals("visitor-data-token", result.streamingDataPoToken)
+        // InnerTubeX sends VISITOR_DATA-bound proof with /player and VIDEO_ID-bound
+        // proof with the resulting GoogleVideo URL. Reversing these can still yield
+        // streamingData from /player but makes GVS reject the signed URL with 403.
+        assertEquals("visitor-data-token", result.playerRequestPoToken)
+        assertEquals("video-id-token", result.streamingDataPoToken)
     }
 }

@@ -6,17 +6,22 @@ data class PoTokenResult(
 ) {
     companion object {
         /**
-         * BotGuard binds the /player token to the video id, while the GVS /
-         * streaming token is bound to visitorData. Keep that mapping in one
-         * named factory so the two same-typed strings cannot be casually swapped.
+         * BotGuard's two tokens have intentionally non-obvious scopes in InnerTubeX:
+         * the token sent with the /player request is bound to visitor/session data,
+         * while the token appended to the GoogleVideo streaming URL is bound to the
+         * concrete video id. Keep that mapping in one named factory so the two
+         * same-typed strings cannot be casually swapped.
+         *
+         * This mirrors InnerTubeX's PoTokenBinding contract:
+         * VISITOR_DATA -> playerRequestPoToken, VIDEO_ID -> streamingDataPoToken.
          */
         internal fun fromBotGuard(
             videoIdPoToken: String,
             visitorDataPoToken: String,
         ) =
             PoTokenResult(
-                playerRequestPoToken = videoIdPoToken,
-                streamingDataPoToken = visitorDataPoToken,
+                playerRequestPoToken = visitorDataPoToken,
+                streamingDataPoToken = videoIdPoToken,
             )
     }
 }
