@@ -81,7 +81,7 @@ class CapsuleAudioFallbackPolicyTest {
     }
 
     @Test
-    fun authenticatedPlanKeepsCreatorInsideThreeAttemptBudget() {
+    fun authenticatedWebRemixUsesCreatorBeforeAnonymousFallbacks() {
         val plan =
             CapsuleAudioFallbackPolicy.profilePlan(
                 primaryProfileId = "WEB_REMIX",
@@ -100,9 +100,32 @@ class CapsuleAudioFallbackPolicyTest {
             )
 
         assertEquals(
-            listOf("WEB_REMIX", "VISIONOS_0_1", "WEB_CREATOR"),
+            listOf("WEB_REMIX", "WEB_CREATOR", "VISIONOS_0_1"),
             plan,
         )
+    }
+
+    @Test
+    fun signedOutWebRemixDoesNotInjectCreator() {
+        val custom =
+            listOf(
+                "WEB_REMIX",
+                "VISIONOS_0_1",
+                "WEB_EMBEDDED_PLAYER",
+                "WEB_CREATOR",
+            )
+
+        val plan =
+            CapsuleAudioFallbackPolicy.profilePlan(
+                primaryProfileId = "WEB_REMIX",
+                priority = AudioResolvePriority.PLAYBACK,
+                authenticated = false,
+                isUploaded = false,
+                excludedProfiles = emptySet(),
+                preferredProfiles = custom,
+            )
+
+        assertEquals(custom.take(3), plan)
     }
 
     @Test
@@ -231,6 +254,7 @@ class CapsuleAudioFallbackPolicyTest {
         assertTrue(CapsuleAudioFallbackPolicy.canFallbackAfter(YouTubeFailureKind.FORBIDDEN))
         assertTrue(CapsuleAudioFallbackPolicy.canFallbackAfter(YouTubeFailureKind.UNPLAYABLE))
     }
+
     @Test
     fun rejectedPrimaryIsSkippedForOnlyThatTracksFreshResolve() {
         val plan =
@@ -251,5 +275,4 @@ class CapsuleAudioFallbackPolicyTest {
             plan,
         )
     }
-
 }
