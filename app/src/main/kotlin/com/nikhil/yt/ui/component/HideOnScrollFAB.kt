@@ -41,6 +41,7 @@ import androidx.compose.ui.unit.dp
 import com.nikhil.yt.LocalPlayerAwareWindowInsets
 import com.nikhil.yt.ui.utils.isScrollingUp
 import com.nikhil.yt.ui.motion.CapsuleExitEasing
+import com.nikhil.yt.ui.motion.CapsuleShortestVisible
 import com.nikhil.yt.ui.motion.CapsuleEnterEasing
 
 private val ScrollActionEasing = CubicBezierEasing(0.2f, 0f, 0f, 1f)
@@ -87,7 +88,7 @@ internal fun BoxScope.ScrollActionButton(
             slideInVertically(tween(280, easing = ScrollActionEasing)) { it / 6 } +
             scaleIn(tween(280, easing = ScrollActionEasing), initialScale = 0.94f, transformOrigin = TransformOrigin(0.5f, 1f)),
         // Fade away during a small downward drift, before reaching the navigation bar.
-        exit = fadeOut(tween(180, easing = CapsuleExitEasing)) +
+        exit = fadeOut(tween(CapsuleShortestVisible, easing = CapsuleExitEasing)) +
             slideOutVertically(tween(220, easing = ScrollActionEasing)) { it / 6 } +
             scaleOut(tween(220, easing = ScrollActionEasing), targetScale = 0.94f, transformOrigin = TransformOrigin(0.5f, 1f)),
         modifier = Modifier

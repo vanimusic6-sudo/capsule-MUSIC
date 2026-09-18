@@ -3,6 +3,7 @@ package com.nikhil.yt.ui
 import androidx.compose.animation.core.Easing
 import com.nikhil.yt.ui.motion.CapsuleEnterEasing
 import com.nikhil.yt.ui.motion.CapsuleExitEasing
+import com.nikhil.yt.ui.motion.CapsuleShortestVisible
 import com.nikhil.yt.ui.motion.CapsuleStandardEasing
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -85,6 +86,26 @@ class CapsuleEasingTest {
         assertTrue(
             "an entrance must not resolve sooner than an exit",
             remainingAtThreeQuarters(CapsuleEnterEasing) > remainingAtThreeQuarters(CapsuleExitEasing),
+        )
+    }
+
+
+    /**
+     * A floor, because easing cannot fix a transition that is over before it is seen.
+     *
+     * A curve distributes the time it is given; it cannot create any. Below roughly a fifth of a
+     * second the whole movement lands inside two or three frames, and the result is not a quick
+     * animation but a change the eye did not watch happen.
+     */
+    @Test
+    fun theFloorIsLongEnoughToBeSeen() {
+        assertTrue(
+            "$CapsuleShortestVisible ms is too few frames to read as movement",
+            CapsuleShortestVisible >= 180,
+        )
+        assertTrue(
+            "a floor this long stops being a floor and starts being a pace",
+            CapsuleShortestVisible <= 260,
         )
     }
 

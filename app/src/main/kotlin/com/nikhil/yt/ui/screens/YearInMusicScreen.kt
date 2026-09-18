@@ -134,6 +134,7 @@ import kotlin.math.sin
 import kotlin.random.Random
 import com.nikhil.yt.ui.motion.CapsuleStandardEasing
 import com.nikhil.yt.ui.motion.CapsuleExitEasing
+import com.nikhil.yt.ui.motion.CapsuleShortestVisible
 import com.nikhil.yt.ui.motion.CapsuleEnterEasing
 
 private val NeonPink = Color(0xFFFF006E)
@@ -990,7 +991,7 @@ private fun YearInMusicStoryPager(
                     slideOutHorizontally(
                         animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
                         targetOffsetX = { -it * direction }
-                    ) + fadeOut(animationSpec = tween(150, easing = CapsuleExitEasing))
+                    ) + fadeOut(animationSpec = tween(CapsuleShortestVisible, easing = CapsuleExitEasing))
             },
             label = "yearInMusicPage"
         ) { pageIndex ->

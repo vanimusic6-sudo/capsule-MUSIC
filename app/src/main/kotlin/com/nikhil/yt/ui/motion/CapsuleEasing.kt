@@ -38,3 +38,15 @@ val CapsuleExitEasing: Easing = CubicBezierEasing(0.4f, 0f, 0.26f, 1f)
 
 /** A value changing in place: a colour, a size, a corner, a rotation. */
 val CapsuleStandardEasing: Easing = CubicBezierEasing(0.3f, 0f, 0.3f, 1f)
+
+/**
+ * The shortest a visible transition may be.
+ *
+ * Below roughly this, a soft curve stops helping: the whole movement lands inside two or three
+ * frames, and what the eye gets is not a fast animation but a change it did not see happen. That is
+ * the "too quick" complaint, and it is not fixed by easing — a curve can only distribute the time it
+ * is given. Several exits ran at 150-180ms, which is where that starts.
+ *
+ * It is a floor, not a target. Anything with further to travel takes longer.
+ */
+const val CapsuleShortestVisible: Int = 200

@@ -106,6 +106,7 @@ import com.nikhil.yt.ui.component.TextFieldDialog
 import com.nikhil.yt.ui.utils.backToMain
 import com.nikhil.yt.utils.rememberPreference
 import com.nikhil.yt.ui.motion.CapsuleExitEasing
+import com.nikhil.yt.ui.motion.CapsuleShortestVisible
 import com.nikhil.yt.ui.motion.CapsuleEnterEasing
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -907,7 +908,7 @@ private fun HostSectionCard(
         AnimatedVisibility(
             visible = !hostModeOnline,
             enter = fadeIn(tween(200, easing = CapsuleEnterEasing)) + expandVertically(tween(250, easing = CapsuleEnterEasing)),
-            exit = fadeOut(tween(150, easing = CapsuleExitEasing)) + shrinkVertically(tween(200, easing = CapsuleExitEasing)),
+            exit = fadeOut(tween(CapsuleShortestVisible, easing = CapsuleExitEasing)) + shrinkVertically(tween(200, easing = CapsuleExitEasing)),
         ) {
             SettingsItemRow(
                 icon = R.drawable.link,

@@ -115,6 +115,7 @@ import androidx.compose.material3.FilledTonalButton
 import androidx.compose.runtime.collectAsState
 import com.nikhil.yt.ui.motion.CapsuleStandardEasing
 import com.nikhil.yt.ui.motion.CapsuleExitEasing
+import com.nikhil.yt.ui.motion.CapsuleShortestVisible
 import com.nikhil.yt.ui.motion.CapsuleEnterEasing
 
 data class SettingsQuickAction(
@@ -902,7 +903,7 @@ fun SettingsScreen(
         AnimatedVisibility(
             visible = showSearchBar,
             enter = fadeIn(tween(durationMillis = 220, easing = CapsuleEnterEasing)),
-            exit = fadeOut(tween(durationMillis = 160, easing = CapsuleExitEasing)),
+            exit = fadeOut(tween(CapsuleShortestVisible, easing = CapsuleExitEasing)),
         ) {
             TopSearch(
                 query = query,

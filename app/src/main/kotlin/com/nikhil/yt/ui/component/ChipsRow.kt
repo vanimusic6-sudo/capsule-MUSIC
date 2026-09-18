@@ -59,6 +59,7 @@ import androidx.compose.animation.shrinkHorizontally
 import androidx.compose.ui.Alignment
 import com.nikhil.yt.ui.motion.CapsuleEnterEasing
 import com.nikhil.yt.ui.motion.CapsuleExitEasing
+import com.nikhil.yt.ui.motion.CapsuleShortestVisible
 
 @Composable
 fun <E> ChipsRow(
@@ -116,9 +117,9 @@ fun <E> ChipsRow(
                                 ) + fadeIn(tween(220, easing = CapsuleEnterEasing)),
                             exit =
                                 shrinkHorizontally(
-                                    animationSpec = tween(180, easing = CapsuleExitEasing),
+                                    animationSpec = tween(CapsuleShortestVisible, easing = CapsuleExitEasing),
                                     shrinkTowards = Alignment.Start,
-                                ) + fadeOut(tween(180, easing = CapsuleExitEasing)),
+                                ) + fadeOut(tween(CapsuleShortestVisible, easing = CapsuleExitEasing)),
                         ) {
                             Icon(
                                 painter = painterResource(R.drawable.done),

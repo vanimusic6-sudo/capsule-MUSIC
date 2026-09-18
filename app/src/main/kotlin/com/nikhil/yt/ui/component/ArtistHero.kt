@@ -33,6 +33,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.BiasAlignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
@@ -100,7 +101,6 @@ internal fun ArtistHero(
     topSafePadding: Dp = 0.dp,
 ) {
     val loadingLabel = stringResource(R.string.loading)
-    var artworkFailed by remember(thumbnailUrl) { mutableStateOf(thumbnailUrl.isNullOrBlank()) }
 
     // A follow/unfollow tap is a local user intent. Keep that intent visually authoritative for
     // the lifetime of this hero instead of letting a delayed database/server snapshot undo the
@@ -118,19 +118,36 @@ internal fun ArtistHero(
         background = background,
         topSafePadding = topSafePadding,
         artwork = {
-            Box(Modifier.fillMaxSize().background(background), contentAlignment = Alignment.Center) {
-                if (artworkFailed) {
-                    Icon(painterResource(R.drawable.person), null,
-                        Modifier.size(88.dp).testTag("artist-artwork-placeholder"),
-                        tint = StandardChrome.muted.copy(alpha = 0.35f))
-                }
+            /*
+             * No figure stands in for a portrait that has not arrived yet.
+             *
+             * A grey person icon was drawn the instant the hero was composed and replaced a moment
+             * later by the photograph, so it flashed once on every visit to an artist -- an icon
+             * nobody asked for, in the largest and most prominent place on the page. What stands
+             * there now while the photograph loads is a gradient: the hero's own colour, lifted a
+             * little at the top so the space reads as a surface rather than a flat slab. It is also
+             * what remains when there is no photograph at all, which is the same thing said
+             * quietly.
+             */
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .background(background)
+                    .background(
+                        Brush.verticalGradient(
+                            colors =
+                                listOf(
+                                    StandardChrome.muted.copy(alpha = 0.10f),
+                                    Color.Transparent,
+                                ),
+                        ),
+                    ),
+                contentAlignment = Alignment.Center,
+            ) {
                 AsyncImage(
                     model = thumbnailUrl,
                     contentDescription = null,
                     contentScale = ContentScale.Crop,
-                    onLoading = { artworkFailed = false },
-                    onSuccess = { artworkFailed = false },
-                    onError = { artworkFailed = true },
                     alignment = BiasAlignment(horizontalBias = -0.1f, verticalBias = -1f),
                     modifier = Modifier.fillMaxSize(),
                 )
