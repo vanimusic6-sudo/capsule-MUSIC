@@ -12,7 +12,6 @@ import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
@@ -111,6 +110,7 @@ import com.nikhil.yt.utils.rememberPreference
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import com.nikhil.yt.ui.motion.CapsuleStandardEasing
 
 data class ThemePalette(
     val id: String,
@@ -1032,22 +1032,22 @@ private fun ThemePreviewCard(
 ) {
     val animatedPrimary by animateColorAsState(
         targetValue = palette.primary,
-        animationSpec = tween(durationMillis = 500, easing = FastOutSlowInEasing),
+        animationSpec = tween(durationMillis = 500, easing = CapsuleStandardEasing),
         label = "primaryColor"
     )
     val animatedSecondary by animateColorAsState(
         targetValue = palette.secondary,
-        animationSpec = tween(durationMillis = 500, easing = FastOutSlowInEasing),
+        animationSpec = tween(durationMillis = 500, easing = CapsuleStandardEasing),
         label = "secondaryColor"
     )
     val animatedTertiary by animateColorAsState(
         targetValue = palette.tertiary,
-        animationSpec = tween(durationMillis = 500, easing = FastOutSlowInEasing),
+        animationSpec = tween(durationMillis = 500, easing = CapsuleStandardEasing),
         label = "tertiaryColor"
     )
     val animatedNeutral by animateColorAsState(
         targetValue = palette.neutral,
-        animationSpec = tween(durationMillis = 500, easing = FastOutSlowInEasing),
+        animationSpec = tween(durationMillis = 500, easing = CapsuleStandardEasing),
         label = "neutralColor"
     )
     
@@ -1298,13 +1298,13 @@ private fun CarouselDotsIndicator(
             
             val dotSize by animateDpAsState(
                 targetValue = if (isSelected) 8.dp else 4.dp,
-                animationSpec = tween(durationMillis = 200, easing = FastOutSlowInEasing),
+                animationSpec = tween(durationMillis = 200, easing = CapsuleStandardEasing),
                 label = "dotSize"
             )
             
             val dotColor by animateColorAsState(
                 targetValue = if (isSelected) selectedColor else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f),
-                animationSpec = tween(durationMillis = 200),
+                animationSpec = tween(durationMillis = 200, easing = CapsuleStandardEasing),
                 label = "dotColor"
             )
             
@@ -1342,13 +1342,13 @@ private fun PaletteCard(
     
     val borderWidth by animateDpAsState(
         targetValue = if (isSelected) 2.dp else 0.dp,
-        animationSpec = tween(durationMillis = 200),
+        animationSpec = tween(durationMillis = 200, easing = CapsuleStandardEasing),
         label = "borderAnimation"
     )
     
     val animatedBorderColor by animateColorAsState(
         targetValue = if (isSelected) palette.primary else Color.Transparent,
-        animationSpec = tween(durationMillis = 300),
+        animationSpec = tween(durationMillis = 300, easing = CapsuleStandardEasing),
         label = "borderColorAnimation"
     )
     
@@ -1430,22 +1430,22 @@ private fun SelectedPaletteDetails(
 ) {
     val animatedPrimary by animateColorAsState(
         targetValue = palette.primary,
-        animationSpec = tween(durationMillis = 400),
+        animationSpec = tween(durationMillis = 400, easing = CapsuleStandardEasing),
         label = "detailPrimary"
     )
     val animatedSecondary by animateColorAsState(
         targetValue = palette.secondary,
-        animationSpec = tween(durationMillis = 400),
+        animationSpec = tween(durationMillis = 400, easing = CapsuleStandardEasing),
         label = "detailSecondary"
     )
     val animatedTertiary by animateColorAsState(
         targetValue = palette.tertiary,
-        animationSpec = tween(durationMillis = 400),
+        animationSpec = tween(durationMillis = 400, easing = CapsuleStandardEasing),
         label = "detailTertiary"
     )
     val animatedNeutral by animateColorAsState(
         targetValue = palette.neutral,
-        animationSpec = tween(durationMillis = 400),
+        animationSpec = tween(durationMillis = 400, easing = CapsuleStandardEasing),
         label = "detailNeutral"
     )
     

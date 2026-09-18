@@ -31,6 +31,8 @@ import com.nikhil.yt.db.entities.LyricsEntity.Companion.LYRICS_NOT_FOUND
 import com.nikhil.yt.lyrics.LyricsEntry
 import com.nikhil.yt.lyrics.LyricsUtils
 import com.nikhil.yt.utils.reportException
+import com.nikhil.yt.ui.motion.CapsuleEnterEasing
+import com.nikhil.yt.ui.motion.CapsuleExitEasing
 
 /**
  * The height the row always holds: two lines' worth, whether it has two or none.
@@ -122,12 +124,12 @@ internal fun CapsuleLightLyricLine(
     LaunchedEffect(line) {
         val next = line.orEmpty()
         if (next == shown) return@LaunchedEffect
-        if (shown.isNotEmpty()) settled.animateTo(0f, tween(FADE_OUT_MILLIS))
+        if (shown.isNotEmpty()) settled.animateTo(0f, tween(FADE_OUT_MILLIS, easing = CapsuleExitEasing))
         shown = next
         // Nothing to fade in during an instrumental gap: the row is simply empty.
         if (next.isEmpty()) return@LaunchedEffect
         settled.snapTo(0f)
-        settled.animateTo(1f, tween(FADE_IN_MILLIS))
+        settled.animateTo(1f, tween(FADE_IN_MILLIS, easing = CapsuleEnterEasing))
     }
 
     val arrived = settled.value.coerceIn(0f, 1f)

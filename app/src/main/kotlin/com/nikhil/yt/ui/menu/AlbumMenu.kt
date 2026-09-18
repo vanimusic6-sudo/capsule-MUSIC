@@ -83,6 +83,7 @@ import com.nikhil.yt.ui.component.SongListItem
 import com.nikhil.yt.utils.rememberPreference
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import com.nikhil.yt.ui.motion.CapsuleStandardEasing
 
 @SuppressLint("MutableCollectionMutableState")
 @Composable
@@ -138,7 +139,7 @@ fun AlbumMenu(
 
     val rotationAnimation by animateFloatAsState(
         targetValue = refetchIconDegree,
-        animationSpec = tween(durationMillis = 800),
+        animationSpec = tween(durationMillis = 800, easing = CapsuleStandardEasing),
         label = "",
     )
 

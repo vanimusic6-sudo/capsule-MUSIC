@@ -2,7 +2,6 @@ package com.nikhil.yt.ui.component
 
 import android.os.SystemClock
 import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.runtime.Composable
@@ -12,6 +11,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
+import com.nikhil.yt.ui.motion.CapsuleStandardEasing
 
 /**
  * A real geometric morph between the subscribe plus and the subscribed check mark.
@@ -41,7 +41,7 @@ internal fun CapsuleSubscribeIcon(
         } else {
             progress.animateTo(
                 targetValue = target,
-                animationSpec = tween(durationMillis = 280, easing = FastOutSlowInEasing),
+                animationSpec = tween(durationMillis = 280, easing = CapsuleStandardEasing),
             )
         }
     }

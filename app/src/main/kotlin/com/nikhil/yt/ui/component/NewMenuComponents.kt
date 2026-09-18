@@ -43,6 +43,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.nikhil.yt.ui.motion.CapsuleStandardEasing
 
 // Enhanced Action Button - Material 3 Expressive Design
 @Composable
@@ -57,13 +58,13 @@ fun NewActionButton(
 ) {
     val animatedBackground by animateColorAsState(
         targetValue = if (enabled) backgroundColor else backgroundColor.copy(alpha = 0.5f),
-        animationSpec = tween(200),
+        animationSpec = tween(200, easing = CapsuleStandardEasing),
         label = "background"
     )
     
     val animatedContent by animateColorAsState(
         targetValue = if (enabled) contentColor else contentColor.copy(alpha = 0.5f),
-        animationSpec = tween(200),
+        animationSpec = tween(200, easing = CapsuleStandardEasing),
         label = "content"
     )
 
@@ -238,13 +239,13 @@ fun NewIconButton(
 ) {
     val animatedBackground by animateColorAsState(
         targetValue = if (enabled) backgroundColor else backgroundColor.copy(alpha = 0.5f),
-        animationSpec = tween(200),
+        animationSpec = tween(200, easing = CapsuleStandardEasing),
         label = "background"
     )
     
     val animatedContent by animateColorAsState(
         targetValue = if (enabled) contentColor else contentColor.copy(alpha = 0.5f),
-        animationSpec = tween(200),
+        animationSpec = tween(200, easing = CapsuleStandardEasing),
         label = "content"
     )
 

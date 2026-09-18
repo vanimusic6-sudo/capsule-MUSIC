@@ -7,7 +7,6 @@
 package com.nikhil.yt.ui.player
 
 import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
@@ -32,6 +31,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import com.nikhil.yt.ui.motion.CapsuleStandardEasing
 
 private const val ARTWORK_PALETTE_TRANSITION_MS = 1_400
 
@@ -207,7 +207,7 @@ internal fun rememberArtworkGradientColors(
             animationSpec =
                 tween(
                     durationMillis = ARTWORK_PALETTE_TRANSITION_MS,
-                    easing = FastOutSlowInEasing,
+                    easing = CapsuleStandardEasing,
                 ),
             label = "capsuleArtworkPrimary",
         )
@@ -217,7 +217,7 @@ internal fun rememberArtworkGradientColors(
             animationSpec =
                 tween(
                     durationMillis = ARTWORK_PALETTE_TRANSITION_MS,
-                    easing = FastOutSlowInEasing,
+                    easing = CapsuleStandardEasing,
                 ),
             label = "capsuleArtworkSecondary",
         )
@@ -227,7 +227,7 @@ internal fun rememberArtworkGradientColors(
             animationSpec =
                 tween(
                     durationMillis = ARTWORK_PALETTE_TRANSITION_MS,
-                    easing = FastOutSlowInEasing,
+                    easing = CapsuleStandardEasing,
                 ),
             label = "capsuleArtworkTertiary",
         )

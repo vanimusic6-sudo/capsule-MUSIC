@@ -114,6 +114,7 @@ import com.nikhil.yt.ui.component.TextFieldDialog
 import com.nikhil.yt.utils.dataStore
 import com.nikhil.yt.utils.rememberPreference
 import com.nikhil.yt.viewmodels.HomeViewModel
+import com.nikhil.yt.ui.motion.CapsuleStandardEasing
 
 @Composable
 fun AccountSettings(
@@ -395,7 +396,7 @@ private fun AccountCard(
             MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f)
         else
             MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-        animationSpec = tween(300),
+        animationSpec = tween(300, easing = CapsuleStandardEasing),
         label = "cardColor"
     )
 

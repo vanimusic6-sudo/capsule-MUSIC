@@ -27,6 +27,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import com.nikhil.yt.R
 import kotlinx.coroutines.delay
+import com.nikhil.yt.ui.motion.CapsuleStandardEasing
 
 /**
  * Capsule heart with interaction-driven motion.
@@ -69,7 +70,7 @@ internal fun CapsuleFavoriteIcon(
 
         if (userInteractionPending) {
             userInteractionPending = false
-            fill.animateTo(target, tween(260))
+            fill.animateTo(target, tween(260, easing = CapsuleStandardEasing))
         } else {
             fill.snapTo(target)
         }

@@ -115,6 +115,8 @@ import com.nikhil.yt.utils.LogEntry
 import com.nikhil.yt.utils.makeTimeString
 import com.nikhil.yt.utils.rememberPreference
 import kotlin.math.roundToInt
+import com.nikhil.yt.ui.motion.CapsuleStandardEasing
+import com.nikhil.yt.ui.motion.CapsuleEnterEasing
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -785,7 +787,7 @@ private fun EmptyLogPlaceholder() {
 
     AnimatedVisibility(
         visible = visible,
-        enter = fadeIn(animationSpec = tween(durationMillis = 400))
+        enter = fadeIn(animationSpec = tween(durationMillis = 400, easing = CapsuleEnterEasing))
     ) {
         Column(
             modifier = Modifier
@@ -1075,7 +1077,7 @@ private fun NerdStatsSection(playerConnection: com.nikhil.yt.playback.PlayerConn
                 val bufferDuration = ((bufferedPosition - currentPosition) / 1000.0).roundToInt()
                 val bufferProgress by animateFloatAsState(
                     targetValue = bufferPercentage / 100f,
-                    animationSpec = tween(300),
+                    animationSpec = tween(300, easing = CapsuleStandardEasing),
                     label = "buffer"
                 )
 

@@ -106,7 +106,6 @@ import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.animateFloatAsState
@@ -198,6 +197,7 @@ import kotlin.math.pow
 import kotlin.math.abs
 import kotlin.math.exp
 import kotlin.time.Duration.Companion.seconds
+import com.nikhil.yt.ui.motion.CapsuleStandardEasing
 
 
 private val AppleMusicEasing = CubicBezierEasing(0.25f, 0.1f, 0.25f, 1.0f)
@@ -969,7 +969,7 @@ fun Lyrics(
                         targetValue = targetBlur,
                         animationSpec = tween(
                             durationMillis = 300,
-                            easing = FastOutSlowInEasing
+                            easing = CapsuleStandardEasing
                         ),
                         label = "lyricBlur"
                     )
@@ -1770,7 +1770,7 @@ fun Lyrics(
                                     targetValue = 1f,
                                     animationSpec = tween(
                                         durationMillis = 200,
-                                        easing = FastOutSlowInEasing
+                                        easing = CapsuleStandardEasing
                                     )
                                 )
 
@@ -1779,7 +1779,7 @@ fun Lyrics(
                                     targetValue = 1f,
                                     animationSpec = tween(
                                         durationMillis = 1200,
-                                        easing = FastOutSlowInEasing
+                                        easing = CapsuleStandardEasing
                                     )
                                 )
                             }
@@ -2116,16 +2116,16 @@ fun Lyrics(
             AnimatedVisibility(
                 visible = isManualScrolling && scrollLyrics && !isSelectionModeActive,
                 enter = slideInVertically(
-                    animationSpec = tween(durationMillis = 300, easing = FastOutSlowInEasing),
+                    animationSpec = tween(durationMillis = 300, easing = CapsuleStandardEasing),
                     initialOffsetY = { it * 2 }
                 ) + fadeIn(
-                    animationSpec = tween(durationMillis = 300, easing = FastOutSlowInEasing)
+                    animationSpec = tween(durationMillis = 300, easing = CapsuleStandardEasing)
                 ),
                 exit = slideOutVertically(
-                    animationSpec = tween(durationMillis = 200, easing = FastOutSlowInEasing),
+                    animationSpec = tween(durationMillis = 200, easing = CapsuleStandardEasing),
                     targetOffsetY = { it * 2 }
                 ) + fadeOut(
-                    animationSpec = tween(durationMillis = 200, easing = FastOutSlowInEasing)
+                    animationSpec = tween(durationMillis = 200, easing = CapsuleStandardEasing)
                 ),
                 modifier = Modifier
                     .align(Alignment.BottomCenter)

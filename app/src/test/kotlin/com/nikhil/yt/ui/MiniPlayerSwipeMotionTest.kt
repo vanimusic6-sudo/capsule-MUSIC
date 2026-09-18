@@ -34,6 +34,8 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
+import kotlin.math.cos
+import kotlin.math.sin
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35], application = Application::class, qualifiers = "w393dp-h851dp-xhdpi")
@@ -105,5 +107,29 @@ class MiniPlayerSwipeMotionTest {
         compose.waitForIdle()
         assertEquals(0f, offset.value, 0.001f)
         assertEquals(0f, slope(), 0.1f)
+    }
+
+    /**
+     * The swipe lifts a corner clear above the card, which is why the sheet may not clip it.
+     *
+     * The tilt turns the card about its bottom edge, so the top corner on the rising side leaves the
+     * rectangle the card occupies at rest. Docked, that rectangle's top edge *is* the sheet's own
+     * top edge, and the sheet used to clip to it — so this much of the corner was sliced off for the
+     * whole gesture. The number is what makes it not a matter of taste: on an ordinary phone it is
+     * several device-independent pixels of a rounded corner simply missing.
+     */
+    @Test
+    fun theTiltRaisesACornerAboveTheCardsOwnTopEdge() {
+        val widthPx = 1080f
+        val heightPx = 190f
+        val radians = Math.toRadians(MiniPlayerMaxSwipeTilt.toDouble())
+
+        // The rising top corner, measured up from where the card's top edge sits at rest.
+        val rise = (widthPx / 2f) * sin(radians) - heightPx * (1f - cos(radians))
+
+        assertTrue(
+            "the tilt stays inside the card, so nothing could have been clipped: $rise",
+            rise > 8f,
+        )
     }
 }

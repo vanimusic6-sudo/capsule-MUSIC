@@ -37,6 +37,8 @@ import com.nikhil.yt.constants.ThumbnailCornerRadius
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlin.random.Random
+import com.nikhil.yt.ui.motion.CapsuleExitEasing
+import com.nikhil.yt.ui.motion.CapsuleEnterEasing
 
 @Composable
 fun PlayingIndicator(
@@ -103,8 +105,8 @@ fun PlayingIndicatorBox(
 ) {
     AnimatedVisibility(
         visible = isActive,
-        enter = fadeIn(tween(500)),
-        exit = fadeOut(tween(500)),
+        enter = fadeIn(tween(500, easing = CapsuleEnterEasing)),
+        exit = fadeOut(tween(500, easing = CapsuleExitEasing)),
     ) {
         Box(
             contentAlignment = Alignment.Center,

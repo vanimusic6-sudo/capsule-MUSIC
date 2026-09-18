@@ -24,6 +24,7 @@ import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.nikhil.yt.R
+import com.nikhil.yt.ui.motion.CapsuleStandardEasing
 
 /** Bare artwork controls at the reference height; their 48 dp touch targets are retained. */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -41,7 +42,7 @@ internal fun ArtistToolbar(
     val foreground = if (overArtwork) Color.White else StandardChrome.text
     val artworkFraction by animateFloatAsState(
         targetValue = if (overArtwork) 1f else 0f,
-        animationSpec = tween(200),
+        animationSpec = tween(200, easing = CapsuleStandardEasing),
         label = "artistToolbarCollapse",
     )
     val buttonColors = IconButtonDefaults.iconButtonColors(

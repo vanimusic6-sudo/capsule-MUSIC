@@ -99,6 +99,7 @@ import com.nikhil.yt.viewmodels.CachePlaylistViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import com.nikhil.yt.ui.motion.CapsuleStandardEasing
 
 @Composable
 fun SongMenu(
@@ -126,7 +127,7 @@ fun SongMenu(
 
     val rotationAnimation by animateFloatAsState(
         targetValue = refetchIconDegree,
-        animationSpec = tween(durationMillis = 800),
+        animationSpec = tween(durationMillis = 800, easing = CapsuleStandardEasing),
         label = "",
     )
 

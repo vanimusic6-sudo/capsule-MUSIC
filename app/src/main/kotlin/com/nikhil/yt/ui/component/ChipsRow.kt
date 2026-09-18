@@ -53,6 +53,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.nikhil.yt.R
 import com.nikhil.yt.ui.screens.OptionStats
+import com.nikhil.yt.ui.motion.CapsuleStandardEasing
 
 @Composable
 fun <E> ChipsRow(
@@ -122,7 +123,7 @@ fun <Int> ChoiceChipsRow(
     var expandIconDegree by remember { mutableFloatStateOf(0f) }
     val rotationAnimation by animateFloatAsState(
         targetValue = expandIconDegree,
-        animationSpec = tween(durationMillis = 400),
+        animationSpec = tween(durationMillis = 400, easing = CapsuleStandardEasing),
         label = "",
     )
 

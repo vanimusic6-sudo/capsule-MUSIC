@@ -127,6 +127,9 @@ import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlin.math.roundToInt
+import com.nikhil.yt.ui.motion.CapsuleStandardEasing
+import com.nikhil.yt.ui.motion.CapsuleExitEasing
+import com.nikhil.yt.ui.motion.CapsuleEnterEasing
 
 const val ActiveBoxAlpha = 0.6f
 
@@ -1309,8 +1312,8 @@ fun LocalThumbnail(
 
         AnimatedVisibility(
             visible = isActive,
-            enter = fadeIn(tween(500)),
-            exit = fadeOut(tween(500))
+            enter = fadeIn(tween(500, easing = CapsuleEnterEasing)),
+            exit = fadeOut(tween(500, easing = CapsuleExitEasing))
         ) {
             Box(
                 contentAlignment = Alignment.Center,
@@ -1607,7 +1610,7 @@ private fun reset(offset: MutableState<Float>, scope: CoroutineScope) {
         animate(
             initialValue = offset.value,
             targetValue = 0f,
-            animationSpec = tween(durationMillis = 300)
+            animationSpec = tween(durationMillis = 300, easing = CapsuleStandardEasing)
         ) { value, _ -> offset.value = value }
     }
 }

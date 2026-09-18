@@ -113,6 +113,9 @@ import com.nikhil.yt.viewmodels.HomeViewModel
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.runtime.collectAsState
+import com.nikhil.yt.ui.motion.CapsuleStandardEasing
+import com.nikhil.yt.ui.motion.CapsuleExitEasing
+import com.nikhil.yt.ui.motion.CapsuleEnterEasing
 
 data class SettingsQuickAction(
     val icon: Painter,
@@ -775,7 +778,7 @@ fun SettingsScreen(
                                             dampingRatio = 0.85f,
                                         ),
                                     ),
-                            exit = fadeOut(tween(300)) + shrinkVertically(tween(300)),
+                            exit = fadeOut(tween(300, easing = CapsuleExitEasing)) + shrinkVertically(tween(300, easing = CapsuleExitEasing)),
                         ) {
                             PremiumPermissionCard(
                                 onRequestPermission = {
@@ -898,8 +901,8 @@ fun SettingsScreen(
 
         AnimatedVisibility(
             visible = showSearchBar,
-            enter = fadeIn(tween(durationMillis = 220)),
-            exit = fadeOut(tween(durationMillis = 160)),
+            enter = fadeIn(tween(durationMillis = 220, easing = CapsuleEnterEasing)),
+            exit = fadeOut(tween(durationMillis = 160, easing = CapsuleExitEasing)),
         ) {
             TopSearch(
                 query = query,
@@ -1638,7 +1641,7 @@ private fun SettingsAccountCard(
             MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f)
         else
             MaterialTheme.colorScheme.surfaceContainerLow,
-        animationSpec = androidx.compose.animation.core.tween(300),
+        animationSpec = androidx.compose.animation.core.tween(300, easing = CapsuleStandardEasing),
         label = "accountCardColor",
     )
 

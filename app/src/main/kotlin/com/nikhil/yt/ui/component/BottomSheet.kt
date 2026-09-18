@@ -201,7 +201,17 @@ fun BottomSheet(
                             topStart = topCornerRadius,
                             topEnd = topCornerRadius,
                         )
-                    clip = true
+                    /*
+                     * Only while the full player is inside this sheet.
+                     *
+                     * On its dock the sheet's own top edge sits exactly along the top of the
+                     * mini-player, and the swipe tilts that card about its bottom edge — so the
+                     * raised corner crossed the boundary and was cut clean off. Nothing needed
+                     * clipping there anyway: the only thing in the sheet at rest is the
+                     * mini-player, which rounds its own corners. The rounded top belongs to the
+                     * full player, and it is composed on exactly this condition.
+                     */
+                    clip = !state.isCollapsed
                 },
     ) {
         if (!state.isCollapsed && !state.isDismissed) {
