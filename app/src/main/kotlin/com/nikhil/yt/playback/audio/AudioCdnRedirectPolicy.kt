@@ -118,6 +118,20 @@ internal class AudioCdnRedirectInterceptor : Interceptor {
                     }
                     origin
                 } else {
+                    /*
+                     * A followed redirect is reported too, and at the same level as a declined one.
+                     * A refusal that arrives after one of these came from a machine no other line
+                     * in the capture names, and a capture that cannot say which server refused
+                     * cannot say whether this policy is complete.
+                     */
+                    if (GlobalLog.isEnabled) {
+                        Timber.tag("AudioCDN").w(
+                            "cdn-redirect-followed from=%s to=%s sameGroup=%s",
+                            request.url.host,
+                            target.host,
+                            !isCrossGroupGooglevideoRedirect(request.url.host, target.host),
+                        )
+                    }
                     request.newBuilder().url(target).build()
                 }
         }

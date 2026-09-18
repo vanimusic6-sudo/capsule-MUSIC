@@ -191,6 +191,15 @@ class AudioCdnRedirectPolicyTest {
     }
 
     @Test
+    fun `a refusal is reported whether or not the capture carries debug lines`() {
+        assertTrue(isCdnRefusalStatus(403))
+        assertTrue(isCdnRefusalStatus(410))
+        assertTrue(isCdnRefusalStatus(500))
+        assertFalse(isCdnRefusalStatus(206))
+        assertFalse(isCdnRefusalStatus(302))
+    }
+
+    @Test
     fun `a circle of redirects ends in a failure rather than forever`() {
         val chain =
             ScriptedChain(

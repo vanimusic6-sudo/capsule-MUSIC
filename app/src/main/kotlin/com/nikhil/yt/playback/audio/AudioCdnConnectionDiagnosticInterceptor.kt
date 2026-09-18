@@ -35,7 +35,17 @@ internal fun addressFamilyOf(address: String?): String =
         else -> "other"
     }
 
-/** Debug-only connection metadata around googlevideo requests. */
+/**
+ * Whether a status is a refusal, and so worth seeing in a capture that carries no debug lines.
+ *
+ * A capture arrived with the debug level turned off. It held seven refusals and not one line
+ * saying which server produced them, because the only line that names the responding host was a
+ * debug one — and the failure line names the host in the link, which a redirect can make a
+ * different machine entirely. Seven refusals with nowhere to pin them is not a diagnosis.
+ */
+internal fun isCdnRefusalStatus(code: Int): Boolean = code >= 400
+
+/** Connection metadata around googlevideo requests; refusals are reported whatever the level. */
 internal class AudioCdnConnectionDiagnosticInterceptor : Interceptor {
     override fun intercept(chain: Interceptor.Chain): Response {
         val request = chain.request()
@@ -52,19 +62,37 @@ internal class AudioCdnConnectionDiagnosticInterceptor : Interceptor {
         return try {
             chain.proceed(request).also { response ->
                 if (GlobalLog.isEnabled) {
-                    Timber.tag("AudioCDN").d(
-                        "cdn-wire host=%s routeHost=%s protocol=%s coalesced=%s conn=%d status=%d " +
-                            "linkIssuedTo=%s requestLeftBy=%s sameFamily=%s",
-                        requestHost,
-                        routeHost ?: "unknown",
-                        protocol ?: "unknown",
-                        coalesced,
-                        connectionId,
-                        response.code,
-                        linkFamily,
-                        socketFamily,
-                        linkFamily == socketFamily,
-                    )
+                    // Spelled out twice rather than shared: Timber's lint check reads the format
+                    // string at the call site, and a shared one it cannot see is a build error.
+                    if (isCdnRefusalStatus(response.code)) {
+                        Timber.tag("AudioCDN").w(
+                            "cdn-wire host=%s routeHost=%s protocol=%s coalesced=%s conn=%d " +
+                                "status=%d linkIssuedTo=%s requestLeftBy=%s sameFamily=%s",
+                            requestHost,
+                            routeHost ?: "unknown",
+                            protocol ?: "unknown",
+                            coalesced,
+                            connectionId,
+                            response.code,
+                            linkFamily,
+                            socketFamily,
+                            linkFamily == socketFamily,
+                        )
+                    } else {
+                        Timber.tag("AudioCDN").d(
+                            "cdn-wire host=%s routeHost=%s protocol=%s coalesced=%s conn=%d " +
+                                "status=%d linkIssuedTo=%s requestLeftBy=%s sameFamily=%s",
+                            requestHost,
+                            routeHost ?: "unknown",
+                            protocol ?: "unknown",
+                            coalesced,
+                            connectionId,
+                            response.code,
+                            linkFamily,
+                            socketFamily,
+                            linkFamily == socketFamily,
+                        )
+                    }
                 }
             }
         } catch (failure: IOException) {
