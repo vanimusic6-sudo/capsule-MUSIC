@@ -218,6 +218,56 @@ class AudioChunkedDataSourceTest {
         assertEquals(2, upstream.opens.size)
     }
 
+    /**
+     * A failed open leaves nothing open behind it.
+     *
+     * Media3 calls close() after an open that threw, and then opens again. If the first attempt
+     * left the upstream open, the second is rejected outright -- which is what a capture showed: a
+     * slice that timed out after thirteen seconds, and seventeen milliseconds later an
+     * IllegalStateException that turned one slow read into a track that would not start at all.
+     */
+    @Test
+    fun anOpenThatThrewLeavesNothingOpenBehindIt() {
+        val bytes = content(1000)
+        var failNextOpen = true
+        val upstream =
+            object : DataSource {
+                val inner = FakeUpstream(bytes)
+                var isOpen = false
+
+                override fun addTransferListener(transferListener: TransferListener) = Unit
+
+                override fun open(dataSpec: DataSpec): Long {
+                    check(!isOpen) { "opened while already open" }
+                    if (failNextOpen) {
+                        failNextOpen = false
+                        isOpen = true
+                        throw java.io.IOException("read timed out")
+                    }
+                    isOpen = true
+                    return inner.open(dataSpec)
+                }
+
+                override fun read(buffer: ByteArray, offset: Int, length: Int) =
+                    inner.read(buffer, offset, length)
+
+                override fun getUri(): Uri? = Uri.EMPTY
+
+                override fun close() {
+                    isOpen = false
+                    inner.close()
+                }
+            }
+        val source = AudioChunkedDataSource(upstream, chunkBytes = 128)
+
+        runCatching { source.open(spec(bytes.size.toLong())) }
+        source.close()
+
+        // The retry must be an ordinary open, not a crash.
+        source.open(spec(bytes.size.toLong()))
+        assertArrayEquals("the retry after a failed open was corrupted", bytes, drain(source))
+    }
+
     @Test
     fun theSplittingRuleMatchesTheSourceItGoverns() {
         assertTrue(shouldChunkAudioRequest(AUDIO_CHUNK_BYTES + 1))

@@ -100,8 +100,8 @@ internal class AudioChunkedDataSource(
         activeChunkBytes = chunkBytes
         nextPosition = dataSpec.position
         bytesLeft = dataSpec.length
-        openNextChunk()
         opened = true
+        openNextChunk()
         return dataSpec.length
     }
 
@@ -145,8 +145,21 @@ internal class AudioChunkedDataSource(
 
     override fun getResponseHeaders(): Map<String, List<String>> = upstream.responseHeaders
 
+    /**
+     * Always closes the upstream, whether or not this source finished opening.
+     *
+     * It used to return early unless the open had completed, and a capture found what that costs.
+     * The first slice of a 58 MB item timed out after thirteen seconds; the open threw part way
+     * through, so the flag was never set, so this closed nothing — and the upstream was left open.
+     * The retry seventeen milliseconds later then opened an already-open source, which Media3
+     * rejects outright with an IllegalStateException. One slow network read turned into a track
+     * that could not be started at all, twice.
+     *
+     * Media3 calls close() after a failed open precisely so that state can be cleaned up, and
+     * closing a source that was never opened is defined to be safe, so there is nothing for the
+     * guard to protect.
+     */
     override fun close() {
-        if (!opened) return
         opened = false
         request = null
         upstream.close()
