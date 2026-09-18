@@ -198,6 +198,8 @@ import com.nikhil.yt.playback.audio.AudioChunkedDataSource
 import com.nikhil.yt.playback.audio.AudioCacheSource
 import com.nikhil.yt.playback.audio.AudioNetworkDiagnosticDataSource
 import com.nikhil.yt.playback.audio.AudioCdnConnectionDiagnosticInterceptor
+import com.nikhil.yt.playback.audio.AudioCdnHostHealth
+import com.nikhil.yt.playback.audio.AudioCdnHostHealthDataSource
 import com.nikhil.yt.playback.audio.AudioCdnRedirectInterceptor
 import com.nikhil.yt.playback.audio.AudioCdnOpenContext
 import com.nikhil.yt.playback.audio.AudioCdnOpenSource
@@ -263,6 +265,7 @@ import java.net.SocketTimeoutException
 import java.net.UnknownHostException
 import java.time.LocalDateTime
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.TimeUnit
 import javax.inject.Inject
 import kotlin.math.min
 import kotlin.math.pow
@@ -271,6 +274,16 @@ internal const val YOUTUBE_LOUDNESS_REFERENCE_LUFS = -7.0
 internal const val NORMALIZATION_TARGET_LUFS = -14.0
 internal const val MIN_NORMALIZATION_GAIN_DB = -12.0
 internal const val SIGNED_URL_CIPHER_REFRESH_THRESHOLD_MS = 3_000L
+
+/**
+ * How long a googlevideo request may take to answer before it is treated as unanswered.
+ *
+ * Across 322 successful opens in five captures the slowest took 3.87 s and the 99th percentile
+ * 2.50 s, while every failure sat on the default timeout for 10, 12, 13 or 30 s. Six seconds
+ * clears the slowest open that has ever worked by half again, and it bounds a single body read
+ * too, where the slowest on record is 1.16 s.
+ */
+internal const val AUDIO_CDN_TIMEOUT_SECONDS = 6L
 internal const val SIGNED_URL_MAX_FRESH_RESOLVE_DELAY_MS = 3_000L
 
 /**
@@ -871,6 +884,9 @@ class MusicService :
     private var streamRetryJob: Job? = null
     private var prefetchScheduleJob: Job? = null
 
+    /** Which googlevideo server groups are currently refusing everything, on this network. */
+    private val audioCdnHostHealth = AudioCdnHostHealth()
+
     private val mediaOkHttpClient: OkHttpClient by lazy {
         OkHttpClient
             .Builder()
@@ -1362,6 +1378,8 @@ class MusicService :
                 )
                 streamRetryJob?.cancel()
                 streamRetryJob = null
+                // Which edges answer is a property of the route, not of the app.
+                audioCdnHostHealth.forget()
                 audioResolveCoordinator.invalidatePolicy(
                     invalidatePrefetch = true,
                     onInvalidate = playbackUrlCache::clear,
@@ -3640,6 +3658,14 @@ class MusicService :
                 // Safe transport-level reconnect for an already-resolved CDN GET.
                 // No player/InnerTube request or client rotation happens here.
                 .retryOnConnectionFailure(true)
+                // Across 322 successful opens in five captures the slowest took 3.87 s, and the
+                // 99th percentile 2.50 s. Every failure ran 10, 12, 13 or 30 s — the default
+                // timeout, waited out in full. Six seconds is half again the slowest open that has
+                // ever worked, and turns a dead edge into a six second answer instead of a thirty
+                // second one. It bounds a single body read too, and the slowest of those on record
+                // is 1.16 s.
+                .connectTimeout(AUDIO_CDN_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+                .readTimeout(AUDIO_CDN_TIMEOUT_SECONDS, TimeUnit.SECONDS)
                 // Redirects are followed by AudioCdnRedirectInterceptor instead, which declines the
                 // ones that would carry a signed link out of the group that issued it. Every failed
                 // open in the capture that found this was on the hop after such a redirect.
@@ -3653,9 +3679,13 @@ class MusicService :
             // Chunking sits outermost so each bounded request still appears in the CDN diagnostics
             // as its own open, which is how a paced stream is recognised in a capture.
             AudioChunkedDataSource.Factory(
-                AudioNetworkDiagnosticDataSource.Factory(
-                    upstreamFactory = DefaultDataSource.Factory(this, OkHttpDataSource.Factory(audioHttpClient)),
-                    beforeNetworkOpen = ::awaitAudioNetworkOpenPermit,
+                AudioCdnHostHealthDataSource.Factory(
+                    AudioNetworkDiagnosticDataSource.Factory(
+                        upstreamFactory =
+                            DefaultDataSource.Factory(this, OkHttpDataSource.Factory(audioHttpClient)),
+                        beforeNetworkOpen = ::awaitAudioNetworkOpenPermit,
+                    ),
+                    health = audioCdnHostHealth,
                 ),
             )
         val streaming = CacheDataSource.Factory().setCache(playerCache)
