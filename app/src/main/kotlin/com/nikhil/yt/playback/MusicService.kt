@@ -3929,6 +3929,7 @@ class MusicService :
                     resolvedAtElapsedMs = playback.resolvedAtElapsedMs,
                     source = source,
                     streamClient = playback.streamClient,
+                    rangeChunkSizeBytes = playback.rangeChunkSizeBytes,
                 ),
             )
             .setHttpRequestHeaders(dataSpec.httpRequestHeaders + playback.streamHeaders)

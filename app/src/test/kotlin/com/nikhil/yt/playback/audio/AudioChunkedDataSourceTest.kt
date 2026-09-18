@@ -158,6 +158,66 @@ class AudioChunkedDataSourceTest {
         assertEquals("an unknown length must go out as one request", 1, upstream.opens.size)
     }
 
+    /**
+     * The library's own slice size wins over the app's default.
+     *
+     * InnerTubeX sizes this per client, which a single constant here cannot do — and that constant
+     * was only ever chosen by counting refusals. Metrolist has honoured the library's figure all
+     * along; this is the part of its approach that was missing here.
+     */
+    @Test
+    fun theLibrarysOwnSliceSizeIsUsedWhenItNamesOne() {
+        val bytes = content(1000)
+        val upstream = FakeUpstream(bytes)
+        val source = AudioChunkedDataSource(upstream, chunkBytes = 512)
+
+        source.open(
+            spec(bytes.size.toLong())
+                .buildUpon()
+                .setCustomData(
+                    AudioCdnOpenContext(
+                        mediaId = "id",
+                        resolvedAtElapsedMs = 0L,
+                        source = AudioCdnOpenSource.ON_DEMAND,
+                        streamClient = "WEB_REMIX",
+                        rangeChunkSizeBytes = 250,
+                    ),
+                ).build(),
+        )
+        val delivered = drain(source)
+
+        assertArrayEquals("the stream was corrupted across a seam", bytes, delivered)
+        assertEquals("the library's 250 was ignored in favour of the app's 512", 4, upstream.opens.size)
+        upstream.opens.forEach { (_, length) ->
+            assertTrue("a slice ignored the size the library asked for: $length", length <= 250)
+        }
+    }
+
+    /** With no size from the library the app's own default still applies. */
+    @Test
+    fun theAppsDefaultIsUsedWhenTheLibraryNamesNothing() {
+        val bytes = content(1000)
+        val upstream = FakeUpstream(bytes)
+        val source = AudioChunkedDataSource(upstream, chunkBytes = 512)
+
+        source.open(
+            spec(bytes.size.toLong())
+                .buildUpon()
+                .setCustomData(
+                    AudioCdnOpenContext(
+                        mediaId = "id",
+                        resolvedAtElapsedMs = 0L,
+                        source = AudioCdnOpenSource.ON_DEMAND,
+                        streamClient = "WEB_REMIX",
+                        rangeChunkSizeBytes = 0,
+                    ),
+                ).build(),
+        )
+        drain(source)
+
+        assertEquals(2, upstream.opens.size)
+    }
+
     @Test
     fun theSplittingRuleMatchesTheSourceItGoverns() {
         assertTrue(shouldChunkAudioRequest(AUDIO_CHUNK_BYTES + 1))

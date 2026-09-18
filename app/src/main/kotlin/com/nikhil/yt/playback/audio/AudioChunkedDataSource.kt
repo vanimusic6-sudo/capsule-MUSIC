@@ -72,12 +72,24 @@ internal class AudioChunkedDataSource(
     private var bytesLeft = 0L
     private var chunkLeft = 0L
     private var opened = false
+    private var activeChunkBytes = chunkBytes
 
     override fun addTransferListener(transferListener: TransferListener) {
         upstream.addTransferListener(transferListener)
     }
 
     override fun open(dataSpec: DataSpec): Long {
+        /*
+         * The library's own size wins when it named one. It works this out per client, which is
+         * something a single constant here cannot do — and the constant was only ever chosen by
+         * counting refusals.
+         */
+        val chunkBytes =
+            (dataSpec.customData as? AudioCdnOpenContext)
+                ?.rangeChunkSizeBytes
+                ?.takeIf { it > 0L }
+                ?: chunkBytes
+
         if (!shouldChunkAudioRequest(dataSpec.length, chunkBytes)) {
             request = null
             opened = true
@@ -85,6 +97,7 @@ internal class AudioChunkedDataSource(
         }
 
         request = dataSpec
+        activeChunkBytes = chunkBytes
         nextPosition = dataSpec.position
         bytesLeft = dataSpec.length
         openNextChunk()
@@ -94,7 +107,7 @@ internal class AudioChunkedDataSource(
 
     private fun openNextChunk() {
         val spec = requireNotNull(request)
-        chunkLeft = minOf(chunkBytes, bytesLeft)
+        chunkLeft = minOf(activeChunkBytes, bytesLeft)
         upstream.open(
             spec.buildUpon()
                 .setPosition(nextPosition)

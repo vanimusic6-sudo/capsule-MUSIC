@@ -158,6 +158,17 @@ object CapsuleInnerTubeXPlayer {
         val streamExpiresInSeconds: Int,
         val streamClient: String,
         val streamHeaders: Map<String, String>,
+        /**
+         * How large a slice of this stream one request should ask for, as the library sizes it.
+         *
+         * InnerTubeX works this out per client and Metrolist has always honoured it; Capsule opted
+         * out of the whole mechanism with a comment and has been asking for entire files ever
+         * since. Across two captures that is the difference between 29 bounded opens with no
+         * refusals and 56 whole-file opens with six.
+         *
+         * Zero means the library named no size, and the app's own default is used instead.
+         */
+        val rangeChunkSizeBytes: Long,
     )
 
     suspend fun prewarm(prewarmWebPoToken: Boolean = false) {
@@ -785,6 +796,7 @@ object CapsuleInnerTubeXPlayer {
                     ?: DEFAULT_STREAM_TTL_SECONDS,
             streamClient = clientName,
             streamHeaders = headers,
+            rangeChunkSizeBytes = rangeChunkSizeBytes,
         )
     }
 

@@ -35,6 +35,8 @@ object CapsuleAudioEngine {
         val streamHeaders: Map<String, String> = emptyMap(),
         /** Monotonic creation time used only for first-open settling/diagnostics. */
         val resolvedAtElapsedMs: Long = 0L,
+        /** Slice size InnerTubeX sizes for this client; 0 when it named none. */
+        val rangeChunkSizeBytes: Long = 0L,
     )
 
     fun prioritizePlayback(mediaId: String) = CapsuleInnerTubeXPlayer.prioritizePlayback(mediaId)
@@ -98,6 +100,7 @@ object CapsuleAudioEngine {
                     streamClient = resolved.streamClient,
                     streamHeaders = resolved.streamHeaders,
                     resolvedAtElapsedMs = android.os.SystemClock.elapsedRealtime(),
+                    rangeChunkSizeBytes = resolved.rangeChunkSizeBytes,
                 )
             }
             .onFailure(CapsulePlaybackSafety::observeFailure)
