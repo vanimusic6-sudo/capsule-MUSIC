@@ -8,8 +8,30 @@ import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.DataSpec
 import androidx.media3.datasource.TransferListener
 
-/** How much of a stream one request asks for before the next one is opened. */
-internal const val AUDIO_CHUNK_BYTES = 4L * 1024 * 1024
+/**
+ * How much of a stream one request asks for before the next one is opened.
+ *
+ * A megabyte, so that essentially every audio request is a *part* of a file rather than the whole
+ * of it. That distinction turned out to be the one that matters, and it took two captures and
+ * eighty-five opens to see it, because at four megabytes only long items were ever split:
+ *
+ *   asked for part of a file   29 opens   0 refused
+ *   asked for a whole file     56 opens   6 refused   (11%)
+ *
+ * If a bounded request were refused at the same rate, the chance of twenty-nine of them in a row
+ * being accepted is under four percent. That is not proof, and the mechanism is still unexplained —
+ * the server gives no reason for any refusal, an empty body and its own name in the only header —
+ * but it is the first thing in this whole investigation that the numbers actually support.
+ *
+ * A megabyte rather than two, because the refusals include files of 1.9 MB: a chunk has to be
+ * smaller than the files it is meant to split, or those keep going out whole.
+ *
+ * The cost is more requests per track, and one risk worth naming: a refusal now lands part way
+ * through a track instead of before it starts, which interrupts audio rather than delaying it.
+ * Twenty-nine for twenty-nine says that should not happen; if it does, this number is where to
+ * look.
+ */
+internal const val AUDIO_CHUNK_BYTES = 1L * 1024 * 1024
 
 /**
  * Whether a request for [length] bytes should be split, given a chunk size of [chunkBytes].
