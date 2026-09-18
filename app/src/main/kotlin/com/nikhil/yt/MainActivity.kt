@@ -914,25 +914,59 @@ class MainActivity : ComponentActivity() {
                             },
                         )
 
+                    /*
+                     * The chrome is put in place during composition, not a frame later.
+                     *
+                     * The top bar is drawn at `currentScrollBehavior.state.heightOffset`, and which
+                     * behaviour that is depends on the route. So a destination change can swap a
+                     * collapsed offset for an expanded one — and the resets that handle it ran from
+                     * a LaunchedEffect, which is after the arriving screen has already been drawn
+                     * once. That frame shows the bar at the outgoing screen's offset and the next
+                     * one snaps it, which is a full bar-height jump over the content underneath.
+                     *
+                     * It is invisible from the top of a screen, because nothing is collapsed there
+                     * and both offsets are already zero. It appears the moment you leave a screen
+                     * you had scrolled — which is exactly when there is content, rather than empty
+                     * background, for the bar to jump across.
+                     *
+                     * Keyed remember runs while the frame is being composed, so the first frame of
+                     * the new destination is already correct and there is nothing left to snap. The
+                     * policy is unchanged: the same route changes reset, for the same reasons.
+                     */
+                    var chromeRoute by remember { mutableStateOf<String?>(null) }
+                    val arrivingRoute = navBackStackEntry?.destination?.route
+                    remember(arrivingRoute) {
+                        val leaving = chromeRoute
+                        val leftADetailScreen =
+                            leaving != null &&
+                                leaving !in topLevelScreens &&
+                                leaving?.startsWith("search/") != true
+                        val arrivedAtAMainTab =
+                            arrivingRoute == Screens.Home.route ||
+                                arrivingRoute == Screens.Library.route
+                        val arrivedAtAnotherTopLevel =
+                            arrivingRoute != null &&
+                                arrivingRoute != Screens.Home.route &&
+                                (
+                                    navigationItems.fastAny { it.route == arrivingRoute } ||
+                                        arrivingRoute in topLevelScreens
+                                )
+
+                        if (
+                            leaving != arrivingRoute &&
+                            ((leftADetailScreen && arrivedAtAMainTab) || arrivedAtAnotherTopLevel)
+                        ) {
+                            searchBarScrollBehavior.state.heightOffset = 0f
+                            topAppBarScrollBehavior.state.heightOffset = 0f
+                        }
+                        chromeRoute = arrivingRoute
+                        arrivingRoute
+                    }
+
                     var previousRoute by rememberSaveable { mutableStateOf<String?>(null) }
 
                     LaunchedEffect(navBackStackEntry) {
-                        val currentRoute = navBackStackEntry?.destination?.route
-                        val wasOnNonTopLevelScreen = previousRoute != null &&
-                                previousRoute !in topLevelScreens &&
-                                previousRoute?.startsWith("search/") != true
-                        val isReturningToHomeOrLibrary = currentRoute == Screens.Home.route ||
-                                currentRoute == Screens.Library.route
-
-                        if (wasOnNonTopLevelScreen && isReturningToHomeOrLibrary) {
-                            // Snapped, not animated: this runs because the destination changed, and
-                            // an animated return would slide the bar down the screen on top of the
-                            // arriving destination's own entrance. See resetHeightOffset.
-                            searchBarScrollBehavior.state.resetHeightOffset(animated = false)
-                            topAppBarScrollBehavior.state.resetHeightOffset(animated = false)
-                        }
-
-                        previousRoute = currentRoute
+                        previousRoute = navBackStackEntry?.destination?.route
 
                         if (navBackStackEntry?.destination?.route?.startsWith("search/") == true) {
                             val searchQuery =
@@ -959,13 +993,6 @@ class MainActivity : ComponentActivity() {
                             )
                         } else if (navigationItems.fastAny { it.route == navBackStackEntry?.destination?.route } || navBackStackEntry?.destination?.route in topLevelScreens) {
                             onQueryChange(TextFieldValue())
-                            if (navBackStackEntry?.destination?.route != Screens.Home.route) {
-                                // Snapped for the same reason: this is a change of destination, so
-                                // the bar belongs in place by the first frame rather than arriving
-                                // from above while the screen itself is rising into place.
-                                searchBarScrollBehavior.state.resetHeightOffset(animated = false)
-                                topAppBarScrollBehavior.state.resetHeightOffset(animated = false)
-                            }
                         }
                     }
                     LaunchedEffect(active) {

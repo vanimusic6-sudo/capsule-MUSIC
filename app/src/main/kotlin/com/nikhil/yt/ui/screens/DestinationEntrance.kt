@@ -2,7 +2,6 @@ package com.nikhil.yt.ui.screens
 
 import android.provider.Settings
 import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.Easing
 import androidx.compose.animation.core.tween
 import androidx.compose.runtime.Composable
@@ -17,6 +16,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import com.nikhil.yt.ui.motion.CapsuleEnterEasing
 
 /**
  * Character of a destination entrance.
@@ -63,22 +63,29 @@ internal data class DestinationMotionSpec(
 )
 
 /*
- * All curves accelerate gently from rest and keep a visible tail near the end. A steep pure
- * decelerate feels responsive at first but spends nearly all of its travel immediately and then
- * appears to stop dead. These curves distribute the same short movement over the whole duration.
+ * One curve for all of them, and it is the app's own arrival curve.
+ *
+ * Four hand-tuned beziers lived here, each close to the others and none of them measured. They all
+ * started from rest and ended at rest, which is the easy half, and all of them paid for it with a
+ * fast middle — the half that is actually felt. The shared curve is measured: it never exceeds 1.25
+ * times its own average speed, so a screen arrives at a pace instead of lunging into place.
+ *
+ * The durations are longer than they were. A soft curve cannot rescue a movement that is over
+ * before it has been watched, and these were between a third and a half of a second for travel the
+ * eye is meant to follow.
  */
 private val TabSpec =
     DestinationMotionSpec(
-        durationMillis = 380,
-        easing = CubicBezierEasing(0.2f, 0.05f, 0.35f, 1f),
+        durationMillis = 460,
+        easing = CapsuleEnterEasing,
         lift = 16.dp,
     )
 
 private val SettingsSpec =
     DestinationMotionSpec(
-        durationMillis = 440,
-        backwardDurationMillis = 370,
-        easing = CubicBezierEasing(0.38f, 0.02f, 0.3f, 1f),
+        durationMillis = 520,
+        backwardDurationMillis = 450,
+        easing = CapsuleEnterEasing,
         shift = 30.dp,
     )
 
@@ -89,15 +96,15 @@ private val SettingsSpec =
  */
 private val DetailSpec =
     DestinationMotionSpec(
-        durationMillis = 200,
-        easing = CubicBezierEasing(0.25f, 0.1f, 0.25f, 1f),
+        durationMillis = 280,
+        easing = CapsuleEnterEasing,
         fade = 0.45f,
     )
 
 private val SectionSpec =
     DestinationMotionSpec(
-        durationMillis = 500,
-        easing = CubicBezierEasing(0.42f, 0f, 0.28f, 1f),
+        durationMillis = 580,
+        easing = CapsuleEnterEasing,
         overscale = 0.045f,
     )
 

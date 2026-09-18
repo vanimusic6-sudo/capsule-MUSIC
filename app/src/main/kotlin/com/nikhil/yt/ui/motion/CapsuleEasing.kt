@@ -18,6 +18,18 @@ import androidx.compose.animation.core.Easing
  * or duration changes — the path and the timing of each animation are what they were, only the
  * distribution of the movement along that time is different.
  *
+ * Zero-velocity ends are necessary and are not sufficient, which took a second pass to see. A curve
+ * has to cover the whole distance in the time it is given, so if it leaves at rest and arrives at
+ * rest, that speed has to come back somewhere — and it comes back in the middle. The first version
+ * of these curves peaked at 1.75 to 2.33 times their own average speed; the departure was the worst
+ * of them, and Compose's default is 2.5. Soft at the ends and twice as fast in the middle is
+ * precisely what reads as aggressive: the movement does not start with a jolt any more, it whips
+ * past instead.
+ *
+ * So the control points are pulled apart rather than sat on top of each other, which is what widens
+ * the middle. Peak speed is now 1.25 to 1.41 times average, which is a movement with a pace rather
+ * than a lunge, and a test holds it there.
+ *
  * Three of them, because the three cases genuinely want different tails:
  * - something arriving should settle slowly, so the last few pixels are visible;
  * - something leaving should clear the screen without lingering, but must not bolt;
@@ -25,7 +37,7 @@ import androidx.compose.animation.core.Easing
  */
 
 /** Something appearing or expanding. The longest tail: an arrival is what the eye follows. */
-val CapsuleEnterEasing: Easing = CubicBezierEasing(0.22f, 0f, 0.36f, 1f)
+val CapsuleEnterEasing: Easing = CubicBezierEasing(0.2f, 0f, 0.8f, 1f)
 
 /**
  * Something disappearing or collapsing.
@@ -34,10 +46,10 @@ val CapsuleEnterEasing: Easing = CubicBezierEasing(0.22f, 0f, 0.36f, 1f)
  * start is still at rest — that first stationary instant is the whole difference between an element
  * leaving and an element being snatched.
  */
-val CapsuleExitEasing: Easing = CubicBezierEasing(0.4f, 0f, 0.26f, 1f)
+val CapsuleExitEasing: Easing = CubicBezierEasing(0.28f, 0f, 0.7f, 1f)
 
 /** A value changing in place: a colour, a size, a corner, a rotation. */
-val CapsuleStandardEasing: Easing = CubicBezierEasing(0.3f, 0f, 0.3f, 1f)
+val CapsuleStandardEasing: Easing = CubicBezierEasing(0.22f, 0f, 0.76f, 1f)
 
 /**
  * The shortest a visible transition may be.
@@ -49,4 +61,4 @@ val CapsuleStandardEasing: Easing = CubicBezierEasing(0.3f, 0f, 0.3f, 1f)
  *
  * It is a floor, not a target. Anything with further to travel takes longer.
  */
-const val CapsuleShortestVisible: Int = 200
+const val CapsuleShortestVisible: Int = 260

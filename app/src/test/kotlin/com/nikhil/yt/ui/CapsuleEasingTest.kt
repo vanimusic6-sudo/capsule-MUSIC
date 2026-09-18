@@ -109,5 +109,30 @@ class CapsuleEasingTest {
         )
     }
 
+
+    /**
+     * The other half of softness, and the half that was missed the first time.
+     *
+     * A curve must cover its whole distance in the time it is given, so speed taken out of the ends
+     * reappears in the middle. The first version of these curves peaked between 1.75 and 2.33 times
+     * its own average; Compose's default peaks at 2.5. Soft at the ends and twice as fast in the
+     * middle does not read as gentle, it reads as a whip — which is exactly the "aggressive"
+     * complaint that a jolt-free start did not answer.
+     */
+    @Test
+    fun nothingWhipsThroughTheMiddle() {
+        curves.forEach { (name, easing) ->
+            var peak = 0f
+            val step = 1f / 2000f
+            var t = step
+            while (t <= 1f) {
+                val speed = (easing.transform(t) - easing.transform(t - step)) / step
+                if (speed > peak) peak = speed
+                t += step
+            }
+            assertTrue("$name reaches ${peak}x its average speed in the middle", peak < 1.55f)
+        }
+    }
+
     private fun remainingAtThreeQuarters(easing: Easing) = 1f - easing.transform(0.75f)
 }

@@ -1,5 +1,7 @@
 package com.nikhil.yt.ui
 
+import com.nikhil.yt.ui.motion.CapsuleEnterEasing
+import com.nikhil.yt.ui.motion.CapsuleShortestVisible
 import com.nikhil.yt.ui.screens.DestinationMotion
 import com.nikhil.yt.ui.screens.RouteDirection
 import com.nikhil.yt.ui.screens.Screens
@@ -46,7 +48,7 @@ class DestinationEntranceTest {
             "starting from nothing reads as a flash, not an arrival",
             detail.fade <= 0.5f,
         )
-        assertTrue("a detail entrance must stay brief", detail.durationMillis <= 240)
+        assertTrue("a detail entrance must stay brief", detail.durationMillis <= 320)
     }
 
     /** The fade is for artwork pages only; everything else moves instead. */
@@ -99,7 +101,10 @@ class DestinationEntranceTest {
                     spec.overscale > 0f ||
                     spec.fade > 0f,
             )
-            assertTrue("$motion takes ${spec.durationMillis}ms", spec.durationMillis in 150..520)
+            assertTrue(
+                "$motion takes ${spec.durationMillis}ms",
+                spec.durationMillis in CapsuleShortestVisible..620,
+            )
             assertTrue(spec.lift.value <= 32f)
             assertTrue(spec.shift.value <= 40f)
             assertTrue(spec.overscale <= 0.06f)
@@ -107,21 +112,23 @@ class DestinationEntranceTest {
         }
     }
 
+    /**
+     * Every entrance runs on the app's measured curve, not on one of its own.
+     *
+     * Four hand-tuned beziers used to live here and each was pinned by a threshold of its own, which
+     * meant the tests described those four curves rather than what makes an entrance feel right.
+     * The properties that matter -- starts at rest, arrives at rest, never whips through the middle
+     * -- are held once, in CapsuleEasingTest, for the curve they all now share.
+     */
     @Test
-    fun tabCurveKeepsAVisibleSoftTail() {
-        val tab = DestinationMotion.Tab.spec()
-        val remaining = 1f - tab.easing.transform(2f / 3f)
-        assertTrue(
-            "only ${remaining * 100}% of travel remains for the final third",
-            remaining >= 0.08f,
-        )
-    }
-
-    @Test
-    fun settingsCurveDoesNotJumpOffTheLine() {
-        val settings = DestinationMotion.Settings.spec()
-        val startedBy = settings.easing.transform(0.1f)
-        assertTrue("a tenth in, $startedBy of travel is already spent", startedBy < 0.04f)
+    fun everyEntranceUsesTheSharedArrivalCurve() {
+        DestinationMotion.entries.forEach { motion ->
+            assertEquals(
+                "$motion brought its own curve instead of the app's",
+                CapsuleEnterEasing,
+                motion.spec().easing,
+            )
+        }
     }
 
     @Test
