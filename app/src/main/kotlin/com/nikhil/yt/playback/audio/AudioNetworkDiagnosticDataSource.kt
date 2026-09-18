@@ -200,9 +200,16 @@ internal class AudioNetworkDiagnosticDataSource(
                     elapsedMs(startedAtNs, now),
                 )
             } else {
+                /*
+                 * linkHost, not host: this is the address the link names, which is not necessarily
+                 * the server that refused us. A redirect can move a request to another host, and a
+                 * capture where every single refusal came from such a host read as though the link
+                 * host had refused forty-five requests it had in fact served. The cdn-wire line is
+                 * the one that says who answered.
+                 */
                 Timber.tag(TAG).w(
                     failure,
-                    "cdn-open-failed id=%s host=%s elapsedMs=%d %s",
+                    "cdn-open-failed id=%s linkHost=%s elapsedMs=%d %s",
                     mediaKey ?: "none",
                     host ?: "unknown",
                     elapsedMs(startedAtNs, now),

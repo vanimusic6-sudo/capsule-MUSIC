@@ -198,6 +198,7 @@ import com.nikhil.yt.playback.audio.AudioChunkedDataSource
 import com.nikhil.yt.playback.audio.AudioCacheSource
 import com.nikhil.yt.playback.audio.AudioNetworkDiagnosticDataSource
 import com.nikhil.yt.playback.audio.AudioCdnConnectionDiagnosticInterceptor
+import com.nikhil.yt.playback.audio.AudioCdnRedirectInterceptor
 import com.nikhil.yt.playback.audio.AudioCdnOpenContext
 import com.nikhil.yt.playback.audio.AudioCdnOpenSource
 import com.nikhil.yt.playback.audio.audioCdnInitialSettleDelayMs
@@ -3639,7 +3640,13 @@ class MusicService :
                 // Safe transport-level reconnect for an already-resolved CDN GET.
                 // No player/InnerTube request or client rotation happens here.
                 .retryOnConnectionFailure(true)
+                // Redirects are followed by AudioCdnRedirectInterceptor instead, which declines the
+                // ones that would carry a signed link out of the group that issued it. Every failed
+                // open in the capture that found this was on the hop after such a redirect.
+                .followRedirects(false)
+                .followSslRedirects(false)
                 .addInterceptor(CapsuleAudioRequestInterceptor(guardStreams = true))
+                .addInterceptor(AudioCdnRedirectInterceptor())
                 .addNetworkInterceptor(AudioCdnConnectionDiagnosticInterceptor())
                 .build()
         val networkUpstream =
