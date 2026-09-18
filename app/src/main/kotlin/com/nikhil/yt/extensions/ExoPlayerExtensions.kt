@@ -187,6 +187,37 @@ private fun ExoPlayer.logSelectedAudioOffloadCapability(trigger: String) {
     }
 }
 
+/**
+ * A little slack, so a report that races the resume it belongs to is still read as one.
+ */
+private const val AUDIO_RESUME_SLACK_MS = 250L
+
+/**
+ * Whether an underrun report is the sink being picked up again rather than audio breaking.
+ *
+ * Media3 raises onAudioUnderrun from the audio sink and hands it the time since the sink was last
+ * fed. Nothing feeds a sink that is not playing, so a pause leaves that clock running and the
+ * first report after the resume carries the whole idle stretch. A capture of forty-two minutes
+ * held eleven reports, and the gaps they named were 2.6 s, 4.2 s, 12.8, 14.8, 16.6, 28.7, 47.0,
+ * 126.9, 382.4 and 1285.9 — twenty-one minutes of "underrun" that nobody could have heard.
+ *
+ * Rather than guess a threshold, compare the gap with how long playback has actually been running.
+ * A gap that reaches back past the moment playback started did not happen during playback. One
+ * that fits inside it did, and that is worth an error: on the two real ones the sink went dry for
+ * 2.6 and 4.2 seconds while three and a half minutes of audio sat decoded and waiting.
+ *
+ * With no known start — a report before playback was ever seen to begin — there is nothing to
+ * compare against, and it is treated as an artefact rather than raised as a fault on no evidence.
+ */
+internal fun isAudioResumeArtefact(
+    elapsedSinceLastFeedMs: Long,
+    playingForMs: Long?,
+): Boolean {
+    if (elapsedSinceLastFeedMs <= 0L) return true
+    val playingFor = playingForMs ?: return true
+    return elapsedSinceLastFeedMs > playingFor + AUDIO_RESUME_SLACK_MS
+}
+
 private fun ExoPlayer.ensureCapsuleOffloadDiagnostics(): Boolean {
     synchronized(capsuleOffloadDiagnostics) {
         if (capsuleOffloadDiagnostics.containsKey(this)) return false
@@ -210,10 +241,16 @@ private fun ExoPlayer.ensureCapsuleOffloadDiagnostics(): Boolean {
             }
 
         var bufferingStartedAtElapsedMs: Long? = null
+        var playingSinceElapsedMs: Long? = null
         val playerListener =
             object : Player.Listener {
                 override fun onTracksChanged(tracks: Tracks) {
                     playerReference.get()?.logSelectedAudioOffloadCapability("tracksChanged")
+                }
+
+                override fun onIsPlayingChanged(isPlaying: Boolean) {
+                    playingSinceElapsedMs =
+                        if (isPlaying) SystemClock.elapsedRealtime() else null
                 }
 
                 override fun onPlaybackStateChanged(playbackState: Int) {
@@ -250,9 +287,21 @@ private fun ExoPlayer.ensureCapsuleOffloadDiagnostics(): Boolean {
                     val player = playerReference.get() ?: return
                     val outputBufferMs =
                         if (bufferSizeMs == C.TIME_UNSET) "unset" else bufferSizeMs.toString()
+                    val playingForMs =
+                        playingSinceElapsedMs?.let { SystemClock.elapsedRealtime() - it }
+                    if (isAudioResumeArtefact(elapsedSinceLastFeedMs, playingForMs)) {
+                        Timber.tag("PlaybackHealth").d(
+                            "audio-resume-after-idle id=%s posMs=%d idleMs=%d playingForMs=%d",
+                            player.currentMediaItem?.mediaId,
+                            player.currentPosition,
+                            elapsedSinceLastFeedMs,
+                            playingForMs ?: -1L,
+                        )
+                        return
+                    }
                     Timber.tag("PlaybackHealth").e(
-                        "AUDIO UNDERRUN id=%s posMs=%d bufferedAheadMs=%d totalBufferedMs=%d " +
-                            "isLoading=%s bufferBytes=%d outputBufferMs=%s elapsedSinceLastFeedMs=%d",
+                        "AUDIO UNDERRUN id=%s posMs=%d bufferedAheadMs=%d totalBufferedMs=%d isLoading=%s " +
+                            "bufferBytes=%d outputBufferMs=%s elapsedSinceLastFeedMs=%d playingForMs=%d",
                         player.currentMediaItem?.mediaId,
                         player.currentPosition,
                         player.bufferedAheadMs(),
@@ -261,6 +310,7 @@ private fun ExoPlayer.ensureCapsuleOffloadDiagnostics(): Boolean {
                         bufferSize,
                         outputBufferMs,
                         elapsedSinceLastFeedMs,
+                        playingForMs ?: -1L,
                     )
                 }
 

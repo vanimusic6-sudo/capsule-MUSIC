@@ -675,10 +675,11 @@ class MusicService :
                         )
                     }
                     Timber.tag(CAPSULE_RESOLVE_TAG).i(
-                        "resolve done id=%s ok=%s tookMs=%d",
+                        "resolve done id=%s ok=%s tookMs=%d authenticated=%s",
                         mediaId,
                         result.isSuccess,
                         System.currentTimeMillis() - startedAt,
+                        isSignedIntoYouTube(),
                     )
                 }
         }
@@ -4863,6 +4864,19 @@ class MusicService :
             registerTrackingUrl(trackingUrl)
         }
     }
+
+    /**
+     * Whether this resolve carried an account, for the capture rather than for any decision.
+     *
+     * A whole evening was spent asking whether signing in was what made playback stable, and the
+     * captures could not answer it: nothing in them said which requests carried an account, so the
+     * two runs had to be told apart by when they were taken. They turned out to be identical, but
+     * that took a second experiment to establish rather than a glance at one log.
+     *
+     * Only the presence of the session cookie is reported. The cookie itself never is.
+     */
+    private fun isSignedIntoYouTube(): Boolean =
+        runCatching { dataStore.get(InnerTubeCookieKey, "").contains("SAPISID") }.getOrDefault(false)
 
     private suspend fun isRemoteHistorySyncAllowed(): Boolean {
         if (!dataStore.getAsync(YtmSyncKey, true)) return false
