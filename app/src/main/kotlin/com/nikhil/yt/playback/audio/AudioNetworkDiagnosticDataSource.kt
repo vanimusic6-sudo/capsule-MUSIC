@@ -48,6 +48,10 @@ internal fun Throwable.isExpectedAudioCdnInterruption(): Boolean {
  * from the URL is how long the link had left to live, which is the single most useful fact about a
  * rejected link and identifies nobody.
  */
+/** The few response headers googlevideo states a refusal in; everything else stays unread. */
+private val REJECTION_HEADERS =
+    listOf("X-Squid-Error", "X-Restrict", "X-Walled-Garden", "Server")
+
 private fun describeRejection(failure: Throwable, uri: Uri): String {
     val rejection =
         generateSequence(failure as Throwable?) { it.cause }
@@ -65,21 +69,34 @@ private fun describeRejection(failure: Throwable, uri: Uri): String {
             ?.take(160)
             .orEmpty()
 
+    /*
+     * googlevideo states a refusal in its own headers as often as in the body, and the interesting
+     * ones all begin with the same few prefixes. Only these are read: a blanket dump of the headers
+     * would carry the session's identifiers into a log that gets shared.
+     */
     val serverNote =
         rejection.headerFields
             .entries
-            .firstOrNull { it.key?.startsWith("X-Squid-Error", ignoreCase = true) == true }
-            ?.value
-            ?.firstOrNull()
-            .orEmpty()
+            .filter { entry ->
+                val key = entry.key.orEmpty()
+                REJECTION_HEADERS.any { key.startsWith(it, ignoreCase = true) }
+            }
+            .joinToString(" ") { "${it.key}=${it.value.firstOrNull().orEmpty().take(80)}" }
 
     val expiresInSeconds =
         uri.getQueryParameter("expire")
             ?.toLongOrNull()
             ?.let { it - System.currentTimeMillis() / 1000L }
 
+    /*
+     * The body length is reported even when it is zero, because "googlevideo gave no reason" and
+     * "the reason was not captured" are different findings and looked identical before: a refusal
+     * with no `reason=` could mean either, and one of them points at this code rather than at the
+     * server.
+     */
     return buildString {
         append("code=").append(rejection.responseCode)
+        append(" bodyBytes=").append(rejection.responseBody.size)
         expiresInSeconds?.let { append(" linkExpiresInSec=").append(it) }
         append(" itag=").append(uri.getQueryParameter("itag") ?: "none")
         append(" urlClient=").append(uri.getQueryParameter("c") ?: "none")
@@ -88,7 +105,7 @@ private fun describeRejection(failure: Throwable, uri: Uri): String {
             .append(uri.getQueryParameter("sig") != null || uri.getQueryParameter("lsig") != null)
         append(" bakedRange=").append(uri.getQueryParameter("range") != null)
         if (reason.isNotEmpty()) append(" reason=\"").append(reason).append('"')
-        if (serverNote.isNotEmpty()) append(" via=\"").append(serverNote).append('"')
+        if (serverNote.isNotEmpty()) append(" serverSaid=\"").append(serverNote).append('"')
     }
 }
 
