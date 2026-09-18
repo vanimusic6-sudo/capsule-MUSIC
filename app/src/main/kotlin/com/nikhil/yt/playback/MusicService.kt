@@ -4510,11 +4510,27 @@ class MusicService :
                         }
 
                     if (configChanged) {
-                        // Keep step47's song-local 403/410 evidence through the fresh resolve.
-                        // Refreshing player/cipher config can repair signature generation, but it
-                        // must not make the just-rejected extraction profile immediately eligible.
+                        /*
+                         * A changed config explains the rejections, so the clients blamed for them
+                         * are given back.
+                         *
+                         * This used to keep the quarantine, reasoning that a just-rejected profile
+                         * should not become eligible again straight away. A capture of ordinary
+                         * listening says otherwise: over one minute the same song was refused
+                         * through WEB_REMIX, then WEB_CREATOR, then visionOS, then TVHTML5_SIMPLY —
+                         * every profile in the plan burned one after another. visionOS carries no
+                         * proof-of-origin token at all, so whatever refused it was not about who
+                         * was asking; and another song was refused and then played by the very same
+                         * profile on the very same CDN host seven seconds later.
+                         *
+                         * Evidence against a client that a config refresh has just explained is not
+                         * evidence at all. Keeping it meant every rejection permanently cost a
+                         * profile, so a song that hit a bad minute came out of it on the weakest
+                         * client it had, for the rest of playback.
+                         */
+                        CapsuleAudioEngine.clearTrackClientFailures(mediaId)
                         Timber.tag("MusicService").i(
-                            "Player config changed after stream rejection; preserving per-song rejected-client quarantine id=%s",
+                            "Player config changed after stream rejection; restoring rejected clients id=%s",
                             mediaId,
                         )
                     }

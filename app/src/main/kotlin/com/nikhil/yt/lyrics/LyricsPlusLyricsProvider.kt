@@ -67,6 +67,22 @@ object LyricsPlusLyricsProvider : LyricsProvider {
     @Volatile
     private var lastWorkingServer: String? = null
 
+    /**
+     * When every mirror last failed, so a service that is simply down is asked about once.
+     *
+     * These are volunteer boxes and they go down together. With no memory of that, every track
+     * opened three connections that could not be made and waited out their timeouts before the
+     * provider could be passed over — on a device where nothing answered, that is three failed
+     * requests per song, forever. A capture of ordinary listening showed exactly that: eight songs,
+     * eight rounds of it, not one answer.
+     *
+     * After a whole round fails, the provider stands down for [OUTAGE_COOLDOWN_MS] and reports
+     * having nothing without touching the network. Any answer at all clears it immediately, so a
+     * mirror coming back is picked up on the next song rather than after some long penalty.
+     */
+    @Volatile
+    private var allMirrorsFailedAtMs: Long = 0L
+
     private val client by lazy {
         HttpClient(OkHttp) {
             install(ContentNegotiation) {
@@ -94,6 +110,11 @@ object LyricsPlusLyricsProvider : LyricsProvider {
         if (title.isBlank() || artist.isBlank()) {
             return Result.failure(IllegalStateException("LyricsPlus needs a title and an artist"))
         }
+        val sinceOutage = System.currentTimeMillis() - allMirrorsFailedAtMs
+        if (allMirrorsFailedAtMs != 0L && sinceOutage in 0 until OUTAGE_COOLDOWN_MS) {
+            return Result.failure(IllegalStateException("LyricsPlus is down; not asking again yet"))
+        }
+
         val response =
             fetch(title, artist, album, duration)
                 ?: return Result.failure(IllegalStateException("No LyricsPlus mirror answered"))
@@ -139,11 +160,16 @@ object LyricsPlusLyricsProvider : LyricsProvider {
 
             if (result?.lyrics?.isNotEmpty() == true) {
                 lastWorkingServer = baseUrl
+                allMirrorsFailedAtMs = 0L
                 return result
             }
         }
+        allMirrorsFailedAtMs = System.currentTimeMillis()
         return null
     }
+
+    /** Long enough that an outage costs one round of requests rather than one per song. */
+    internal const val OUTAGE_COOLDOWN_MS = 10 * 60 * 1000L
 
     /**
      * Enhanced LRC, so the per-word timings survive.

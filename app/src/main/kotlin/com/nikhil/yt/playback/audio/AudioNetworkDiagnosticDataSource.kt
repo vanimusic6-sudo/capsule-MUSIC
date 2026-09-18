@@ -3,6 +3,7 @@ package com.nikhil.yt.playback.audio
 import android.net.Uri
 import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.DataSpec
+import androidx.media3.datasource.HttpDataSource.InvalidResponseCodeException
 import androidx.media3.datasource.TransferListener
 import com.nikhil.yt.utils.GlobalLog
 import timber.log.Timber
@@ -30,6 +31,64 @@ internal fun Throwable.isExpectedAudioCdnInterruption(): Boolean {
             }
             else -> false
         }
+    }
+}
+
+/**
+ * Why the CDN said no, in terms that can be read from a shared log.
+ *
+ * A rejected stream used to be recorded as "Response code: 403" and nothing else, which is why
+ * three separate attempts at this were made from guesswork: the server states its reason and we
+ * were throwing it away. googlevideo puts the reason in the response body and in its own headers,
+ * and the answer is usually one word — expired, invalid signature, a different IP than the one the
+ * URL was issued to.
+ *
+ * Nothing secret is included, in keeping with the rest of this file: signatures, proof-of-origin
+ * tokens and cookies are reported as present or absent and never by value. The one number taken
+ * from the URL is how long the link had left to live, which is the single most useful fact about a
+ * rejected link and identifies nobody.
+ */
+private fun describeRejection(failure: Throwable, uri: Uri): String {
+    val rejection =
+        generateSequence(failure as Throwable?) { it.cause }
+            .take(8)
+            .filterIsInstance<InvalidResponseCodeException>()
+            .firstOrNull()
+            ?: return ""
+
+    val reason =
+        rejection.responseBody
+            .decodeToString()
+            .lineSequence()
+            .map { it.trim() }
+            .firstOrNull { it.isNotEmpty() }
+            ?.take(160)
+            .orEmpty()
+
+    val serverNote =
+        rejection.headerFields
+            .entries
+            .firstOrNull { it.key?.startsWith("X-Squid-Error", ignoreCase = true) == true }
+            ?.value
+            ?.firstOrNull()
+            .orEmpty()
+
+    val expiresInSeconds =
+        uri.getQueryParameter("expire")
+            ?.toLongOrNull()
+            ?.let { it - System.currentTimeMillis() / 1000L }
+
+    return buildString {
+        append("code=").append(rejection.responseCode)
+        expiresInSeconds?.let { append(" linkExpiresInSec=").append(it) }
+        append(" itag=").append(uri.getQueryParameter("itag") ?: "none")
+        append(" urlClient=").append(uri.getQueryParameter("c") ?: "none")
+        append(" hasPoToken=").append(uri.getQueryParameter("pot") != null)
+        append(" hasSignature=")
+            .append(uri.getQueryParameter("sig") != null || uri.getQueryParameter("lsig") != null)
+        append(" bakedRange=").append(uri.getQueryParameter("range") != null)
+        if (reason.isNotEmpty()) append(" reason=\"").append(reason).append('"')
+        if (serverNote.isNotEmpty()) append(" via=\"").append(serverNote).append('"')
     }
 }
 
@@ -113,10 +172,11 @@ internal class AudioNetworkDiagnosticDataSource(
             } else {
                 Timber.tag(TAG).w(
                     failure,
-                    "cdn-open-failed id=%s host=%s elapsedMs=%d",
+                    "cdn-open-failed id=%s host=%s elapsedMs=%d %s",
                     mediaKey ?: "none",
                     host ?: "unknown",
                     elapsedMs(startedAtNs, now),
+                    describeRejection(failure, dataSpec.uri),
                 )
             }
             throw failure
