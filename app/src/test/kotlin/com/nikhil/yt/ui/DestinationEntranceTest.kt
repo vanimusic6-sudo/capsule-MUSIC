@@ -7,7 +7,6 @@ import com.nikhil.yt.ui.screens.destinationMotionFor
 import com.nikhil.yt.ui.screens.routeDirection
 import com.nikhil.yt.ui.screens.spec
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -23,20 +22,45 @@ class DestinationEntranceTest {
         }
     }
 
+    /**
+     * Detail screens arrive with a fade and nothing else.
+     *
+     * A transform is what tore here: the entrance layer sits inside the destination's own opaque
+     * canvas, so moving or scaling it uncovers a band of surface colour along an edge that is
+     * full-bleed artwork. Leaving these screens with no entrance at all is not the answer either —
+     * arriving on an artwork page in a single frame is the jarring cut this motion system exists to
+     * remove.
+     */
     @Test
-    fun artworkHeavyDetailScreensDoNotCreateAnAnimatedLayer() {
+    fun artworkHeavyDetailScreensFadeAndDoNotMove() {
         listOf("artist/abc", "album/xyz", "search/q", null).forEach { route ->
             assertEquals(DestinationMotion.Detail, destinationMotionFor(route))
         }
-        assertNull(
-            "detail screens must not fall back to fade/alpha or a tearing full-screen transform",
-            DestinationMotion.Detail.spec(),
+
+        val detail = DestinationMotion.Detail.spec()
+        assertTrue("detail screens must have an entrance", detail.fade > 0f)
+        assertEquals("a moved detail screen comes apart at its edge", 0f, detail.lift.value, 0f)
+        assertEquals(0f, detail.shift.value, 0f)
+        assertEquals(0f, detail.overscale, 0f)
+        assertTrue(
+            "starting from nothing reads as a flash, not an arrival",
+            detail.fade <= 0.5f,
         )
+        assertTrue("a detail entrance must stay brief", detail.durationMillis <= 240)
+    }
+
+    /** The fade is for artwork pages only; everything else moves instead. */
+    @Test
+    fun onlyDetailScreensFade() {
+        DestinationMotion.entries.forEach { motion ->
+            if (motion == DestinationMotion.Detail) return@forEach
+            assertEquals("$motion must not fade", 0f, motion.spec().fade, 0f)
+        }
     }
 
     @Test
     fun settingsPagesMoveSidewaysWithoutScaling() {
-        val settings = requireNotNull(DestinationMotion.Settings.spec())
+        val settings = DestinationMotion.Settings.spec()
         assertTrue(settings.shift.value > 0f)
         assertEquals(0f, settings.lift.value, 0f)
         assertEquals(0f, settings.overscale, 0f)
@@ -58,30 +82,34 @@ class DestinationEntranceTest {
             )
         }
 
-        val section = requireNotNull(DestinationMotion.Section.spec())
+        val section = DestinationMotion.Section.spec()
         assertTrue(section.overscale > 0f)
         assertEquals(0f, section.lift.value, 0f)
         assertEquals(0f, section.shift.value, 0f)
     }
 
     @Test
-    fun everyAnimatedEntranceIsGeometryOnlyAndShort() {
+    fun everyEntranceDoesSomethingAndStaysShort() {
         DestinationMotion.entries.forEach { motion ->
-            val spec = motion.spec() ?: return@forEach
+            val spec = motion.spec()
             assertTrue(
-                "$motion has no visible geometry",
-                spec.lift.value > 0f || spec.shift.value > 0f || spec.overscale > 0f,
+                "$motion animates nothing at all",
+                spec.lift.value > 0f ||
+                    spec.shift.value > 0f ||
+                    spec.overscale > 0f ||
+                    spec.fade > 0f,
             )
-            assertTrue("$motion takes ${spec.durationMillis}ms", spec.durationMillis in 250..520)
+            assertTrue("$motion takes ${spec.durationMillis}ms", spec.durationMillis in 150..520)
             assertTrue(spec.lift.value <= 32f)
             assertTrue(spec.shift.value <= 40f)
             assertTrue(spec.overscale <= 0.06f)
+            assertTrue(spec.fade <= 0.5f)
         }
     }
 
     @Test
     fun tabCurveKeepsAVisibleSoftTail() {
-        val tab = requireNotNull(DestinationMotion.Tab.spec())
+        val tab = DestinationMotion.Tab.spec()
         val remaining = 1f - tab.easing.transform(2f / 3f)
         assertTrue(
             "only ${remaining * 100}% of travel remains for the final third",
@@ -91,7 +119,7 @@ class DestinationEntranceTest {
 
     @Test
     fun settingsCurveDoesNotJumpOffTheLine() {
-        val settings = requireNotNull(DestinationMotion.Settings.spec())
+        val settings = DestinationMotion.Settings.spec()
         val startedBy = settings.easing.transform(0.1f)
         assertTrue("a tenth in, $startedBy of travel is already spent", startedBy < 0.04f)
     }
@@ -99,7 +127,7 @@ class DestinationEntranceTest {
     @Test
     fun onlySectionMotionScales() {
         DestinationMotion.entries.forEach { motion ->
-            val spec = motion.spec() ?: return@forEach
+            val spec = motion.spec()
             if (motion == DestinationMotion.Section) {
                 assertTrue(spec.overscale > 0f)
             } else {

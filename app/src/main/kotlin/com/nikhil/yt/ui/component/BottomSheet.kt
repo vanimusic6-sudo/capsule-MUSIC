@@ -59,24 +59,64 @@ import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.launch
 import kotlin.math.absoluteValue
 
-/** Keeps a mounted mini-player while allowing its decorative clock to sleep when it is covered. */
+/**
+ * Lets a mounted child keep its state while suspending purely decorative procedural clocks.
+ * The mini-player uses this while it is completely covered by the expanded full player.
+ */
 internal val LocalCapsuleBackgroundMotionEnabled = compositionLocalOf { true }
 
+/**
+ * Whether the mini-player's decorative background clock is allowed to run.
+ *
+ * Named because the terms are easy to lose and expensive to lose. The mini-player is on screen on
+ * every page of the app for as long as something is playing, so its clock is the one that keeps the
+ * frame clock awake during ordinary use. It has no business running where nobody can see it: not
+ * behind the fully expanded player, and not once the sheet has been dismissed, where it used to
+ * carry on drawing against nothing at all.
+ */
 internal fun miniPlayerClockShouldRun(
     isExpanded: Boolean,
     isDismissed: Boolean,
 ): Boolean = !isExpanded && !isDismissed
 
+/** Sub-pixel at every density: only a rest that is already invisible counts as being on an anchor. */
 internal const val ANCHOR_EPSILON_DP = 0.05f
 
+/**
+ * Whether a sheet resting at [value] should be treated as sitting on [anchor].
+ *
+ * Exact equality assumes a sheet only ever stops because an animation finished on its target. It
+ * also stops when a settle is interrupted — a drag caught mid-animation, bounds changing under it —
+ * and then rests a fraction of a dp away. That is invisible, but it used to leave `isCollapsed`
+ * false for good, and the player's BackHandler is armed on exactly that: the first Back press then
+ * ran collapseSoft() on an already-collapsed sheet, travelled those few hundredths of a dp, and was
+ * swallowed. Pressing Back twice to leave a screen is that bug.
+ */
 internal fun isAtSheetAnchor(
     value: Dp,
     anchor: Dp,
 ): Boolean =
     (value - anchor).value.absoluteValue <= ANCHOR_EPSILON_DP
 
+/**
+ * The last stretch of travel, where the player reads as folding into the mini-player rather than
+ * merely sliding off: it shrinks towards the dock and keeps descending, so what is left behind is
+ * the mini-player arriving instead of something that was underneath all along.
+ */
 internal const val PlayerFoldWindow = 0.76f
 internal const val PlayerFoldScale = 0.05f
+
+/**
+ * How far the player keeps descending after it has folded, expressed in dock heights.
+ *
+ * Without it the player stopped at the dock line, and that is what read as "disappearing at a
+ * certain height" rather than leaving. A sheet that is pulled down does not evaporate — it goes
+ * *under* whatever is fixed in front of it.
+ *
+ * The navigation bar is a later sibling in the same Box, so it already draws on top; all the player
+ * needed was somewhere to go. Travelling on past the dock lets the bar occlude it, which is the
+ * difference between a screen vanishing and a screen being put away.
+ */
 internal const val PlayerDescentBeyondDock = 0.9f
 
 /**

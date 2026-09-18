@@ -30,12 +30,17 @@ internal enum class DestinationMotion {
     Tab,
 
     /**
-     * Artwork-heavy detail pages.
+     * Artwork-heavy detail pages: an artist, an album, a playlist.
      *
-     * These intentionally have no entrance transform. Scale and translation were both tested here
-     * and made full-bleed artwork seams crawl; alpha/fade fixed that visually but required a
-     * full-screen blend and violates Capsule's opaque-motion rule. A clean one-frame arrival is less
-     * distracting and cheaper than either compromise.
+     * These are the screens where a transform cannot be used, and the reason is worth keeping. The
+     * entrance layer sits inside the destination's own opaque canvas, so moving or shrinking the
+     * layer uncovers a band of plain surface colour at its edge. Against full-bleed artwork that
+     * band is plainly visible, which is what "the bottom edge of the artist card comes apart" was.
+     * Scale has the same problem and resamples the artwork on top of it.
+     *
+     * What is left is a fade, and that is what these screens get. It moves nothing, so there is no
+     * edge to come apart, and it blends against this destination's own canvas rather than against
+     * the previous screen — no second destination is ever composed underneath.
      */
     Detail,
 
@@ -53,6 +58,8 @@ internal data class DestinationMotionSpec(
     val lift: Dp = 0.dp,
     val shift: Dp = 0.dp,
     val overscale: Float = 0f,
+    /** How much opacity the entrance starts short of solid. Geometry entrances leave this at 0. */
+    val fade: Float = 0f,
 )
 
 /*
@@ -73,6 +80,18 @@ private val SettingsSpec =
         backwardDurationMillis = 370,
         easing = CubicBezierEasing(0.38f, 0.02f, 0.3f, 1f),
         shift = 30.dp,
+    )
+
+/*
+ * Shallow and brief. Starting from nothing would read as the screen flashing rather than arriving,
+ * so a little over half of the opacity is already there on the first frame and the rest resolves
+ * inside a fifth of a second.
+ */
+private val DetailSpec =
+    DestinationMotionSpec(
+        durationMillis = 200,
+        easing = CubicBezierEasing(0.25f, 0.1f, 0.25f, 1f),
+        fade = 0.45f,
     )
 
 private val SectionSpec =
@@ -102,22 +121,20 @@ internal fun destinationMotionFor(
 private fun String.isInSettings(): Boolean =
     this == "settings" || startsWith("settings/")
 
-/**
- * Null is deliberate for artwork-heavy detail screens: their previous fade was the only animation
- * in this file that needed an offscreen blend. Returning null also means no temporary RenderNode is
- * created for a screen whose safest motion is no motion.
- */
-internal fun DestinationMotion.spec(): DestinationMotionSpec? =
+internal fun DestinationMotion.spec(): DestinationMotionSpec =
     when (this) {
         DestinationMotion.Tab -> TabSpec
-        DestinationMotion.Detail -> null
+        DestinationMotion.Detail -> DetailSpec
         DestinationMotion.Settings -> SettingsSpec
         DestinationMotion.Section -> SectionSpec
     }
 
 /**
- * Plays one finite geometry-only entrance. No alpha, blur or second destination is involved, and
- * the layer is removed as soon as it reaches identity so an idle screen carries no animation cost.
+ * Plays one finite entrance for the destination that is arriving.
+ *
+ * No blur, and no second destination: the screen being left is never composed underneath. The layer
+ * is dropped the moment it reaches identity, so an idle screen carries no animation cost and no
+ * residual transform.
  */
 @Composable
 internal fun Modifier.destinationEntrance(
@@ -126,7 +143,7 @@ internal fun Modifier.destinationEntrance(
 ): Modifier {
     if (!systemAnimationsEnabled()) return this
 
-    val spec = motion.spec() ?: return this
+    val spec = motion.spec()
     val durationMillis =
         when (direction) {
             RouteDirection.Forward -> spec.durationMillis
@@ -163,6 +180,9 @@ internal fun Modifier.destinationEntrance(
         if (spec.overscale != 0f) {
             scaleX = 1f + spec.overscale * remaining
             scaleY = 1f + spec.overscale * remaining
+        }
+        if (spec.fade != 0f) {
+            alpha = (1f - spec.fade * remaining).coerceIn(0f, 1f)
         }
     }
 }
