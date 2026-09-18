@@ -157,7 +157,16 @@ fun LibrarySongsScreen(
                 key = "filter",
                 contentType = CONTENT_TYPE_HEADER,
             ) {
-                Row {
+                /*
+                 * Centred, because this row is the reason the chips jumped between tabs.
+                 *
+                 * The tabs that have no deselect chip put ChipsRow in the header on its own, and it
+                 * carries 8dp of vertical padding. Here it sits beside a bare FilterChip that carries
+                 * none, and a Row aligns its children to the top by default -- so the chips landed 8dp
+                 * higher on this tab than on the others, and switching between them moved the text.
+                 * Centring makes the chips sit at the same height whichever tab draws them.
+                 */
+                Row(verticalAlignment = Alignment.CenterVertically) {
                     Spacer(Modifier.width(12.dp))
                     FilterChip(
                         label = { Text(stringResource(R.string.songs)) },

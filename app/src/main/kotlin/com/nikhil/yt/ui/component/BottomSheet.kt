@@ -191,28 +191,19 @@ fun BottomSheet(
                             .coerceAtLeast(0)
                     IntOffset(x = 0, y = y)
                 }
-                .bottomSheetDraggable(state, onDismiss)
-                .graphicsLayer {
-                    val motionProgress = state.progress.coerceIn(0f, 1f)
-                    val topCornerRadius =
-                        (22.dp * (1f - motionProgress)).coerceAtLeast(0.dp)
-                    shape =
-                        RoundedCornerShape(
-                            topStart = topCornerRadius,
-                            topEnd = topCornerRadius,
-                        )
-                    /*
-                     * Only while the full player is inside this sheet.
-                     *
-                     * On its dock the sheet's own top edge sits exactly along the top of the
-                     * mini-player, and the swipe tilts that card about its bottom edge — so the
-                     * raised corner crossed the boundary and was cut clean off. Nothing needed
-                     * clipping there anyway: the only thing in the sheet at rest is the
-                     * mini-player, which rounds its own corners. The rounded top belongs to the
-                     * full player, and it is composed on exactly this condition.
-                     */
-                    clip = !state.isCollapsed
-                },
+                /*
+                 * The sheet itself never clips. The rounded top belongs to the full player and is
+                 * applied there.
+                 *
+                 * It used to be here, and it cut the mini-player: on its dock the sheet's own top
+                 * edge lies exactly along the top of the card, and the swipe tilts that card about
+                 * its bottom edge, so the rising corner crossed the boundary and was sliced off for
+                 * the whole gesture. Gating this layer on whether the player was docked fixed the
+                 * swipe and bought a worse problem — clipping switched on in a single frame the
+                 * moment the sheet left its dock, which is a blink at the exact instant the player
+                 * opens. A boundary that does not exist cannot be crossed badly.
+                 */
+                .bottomSheetDraggable(state, onDismiss),
     ) {
         if (!state.isCollapsed && !state.isDismissed) {
             BackHandler(onBack = state::collapseSoft)
@@ -269,6 +260,19 @@ fun BottomSheet(
                             translationY =
                                 fold.descentInDockHeights * state.collapsedBound.toPx()
                             transformOrigin = TransformOrigin(0.5f, 1f)
+
+                            // The rounded top is the player's own, and this Box is composed only
+                            // while the player is off its dock — so nothing rounds a mini-player
+                            // that is sitting still, and nothing clips one that is being swiped.
+                            val motionProgress = state.progress.coerceIn(0f, 1f)
+                            val topCornerRadius =
+                                (22.dp * (1f - motionProgress)).coerceAtLeast(0.dp)
+                            shape =
+                                RoundedCornerShape(
+                                    topStart = topCornerRadius,
+                                    topEnd = topCornerRadius,
+                                )
+                            clip = true
                         }
                         .background(backgroundColor),
                 content = content,
