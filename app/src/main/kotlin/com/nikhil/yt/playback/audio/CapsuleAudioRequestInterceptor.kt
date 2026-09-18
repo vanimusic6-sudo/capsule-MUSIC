@@ -76,7 +76,13 @@ internal class CapsuleAudioRequestInterceptor(private val guardStreams: Boolean 
 
         fun JsonObject?.text(key: String) = (this?.get(key) as? JsonPrimitive)?.contentOrNull
 
-        Timber.tag("PlayerItem").d(
+        /*
+         * Info, not debug. The first capture taken with this in place carried no debug lines at
+         * all — the export drops them — so the one line that was added to answer the question was
+         * the one line missing from the answer. It fires once per player response, the same cadence
+         * as "stream selected" beside it, so it costs a line per track and not a line per read.
+         */
+        Timber.tag("PlayerItem").i(
             "player-item status=%s musicVideoType=%s live=%s private=%s unlisted=%s " +
                 "embeddable=%s expiresInSec=%s adaptiveFormats=%d progressiveFormats=%d",
             playability.text("status") ?: "none",
