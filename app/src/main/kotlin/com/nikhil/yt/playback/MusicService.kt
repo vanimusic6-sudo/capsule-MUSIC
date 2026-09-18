@@ -194,6 +194,7 @@ import com.nikhil.yt.utils.StreamClientUtils
 import com.nikhil.yt.utils.SyncUtils
 import com.nikhil.yt.utils.GlobalLog
 import com.nikhil.yt.playback.audio.AudioCacheDataSource
+import com.nikhil.yt.playback.audio.AudioChunkedDataSource
 import com.nikhil.yt.playback.audio.AudioCacheSource
 import com.nikhil.yt.playback.audio.AudioNetworkDiagnosticDataSource
 import com.nikhil.yt.playback.audio.AudioCdnConnectionDiagnosticInterceptor
@@ -3605,9 +3606,13 @@ class MusicService :
                 .addNetworkInterceptor(AudioCdnConnectionDiagnosticInterceptor())
                 .build()
         val networkUpstream =
-            AudioNetworkDiagnosticDataSource.Factory(
-                upstreamFactory = DefaultDataSource.Factory(this, OkHttpDataSource.Factory(audioHttpClient)),
-                beforeNetworkOpen = ::awaitAudioNetworkOpenPermit,
+            // Chunking sits outermost so each bounded request still appears in the CDN diagnostics
+            // as its own open, which is how a paced stream is recognised in a capture.
+            AudioChunkedDataSource.Factory(
+                AudioNetworkDiagnosticDataSource.Factory(
+                    upstreamFactory = DefaultDataSource.Factory(this, OkHttpDataSource.Factory(audioHttpClient)),
+                    beforeNetworkOpen = ::awaitAudioNetworkOpenPermit,
+                ),
             )
         val streaming = CacheDataSource.Factory().setCache(playerCache)
             .setUpstreamDataSourceFactory(networkUpstream)
