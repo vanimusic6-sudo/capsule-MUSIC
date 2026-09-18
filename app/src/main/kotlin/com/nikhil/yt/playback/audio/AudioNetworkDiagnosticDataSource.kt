@@ -48,6 +48,19 @@ internal fun Throwable.isExpectedAudioCdnInterruption(): Boolean {
  * from the URL is how long the link had left to live, which is the single most useful fact about a
  * rejected link and identifies nobody.
  */
+/**
+ * How many slow reads are printed in full before the rest are thinned, and how often after that.
+ *
+ * A throttled stream produces one every few seconds, and the session worth capturing is exactly the
+ * one that suffers: a capture of an hour-long episode carried ninety-two of them, which is enough
+ * to push the start of that session out of an export holding a couple of thousand lines. The first
+ * few establish the pattern and every tenth tracks it. Each line carries the running count and the
+ * totals, and the closing line carries the final tally, so the thinning removes repetition rather
+ * than information.
+ */
+internal const val SLOW_READS_LOGGED_IN_FULL = 5
+internal const val SLOW_READ_LOG_INTERVAL = 10
+
 /** The few response headers googlevideo states a refusal in; everything else stays unread. */
 private val REJECTION_HEADERS =
     listOf("X-Squid-Error", "X-Restrict", "X-Walled-Garden", "Server")
@@ -236,16 +249,31 @@ internal class AudioNetworkDiagnosticDataSource(
                 if (readMs >= SLOW_READ_THRESHOLD_MS) {
                     slowReadCount += 1
                     worstReadMs = maxOf(worstReadMs, readMs)
-                    Timber.tag(TAG).w(
-                        "cdn-slow-read id=%s host=%s readMs=%d requestedBytes=%d returnedBytes=%d totalBytes=%d slowReads=%d",
-                        mediaKey ?: "none",
-                        host ?: "unknown",
-                        readMs,
-                        length,
-                        count,
-                        bytesRead,
-                        slowReadCount,
-                    )
+                    /*
+                     * A throttled stream produces one of these every few seconds, and an hour-long
+                     * episode is exactly the session worth capturing: ninety-two of them in one
+                     * capture, which is enough to push the rest of the session out of an export
+                     * that holds a couple of thousand lines. The first few establish the pattern
+                     * and every tenth after that tracks it; the running count and the totals are on
+                     * each line, and cdn-close carries the final tally, so nothing is lost by not
+                     * printing the ones in between.
+                     */
+                    val worthPrinting =
+                        slowReadCount <= SLOW_READS_LOGGED_IN_FULL ||
+                            slowReadCount % SLOW_READ_LOG_INTERVAL == 0
+                    if (worthPrinting) {
+                        Timber.tag(TAG).w(
+                            "cdn-slow-read id=%s host=%s readMs=%d requestedBytes=%d " +
+                                "returnedBytes=%d totalBytes=%d slowReads=%d",
+                            mediaKey ?: "none",
+                            host ?: "unknown",
+                            readMs,
+                            length,
+                            count,
+                            bytesRead,
+                            slowReadCount,
+                        )
+                    }
                 }
             }
         } catch (failure: Throwable) {

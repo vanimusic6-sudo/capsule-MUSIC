@@ -6,6 +6,7 @@ import android.net.Uri
 import androidx.media3.common.C
 import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.DataSpec
+import androidx.media3.datasource.HttpDataSource.InvalidResponseCodeException
 import androidx.media3.datasource.TransferListener
 import timber.log.Timber
 
@@ -33,6 +34,12 @@ import timber.log.Timber
  * look.
  */
 internal const val AUDIO_CHUNK_BYTES = 1L * 1024 * 1024
+
+/** How many times one slice is asked for before the refusal is handed to the player. */
+internal const val CHUNK_OPEN_ATTEMPTS = 3
+
+/** Response codes that mean "not this request" rather than "not this stream". */
+internal val REFUSAL_CODES = setOf(403, 410)
 
 /**
  * Whether a request for [length] bytes should be split, given a chunk size of [chunkBytes].
@@ -122,15 +129,49 @@ internal class AudioChunkedDataSource(
         return dataSpec.length
     }
 
+    /**
+     * Opens one slice, and asks again if the server refuses that particular request.
+     *
+     * googlevideo refuses roughly one open in ten with no reason given, and a capture shows the
+     * shape of it exactly: on one link, the slice at 47.8 MB was served and the slice at 48.9 MB
+     * was refused moments later. The link is not the problem, the individual request is.
+     *
+     * That rate is survivable for one request per track and fatal for sixty-six. Splitting a long
+     * stream multiplied the exposure — a 66 MB item is 66 opens, and at one in ten the chance of
+     * meeting a refusal somewhere in it is essentially certain — and no chunk size fixes that: at
+     * 4 MB it is still five in six. What fixes it is asking again, because the refusal applies to
+     * the request rather than to the link.
+     *
+     * Three attempts turn one-in-ten into one-in-a-thousand per slice, which is what makes an hour
+     * long item survivable. Anything that is not a refusal is passed straight up: a real network
+     * failure must not be retried here, where the player cannot see it.
+     */
     private fun openNextChunk() {
         val spec = requireNotNull(request)
         chunkLeft = minOf(activeChunkBytes, bytesLeft)
-        upstream.open(
+        val chunkSpec =
             spec.buildUpon()
                 .setPosition(nextPosition)
                 .setLength(chunkLeft)
-                .build(),
-        )
+                .build()
+
+        var attempt = 1
+        while (true) {
+            try {
+                upstream.open(chunkSpec)
+                return
+            } catch (refused: InvalidResponseCodeException) {
+                if (refused.responseCode !in REFUSAL_CODES || attempt >= CHUNK_OPEN_ATTEMPTS) throw refused
+                Timber.tag("AudioCDN").w(
+                    "cdn-chunk-refused position=%d attempt=%d code=%d; asking again",
+                    nextPosition,
+                    attempt,
+                    refused.responseCode,
+                )
+                upstream.close()
+                attempt += 1
+            }
+        }
     }
 
     override fun read(buffer: ByteArray, offset: Int, length: Int): Int {

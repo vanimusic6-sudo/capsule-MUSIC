@@ -6,6 +6,7 @@ import android.net.Uri
 import androidx.media3.common.C
 import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.DataSpec
+import androidx.media3.datasource.HttpDataSource.InvalidResponseCodeException
 import androidx.media3.datasource.TransferListener
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
@@ -292,6 +293,90 @@ class AudioChunkedDataSourceTest {
 
         assertArrayEquals(bytes, delivered)
         assertEquals("a pre-windowed link must go out as one request", 1, upstream.opens.size)
+    }
+
+    /** Refuses the first N opens with the given code, then behaves normally. */
+    private class RefusingUpstream(
+        content: ByteArray,
+        private var refusalsLeft: Int,
+        private val code: Int = 403,
+    ) : DataSource {
+        private val inner = FakeUpstream(content)
+        var refusalsServed = 0
+            private set
+
+        val opens get() = inner.opens
+
+        override fun addTransferListener(transferListener: TransferListener) = Unit
+
+        override fun open(dataSpec: DataSpec): Long {
+            if (refusalsLeft > 0) {
+                refusalsLeft -= 1
+                refusalsServed += 1
+                throw InvalidResponseCodeException(
+                    code,
+                    "refused",
+                    null,
+                    emptyMap(),
+                    dataSpec,
+                    ByteArray(0),
+                )
+            }
+            return inner.open(dataSpec)
+        }
+
+        override fun read(buffer: ByteArray, offset: Int, length: Int) =
+            inner.read(buffer, offset, length)
+
+        override fun getUri(): Uri? = Uri.EMPTY
+
+        override fun close() = inner.close()
+    }
+
+    /**
+     * A refused slice is asked for again rather than ending the track.
+     *
+     * googlevideo refuses about one open in ten with no reason given, and a capture shows the shape:
+     * on one link the slice at 47.8 MB was served and the slice at 48.9 MB refused moments later.
+     * Splitting a long stream multiplies that exposure -- a 66 MB item is 66 opens -- so without
+     * asking again, meeting a refusal somewhere inside an hour-long item is a near certainty.
+     */
+    @Test
+    fun aRefusedSliceIsAskedForAgain() {
+        val bytes = content(1000)
+        val upstream = RefusingUpstream(bytes, refusalsLeft = 2)
+        val source = AudioChunkedDataSource(upstream, chunkBytes = 128)
+
+        source.open(spec(bytes.size.toLong()))
+        val delivered = drain(source)
+
+        assertArrayEquals("the stream did not survive a refused slice", bytes, delivered)
+        assertEquals("both refusals should have been retried", 2, upstream.refusalsServed)
+    }
+
+    /** A slice that keeps being refused is handed to the player rather than retried forever. */
+    @Test
+    fun aSliceRefusedEveryTimeIsGivenUpOn() {
+        val bytes = content(1000)
+        val upstream = RefusingUpstream(bytes, refusalsLeft = Int.MAX_VALUE)
+        val source = AudioChunkedDataSource(upstream, chunkBytes = 128)
+
+        val failure = runCatching { source.open(spec(bytes.size.toLong())) }.exceptionOrNull()
+
+        assertTrue("the refusal must reach the player", failure is InvalidResponseCodeException)
+        assertEquals(CHUNK_OPEN_ATTEMPTS, upstream.refusalsServed)
+    }
+
+    /** Anything that is not a refusal goes straight up: a real network failure is not ours to hide. */
+    @Test
+    fun aFailureThatIsNotARefusalIsNotRetried() {
+        val bytes = content(1000)
+        val upstream = RefusingUpstream(bytes, refusalsLeft = 1, code = 500)
+        val source = AudioChunkedDataSource(upstream, chunkBytes = 128)
+
+        runCatching { source.open(spec(bytes.size.toLong())) }
+
+        assertEquals("a server error must not be retried here", 1, upstream.refusalsServed)
     }
 
     @Test
