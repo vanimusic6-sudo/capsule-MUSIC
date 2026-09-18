@@ -306,10 +306,34 @@ internal fun audioPrefetchWaitMs(
     return maxOf(untilPlaybackWarmMs, untilLeadWindowMs)
 }
 
+/** A first rejection is answered as fast as a fresh link can be fetched, not after a backoff. */
+internal const val FIRST_SIGNED_URL_REJECTION_DELAY_MS = 150L
+
+/**
+ * How long to wait before asking for another link after this one was refused.
+ *
+ * A refused link is cured by a different link, not by time, and three captures say so plainly:
+ * every first rejection was answered by the very next resolve, on the same client and often the
+ * same CDN host, seconds later. The server gives no reason for the refusal — the response body is
+ * empty and the only header is its own name — and roughly one first open in ten is refused
+ * whatever the item is. An official track was refused in the same capture in which fan uploads
+ * played, so it is not about what is being fetched either.
+ *
+ * Waiting out the full backoff before re-resolving therefore bought nothing and cost the whole
+ * delay: a four second silence, of which a second and a half was this. From the second rejection
+ * onwards the backoff applies unchanged, so a link that is refused repeatedly still cannot turn
+ * into a storm of requests.
+ */
 internal fun signedUrlRefreshDelayMs(
     httpStatusCode: Int?,
     budgetDelayMs: Long,
-): Long = budgetDelayMs
+    rejectionCount: Int = SIGNED_URL_REJECTIONS_BEFORE_CLIENT_ROLLOVER,
+): Long =
+    if (httpStatusCode in setOf(403, 410) && rejectionCount <= 1) {
+        minOf(FIRST_SIGNED_URL_REJECTION_DELAY_MS, budgetDelayMs)
+    } else {
+        budgetDelayMs
+    }
 
 internal fun shouldRefreshCipherConfigAfterSignedUrlRejection(
     httpStatusCode: Int?,
@@ -3526,9 +3550,11 @@ class MusicService :
             // limits or bot-checks (handled above as hard stops). Note that the skipped call is
             // harmless for this status: its only side effect beyond the quarantine is
             // markHttpStatusFailure, which acts on 429 alone.
+            var signedUrlRejections = SIGNED_URL_REJECTIONS_BEFORE_CLIENT_ROLLOVER
             if (httpStatusCode in setOf(403, 410)) {
                 val rejections =
                     playbackRecoveryCoordinator.recordSignedUrlRejection(currentMediaId)
+                signedUrlRejections = rejections
                 if (shouldRollOverClientAfterSignedUrlRejection(rejections)) {
                     CapsuleAudioEngine.markStreamClientFailed(
                         videoId = currentMediaId,
@@ -3557,7 +3583,12 @@ class MusicService :
                         budgetDelayMs = retryDelay,
                     ),
                 retryReason = "http=$httpStatusCode code=${error.errorCode}",
-                retryDelayMs = signedUrlRefreshDelayMs(httpStatusCode, retryDelay),
+                retryDelayMs =
+                    signedUrlRefreshDelayMs(
+                        httpStatusCode = httpStatusCode,
+                        budgetDelayMs = retryDelay,
+                        rejectionCount = signedUrlRejections,
+                    ),
             )
             return
         }
