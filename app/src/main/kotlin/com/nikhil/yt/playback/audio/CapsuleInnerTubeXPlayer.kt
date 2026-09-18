@@ -241,8 +241,19 @@ object CapsuleInnerTubeXPlayer {
                 ).withStreamCapabilities(
                     allowHls = false,
                     allowSabr = false,
-                    /* Capsule Media3 does not yet consume InnerTubeX chunk scheduling. */
-                    allowBoundedRange = false,
+                    /*
+                     * Capsule consumes chunk scheduling now, so it stops declaring that it cannot.
+                     *
+                     * This said "does not yet" and meant it: every request went out for a whole
+                     * file, and googlevideo paces a whole-file request into the ground a few
+                     * seconds in. A capture of a 38 MB episode showed ninety-two stalled reads and
+                     * six underruns; with the stream sliced instead, the same episode streamed from
+                     * 26 MB deep with none of either.
+                     *
+                     * Declaring the capability is what lets the library size those slices itself,
+                     * per client, instead of the app using one constant for all of them.
+                     */
+                    allowBoundedRange = true,
                 )
 
             val resolvedQuality = audioQuality.toInnerTubeX(connectivityManager)

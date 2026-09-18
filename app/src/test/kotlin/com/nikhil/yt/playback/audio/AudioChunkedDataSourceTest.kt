@@ -268,6 +268,32 @@ class AudioChunkedDataSourceTest {
         assertArrayEquals("the retry after a failed open was corrupted", bytes, drain(source))
     }
 
+    /**
+     * A link that already carries its own window is handed through whole.
+     *
+     * With the bounded-range capability declared, the library may write the window into the query
+     * string. This source reuses one link for every slice, so slicing a pre-windowed link would ask
+     * for bytes outside the window the server agreed to.
+     */
+    @Test
+    fun aLinkThatCarriesItsOwnRangeIsNotSlicedAgain() {
+        val bytes = content(1000)
+        val upstream = FakeUpstream(bytes)
+        val source = AudioChunkedDataSource(upstream, chunkBytes = 128)
+
+        source.open(
+            DataSpec.Builder()
+                .setUri(Uri.parse("https://example.invalid/stream?range=0-999"))
+                .setPosition(0)
+                .setLength(bytes.size.toLong())
+                .build(),
+        )
+        val delivered = drain(source)
+
+        assertArrayEquals(bytes, delivered)
+        assertEquals("a pre-windowed link must go out as one request", 1, upstream.opens.size)
+    }
+
     @Test
     fun theSplittingRuleMatchesTheSourceItGoverns() {
         assertTrue(shouldChunkAudioRequest(AUDIO_CHUNK_BYTES + 1))

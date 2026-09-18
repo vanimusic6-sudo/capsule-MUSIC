@@ -7,6 +7,7 @@ import androidx.media3.common.C
 import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.DataSpec
 import androidx.media3.datasource.TransferListener
+import timber.log.Timber
 
 /**
  * How much of a stream one request asks for before the next one is opened.
@@ -89,6 +90,22 @@ internal class AudioChunkedDataSource(
                 ?.rangeChunkSizeBytes
                 ?.takeIf { it > 0L }
                 ?: chunkBytes
+
+        /*
+         * A URL that already carries its own window is never sliced again.
+         *
+         * Declaring the bounded-range capability lets the library hand back a link with the window
+         * written into the query string. This source reuses one link for every slice, so cutting a
+         * pre-windowed link into further slices would ask for bytes outside the window the server
+         * agreed to. It has not happened in any capture; if it starts, playback must not quietly
+         * truncate, so it is passed through whole and said out loud.
+         */
+        if (runCatching { dataSpec.uri.getQueryParameter("range") }.getOrNull() != null) {
+            Timber.tag("AudioCDN").w("cdn-chunk-skipped reason=url-carries-its-own-range")
+            request = null
+            opened = true
+            return upstream.open(dataSpec)
+        }
 
         if (!shouldChunkAudioRequest(dataSpec.length, chunkBytes)) {
             request = null

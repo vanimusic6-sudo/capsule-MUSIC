@@ -561,7 +561,8 @@ class MusicService :
                     val queryNames = runCatching { dataSpec.uri.queryParameterNames }.getOrDefault(emptySet())
                     val headerNames = dataSpec.httpRequestHeaders.keys
                     Timber.tag("AudioCDN").d(
-                        "cdn-open-gate id=%s source=%s ageMs=%d settleMs=%d client=%s pot=%s n=%s sig=%s expire=%s ua=%s origin=%s referer=%s",
+                        "cdn-open-gate id=%s source=%s ageMs=%d settleMs=%d client=%s pot=%s n=%s sig=%s " +
+                            "expire=%s bakedRange=%s ua=%s origin=%s referer=%s",
                         mediaId,
                         openContext.source,
                         ageMs,
@@ -571,6 +572,11 @@ class MusicService :
                         "n" in queryNames,
                         "sig" in queryNames || "signature" in queryNames || "lsig" in queryNames,
                         "expire" in queryNames,
+                        // Declaring the bounded-range capability lets the library hand back a URL
+                        // with the window already written into it. This app slices the stream
+                        // itself and reuses one URL for every slice, so a baked window would cap
+                        // playback at the first one. It has never appeared; this is where it would.
+                        "range" in queryNames,
                         headerNames.any { it.equals("User-Agent", ignoreCase = true) },
                         headerNames.any { it.equals("Origin", ignoreCase = true) },
                         headerNames.any { it.equals("Referer", ignoreCase = true) },
