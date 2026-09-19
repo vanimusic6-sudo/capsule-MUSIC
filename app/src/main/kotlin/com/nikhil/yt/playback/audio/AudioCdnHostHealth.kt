@@ -13,11 +13,22 @@ import timber.log.Timber
 /** How many opens in a row a server group may fail before it is left alone. */
 internal const val CDN_HOST_FAILURES_BEFORE_COLD = 3
 
-/** How long a group stays left alone once it has earned it. */
-internal const val CDN_HOST_COLD_MS = 5 * 60 * 1000L
+/**
+ * How long a group stays left alone once it has earned it.
+ *
+ * Ninety seconds, down from five minutes. A capture had a group marked cold at 18:41 and never
+ * asked again, and five minutes is a long sentence for an edge that may have come back in thirty
+ * seconds. Shortening it also caps what any mistake in this memory can cost.
+ */
+internal const val CDN_HOST_COLD_MS = 90 * 1000L
 
-/** How often one request is let through to a cold group to see whether it came back. */
-internal const val CDN_HOST_PROBE_INTERVAL_MS = 60 * 1000L
+/**
+ * How often one request is let through to a cold group to see whether it came back.
+ *
+ * Twenty seconds rather than sixty: a probe is one request, and finding out early that a group
+ * recovered is worth far more than the request saved by asking later.
+ */
+internal const val CDN_HOST_PROBE_INTERVAL_MS = 20 * 1000L
 
 /**
  * How many opens may be refused locally in a row before this stops refusing them.

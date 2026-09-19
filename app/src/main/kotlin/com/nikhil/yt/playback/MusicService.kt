@@ -599,9 +599,21 @@ class MusicService :
 
                 if (settleMs > 0L) {
                     delay(settleMs)
-                    if (!isRelevant()) {
-                        throw kotlinx.coroutines.CancellationException("Track changed during AUDIO CDN settle window")
-                    }
+                }
+
+                /*
+                 * The last word before anything leaves the phone.
+                 *
+                 * This used to be asked only inside the settle window, so a link older than the
+                 * settle was sent whatever had happened to the queue since. A capture of fast
+                 * skipping showed what that costs: three songs opened a connection to googlevideo
+                 * and never read a byte from it, because the listener had already moved on. Each
+                 * one is a request that cannot produce audio, and requests that cannot produce
+                 * audio still count towards the density that makes refusals twice as likely for
+                 * the song actually playing.
+                 */
+                if (!isRelevant()) {
+                    throw kotlinx.coroutines.CancellationException("Track no longer wanted before AUDIO CDN open")
                 }
             }
         } catch (cancelled: kotlinx.coroutines.CancellationException) {
