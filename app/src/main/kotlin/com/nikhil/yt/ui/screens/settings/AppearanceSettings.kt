@@ -767,6 +767,7 @@ fun AppearanceSettings(
                 stringResource(when (it) {
                     CapsulePlayerDesign.SUPER -> R.string.capsule_player_super
                     CapsulePlayerDesign.LIGHT -> R.string.capsule_player_light
+                    CapsulePlayerDesign.IMMERSIVE -> R.string.capsule_player_immersive
                 })
             },
         )

@@ -420,6 +420,37 @@ private fun CapsulePlayerLyricsHost(
                         transformOrigin = TransformOrigin(0.5f, 0.5f)
                     },
         ) {
+            if (design == CapsulePlayerDesign.IMMERSIVE) {
+                /*
+                 * A separate screen rather than a third set of branches through the other one.
+                 * Immersion inverts the layout — the artwork is the screen and the controls are
+                 * guests that leave — so threading it through a design flag would have meant a
+                 * conditional on nearly every line of a composable that already carries two.
+                 */
+                CapsuleImmersiveContent(
+                    mediaMetadata = mediaMetadata,
+                    sliderPosition = sliderPosition,
+                    positionMs = position,
+                    durationMs = duration,
+                    onSeekPreview = onSeekPreview,
+                    onSeekFinished = onSeekFinished,
+                    textColor = textColor,
+                    liked = liked,
+                    playerConnection = playerConnection,
+                    onToggleLike = playerConnection::toggleLike,
+                    onArtistSelected = { artist ->
+                        artist.id?.let { artistId ->
+                            onHideLyrics()
+                            navController.navigate("artist/$artistId")
+                            playerState.collapseSoft()
+                        }
+                    },
+                    bottomPadding = 0.dp,
+                    open = !playerState.isCollapsed,
+                )
+                return@Box
+            }
+
             CapsulePlayerContent(
                 design = design,
                 mediaMetadata = mediaMetadata,

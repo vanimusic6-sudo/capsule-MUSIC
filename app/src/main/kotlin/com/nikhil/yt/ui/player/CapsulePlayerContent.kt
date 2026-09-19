@@ -1138,7 +1138,7 @@ fun CapsulePlayerContent(
 
 
 @Composable
-private fun CapsuleThinSlider(
+internal fun CapsuleThinSlider(
     value: Float,
     valueRange: ClosedFloatingPointRange<Float>,
     enabled: Boolean,
@@ -1584,7 +1584,7 @@ internal fun orbitShouldTurn(
  * Resume continues from the same angle.
  */
 @Composable
-private fun CapsuleOrbitButton(
+internal fun CapsuleOrbitButton(
     isPlaying: Boolean,
     isLoading: Boolean,
     visible: Boolean,
