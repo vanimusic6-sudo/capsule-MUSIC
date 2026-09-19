@@ -21,6 +21,7 @@ import com.nikhil.yt.innertube.pages.ExplorePage
 import com.nikhil.yt.innertube.pages.HomePage
 import com.nikhil.yt.innertube.utils.completed
 import com.nikhil.yt.innertube.utils.parseCookieString
+import com.nikhil.yt.constants.ArtistSortType
 import com.nikhil.yt.constants.HideExplicitKey
 import com.nikhil.yt.constants.HideVideoKey
 import com.nikhil.yt.constants.InnerTubeCookieKey
@@ -35,6 +36,7 @@ import com.nikhil.yt.utils.dataStore
 import com.nikhil.yt.utils.get
 import com.nikhil.yt.utils.SyncUtils
 import com.nikhil.yt.utils.reportException
+import com.nikhil.yt.utils.reportRecoverableException
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
@@ -51,6 +53,9 @@ class HomeViewModel @Inject constructor(
     val syncUtils: SyncUtils,
     val forYouEngine: com.nikhil.yt.utils.ForYouSuggestionEngine,
 ) : ViewModel() {
+    /** How many artists seed the "more like" rows. */
+    private val ARTIST_SEEDS = 3
+
     val isRefreshing = MutableStateFlow(false)
     val isLoading = MutableStateFlow(false)
     private val isInitialLoadComplete = MutableStateFlow(false)
@@ -115,7 +120,9 @@ class HomeViewModel @Inject constructor(
                         val hideExplicit = context.dataStore.get(HideExplicitKey, false)
                         val hideVideo = context.dataStore.get(HideVideoKey, false)
                         forYouSuggestions.value = forYouEngine.getSuggestions(hideExplicit, hideVideo)
-                    } catch (_: Exception) {}
+                    } catch (error: Exception) {
+                        reportRecoverableException("HomeViewModel", "load For You suggestions", error)
+                    }
                 }
                 
                 launch {
@@ -195,9 +202,32 @@ class HomeViewModel @Inject constructor(
         val hideVideo = context.dataStore.get(HideVideoKey, false)
         val fromTimeStamp = System.currentTimeMillis() - 86400000 * 7 * 2
         
-        val artistRecommendations = database.mostPlayedArtists(fromTimeStamp, limit = 10).first()
+        /*
+         * Artists the feed can reason about: the ones actually listened to, topped up with the
+         * ones followed.
+         *
+         * Most-played alone is empty on a fresh install, which is the whole problem: the artists
+         * picked in the welcome flow were subscribed and then had no effect on anything, so a new
+         * user's first feed knew nothing about them. Listening still wins where there is listening
+         * to go on — it is the better signal, and it is what makes the feed drift with taste — and
+         * follows fill whatever is left, which is everything on day one and nothing much later.
+         */
+        val playedArtists = database.mostPlayedArtists(fromTimeStamp, limit = 10).first()
             .filter { it.artist.isYouTubeArtist }
-            .shuffled().take(3)
+            .shuffled()
+        val followedArtists =
+            if (playedArtists.size >= ARTIST_SEEDS) {
+                // Nothing to top up, so the query is not run at all.
+                emptyList()
+            } else {
+                database.artistsBookmarked(ArtistSortType.CREATE_DATE, descending = true)
+                    .first()
+                    .filter { it.artist.isYouTubeArtist }
+                    .shuffled()
+            }
+
+        val artistRecommendations =
+            feedArtistSeeds(playedArtists, followedArtists, ARTIST_SEEDS)
             .mapNotNull {
                 val items = mutableListOf<YTItem>()
                 YouTube.artist(it.id).onSuccess { page ->

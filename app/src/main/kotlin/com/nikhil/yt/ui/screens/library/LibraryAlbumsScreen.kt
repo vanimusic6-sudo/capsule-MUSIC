@@ -50,8 +50,9 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.navigation.NavController
-import androidx.navigation.compose.currentBackStackEntryAsState
 import com.nikhil.yt.LocalPlayerAwareWindowInsets
+import com.nikhil.yt.ui.screens.LocalNavBackStackEntry
+import com.nikhil.yt.ui.utils.liveSavedStateHandle
 import com.nikhil.yt.LocalPlayerConnection
 import com.nikhil.yt.R
 import com.nikhil.yt.constants.AlbumFilter
@@ -106,7 +107,16 @@ fun LibraryAlbumsScreen(
     val hideExplicit by rememberPreference(key = HideExplicitKey, defaultValue = false)
 
     val filterContent = @Composable {
-        Row {
+        /*
+         * Centred, because this row is the reason the chips jumped between tabs.
+         *
+         * The tabs that have no deselect chip put ChipsRow in the header on its own, and it
+         * carries 8dp of vertical padding. Here it sits beside a bare FilterChip that carries
+         * none, and a Row aligns its children to the top by default -- so the chips landed 8dp
+         * higher on this tab than on the others, and switching between them moved the text.
+         * Centring makes the chips sit at the same height whichever tab draws them.
+         */
+        Row(verticalAlignment = Alignment.CenterVertically) {
             Spacer(Modifier.width(12.dp))
             FilterChip(
                 label = { Text(stringResource(R.string.albums)) },
@@ -138,12 +148,18 @@ fun LibraryAlbumsScreen(
     LaunchedEffect(Unit) {
         if (ytmSync) {
             withContext(Dispatchers.IO) {
-                viewModel.sync()
+                viewModel.sync(automatic = true)
             }
         }
     }
 
-    val albums by viewModel.allAlbums.collectAsState()
+    /*
+     * Null means the query has not answered yet, which is not the same as owning no albums. Drawing
+     * the empty state before the answer arrives is what made the tab open with a centred placeholder
+     * and then swap it for a grid a frame later.
+     */
+    val loadedAlbums by viewModel.allAlbums.collectAsState()
+    val albums = loadedAlbums.orEmpty()
     val isRefreshing by viewModel.isRefreshing.collectAsState()
 
     val coroutineScope = rememberCoroutineScope()
@@ -151,9 +167,11 @@ fun LibraryAlbumsScreen(
     val lazyListState = rememberLazyListState()
     val lazyGridState = rememberLazyGridState()
     val pullRefreshState = rememberPullToRefreshState()
-    val backStackEntry by navController.currentBackStackEntryAsState()
+    // This screen's own entry: it cannot be destroyed while this composition is alive,
+    // and observing it does not recompose the screen on unrelated navigation.
+    val backStackEntry = LocalNavBackStackEntry.current
     val scrollToTop =
-        backStackEntry?.savedStateHandle?.getStateFlow("scrollToTop", false)?.collectAsState()
+        backStackEntry?.liveSavedStateHandle()?.getStateFlow("scrollToTop", false)?.collectAsState()
 
     LaunchedEffect(scrollToTop?.value) {
         if (scrollToTop?.value == true) {
@@ -161,7 +179,7 @@ fun LibraryAlbumsScreen(
                 LibraryViewType.LIST -> lazyListState.animateScrollToItem(0)
                 LibraryViewType.GRID -> lazyGridState.animateScrollToItem(0)
             }
-            backStackEntry?.savedStateHandle?.set("scrollToTop", false)
+            backStackEntry?.liveSavedStateHandle()?.set("scrollToTop", false)
         }
     }
 
@@ -246,13 +264,12 @@ fun LibraryAlbumsScreen(
                     }
 
                     albums.let { albums ->
-                        if (albums.isEmpty()) {
+                        if (loadedAlbums != null && albums.isEmpty()) {
                             item {
                                 EmptyPlaceholder(
                                     icon = R.drawable.album,
                                     text = stringResource(R.string.library_album_empty),
-                                    modifier = Modifier.animateItem()
-                                )
+                                    modifier = Modifier)
                             }
                         }
 
@@ -272,9 +289,7 @@ fun LibraryAlbumsScreen(
                                 album = album,
                                 isActive = album.id == mediaMetadata?.album?.id,
                                 isPlaying = isPlaying,
-                                modifier = Modifier
-                                    .animateItem()
-                            )
+                                modifier = Modifier)
                         }
                     }
                 }
@@ -305,13 +320,12 @@ fun LibraryAlbumsScreen(
                     }
 
                     albums.let { albums ->
-                        if (albums.isEmpty()) {
+                        if (loadedAlbums != null && albums.isEmpty()) {
                             item(span = { GridItemSpan(maxLineSpan) }) {
                                 EmptyPlaceholder(
                                     icon = R.drawable.album,
                                     text = stringResource(R.string.library_album_empty),
-                                    modifier = Modifier.animateItem()
-                                )
+                                    modifier = Modifier)
                             }
                         }
 
@@ -332,9 +346,7 @@ fun LibraryAlbumsScreen(
                                 album = album,
                                 isActive = album.id == mediaMetadata?.album?.id,
                                 isPlaying = isPlaying,
-                                modifier = Modifier
-                                    .animateItem()
-                            )
+                                modifier = Modifier)
                         }
                     }
                 }

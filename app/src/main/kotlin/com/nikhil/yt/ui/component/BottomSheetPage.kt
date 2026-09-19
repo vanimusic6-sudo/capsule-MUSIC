@@ -4,18 +4,13 @@
  * Licensed Under GPL-3.0
  */
 
-
-
 package com.nikhil.yt.ui.component
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.tween
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
@@ -43,23 +38,16 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalFocusManager
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
-import com.nikhil.yt.R
 import com.nikhil.yt.ui.utils.top
-import kotlinx.coroutines.launch
 
 val LocalBottomSheetPageState = compositionLocalOf { BottomSheetPageState() }
 
@@ -88,81 +76,100 @@ fun BottomSheetPage(
     background: Color = MaterialTheme.colorScheme.surfaceColorAtElevation(NavigationBarDefaults.Elevation),
 ) {
     val focusManager = LocalFocusManager.current
-    val coroutineScope = rememberCoroutineScope()
-    var dragOffset by remember { mutableFloatStateOf(0f) }
 
-    AnimatedVisibility(
-        visible = state.isVisible,
-        enter = fadeIn(animationSpec = tween(300)),
-        exit = fadeOut(animationSpec = tween(300)),
-    ) {
+    // The outside area is only a dismissal hit target. It never dims or blends the page below.
+    if (state.isVisible) {
         BackHandler {
             state.dismiss()
         }
 
         Spacer(
-            modifier = Modifier
-                .pointerInput(Unit) {
-                    detectTapGestures {
-                        state.dismiss()
+            modifier =
+                Modifier
+                    .pointerInput(Unit) {
+                        detectTapGestures {
+                            state.dismiss()
+                        }
                     }
-                }
-                .background(MaterialTheme.colorScheme.scrim.copy(alpha = 0.5f))
-                .fillMaxSize(),
+                    .fillMaxSize(),
         )
     }
 
+    /*
+     * The menu keeps one small rebound, but its natural frequency is lower than before. That gives
+     * the sheet time to accelerate, land and magnetically settle instead of looking like a fast
+     * translate with a bounce bolted onto the end.
+     */
     AnimatedVisibility(
         visible = state.isVisible,
-        enter = slideInVertically(
-            initialOffsetY = { it },
-            animationSpec = tween(300)
-        ),
-        exit = slideOutVertically(
-            targetOffsetY = { it },
-            animationSpec = tween(300)
-        ),
+        enter =
+            slideInVertically(
+                initialOffsetY = { it },
+                animationSpec =
+                    spring(
+                        dampingRatio = 0.80f,
+                        stiffness = 165f,
+                    ),
+            ),
+        exit =
+            slideOutVertically(
+                targetOffsetY = { it },
+                animationSpec =
+                    spring(
+                        dampingRatio = 0.84f,
+                        stiffness = 195f,
+                    ),
+            ),
         modifier = modifier,
     ) {
         Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .windowInsetsPadding(WindowInsets.statusBars)
-                .windowInsetsPadding(WindowInsets.systemBars.only(WindowInsetsSides.Horizontal))
-                .padding(top = 100.dp) // Give enough space from top
-                .clip(ShapeDefaults.Large.top())
-                .background(background)
-                .pointerInput(Unit) {
-                    detectVerticalDragGestures(
-                        onDragEnd = {
-                            if (dragOffset > 100) {
-                                state.dismiss()
-                            }
-                            dragOffset = 0f
-                        }
-                    ) { _, dragAmount ->
-                        dragOffset += dragAmount
-                    }
-                }
-        ) {
-            // Drag handle at the top center
-            Box(
-                modifier = Modifier
-                    .align(Alignment.CenterHorizontally)
-                    .padding(vertical = 12.dp)
-                    .size(width = 32.dp, height = 4.dp)
-                    .background(
-                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
-                        shape = RoundedCornerShape(2.dp)
-                    )
-            )
-            
-            // Content with proper spacing
-            Column(
-                modifier = Modifier
+            modifier =
+                Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 16.dp)
-                    .padding(bottom = 32.dp) // Extra bottom padding for navigation bar
+                    .windowInsetsPadding(WindowInsets.statusBars)
+                    .windowInsetsPadding(WindowInsets.systemBars.only(WindowInsetsSides.Horizontal))
+                    .padding(top = 100.dp)
+                    .clip(ShapeDefaults.Large.top())
+                    .background(background)
+                    .pointerInput(Unit) {
+                        var dragOffset = 0f
+
+                        detectVerticalDragGestures(
+                            onDragStart = {
+                                dragOffset = 0f
+                            },
+                            onDragCancel = {
+                                dragOffset = 0f
+                            },
+                            onDragEnd = {
+                                if (dragOffset > 100f) {
+                                    state.dismiss()
+                                }
+                                dragOffset = 0f
+                            },
+                        ) { _, dragAmount ->
+                            dragOffset = (dragOffset + dragAmount).coerceAtLeast(0f)
+                        }
+                    },
+        ) {
+            Box(
+                modifier =
+                    Modifier
+                        .align(Alignment.CenterHorizontally)
+                        .padding(vertical = 12.dp)
+                        .size(width = 32.dp, height = 4.dp)
+                        .background(
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
+                            shape = RoundedCornerShape(2.dp),
+                        ),
+            )
+
+            Column(
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp)
+                        .padding(bottom = 32.dp),
             ) {
                 state.content(this)
             }

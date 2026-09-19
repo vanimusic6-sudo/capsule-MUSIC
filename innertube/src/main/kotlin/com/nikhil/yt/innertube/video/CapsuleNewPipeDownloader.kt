@@ -24,9 +24,10 @@ internal class CapsuleNewPipeDownloader : Downloader() {
 
     private val client =
         OkHttpClient.Builder()
-            .connectTimeout(15, TimeUnit.SECONDS)
-            .readTimeout(30, TimeUnit.SECONDS)
-            .writeTimeout(30, TimeUnit.SECONDS)
+            .callTimeout(20, TimeUnit.SECONDS)
+            .connectTimeout(10, TimeUnit.SECONDS)
+            .readTimeout(15, TimeUnit.SECONDS)
+            .writeTimeout(15, TimeUnit.SECONDS)
             .followRedirects(true)
             .followSslRedirects(true)
             .retryOnConnectionFailure(true)
@@ -75,23 +76,26 @@ internal class CapsuleNewPipeDownloader : Downloader() {
         }
 
         try {
-            client.newCall(builder.build()).execute().use { response ->
-                if (response.code == 429) {
-                    throw ReCaptchaException(
-                        "YouTube rate limited the isolated VIDEO extractor (HTTP 429)",
-                        request.url(),
+            val call = client.newCall(builder.build())
+            return VideoExtractionRequests.execute(call) {
+                call.execute().use { response ->
+                    if (response.code == 429) {
+                        throw ReCaptchaException(
+                            "YouTube rate limited the isolated VIDEO extractor (HTTP 429)",
+                            request.url(),
+                        )
+                    }
+
+                    val responseBody = response.body.string()
+
+                    NewPipeResponse(
+                        response.code,
+                        response.message,
+                        response.headers.toMultimap(),
+                        responseBody,
+                        response.request.url.toString(),
                     )
                 }
-
-                val responseBody = response.body?.string().orEmpty()
-
-                return NewPipeResponse(
-                    response.code,
-                    response.message,
-                    response.headers.toMultimap(),
-                    responseBody,
-                    response.request.url.toString(),
-                )
             }
         } catch (captcha: ReCaptchaException) {
             throw captcha

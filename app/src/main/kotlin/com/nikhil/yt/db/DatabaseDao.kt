@@ -1163,6 +1163,19 @@ interface DatabaseDao {
     @Query("UPDATE song SET totalPlayTime = totalPlayTime + :playTime WHERE id = :songId")
     fun incrementTotalPlayTime(songId: String, playTime: Long)
 
+    /** Save the finished item's snapshot and history together, even if recovery was cancelled. */
+    @Transaction
+    fun recordPlayback(event: Event, metadata: MediaMetadata?): Boolean {
+        if (getSongByIdBlocking(event.songId) == null) {
+            val snapshot = metadata?.takeIf { it.id == event.songId } ?: return false
+            // Listening is not a download. Existing library/like/download state is left intact.
+            insert(snapshot) { it.copy(dateDownload = null) }
+        }
+        incrementTotalPlayTime(event.songId, event.playTime)
+        insert(event)
+        return true
+    }
+
     @Query("UPDATE playCount SET count = count + 1 WHERE song = :songId AND year = :year AND month = :month")
     suspend fun incrementPlayCount(songId: String, year: Int, month: Int)
 
@@ -1404,6 +1417,37 @@ interface DatabaseDao {
     @Update
     fun update(song: SongEntity)
 
+    @Query("""
+        UPDATE artist SET name = :name, thumbnailUrl = :thumbnailUrl,
+            lastUpdateTime = :lastUpdateTime WHERE id = :id
+    """)
+    fun updateArtistMetadata(
+        id: String,
+        name: String,
+        thumbnailUrl: String?,
+        lastUpdateTime: LocalDateTime,
+    )
+
+    @Query("UPDATE artist SET bookmarkedAt = :bookmarkedAt WHERE id = :id")
+    fun updateArtistBookmark(id: String, bookmarkedAt: LocalDateTime?)
+
+    @Query("""
+        UPDATE artist SET bookmarkedAt = NULL
+        WHERE id = :id AND bookmarkedAt = :expectedBookmark AND isLocal = 0
+    """)
+    fun clearArtistBookmarkIfUnchanged(id: String, expectedBookmark: LocalDateTime): Int
+
+    /** Apply the visible button's intent against the current row, including an insert race. */
+    @Transaction
+    fun setArtistBookmarked(artist: ArtistEntity, subscribed: Boolean): ArtistEntity? {
+        insert(artist)
+        val current = getArtistById(artist.id) ?: return null
+        if ((current.bookmarkedAt != null) == subscribed) return null
+        val updated = current.localToggleLike()
+        updateArtistBookmark(updated.id, updated.bookmarkedAt)
+        return updated
+    }
+
     @Update
     fun update(artist: ArtistEntity)
 
@@ -1421,12 +1465,13 @@ interface DatabaseDao {
         artist: ArtistEntity,
         artistPage: ArtistPage
     ) {
-        update(
-            artist.copy(
-                name = artistPage.artist.title,
-                thumbnailUrl = artistPage.artist.thumbnail?.resize(544, 544),
-                lastUpdateTime = LocalDateTime.now()
-            )
+        // The request may have started before the user subscribed or unsubscribed.
+        // Refresh metadata only; never write the caller's old bookmark back.
+        updateArtistMetadata(
+            id = artist.id,
+            name = artistPage.artist.title,
+            thumbnailUrl = artistPage.artist.thumbnail?.resize(544, 544),
+            lastUpdateTime = LocalDateTime.now(),
         )
     }
 

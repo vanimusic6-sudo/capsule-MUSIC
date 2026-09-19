@@ -73,7 +73,15 @@ class YouTubeFailureClassifierTest {
                 text = "Подтвердите, что вы не робот",
             ),
         )
+        assertEquals(
+            YouTubeFailureKind.BOT_CHECK,
+            YouTubeFailureClassifier.classify(
+                playabilityStatus = "LOGIN_REQUIRED",
+                text = "Войдите в аккаунт, чтобы подтвердить, что вы не бот",
+            ),
+        )
     }
+
     @Test
     fun explicitBotBodyWinsOver401And403() {
         assertEquals(
@@ -91,5 +99,4 @@ class YouTubeFailureClassifierTest {
             ),
         )
     }
-
 }

@@ -5,7 +5,6 @@
  */
 
 
-
 package com.nikhil.yt.constants
 
 import androidx.datastore.preferences.core.booleanPreferencesKey
@@ -25,37 +24,35 @@ val UseSystemFontKey = booleanPreferencesKey("useSystemFont")
 val DefaultOpenTabKey = stringPreferencesKey("defaultOpenTab")
 val SlimNavBarKey = booleanPreferencesKey("slimNavBar")
 val GridItemsSizeKey = stringPreferencesKey("gridItemSize")
-val SliderStyleKey = stringPreferencesKey("sliderStyle")
 val SwipeToSongKey = booleanPreferencesKey("SwipeToSong")
-val PlayerDesignStyleKey = stringPreferencesKey("playerDesignStyle")
 val UseNewLibraryDesignKey = booleanPreferencesKey("useNewLibraryDesign")
-val UseNewMiniPlayerDesignKey = booleanPreferencesKey("useNewMiniPlayerDesign")
 val HidePlayerThumbnailKey = booleanPreferencesKey("hidePlayerThumbnail")
-val VeluneCanvasKey = booleanPreferencesKey("veluneCanvas")
-val ThumbnailCornerRadiusKey = floatPreferencesKey("thumbnailCornerRadius")
 val CropThumbnailToSquareKey = booleanPreferencesKey("cropThumbnailToSquare")
-val SeekExtraSeconds = booleanPreferencesKey("seekExtraSeconds")
 val DisableBlurKey = booleanPreferencesKey("disableBlur")
-val GlassNavigationBarKey = booleanPreferencesKey("glassNavigationBar")
-val GlassMiniPlayerKey = booleanPreferencesKey("glassMiniPlayer")
-
-enum class SliderStyle {
-    Standard,
-    Wavy,
-    Thick,
-    Circular,
-    Simple,
-}
 
 const val SYSTEM_DEFAULT = "SYSTEM_DEFAULT"
 val AppLanguageKey = stringPreferencesKey("appLanguage")
 val ContentLanguageKey = stringPreferencesKey("contentLanguage")
 val ContentCountryKey = stringPreferencesKey("contentCountry")
 val DebugLoggingEnabledKey = booleanPreferencesKey("debugLoggingEnabled")
-val EnableKugouKey = booleanPreferencesKey("enableKugou")
 val EnableLrcLibKey = booleanPreferencesKey("enableLrclib")
 val EnableBetterLyricsKey = booleanPreferencesKey("enableBetterLyrics")
-val EnableSimpMusicLyricsKey = booleanPreferencesKey("enableSimpMusicLyrics")
+val EnableLyricsPlusKey = booleanPreferencesKey("enableLyricsPlus")
+
+/**
+ * On by default: it asks nothing of anybody and answers for tracks the western sources do not have.
+ */
+val EnableNetEaseKey = booleanPreferencesKey("enableNetEase")
+
+/**
+ * Off by default, deliberately.
+ *
+ * Paxsenix relays Apple Music's lyrics, and reaching their catalogue means using the anonymous
+ * token their own web player mints for itself. Nobody's account is involved and nothing is
+ * decrypted, but it is an API meant for their client rather than ours, so it is something to turn
+ * on knowingly rather than something that is simply on.
+ */
+val EnablePaxsenixKey = booleanPreferencesKey("enablePaxsenix")
 val HideExplicitKey = booleanPreferencesKey("hideExplicit")
 val HideVideoKey = booleanPreferencesKey("hideVideo")
 val ProxyEnabledKey = booleanPreferencesKey("proxyEnabled")
@@ -73,7 +70,7 @@ val TogetherAllowGuestsToControlPlaybackKey = booleanPreferencesKey("together_al
 val TogetherRequireHostApprovalToJoinKey = booleanPreferencesKey("together_require_host_approval_to_join")
 val TogetherLastJoinLinkKey = stringPreferencesKey("together_last_join_link")
 val TogetherWelcomeShownKey = booleanPreferencesKey("together_welcome_shown")
-    
+
 // ListenBrainz scrobbling
 val ListenBrainzEnabledKey = booleanPreferencesKey("listenbrainz_enabled")
 val ListenBrainzTokenKey = stringPreferencesKey("listenbrainz_token")
@@ -140,8 +137,6 @@ val EqualizerCustomProfilesJsonKey = stringPreferencesKey("equalizerCustomProfil
 val MaxImageCacheSizeKey = intPreferencesKey("maxImageCacheSize")
 val SmartTrimmerKey = booleanPreferencesKey("smartTrimmer")
 val MaxSongCacheSizeKey = intPreferencesKey("maxSongCacheSize")
-val MaxCanvasCacheSizeKey = intPreferencesKey("maxCanvasCacheSize")
-
 val PauseListenHistoryKey = booleanPreferencesKey("pauseListenHistory")
 val PauseSearchHistoryKey = booleanPreferencesKey("pauseSearchHistory")
 val DisableScreenshotKey = booleanPreferencesKey("disableScreenshot")
@@ -208,19 +203,26 @@ val SongFilterKey = stringPreferencesKey("songFilter")
 val ArtistFilterKey = stringPreferencesKey("artistFilter")
 val AlbumFilterKey = stringPreferencesKey("albumFilter")
 
-val LastLikeSongSyncKey = longPreferencesKey("last_like_song_sync")
-val LastLibSongSyncKey = longPreferencesKey("last_library_song_sync")
-val LastAlbumSyncKey = longPreferencesKey("last_album_sync")
-val LastArtistSyncKey = longPreferencesKey("last_artist_sync")
-val LastPlaylistSyncKey = longPreferencesKey("last_playlist_sync")
-
 val ArtistViewTypeKey = stringPreferencesKey("artistViewType")
 val AlbumViewTypeKey = stringPreferencesKey("albumViewType")
 val PlaylistViewTypeKey = stringPreferencesKey("playlistViewType")
 
 val PlaylistEditLockKey = booleanPreferencesKey("playlistEditLock")
 val QuickPicksKey = stringPreferencesKey("discover")
+/** The old single-choice setting. Still read once, to seed the order on upgrade. */
 val PreferredLyricsProviderKey = stringPreferencesKey("lyricsProvider")
+
+/** The order providers are tried in, comma separated. See [LyricsProviderOrder]. */
+val LyricsProviderOrderKey = stringPreferencesKey("lyricsProviderOrder")
+
+/**
+ * Milliseconds added to the playback position before a lyric line is chosen.
+ *
+ * Positive shows lines earlier, which is the correction for a file that lags; negative shows them
+ * later, for one that runs ahead. Synced lyrics are pinned to timestamps, so there is no scroll
+ * speed to change — a whole file being early or late is a constant offset, and this is it.
+ */
+val LyricsSyncOffsetKey = intPreferencesKey("lyricsSyncOffsetMs")
 val QueueEditLockKey = booleanPreferencesKey("queueEditLock")
 
 val ShowLikedPlaylistKey = booleanPreferencesKey("show_liked_playlist")
@@ -371,40 +373,38 @@ enum class QuickPicks {
 
 enum class PreferredLyricsProvider {
     LRCLIB,
-    KUGOU,
     BETTER_LYRICS,
-    SIMPMUSIC,
 }
 
-enum class PlayerButtonsStyle {
-    DEFAULT,
-    SECONDARY,
-}
+enum class CapsulePlayerDesign {
+    // Persisted as SUPER for existing installations; displayed as Capsule Dense.
+    SUPER,
+    LIGHT,
 
-enum class PlayerDesignStyle {
-    V1,
-    V2,
-    V3,
-    V4,
-    V5,
+    /** Artwork edge to edge, controls that leave after four idle seconds and return on a touch. */
+    IMMERSIVE,
 }
 
 enum class PlayerBackgroundStyle {
+    CAPSULE_STAR,
+    GLOW_ANIMATED,
+    NEBULA,
     DEFAULT,
     GRADIENT,
-    CUSTOM,
-    BLUR,
     COLORING,
-    BLUR_GRADIENT,
     GLOW,
-    GLOW_ANIMATED,
+    CAPSULE_GLOW,
 }
 
-// Keys for customized background
-val PlayerCustomImageUriKey = stringPreferencesKey("playerCustomImageUri")
-val PlayerCustomBlurKey = floatPreferencesKey("playerCustomBlur")
-val PlayerCustomContrastKey = floatPreferencesKey("playerCustomContrast")
-val PlayerCustomBrightnessKey = floatPreferencesKey("playerCustomBrightness")
+enum class MiniPlayerBackgroundStyle {
+    CAPSULE_STAR,
+    COLOR_FLOW,
+    NEBULA,
+    GRADIENT,
+    GLASS,
+    THEME,
+    CAPSULE_GLOW,
+}
 
 
 val LyricsAnimationStyleKey = stringPreferencesKey("lyricsAnimationStyle")
@@ -423,16 +423,23 @@ val LyricsLineSpacingKey = floatPreferencesKey("lyricsLineSpacing")
 val TopSize = stringPreferencesKey("topSize")
 val HistoryDuration = floatPreferencesKey("historyDuration")
 
-val PlayerButtonsStyleKey = stringPreferencesKey("player_buttons_style")
 val PlayerBackgroundStyleKey = stringPreferencesKey("playerBackgroundStyle")
-val ShowLyricsKey = booleanPreferencesKey("showLyrics")
+val CapsulePlayerDesignKey = stringPreferencesKey("capsulePlayerDesign")
+val CapsuleLightLyricLineKey = booleanPreferencesKey("capsuleLightLyricLine")
+
+/**
+ * False until the welcome flow has been finished or skipped once.
+ *
+ * Lives in DataStore, which a clean install starts empty, so the flow appears on a genuinely first
+ * launch and never again — not on an update, not on a restart, not when the caches are cleared.
+ */
+val OnboardingCompletedKey = booleanPreferencesKey("onboardingCompleted")
+val MiniPlayerBackgroundStyleKey = stringPreferencesKey("capsuleMiniPlayerBackgroundStyle")
 val LyricsTextPositionKey = stringPreferencesKey("lyricsTextPosition")
 val LyricsClickKey = booleanPreferencesKey("lyricsClick")
 val LyricsScrollKey = booleanPreferencesKey("lyricsScrollKey")
 val LyricsRomanizeJapaneseKey = booleanPreferencesKey("lyricsRomanizeJapanese")
 val LyricsRomanizeKoreanKey = booleanPreferencesKey("lyricsRomanizeKorean")
-val TranslateLyricsKey = booleanPreferencesKey("translateLyrics")
-val UseLyricsV2Key = booleanPreferencesKey("useLyricsV2")
 
 // Queue lyrics pre-load settings
 val PreloadQueueLyricsEnabledKey = booleanPreferencesKey("preload_queue_lyrics_enabled")
@@ -561,23 +568,5 @@ val RemindAfterKey = intPreferencesKey("remind_after")
 
 // Update settings
 val EnableUpdateNotificationKey = booleanPreferencesKey("enableUpdateNotification")
-val UpdateChannelKey = stringPreferencesKey("updateChannel")
 val LastUpdateCheckKey = longPreferencesKey("lastUpdateCheck")
 val LastNotifiedVersionKey = stringPreferencesKey("lastNotifiedVersion")
-
-val GitHubContributorsEtagKey = stringPreferencesKey("github_contributors_etag")
-val GitHubContributorsJsonKey = stringPreferencesKey("github_contributors_json")
-val GitHubContributorsLastCheckedAtKey = longPreferencesKey("github_contributors_last_checked_at")
-
-val GitHubReleasesEtagKey = stringPreferencesKey("github_releases_etag")
-val GitHubReleasesJsonKey = stringPreferencesKey("github_releases_json")
-val GitHubReleasesLastCheckedAtKey = longPreferencesKey("github_releases_last_checked_at")
-val GitHubReleasesFingerprintKey = stringPreferencesKey("github_releases_fingerprint")
-
-val TogetherOnlineEndpointCacheKey = stringPreferencesKey("together_online_endpoint_cache")
-val TogetherOnlineEndpointLastCheckedAtKey = longPreferencesKey("together_online_endpoint_last_checked_at")
-
-enum class UpdateChannel {
-    STABLE,
-    NIGHTLY,
-}

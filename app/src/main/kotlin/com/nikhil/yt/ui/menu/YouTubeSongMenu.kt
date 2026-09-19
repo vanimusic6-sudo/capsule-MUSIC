@@ -5,9 +5,12 @@
  */
 
 
-
 package com.nikhil.yt.ui.menu
 
+import com.nikhil.yt.ui.component.CapsuleFavoriteIcon
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import com.nikhil.yt.ui.component.StandardChrome
+import com.nikhil.yt.ui.component.ArtistSelectionItem
 import com.nikhil.yt.ui.component.VeluneLoader
 import android.annotation.SuppressLint
 import android.content.Intent
@@ -16,7 +19,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
@@ -49,14 +51,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.platform.LocalConfiguration
 import android.content.res.Configuration
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.core.net.toUri
 import androidx.media3.exoplayer.offline.Download
 import androidx.media3.exoplayer.offline.DownloadRequest
@@ -71,7 +72,6 @@ import com.nikhil.yt.LocalPlayerConnection
 import com.nikhil.yt.LocalSyncUtils
 import com.nikhil.yt.R
 import com.nikhil.yt.constants.ArtistSeparatorsKey
-import com.nikhil.yt.constants.ListItemHeight
 import com.nikhil.yt.constants.ListThumbnailSize
 import com.nikhil.yt.constants.ThumbnailCornerRadius
 import com.nikhil.yt.db.entities.SongEntity
@@ -101,6 +101,7 @@ fun YouTubeSongMenu(
     onDismiss: () -> Unit,
 ) {
     val context = LocalContext.current
+    val resources = LocalResources.current
     val database = LocalDatabase.current
     val playerConnection = LocalPlayerConnection.current ?: return
     val librarySong by database.song(song.id).collectAsState(initial = null)
@@ -162,8 +163,8 @@ fun YouTubeSongMenu(
         onDismiss = { showChoosePlaylistDialog = false },
         onAddComplete = { _, playlistNames ->
             val message = when {
-                playlistNames.size == 1 -> context.getString(R.string.added_to_playlist, playlistNames.first())
-                else -> context.getString(R.string.added_to_n_playlists, playlistNames.size)
+                playlistNames.size == 1 -> resources.getString(R.string.added_to_playlist, playlistNames.first())
+                else -> resources.getString(R.string.added_to_n_playlists, playlistNames.size)
             }
             Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
         },
@@ -173,44 +174,21 @@ fun YouTubeSongMenu(
         mutableStateOf(false)  
     }  
 
-    if (showSelectArtistDialog) {  
-        ListDialog(  
-            onDismiss = { showSelectArtistDialog = false },  
-        ) {  
-            items(splitArtists.distinctBy { it.name }) { splitArtist ->  
-                Row(  
-                    verticalAlignment = Alignment.CenterVertically,  
-                    modifier =  
-                    Modifier  
-                        .height(ListItemHeight)  
-                        .clickable {  
-                            splitArtist.originalArtist?.let { artist ->
-                                navController.navigate("artist/${artist.id}")  
-                                showSelectArtistDialog = false  
-                                onDismiss()
-                            }
-                        }  
-                        .padding(horizontal = 12.dp),  
-                ) {  
-                    Box(  
-                        contentAlignment = Alignment.CenterStart,  
-                        modifier =  
-                        Modifier  
-                            .fillParentMaxWidth()  
-                            .height(ListItemHeight)  
-                            .padding(horizontal = 24.dp),  
-                    ) {  
-                        Text(  
-                            text = splitArtist.name,  
-                            fontSize = 18.sp,  
-                            fontWeight = FontWeight.Bold,  
-                            maxLines = 1,  
-                            overflow = TextOverflow.Ellipsis,  
-                        )  
-                    }  
-                }  
-            }  
-        }  
+    if (showSelectArtistDialog) {
+        ListDialog(onDismiss = { showSelectArtistDialog = false }) {
+            items(splitArtists.distinctBy { it.name }) { splitArtist ->
+                ArtistSelectionItem(
+                    name = splitArtist.name,
+                    artistId = splitArtist.originalArtist?.id,
+                    onClick = {
+                        val id = splitArtist.originalArtist?.id ?: return@ArtistSelectionItem
+                        navController.navigate("artist/$id")
+                        showSelectArtistDialog = false
+                        onDismiss()
+                    },
+                )
+            }
+        }
     }  
 
     ListItem(  
@@ -247,7 +225,9 @@ fun YouTubeSongMenu(
             }
         },
         trailingContent = {  
-            IconButton(  
+            val favoriteInteraction = remember { MutableInteractionSource() }
+            IconButton(
+                interactionSource = favoriteInteraction,  
                 onClick = {  
                     database.transaction {  
                         librarySong.let { librarySong ->  
@@ -264,10 +244,10 @@ fun YouTubeSongMenu(
                     }  
                 },  
             ) {  
-                Icon(  
-                    painter = painterResource(if (librarySong?.song?.liked == true) R.drawable.favorite else R.drawable.favorite_border),  
-                    tint = if (librarySong?.song?.liked == true) MaterialTheme.colorScheme.error else LocalContentColor.current,  
-                    contentDescription = if (librarySong?.song?.liked == true) "Unlike" else "Like",
+                CapsuleFavoriteIcon(
+                    liked = librarySong?.song?.liked == true,
+                    interactionSource = favoriteInteraction,
+                    tint = if (librarySong?.song?.liked == true) StandardChrome.favorite else LocalContentColor.current,
                 )  
             }  
         },  

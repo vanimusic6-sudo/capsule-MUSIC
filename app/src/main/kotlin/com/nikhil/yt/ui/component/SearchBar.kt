@@ -86,6 +86,7 @@ import androidx.compose.ui.unit.lerp
 import androidx.compose.ui.util.lerp
 import com.nikhil.yt.constants.AppBarHeight
 import kotlin.math.max
+import com.nikhil.yt.ui.motion.CapsuleStandardEasing
 
 @ExperimentalMaterial3Api
 @Composable
@@ -112,7 +113,7 @@ fun TopSearch(
 ) {
     val animationProgress: Float by animateFloatAsState(
         targetValue = if (active) 1f else 0f,
-        animationSpec = tween(durationMillis = AnimationDurationMillis),
+        animationSpec = tween(durationMillis = AnimationDurationMillis, easing = CapsuleStandardEasing),
         label = "SearchBarAnimation",
     )
 

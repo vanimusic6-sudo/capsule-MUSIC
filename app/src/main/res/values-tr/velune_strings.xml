@@ -95,9 +95,7 @@
     <string name="player_design_v4">Sinematik</string>
     <string name="player_design_v5">Küçük</string>
     <string name="new_mini_player_design">Yeni mini oynatıcı tasarımı</string>
-    <string name="player_background_blur">Bulanıklaştırma</string>
     <string name="coloring">Boyama</string>
-    <string name="blur_gradient">Bulanık Degrade</string>
     <string name="glow">Parıltı</string>
     <string name="player_buttons_style">Oynatıcı düğme renkleri</string>
     <string name="default_style">Varsayılan</string>
@@ -138,7 +136,6 @@
     <string name="open_supported_links">Desteklenen bağlantıyı varsayılan olarak aç</string>
     <string name="configure_supported_links">Desteklenen bağlantıları yapılandırma</string>
     <string name="intent_supported_links_not_found">Desteklenen bağlantı ayarları bulunamadı, lütfen bunları manuel olarak yapılandırın</string>
-    <string name="set_first_lyrics_provider">Tercih edilen şarkı sözü sağlayıcısı</string>
     <string name="audio_quality_max">Maksimum (beta)</string>
     <string name="enable_similar_content">Benzer içeriği etkinleştir</string>
     <string name="similar_content_desc">Sıranın sonuna gelindiğinde otomatik olarak daha fazla benzer şarkı ekleyin</string>

@@ -12,7 +12,6 @@ import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
@@ -89,6 +88,7 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -110,6 +110,7 @@ import com.nikhil.yt.utils.rememberPreference
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import com.nikhil.yt.ui.motion.CapsuleStandardEasing
 
 data class ThemePalette(
     val id: String,
@@ -720,15 +721,6 @@ object ThemePalettes {
         neutral = Color(0xFF4B0082)
     )
     
-    val Aurora = ThemePalette(
-        id = "aurora",
-        nameResId = R.string.palette_aurora,
-        primary = Color(0xFF00FF7F),
-        secondary = Color(0xFF00FF7F),
-        tertiary = Color(0xFF00FF7F),
-        neutral = Color(0xFF00FF7F)
-    )
-    
     val Candy = ThemePalette(
         id = "candy",
         nameResId = R.string.palette_candy,
@@ -825,7 +817,6 @@ object ThemePalettes {
         Spring,
         Summer,
         Twilight,
-        Aurora,
         Candy,
         Rainbow
     )
@@ -897,6 +888,7 @@ fun PalettePickerScreen(
     navController: NavController
 ) {
     val context = LocalContext.current
+    val resources = LocalResources.current
     val scope = rememberCoroutineScope()
     val (customThemeColor, onCustomThemeColorChange) = rememberPreference(
         CustomThemeColorKey,
@@ -928,10 +920,10 @@ fun PalettePickerScreen(
                 if (imported != null) {
                     val name = ThemeSeedPaletteCodec.extractNameFromJsonOrNull(text)
                     onCustomThemeColorChange(ThemeSeedPaletteCodec.encodeForPreference(imported, name))
-                    Toast.makeText(context, context.getString(R.string.theme_import_success), Toast.LENGTH_SHORT).show()
+                    Toast.makeText(context, resources.getString(R.string.theme_import_success), Toast.LENGTH_SHORT).show()
                     navController.navigate("settings/appearance/theme_creator")
                 } else {
-                    Toast.makeText(context, context.getString(R.string.theme_import_failed), Toast.LENGTH_SHORT).show()
+                    Toast.makeText(context, resources.getString(R.string.theme_import_failed), Toast.LENGTH_SHORT).show()
                 }
             }
         }
@@ -1040,22 +1032,22 @@ private fun ThemePreviewCard(
 ) {
     val animatedPrimary by animateColorAsState(
         targetValue = palette.primary,
-        animationSpec = tween(durationMillis = 500, easing = FastOutSlowInEasing),
+        animationSpec = tween(durationMillis = 500, easing = CapsuleStandardEasing),
         label = "primaryColor"
     )
     val animatedSecondary by animateColorAsState(
         targetValue = palette.secondary,
-        animationSpec = tween(durationMillis = 500, easing = FastOutSlowInEasing),
+        animationSpec = tween(durationMillis = 500, easing = CapsuleStandardEasing),
         label = "secondaryColor"
     )
     val animatedTertiary by animateColorAsState(
         targetValue = palette.tertiary,
-        animationSpec = tween(durationMillis = 500, easing = FastOutSlowInEasing),
+        animationSpec = tween(durationMillis = 500, easing = CapsuleStandardEasing),
         label = "tertiaryColor"
     )
     val animatedNeutral by animateColorAsState(
         targetValue = palette.neutral,
-        animationSpec = tween(durationMillis = 500, easing = FastOutSlowInEasing),
+        animationSpec = tween(durationMillis = 500, easing = CapsuleStandardEasing),
         label = "neutralColor"
     )
     
@@ -1306,13 +1298,13 @@ private fun CarouselDotsIndicator(
             
             val dotSize by animateDpAsState(
                 targetValue = if (isSelected) 8.dp else 4.dp,
-                animationSpec = tween(durationMillis = 200, easing = FastOutSlowInEasing),
+                animationSpec = tween(durationMillis = 200, easing = CapsuleStandardEasing),
                 label = "dotSize"
             )
             
             val dotColor by animateColorAsState(
                 targetValue = if (isSelected) selectedColor else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f),
-                animationSpec = tween(durationMillis = 200),
+                animationSpec = tween(durationMillis = 200, easing = CapsuleStandardEasing),
                 label = "dotColor"
             )
             
@@ -1350,13 +1342,13 @@ private fun PaletteCard(
     
     val borderWidth by animateDpAsState(
         targetValue = if (isSelected) 2.dp else 0.dp,
-        animationSpec = tween(durationMillis = 200),
+        animationSpec = tween(durationMillis = 200, easing = CapsuleStandardEasing),
         label = "borderAnimation"
     )
     
     val animatedBorderColor by animateColorAsState(
         targetValue = if (isSelected) palette.primary else Color.Transparent,
-        animationSpec = tween(durationMillis = 300),
+        animationSpec = tween(durationMillis = 300, easing = CapsuleStandardEasing),
         label = "borderColorAnimation"
     )
     
@@ -1438,22 +1430,22 @@ private fun SelectedPaletteDetails(
 ) {
     val animatedPrimary by animateColorAsState(
         targetValue = palette.primary,
-        animationSpec = tween(durationMillis = 400),
+        animationSpec = tween(durationMillis = 400, easing = CapsuleStandardEasing),
         label = "detailPrimary"
     )
     val animatedSecondary by animateColorAsState(
         targetValue = palette.secondary,
-        animationSpec = tween(durationMillis = 400),
+        animationSpec = tween(durationMillis = 400, easing = CapsuleStandardEasing),
         label = "detailSecondary"
     )
     val animatedTertiary by animateColorAsState(
         targetValue = palette.tertiary,
-        animationSpec = tween(durationMillis = 400),
+        animationSpec = tween(durationMillis = 400, easing = CapsuleStandardEasing),
         label = "detailTertiary"
     )
     val animatedNeutral by animateColorAsState(
         targetValue = palette.neutral,
-        animationSpec = tween(durationMillis = 400),
+        animationSpec = tween(durationMillis = 400, easing = CapsuleStandardEasing),
         label = "detailNeutral"
     )
     

@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="save_logs_to_file">Save logs to file</string>
+    <string name="logs_saved_to_file">Logs saved to file</string>
+    <string name="logs_save_failed">Failed to save logs</string>
+</resources>

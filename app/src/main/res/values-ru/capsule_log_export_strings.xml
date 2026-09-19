@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="save_logs_to_file">Сохранить логи в файл</string>
+    <string name="logs_saved_to_file">Логи сохранены в файл</string>
+    <string name="logs_save_failed">Не удалось сохранить логи</string>
+</resources>

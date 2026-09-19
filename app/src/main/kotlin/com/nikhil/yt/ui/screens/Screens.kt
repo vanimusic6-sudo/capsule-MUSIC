@@ -57,6 +57,8 @@ sealed class Screens(
 
 
     companion object {
-        val MainScreens = listOf(Home, Stats, History, Library)
+        // A destination can initialize its superclass before its own INSTANCE is
+        // assigned. Defer the list so opening Home first cannot capture a null tab.
+        val MainScreens: List<Screens> by lazy { listOf(Home, Stats, History, Library) }
     }
 }

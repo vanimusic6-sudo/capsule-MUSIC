@@ -80,10 +80,8 @@
     <string name="player_design_v3">ミニマル</string>
     <string name="player_design_v4">シネマティック</string>
     <string name="coloring">彩色</string>
-    <string name="blur_gradient">ぼかしグラデーション</string>
     <string name="glow">輝き</string>
     <string name="new_mini_player_design">新しいミニプレーヤーのデザイン</string>
-    <string name="player_background_blur">ぼかし</string>
     <string name="player_buttons_style">プレーヤーのボタンの色</string>
     <string name="default_style">デフォルト</string>
     <string name="secondary_color_style">二次</string>
@@ -121,7 +119,6 @@
     <string name="open_supported_links">デフォルトでサポートされているリンクを開く</string>
     <string name="configure_supported_links">サポートされているリンクを構成する</string>
     <string name="intent_supported_links_not_found">サポートされているリンク設定が見つかりませんでした。手動で設定してください</string>
-    <string name="set_first_lyrics_provider">優先歌詞プロバイダー</string>
     <string name="audio_quality_max">マックス（ベータ版）</string>
     <string name="enable_similar_content">同様のコンテンツを有効にする</string>
     <string name="similar_content_desc">キューの終わりに達すると、類似した曲を自動的に追加します</string>

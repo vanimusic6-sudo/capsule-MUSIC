@@ -95,9 +95,7 @@
     <string name="player_design_v3">Tối giản</string>
     <string name="player_design_v4">Điện ảnh</string>
     <string name="new_mini_player_design">Thiết kế trình phát mini mới</string>
-    <string name="player_background_blur">Làm mờ</string>
     <string name="coloring">Tô màu</string>
-    <string name="blur_gradient">Gradient làm mờ</string>
     <string name="glow">Phát sáng</string>
     <string name="player_buttons_style">Màu sắc nút trình phát</string>
     <string name="default_style">Mặc định</string>
@@ -138,7 +136,6 @@
     <string name="open_supported_links">Mở liên kết được hỗ trợ theo mặc định</string>
     <string name="configure_supported_links">Cấu hình liên kết được hỗ trợ</string>
     <string name="intent_supported_links_not_found">Không tìm thấy cài đặt liên kết được hỗ trợ, vui lòng cấu hình thủ công</string>
-    <string name="set_first_lyrics_provider">Nhà cung cấp lời bài hát ưa thích</string>
     <string name="audio_quality_max">Tối đa (beta)</string>
     <string name="enable_similar_content">Bật nội dung tương tự</string>
     <string name="similar_content_desc">Tự động thêm nhiều bài hát tương tự khi đến cuối hàng đợi</string>

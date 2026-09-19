@@ -19,6 +19,12 @@ object LyricsUtils {
     val LINE_REGEX = "((\\[\\d\\d:\\d\\d\\.\\d{2,3}\\] ?)+)(.+)".toRegex()
     val TIME_REGEX = "\\[(\\d\\d):(\\d\\d)\\.(\\d{2,3})\\]".toRegex()
 
+    /** A word stamp inside a line: <mm:ss.xx> or <mm:ss.xxx>. */
+    private val WORD_TIME_REGEX = "<(\\d{1,2}):(\\d\\d)\\.(\\d{2,3})>".toRegex()
+
+    /** How long the last word of a line lasts when nothing says otherwise. */
+    private const val DEFAULT_WORD_SECONDS = 0.5
+
     private val KANA_ROMAJI_MAP: Map<String, String> = mapOf(
         // Digraphs (Yōon - combinations like kya, sho)
         "キャ" to "kya", "キュ" to "kyu", "キョ" to "kyo",
@@ -177,8 +183,69 @@ object LyricsUtils {
                     mil *= 10
                 }
                 val time = min * DateUtils.MINUTE_IN_MILLIS + sec * DateUtils.SECOND_IN_MILLIS + mil
-                LyricsEntry(time, text)
+                val words = parseWordTimings(text)
+                LyricsEntry(
+                    time = time,
+                    text = if (words != null) stripWordTimings(text) else text,
+                    words = words,
+                )
             }.toList()
+    }
+
+    /**
+     * Word timings from enhanced LRC, if the line carries any.
+     *
+     * Enhanced LRC puts a timestamp before each word inside the line:
+     *
+     *     [00:12.34]<00:12.34>My <00:12.69>day <00:13.61>will come<00:14.88>
+     *
+     * A trailing stamp with no word after it, as above, marks where the last word ends. Without one
+     * the last word is given the same length as the one before it, which is a guess — but a guess
+     * only about when highlighting stops on the final word of a line, and a far smaller error than
+     * having no word timing at all.
+     *
+     * This existed nowhere until now, which is why a source could return perfectly word-timed
+     * lyrics and have every one of those timings thrown away: only TTML had somewhere to put them.
+     */
+    fun parseWordTimings(line: String): List<WordTimestamp>? {
+        val stamps = WORD_TIME_REGEX.findAll(line).toList()
+        if (stamps.isEmpty()) return null
+
+        val words = mutableListOf<Pair<Double, String>>()
+        stamps.forEachIndexed { index, stamp ->
+            val start = wordTimeSeconds(stamp)
+            val textEnd = stamps.getOrNull(index + 1)?.range?.first ?: line.length
+            val text = line.substring(stamp.range.last + 1, textEnd)
+            words += start to text
+        }
+
+        // A trailing stamp with nothing after it is the line's end, not a word.
+        val lineEnd = words.lastOrNull()?.takeIf { it.second.isBlank() }?.first
+        val spoken = if (lineEnd != null) words.dropLast(1) else words
+        if (spoken.isEmpty()) return null
+
+        return spoken.mapIndexed { index, (start, text) ->
+            val next = spoken.getOrNull(index + 1)?.first
+            val end =
+                next
+                    ?: lineEnd
+                    ?: (start + (start - (spoken.getOrNull(index - 1)?.first ?: start)))
+                        .takeIf { it > start }
+                    ?: (start + DEFAULT_WORD_SECONDS)
+            WordTimestamp(text = text, startTime = start, endTime = end)
+        }
+    }
+
+    /** The same line with its word stamps removed, which is what gets displayed. */
+    fun stripWordTimings(line: String): String =
+        WORD_TIME_REGEX.replace(line, "").trim()
+
+    private fun wordTimeSeconds(match: MatchResult): Double {
+        val minutes = match.groupValues[1].toLong()
+        val seconds = match.groupValues[2].toLong()
+        val fraction = match.groupValues[3]
+        val millis = fraction.toLong() * if (fraction.length == 2) 10 else 1
+        return minutes * 60 + seconds + millis / 1000.0
     }
 
     fun findCurrentLineIndex(

@@ -98,9 +98,7 @@
     <string name="player_design_v4">Cinematic</string>
     <string name="player_design_v5">Metro</string>
     <string name="new_mini_player_design">New mini player design</string>
-    <string name="player_background_blur">Blur</string>
     <string name="coloring">Coloring</string>
-    <string name="blur_gradient">Blur Gradient</string>
     <string name="glow">Glow</string>
     <string name="player_buttons_style">Player button colors</string>
     <string name="default_style">Default</string>
@@ -143,7 +141,6 @@
     <string name="open_supported_links">Open supported link by default</string>
     <string name="configure_supported_links">Configure supported links</string>
     <string name="intent_supported_links_not_found">Couldn\'t find supported links settings, please configure them manually</string>
-    <string name="set_first_lyrics_provider">Preferred lyrics provider</string>
     <string name="audio_quality_max">Max (beta)</string>
     <string name="enable_similar_content">Enable similar content</string>
     <string name="similar_content_desc">Automatically add more similar songs when the end of the queue is reached</string>
@@ -200,7 +197,7 @@
     <string name="empty_album">Empty Album</string>
     <string name="empty_album_desc">This album doesn\'t contain any songs</string>
     <plurals name="seconds">
-        <item quantity="one">1 second</item>
+        <item quantity="one">%d second</item>
         <item quantity="other">%d seconds</item>
     </plurals>
     <string name="audio_crossfade_title">Crossfade</string>

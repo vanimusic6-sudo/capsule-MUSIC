@@ -78,6 +78,7 @@ import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
@@ -104,6 +105,9 @@ import com.nikhil.yt.ui.component.IconButton as AtIconButton
 import com.nikhil.yt.ui.component.TextFieldDialog
 import com.nikhil.yt.ui.utils.backToMain
 import com.nikhil.yt.utils.rememberPreference
+import com.nikhil.yt.ui.motion.CapsuleExitEasing
+import com.nikhil.yt.ui.motion.CapsuleShortestVisible
+import com.nikhil.yt.ui.motion.CapsuleEnterEasing
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -112,6 +116,7 @@ fun MusicTogetherScreen(
     scrollBehavior: TopAppBarScrollBehavior,
 ) {
     val context = LocalContext.current
+    val resources = LocalResources.current
     val playerConnection = LocalPlayerConnection.current
 
     val (welcomeShown, setWelcomeShown) = rememberPreference(TogetherWelcomeShownKey, false)
@@ -131,7 +136,7 @@ fun MusicTogetherScreen(
     val (displayName, setDisplayName) =
         rememberPreference(
             TogetherDisplayNameKey,
-            defaultValue = Build.MODEL?.takeIf { it.isNotBlank() } ?: context.getString(R.string.app_name),
+            defaultValue = Build.MODEL?.takeIf { it.isNotBlank() } ?: resources.getString(R.string.app_name),
         )
     val (port, setPort) = rememberPreference(TogetherDefaultPortKey, defaultValue = 42117)
     val (allowAddTracks, setAllowAddTracksRaw) = rememberPreference(TogetherAllowGuestsToAddTracksKey, defaultValue = true)
@@ -369,7 +374,7 @@ fun MusicTogetherScreen(
             onCopyText = { labelRes, value ->
                 val clipboard = context.getSystemService(android.content.ClipboardManager::class.java)
                 clipboard?.setPrimaryClip(
-                    android.content.ClipData.newPlainText(context.getString(labelRes), value),
+                    android.content.ClipData.newPlainText(resources.getString(labelRes), value),
                 )
                 Toast.makeText(context, R.string.copied, Toast.LENGTH_SHORT).show()
             },
@@ -902,8 +907,8 @@ private fun HostSectionCard(
 
         AnimatedVisibility(
             visible = !hostModeOnline,
-            enter = fadeIn(tween(200)) + expandVertically(tween(250)),
-            exit = fadeOut(tween(150)) + shrinkVertically(tween(200)),
+            enter = fadeIn(tween(200, easing = CapsuleEnterEasing)) + expandVertically(tween(250, easing = CapsuleEnterEasing)),
+            exit = fadeOut(tween(CapsuleShortestVisible, easing = CapsuleExitEasing)) + shrinkVertically(tween(200, easing = CapsuleExitEasing)),
         ) {
             SettingsItemRow(
                 icon = R.drawable.link,

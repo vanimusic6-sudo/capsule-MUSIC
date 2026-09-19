@@ -50,8 +50,9 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.navigation.NavController
-import androidx.navigation.compose.currentBackStackEntryAsState
 import com.nikhil.yt.LocalPlayerAwareWindowInsets
+import com.nikhil.yt.ui.screens.LocalNavBackStackEntry
+import com.nikhil.yt.ui.utils.liveSavedStateHandle
 import com.nikhil.yt.R
 import com.nikhil.yt.constants.ArtistFilter
 import com.nikhil.yt.constants.ArtistFilterKey
@@ -100,7 +101,16 @@ fun LibraryArtistsScreen(
     val (ytmSync) = rememberPreference(YtmSyncKey, true)
 
     val filterContent = @Composable {
-        Row {
+        /*
+         * Centred, because this row is the reason the chips jumped between tabs.
+         *
+         * The tabs that have no deselect chip put ChipsRow in the header on its own, and it
+         * carries 8dp of vertical padding. Here it sits beside a bare FilterChip that carries
+         * none, and a Row aligns its children to the top by default -- so the chips landed 8dp
+         * higher on this tab than on the others, and switching between them moved the text.
+         * Centring makes the chips sit at the same height whichever tab draws them.
+         */
+        Row(verticalAlignment = Alignment.CenterVertically) {
             Spacer(Modifier.width(12.dp))
             FilterChip(
                 label = { Text(stringResource(R.string.artists)) },
@@ -130,21 +140,28 @@ fun LibraryArtistsScreen(
     LaunchedEffect(Unit) {
         if (ytmSync) {
             withContext(Dispatchers.IO) {
-                viewModel.sync()
+                viewModel.sync(automatic = true)
             }
         }
     }
 
-    val artists by viewModel.allArtists.collectAsState()
+    /*
+     * Null means the query has not answered yet, which is not the same as following nobody. See
+     * LibraryAlbumsScreen for why that distinction is visible.
+     */
+    val loadedArtists by viewModel.allArtists.collectAsState()
+    val artists = loadedArtists.orEmpty()
     val isRefreshing by viewModel.isRefreshing.collectAsState()
     val coroutineScope = rememberCoroutineScope()
 
     val lazyListState = rememberLazyListState()
     val lazyGridState = rememberLazyGridState()
     val pullRefreshState = rememberPullToRefreshState()
-    val backStackEntry by navController.currentBackStackEntryAsState()
+    // This screen's own entry: it cannot be destroyed while this composition is alive,
+    // and observing it does not recompose the screen on unrelated navigation.
+    val backStackEntry = LocalNavBackStackEntry.current
     val scrollToTop =
-        backStackEntry?.savedStateHandle?.getStateFlow("scrollToTop", false)?.collectAsState()
+        backStackEntry?.liveSavedStateHandle()?.getStateFlow("scrollToTop", false)?.collectAsState()
 
     LaunchedEffect(scrollToTop?.value) {
         if (scrollToTop?.value == true) {
@@ -152,7 +169,7 @@ fun LibraryArtistsScreen(
                 LibraryViewType.LIST -> lazyListState.animateScrollToItem(0)
                 LibraryViewType.GRID -> lazyGridState.animateScrollToItem(0)
             }
-            backStackEntry?.savedStateHandle?.set("scrollToTop", false)
+            backStackEntry?.liveSavedStateHandle()?.set("scrollToTop", false)
         }
     }
 
@@ -240,13 +257,12 @@ fun LibraryArtistsScreen(
                     }
 
                     artists.let { artists ->
-                        if (artists.isEmpty()) {
+                        if (loadedArtists != null && artists.isEmpty()) {
                             item {
                                 EmptyPlaceholder(
                                     icon = R.drawable.artist,
                                     text = stringResource(R.string.library_artist_empty),
-                                    modifier = Modifier.animateItem()
-                                )
+                                    modifier = Modifier)
                             }
                         }
 
@@ -259,7 +275,7 @@ fun LibraryArtistsScreen(
                                 navController = navController,
                                 menuState = menuState,
                                 coroutineScope = coroutineScope,
-                                modifier = Modifier.animateItem(),
+                                modifier = Modifier,
                                 artist = artist
                             )
                         }
@@ -292,13 +308,12 @@ fun LibraryArtistsScreen(
                     }
 
                     artists.let { artists ->
-                        if (artists.isEmpty()) {
+                        if (loadedArtists != null && artists.isEmpty()) {
                             item(span = { GridItemSpan(maxLineSpan) }) {
                                 EmptyPlaceholder(
                                     icon = R.drawable.artist,
                                     text = stringResource(R.string.library_artist_empty),
-                                    modifier = Modifier.animateItem()
-                                )
+                                    modifier = Modifier)
                             }
                         }
 
@@ -311,7 +326,7 @@ fun LibraryArtistsScreen(
                                 navController = navController,
                                 menuState = menuState,
                                 coroutineScope = coroutineScope,
-                                modifier = Modifier.animateItem(),
+                                modifier = Modifier,
                                 artist = artist
                             )
                         }

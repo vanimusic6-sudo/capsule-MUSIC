@@ -209,9 +209,7 @@ fun ArtistMenu(
                     )
                 },
                 modifier = Modifier.clickable {
-                    database.transaction {
-                        update(artist.artist.toggleLike())
-                    }
+                    database.setArtistSubscribed(artist.artist, artist.artist.bookmarkedAt == null)
                 }
             )
         }

@@ -27,6 +27,9 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarScrollBehavior
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -70,16 +73,22 @@ fun ContentSettings(
     val (proxyType, onProxyTypeChange) = rememberEnumPreference(key = ProxyTypeKey, defaultValue = Proxy.Type.HTTP)
     val (proxyUrl, onProxyUrlChange) = rememberPreference(key = ProxyUrlKey, defaultValue = "host:port")
     val (streamBypassProxy, onStreamBypassProxyChange) = rememberPreference(key = StreamBypassProxyKey, defaultValue = false)
-    val (enableKugou, onEnableKugouChange) = rememberPreference(key = EnableKugouKey, defaultValue = true)
     val (enableLrclib, onEnableLrclibChange) = rememberPreference(key = EnableLrcLibKey, defaultValue = true)
     val (enableBetterLyrics, onEnableBetterLyricsChange) = rememberPreference(key = EnableBetterLyricsKey, defaultValue = true)
-    val (enableSimpMusicLyrics, onEnableSimpMusicLyricsChange) =
-        rememberPreference(key = EnableSimpMusicLyricsKey, defaultValue = true)
-    val (preferredProvider, onPreferredProviderChange) =
-        rememberEnumPreference(
-            key = PreferredLyricsProviderKey,
-            defaultValue = PreferredLyricsProvider.LRCLIB,
+    val (enableLyricsPlus, onEnableLyricsPlusChange) = rememberPreference(key = EnableLyricsPlusKey, defaultValue = true)
+    val (enablePaxsenix, onEnablePaxsenixChange) = rememberPreference(key = EnablePaxsenixKey, defaultValue = false)
+    val (enableNetEase, onEnableNetEaseChange) = rememberPreference(key = EnableNetEaseKey, defaultValue = true)
+    val (rawLyricsProviderOrder, onLyricsProviderOrderChange) =
+        rememberPreference(key = LyricsProviderOrderKey, defaultValue = "")
+    val (legacyPreferredProvider, _) =
+        rememberPreference(key = PreferredLyricsProviderKey, defaultValue = "")
+    val lyricsProviderOrder =
+        LyricsProviderOrder.resolve(
+            raw = rawLyricsProviderOrder,
+            legacyPreferred = legacyPreferredProvider,
         )
+    var showLyricsProviderPriorityDialog by remember { mutableStateOf(false) }
+
     val (lyricsRomanizeJapanese, onLyricsRomanizeJapaneseChange) = rememberPreference(LyricsRomanizeJapaneseKey, defaultValue = true)
     val (lyricsRomanizeKorean, onLyricsRomanizeKoreanChange) = rememberPreference(LyricsRomanizeKoreanKey, defaultValue = true)
     val (preloadQueueLyricsEnabled, onPreloadQueueLyricsEnabledChange) = rememberPreference(PreloadQueueLyricsEnabledKey, defaultValue = true)
@@ -230,42 +239,41 @@ fun ContentSettings(
             onCheckedChange = onEnableLrclibChange,
         )
         SwitchPreference(
-            title = { Text(stringResource(R.string.enable_kugou)) },
-            icon = { Icon(painterResource(R.drawable.lyrics), null) },
-            checked = enableKugou,
-            onCheckedChange = onEnableKugouChange,
-        )
-        SwitchPreference(
             title = { Text(stringResource(R.string.enable_betterlyrics)) },
             icon = { Icon(painterResource(R.drawable.lyrics), null) },
             checked = enableBetterLyrics,
             onCheckedChange = onEnableBetterLyricsChange,
         )
         SwitchPreference(
-            title = { Text(stringResource(R.string.enable_simpmusic_lyrics)) },
+            title = { Text(stringResource(R.string.enable_lyricsplus)) },
+            description = stringResource(R.string.enable_lyricsplus_description),
             icon = { Icon(painterResource(R.drawable.lyrics), null) },
-            checked = enableSimpMusicLyrics,
-            onCheckedChange = onEnableSimpMusicLyricsChange,
+            checked = enableLyricsPlus,
+            onCheckedChange = onEnableLyricsPlusChange,
         )
-        ListPreference(
-            title = { Text(stringResource(R.string.set_first_lyrics_provider)) },
+        SwitchPreference(
+            title = { Text(stringResource(R.string.enable_paxsenix)) },
+            description = stringResource(R.string.enable_paxsenix_description),
             icon = { Icon(painterResource(R.drawable.lyrics), null) },
-            selectedValue = preferredProvider,
-            values = listOf(
-                PreferredLyricsProvider.LRCLIB,
-                PreferredLyricsProvider.KUGOU,
-                PreferredLyricsProvider.BETTER_LYRICS,
-                PreferredLyricsProvider.SIMPMUSIC,
-            ),
-            valueText = {
-                when (it) {
-                    PreferredLyricsProvider.LRCLIB -> "LrcLib"
-                    PreferredLyricsProvider.KUGOU -> "KuGou"
-                    PreferredLyricsProvider.BETTER_LYRICS -> "BetterLyrics"
-                    PreferredLyricsProvider.SIMPMUSIC -> "SimpMusic"
-                }
-            },
-            onValueSelected = onPreferredProviderChange,
+            checked = enablePaxsenix,
+            onCheckedChange = onEnablePaxsenixChange,
+        )
+        SwitchPreference(
+            title = { Text(stringResource(R.string.enable_netease)) },
+            description = stringResource(R.string.enable_netease_description),
+            icon = { Icon(painterResource(R.drawable.lyrics), null) },
+            checked = enableNetEase,
+            onCheckedChange = onEnableNetEaseChange,
+        )
+        PreferenceEntry(
+            title = { Text(stringResource(R.string.lyrics_provider_priority_title)) },
+            description =
+                stringResource(
+                    R.string.lyrics_provider_priority_summary,
+                    lyricsProviderOrder.size,
+                ),
+            icon = { Icon(painterResource(R.drawable.lyrics), null) },
+            onClick = { showLyricsProviderPriorityDialog = true },
         )
         SwitchPreference(
             title = { Text(stringResource(R.string.lyrics_romanize_japanese)) },
@@ -319,6 +327,16 @@ fun ContentSettings(
                 }
             },
             onValueSelected = onQuickPicksChange,
+        )
+    }
+
+    if (showLyricsProviderPriorityDialog) {
+        LyricsProviderPriorityDialog(
+            currentOrder = lyricsProviderOrder,
+            onDismiss = { showLyricsProviderPriorityDialog = false },
+            onOrderChange = { newOrder ->
+                onLyricsProviderOrderChange(LyricsProviderOrder.encode(newOrder))
+            },
         )
     }
 

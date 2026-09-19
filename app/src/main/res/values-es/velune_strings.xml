@@ -96,9 +96,7 @@
     <string name="player_design_v4">Cinemático</string>
     <string name="player_design_v5">Pequeño</string>
     <string name="new_mini_player_design">Nuevo diseño de mini reproductor</string>
-    <string name="player_background_blur">Desenfoque</string>
     <string name="coloring">Colorido</string>
-    <string name="blur_gradient">Gradiente desenfocado</string>
     <string name="glow">Brillante</string>
     <string name="player_buttons_style">Colores de los botones del reproductor</string>
     <string name="default_style">Por defecto</string>
@@ -138,7 +136,6 @@
     <string name="open_supported_links">Abrir enlaces compatibles por defecto</string>
     <string name="configure_supported_links">Configurar enlaces compatibles</string>
     <string name="intent_supported_links_not_found">No se han encontrado los ajustes de enlaces compatibles, configúrelos manualmente</string>
-    <string name="set_first_lyrics_provider">Proveedor preferido de letras</string>
     <string name="audio_quality_max">Máximo (beta)</string>
     <string name="enable_similar_content">Habilitar contenido similar</string>
     <string name="similar_content_desc">Añadir automáticamente mas canciones similares cuando se alcance el fin de la cola</string>
