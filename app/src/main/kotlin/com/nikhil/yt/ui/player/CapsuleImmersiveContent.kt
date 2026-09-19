@@ -189,6 +189,22 @@ fun CapsuleImmersiveContent(
         onDispose { controller?.show(WindowInsetsCompat.Type.statusBars()) }
     }
 
+    /*
+     * One artist opens their page; several ask which was meant. Same rule and the same dialog as
+     * every other screen, because a track credited to two people should not behave differently
+     * depending on which player design is switched on.
+     */
+    val navigableArtists = rememberNavigableArtists(mediaMetadata.artists)
+    var showArtistPicker by remember { mutableStateOf(false) }
+
+    if (showArtistPicker) {
+        CapsuleArtistPickerDialog(
+            artists = navigableArtists,
+            onDismiss = { showArtistPicker = false },
+            onArtistSelected = onArtistSelected,
+        )
+    }
+
     var showSleepTimerDialog by remember { mutableStateOf(false) }
     var sleepTimerValue by remember { mutableFloatStateOf(30f) }
     val sleepTimerEnabled =
@@ -357,9 +373,12 @@ fun CapsuleImmersiveContent(
                             Modifier.clickable(
                                 interactionSource = remember { MutableInteractionSource() },
                                 indication = null,
+                                enabled = navigableArtists.isNotEmpty(),
                             ) {
-                                mediaMetadata.artists.firstOrNull { it.id != null }
-                                    ?.let(onArtistSelected)
+                                when (navigableArtists.size) {
+                                    1 -> onArtistSelected(navigableArtists.first())
+                                    else -> showArtistPicker = true
+                                }
                             },
                     )
                 }

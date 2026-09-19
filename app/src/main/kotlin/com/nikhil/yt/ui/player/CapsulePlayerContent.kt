@@ -286,16 +286,7 @@ fun CapsulePlayerContent(
             64.dp.toPx()
         }
 
-    val navigableArtists =
-        remember(mediaMetadata.artists) {
-            mediaMetadata.artists
-                .filter {
-                    !it.id.isNullOrBlank()
-                }
-                .distinctBy {
-                    it.id
-                }
-        }
+    val navigableArtists = rememberNavigableArtists(mediaMetadata.artists)
 
     var showArtistPicker by
         remember {
@@ -335,35 +326,10 @@ fun CapsulePlayerContent(
         }
 
     if (showArtistPicker) {
-        AlertDialog(
-            onDismissRequest = {
-                showArtistPicker = false
-            },
-            title = {
-                Text(
-                    text = stringResource(R.string.capsule_choose_artist),
-                )
-            },
-            text = {
-                LazyColumn(Modifier.heightIn(max = 360.dp)) {
-                    items(navigableArtists, key = { it.id.orEmpty() }) { artist ->
-                        ArtistSelectionItem(name = artist.name, artistId = artist.id, thumbnailUrl = artist.thumbnailUrl) {
-                            showArtistPicker = false
-                            onArtistSelected(artist)
-                        }
-                    }
-                }
-            },
-            confirmButton = {},
-            dismissButton = {
-                TextButton(
-                    onClick = {
-                        showArtistPicker = false
-                    },
-                ) {
-                    Text(stringResource(R.string.cancel_button))
-                }
-            },
+        CapsuleArtistPickerDialog(
+            artists = navigableArtists,
+            onDismiss = { showArtistPicker = false },
+            onArtistSelected = onArtistSelected,
         )
     }
 
