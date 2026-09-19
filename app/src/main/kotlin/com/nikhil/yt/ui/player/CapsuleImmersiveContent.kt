@@ -23,7 +23,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -37,6 +36,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -48,7 +48,6 @@ import androidx.compose.ui.unit.sp
 import androidx.media3.common.Player
 import coil3.compose.AsyncImage
 import com.nikhil.yt.R
-import com.nikhil.yt.constants.PlayerBackgroundStyle
 import com.nikhil.yt.extensions.togglePlayPause
 import com.nikhil.yt.extensions.toggleRepeatMode
 import com.nikhil.yt.innertube.toHighResThumbnail
@@ -60,14 +59,18 @@ import com.nikhil.yt.ui.component.CapsuleFavoriteIcon
 import com.nikhil.yt.utils.makeTimeString
 
 /** How much of the sheet the cover takes before it starts to go. */
-private const val ImmersiveArtworkFraction = 0.62f
+private const val ImmersiveArtworkFraction = 0.52f
 
 /** Where inside the cover the dissolve begins. Above this the image is untouched. */
-private const val ImmersiveFadeStart = 0.52f
+private const val ImmersiveFadeStart = 0.58f
 
 /** Smallest cover that still reads as one; largest that still leaves the controls their room. */
-private val ImmersiveArtworkMin = 220.dp
-private val ImmersiveArtworkMax = 620.dp
+private val ImmersiveArtworkMin = 200.dp
+private val ImmersiveArtworkMax = 520.dp
+
+/** The grab rail at the very bottom, which opens the queue. */
+private val ImmersiveQueueRailWidth = 132.dp
+private val ImmersiveQueueRailHeight = 5.dp
 
 /**
  * How tall the cover is in a sheet of this height.
@@ -92,10 +95,19 @@ internal fun immersiveArtworkHeight(available: Dp): Dp =
  * the title keeps its own line with lyrics and like as round chips beside it, and the progress bar
  * is a full-width rail rather than a hairline.
  *
- * The dissolve is a gradient drawn over the image in the colour behind it, not a mask. A mask
- * would need an offscreen layer for the whole cover, and this app has already paid for one of
- * those once — the shimmer's alpha buffer was what made the phone warm. Painting the background's
- * own colour on top reaches the same picture with an ordinary draw.
+ * This screen also declines the player's background styles. Every other design draws a chosen
+ * backdrop — nebula, glow, star — behind the artwork, and here that would be a second picture
+ * competing with the first. There is one background and the cover makes it: a colour taken from
+ * the artwork itself, which the cover then dissolves into.
+ *
+ * The dissolve is a gradient drawn over the image, not an alpha mask. A mask would need an
+ * offscreen layer for the whole cover, and this app has already paid for one of those once — the
+ * shimmer's alpha buffer was what made the phone warm.
+ *
+ * The seam that a first attempt produced is gone by construction rather than by matching. The
+ * gradient ends on exactly the same value the page is painted with, because it is the same value:
+ * fade and floor are one colour, so there is nothing for a boundary to disagree about. Picking a
+ * near-enough colour is what drew the line across the screen the first time.
  */
 @Composable
 fun CapsuleImmersiveContent(
@@ -106,14 +118,13 @@ fun CapsuleImmersiveContent(
     onSeekPreview: (Long) -> Unit,
     onSeekFinished: () -> Unit,
     textColor: Color,
-    playerBackground: PlayerBackgroundStyle,
-    gradientColors: List<Color>,
     liked: Boolean,
     playerConnection: PlayerConnection,
     onToggleLike: () -> Unit,
     onArtistSelected: (MediaMetadata.Artist) -> Unit,
     onShowLyrics: () -> Unit,
     onMenuClick: () -> Unit,
+    onExpandQueue: () -> Unit,
     bottomPadding: Dp,
     open: Boolean = true,
 ) {
@@ -155,18 +166,24 @@ fun CapsuleImmersiveContent(
     val shownPosition = (sliderPosition ?: positionMs).coerceIn(0L, safeDuration)
 
     /*
-     * What the cover dissolves into. The player paints its own background behind this content, so
-     * the fade has to end on that exact colour or a seam appears where the gradient stops.
+     * One colour, used for both the floor under everything and the end of the cover's dissolve.
+     * Being literally the same value is what makes the join invisible: there is no boundary where
+     * two nearly-equal colours can disagree.
+     *
+     * Taken from the artwork and darkened, because a page in the cover's own colour is the point
+     * of the design, and because the controls and their labels sit on it in the player's text
+     * colour and have to stay readable whatever the cover is.
      */
-    val fadeInto =
-        when (playerBackground) {
-            PlayerBackgroundStyle.DEFAULT -> MaterialTheme.colorScheme.surface
-            else -> gradientColors.lastOrNull() ?: Color.Black
+    val artworkColors = rememberCapsuleArtworkColors(mediaMetadata = mediaMetadata)
+    val base =
+        remember(artworkColors) {
+            val source = artworkColors.firstOrNull() ?: Color.Black
+            lerp(source, Color.Black, 0.74f)
         }
 
     val chipSurface = textColor.copy(alpha = 0.10f)
 
-    BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+    BoxWithConstraints(modifier = Modifier.fillMaxSize().background(base)) {
         val artworkHeight = immersiveArtworkHeight(maxHeight)
 
         Box(modifier = Modifier.fillMaxWidth().height(artworkHeight)) {
@@ -185,20 +202,25 @@ fun CapsuleImmersiveContent(
                             Brush.verticalGradient(
                                 0f to Color.Transparent,
                                 ImmersiveFadeStart to Color.Transparent,
-                                0.80f to fadeInto.copy(alpha = 0.72f),
-                                1f to fadeInto,
+                                0.84f to base.copy(alpha = 0.70f),
+                                1f to base,
                             ),
                         ),
             )
         }
 
+        /*
+         * The controls follow the cover instead of hanging off the bottom of the window. Pinned
+         * low they drifted away from the picture they belong to and left a hole in the middle of
+         * the screen; sitting directly under the cover, the two read as one object and the empty
+         * space collects at the foot, where the rail is.
+         */
         Column(
             modifier =
                 Modifier
-                    .align(Alignment.BottomCenter)
                     .fillMaxWidth()
-                    .padding(horizontal = 20.dp)
-                    .padding(bottom = bottomPadding + 20.dp),
+                    .padding(top = artworkHeight)
+                    .padding(horizontal = 20.dp),
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(modifier = Modifier.weight(1f)) {
@@ -352,6 +374,34 @@ fun CapsuleImmersiveContent(
                     ) { playerConnection.player.togglePlayPause() }
                 },
                 onMenuClick = onMenuClick,
+            )
+
+        }
+
+        /*
+         * The rail at the foot of the screen. Cosmo shows the same mark with the queue behind it,
+         * so nothing new has to be learned to find it here.
+         */
+        Box(
+            modifier =
+                Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .padding(bottom = bottomPadding + 8.dp)
+                    .height(34.dp)
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                        onClick = onExpandQueue,
+                    ),
+            contentAlignment = Alignment.Center,
+        ) {
+            Box(
+                modifier =
+                    Modifier
+                        .size(width = ImmersiveQueueRailWidth, height = ImmersiveQueueRailHeight)
+                        .clip(CircleShape)
+                        .background(textColor.copy(alpha = 0.32f)),
             )
         }
     }

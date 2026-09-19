@@ -245,7 +245,11 @@ fun BottomSheetPlayer(
         },
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
-            if (!state.isCollapsed) {
+            /*
+             * Immersion paints its own floor from the artwork, and a chosen backdrop behind it
+             * would be a second picture competing with the cover.
+             */
+            if (!state.isCollapsed && playerDesign != CapsulePlayerDesign.IMMERSIVE) {
                 PlayerBackground(
                     playerBackground = playerBackground,
                     gradientColors = gradientColors,
@@ -255,8 +259,6 @@ fun BottomSheetPlayer(
             enrichedMetadata?.let { metadata ->
                 CapsulePlayerLyricsHost(
                     design = playerDesign,
-                    playerBackground = playerBackground,
-                    gradientColors = gradientColors,
                     showLyrics = showInlineLyrics,
                     mediaMetadata = metadata,
                     sliderPosition = sliderPosition,
@@ -359,8 +361,6 @@ private val LyricsEasing = CubicBezierEasing(0.42f, 0f, 0.28f, 1f)
 @Composable
 private fun CapsulePlayerLyricsHost(
     design: CapsulePlayerDesign,
-    playerBackground: PlayerBackgroundStyle,
-    gradientColors: List<Color>,
     showLyrics: Boolean,
     mediaMetadata: MediaMetadata,
     sliderPosition: Long?,
@@ -439,8 +439,6 @@ private fun CapsulePlayerLyricsHost(
                     onSeekPreview = onSeekPreview,
                     onSeekFinished = onSeekFinished,
                     textColor = textColor,
-                    playerBackground = playerBackground,
-                    gradientColors = gradientColors,
                     liked = liked,
                     playerConnection = playerConnection,
                     onToggleLike = playerConnection::toggleLike,
@@ -453,6 +451,7 @@ private fun CapsulePlayerLyricsHost(
                     },
                     onShowLyrics = onShowLyrics,
                     onMenuClick = onShowMenu,
+                    onExpandQueue = queueState::expandSoft,
                     bottomPadding = 0.dp,
                     open = !playerState.isCollapsed,
                 )
