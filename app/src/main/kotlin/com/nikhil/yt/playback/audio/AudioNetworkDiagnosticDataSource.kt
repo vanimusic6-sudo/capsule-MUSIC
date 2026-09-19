@@ -10,6 +10,7 @@ import timber.log.Timber
 import java.io.IOException
 import java.io.InterruptedIOException
 import java.net.SocketTimeoutException
+import java.util.concurrent.CancellationException
 
 internal fun Throwable.isExpectedAudioCdnInterruption(): Boolean {
     val causes = generateSequence(this as Throwable?) { it.cause }
@@ -22,6 +23,7 @@ internal fun Throwable.isExpectedAudioCdnInterruption(): Boolean {
 
     return causes.any { cause ->
         when (cause) {
+            is CancellationException, is InterruptedException -> true
             is InterruptedIOException ->
                 !cause.message.orEmpty().contains("timeout", ignoreCase = true)
             is IOException -> {

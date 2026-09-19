@@ -111,13 +111,13 @@ internal class AudioChunkedDataSource(
             Timber.tag("AudioCDN").w("cdn-chunk-skipped reason=url-carries-its-own-range")
             request = null
             opened = true
-            return upstream.open(dataSpec)
+            return openWithRefusalRetry(dataSpec)
         }
 
         if (!shouldChunkAudioRequest(dataSpec.length, chunkBytes)) {
             request = null
             opened = true
-            return upstream.open(dataSpec)
+            return openWithRefusalRetry(dataSpec)
         }
 
         request = dataSpec
@@ -129,23 +129,7 @@ internal class AudioChunkedDataSource(
         return dataSpec.length
     }
 
-    /**
-     * Opens one slice, and asks again if the server refuses that particular request.
-     *
-     * googlevideo refuses roughly one open in ten with no reason given, and a capture shows the
-     * shape of it exactly: on one link, the slice at 47.8 MB was served and the slice at 48.9 MB
-     * was refused moments later. The link is not the problem, the individual request is.
-     *
-     * That rate is survivable for one request per track and fatal for sixty-six. Splitting a long
-     * stream multiplied the exposure — a 66 MB item is 66 opens, and at one in ten the chance of
-     * meeting a refusal somewhere in it is essentially certain — and no chunk size fixes that: at
-     * 4 MB it is still five in six. What fixes it is asking again, because the refusal applies to
-     * the request rather than to the link.
-     *
-     * Three attempts turn one-in-ten into one-in-a-thousand per slice, which is what makes an hour
-     * long item survivable. Anything that is not a refusal is passed straight up: a real network
-     * failure must not be retried here, where the player cannot see it.
-     */
+    /** Opens the next bounded slice without changing the original URL or extraction contract. */
     private fun openNextChunk() {
         val spec = requireNotNull(request)
         chunkLeft = minOf(activeChunkBytes, bytesLeft)
@@ -155,16 +139,24 @@ internal class AudioChunkedDataSource(
                 .setLength(chunkLeft)
                 .build()
 
+        openWithRefusalRetry(chunkSpec)
+    }
+
+    /**
+     * A short bounded retry also applies to small and unknown-length streams. Captured 403s can
+     * succeed on the unchanged request; persistent refusals and all transport failures propagate
+     * to the service's shared recovery budget. Never retry 429 or a cancellation here.
+     */
+    private fun openWithRefusalRetry(spec: DataSpec): Long {
         var attempt = 1
         while (true) {
             try {
-                upstream.open(chunkSpec)
-                return
+                return upstream.open(spec)
             } catch (refused: InvalidResponseCodeException) {
                 if (refused.responseCode !in REFUSAL_CODES || attempt >= CHUNK_OPEN_ATTEMPTS) throw refused
                 Timber.tag("AudioCDN").w(
                     "cdn-chunk-refused position=%d attempt=%d code=%d; asking again",
-                    nextPosition,
+                    spec.position,
                     attempt,
                     refused.responseCode,
                 )

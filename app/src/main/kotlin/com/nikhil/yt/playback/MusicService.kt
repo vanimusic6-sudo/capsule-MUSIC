@@ -200,6 +200,8 @@ import com.nikhil.yt.playback.audio.AudioNetworkDiagnosticDataSource
 import com.nikhil.yt.playback.audio.AudioCdnConnectionDiagnosticInterceptor
 import com.nikhil.yt.playback.audio.AudioCdnHostHealth
 import com.nikhil.yt.playback.audio.AudioCdnHostHealthDataSource
+import com.nikhil.yt.playback.audio.audioCdnRefreshRequiredOrNull
+import com.nikhil.yt.playback.audio.requiresFreshAudioUrlFor
 import com.nikhil.yt.playback.audio.AudioCdnRedirectInterceptor
 import com.nikhil.yt.playback.audio.AudioCdnOpenContext
 import com.nikhil.yt.playback.audio.AudioCdnOpenSource
@@ -288,9 +290,9 @@ internal const val SIGNED_URL_CIPHER_REFRESH_THRESHOLD_MS = 3_000L
  * wait longer than any live host would take. Fifteen seconds is past anything observed — the
  * worst success on record is 4.1 s — so a host that misses it was not going to answer.
  *
- * Giving up on a host is now AudioCdnHostHealth's job, which it does on evidence rather than on a
- * stopwatch: three refusals and the group is left alone. Between them, a dead host costs about
- * three of these waits instead of an unbounded number, and a slow live one is never killed.
+ * A transport failure goes to the service's shared recovery budget with a fresh URL, instead of
+ * waiting out several Media3 retries of the same cached URL. Host health also remembers groups
+ * that repeatedly fail. Neither path resets the shared automatic retry budget.
  */
 internal const val AUDIO_CDN_TIMEOUT_SECONDS = 15L
 internal const val SIGNED_URL_MAX_FRESH_RESOLVE_DELAY_MS = 3_000L
@@ -3589,14 +3591,21 @@ class MusicService :
             return
         }
 
-        if (!isNetworkConnected.value || error.isTransientNetworkFailure()) {
+        val requiresFreshCdnUrl = error.requiresFreshAudioUrlFor(currentMediaId)
+        if (!isNetworkConnected.value || (error.isTransientNetworkFailure() && !requiresFreshCdnUrl)) {
+            // A CDN failure can arrive just as connectivity disappears. Do not leave its rejected
+            // generation cached for the eventual reconnect, but do not resolve while offline.
+            if (requiresFreshCdnUrl && currentMediaId != null) {
+                audioResolveCoordinator.cancelMedia(currentMediaId) { playbackUrlCache.remove(currentMediaId) }
+            }
             playbackRecoveryCoordinator.recoverFromNetworkError()
             return
         }
 
         val shouldAttemptStreamRefresh =
             currentMediaId != null && (
-                error.errorCode == PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS ||
+                requiresFreshCdnUrl ||
+                    error.errorCode == PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS ||
                     error.errorCode == PlaybackException.ERROR_CODE_IO_FILE_NOT_FOUND ||
                     error.errorCode == PlaybackException.ERROR_CODE_IO_READ_POSITION_OUT_OF_RANGE ||
                     httpStatusCode in setOf(403, 404, 410, 416, 429, 500, 502, 503)
@@ -3652,8 +3661,16 @@ class MusicService :
                         rejections,
                     )
                 }
-            } else {
+            } else if (!requiresFreshCdnUrl) {
                 CapsuleAudioEngine.clearTrackClientFailures(currentMediaId)
+            }
+            if (requiresFreshCdnUrl) {
+                Timber.tag("AudioCDN").i(
+                    "cdn-refresh-scheduled id=%s reason=%s delayMs=%d",
+                    currentMediaId,
+                    error.audioCdnRefreshRequiredOrNull()?.refreshReason,
+                    retryDelay,
+                )
             }
             audioResolveCoordinator.cancelMedia(currentMediaId) {
                 playbackUrlCache.remove(currentMediaId)
@@ -3665,7 +3682,11 @@ class MusicService :
                         httpStatusCode = httpStatusCode,
                         budgetDelayMs = retryDelay,
                     ),
-                retryReason = "http=$httpStatusCode code=${error.errorCode}",
+                retryReason = if (requiresFreshCdnUrl) {
+                    "cdn=${error.audioCdnRefreshRequiredOrNull()?.refreshReason} code=${error.errorCode}"
+                } else {
+                    "http=$httpStatusCode code=${error.errorCode}"
+                },
                 retryDelayMs =
                     signedUrlRefreshDelayMs(
                         httpStatusCode = httpStatusCode,
@@ -3716,12 +3737,8 @@ class MusicService :
                 // Safe transport-level reconnect for an already-resolved CDN GET.
                 // No player/InnerTube request or client rotation happens here.
                 .retryOnConnectionFailure(true)
-                // Across 322 successful opens in five captures the slowest took 3.87 s, and the
-                // 99th percentile 2.50 s. Every failure ran 10, 12, 13 or 30 s — the default
-                // timeout, waited out in full. Six seconds is half again the slowest open that has
-                // ever worked, and turns a dead edge into a six second answer instead of a thirty
-                // second one. It bounds a single body read too, and the slowest of those on record
-                // is 1.16 s.
+                // Preserve the per-operation allowance for slow working routes. Failed opens and
+                // reads exit through the bounded fresh-URL recovery path instead of repeating here.
                 .connectTimeout(AUDIO_CDN_TIMEOUT_SECONDS, TimeUnit.SECONDS)
                 .readTimeout(AUDIO_CDN_TIMEOUT_SECONDS, TimeUnit.SECONDS)
                 // Redirects are followed by AudioCdnRedirectInterceptor instead, which declines the

@@ -6,6 +6,7 @@ import androidx.media3.common.C
 import androidx.media3.datasource.HttpDataSource
 import androidx.media3.exoplayer.upstream.DefaultLoadErrorHandlingPolicy
 import androidx.media3.exoplayer.upstream.LoadErrorHandlingPolicy
+import com.nikhil.yt.playback.audio.audioCdnRefreshRequiredOrNull
 import com.nikhil.yt.utils.GlobalLog
 import timber.log.Timber
 
@@ -13,12 +14,7 @@ private const val CAPSULE_AUDIO_CACHE_PREFIX = "capsule:audio:"
 private val REJECTED_SIGNED_URL_STATUS_CODES = setOf(403, 410)
 
 /**
- * A 403/410 from googlevideo rejects the current signed URL generation.
- *
- * Step43 device captures finally separated this from transient transport noise: one
- * generation failed at ages ~1.3 s, ~1.8 s and ~3.4 s with complete PoToken/n/signature
- * and request headers, while a fresh /player generation for the same mediaId/itag opened
- * successfully. Retrying the rejected generation only creates more 403s and delays recovery.
+ * A 403/410 reaching this layer has exhausted any bounded retries in the chunk source.
  *
  * Fail the current load immediately so MusicService can invalidate that one PlaybackData
  * generation and perform its bounded fresh resolve. 429 also never retries the same URL.
@@ -54,6 +50,14 @@ internal class CapsuleLoadErrorHandlingPolicy : DefaultLoadErrorHandlingPolicy()
     override fun getRetryDelayMsFor(
         loadErrorInfo: LoadErrorHandlingPolicy.LoadErrorInfo,
     ): Long {
+        loadErrorInfo.exception.audioCdnRefreshRequiredOrNull()?.let { refresh ->
+            Timber.tag("AudioCDN").i(
+                "cdn-retry-policy refresh=%s id=%s stop=true",
+                refresh.refreshReason,
+                refresh.mediaId,
+            )
+            return C.TIME_UNSET
+        }
         val httpFailure =
             generateSequence(loadErrorInfo.exception as Throwable?) { it.cause }
                 .take(8)
