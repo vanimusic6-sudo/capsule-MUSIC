@@ -41,7 +41,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -93,7 +92,7 @@ private val ImmersiveQueueRailWidth = 132.dp
 private val ImmersiveQueueRailHeight = 5.dp
 
 /** How far the rail sits off the foot of the sheet, rather than against it. */
-private val ImmersiveQueueRailLift = 34.dp
+private val ImmersiveQueueRailLift = 64.dp
 
 /**
  * How tall the cover is in a sheet of this height.
@@ -223,12 +222,23 @@ fun CapsuleImmersiveContent(
      * of the design, and because the controls and their labels sit on it in the player's text
      * colour and have to stay readable whatever the cover is.
      */
+    /*
+     * Two colours, and the reason there are two.
+     *
+     * The cover has to end on the colour of its own last pixels or the join shows — that is edge,
+     * measured off the foot of the artwork rather than taken from its palette, because a palette
+     * reports what an image is about and the join cares about what it ends with.
+     *
+     * But a page in that colour is not always a page anyone can read: a cover ending in pale grey
+     * would leave white text on white. So the page starts at edge, exactly where the cover left
+     * off, and goes on darkening below it. Continuity at the seam, legibility by the time there
+     * is anything to read.
+     */
     val artworkColors = rememberCapsuleArtworkColors(mediaMetadata = mediaMetadata)
-    val base =
-        remember(artworkColors) {
-            val source = artworkColors.firstOrNull() ?: Color.Black
-            lerp(source, Color.Black, 0.74f)
-        }
+    val fallbackEdge =
+        remember(artworkColors) { artworkColors.firstOrNull() ?: Color.Black }
+    val edge = rememberImmersiveEdgeColor(mediaMetadata) ?: fallbackEdge
+    val floor = remember(edge) { lerp(edge, Color.Black, 0.86f) }
 
     val chipSurface = textColor.copy(alpha = 0.10f)
 
@@ -237,17 +247,29 @@ fun CapsuleImmersiveContent(
      * to take a colour from and nothing to dissolve, so the page is a plain dark gradient and the
      * only colour on the screen is the video's own.
      */
-    val pageBackground =
-        remember(base, isVideo) {
+    BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+        val artworkHeight = immersiveArtworkHeight(maxHeight)
+
+        /*
+         * Where the cover ends, as a fraction of the sheet. The page has to be exactly edge at
+         * that line and nowhere else, so the stop is computed rather than guessed.
+         */
+        val seam = (artworkHeight / maxHeight).coerceIn(0.05f, 0.95f)
+        val settled = (seam + 0.22f).coerceAtMost(1f)
+
+        val pageBackground =
             if (isVideo) {
                 Brush.verticalGradient(listOf(Color(0xFF121212), Color.Black))
             } else {
-                SolidColor(base)
+                Brush.verticalGradient(
+                    0f to edge,
+                    seam to edge,
+                    settled to floor,
+                    1f to floor,
+                )
             }
-        }
 
-    BoxWithConstraints(modifier = Modifier.fillMaxSize().background(pageBackground)) {
-        val artworkHeight = immersiveArtworkHeight(maxHeight)
+        Box(modifier = Modifier.fillMaxSize().background(pageBackground))
 
         Box(modifier = Modifier.fillMaxWidth().height(artworkHeight)) {
             if (isVideo) {
@@ -292,8 +314,8 @@ fun CapsuleImmersiveContent(
                                 Brush.verticalGradient(
                                     0f to Color.Transparent,
                                     ImmersiveFadeStart to Color.Transparent,
-                                    0.92f to base.copy(alpha = 0.62f),
-                                    1f to base,
+                                    0.92f to edge.copy(alpha = 0.62f),
+                                    1f to edge,
                                 ),
                             ),
                 )
