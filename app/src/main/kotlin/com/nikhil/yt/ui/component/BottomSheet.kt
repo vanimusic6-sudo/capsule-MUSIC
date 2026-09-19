@@ -36,6 +36,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
@@ -120,16 +121,47 @@ internal const val PlayerFoldScale = 0.05f
 internal const val PlayerDescentBeyondDock = 0.9f
 
 /**
- * Pure geometry for the full-player -> mini-player handoff.
+ * Over how much of the travel the player goes out.
  *
- * There is intentionally no opacity component. The mini-player already lives behind the full
- * player, so shrinking and moving the opaque foreground reveals it naturally. This avoids a
- * screen-sized blend buffer while preserving the same physical "put the player into the dock"
- * motion.
+ * The whole of it, and wider than the fold's 0.76 on purpose. In this family of curves the window
+ * is the progress at which the effect is already complete, so a *larger* window is one that
+ * starts sooner — a fact worth writing down, because setting this below the fold's number was an
+ * attempt to make the fade begin earlier and did exactly the opposite.
+ *
+ * Earlier is what it has to be. The fold is the last quarter and is about arriving at the dock;
+ * going out is about leaving, and leaving that only begins near the bottom reads as a blink
+ * rather than a departure.
+ */
+internal const val PlayerCloseFadeWindow = 1f
+
+/** What is left of the player at the moment it reaches the dock. Not zero, or the last of the
+ * descent happens behind nothing at all and the motion loses its subject. */
+internal const val PlayerCloseMinAlpha = 0.04f
+
+/** How grey it has gone by then. Full grey reads as a dead rectangle; this is a drain of colour. */
+internal const val PlayerCloseMaxGrey = 0.72f
+
+/** A neutral the artwork's colours drain into, dark enough to belong to a sheet being put away. */
+internal val PlayerCloseGrey = Color(0xFF6E6E6E)
+
+/**
+ * Geometry and going-out for the full-player -> mini-player handoff.
+ *
+ * This used to be geometry alone, deliberately: shrinking an opaque foreground reveals the
+ * mini-player behind it for free, and a screen-sized alpha layer is the kind of thing that made
+ * this app warm once. That reasoning still holds for anything continuous — and closing a sheet is
+ * not continuous. It is a few hundred milliseconds, once, on a layer the clip already created, so
+ * the blend costs a fraction of one gesture rather than every frame of every hour.
+ *
+ * What it buys is the difference between a screen sliding away and a screen being let go of: the
+ * player dims and drains of colour as it descends, so what lands in the dock has already stopped
+ * being the thing you were looking at.
  */
 internal data class PlayerFoldTransform(
     val scale: Float,
     val descentInDockHeights: Float,
+    val alpha: Float,
+    val greyness: Float,
 )
 
 internal fun playerFoldTransform(progress: Float): PlayerFoldTransform {
@@ -139,9 +171,20 @@ internal fun playerFoldTransform(progress: Float): PlayerFoldTransform {
             window = PlayerFoldWindow,
         )
     val folded = 1f - fold
+
+    // Its own window, so the fade is not tied to the fold's much later start.
+    val present =
+        CapsuleMotion.approach(
+            progress = progress,
+            window = PlayerCloseFadeWindow,
+        )
+    val leaving = 1f - present
+
     return PlayerFoldTransform(
         scale = 1f - PlayerFoldScale * folded,
         descentInDockHeights = folded * PlayerDescentBeyondDock,
+        alpha = (1f - (1f - PlayerCloseMinAlpha) * leaving).coerceIn(0f, 1f),
+        greyness = (PlayerCloseMaxGrey * leaving).coerceIn(0f, 1f),
     )
 }
 
@@ -260,6 +303,7 @@ fun BottomSheet(
                             translationY =
                                 fold.descentInDockHeights * state.collapsedBound.toPx()
                             transformOrigin = TransformOrigin(0.5f, 1f)
+                            alpha = fold.alpha
 
                             // The rounded top is the player's own, and this Box is composed only
                             // while the player is off its dock — so nothing rounds a mini-player
@@ -274,7 +318,19 @@ fun BottomSheet(
                                 )
                             clip = true
                         }
-                        .background(backgroundColor),
+                        .background(backgroundColor)
+                        /*
+                         * The colour drains in the same pass that draws the content, rather than
+                         * in a layer of its own: one grey rectangle over the top, opacity read
+                         * from the same progress the rest of the motion uses.
+                         */
+                        .drawWithContent {
+                            drawContent()
+                            val greyness = playerFoldTransform(state.progress).greyness
+                            if (greyness > 0f) {
+                                drawRect(color = PlayerCloseGrey.copy(alpha = greyness))
+                            }
+                        },
                 content = content,
             )
         }

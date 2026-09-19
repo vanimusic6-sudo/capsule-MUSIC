@@ -2,6 +2,7 @@ package com.nikhil.yt.ui
 
 import com.nikhil.yt.ui.component.PlayerDescentBeyondDock
 import com.nikhil.yt.ui.component.PlayerFoldScale
+import com.nikhil.yt.ui.component.PlayerFoldWindow
 import com.nikhil.yt.ui.component.playerFoldTransform
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -70,5 +71,47 @@ class DockHandoverTest {
         assertTrue(transform.descentInDockHeights.isFinite())
         assertTrue(transform.scale < 1f)
         assertTrue(transform.descentInDockHeights > 0f)
+    }
+
+    @Test
+    fun `the player is whole while it is still open`() {
+        val open = playerFoldTransform(1f)
+
+        assertEquals(1f, open.alpha, 0.001f)
+        assertEquals("nothing drains from a player nobody is closing", 0f, open.greyness, 0.001f)
+    }
+
+    @Test
+    fun `it goes out as it goes down`() {
+        var previousAlpha = playerFoldTransform(1f).alpha
+        var previousGrey = playerFoldTransform(1f).greyness
+
+        for (progress in listOf(0.8f, 0.6f, 0.4f, 0.2f, 0f)) {
+            val fold = playerFoldTransform(progress)
+            assertTrue("alpha rose at $progress", fold.alpha <= previousAlpha + 0.001f)
+            assertTrue("grey fell at $progress", fold.greyness >= previousGrey - 0.001f)
+            previousAlpha = fold.alpha
+            previousGrey = fold.greyness
+        }
+    }
+
+    @Test
+    fun `something is still there when it reaches the dock`() {
+        // Fading to nothing would leave the last of the descent happening behind an empty
+        // rectangle, and the motion loses the thing it is about.
+        val docked = playerFoldTransform(0f)
+
+        assertTrue("it vanished entirely", docked.alpha > 0f)
+        assertTrue("it is still a picture, not a grey slab", docked.greyness < 1f)
+    }
+
+    @Test
+    fun `going out starts before folding does`() {
+        // The fold is about arriving at the dock; going out is about leaving, and leaving has to
+        // start earlier or it reads as a blink at the end.
+        val atFoldStart = playerFoldTransform(PlayerFoldWindow)
+
+        assertEquals("the fold has not begun here", 1f, atFoldStart.scale, 0.001f)
+        assertTrue("but the player is already going", atFoldStart.greyness > 0f)
     }
 }

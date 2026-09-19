@@ -272,8 +272,6 @@ fun CapsuleImmersiveContent(
     val edge = rememberImmersiveEdgeColor(mediaMetadata = mediaMetadata, fallback = fallbackEdge)
     val floor = remember(edge) { lerp(edge, Color.Black, 0.86f) }
 
-    val chipSurface = textColor.copy(alpha = 0.10f)
-
     /*
      * Audio has one floor, the colour the cover dissolves into. Video does not: there is no cover
      * to take a colour from and nothing to dissolve, so the page is a plain dark gradient and the
@@ -303,7 +301,26 @@ fun CapsuleImmersiveContent(
 
         Box(modifier = Modifier.fillMaxSize().background(pageBackground))
 
-        Box(modifier = Modifier.fillMaxWidth().height(artworkHeight)) {
+        Box(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .height(artworkHeight)
+                    /*
+                     * The cover opens the words, as it does in the other two designs. A button
+                     * for it was a button this screen did not need: the cover is the largest
+                     * thing on it and the gesture is already the app's own.
+                     *
+                     * Not while a video is playing — there the frame is the thing being watched,
+                     * and a tap that replaced it with lyrics would be a trap.
+                     */
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                        enabled = !isVideo,
+                        onClick = onShowLyrics,
+                    ),
+        ) {
             if (isVideo) {
                 /*
                  * A video is watched, not dissolved into a page. It keeps its own frame, black
@@ -415,22 +432,23 @@ fun CapsuleImmersiveContent(
                     )
                 }
 
-                ImmersiveChip(background = chipSurface, onClick = onShowLyrics) {
-                    Icon(
-                        painter = painterResource(R.drawable.format_quote),
-                        contentDescription = stringResource(R.string.lyrics),
-                        tint = textColor,
-                        modifier = Modifier.size(26.dp),
-                    )
-                }
-
-                Spacer(Modifier.size(10.dp))
-
+                /*
+                 * The heart sits on the page rather than on a disc of its own. With the lyrics
+                 * button gone there is nothing beside it for a seat to group it with, and a
+                 * single chip in the corner reads as a leftover.
+                 */
                 val favoriteInteraction = remember { MutableInteractionSource() }
-                ImmersiveChip(
-                    background = chipSurface,
-                    interactionSource = favoriteInteraction,
-                    onClick = onToggleLike,
+                Box(
+                    modifier =
+                        Modifier
+                            .size(52.dp)
+                            .clip(CircleShape)
+                            .clickable(
+                                interactionSource = favoriteInteraction,
+                                indication = null,
+                                onClick = onToggleLike,
+                            ),
+                    contentAlignment = Alignment.Center,
                 ) {
                     CapsuleFavoriteIcon(
                         liked = liked,
@@ -441,7 +459,7 @@ fun CapsuleImmersiveContent(
                             } else {
                                 textColor
                             },
-                        modifier = Modifier.size(26.dp),
+                        modifier = Modifier.size(28.dp),
                     )
                 }
             }
@@ -579,24 +597,3 @@ private tailrec fun Context.immersiveWindow(): Window? =
         else -> null
     }
 
-/** A round translucent seat for one icon, as the title row wears beside it. */
-@Composable
-private fun ImmersiveChip(
-    background: Color,
-    onClick: () -> Unit,
-    interactionSource: MutableInteractionSource? = null,
-    content: @Composable () -> Unit,
-) {
-    val source = interactionSource ?: remember { MutableInteractionSource() }
-    Box(
-        modifier =
-            Modifier
-                .size(52.dp)
-                .clip(CircleShape)
-                .background(background)
-                .clickable(interactionSource = source, indication = null, onClick = onClick),
-        contentAlignment = Alignment.Center,
-    ) {
-        content()
-    }
-}

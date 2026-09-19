@@ -784,8 +784,9 @@
     <string name="error_network_problem_title">Проблема с сетью</string>
     <string name="error_network_problem_description">Проверьте подключение к интернету. Если используете VPN — попробуйте переподключить или перезапустить его.</string>
     <string name="capsule_player_design">Дизайн плеера</string>
-    <string name="capsule_player_super">Capsule Cosmo</string>
-    <string name="capsule_player_light">Capsule Light</string>
+    <string name="capsule_player_super">Cosmo</string>
+    <string name="capsule_player_light">Light</string>
+    <string name="capsule_player_immersive">Immersion</string>
     <string name="capsule_light_lyric_line">Строка текста песни</string>
     <string name="capsule_light_lyric_line_description">Показывать под обложкой одну строку текста, следующую за воспроизведением. У треков без синхронизированного текста строка остаётся пустой.</string>
     <string name="background_capsule_glow">Capsule Glow</string>

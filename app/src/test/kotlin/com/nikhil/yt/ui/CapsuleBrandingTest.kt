@@ -27,14 +27,41 @@ class CapsuleBrandingTest {
     private val context get() = RuntimeEnvironment.getApplication()
 
     /**
-     * The skin stored as SUPER is shown as Capsule Cosmo.
+     * The skin stored as SUPER is shown as Cosmo.
      *
      * The enum constant deliberately keeps its old name: it is the value written into everybody's
      * settings, and renaming it would reset the skin of every user who had chosen it. The display
      * name is the part that was meant to change.
      */
-    @Test fun persistedSuperSkinIsDisplayedAsCapsuleCosmo() {
-        assertEquals("Capsule Cosmo", context.getString(R.string.capsule_player_super))
+    @Test fun persistedSuperSkinIsDisplayedAsCosmo() {
+        assertEquals("Cosmo", context.getString(R.string.capsule_player_super))
+    }
+
+    /**
+     * No player design label carries the product name.
+     *
+     * The list already sits under a "Player design" heading inside Capsule, so repeating the brand
+     * on every row said nothing and cost a third of the row's width. Checked in every locale that
+     * translates these names, because the prefix was originally copied into each of them by hand.
+     */
+    @Test fun playerDesignNamesDoNotRepeatTheBrand() {
+        val names = listOf(
+            R.string.capsule_player_super,
+            R.string.capsule_player_light,
+            R.string.capsule_player_immersive,
+        )
+        for (locale in listOf("en", "ru")) {
+            val localised = context.createConfigurationContext(
+                android.content.res.Configuration(context.resources.configuration).apply {
+                    setLocale(java.util.Locale(locale))
+                },
+            )
+            for (name in names) {
+                val label = localised.getString(name)
+                assertTrue("Empty design name in $locale", label.isNotBlank())
+                assertTrue("Design name \"$label\" repeats the brand in $locale", !label.contains("Capsule"))
+            }
+        }
     }
 
     @Test fun composeBrandAliasesResolveToTheOriginalRaster() {

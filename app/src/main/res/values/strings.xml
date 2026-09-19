@@ -846,9 +846,9 @@ Velune will only extract your token, and everything else is stored locally.</str
     <string name="error_network_problem_title">Network problem</string>
     <string name="error_network_problem_description">Check your internet connection. If you use a VPN, try reconnecting or restarting it.</string>
     <string name="capsule_player_design">Player design</string>
-    <string name="capsule_player_super">Capsule Cosmo</string>
-    <string name="capsule_player_light">Capsule Light</string>
-    <string name="capsule_player_immersive">Capsule Immersion</string>
+    <string name="capsule_player_super">Cosmo</string>
+    <string name="capsule_player_light">Light</string>
+    <string name="capsule_player_immersive">Immersion</string>
     <string name="capsule_light_lyric_line">Sounding lyric line</string>
     <string name="capsule_light_lyric_line_description">Show one line of the lyrics under the artwork, following playback. Tracks without synced lyrics leave it empty.</string>
     <string name="background_capsule_glow">Capsule Glow</string>
