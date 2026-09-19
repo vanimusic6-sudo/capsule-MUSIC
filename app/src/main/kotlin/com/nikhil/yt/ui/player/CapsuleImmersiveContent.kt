@@ -6,6 +6,10 @@
 
 package com.nikhil.yt.ui.player
 
+import android.app.Activity
+import android.content.Context
+import android.content.ContextWrapper
+import android.view.Window
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -25,6 +29,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -36,8 +41,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -45,7 +52,13 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.viewinterop.AndroidView
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import androidx.media3.common.Player
+import androidx.media3.ui.AspectRatioFrameLayout
+import androidx.media3.ui.PlayerView
 import coil3.compose.AsyncImage
 import com.nikhil.yt.R
 import com.nikhil.yt.extensions.togglePlayPause
@@ -54,6 +67,7 @@ import com.nikhil.yt.innertube.toHighResThumbnail
 import com.nikhil.yt.models.MediaMetadata
 import com.nikhil.yt.playback.PlayerConnection
 import com.nikhil.yt.playback.video.CapsulePlaybackMode
+import com.nikhil.yt.playback.video.CapsuleVideoPhase
 import com.nikhil.yt.ui.component.CapsuleFavoriteColors
 import com.nikhil.yt.ui.component.CapsuleFavoriteIcon
 import com.nikhil.yt.utils.makeTimeString
@@ -61,16 +75,25 @@ import com.nikhil.yt.utils.makeTimeString
 /** How much of the sheet the cover takes before it starts to go. */
 private const val ImmersiveArtworkFraction = 0.52f
 
-/** Where inside the cover the dissolve begins. Above this the image is untouched. */
-private const val ImmersiveFadeStart = 0.58f
+/**
+ * Where inside the cover the dissolve begins, as a fraction of its height.
+ *
+ * Late, and deliberately so. At just over half the cover the image spent its whole lower half
+ * under a veil and looked smeared rather than faded. The picture should be a picture right up to
+ * its edge and only turn into background at the very end of it.
+ */
+private const val ImmersiveFadeStart = 0.80f
 
 /** Smallest cover that still reads as one; largest that still leaves the controls their room. */
 private val ImmersiveArtworkMin = 200.dp
 private val ImmersiveArtworkMax = 520.dp
 
-/** The grab rail at the very bottom, which opens the queue. */
+/** The grab rail near the bottom, which opens the queue. */
 private val ImmersiveQueueRailWidth = 132.dp
 private val ImmersiveQueueRailHeight = 5.dp
+
+/** How far the rail sits off the foot of the sheet, rather than against it. */
+private val ImmersiveQueueRailLift = 34.dp
 
 /**
  * How tall the cover is in a sheet of this height.
@@ -141,6 +164,32 @@ fun CapsuleImmersiveContent(
 
     val isLoading = playbackState == Player.STATE_BUFFERING
 
+    val isVideo =
+        videoPlaybackState.mode == CapsulePlaybackMode.VIDEO &&
+            videoPlaybackState.phase == CapsuleVideoPhase.PLAYING
+
+    /*
+     * The status bar goes while this screen is up.
+     *
+     * The clock and the battery belong to the phone, not to the cover, and in a design whose whole
+     * point is that the picture runs to the edge of the glass they are the one thing that says
+     * otherwise. Transient-by-swipe, so a swipe from the top still brings them back.
+     *
+     * Restored on the way out rather than on a flag, so it comes back whether the player was
+     * closed, the design was changed, or the screen simply left the composition.
+     */
+    val context = LocalContext.current
+    DisposableEffect(visible) {
+        val window = context.immersiveWindow()
+        val controller = window?.let { WindowCompat.getInsetsController(it, it.decorView) }
+        if (visible && controller != null) {
+            controller.systemBarsBehavior =
+                WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+            controller.hide(WindowInsetsCompat.Type.statusBars())
+        }
+        onDispose { controller?.show(WindowInsetsCompat.Type.statusBars()) }
+    }
+
     var showSleepTimerDialog by remember { mutableStateOf(false) }
     var sleepTimerValue by remember { mutableFloatStateOf(30f) }
     val sleepTimerEnabled =
@@ -183,30 +232,72 @@ fun CapsuleImmersiveContent(
 
     val chipSurface = textColor.copy(alpha = 0.10f)
 
-    BoxWithConstraints(modifier = Modifier.fillMaxSize().background(base)) {
+    /*
+     * Audio has one floor, the colour the cover dissolves into. Video does not: there is no cover
+     * to take a colour from and nothing to dissolve, so the page is a plain dark gradient and the
+     * only colour on the screen is the video's own.
+     */
+    val pageBackground =
+        remember(base, isVideo) {
+            if (isVideo) {
+                Brush.verticalGradient(listOf(Color(0xFF121212), Color.Black))
+            } else {
+                SolidColor(base)
+            }
+        }
+
+    BoxWithConstraints(modifier = Modifier.fillMaxSize().background(pageBackground)) {
         val artworkHeight = immersiveArtworkHeight(maxHeight)
 
         Box(modifier = Modifier.fillMaxWidth().height(artworkHeight)) {
-            AsyncImage(
-                model = mediaMetadata.thumbnailUrl?.toHighResThumbnail(),
-                contentDescription = null,
-                contentScale = ContentScale.Crop,
-                modifier = Modifier.fillMaxSize(),
-            )
+            if (isVideo) {
+                /*
+                 * A video is watched, not dissolved into a page. It keeps its own frame, black
+                 * behind it, and none of the cover's gradient runs over it — the whole reason to
+                 * switch to video is to see all of it.
+                 */
+                AndroidView(
+                    factory = { viewContext ->
+                        PlayerView(viewContext).apply {
+                            player = playerConnection.player
+                            useController = false
+                            // Capsule shows its own loading state; a second spinner over the
+                            // surface would be one indicator too many.
+                            setShowBuffering(PlayerView.SHOW_BUFFERING_NEVER)
+                            resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
+                            setShutterBackgroundColor(android.graphics.Color.BLACK)
+                            keepScreenOn = true
+                        }
+                    },
+                    update = { playerView ->
+                        if (playerView.player !== playerConnection.player) {
+                            playerView.player = playerConnection.player
+                        }
+                    },
+                    modifier = Modifier.fillMaxSize().background(Color.Black),
+                )
+            } else {
+                AsyncImage(
+                    model = mediaMetadata.thumbnailUrl?.toHighResThumbnail(),
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize(),
+                )
 
-            Box(
-                modifier =
-                    Modifier
-                        .fillMaxSize()
-                        .background(
-                            Brush.verticalGradient(
-                                0f to Color.Transparent,
-                                ImmersiveFadeStart to Color.Transparent,
-                                0.84f to base.copy(alpha = 0.70f),
-                                1f to base,
+                Box(
+                    modifier =
+                        Modifier
+                            .fillMaxSize()
+                            .background(
+                                Brush.verticalGradient(
+                                    0f to Color.Transparent,
+                                    ImmersiveFadeStart to Color.Transparent,
+                                    0.92f to base.copy(alpha = 0.62f),
+                                    1f to base,
+                                ),
                             ),
-                        ),
-            )
+                )
+            }
         }
 
         /*
@@ -387,7 +478,7 @@ fun CapsuleImmersiveContent(
                 Modifier
                     .align(Alignment.BottomCenter)
                     .fillMaxWidth()
-                    .padding(bottom = bottomPadding + 8.dp)
+                    .padding(bottom = bottomPadding + ImmersiveQueueRailLift)
                     .height(34.dp)
                     .clickable(
                         interactionSource = remember { MutableInteractionSource() },
@@ -406,6 +497,14 @@ fun CapsuleImmersiveContent(
         }
     }
 }
+
+/** The Activity window behind a Composable, or null when there is not one to reach. */
+private tailrec fun Context.immersiveWindow(): Window? =
+    when (this) {
+        is Activity -> window
+        is ContextWrapper -> baseContext.immersiveWindow()
+        else -> null
+    }
 
 /** A round translucent seat for one icon, as the title row wears beside it. */
 @Composable
