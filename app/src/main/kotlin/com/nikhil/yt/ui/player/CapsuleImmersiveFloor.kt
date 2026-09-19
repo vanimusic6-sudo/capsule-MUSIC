@@ -16,6 +16,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.core.graphics.get
 import coil3.imageLoader
 import coil3.request.ImageRequest
 import coil3.request.allowHardware
@@ -122,7 +123,7 @@ private fun android.graphics.Bitmap.averageBottomStrip(): Color? {
 
     for (y in firstRow until height) {
         for (x in 0 until width) {
-            val pixel = getPixel(x, y)
+            val pixel = this[x, y]
             // Fully transparent pixels say nothing about what the edge looks like.
             if ((pixel ushr 24 and 0xFF) < 8) continue
             red += pixel shr 16 and 0xFF
