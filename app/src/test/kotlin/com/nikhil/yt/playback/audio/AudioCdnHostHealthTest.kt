@@ -141,6 +141,52 @@ class AudioCdnHostHealthTest {
     }
 
     @Test
+    fun `refusing stops once it has stopped leading anywhere`() {
+        // A capture showed a re-resolve landing on the same cold group twenty times running. Every
+        // open was refused here, the player retried, and the song never started.
+        val clock = TestClock()
+        val health = healthWith(clock)
+        repeat(CDN_HOST_FAILURES_BEFORE_COLD) { health.recordFailure(DEAD) }
+        health.shouldSkipHost(DEAD)
+
+        repeat(CDN_HOST_MAX_CONSECUTIVE_SKIPS) {
+            assertTrue("skip $it should still be refused", health.shouldSkipHost(DEAD))
+        }
+
+        assertFalse(
+            "silence is worse than a refusal that might have been served",
+            health.shouldSkipHost(DEAD),
+        )
+        assertFalse("and it stays open, not every other time", health.shouldSkipHost(DEAD))
+    }
+
+    @Test
+    fun `anything served anywhere puts the refusals back`() {
+        val clock = TestClock()
+        val health = healthWith(clock)
+        repeat(CDN_HOST_FAILURES_BEFORE_COLD) { health.recordFailure(DEAD) }
+        health.shouldSkipHost(DEAD)
+        repeat(CDN_HOST_MAX_CONSECUTIVE_SKIPS + 1) { health.shouldSkipHost(DEAD) }
+
+        // Served by some other group, which is exactly the case the memory is for.
+        health.recordSuccess(GOOD)
+
+        assertTrue(health.shouldSkipHost(DEAD))
+    }
+
+    @Test
+    fun `a new route clears the budget too`() {
+        val health = healthWith(TestClock())
+        repeat(CDN_HOST_FAILURES_BEFORE_COLD) { health.recordFailure(DEAD) }
+        health.shouldSkipHost(DEAD)
+        repeat(CDN_HOST_MAX_CONSECUTIVE_SKIPS + 1) { health.shouldSkipHost(DEAD) }
+
+        health.forget()
+
+        assertFalse(health.shouldSkipHost(DEAD))
+    }
+
+    @Test
     fun `a host with no group in its name is never held against anything`() {
         val health = healthWith(TestClock())
 

@@ -20,6 +20,19 @@ internal const val CDN_HOST_COLD_MS = 5 * 60 * 1000L
 internal const val CDN_HOST_PROBE_INTERVAL_MS = 60 * 1000L
 
 /**
+ * How many opens may be refused locally in a row before this stops refusing them.
+ *
+ * Leaving a group alone only helps if there is somewhere else to go, and a capture showed there
+ * is not always: a re-resolve came back on the same group twenty times running, so every open was
+ * refused here, the player retried, and the song never started. Silence for a minute is worse
+ * than a refusal that might have been served.
+ *
+ * Two, because the first skip is the cheap one that usually does land somewhere else, and by the
+ * third the evidence is that nothing else is on offer. Any served request resets it.
+ */
+internal const val CDN_HOST_MAX_CONSECUTIVE_SKIPS = 2
+
+/**
  * Remembers which googlevideo server groups are currently refusing everything.
  *
  * A capture settled a question that an earlier one had answered the other way. Split by server
@@ -53,8 +66,13 @@ internal class AudioCdnHostHealth(
     private val coldUntil = HashMap<String, Long>()
     private val lastProbe = HashMap<String, Long>()
 
+    /** Refusals raised here since the last request that was served, by anyone, anywhere. */
+    private var consecutiveSkips = 0
+
     @Synchronized
     fun recordSuccess(host: String?) {
+        // Something was served, so refusing here is leading somewhere after all.
+        consecutiveSkips = 0
         val group = googlevideoServerGroup(host) ?: return
         val wasCold = coldUntil.remove(group) != null
         failures.remove(group)
@@ -88,6 +106,13 @@ internal class AudioCdnHostHealth(
      */
     @Synchronized
     fun shouldSkipHost(host: String?): Boolean {
+        /*
+         * The escape hatch, checked before anything else. Whatever this memory believes about the
+         * group, it must never be the reason a song cannot start: once refusing has stopped
+         * leading anywhere, the request goes out and takes its chances.
+         */
+        if (consecutiveSkips >= CDN_HOST_MAX_CONSECUTIVE_SKIPS) return false
+
         val group = googlevideoServerGroup(host) ?: return false
         val expiry = coldUntil[group] ?: return false
         val instant = now()
@@ -102,6 +127,7 @@ internal class AudioCdnHostHealth(
             lastProbe[group] = instant
             return false
         }
+        consecutiveSkips += 1
         return true
     }
 
@@ -116,6 +142,7 @@ internal class AudioCdnHostHealth(
         failures.clear()
         coldUntil.clear()
         lastProbe.clear()
+        consecutiveSkips = 0
     }
 }
 
