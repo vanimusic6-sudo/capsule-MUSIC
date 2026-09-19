@@ -2,19 +2,22 @@ package com.nikhil.yt.ui
 
 import com.nikhil.yt.ui.component.PlayerDescentBeyondDock
 import com.nikhil.yt.ui.component.PlayerFoldScale
+import com.nikhil.yt.ui.component.MiniHandoverStretch
 import com.nikhil.yt.ui.component.PlayerFoldWindow
+import com.nikhil.yt.ui.component.miniHandoverStretch
 import com.nikhil.yt.ui.component.playerFoldTransform
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * The full player hands off to the mini player using geometry only.
+ * The full player hands off to the mini player.
  *
- * The mini player is already mounted behind the full player, so the foreground can stay fully
- * opaque while it shrinks and travels down into the dock. Keeping opacity out of this contract is
- * important: a screen-sized alpha blend is both more expensive and exactly the visual treatment the
- * Capsule motion system avoids.
+ * Geometry does most of it — the mini player is already mounted behind, so shrinking and
+ * descending reveals it for free — but the player also goes out on the way down, dissolving and
+ * draining of colour until nothing of it is left at the dock. That opacity is the one exception to
+ * the Capsule motion system's no-transparency rule and is bounded by it: it belongs to a gesture
+ * that ends, never to a surface that sits.
  */
 class DockHandoverTest {
     @Test fun `an open player is exactly identity`() {
@@ -96,13 +99,61 @@ class DockHandoverTest {
     }
 
     @Test
-    fun `something is still there when it reaches the dock`() {
-        // Fading to nothing would leave the last of the descent happening behind an empty
-        // rectangle, and the motion loses the thing it is about.
+    fun `nothing of the player is left at the dock`() {
+        // Anything still drawn here is drawn over the mini player that has just arrived, which is
+        // what read as a sheet that never quite left.
         val docked = playerFoldTransform(0f)
 
-        assertTrue("it vanished entirely", docked.alpha > 0f)
+        assertEquals("it is still there", 0f, docked.alpha, 0.0001f)
         assertTrue("it is still a picture, not a grey slab", docked.greyness < 1f)
+    }
+
+    @Test
+    fun `the player dissolves late rather than evenly`() {
+        // The complaint a straight ramp earns is that the player is half-gone in the middle of
+        // the travel and still faintly there at the end: never solid, never actually away. It has
+        // to be held up through the middle and let go of near the dock.
+        assertTrue(
+            "it had already faded by mid-travel",
+            playerFoldTransform(0.5f).alpha > 0.5f,
+        )
+        assertTrue(
+            "it was still visible just above the dock",
+            playerFoldTransform(0.1f).alpha < 0.1f,
+        )
+    }
+
+    @Test
+    fun `a resting mini player carries no residue of the gesture`() {
+        // The whole reason this is a pure function of progress: a scale left behind at either
+        // anchor is a permanently stretched dock, not an animation.
+        assertEquals("docked", 1f, miniHandoverStretch(0f), 0.0001f)
+        assertEquals("open", 1f, miniHandoverStretch(1f), 0.0001f)
+    }
+
+    @Test
+    fun `the mini player gives downward as the player lands on it`() {
+        val deepest = (0..100).maxOf { miniHandoverStretch(it / 100f) }
+
+        assertTrue("it never yielded", deepest > 1f)
+        // Weight, not a bounce: a dock that visibly leaps is a different animation.
+        assertTrue("it yielded far too much", deepest < 1f + 2f * MiniHandoverStretch)
+        for (step in 0..100) {
+            val stretch = miniHandoverStretch(step / 100f)
+            assertTrue("the mini player shrank at $step", stretch >= 1f)
+        }
+    }
+
+    @Test
+    fun `the handover survives values the animation can hand it`() {
+        // progress arrives from an Animatable mid-flight and has overshot its bounds before.
+        for (progress in listOf(-0.4f, 1.6f, Float.NaN, Float.POSITIVE_INFINITY)) {
+            val stretch = miniHandoverStretch(progress)
+            assertTrue("$progress produced $stretch", stretch.isFinite() && stretch >= 1f)
+            val fold = playerFoldTransform(progress)
+            assertTrue("$progress alpha ${fold.alpha}", fold.alpha in 0f..1f)
+            assertTrue("$progress grey ${fold.greyness}", fold.greyness in 0f..1f)
+        }
     }
 
     @Test

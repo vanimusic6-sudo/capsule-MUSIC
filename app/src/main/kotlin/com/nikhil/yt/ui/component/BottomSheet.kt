@@ -59,6 +59,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.launch
 import kotlin.math.absoluteValue
+import kotlin.math.pow
 
 /**
  * Lets a mounted child keep its state while suspending purely decorative procedural clocks.
@@ -134,9 +135,23 @@ internal const val PlayerDescentBeyondDock = 0.9f
  */
 internal const val PlayerCloseFadeWindow = 1f
 
-/** What is left of the player at the moment it reaches the dock. Not zero, or the last of the
- * descent happens behind nothing at all and the motion loses its subject. */
-internal const val PlayerCloseMinAlpha = 0.04f
+/**
+ * How long the player is held up before it lets go.
+ *
+ * An exponent on what is left of it, and it runs the opposite way to the intuition: values *below*
+ * one raise the curve, keeping the player substantial through the middle of the travel, while
+ * values above one would dim it everywhere and so make it fade sooner, not later. Getting that
+ * backwards is easy and was — hence the number being under 1 and a test pinning both ends.
+ *
+ * The smootherstep underneath already collapses steeply near the dock, so a light hold is all this
+ * needs: the middle of the descent stays a picture, and the dissolve happens in the last stretch.
+ */
+internal const val PlayerCloseFadeBias = 0.8f
+
+/** What is left of the player at the moment it reaches the dock. Nothing: the descent past the
+ * dock is the mini-player's arrival, and the player still being faintly drawn over it is what read
+ * as a sheet that never quite left. [PlayerCloseFadeBias] keeps it visible until shortly before. */
+internal const val PlayerCloseMinAlpha = 0f
 
 /** How grey it has gone by then. Full grey reads as a dead rectangle; this is a drain of colour. */
 internal const val PlayerCloseMaxGrey = 0.72f
@@ -180,12 +195,42 @@ internal fun playerFoldTransform(progress: Float): PlayerFoldTransform {
         )
     val leaving = 1f - present
 
+    val remaining = present.coerceIn(0f, 1f).pow(PlayerCloseFadeBias)
+
     return PlayerFoldTransform(
         scale = 1f - PlayerFoldScale * folded,
         descentInDockHeights = folded * PlayerDescentBeyondDock,
-        alpha = (1f - (1f - PlayerCloseMinAlpha) * leaving).coerceIn(0f, 1f),
+        alpha =
+            (PlayerCloseMinAlpha + (1f - PlayerCloseMinAlpha) * remaining)
+                .let { if (it.isFinite()) it.coerceIn(0f, 1f) else 1f },
         greyness = (PlayerCloseMaxGrey * leaving).coerceIn(0f, 1f),
     )
+}
+
+/**
+ * How far the mini-player is pushed down as the player lands on it, as a fraction of its height.
+ *
+ * The handoff used to be one-sided: the player folded towards a dock that took no notice of it.
+ * Giving the mini-player a little give makes the two read as touching — the player comes down, the
+ * thing underneath yields, and then both settle. Small on purpose; this is weight, not a bounce.
+ */
+internal const val MiniHandoverStretch = 0.07f
+
+/** Where in the travel the give is deepest. Low, because the contact happens near the dock. */
+internal const val MiniHandoverPeak = 0.22f
+
+/**
+ * The mini-player's vertical scale during the handoff, anchored at its top so it stretches down.
+ *
+ * Exactly 1 at both ends of the travel, which is the property that matters: a resting mini-player
+ * must be pixel-for-pixel itself, never left carrying a residue of a gesture that finished.
+ */
+internal fun miniHandoverStretch(progress: Float): Float {
+    if (!progress.isFinite()) return 1f
+    val p = progress.coerceIn(0f, 1f)
+    val rising = CapsuleMotion.smooth(p / MiniHandoverPeak)
+    val falling = CapsuleMotion.smooth((1f - p) / (1f - MiniHandoverPeak))
+    return 1f + MiniHandoverStretch * rising * falling
 }
 
 /**
@@ -264,6 +309,14 @@ fun BottomSheet(
                                 x = 0,
                                 y = miniPinOffset.roundToPx(),
                             )
+                        }
+                        /*
+                         * Read from a layer lambda, like the rest of the handoff: a drag
+                         * invalidates the GPU layer rather than recomposing the mini-player.
+                         */
+                        .graphicsLayer {
+                            scaleY = miniHandoverStretch(state.progress)
+                            transformOrigin = TransformOrigin(0.5f, 0f)
                         }
                         .clickable(
                             enabled = canReopen,

@@ -14,9 +14,11 @@ package com.nikhil.yt.ui.motion
  *   offset once it has settled, and an idle screen costs nothing;
  * - the value never reverses, so nothing can read as a wobble on the way there.
  *
- * Deliberately absent: blur and animated transparency. Full-screen blur forces an offscreen buffer,
- * while cross-fading large surfaces keeps two layers blending for the whole handoff. Geometry-only
- * motion is both cleaner and cheaper on the GPU.
+ * Deliberately absent: blur, and transparency on anything that holds. Full-screen blur forces an
+ * offscreen buffer, and cross-fading large surfaces keeps two layers blending for the whole
+ * handoff. The one place a caller now reads an opacity off one of these curves is the player's
+ * close, which lasts one gesture and ends with the layer gone; nothing here fades while a surface
+ * merely sits there.
  */
 object CapsuleMotion {
     /**

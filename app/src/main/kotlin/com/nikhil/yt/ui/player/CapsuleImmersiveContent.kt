@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -412,24 +413,33 @@ fun CapsuleImmersiveContent(
                         overflow = TextOverflow.Ellipsis,
                     )
                     Spacer(Modifier.height(2.dp))
-                    Text(
-                        text = mediaMetadata.artists.joinToString { it.name },
-                        color = textColor.copy(alpha = 0.62f),
-                        fontSize = 17.sp,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier =
-                            Modifier.clickable(
-                                interactionSource = remember { MutableInteractionSource() },
-                                indication = null,
-                                enabled = navigableArtists.isNotEmpty(),
-                            ) {
-                                when (navigableArtists.size) {
-                                    1 -> onArtistSelected(navigableArtists.first())
-                                    else -> showArtistPicker = true
-                                }
-                            },
-                    )
+                    // The explicit mark reads on the artist line here exactly as it does in the
+                    // other designs, and stays outside the artist's tap target: it marks the
+                    // track, so opening an artist from it would be a lie about what was pressed.
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        if (mediaMetadata.explicit) {
+                            ExplicitBadge(color = textColor.copy(alpha = 0.62f))
+                            Spacer(Modifier.width(5.dp))
+                        }
+                        Text(
+                            text = mediaMetadata.artists.joinToString { it.name },
+                            color = textColor.copy(alpha = 0.62f),
+                            fontSize = 17.sp,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier =
+                                Modifier.clickable(
+                                    interactionSource = remember { MutableInteractionSource() },
+                                    indication = null,
+                                    enabled = navigableArtists.isNotEmpty(),
+                                ) {
+                                    when (navigableArtists.size) {
+                                        1 -> onArtistSelected(navigableArtists.first())
+                                        else -> showArtistPicker = true
+                                    }
+                                },
+                        )
+                    }
                 }
 
                 /*

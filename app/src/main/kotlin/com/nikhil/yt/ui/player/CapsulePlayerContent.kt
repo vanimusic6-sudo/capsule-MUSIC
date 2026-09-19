@@ -621,42 +621,10 @@ fun CapsulePlayerContent(
                             if (
                                 mediaMetadata.explicit
                             ) {
-                                Box(
-                                    modifier =
-                                        Modifier
-                                            .size(
-                                                width =
-                                                    15.dp,
-                                                height =
-                                                    15.dp,
-                                            )
-                                            .clip(
-                                                RoundedCornerShape(
-                                                    2.dp,
-                                                ),
-                                            )
-                                            .border(
-                                                1.dp,
-                                                secondaryText,
-                                                RoundedCornerShape(
-                                                    2.dp,
-                                                ),
-                                            ),
-                                    contentAlignment =
-                                        Alignment.Center,
-                                ) {
-                                    Text(
-                                        text = "E",
-                                        color =
-                                            secondaryText,
-                                        fontSize =
-                                            9.sp,
-                                        lineHeight =
-                                            9.sp,
-                                        fontWeight =
-                                            FontWeight.Bold,
-                                    )
-                                }
+                                ExplicitBadge(
+                                    color =
+                                        secondaryText,
+                                )
 
                                 Spacer(
                                     Modifier.width(

@@ -875,40 +875,11 @@ private fun CapsuleMiniSongInfo(
                     Alignment.CenterVertically,
             ) {
                 if (metadata.explicit) {
-                    Box(
-                        modifier =
-                            Modifier
-                                .size(
-                                    width =
-                                        14.dp,
-                                    height =
-                                        14.dp,
-                                )
-                                .clip(
-                                    RoundedCornerShape(
-                                        2.dp,
-                                    ),
-                                )
-                                .border(
-                                    1.dp,
-                                    CapsuleMiniMuted,
-                                    RoundedCornerShape(
-                                        2.dp,
-                                    ),
-                                ),
-                        contentAlignment =
-                            Alignment.Center,
-                    ) {
-                        Text(
-                            text = "E",
-                            color =
-                                CapsuleMiniMuted,
-                            fontSize = 8.sp,
-                            lineHeight = 8.sp,
-                            fontWeight =
-                                FontWeight.Bold,
-                        )
-                    }
+                    ExplicitBadge(
+                        color = CapsuleMiniMuted,
+                        size = 14.dp,
+                        fontSize = 8.sp,
+                    )
 
                     Spacer(
                         Modifier.width(5.dp),
