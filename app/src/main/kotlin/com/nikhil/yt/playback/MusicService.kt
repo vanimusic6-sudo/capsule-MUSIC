@@ -888,6 +888,9 @@ class MusicService :
     /** Which googlevideo server groups are currently refusing everything, on this network. */
     private val audioCdnHostHealth = AudioCdnHostHealth()
 
+    /** Whether it is these songs that need an account, or this way out of the phone. */
+    private val authWallDetector = AuthWallDetector()
+
     private val mediaOkHttpClient: OkHttpClient by lazy {
         OkHttpClient
             .Builder()
@@ -1379,8 +1382,10 @@ class MusicService :
                 )
                 streamRetryJob?.cancel()
                 streamRetryJob = null
-                // Which edges answer is a property of the route, not of the app.
+                // Which edges answer, and whether this route is served at all, are properties of
+                // the route rather than of the app.
                 audioCdnHostHealth.forget()
+                authWallDetector.forget()
                 audioResolveCoordinator.invalidatePolicy(
                     invalidatePrefetch = true,
                     onInvalidate = playbackUrlCache::clear,
@@ -1812,7 +1817,13 @@ class MusicService :
             )
             Toast.makeText(
                 this,
-                getString(R.string.error_too_many_failed_tracks),
+                getString(
+                    if (authWallDetector.isRouteWide()) {
+                        R.string.error_auth_wall_route
+                    } else {
+                        R.string.error_too_many_failed_tracks
+                    },
+                ),
                 Toast.LENGTH_LONG,
             ).show()
         } else if (!decision.mayAutoSkip) {
@@ -3183,6 +3194,10 @@ class MusicService :
         playing = player.isPlaying,
     )
 
+    // Anything that reaches the point of playing proves this route is served, whatever it turned
+    // away before.
+    if (playbackState == Player.STATE_READY) authWallDetector.recordPlayable()
+
     if (playbackState == Player.STATE_IDLE || playbackState == Player.STATE_ENDED) {
         crossfadeAudio?.stop(resetMainFade = true)
         scrobbleCoordinator.onSongStop()
@@ -3501,6 +3516,27 @@ class MusicService :
         }
 
         if (currentMediaId != null && error.isNoPlayableStreamFailure()) {
+            /*
+             * An answer of "this needs an account" is settled, and asking the same way again gets
+             * the same answer. A capture spent eight seconds per song doing exactly that, three
+             * songs running, before stopping — and the songs were fine; the VPN exit was not.
+             * So the retry is skipped and the verdict recorded, which is what lets the message at
+             * the end name the route rather than blame the queue.
+             */
+            val authRequired =
+                PlaybackFailureClassifier.classify(error, isSignedIntoYouTube()) ==
+                    PlaybackFailureKind.AUTH_REQUIRED
+            if (authRequired) {
+                val routeWide = authWallDetector.recordAuthRequired(currentMediaId)
+                Timber.tag(CAPSULE_RESOLVE_TAG).w(
+                    "Needs an account id=%s routeWide=%s; not asking the same way again",
+                    currentMediaId,
+                    routeWide,
+                )
+                handleTerminalPlaybackError()
+                return
+            }
+
             val claimed = playbackRecoveryCoordinator.claimNoPlayableFreshResolve(currentMediaId)
             val retryDelay = if (claimed) playbackRecoveryCoordinator.nextRetryDelayMs(currentMediaId) else null
             if (retryDelay != null && CapsuleAudioEngine.playbackBlockedExceptionOrNull() == null) {
