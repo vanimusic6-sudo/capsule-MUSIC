@@ -6,13 +6,12 @@
 
 package com.nikhil.yt.ui.player
 
-import androidx.compose.animation.core.tween
-import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.background
-import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -24,12 +23,12 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -38,12 +37,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -51,58 +48,54 @@ import androidx.compose.ui.unit.sp
 import androidx.media3.common.Player
 import coil3.compose.AsyncImage
 import com.nikhil.yt.R
+import com.nikhil.yt.constants.PlayerBackgroundStyle
 import com.nikhil.yt.extensions.togglePlayPause
+import com.nikhil.yt.extensions.toggleRepeatMode
 import com.nikhil.yt.innertube.toHighResThumbnail
 import com.nikhil.yt.models.MediaMetadata
 import com.nikhil.yt.playback.PlayerConnection
+import com.nikhil.yt.playback.video.CapsulePlaybackMode
+import com.nikhil.yt.ui.component.CapsuleFavoriteColors
+import com.nikhil.yt.ui.component.CapsuleFavoriteIcon
 import com.nikhil.yt.utils.makeTimeString
-import kotlinx.coroutines.delay
 
-/** How long the controls stay up after the last touch before the artwork has the screen to itself. */
-private const val ImmersiveChromeIdleMs = 4_000L
+/** How much of the sheet the cover takes before it starts to go. */
+private const val ImmersiveArtworkFraction = 0.62f
 
-/** Long enough to read as a deliberate retreat rather than a glitch, short enough not to be waited on. */
-private const val ImmersiveChromeFadeMs = 420
+/** Where inside the cover the dissolve begins. Above this the image is untouched. */
+private const val ImmersiveFadeStart = 0.52f
 
-/** Where the scrim starts, as a fraction of height. Above this the artwork is untouched. */
-private const val ImmersiveScrimStart = 0.42f
+/** Smallest cover that still reads as one; largest that still leaves the controls their room. */
+private val ImmersiveArtworkMin = 220.dp
+private val ImmersiveArtworkMax = 620.dp
 
 /**
- * Whether the controls should start counting down to their retreat.
+ * How tall the cover is in a sheet of this height.
  *
- * Every term earns its place. Off screen or behind the collapsed sheet, nothing can be seen, so a
- * countdown would be a timer running for nobody. Paused, the screen is being looked at rather than
- * listened to, and taking the controls away from someone reaching for them is the opposite of the
- * point. Already retreated, there is nothing left to hide, and re-arming would keep waking the
- * composition to decide that again.
+ * Clamped at both ends. A very short window must not be handed a cover that leaves no room for
+ * the controls, and a very tall one must not be handed a cover that runs past the sheet — and
+ * neither end may produce a height that a later layout pass could read as negative.
  */
-internal fun immersiveChromeShouldRetreat(
-    visible: Boolean,
-    isPlaying: Boolean,
-    chromeShown: Boolean,
-): Boolean = visible && isPlaying && chromeShown
+internal fun immersiveArtworkHeight(available: Dp): Dp =
+    (available * ImmersiveArtworkFraction).coerceIn(ImmersiveArtworkMin, ImmersiveArtworkMax)
 
 /**
- * A player that gets out of the way.
+ * A player where the cover is the screen.
  *
- * The other two designs are arrangements of controls with the artwork as one element among them.
- * This one inverts that: the artwork is the screen, edge to edge, and everything else is a guest
- * that leaves. Four seconds after the last touch, while something is playing, the controls fade
- * out and the cover is alone. A tap anywhere brings them back.
+ * Cosmo and Light both frame the artwork: a card with an edge, sitting in its own reserved space
+ * with the controls arranged beneath. This one has no frame. The cover runs the full width from
+ * the very top and simply stops being there — the bottom half of it dissolves into the player's
+ * own background, so there is no line anywhere saying where the picture ends and the app begins.
  *
- * Three rules the rest of this app is held to, and how they are met here:
+ * Everything below that is deliberately familiar. The transport panel is Capsule Light's, reused
+ * rather than redrawn, so the two designs cannot drift apart. What differs is what sits above it:
+ * the title keeps its own line with lyrics and like as round chips beside it, and the progress bar
+ * is a full-width rail rather than a hairline.
  *
- * Nothing animates that cannot be seen. The idle countdown is armed only while the player is open,
- * on screen, and playing, and it is one delay that finishes — not a loop, not a ticker, not a
- * clock. Pausing cancels it and brings the controls back, because a paused player is one being
- * looked at rather than listened to.
- *
- * Nothing is hidden that cannot be recovered. The tap target is the whole screen and it is always
- * live, so the controls are never more than one touch away, and the fade is a layer alpha rather
- * than a removal, so nothing is re-laid-out when they return.
- *
- * Nothing here is sized by measurement. Every dimension is a constant, so there is no width or
- * radius that a future window size could turn negative.
+ * The dissolve is a gradient drawn over the image in the colour behind it, not a mask. A mask
+ * would need an offscreen layer for the whole cover, and this app has already paid for one of
+ * those once — the shimmer's alpha buffer was what made the phone warm. Painting the background's
+ * own colour on top reaches the same picture with an ordinary draw.
  */
 @Composable
 fun CapsuleImmersiveContent(
@@ -113,11 +106,14 @@ fun CapsuleImmersiveContent(
     onSeekPreview: (Long) -> Unit,
     onSeekFinished: () -> Unit,
     textColor: Color,
+    playerBackground: PlayerBackgroundStyle,
+    gradientColors: List<Color>,
     liked: Boolean,
     playerConnection: PlayerConnection,
     onToggleLike: () -> Unit,
     onArtistSelected: (MediaMetadata.Artist) -> Unit,
     onShowLyrics: () -> Unit,
+    onMenuClick: () -> Unit,
     bottomPadding: Dp,
     open: Boolean = true,
 ) {
@@ -128,117 +124,143 @@ fun CapsuleImmersiveContent(
     val playbackState by playerConnection.playbackState.collectAsState()
     val canSkipPrevious by playerConnection.canSkipPrevious.collectAsState()
     val canSkipNext by playerConnection.canSkipNext.collectAsState()
+    val repeatMode by playerConnection.repeatMode.collectAsState()
+    val shuffleEnabled by playerConnection.shuffleModeEnabled.collectAsState()
+    val videoPlaybackState by playerConnection.service.videoPlaybackState.collectAsState()
 
     val isLoading = playbackState == Player.STATE_BUFFERING
 
-    var chromeShown by remember { mutableStateOf(true) }
+    var showSleepTimerDialog by remember { mutableStateOf(false) }
+    var sleepTimerValue by remember { mutableFloatStateOf(30f) }
+    val sleepTimerEnabled =
+        remember(
+            playerConnection.service.sleepTimer.triggerTime,
+            playerConnection.service.sleepTimer.pauseWhenSongEnd,
+        ) { playerConnection.service.sleepTimer.isActive }
 
-    /*
-     * Bumped on every touch. Keying the countdown on it restarts the wait without the effect having
-     * to observe the touch itself, which would recompose this whole subtree on each tap.
-     */
-    var touchTick by remember { mutableIntStateOf(0) }
-
-    /*
-     * One delay that ends, armed only when there is something to retreat from. Not armed while
-     * paused, closed or off screen — so an idle player behind another screen runs nothing at all.
-     */
-    LaunchedEffect(touchTick, isPlaying, visible, chromeShown) {
-        if (!immersiveChromeShouldRetreat(visible, isPlaying, chromeShown)) return@LaunchedEffect
-        delay(ImmersiveChromeIdleMs)
-        chromeShown = false
+    if (showSleepTimerDialog) {
+        CapsuleSleepTimerDialog(
+            minutes = sleepTimerValue,
+            enabled = true,
+            onMinutesChange = { sleepTimerValue = it },
+            onConfirm = {
+                playerConnection.service.sleepTimer.start(sleepTimerValue.toInt())
+                showSleepTimerDialog = false
+            },
+            onDismiss = { showSleepTimerDialog = false },
+        )
     }
-
-    // A pause is someone looking at the screen; give them the controls back unasked.
-    LaunchedEffect(isPlaying) {
-        if (!isPlaying) chromeShown = true
-    }
-
-    val chromeAlpha by animateFloatAsState(
-        targetValue = if (chromeShown) 1f else 0f,
-        animationSpec = tween(durationMillis = ImmersiveChromeFadeMs),
-        label = "immersive-chrome",
-    )
 
     val safeDuration = durationMs.coerceAtLeast(0L)
     val shownPosition = (sliderPosition ?: positionMs).coerceIn(0L, safeDuration)
 
-    Box(
-        modifier =
-            Modifier
-                .fillMaxSize()
-                .clickable(
-                    interactionSource = remember { MutableInteractionSource() },
-                    indication = null,
-                ) {
-                    // Always live, so what was hidden is never more than one touch away.
-                    if (chromeShown) touchTick += 1 else chromeShown = true
-                },
-    ) {
-        AsyncImage(
-            model = mediaMetadata.thumbnailUrl?.toHighResThumbnail(),
-            contentDescription = null,
-            contentScale = ContentScale.Crop,
-            modifier = Modifier.fillMaxSize(),
-        )
+    /*
+     * What the cover dissolves into. The player paints its own background behind this content, so
+     * the fade has to end on that exact colour or a seam appears where the gradient stops.
+     */
+    val fadeInto =
+        when (playerBackground) {
+            PlayerBackgroundStyle.DEFAULT -> MaterialTheme.colorScheme.surface
+            else -> gradientColors.lastOrNull() ?: Color.Black
+        }
 
-        /*
-         * The scrim is not part of the chrome and never fades: it is what keeps a pale cover from
-         * washing out into the system bars, and it belongs to the artwork rather than the controls.
-         */
-        Box(
-            modifier =
-                Modifier
-                    .fillMaxSize()
-                    .background(
-                        Brush.verticalGradient(
-                            0f to Color.Transparent,
-                            ImmersiveScrimStart to Color.Black.copy(alpha = 0.30f),
-                            1f to Color.Black.copy(alpha = 0.88f),
+    val chipSurface = textColor.copy(alpha = 0.10f)
+
+    BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+        val artworkHeight = immersiveArtworkHeight(maxHeight)
+
+        Box(modifier = Modifier.fillMaxWidth().height(artworkHeight)) {
+            AsyncImage(
+                model = mediaMetadata.thumbnailUrl?.toHighResThumbnail(),
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize(),
+            )
+
+            Box(
+                modifier =
+                    Modifier
+                        .fillMaxSize()
+                        .background(
+                            Brush.verticalGradient(
+                                0f to Color.Transparent,
+                                ImmersiveFadeStart to Color.Transparent,
+                                0.80f to fadeInto.copy(alpha = 0.72f),
+                                1f to fadeInto,
+                            ),
                         ),
-                    ),
-        )
+            )
+        }
 
         Column(
             modifier =
                 Modifier
                     .align(Alignment.BottomCenter)
                     .fillMaxWidth()
-                    .graphicsLayer { alpha = chromeAlpha }
-                    .padding(horizontal = 28.dp)
-                    .padding(bottom = bottomPadding + 28.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
+                    .padding(horizontal = 20.dp)
+                    .padding(bottom = bottomPadding + 20.dp),
         ) {
-            Text(
-                text = mediaMetadata.title,
-                color = textColor,
-                fontSize = 30.sp,
-                lineHeight = 35.sp,
-                fontWeight = FontWeight.Bold,
-                textAlign = TextAlign.Center,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = mediaMetadata.title,
+                        color = textColor,
+                        fontSize = 28.sp,
+                        lineHeight = 33.sp,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Spacer(Modifier.height(2.dp))
+                    Text(
+                        text = mediaMetadata.artists.joinToString { it.name },
+                        color = textColor.copy(alpha = 0.62f),
+                        fontSize = 17.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier =
+                            Modifier.clickable(
+                                interactionSource = remember { MutableInteractionSource() },
+                                indication = null,
+                            ) {
+                                mediaMetadata.artists.firstOrNull { it.id != null }
+                                    ?.let(onArtistSelected)
+                            },
+                    )
+                }
 
-            Spacer(Modifier.height(6.dp))
+                ImmersiveChip(background = chipSurface, onClick = onShowLyrics) {
+                    Icon(
+                        painter = painterResource(R.drawable.format_quote),
+                        contentDescription = stringResource(R.string.lyrics),
+                        tint = textColor,
+                        modifier = Modifier.size(26.dp),
+                    )
+                }
 
-            Text(
-                text = mediaMetadata.artists.joinToString { it.name },
-                color = textColor.copy(alpha = 0.62f),
-                fontSize = 15.sp,
-                textAlign = TextAlign.Center,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier =
-                    Modifier.clickable(
-                        interactionSource = remember { MutableInteractionSource() },
-                        indication = null,
-                    ) {
-                        mediaMetadata.artists.firstOrNull { it.id != null }?.let(onArtistSelected)
-                    },
-            )
+                Spacer(Modifier.size(10.dp))
 
-            Spacer(Modifier.height(26.dp))
+                val favoriteInteraction = remember { MutableInteractionSource() }
+                ImmersiveChip(
+                    background = chipSurface,
+                    interactionSource = favoriteInteraction,
+                    onClick = onToggleLike,
+                ) {
+                    CapsuleFavoriteIcon(
+                        liked = liked,
+                        interactionSource = favoriteInteraction,
+                        tint =
+                            if (liked) {
+                                CapsuleFavoriteColors.selected(textColor)
+                            } else {
+                                textColor
+                            },
+                        modifier = Modifier.size(26.dp),
+                    )
+                }
+            }
+
+            Spacer(Modifier.height(20.dp))
 
             CapsuleThinSlider(
                 value = shownPosition.toFloat(),
@@ -246,122 +268,113 @@ fun CapsuleImmersiveContent(
                 enabled = safeDuration > 0L,
                 activeColor = textColor,
                 inactiveColor = textColor.copy(alpha = 0.22f),
-                onValueChange = {
-                    touchTick += 1
-                    onSeekPreview(it.toLong())
-                },
+                onValueChange = { onSeekPreview(it.toLong()) },
                 onValueChangeFinished = onSeekFinished,
-                modifier = Modifier.fillMaxWidth().height(24.dp),
-                trackHeight = 3.dp,
+                modifier = Modifier.fillMaxWidth().height(22.dp),
+                trackHeight = 8.dp,
                 thumbRadius = 5.dp,
             )
 
             Row(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 2.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
             ) {
-                Text(
-                    text = makeTimeString(shownPosition),
-                    color = textColor.copy(alpha = 0.55f),
-                    fontSize = 12.sp,
-                )
-                Text(
-                    text = makeTimeString(safeDuration),
-                    color = textColor.copy(alpha = 0.55f),
-                    fontSize = 12.sp,
-                )
+                Text(makeTimeString(shownPosition), color = textColor.copy(alpha = 0.55f), fontSize = 13.sp)
+                Text(makeTimeString(safeDuration), color = textColor.copy(alpha = 0.55f), fontSize = 13.sp)
             }
 
-            Spacer(Modifier.height(18.dp))
+            Spacer(Modifier.height(16.dp))
 
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceEvenly,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                ImmersiveIcon(
-                    icon = if (liked) R.drawable.favorite else R.drawable.favorite_border,
-                    tint = textColor.copy(alpha = if (liked) 1f else 0.62f),
+                IconButton(
+                    onClick = { playerConnection.player.shuffleModeEnabled = !shuffleEnabled },
+                    modifier = Modifier.size(48.dp),
+                ) {
+                    Icon(
+                        painterResource(R.drawable.shuffle),
+                        stringResource(R.string.shuffle),
+                        tint = textColor.copy(alpha = if (shuffleEnabled) 1f else 0.5f),
+                        modifier = Modifier.size(21.dp),
+                    )
+                }
+
+                CapsuleAudioVideoToggle(
+                    lightStyle = true,
+                    state = videoPlaybackState,
+                    textColor = textColor,
                     enabled = true,
-                    description = stringResource(
-                        if (liked) R.string.action_remove_like else R.string.action_like,
-                    ),
-                ) {
-                    touchTick += 1
-                    onToggleLike()
-                }
+                    onAudioClick = {
+                        playerConnection.service.setCapsulePlaybackMode(CapsulePlaybackMode.AUDIO)
+                    },
+                    onVideoClick = {
+                        playerConnection.service.setCapsulePlaybackMode(CapsulePlaybackMode.VIDEO)
+                    },
+                    modifier = Modifier.weight(1f),
+                )
 
-                ImmersiveIcon(
-                    icon = R.drawable.skip_previous,
-                    tint = textColor,
-                    enabled = canSkipPrevious,
-                    description = null,
+                IconButton(
+                    onClick = { showSleepTimerDialog = true },
+                    modifier = Modifier.size(48.dp),
                 ) {
-                    touchTick += 1
-                    playerConnection.player.seekToPrevious()
+                    Icon(
+                        painterResource(R.drawable.bedtime),
+                        stringResource(R.string.sleep_timer),
+                        tint = textColor.copy(alpha = if (sleepTimerEnabled) 1f else 0.5f),
+                        modifier = Modifier.size(21.dp),
+                    )
                 }
+            }
 
-                Box(modifier = Modifier.size(72.dp), contentAlignment = Alignment.Center) {
+            Spacer(Modifier.height(10.dp))
+
+            // Capsule Light's transport panel, reused rather than redrawn: one panel, one place to
+            // change it, and no chance of the two designs drifting apart.
+            CapsuleLightControls(
+                textColor = textColor,
+                shuffleEnabled = shuffleEnabled,
+                repeatMode = repeatMode,
+                enabled = true,
+                canSkipPrevious = canSkipPrevious,
+                canSkipNext = canSkipNext,
+                onShuffle = { playerConnection.player.shuffleModeEnabled = !shuffleEnabled },
+                onPrevious = { playerConnection.player.seekToPrevious() },
+                onNext = { playerConnection.player.seekToNext() },
+                onRepeat = { playerConnection.player.toggleRepeatMode() },
+                orbit = {
                     CapsuleOrbitButton(
                         isPlaying = isPlaying,
                         isLoading = isLoading,
-                        // The comet turns only while it is on a screen someone is looking at.
-                        visible = visible && chromeShown,
+                        visible = visible,
                         color = textColor,
-                    ) {
-                        touchTick += 1
-                        playerConnection.player.togglePlayPause()
-                    }
-                }
-
-                ImmersiveIcon(
-                    icon = R.drawable.skip_next,
-                    tint = textColor,
-                    enabled = canSkipNext,
-                    description = null,
-                ) {
-                    touchTick += 1
-                    playerConnection.player.seekToNext()
-                }
-
-                /*
-                 * The other designs open lyrics by tapping the artwork. Here the artwork is the
-                 * whole screen and that tap already means "bring the controls back", so lyrics
-                 * need a button of their own rather than a gesture competing with the one thing
-                 * this screen must never lose.
-                 */
-                ImmersiveIcon(
-                    icon = R.drawable.format_quote,
-                    tint = textColor.copy(alpha = 0.62f),
-                    enabled = true,
-                    description = stringResource(R.string.lyrics),
-                ) {
-                    touchTick += 1
-                    onShowLyrics()
-                }
-            }
+                    ) { playerConnection.player.togglePlayPause() }
+                },
+                onMenuClick = onMenuClick,
+            )
         }
     }
 }
 
+/** A round translucent seat for one icon, as the title row wears beside it. */
 @Composable
-private fun ImmersiveIcon(
-    icon: Int,
-    tint: Color,
-    enabled: Boolean,
-    description: String?,
+private fun ImmersiveChip(
+    background: Color,
     onClick: () -> Unit,
+    interactionSource: MutableInteractionSource? = null,
+    content: @Composable () -> Unit,
 ) {
-    IconButton(
-        onClick = onClick,
-        enabled = enabled,
-        modifier = Modifier.size(48.dp).clip(CircleShape),
+    val source = interactionSource ?: remember { MutableInteractionSource() }
+    Box(
+        modifier =
+            Modifier
+                .size(52.dp)
+                .clip(CircleShape)
+                .background(background)
+                .clickable(interactionSource = source, indication = null, onClick = onClick),
+        contentAlignment = Alignment.Center,
     ) {
-        Icon(
-            painter = painterResource(icon),
-            contentDescription = description,
-            tint = if (enabled) tint else tint.copy(alpha = 0.28f),
-            modifier = Modifier.size(28.dp),
-        )
+        content()
     }
 }
