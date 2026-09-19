@@ -445,6 +445,7 @@ private fun CapsulePlayerLyricsHost(
                             playerState.collapseSoft()
                         }
                     },
+                    onShowLyrics = onShowLyrics,
                     bottomPadding = 0.dp,
                     open = !playerState.isCollapsed,
                 )

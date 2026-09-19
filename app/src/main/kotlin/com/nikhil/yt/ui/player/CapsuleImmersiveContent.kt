@@ -117,6 +117,7 @@ fun CapsuleImmersiveContent(
     playerConnection: PlayerConnection,
     onToggleLike: () -> Unit,
     onArtistSelected: (MediaMetadata.Artist) -> Unit,
+    onShowLyrics: () -> Unit,
     bottomPadding: Dp,
     open: Boolean = true,
 ) {
@@ -323,14 +324,20 @@ fun CapsuleImmersiveContent(
                     playerConnection.player.seekToNext()
                 }
 
+                /*
+                 * The other designs open lyrics by tapping the artwork. Here the artwork is the
+                 * whole screen and that tap already means "bring the controls back", so lyrics
+                 * need a button of their own rather than a gesture competing with the one thing
+                 * this screen must never lose.
+                 */
                 ImmersiveIcon(
-                    icon = R.drawable.queue_music,
+                    icon = R.drawable.lyrics,
                     tint = textColor.copy(alpha = 0.62f),
                     enabled = true,
-                    description = null,
+                    description = stringResource(R.string.lyrics),
                 ) {
                     touchTick += 1
-                    chromeShown = true
+                    onShowLyrics()
                 }
             }
         }
