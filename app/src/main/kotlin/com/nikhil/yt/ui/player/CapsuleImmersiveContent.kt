@@ -98,7 +98,7 @@ private val ImmersiveQueueRailWidth = 132.dp
 private val ImmersiveQueueRailHeight = 5.dp
 
 /** How far the rail sits off the foot of the sheet, rather than against it. */
-private val ImmersiveQueueRailLift = 22.dp
+private val ImmersiveQueueRailLift = 44.dp
 
 /**
  * How tall the cover is in a sheet of this height.
@@ -269,7 +269,7 @@ fun CapsuleImmersiveContent(
     val artworkColors = rememberCapsuleArtworkColors(mediaMetadata = mediaMetadata)
     val fallbackEdge =
         remember(artworkColors) { artworkColors.firstOrNull() ?: Color.Black }
-    val edge = rememberImmersiveEdgeColor(mediaMetadata) ?: fallbackEdge
+    val edge = rememberImmersiveEdgeColor(mediaMetadata = mediaMetadata, fallback = fallbackEdge)
     val floor = remember(edge) { lerp(edge, Color.Black, 0.86f) }
 
     val chipSurface = textColor.copy(alpha = 0.10f)

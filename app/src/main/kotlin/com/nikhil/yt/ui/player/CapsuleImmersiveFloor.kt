@@ -54,20 +54,37 @@ private val edgeColorCache = object : LinkedHashMap<String, Color>(24, 0.75f, tr
  * is what is measured: a short strip averaged off the foot of a thumbnail small enough that doing
  * so costs nothing. Once per track, off the main thread, and remembered — no clock, no polling.
  *
- * Null while it is being worked out, so the caller can hold whatever it was showing rather than
- * flash a guess and correct itself a moment later.
+ * [fallback] is only ever seen before the first measurement of the session has landed, and the
+ * crossfade runs from it, so even that one is a fade rather than a jump.
  */
 @Composable
-internal fun rememberImmersiveEdgeColor(mediaMetadata: MediaMetadata?): Color? {
+internal fun rememberImmersiveEdgeColor(mediaMetadata: MediaMetadata?, fallback: Color): Color {
     val context = LocalContext.current
     val thumbnailUrl = mediaMetadata?.thumbnailUrl
     val cacheKey = mediaMetadata?.id
 
-    val cached = remember(cacheKey) { cacheKey?.let { synchronized(edgeColorCache) { edgeColorCache[it] } } }
-    var measured by remember(cacheKey) { mutableStateOf(cached) }
+    /*
+     * Deliberately not keyed on the track.
+     *
+     * Keyed, it emptied on every change, the caller fell back to the artwork palette for the few
+     * hundred milliseconds before the new measurement landed, and the page flashed whatever
+     * vivid colour that track happened to be about. Holding the previous track's floor instead
+     * means the page only ever moves from one measured colour to the next, and the crossfade
+     * below carries it. The palette is a fallback for the very first track and nothing else.
+     */
+    var measured by remember { mutableStateOf<Color?>(null) }
+
+    /** The track the held colour belongs to, so a stale one is never kept once its own arrives. */
+    var measuredFor by remember { mutableStateOf<String?>(null) }
+
+    val cached = cacheKey?.let { synchronized(edgeColorCache) { edgeColorCache[it] } }
+    if (cached != null && measuredFor != cacheKey) {
+        measured = cached
+        measuredFor = cacheKey
+    }
 
     LaunchedEffect(cacheKey, thumbnailUrl) {
-        if (cacheKey == null || thumbnailUrl == null || measured != null) return@LaunchedEffect
+        if (cacheKey == null || thumbnailUrl == null || measuredFor == cacheKey) return@LaunchedEffect
         val request =
             ImageRequest.Builder(context)
                 .data(thumbnailUrl.toHighResThumbnail())
@@ -90,9 +107,10 @@ internal fun rememberImmersiveEdgeColor(mediaMetadata: MediaMetadata?): Color? {
 
         synchronized(edgeColorCache) { edgeColorCache[cacheKey] = edge }
         measured = edge
+        measuredFor = cacheKey
     }
 
-    val target = measured ?: return null
+    val target = measured ?: fallback
     val animated by
         animateColorAsState(
             targetValue = target,
