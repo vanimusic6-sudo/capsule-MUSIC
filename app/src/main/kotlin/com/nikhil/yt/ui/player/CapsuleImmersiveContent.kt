@@ -331,7 +331,7 @@ fun CapsuleImmersiveContent(
                  * this screen must never lose.
                  */
                 ImmersiveIcon(
-                    icon = R.drawable.lyrics,
+                    icon = R.drawable.format_quote,
                     tint = textColor.copy(alpha = 0.62f),
                     enabled = true,
                     description = stringResource(R.string.lyrics),
