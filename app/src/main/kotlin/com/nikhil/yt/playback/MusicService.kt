@@ -278,12 +278,21 @@ internal const val SIGNED_URL_CIPHER_REFRESH_THRESHOLD_MS = 3_000L
 /**
  * How long a googlevideo request may take to answer before it is treated as unanswered.
  *
- * Across 322 successful opens in five captures the slowest took 3.87 s and the 99th percentile
- * 2.50 s, while every failure sat on the default timeout for 10, 12, 13 or 30 s. Six seconds
- * clears the slowest open that has ever worked by half again, and it bounds a single body read
- * too, where the slowest on record is 1.16 s.
+ * This was six seconds, chosen from 322 successful opens whose slowest was 3.87 s. It was wrong,
+ * and a capture shows exactly how: one song failed twelve times in two minutes, every attempt
+ * ending at 6009 to 6150 ms. That is not a host refusing, that is this number cutting a host off
+ * mid-answer, over and over, so the song never played at all.
+ *
+ * The mistake was treating a timeout as the tool for abandoning a dead host. It cannot be: a dead
+ * host and a slow one look identical until one of them answers, and the only way to be sure is to
+ * wait longer than any live host would take. Fifteen seconds is past anything observed — the
+ * worst success on record is 4.1 s — so a host that misses it was not going to answer.
+ *
+ * Giving up on a host is now AudioCdnHostHealth's job, which it does on evidence rather than on a
+ * stopwatch: three refusals and the group is left alone. Between them, a dead host costs about
+ * three of these waits instead of an unbounded number, and a slow live one is never killed.
  */
-internal const val AUDIO_CDN_TIMEOUT_SECONDS = 6L
+internal const val AUDIO_CDN_TIMEOUT_SECONDS = 15L
 internal const val SIGNED_URL_MAX_FRESH_RESOLVE_DELAY_MS = 3_000L
 
 /**

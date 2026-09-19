@@ -44,6 +44,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import coil3.request.ImageRequest
+import coil3.request.crossfade
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -77,22 +79,26 @@ private const val ImmersiveArtworkFraction = 0.52f
 /**
  * Where inside the cover the dissolve begins, as a fraction of its height.
  *
- * Late, and deliberately so. At just over half the cover the image spent its whole lower half
- * under a veil and looked smeared rather than faded. The picture should be a picture right up to
- * its edge and only turn into background at the very end of it.
+ * A short ramp made a band: at four fifths the cover went from untouched to gone inside a fifth
+ * of its height, and the eye reads that as a line drawn across the picture. Back to the longer,
+ * softer dissolve, which is what the design was asking for in the first place — the picture does
+ * not end anywhere, it stops being there.
  */
-private const val ImmersiveFadeStart = 0.80f
+private const val ImmersiveFadeStart = 0.55f
 
 /** Smallest cover that still reads as one; largest that still leaves the controls their room. */
 private val ImmersiveArtworkMin = 200.dp
 private val ImmersiveArtworkMax = 520.dp
+
+/** As long as the floor colour's own ease, so cover and background arrive together. */
+private const val ImmersiveCoverCrossfadeMs = 1_400
 
 /** The grab rail near the bottom, which opens the queue. */
 private val ImmersiveQueueRailWidth = 132.dp
 private val ImmersiveQueueRailHeight = 5.dp
 
 /** How far the rail sits off the foot of the sheet, rather than against it. */
-private val ImmersiveQueueRailLift = 64.dp
+private val ImmersiveQueueRailLift = 22.dp
 
 /**
  * How tall the cover is in a sheet of this height.
@@ -149,6 +155,15 @@ fun CapsuleImmersiveContent(
     onExpandQueue: () -> Unit,
     bottomPadding: Dp,
     open: Boolean = true,
+    /**
+     * Whether the sheet has arrived, not merely left the bottom.
+     *
+     * The status bar is hidden on this and nothing else. Hiding it the moment a drag begins
+     * changes the window insets while the screens behind are still visible, and everything back
+     * there jumps up with the clock. Waiting until the player covers them means the layout
+     * behind still shifts, but under a sheet nobody can see through.
+     */
+    expanded: Boolean = open,
 ) {
     val onScreen = appIsOnScreen()
     val visible = open && onScreen
@@ -178,10 +193,11 @@ fun CapsuleImmersiveContent(
      * closed, the design was changed, or the screen simply left the composition.
      */
     val context = LocalContext.current
-    DisposableEffect(visible) {
+    val hideSystemBars = expanded && onScreen
+    DisposableEffect(hideSystemBars) {
         val window = context.immersiveWindow()
         val controller = window?.let { WindowCompat.getInsetsController(it, it.decorView) }
-        if (visible && controller != null) {
+        if (hideSystemBars && controller != null) {
             controller.systemBarsBehavior =
                 WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
             controller.hide(WindowInsetsCompat.Type.statusBars())
@@ -271,7 +287,7 @@ fun CapsuleImmersiveContent(
          * that line and nowhere else, so the stop is computed rather than guessed.
          */
         val seam = (artworkHeight / maxHeight).coerceIn(0.05f, 0.95f)
-        val settled = (seam + 0.22f).coerceAtMost(1f)
+        val settled = (seam + 0.34f).coerceAtMost(1f)
 
         val pageBackground =
             if (isVideo) {
@@ -315,8 +331,17 @@ fun CapsuleImmersiveContent(
                     modifier = Modifier.fillMaxSize().background(Color.Black),
                 )
             } else {
+                /*
+                 * Crossfaded rather than swapped. The floor colour under it already eases from
+                 * one track's to the next over 1.4 s, so a cover that changed in a single frame
+                 * left the two halves of the same transition visibly out of step.
+                 */
                 AsyncImage(
-                    model = mediaMetadata.thumbnailUrl?.toHighResThumbnail(),
+                    model =
+                        ImageRequest.Builder(LocalContext.current)
+                            .data(mediaMetadata.thumbnailUrl?.toHighResThumbnail())
+                            .crossfade(ImmersiveCoverCrossfadeMs)
+                            .build(),
                     contentDescription = null,
                     contentScale = ContentScale.Crop,
                     modifier = Modifier.fillMaxSize(),
@@ -327,10 +352,17 @@ fun CapsuleImmersiveContent(
                         Modifier
                             .fillMaxSize()
                             .background(
+                                /*
+                                 * Four stops, none of them abrupt. The two in the middle are what
+                                 * keep the ramp from reading as an edge: alpha rises slowly while
+                                 * there is still picture worth seeing and only crowds together
+                                 * near the bottom, where there is nothing left to hide.
+                                 */
                                 Brush.verticalGradient(
                                     0f to Color.Transparent,
                                     ImmersiveFadeStart to Color.Transparent,
-                                    0.92f to edge.copy(alpha = 0.62f),
+                                    0.72f to edge.copy(alpha = 0.22f),
+                                    0.88f to edge.copy(alpha = 0.70f),
                                     1f to edge,
                                 ),
                             ),
