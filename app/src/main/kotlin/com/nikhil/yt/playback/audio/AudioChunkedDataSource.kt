@@ -177,12 +177,13 @@ internal class AudioChunkedDataSource(
 
         val read = upstream.read(buffer, offset, minOf(length.toLong(), chunkLeft).toInt())
         if (read == C.RESULT_END_OF_INPUT) {
-            /*
-             * A chunk that ends early ends the stream. Treating it as a seam and opening the next
-             * one would turn a truncated download into an endless loop of empty requests.
-             */
-            bytesLeft = 0L
-            return C.RESULT_END_OF_INPUT
+            // This is a bounded request with a known remaining length: EOF before chunkLeft
+            // reaches zero means that the CDN truncated this slice, not that the song ended.
+            // Never commit a partial cache entry as if it were the complete audio stream.
+            // Propagate a transport error through the existing bounded fresh-URL recovery.
+            throw java.io.EOFException(
+                "Audio CDN ended a bounded slice early (remainingBytes=$chunkLeft)",
+            )
         }
 
         nextPosition += read
