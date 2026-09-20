@@ -35,6 +35,7 @@ class AudioCdnRecoveryTest {
         var openFailure: Throwable? = null
         var readFailure: IOException? = null
         var readResult = C.RESULT_END_OF_INPUT
+        var actualUri: Uri? = null
         val opens = mutableListOf<DataSpec>()
         var closes = 0
         override fun addTransferListener(transferListener: TransferListener) = Unit
@@ -47,7 +48,7 @@ class AudioCdnRecoveryTest {
             readFailure?.let { throw it }
             return readResult
         }
-        override fun getUri(): Uri? = opens.lastOrNull()?.uri
+        override fun getUri(): Uri? = actualUri ?: opens.lastOrNull()?.uri
         override fun close() { closes += 1 }
     }
 
@@ -175,6 +176,29 @@ class AudioCdnRecoveryTest {
         repeat(2) { health.recordFailure(host) }
         assertFalse(health.shouldSkipHost(host))
         assertFalse(health.shouldSkipHost(host))
+    }
+
+    @Test
+    fun redirectedAudioCreditsTheActualServerInsteadOfTheOriginalSignedLinkHost() {
+        val destination = "rr3---sn-other.googlevideo.com"
+        val health = AudioCdnHostHealth(now = { 0L })
+        repeat(2) { health.recordFailure(host); health.recordFailure(destination) }
+        val upstream = Upstream().apply {
+            readResult = 8
+            actualUri = Uri.parse("https://$destination/videoplayback")
+        }
+        val source = AudioCdnHostHealthDataSource(upstream, health)
+        source.open(spec)
+        assertEquals(8, source.read(ByteArray(8), 0, 8))
+        source.close()
+
+        health.recordFailure(host) // still its third failure: only the destination served bytes
+        assertFalse(health.shouldSkipHost(host)) // first cold probe
+        assertTrue(health.shouldSkipHost(host))
+        health.recordFailure(destination)
+        health.recordFailure(destination)
+        assertFalse(health.shouldSkipHost(destination))
+        assertFalse(health.shouldSkipHost(destination))
     }
 
     @Test
