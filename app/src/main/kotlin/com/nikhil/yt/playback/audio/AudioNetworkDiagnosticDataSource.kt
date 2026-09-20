@@ -236,15 +236,34 @@ internal class AudioNetworkDiagnosticDataSource(
                  * host had refused forty-five requests it had in fact served. The cdn-wire line is
                  * the one that says who answered.
                  */
-                Timber.tag(TAG).w(
-                    failure,
-                    "cdn-open-failed id=%s linkHost=%s elapsedMs=%d linkRef=%s %s",
-                    mediaKey ?: "none",
-                    host ?: "unknown",
-                    elapsedMs(startedAtNs, now),
-                    linkRef ?: "unknown",
-                    describeRejection(failure, dataSpec.uri),
-                )
+                val rejection =
+                    generateSequence(failure as Throwable?) { it.cause }
+                        .take(8)
+                        .any { it is InvalidResponseCodeException }
+                if (rejection) {
+                    // A bounded first-chunk retry can encounter several 403s in a row. Keep
+                    // every refusal's code, server route and anonymous link reference, but
+                    // do not export the same 20-frame Media3 stack trace for each attempt.
+                    // The repeated stacks consumed the finite log buffer during swipe tests.
+                    Timber.tag(TAG).w(
+                        "cdn-open-failed id=%s linkHost=%s elapsedMs=%d linkRef=%s %s",
+                        mediaKey ?: "none",
+                        host ?: "unknown",
+                        elapsedMs(startedAtNs, now),
+                        linkRef ?: "unknown",
+                        describeRejection(failure, dataSpec.uri),
+                    )
+                } else {
+                    Timber.tag(TAG).w(
+                        failure,
+                        "cdn-open-failed id=%s linkHost=%s elapsedMs=%d linkRef=%s %s",
+                        mediaKey ?: "none",
+                        host ?: "unknown",
+                        elapsedMs(startedAtNs, now),
+                        linkRef ?: "unknown",
+                        describeRejection(failure, dataSpec.uri),
+                    )
+                }
             }
             throw failure
         }
