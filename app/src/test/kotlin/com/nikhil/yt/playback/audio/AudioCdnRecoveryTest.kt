@@ -34,6 +34,7 @@ class AudioCdnRecoveryTest {
     private class Upstream : DataSource {
         var openFailure: Throwable? = null
         var readFailure: IOException? = null
+        var readResult = C.RESULT_END_OF_INPUT
         val opens = mutableListOf<DataSpec>()
         var closes = 0
         override fun addTransferListener(transferListener: TransferListener) = Unit
@@ -44,7 +45,7 @@ class AudioCdnRecoveryTest {
         }
         override fun read(buffer: ByteArray, offset: Int, length: Int): Int {
             readFailure?.let { throw it }
-            return C.RESULT_END_OF_INPUT
+            return readResult
         }
         override fun getUri(): Uri? = opens.lastOrNull()?.uri
         override fun close() { closes += 1 }
@@ -147,6 +148,33 @@ class AudioCdnRecoveryTest {
         upstream.readFailure = cancelled
         assertSame(cancelled, assertThrows(IOException::class.java) { source.read(ByteArray(8), 0, 8) })
         source.close()
+    }
+
+    @Test
+    fun openingHeadersWithoutAudioBytesDoesNotResetADeadHostsFailureHistory() {
+        val health = AudioCdnHostHealth(now = { 0L })
+        repeat(2) { health.recordFailure(host) }
+        val source = AudioCdnHostHealthDataSource(Upstream(), health)
+        source.open(spec) // server returned 206, but has not actually delivered any audio
+        source.close()
+        health.recordFailure(host)
+        assertFalse(health.shouldSkipHost(host)) // one permitted probe
+        assertTrue(health.shouldSkipHost(host)) // still cold: open alone did not clear failures
+    }
+
+    @Test
+    fun firstSuccessfulBodyBytesValidateTheServerThatActuallyServedAudio() {
+        val health = AudioCdnHostHealth(now = { 0L })
+        repeat(2) { health.recordFailure(host) }
+        val upstream = Upstream().apply { readResult = 8 }
+        val source = AudioCdnHostHealthDataSource(upstream, health)
+        source.open(spec)
+        assertEquals(8, source.read(ByteArray(8), 0, 8))
+        source.close()
+        // Two failures after an actual byte read must NOT amount to four cumulative failures.
+        repeat(2) { health.recordFailure(host) }
+        assertFalse(health.shouldSkipHost(host))
+        assertFalse(health.shouldSkipHost(host))
     }
 
     @Test
