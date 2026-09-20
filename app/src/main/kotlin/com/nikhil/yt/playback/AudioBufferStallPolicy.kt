@@ -23,6 +23,6 @@ internal object AudioBufferStallPolicy {
         bufferedGrowthMs: Long,
     ): Boolean =
         buffering && playWhenReady && connected && !blocked && !isVideo &&
-            bufferedAheadMs in 0 until MAX_BUFFER_AHEAD_MS &&
+            bufferedAheadMs >= 0L && bufferedAheadMs < MAX_BUFFER_AHEAD_MS &&
             bufferedGrowthMs < MIN_BUFFER_GROWTH_MS
 }
