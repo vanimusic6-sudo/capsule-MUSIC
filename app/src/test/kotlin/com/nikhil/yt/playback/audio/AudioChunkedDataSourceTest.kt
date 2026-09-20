@@ -126,6 +126,33 @@ class AudioChunkedDataSourceTest {
         assertEquals(400L, upstream.opens.first().first)
     }
 
+    @Test
+    fun earlyEofInsideABoundedSliceMustFailInsteadOfTruncatingTheTrack() {
+        val bytes = content(1000)
+        val upstream = object : DataSource {
+            private val inner = FakeUpstream(bytes)
+            private var opened = false
+            override fun addTransferListener(transferListener: TransferListener) = Unit
+            override fun open(dataSpec: DataSpec): Long {
+                opened = true
+                return inner.open(dataSpec)
+            }
+            override fun read(buffer: ByteArray, offset: Int, length: Int): Int =
+                if (opened && inner.opens.firstOrNull() != null && inner.opens.size == 1) {
+                    C.RESULT_END_OF_INPUT
+                } else {
+                    inner.read(buffer, offset, length)
+                }
+            override fun getUri(): Uri? = Uri.EMPTY
+            override fun close() { opened = false; inner.close() }
+        }
+        val source = AudioChunkedDataSource(upstream, chunkBytes = 128)
+        source.open(spec(bytes.size.toLong()))
+        val failure = runCatching { source.read(ByteArray(64), 0, 64) }.exceptionOrNull()
+        assertTrue("early EOF must reach Media3 for a fresh-URL recovery", failure is java.io.EOFException)
+        source.close()
+    }
+
     /** A file that fits in one chunk is handed through untouched, which is every ordinary song. */
     @Test
     fun aShortStreamIsNotSplitAtAll() {
