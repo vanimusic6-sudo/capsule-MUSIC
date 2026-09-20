@@ -348,13 +348,20 @@ internal class AudioNetworkDiagnosticDataSource(
             upstream.close()
         } finally {
             if (diagnosticsEnabled && startedAtNs != 0L) {
+                val elapsed = elapsedMs(startedAtNs, System.nanoTime())
+                // This is throughput *delivered to Media3*, not proof of raw network
+                // throttling: Media3 itself may pause reads when its buffer is full.
+                val deliveredToLoaderBps =
+                    if (elapsed > 0L) bytesRead * 1000L / elapsed else 0L
                 Timber.tag(TAG).d(
-                    "cdn-close id=%s host=%s bytes=%d firstByte=%s elapsedMs=%d slowReads=%d worstReadMs=%d",
+                    "cdn-close id=%s host=%s bytes=%d firstByte=%s elapsedMs=%d " +
+                        "deliveredToLoaderBps=%d slowReads=%d worstReadMs=%d",
                     mediaKey ?: "none",
                     host ?: "unknown",
                     bytesRead,
                     firstByteLogged,
-                    elapsedMs(startedAtNs, System.nanoTime()),
+                    elapsed,
+                    deliveredToLoaderBps,
                     slowReadCount,
                     worstReadMs,
                 )
