@@ -8,6 +8,7 @@
 
 package com.nikhil.yt.ui.screens.settings
 
+import com.nikhil.yt.BuildConfig
 import android.content.Intent
 import android.text.format.DateFormat
 import android.util.Log
@@ -732,6 +733,20 @@ private fun LogViewerPanel() {
                                 "Filter: ${when (filterMode) { 0 -> "Discord"; 1 -> "YouTube core"; else -> "All" }}"
                             )
                             appendLine("Count: ${filtered.size}")
+                            /*
+                             * Which build produced this capture.
+                             *
+                             * Every previous export was anonymous, and it has already cost an
+                             * answer: a capture showing exactly the improvement a change
+                             * predicted could not be credited to it, because nothing in the file
+                             * said whether that change was in the build. One line, written once
+                             * per export, ends that for good.
+                             */
+                            appendLine(
+                                "Build: ${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE}) " +
+                                    "${BuildConfig.GIT_COMMIT} ${BuildConfig.BUILD_TYPE} " +
+                                    BuildConfig.ARCHITECTURE,
+                            )
                             appendLine("==========================")
                             appendLine()
                             filtered.forEach { entry -> appendLine(GlobalLog.format(entry)) }

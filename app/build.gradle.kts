@@ -9,6 +9,26 @@ plugins {
     alias(libs.plugins.compose.compiler)
 }
 
+/**
+ * The commit this APK was built from, or "unknown" outside a git checkout.
+ *
+ * Captures from the field arrive with no way to tell which build produced them, and that has
+ * already cost a clean answer: a capture showing exactly the improvement a change predicted could
+ * not be credited to it, because nothing in the log said whether the change was in the build.
+ * Read through the Gradle provider API so it does not defeat the configuration cache.
+ */
+val gitCommit: String =
+    providers
+        .exec {
+            commandLine("git", "rev-parse", "--short", "HEAD")
+            isIgnoreExitValue = true
+        }.standardOutput
+        .asText
+        .map { it.trim() }
+        .orElse("")
+        .get()
+        .ifEmpty { "unknown" }
+
 val localProperties = Properties()
 val localPropertiesFile = rootProject.file("local.properties")
 if (localPropertiesFile.exists()) {
@@ -45,6 +65,8 @@ android {
                 ?: System.getenv("TOGETHER_BEARER_TOKEN")
                 ?: ""
         buildConfigField("String", "TOGETHER_BEARER_TOKEN", "\"$togetherBearerToken\"")
+
+        buildConfigField("String", "GIT_COMMIT", "\"$gitCommit\"")
     }
 
     flavorDimensions += "abi"
