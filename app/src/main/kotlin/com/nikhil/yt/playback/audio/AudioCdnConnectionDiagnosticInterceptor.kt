@@ -41,6 +41,32 @@ internal fun addressFamilyOf(address: String?): String =
 internal fun isCdnRefusalStatus(code: Int): Boolean = code >= 400
 
 /**
+ * What the TLS handshake actually agreed to speak, or why the question cannot be answered.
+ *
+ * Every googlevideo request in three captures was HTTP/1.1, and a direct ALPN probe of one of
+ * those same hosts offers h2. Over h2 a redirect or a refusal ends a stream and leaves the
+ * connection alive; over HTTP/1.1 the captures show both of them costing the whole socket, and
+ * more than half of all requests are redirects. So this is worth dozens of sockets a session,
+ * and it matters a great deal whose choice it is.
+ *
+ * "none" means the handshake negotiated no application protocol at all — ALPN never happened,
+ * which would make it ours to fix. "http/1.1" means ALPN ran and this is what was agreed, which
+ * would make it the server's choice. "unsupported" means the device cannot be asked, which is
+ * neither and must not be read as either.
+ */
+internal fun negotiatedApplicationProtocol(socket: java.net.Socket?): String {
+    if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.Q) return "unsupported"
+    val tls = socket as? javax.net.ssl.SSLSocket ?: return "not-tls"
+    // Some stacks throw rather than answer before a handshake has completed.
+    val negotiated = runCatching { tls.applicationProtocol }.getOrNull()
+    return when {
+        negotiated == null -> "unknown"
+        negotiated.isEmpty() -> "none"
+        else -> negotiated
+    }
+}
+
+/**
  * Whether a response leaves its connection fit to be used again.
  *
  * A capture showed forty-nine googlevideo requests spread over thirty connections, none of them
@@ -93,7 +119,8 @@ internal class AudioCdnConnectionDiagnosticInterceptor(
             addressFamilyOf(connection?.socket()?.inetAddress?.hostAddress)
         val localFamily = addressFamilyOf(connection?.socket()?.localAddress?.hostAddress)
         val proxyType = connection?.route()?.proxy?.type()?.name ?: "unknown"
-        val use = ledger.record(connectionId, clock())
+        val use = ledger.record(connectionId, clock(), requestHost)
+        val alpn = negotiatedApplicationProtocol(connection?.socket())
 
         return try {
             chain.proceed(request).also { response ->
@@ -110,7 +137,7 @@ internal class AudioCdnConnectionDiagnosticInterceptor(
                     if (isCdnRefusalStatus(response.code)) {
                         Timber.tag("AudioCDN").w(
                             "cdn-wire host=%s routeHost=%s protocol=%s coalesced=%s conn=%d " +
-                                "reqOnConn=%d connAgeMs=%d reusable=%s " +
+                                "reqOnConn=%d connAgeMs=%d prevConnReqs=%d reusable=%s alpn=%s " +
                                 "status=%d linkIssuedFamily=%s remoteAddressFamily=%s " +
                                 "localAddressFamily=%s proxyType=%s",
                             requestHost,
@@ -120,7 +147,9 @@ internal class AudioCdnConnectionDiagnosticInterceptor(
                             connectionId,
                             use.requestIndex,
                             use.ageMs,
+                            use.previousRequestsToHost,
                             reusable,
+                            alpn,
                             response.code,
                             linkFamily,
                             remoteFamily,
@@ -130,7 +159,7 @@ internal class AudioCdnConnectionDiagnosticInterceptor(
                     } else if (isCdnWireWorthReporting(response.code, use.requestIndex)) {
                         Timber.tag("AudioCDN").i(
                             "cdn-wire host=%s routeHost=%s protocol=%s coalesced=%s conn=%d " +
-                                "reqOnConn=%d connAgeMs=%d reusable=%s " +
+                                "reqOnConn=%d connAgeMs=%d prevConnReqs=%d reusable=%s alpn=%s " +
                                 "status=%d linkIssuedFamily=%s remoteAddressFamily=%s " +
                                 "localAddressFamily=%s proxyType=%s",
                             requestHost,
@@ -140,7 +169,9 @@ internal class AudioCdnConnectionDiagnosticInterceptor(
                             connectionId,
                             use.requestIndex,
                             use.ageMs,
+                            use.previousRequestsToHost,
                             reusable,
+                            alpn,
                             response.code,
                             linkFamily,
                             remoteFamily,
@@ -150,7 +181,7 @@ internal class AudioCdnConnectionDiagnosticInterceptor(
                     } else {
                         Timber.tag("AudioCDN").d(
                             "cdn-wire host=%s routeHost=%s protocol=%s coalesced=%s conn=%d " +
-                                "reqOnConn=%d connAgeMs=%d reusable=%s " +
+                                "reqOnConn=%d connAgeMs=%d prevConnReqs=%d reusable=%s alpn=%s " +
                                 "status=%d linkIssuedFamily=%s remoteAddressFamily=%s " +
                                 "localAddressFamily=%s proxyType=%s",
                             requestHost,
@@ -160,7 +191,9 @@ internal class AudioCdnConnectionDiagnosticInterceptor(
                             connectionId,
                             use.requestIndex,
                             use.ageMs,
+                            use.previousRequestsToHost,
                             reusable,
+                            alpn,
                             response.code,
                             linkFamily,
                             remoteFamily,

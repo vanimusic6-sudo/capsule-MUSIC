@@ -20,10 +20,27 @@ package com.nikhil.yt.playback.audio
 internal class AudioCdnConnectionLedger(
     private val capacity: Int = DEFAULT_CAPACITY,
 ) {
-    /** One connection's first sighting and how many requests have gone over it since. */
-    data class Use(val requestIndex: Int, val ageMs: Long)
+    /**
+     * One connection's first sighting, how many requests have gone over it, and how many the
+     * connection this host was using before it managed to carry.
+     *
+     * [previousRequestsToHost] exists because of a flaw in the first version of this: the wire
+     * line is written at info only for a connection's first request, so a capture taken with
+     * debug off shows nothing but first requests and reuse looks like it never happens. Carrying
+     * the outgoing connection's final count on the incoming connection's line means the depth of
+     * reuse survives at info, where the captures people actually take can see it.
+     */
+    data class Use(
+        val requestIndex: Int,
+        val ageMs: Long,
+        val previousRequestsToHost: Int = 0,
+    )
 
     private class Entry(val firstSeenMs: Long, var requests: Int = 0)
+
+    /** The last connection seen for each host, and how many requests it ended up carrying. */
+    private val lastConnectionPerHost = HashMap<String, Int>()
+    private val requestsOfLastConnection = HashMap<String, Int>()
 
     private val entries =
         object : LinkedHashMap<Int, Entry>(16, 0.75f, true) {
@@ -38,19 +55,38 @@ internal class AudioCdnConnectionLedger(
      * being used for the first time and must not be counted as one.
      */
     @Synchronized
-    fun record(connectionId: Int, nowMs: Long): Use {
+    fun record(connectionId: Int, nowMs: Long, host: String = ""): Use {
         if (connectionId == -1) return Use(requestIndex = 0, ageMs = 0L)
         val entry = entries.getOrPut(connectionId) { Entry(firstSeenMs = nowMs) }
         entry.requests += 1
         // A clock that has gone backwards is a clock, not an age.
         val age = (nowMs - entry.firstSeenMs).coerceAtLeast(0L)
-        return Use(requestIndex = entry.requests, ageMs = age)
+
+        var previous = 0
+        if (host.isNotEmpty()) {
+            val lastForHost = lastConnectionPerHost[host]
+            if (lastForHost != connectionId) {
+                // This host has moved to a different socket; report what the old one carried.
+                previous = requestsOfLastConnection[host] ?: 0
+                lastConnectionPerHost[host] = connectionId
+            }
+            requestsOfLastConnection[host] = entry.requests
+            if (lastConnectionPerHost.size > capacity) {
+                lastConnectionPerHost.clear()
+                requestsOfLastConnection.clear()
+                lastConnectionPerHost[host] = connectionId
+                requestsOfLastConnection[host] = entry.requests
+            }
+        }
+        return Use(requestIndex = entry.requests, ageMs = age, previousRequestsToHost = previous)
     }
 
     /** Forgotten wholesale when the route changes, like the rest of the CDN's memory of a network. */
     @Synchronized
     fun forget() {
         entries.clear()
+        lastConnectionPerHost.clear()
+        requestsOfLastConnection.clear()
     }
 
     private companion object {

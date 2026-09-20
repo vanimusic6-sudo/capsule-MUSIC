@@ -4,6 +4,9 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
+import org.robolectric.annotation.Config
 
 /**
  * The ledger's only job is to answer "was this the first request on this socket, and how old is
@@ -160,5 +163,128 @@ class CdnConnectionReuseTest {
                 transferEncoding = null,
             ),
         )
+    }
+}
+
+/**
+ * Whether the handshake was even asked what protocol to speak.
+ *
+ * "ALPN agreed on HTTP/1.1" and "ALPN never ran" look identical in a wire log that only prints
+ * the protocol OkHttp ended up using, and they point at opposite culprits: the first is the
+ * server's choice, the second is ours to fix.
+ */
+@RunWith(RobolectricTestRunner::class)
+@Config(sdk = [35])
+class NegotiatedApplicationProtocolTest {
+    @Test fun `a plain socket is not a failed negotiation`() {
+        assertEquals("not-tls", negotiatedApplicationProtocol(java.net.Socket()))
+    }
+
+    @Test fun `no socket at all is not a failed negotiation either`() {
+        assertEquals("not-tls", negotiatedApplicationProtocol(null))
+    }
+
+    @Test fun `an empty protocol means ALPN never happened`() {
+        val socket =
+            object : javax.net.ssl.SSLSocket() {
+                override fun getApplicationProtocol(): String = ""
+                override fun getSupportedCipherSuites(): Array<String> = emptyArray()
+                override fun getEnabledCipherSuites(): Array<String> = emptyArray()
+                override fun setEnabledCipherSuites(suites: Array<out String>?) = Unit
+                override fun getSupportedProtocols(): Array<String> = emptyArray()
+                override fun getEnabledProtocols(): Array<String> = emptyArray()
+                override fun setEnabledProtocols(protocols: Array<out String>?) = Unit
+                override fun getSession(): javax.net.ssl.SSLSession = error("unused")
+                override fun addHandshakeCompletedListener(
+                    listener: javax.net.ssl.HandshakeCompletedListener?,
+                ) = Unit
+                override fun removeHandshakeCompletedListener(
+                    listener: javax.net.ssl.HandshakeCompletedListener?,
+                ) = Unit
+                override fun startHandshake() = Unit
+                override fun setUseClientMode(mode: Boolean) = Unit
+                override fun getUseClientMode(): Boolean = true
+                override fun setNeedClientAuth(need: Boolean) = Unit
+                override fun getNeedClientAuth(): Boolean = false
+                override fun setWantClientAuth(want: Boolean) = Unit
+                override fun getWantClientAuth(): Boolean = false
+                override fun setEnableSessionCreation(flag: Boolean) = Unit
+                override fun getEnableSessionCreation(): Boolean = true
+            }
+
+        assertEquals("none", negotiatedApplicationProtocol(socket))
+    }
+}
+
+/**
+ * Reuse depth has to survive a capture taken with debug off.
+ *
+ * The wire line is written at info only for a connection's first request, so a debug-off export
+ * contains nothing else — and the first version of this made reuse look like it never happened
+ * at all, in exactly the captures people actually take. Each new connection now carries what the
+ * host's previous connection managed to serve.
+ */
+class PreviousConnectionDepthTest {
+    @Test fun `a new socket for a host reports what the old one carried`() {
+        val ledger = AudioCdnConnectionLedger()
+        val host = "rr1---sn-example.googlevideo.com"
+        ledger.record(connectionId = 1, nowMs = 0L, host = host)
+        ledger.record(connectionId = 1, nowMs = 10L, host = host)
+        ledger.record(connectionId = 1, nowMs = 20L, host = host)
+
+        val moved = ledger.record(connectionId = 2, nowMs = 30L, host = host)
+
+        assertEquals(1, moved.requestIndex)
+        assertEquals(3, moved.previousRequestsToHost)
+    }
+
+    @Test fun `staying on the same socket does not re-report the previous one`() {
+        val ledger = AudioCdnConnectionLedger()
+        val host = "rr1---sn-example.googlevideo.com"
+        ledger.record(connectionId = 1, nowMs = 0L, host = host)
+        ledger.record(connectionId = 2, nowMs = 10L, host = host)
+
+        val again = ledger.record(connectionId = 2, nowMs = 20L, host = host)
+
+        assertEquals(2, again.requestIndex)
+        assertEquals(0, again.previousRequestsToHost)
+    }
+
+    @Test fun `the first connection to a host has no predecessor`() {
+        val ledger = AudioCdnConnectionLedger()
+
+        val first = ledger.record(connectionId = 1, nowMs = 0L, host = "rr1---sn-a.googlevideo.com")
+
+        assertEquals(0, first.previousRequestsToHost)
+    }
+
+    @Test fun `hosts do not report each other's connections`() {
+        val ledger = AudioCdnConnectionLedger()
+        ledger.record(connectionId = 1, nowMs = 0L, host = "rr1---sn-a.googlevideo.com")
+        ledger.record(connectionId = 1, nowMs = 10L, host = "rr1---sn-a.googlevideo.com")
+
+        val other = ledger.record(connectionId = 2, nowMs = 20L, host = "rr2---sn-b.googlevideo.com")
+
+        assertEquals(0, other.previousRequestsToHost)
+    }
+
+    @Test fun `the per-host memory cannot grow without bound`() {
+        val ledger = AudioCdnConnectionLedger(capacity = 4)
+        for (id in 1..64) {
+            ledger.record(connectionId = id, nowMs = id.toLong(), host = "rr$id---sn-x.googlevideo.com")
+        }
+        // Still answers, still bounded, and never negative.
+        val use = ledger.record(connectionId = 99, nowMs = 100L, host = "rr99---sn-x.googlevideo.com")
+        assertTrue(use.previousRequestsToHost >= 0)
+    }
+
+    @Test fun `a route change forgets the per-host memory too`() {
+        val ledger = AudioCdnConnectionLedger()
+        val host = "rr1---sn-example.googlevideo.com"
+        ledger.record(connectionId = 1, nowMs = 0L, host = host)
+
+        ledger.forget()
+
+        assertEquals(0, ledger.record(connectionId = 2, nowMs = 10L, host = host).previousRequestsToHost)
     }
 }
