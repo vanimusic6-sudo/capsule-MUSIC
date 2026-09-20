@@ -179,7 +179,7 @@ internal fun RowScope.PlaylistAction(
         } else {
             Icon(
                 painter = painterResource(icon),
-                contentDescription = label,
+                contentDescription = null, // Parent IconButton already announces the action once.
                 modifier = Modifier.size(26.dp),
                 tint = if (enabled) tint else tint.copy(alpha = 0.35f),
             )
