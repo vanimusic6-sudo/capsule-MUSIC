@@ -153,6 +153,7 @@ internal fun isSlowAudioRead(
 internal class AudioNetworkDiagnosticDataSource(
     private val upstream: DataSource,
     private val beforeNetworkOpen: ((DataSpec) -> Unit)? = null,
+    private val onFirstAudioBytes: ((DataSpec) -> Unit)? = null,
 ) : DataSource {
     private var diagnosticsEnabled = false
     private var startedAtNs = 0L
@@ -165,6 +166,8 @@ internal class AudioNetworkDiagnosticDataSource(
     private var mediaKey: String? = null
     private var host: String? = null
     private var linkRef: String? = null
+    private var openedDataSpec: DataSpec? = null
+    private var firstAudioBytesSeen = false
 
     override fun addTransferListener(transferListener: TransferListener) {
         upstream.addTransferListener(transferListener)
@@ -174,6 +177,9 @@ internal class AudioNetworkDiagnosticDataSource(
         // Selection settling belongs before the physical network open. In particular, a cached
         // pre-resolved URL must not bypass the rapid-skip guard and reach OkHttp before cancellation.
         beforeNetworkOpen?.invoke(dataSpec)
+
+        openedDataSpec = dataSpec
+        firstAudioBytesSeen = false
 
         // Counted before the level check: a refusal rate is only comparable between sessions if
         // it counts every session, not the ones somebody remembered to enable logging for.
@@ -245,7 +251,11 @@ internal class AudioNetworkDiagnosticDataSource(
     }
 
     override fun read(buffer: ByteArray, offset: Int, length: Int): Int {
-        if (!diagnosticsEnabled) return upstream.read(buffer, offset, length)
+        if (!diagnosticsEnabled) {
+            val count = upstream.read(buffer, offset, length)
+            markFirstAudioBytes(count)
+            return count
+        }
 
         val readStartedAtNs = System.nanoTime()
         return try {
@@ -254,6 +264,7 @@ internal class AudioNetworkDiagnosticDataSource(
                 val readMs = elapsedMs(readStartedAtNs, now)
 
                 if (count > 0) {
+                    markFirstAudioBytes(count)
                     bytesRead += count.toLong()
                     if (!firstByteLogged) {
                         firstByteLogged = true
@@ -339,6 +350,17 @@ internal class AudioNetworkDiagnosticDataSource(
         }
     }
 
+    private fun markFirstAudioBytes(count: Int) {
+        if (count <= 0 || firstAudioBytesSeen) return
+        firstAudioBytesSeen = true
+        // Never let a telemetry/cache update interrupt the audio read. Unlike logs, this
+        // callback runs with diagnostics turned off as well, and only once per CDN open.
+        openedDataSpec?.let { spec ->
+            runCatching { onFirstAudioBytes?.invoke(spec) }
+                .onFailure { Timber.tag(TAG).w("Failed to confirm CDN link cache entry: %s", it.javaClass.simpleName) }
+        }
+    }
+
     override fun getUri(): Uri? = upstream.uri
 
     override fun getResponseHeaders(): Map<String, List<String>> = upstream.responseHeaders
@@ -375,6 +397,8 @@ internal class AudioNetworkDiagnosticDataSource(
             slowReadCount = 0
             worstReadMs = 0L
             linkRef = null
+            openedDataSpec = null
+            firstAudioBytesSeen = false
             mediaKey = null
             host = null
         }
@@ -383,11 +407,13 @@ internal class AudioNetworkDiagnosticDataSource(
     internal class Factory(
         private val upstreamFactory: DataSource.Factory,
         private val beforeNetworkOpen: ((DataSpec) -> Unit)? = null,
+        private val onFirstAudioBytes: ((DataSpec) -> Unit)? = null,
     ) : DataSource.Factory {
         override fun createDataSource(): DataSource =
             AudioNetworkDiagnosticDataSource(
                 upstream = upstreamFactory.createDataSource(),
                 beforeNetworkOpen = beforeNetworkOpen,
+                onFirstAudioBytes = onFirstAudioBytes,
             )
     }
 
