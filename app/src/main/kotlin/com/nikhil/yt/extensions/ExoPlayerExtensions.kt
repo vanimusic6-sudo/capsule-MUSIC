@@ -359,7 +359,13 @@ private fun ExoPlayer.ensureCapsuleOffloadDiagnostics(): Boolean {
                         playingSinceElapsedMs?.let { SystemClock.elapsedRealtime() - it }
                     val bufferedAheadMs = player.bufferedAheadMs()
                     if (isAudioResumeArtefact(elapsedSinceLastFeedMs, playingForMs, bufferedAheadMs)) {
-                        Timber.tag("PlaybackHealth").d(
+                        /*
+                         * Info, not debug. These name the stretches where playback stopped
+                         * moving with the screen off — the position advanced four seconds in
+                         * five minutes of wall clock — and a capture taken at the level people
+                         * actually use would not contain a single one of them.
+                         */
+                        Timber.tag("PlaybackHealth").i(
                             "audio-resume-after-idle id=%s posMs=%d idleMs=%d playingForMs=%d " +
                                 "bufferedAheadMs=%d",
                             player.currentMediaItem?.mediaId,

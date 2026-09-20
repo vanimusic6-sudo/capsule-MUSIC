@@ -934,6 +934,15 @@ class MusicService :
     /** Which googlevideo server groups are currently refusing everything, on this network. */
     private val audioCdnHostHealth = AudioCdnHostHealth()
 
+    /**
+     * What the system is doing to this app, for the stretches where playback stops moving.
+     *
+     * Broadcast-driven; see PlaybackPowerWatch. Nothing runs while nothing happens.
+     */
+    private val playbackPowerWatch by lazy(LazyThreadSafetyMode.NONE) {
+        PlaybackPowerWatch(context = this, isPlaying = { runCatching { player.isPlaying }.getOrDefault(false) })
+    }
+
     /** Whether it is these songs that need an account, or this way out of the phone. */
     private val authWallDetector = AuthWallDetector()
 
@@ -1255,6 +1264,8 @@ class MusicService :
                 startForeground(NOTIFICATION_ID, notification)
             }
             hasCalledStartForeground = true
+            // Only while there is a foreground service to keep alive.
+            playbackPowerWatch.start()
         } catch (e: Exception) {
             reportException(e)
         }
@@ -5141,6 +5152,7 @@ class MusicService :
     }
 
     override fun onDestroy() {
+        playbackPowerWatch.stop()
         super.onDestroy()
         playbackPersistence.cancelPending()
         unregisterCapsuleScreenStateReceiver()
