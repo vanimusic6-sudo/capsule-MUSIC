@@ -8,6 +8,7 @@ package com.nikhil.yt.utils
 
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import com.nikhil.yt.BuildConfig
 import timber.log.Timber
 import java.text.SimpleDateFormat
 import java.util.ArrayDeque
@@ -188,6 +189,26 @@ object DebugLoggingController {
         if (value) {
             GlobalLog.setEnabled(true)
             Timber.plant(globalLogTree)
+            /*
+             * Which build this is, as the first line of every capture.
+             *
+             * The export header carries it too, but a header is lost the moment somebody copies
+             * a fragment of the log rather than the whole file. Written here rather than at
+             * startup because the tree is planted asynchronously, after a preference read: a
+             * line logged in Application.onCreate is emitted before anything is listening and
+             * silently goes nowhere. Here it cannot, because this is the planting.
+             *
+             * At info, so it survives a capture taken with debug off.
+             */
+            Timber.tag("Capsule").i(
+                "build version=%s (%d) commit=%s type=%s abi=%s sdk=%d",
+                BuildConfig.VERSION_NAME,
+                BuildConfig.VERSION_CODE,
+                BuildConfig.GIT_COMMIT,
+                BuildConfig.BUILD_TYPE,
+                BuildConfig.ARCHITECTURE,
+                android.os.Build.VERSION.SDK_INT,
+            )
         } else {
             Timber.uproot(globalLogTree)
             GlobalLog.setEnabled(false)

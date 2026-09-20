@@ -102,6 +102,7 @@ class App : Application(), SingletonImageLoader.Factory {
         PreferenceStore.start(this)
         migrateLegacyBrandPreferences()
 
+
         // Seed all account fields from the same preference transaction before playback starts.
         PreferenceStore.snapshot()?.let { YouTube.authState = it.playbackAuthState() }
         applicationScope.launch(Dispatchers.IO) {
