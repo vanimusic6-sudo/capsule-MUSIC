@@ -16,7 +16,9 @@ import androidx.media3.exoplayer.LoadControl
  *
  * The policy started as Metrolist's 50s/50s/750ms/2000ms and has since been widened for long
  * content; the reasons are on each value below. None of it inflates the AudioTrack buffer or
- * changes the cache format, and the 750ms playback threshold still keeps normal startup responsive.
+ * changes the cache format. Starting with 2.5 seconds instead of 750 ms avoids releasing a
+ * one-second buffer onto a slow CDN connection (observed in the September 20 capture).
+ * Fast connections fill this cushion quickly; a genuinely slow one should not immediately stutter.
  */
 
 /**
@@ -34,7 +36,7 @@ import androidx.media3.exoplayer.LoadControl
  */
 internal const val CAPSULE_MIN_BUFFER_MS = 180_000
 internal const val CAPSULE_MAX_BUFFER_MS = 180_000
-internal const val CAPSULE_BUFFER_FOR_PLAYBACK_MS = 750
+internal const val CAPSULE_BUFFER_FOR_PLAYBACK_MS = 2_500
 
 /**
  * Resuming after a stall waits for a real cushion, not two seconds.
