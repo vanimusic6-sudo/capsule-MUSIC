@@ -100,6 +100,28 @@ internal class AudioCdnConnectionDiagnosticInterceptor(
                 // Counted whatever the log level: a tally read once per capture is worth nothing
                 // if it only counts the sessions somebody remembered to turn logging on for.
                 AudioCdnSessionStats.recordResponse(response.code, use.requestIndex)
+                if (GlobalLog.isEnabled &&
+                    (isCdnRefusalStatus(response.code) || use.requestIndex == 1)
+                ) {
+                    val trace = request.tag(AudioCdnRequestTrace::class.java)
+                    val phase = if (trace?.originalUrl == request.url) "original" else "redirect-or-shortcut"
+                    // This ref is salted in memory; it cannot reveal a signed URL, token or
+                    // visitor identity from a shared diagnostic export. It joins the same link's
+                    // first rejected request, redirected hop and later successful retry.
+                    Timber.tag("AudioCDN").i(
+                        "cdn-link-route ref=%s phase=%s status=%d originalGroup=%s servedGroup=%s " +
+                            "rangeHeader=%s cookieHeader=%s originHeader=%s refererHeader=%s",
+                        trace?.linkRef ?: "unknown",
+                        phase,
+                        response.code,
+                        googlevideoServerGroup(trace?.originalUrl?.host) ?: "unknown",
+                        googlevideoServerGroup(request.url.host) ?: "unknown",
+                        request.header("Range") != null,
+                        request.header("Cookie") != null,
+                        request.header("Origin") != null,
+                        request.header("Referer") != null,
+                    )
+                }
                 /*
                  * A link is issued to the address that asked for it and carries that address in
                  * its own query string, so leaving by a different family is close to a
