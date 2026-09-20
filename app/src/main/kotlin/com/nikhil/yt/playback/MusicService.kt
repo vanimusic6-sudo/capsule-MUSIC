@@ -198,6 +198,7 @@ import com.nikhil.yt.playback.audio.AudioChunkedDataSource
 import com.nikhil.yt.playback.audio.AudioCacheSource
 import com.nikhil.yt.playback.audio.AudioNetworkDiagnosticDataSource
 import com.nikhil.yt.playback.audio.AudioCdnConnectionDiagnosticInterceptor
+import com.nikhil.yt.playback.audio.AudioCdnConnectionLedger
 import com.nikhil.yt.playback.audio.AudioCdnHostHealth
 import com.nikhil.yt.playback.audio.AudioCdnHostHealthDataSource
 import com.nikhil.yt.playback.audio.AudioCdnRedirectInterceptor
@@ -912,6 +913,9 @@ class MusicService :
     /** Whether it is these songs that need an account, or this way out of the phone. */
     private val authWallDetector = AuthWallDetector()
 
+    /** How long each googlevideo connection has been up, and how much it has carried. */
+    private val audioCdnConnectionLedger = AudioCdnConnectionLedger()
+
     private val mediaOkHttpClient: OkHttpClient by lazy {
         OkHttpClient
             .Builder()
@@ -1407,6 +1411,7 @@ class MusicService :
                 // the route rather than of the app.
                 audioCdnHostHealth.forget()
                 authWallDetector.forget()
+                audioCdnConnectionLedger.forget()
                 audioResolveCoordinator.invalidatePolicy(
                     invalidatePrefetch = true,
                     onInvalidate = playbackUrlCache::clear,
@@ -3716,12 +3721,9 @@ class MusicService :
                 // Safe transport-level reconnect for an already-resolved CDN GET.
                 // No player/InnerTube request or client rotation happens here.
                 .retryOnConnectionFailure(true)
-                // Across 322 successful opens in five captures the slowest took 3.87 s, and the
-                // 99th percentile 2.50 s. Every failure ran 10, 12, 13 or 30 s — the default
-                // timeout, waited out in full. Six seconds is half again the slowest open that has
-                // ever worked, and turns a dead edge into a six second answer instead of a thirty
-                // second one. It bounds a single body read too, and the slowest of those on record
-                // is 1.16 s.
+                // See AUDIO_CDN_TIMEOUT_SECONDS for why this is deliberately generous: a dead
+                // host and a slow one are indistinguishable until one answers, so abandoning a
+                // group is AudioCdnHostHealth's job on evidence, not this stopwatch's.
                 .connectTimeout(AUDIO_CDN_TIMEOUT_SECONDS, TimeUnit.SECONDS)
                 .readTimeout(AUDIO_CDN_TIMEOUT_SECONDS, TimeUnit.SECONDS)
                 // Redirects are followed by AudioCdnRedirectInterceptor instead, which declines the
@@ -3731,7 +3733,9 @@ class MusicService :
                 .followSslRedirects(false)
                 .addInterceptor(CapsuleAudioRequestInterceptor(guardStreams = true))
                 .addInterceptor(AudioCdnRedirectInterceptor())
-                .addNetworkInterceptor(AudioCdnConnectionDiagnosticInterceptor())
+                .addNetworkInterceptor(
+                    AudioCdnConnectionDiagnosticInterceptor(ledger = audioCdnConnectionLedger),
+                )
                 .build()
         val networkUpstream =
             // Chunking sits outermost so each bounded request still appears in the CDN diagnostics
