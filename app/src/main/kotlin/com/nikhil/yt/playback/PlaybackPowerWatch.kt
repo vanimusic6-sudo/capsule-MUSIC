@@ -27,6 +27,7 @@ import timber.log.Timber
 internal class PlaybackPowerWatch(
     context: Context,
     private val isPlaying: () -> Boolean,
+    private val isWakeLockHeld: () -> Boolean = { false },
 ) {
     /*
      * No Context is kept.
@@ -120,6 +121,10 @@ internal class PlaybackPowerWatch(
         // Reported as "optimised", because that is the state that suspends playback.
         append(" batteryOptimised=")
             .append(power?.isIgnoringBatteryOptimizations(packageName)?.let { !it })
+        // Stated rather than assumed: the last capture ruled out every system explanation, which
+        // left only "nothing was keeping the CPU awake" — and that was not something the capture
+        // could confirm either way.
+        append(" wakeLock=").append(isWakeLockHeld())
     }
 
     private fun report(event: String) {

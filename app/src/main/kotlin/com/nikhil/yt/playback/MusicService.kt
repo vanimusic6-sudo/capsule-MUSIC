@@ -935,12 +935,24 @@ class MusicService :
     private val audioCdnHostHealth = AudioCdnHostHealth()
 
     /**
+     * A CPU wake lock of this app's own, held only while audio is playing.
+     *
+     * Media3's WAKE_MODE_LOCAL is supposed to cover this; a capture says it does not. See
+     * PlaybackWakeLock.
+     */
+    private val playbackWakeLock by lazy(LazyThreadSafetyMode.NONE) { PlaybackWakeLock(this) }
+
+    /**
      * What the system is doing to this app, for the stretches where playback stops moving.
      *
      * Broadcast-driven; see PlaybackPowerWatch. Nothing runs while nothing happens.
      */
     private val playbackPowerWatch by lazy(LazyThreadSafetyMode.NONE) {
-        PlaybackPowerWatch(context = this, isPlaying = { runCatching { player.isPlaying }.getOrDefault(false) })
+        PlaybackPowerWatch(
+            context = this,
+            isPlaying = { runCatching { player.isPlaying }.getOrDefault(false) },
+            isWakeLockHeld = { playbackWakeLock.isHeld },
+        )
     }
 
     /** Whether it is these songs that need an account, or this way out of the phone. */
@@ -3335,6 +3347,8 @@ class MusicService :
 
     override fun onIsPlayingChanged(isPlaying: Boolean) {
         super.onIsPlayingChanged(isPlaying)
+        // Both edges come from here, so the lock cannot outlive playback by more than a callback.
+        playbackWakeLock.setPlaying(isPlaying)
         val activeMediaId = player.currentMediaItem?.mediaId
         playbackRecoveryCoordinator.onPlaybackActivity(
             mediaId = activeMediaId,
@@ -5152,6 +5166,7 @@ class MusicService :
     }
 
     override fun onDestroy() {
+        playbackWakeLock.release()
         playbackPowerWatch.stop(this)
         super.onDestroy()
         playbackPersistence.cancelPending()
