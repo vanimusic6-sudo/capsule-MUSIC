@@ -34,11 +34,16 @@ private const val EDGE_SAMPLE_SIZE = 48
 /** How much of the cover's foot is averaged. */
 private const val EDGE_SAMPLE_ROWS = 6
 
-/** As long as the artwork palette's own crossfade, so the two never disagree mid-flight. */
+/** Neutral first frame; never show a random theme accent while artwork is loading. */
+internal val IMMERSIVE_NEUTRAL_COLOR = Color(0xFF262626)
+
+/** As long as the artwork crossfade, so the dissolve never flashes between tones. */
 private const val EDGE_TRANSITION_MS = 1_400
 
-private val edgeColorCache = object : LinkedHashMap<String, Color>(24, 0.75f, true) {
-    override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Color>?): Boolean =
+internal data class ImmersiveArtworkTone(val edge: Color, val landscape: Boolean = false)
+
+private val edgeColorCache = object : LinkedHashMap<String, ImmersiveArtworkTone>(24, 0.75f, true) {
+    override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, ImmersiveArtworkTone>?): Boolean =
         size > 64
 }
 
@@ -58,10 +63,10 @@ private val edgeColorCache = object : LinkedHashMap<String, Color>(24, 0.75f, tr
  * crossfade runs from it, so even that one is a fade rather than a jump.
  */
 @Composable
-internal fun rememberImmersiveEdgeColor(mediaMetadata: MediaMetadata?, fallback: Color): Color {
+internal fun rememberImmersiveEdgeColor(mediaMetadata: MediaMetadata?): ImmersiveArtworkTone {
     val context = LocalContext.current
     val thumbnailUrl = mediaMetadata?.thumbnailUrl
-    val cacheKey = mediaMetadata?.id
+    val cacheKey = mediaMetadata?.id?.let { "$it|$thumbnailUrl" }
 
     /*
      * Deliberately not keyed on the track.
@@ -72,7 +77,7 @@ internal fun rememberImmersiveEdgeColor(mediaMetadata: MediaMetadata?, fallback:
      * means the page only ever moves from one measured colour to the next, and the crossfade
      * below carries it. The palette is a fallback for the very first track and nothing else.
      */
-    var measured by remember { mutableStateOf<Color?>(null) }
+    var measured by remember { mutableStateOf<ImmersiveArtworkTone?>(null) }
 
     /** The track the held colour belongs to, so a stale one is never kept once its own arrives. */
     var measuredFor by remember { mutableStateOf<String?>(null) }
@@ -84,40 +89,58 @@ internal fun rememberImmersiveEdgeColor(mediaMetadata: MediaMetadata?, fallback:
     }
 
     LaunchedEffect(cacheKey, thumbnailUrl) {
-        if (cacheKey == null || thumbnailUrl == null || measuredFor == cacheKey) return@LaunchedEffect
+        if (cacheKey == null || thumbnailUrl.isNullOrBlank()) {
+            measured = ImmersiveArtworkTone(IMMERSIVE_NEUTRAL_COLOR)
+            measuredFor = cacheKey
+            return@LaunchedEffect
+        }
+        if (measuredFor == cacheKey) return@LaunchedEffect
         val request =
             ImageRequest.Builder(context)
                 .data(thumbnailUrl.toHighResThumbnail())
                 .size(EDGE_SAMPLE_SIZE, EDGE_SAMPLE_SIZE)
                 .allowHardware(false)
                 .build()
-        val edge =
+        val sample =
             try {
                 val bitmap =
                     withContext(Dispatchers.IO) { context.imageLoader.execute(request) }
                         .image
                         ?.toBitmap()
                         ?: return@LaunchedEffect
-                withContext(Dispatchers.Default) { bitmap.averageBottomStrip() }
+                withContext(Dispatchers.Default) {
+                    val landscape = bitmap.width > bitmap.height * 1.20f
+                    // Video thumbnails can contain a built-in black letterbox. That black strip
+                    // is not the artwork's colour: extract from the image body instead.
+                    val bottom = bitmap.averageBottomStrip()
+                    val middle = bitmap.averageMiddleStrip()
+                    val sampled =
+                        if ((landscape || bottom.isNearlyBlack()) && bottom.isNearlyBlack() && !middle.isNearlyBlack()) {
+                            middle
+                        } else {
+                            bottom
+                        }
+                    ImmersiveArtworkTone(sampled.comfortableImmersiveColor(), landscape)
+                }
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (_: Exception) {
                 null
-            } ?: return@LaunchedEffect
+            } ?: ImmersiveArtworkTone(IMMERSIVE_NEUTRAL_COLOR)
 
-        synchronized(edgeColorCache) { edgeColorCache[cacheKey] = edge }
-        measured = edge
+        synchronized(edgeColorCache) { edgeColorCache[cacheKey] = sample }
+        measured = sample
         measuredFor = cacheKey
     }
 
-    val target = measured ?: fallback
+    val target = measured ?: ImmersiveArtworkTone(IMMERSIVE_NEUTRAL_COLOR)
     val animated by
         animateColorAsState(
-            targetValue = target,
+            targetValue = target.edge,
             animationSpec = tween(durationMillis = EDGE_TRANSITION_MS, easing = CapsuleStandardEasing),
             label = "immersiveEdge",
         )
-    return animated
+    return target.copy(edge = animated)
 }
 
 /**
@@ -156,5 +179,42 @@ private fun android.graphics.Bitmap.averageBottomStrip(): Color? {
         red = (red / counted).toInt(),
         green = (green / counted).toInt(),
         blue = (blue / counted).toInt(),
+    )
+}
+
+/** The artwork may be very bright; controls always need a dark, coloured surface. */
+internal fun Color.comfortableImmersiveColor(): Color {
+    val hsv = FloatArray(3)
+    android.graphics.Color.colorToHSV(androidx.compose.ui.graphics.toArgb(this), hsv)
+    hsv[2] = hsv[2].coerceIn(0.17f, 0.40f)
+    return Color(android.graphics.Color.HSVToColor(hsv))
+}
+
+private fun Color?.isNearlyBlack(): Boolean =
+    this == null || (red + green + blue) / 3f < 0.085f
+
+/** Sample the actual subject instead of a baked-in lower black bar on a video frame. */
+private fun android.graphics.Bitmap.averageMiddleStrip(): Color? {
+    if (width <= 0 || height <= 0) return null
+    val startY = (height * 0.46f).toInt().coerceIn(0, height - 1)
+    val endY = (startY + EDGE_SAMPLE_ROWS).coerceAtMost(height)
+    var red = 0L
+    var green = 0L
+    var blue = 0L
+    var count = 0L
+    for (y in startY until endY) {
+        for (x in 0 until width) {
+            val pixel = this[x, y]
+            if ((pixel ushr 24 and 0xFF) < 8) continue
+            red += pixel shr 16 and 0xFF
+            green += pixel shr 8 and 0xFF
+            blue += pixel and 0xFF
+            count++
+        }
+    }
+    return if (count == 0L) null else Color(
+        red = (red / count).toInt(),
+        green = (green / count).toInt(),
+        blue = (blue / count).toInt(),
     )
 }
