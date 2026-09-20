@@ -20,6 +20,8 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -434,7 +436,8 @@ fun LocalPlaylistScreen(
 
         LazyColumn(
             state = lazyListState,
-            contentPadding = LocalPlayerAwareWindowInsets.current.union(WindowInsets.ime).asPaddingValues(),
+            contentPadding = LocalPlayerAwareWindowInsets.current.union(WindowInsets.ime)
+                    .only(WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom).asPaddingValues(),
         ) {
             playlist?.let { playlist ->
                     if (!isSearching) {
@@ -442,6 +445,7 @@ fun LocalPlaylistScreen(
                         item(key = "header") {
                             val count = if (playlist.songCount == 0) playlist.playlist.remoteSongCount ?: 0 else playlist.songCount
                             PlaylistHero(
+                                title = playlist.playlist.name,
                                 thumbnails = playlist.thumbnails.filterNotNull(),
                                 songCount = pluralStringResource(R.plurals.n_song, count, count),
                                 duration = playlistLength.takeIf { it > 0 }?.let { makeTimeString(it * 1000L) },
