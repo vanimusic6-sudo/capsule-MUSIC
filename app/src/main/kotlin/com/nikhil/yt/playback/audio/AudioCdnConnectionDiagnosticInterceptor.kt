@@ -18,14 +18,9 @@ internal fun audioCdnCrossHostCoalesced(
 /**
  * Which address family an address literal belongs to, without keeping the address.
  *
- * A googlevideo link is issued to the address that asked for it, and it carries that address in its
- * own query string. If the media request then leaves by a different one — which is routine on a
- * dual-stack mobile network, where one connection gets an A record and the next an AAAA — the CDN
- * refuses the link. That refusal is a bare 403 with an empty body, which is exactly what this app
- * has been receiving.
- *
- * Only the family is reported, never the address: "v4" and "v6" are enough to see a mismatch and
- * identify nobody.
+ * The URL's issued address, the local socket and the remote endpoint have different meanings.
+ * None of the socket fields proves which public exit address a VPN or NAT used. Never log the
+ * addresses or claim an IP match from two address-family labels.
  */
 internal fun addressFamilyOf(address: String?): String =
     when {
@@ -71,8 +66,10 @@ internal class AudioCdnConnectionDiagnosticInterceptor(
         val coalesced = audioCdnCrossHostCoalesced(requestHost, routeHost, protocol)
         val connectionId = connection?.let(System::identityHashCode) ?: -1
         val linkFamily = addressFamilyOf(request.url.queryParameter("ip"))
-        val socketFamily =
+        val remoteFamily =
             addressFamilyOf(connection?.socket()?.inetAddress?.hostAddress)
+        val localFamily = addressFamilyOf(connection?.socket()?.localAddress?.hostAddress)
+        val proxyType = connection?.route()?.proxy?.type()?.name ?: "unknown"
         val use = ledger.record(connectionId, clock())
 
         return try {
@@ -85,7 +82,8 @@ internal class AudioCdnConnectionDiagnosticInterceptor(
                         Timber.tag("AudioCDN").w(
                             "cdn-wire host=%s routeHost=%s protocol=%s coalesced=%s conn=%d " +
                                 "reqOnConn=%d connAgeMs=%d " +
-                                "status=%d linkIssuedTo=%s requestLeftBy=%s sameFamily=%s",
+                                "status=%d linkIssuedFamily=%s remoteAddressFamily=%s " +
+                                "localAddressFamily=%s proxyType=%s",
                             requestHost,
                             routeHost ?: "unknown",
                             protocol ?: "unknown",
@@ -95,14 +93,16 @@ internal class AudioCdnConnectionDiagnosticInterceptor(
                             use.ageMs,
                             response.code,
                             linkFamily,
-                            socketFamily,
-                            linkFamily == socketFamily,
+                            remoteFamily,
+                            localFamily,
+                            proxyType,
                         )
                     } else if (isCdnWireWorthReporting(response.code, use.requestIndex)) {
                         Timber.tag("AudioCDN").i(
                             "cdn-wire host=%s routeHost=%s protocol=%s coalesced=%s conn=%d " +
                                 "reqOnConn=%d connAgeMs=%d " +
-                                "status=%d linkIssuedTo=%s requestLeftBy=%s sameFamily=%s",
+                                "status=%d linkIssuedFamily=%s remoteAddressFamily=%s " +
+                                "localAddressFamily=%s proxyType=%s",
                             requestHost,
                             routeHost ?: "unknown",
                             protocol ?: "unknown",
@@ -112,14 +112,16 @@ internal class AudioCdnConnectionDiagnosticInterceptor(
                             use.ageMs,
                             response.code,
                             linkFamily,
-                            socketFamily,
-                            linkFamily == socketFamily,
+                            remoteFamily,
+                            localFamily,
+                            proxyType,
                         )
                     } else {
                         Timber.tag("AudioCDN").d(
                             "cdn-wire host=%s routeHost=%s protocol=%s coalesced=%s conn=%d " +
                                 "reqOnConn=%d connAgeMs=%d " +
-                                "status=%d linkIssuedTo=%s requestLeftBy=%s sameFamily=%s",
+                                "status=%d linkIssuedFamily=%s remoteAddressFamily=%s " +
+                                "localAddressFamily=%s proxyType=%s",
                             requestHost,
                             routeHost ?: "unknown",
                             protocol ?: "unknown",
@@ -129,8 +131,9 @@ internal class AudioCdnConnectionDiagnosticInterceptor(
                             use.ageMs,
                             response.code,
                             linkFamily,
-                            socketFamily,
-                            linkFamily == socketFamily,
+                            remoteFamily,
+                            localFamily,
+                            proxyType,
                         )
                     }
                 }

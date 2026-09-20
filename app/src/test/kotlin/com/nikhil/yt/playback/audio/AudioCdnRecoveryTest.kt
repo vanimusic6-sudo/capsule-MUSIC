@@ -1,0 +1,188 @@
+@file:Suppress("UnsafeOptInUsageError")
+
+package com.nikhil.yt.playback.audio
+
+import android.net.Uri
+import androidx.media3.common.C
+import androidx.media3.common.PlaybackException
+import androidx.media3.datasource.DataSource
+import androidx.media3.datasource.DataSpec
+import androidx.media3.datasource.HttpDataSource.InvalidResponseCodeException
+import androidx.media3.datasource.ResolvingDataSource
+import androidx.media3.datasource.TransferListener
+import androidx.media3.exoplayer.source.LoadEventInfo
+import androidx.media3.exoplayer.source.MediaLoadData
+import androidx.media3.exoplayer.upstream.LoadErrorHandlingPolicy.LoadErrorInfo
+import com.nikhil.yt.playback.CapsuleLoadErrorHandlingPolicy
+import org.junit.Assert.*
+import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
+import org.robolectric.annotation.Config
+import java.io.IOException
+import java.io.InterruptedIOException
+import java.net.SocketTimeoutException
+import java.util.concurrent.CancellationException
+
+@RunWith(RobolectricTestRunner::class)
+@Config(sdk = [35])
+class AudioCdnRecoveryTest {
+    private val host = "rr1---sn-test.googlevideo.com"
+    private val spec = DataSpec.Builder().setUri("https://$host/videoplayback")
+        .setKey("capsule:audio:song:251:1024").setLength(1024).build()
+
+    private class Upstream : DataSource {
+        var openFailure: Throwable? = null
+        var readFailure: IOException? = null
+        val opens = mutableListOf<DataSpec>()
+        var closes = 0
+        override fun addTransferListener(transferListener: TransferListener) = Unit
+        override fun open(dataSpec: DataSpec): Long {
+            opens += dataSpec
+            openFailure?.let { throw it }
+            return dataSpec.length
+        }
+        override fun read(buffer: ByteArray, offset: Int, length: Int): Int {
+            readFailure?.let { throw it }
+            return C.RESULT_END_OF_INPUT
+        }
+        override fun getUri(): Uri? = opens.lastOrNull()?.uri
+        override fun close() { closes += 1 }
+    }
+
+    private fun retryDelay(failure: IOException, count: Int = 1): Long =
+        CapsuleLoadErrorHandlingPolicy().getRetryDelayMsFor(
+            LoadErrorInfo(
+                // Real load events retain the outer media-id key, not the CDN cache key.
+                LoadEventInfo(1L, DataSpec.Builder().setUri("song").setKey("song").build(), 0L),
+                MediaLoadData(C.DATA_TYPE_MEDIA), failure, count,
+            ),
+        )
+
+    @Test
+    fun cancellationsNeverMakeAHostCold() {
+        listOf(
+            IOException("Canceled"),
+            IOException("Media3 wrapper", InterruptedIOException()),
+            IOException("wrapper", CancellationException("selection changed")),
+            CancellationException("stale before network open"),
+        ).forEach { cancellation ->
+            val health = AudioCdnHostHealth(now = { 0L })
+            val upstream = Upstream().apply { openFailure = cancellation }
+            val source = AudioCdnHostHealthDataSource(upstream, health)
+            repeat(4) {
+                assertSame(cancellation, runCatching { source.open(spec) }.exceptionOrNull())
+                source.close()
+            }
+            // A cold group allows one probe, so checking only once would miss this regression.
+            repeat(2) { assertFalse(health.shouldSkipHost(host)) }
+        }
+    }
+
+    @Test
+    fun twoTimeoutsAndOneCancellationAreOnlyTwoHostFailures() {
+        val health = AudioCdnHostHealth(now = { 0L })
+        val upstream = Upstream().apply { openFailure = IOException("wrapped", SocketTimeoutException()) }
+        val source = AudioCdnHostHealthDataSource(upstream, health)
+        repeat(2) {
+            assertThrows(AudioCdnRefreshRequiredException::class.java) { source.open(spec) }
+            source.close()
+        }
+        upstream.openFailure = IOException("Canceled")
+        assertThrows(IOException::class.java) { source.open(spec) }
+        repeat(2) { assertFalse(health.shouldSkipHost(host)) }
+    }
+
+    @Test
+    fun aColdHostStopsTheLoadBeforeAnyNetworkOpen() {
+        val health = AudioCdnHostHealth(now = { 0L })
+        repeat(3) { health.recordFailure(host) }
+        assertFalse(health.shouldSkipHost(host)) // consume the permitted probe
+        val upstream = Upstream()
+        val source = AudioCdnHostHealthDataSource(upstream, health)
+        val failure = assertThrows(AudioCdnRefreshRequiredException::class.java) { source.open(spec) }
+        assertEquals(AudioCdnRefreshReason.HOST_COOLDOWN, failure.refreshReason)
+        assertTrue(upstream.opens.isEmpty())
+        assertEquals(C.TIME_UNSET, retryDelay(IOException("cache wrapper", failure)))
+        assertTrue(failure.requiresFreshAudioUrlFor("song"))
+        assertFalse(failure.requiresFreshAudioUrlFor("different-song"))
+        assertFalse(failure.requiresFreshAudioUrlFor(null))
+    }
+
+    @Test
+    fun aCdnTimeoutEscapesTheChunkAndResolverLayersWithoutRetryingTheOldUrl() {
+        val upstream = Upstream().apply { openFailure = SocketTimeoutException("TLS handshake") }
+        val health = AudioCdnHostHealth(now = { 0L })
+        var url = spec.uri
+        val source = ResolvingDataSource(
+            AudioChunkedDataSource(AudioCdnHostHealthDataSource(upstream, health)),
+        ) { outer -> outer.buildUpon().setUri(url).setKey(spec.key).setLength(1024).build() }
+        val outer = DataSpec.Builder().setUri("song").setKey("song").build()
+        val failure = assertThrows(IOException::class.java) { source.open(outer) }
+        assertEquals(1, upstream.opens.size)
+        assertEquals(C.TIME_UNSET, retryDelay(failure))
+        val playerFailure = PlaybackException("source failed", failure, PlaybackException.ERROR_CODE_IO_UNSPECIFIED)
+        assertTrue(playerFailure.requiresFreshAudioUrlFor("song"))
+        assertEquals(AudioCdnRefreshReason.OPEN_FAILURE, failure.audioCdnRefreshRequiredOrNull()?.refreshReason)
+
+        source.close()
+        // Service recovery replaces the cached URL, while keeping the encoded-audio cache identity.
+        url = Uri.parse("https://rr2---sn-other.googlevideo.com/videoplayback")
+        upstream.openFailure = null
+        assertEquals(1024L, source.open(outer))
+        assertEquals(listOf(spec.uri, url), upstream.opens.map { it.uri })
+        assertEquals(listOf(spec.key, spec.key), upstream.opens.map { it.key })
+        source.close()
+    }
+
+    @Test
+    fun aStalledBodyCanRefreshWithoutTurningCancellationIntoAnError() {
+        val upstream = Upstream().apply { readFailure = SocketTimeoutException("body stalled") }
+        val source = AudioCdnHostHealthDataSource(upstream, AudioCdnHostHealth())
+        source.open(spec)
+        val failure = assertThrows(AudioCdnRefreshRequiredException::class.java) { source.read(ByteArray(8), 0, 8) }
+        assertEquals(AudioCdnRefreshReason.READ_FAILURE, failure.refreshReason)
+        assertEquals(C.TIME_UNSET, retryDelay(failure))
+        val cancelled = IOException("Canceled")
+        upstream.readFailure = cancelled
+        assertSame(cancelled, assertThrows(IOException::class.java) { source.read(ByteArray(8), 0, 8) })
+        source.close()
+    }
+
+    @Test
+    fun httpRefusalsAreLeftForTheExistingChunkAndRateLimitPolicies() {
+        listOf(403, 410, 429).forEach { code ->
+            val refusal = InvalidResponseCodeException(code, "refused", null, emptyMap(), spec, byteArrayOf())
+            val upstream = Upstream().apply { openFailure = refusal }
+            val health = AudioCdnHostHealth(now = { 0L })
+            val source = AudioCdnHostHealthDataSource(upstream, health)
+            assertSame(refusal, assertThrows(IOException::class.java) { source.open(spec) })
+            assertFalse(refusal.isAudioCdnTransportFailure())
+            source.close()
+            if (code == 429) {
+                repeat(3) { runCatching { source.open(spec) }; source.close() }
+                repeat(2) { assertFalse(health.shouldSkipHost(host)) }
+            }
+        }
+    }
+
+    @Test
+    fun programmerErrorsDoNotQuarantineTheNetwork() {
+        val failure = IllegalStateException("already opened")
+        val upstream = Upstream().apply { openFailure = failure }
+        val health = AudioCdnHostHealth(now = { 0L })
+        val source = AudioCdnHostHealthDataSource(upstream, health)
+        repeat(4) { assertSame(failure, runCatching { source.open(spec) }.exceptionOrNull()); source.close() }
+        repeat(2) { assertFalse(health.shouldSkipHost(host)) }
+    }
+
+    @Test
+    fun unrelatedTransportErrorsKeepMedia3sNormalPolicy() {
+        assertEquals(0L, retryDelay(SocketTimeoutException(), count = 1))
+        assertEquals(1000L, retryDelay(SocketTimeoutException(), count = 2))
+        val failure = SocketTimeoutException()
+        val source = AudioCdnHostHealthDataSource(Upstream().apply { openFailure = failure }, AudioCdnHostHealth())
+        val other = spec.buildUpon().setUri("https://example.invalid/audio").build()
+        assertSame(failure, assertThrows(IOException::class.java) { source.open(other) })
+    }
+}

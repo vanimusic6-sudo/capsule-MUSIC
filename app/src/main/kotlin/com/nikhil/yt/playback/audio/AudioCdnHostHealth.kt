@@ -7,8 +7,10 @@ import androidx.media3.common.PlaybackException
 import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.DataSourceException
 import androidx.media3.datasource.DataSpec
+import androidx.media3.datasource.HttpDataSource.InvalidResponseCodeException
 import androidx.media3.datasource.TransferListener
 import timber.log.Timber
+import java.io.IOException
 
 /** How many opens in a row a server group may fail before it is left alone. */
 internal const val CDN_HOST_FAILURES_BEFORE_COLD = 3
@@ -66,9 +68,7 @@ internal const val CDN_HOST_MAX_CONSECUTIVE_SKIPS = 2
  * "refused once, banned" — three in a row with nothing served in between, which `sn-ajixh5-55` has
  * never done and the three dead groups did immediately.
  *
- * Five minutes, not twelve hours: these are load balanced edges, and which ones are reachable
- * changes with the network the phone is on. One request per minute is still let through to a cold
- * group, so a group that recovers is used again without anything having to notice.
+ * Cold groups are periodically probed, and all observations are discarded when the route changes.
  */
 internal class AudioCdnHostHealth(
     private val now: () -> Long = System::currentTimeMillis,
@@ -113,7 +113,7 @@ internal class AudioCdnHostHealth(
      * Whether this request should be refused locally rather than sent.
      *
      * Consumes the probe slot, so a caller that asks must act on the answer: asking twice in the
-     * same minute reports cold the second time even if the first was let through.
+     * same probe interval reports cold the second time even if the first was let through.
      */
     @Synchronized
     fun shouldSkipHost(host: String?): Boolean {
@@ -160,18 +160,16 @@ internal class AudioCdnHostHealth(
 /**
  * Stops a request before it is sent to a server group that is refusing everything.
  *
- * The failure it raises carries ERROR_CODE_IO_BAD_HTTP_STATUS, which is what the service's own
- * recovery path watches for: it drops the cached URL and resolves the song again, which lands on a
- * different node. That is the one move that can help here, and the capture shows it working —
- * re-resolving moved a song off `sn-aj4g55-5o`. What the capture also shows is the cost of getting
- * there the slow way: seventeen opens and two and a half minutes of silence before anything asked
- * for a different node.
+ * A typed recovery signal stops Media3 retrying the cached URL. MusicService owns the bounded
+ * fresh resolve and preserves the track position. A new URL may still name the same group, so
+ * the health model retains its probe and consecutive-skip escape hatch.
  */
 internal class AudioCdnHostHealthDataSource(
     private val upstream: DataSource,
     private val health: AudioCdnHostHealth,
 ) : DataSource {
     private var host: String? = null
+    private var mediaId: String? = null
 
     override fun addTransferListener(transferListener: TransferListener) {
         upstream.addTransferListener(transferListener)
@@ -180,12 +178,17 @@ internal class AudioCdnHostHealthDataSource(
     override fun open(dataSpec: DataSpec): Long {
         val requestHost = runCatching { dataSpec.uri.host }.getOrNull()
         host = requestHost
+        mediaId = (dataSpec.customData as? AudioCdnOpenContext)?.mediaId
+            ?: dataSpec.key?.takeIf { it.startsWith("capsule:audio:") }?.let(AudioCacheIdentity::mediaId)
 
         if (health.shouldSkipHost(requestHost)) {
             Timber.tag("AudioCDN").w(
-                "cdn-host-skipped group=%s; asking for a different node instead",
+                "cdn-host-skipped group=%s; requesting a fresh stream URL",
                 googlevideoServerGroup(requestHost) ?: "unknown",
             )
+            mediaId?.let {
+                throw AudioCdnRefreshRequiredException(it, AudioCdnRefreshReason.HOST_COOLDOWN)
+            }
             throw DataSourceException(
                 "googlevideo group ${googlevideoServerGroup(requestHost)} is refusing every request",
                 PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS,
@@ -194,14 +197,31 @@ internal class AudioCdnHostHealthDataSource(
 
         return try {
             upstream.open(dataSpec).also { health.recordSuccess(requestHost) }
-        } catch (failure: Throwable) {
-            health.recordFailure(requestHost)
-            throw failure
+        } catch (failure: IOException) {
+            throw classifyFailure(failure, AudioCdnRefreshReason.OPEN_FAILURE)
         }
     }
 
-    override fun read(buffer: ByteArray, offset: Int, length: Int): Int =
+    override fun read(buffer: ByteArray, offset: Int, length: Int): Int = try {
         upstream.read(buffer, offset, length)
+    } catch (failure: IOException) {
+        throw classifyFailure(failure, AudioCdnRefreshReason.READ_FAILURE)
+    }
+
+    private fun classifyFailure(failure: IOException, reason: AudioCdnRefreshReason): IOException {
+        // Includes stale-selection cancellation before a physical request was ever sent.
+        if (failure.isExpectedAudioCdnInterruption()) return failure
+        if (failure.audioCdnRefreshRequiredOrNull() != null) return failure
+        val httpCode = generateSequence(failure as Throwable?) { it.cause }
+            .take(12).filterIsInstance<InvalidResponseCodeException>().firstOrNull()?.responseCode
+        // Rate limiting belongs to the global safety gate, not host selection.
+        if (httpCode == 429) return failure
+        health.recordFailure(host)
+        val id = mediaId
+        return if (id != null && googlevideoServerGroup(host) != null && failure.isAudioCdnTransportFailure()) {
+            AudioCdnRefreshRequiredException(id, reason, failure)
+        } else failure
+    }
 
     override fun getUri(): Uri? = upstream.uri
 
@@ -209,6 +229,7 @@ internal class AudioCdnHostHealthDataSource(
 
     override fun close() {
         host = null
+        mediaId = null
         upstream.close()
     }
 

@@ -240,7 +240,8 @@ private fun ExoPlayer.ensureCapsuleOffloadDiagnostics(): Boolean {
                 }
             }
 
-        var bufferingStartedAtElapsedMs: Long? = null
+        val bufferingTracker = PlaybackBufferingTracker(SystemClock::elapsedRealtime)
+        var discontinuityKind = "discontinuity"
         var playingSinceElapsedMs: Long? = null
         val playerListener =
             object : Player.Listener {
@@ -253,24 +254,46 @@ private fun ExoPlayer.ensureCapsuleOffloadDiagnostics(): Boolean {
                         if (isPlaying) SystemClock.elapsedRealtime() else null
                 }
 
-                override fun onPlaybackStateChanged(playbackState: Int) {
-                    if (!GlobalLog.isEnabled) return
-                    val player = playerReference.get() ?: return
-                    when (playbackState) {
-                        Player.STATE_BUFFERING -> {
-                            bufferingStartedAtElapsedMs = SystemClock.elapsedRealtime()
-                            player.logPlaybackHealth("buffering-start")
-                        }
+                override fun onPositionDiscontinuity(
+                    oldPosition: Player.PositionInfo,
+                    newPosition: Player.PositionInfo,
+                    reason: Int,
+                ) {
+                    discontinuityKind = if (reason == Player.DISCONTINUITY_REASON_SEEK ||
+                        reason == Player.DISCONTINUITY_REASON_SEEK_ADJUSTMENT
+                    ) "seek" else "discontinuity"
+                }
 
-                        Player.STATE_READY -> {
-                            val startedAt = bufferingStartedAtElapsedMs ?: return
-                            bufferingStartedAtElapsedMs = null
-                            val durationMs =
-                                (SystemClock.elapsedRealtime() - startedAt).coerceAtLeast(0L)
-                            player.logPlaybackHealth("buffering-end durationMs=$durationMs")
+                override fun onEvents(player: Player, events: Player.Events) {
+                    if (!GlobalLog.isEnabled) {
+                        bufferingTracker.reset()
+                        return
+                    }
+                    // Observe the final state of the event batch, after selection and state callbacks.
+                    val boundary = when {
+                        events.contains(Player.EVENT_MEDIA_ITEM_TRANSITION) -> "transition"
+                        events.contains(Player.EVENT_POSITION_DISCONTINUITY) -> discontinuityKind
+                        else -> null
+                    }
+                    bufferingTracker.update(
+                        nextMediaId = player.currentMediaItem?.mediaId,
+                        nextIndex = player.currentMediaItemIndex,
+                        buffering = player.playbackState == Player.STATE_BUFFERING,
+                        ready = player.playbackState == Player.STATE_READY,
+                        boundary = boundary,
+                    ).forEach { event ->
+                        if (event.phase == "cancel") {
+                            // The player's live position may already belong to the next item.
+                            Timber.tag("PlaybackHealth").d(
+                                "buffering-cancel id=%s generation=%d kind=%s durationMs=%d",
+                                event.mediaId, event.generation, event.kind, event.durationMs,
+                            )
+                        } else {
+                            playerReference.get()?.logPlaybackHealth(
+                                "buffering-${event.phase} generation=${event.generation} " +
+                                    "kind=${event.kind} durationMs=${event.durationMs}",
+                            )
                         }
-
-                        else -> bufferingStartedAtElapsedMs = null
                     }
                 }
             }

@@ -367,6 +367,44 @@ class AudioChunkedDataSourceTest {
         assertEquals(CHUNK_OPEN_ATTEMPTS, upstream.refusalsServed)
     }
 
+    @Test
+    fun aShortTrackGetsTheSameBoundedRefusalRecovery() {
+        val bytes = content(64)
+        val upstream = RefusingUpstream(bytes, refusalsLeft = 2)
+        val source = AudioChunkedDataSource(upstream, chunkBytes = 128)
+        assertEquals(64L, source.open(spec(64)))
+        assertArrayEquals(bytes, drain(source))
+        assertEquals(2, upstream.refusalsServed)
+    }
+
+    @Test
+    fun anUnknownLengthTrackCanSurviveATransient403() {
+        val bytes = content(64)
+        val upstream = RefusingUpstream(bytes, refusalsLeft = 1)
+        val source = AudioChunkedDataSource(upstream, chunkBytes = 128)
+        source.open(spec(C.LENGTH_UNSET.toLong()))
+        assertArrayEquals(bytes, drain(source))
+        assertEquals(1, upstream.refusalsServed)
+    }
+
+    @Test
+    fun persistentShortTrackRefusalsStillStopAfterThreeAttempts() {
+        val upstream = RefusingUpstream(content(64), refusalsLeft = Int.MAX_VALUE)
+        val source = AudioChunkedDataSource(upstream, chunkBytes = 128)
+        val failure = runCatching { source.open(spec(64)) }.exceptionOrNull()
+        assertTrue(failure is InvalidResponseCodeException)
+        assertEquals(CHUNK_OPEN_ATTEMPTS, upstream.refusalsServed)
+    }
+
+    @Test
+    fun aRateLimitedShortTrackIsNeverRetried() {
+        val upstream = RefusingUpstream(content(64), refusalsLeft = Int.MAX_VALUE, code = 429)
+        val source = AudioChunkedDataSource(upstream, chunkBytes = 128)
+        val failure = runCatching { source.open(spec(64)) }.exceptionOrNull()
+        assertTrue(failure is InvalidResponseCodeException)
+        assertEquals(1, upstream.refusalsServed)
+    }
+
     /** Anything that is not a refusal goes straight up: a real network failure is not ours to hide. */
     @Test
     fun aFailureThatIsNotARefusalIsNotRetried() {
