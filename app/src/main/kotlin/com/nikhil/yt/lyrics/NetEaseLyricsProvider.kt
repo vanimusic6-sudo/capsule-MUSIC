@@ -6,6 +6,7 @@
 
 package com.nikhil.yt.lyrics
 
+import com.nikhil.yt.utils.runCatchingCancellable
 import android.content.Context
 import com.nikhil.yt.constants.EnableNetEaseKey
 import com.nikhil.yt.utils.dataStore
@@ -107,19 +108,19 @@ object NetEaseLyricsProvider : LyricsProvider {
         duration: Int,
     ): Result<String> {
         if (title.isBlank()) {
-            return Result.failure(IllegalStateException("NetEase needs a title"))
+            return Result.failure(NoLyricsFromProvider("NetEase needs a title"))
         }
 
         val matches = search(title, artist, duration)
         if (matches.isEmpty()) {
-            return Result.failure(IllegalStateException("NetEase has no match for the track"))
+            return Result.failure(NoLyricsFromProvider("NetEase has no match for the track"))
         }
 
         for (song in matches) {
             val lyrics = fetchLyrics(song.id) ?: continue
             return Result.success(lyrics)
         }
-        return Result.failure(IllegalStateException("NetEase matched the track but has no lyrics"))
+        return Result.failure(NoLyricsFromProvider("NetEase matched the track but has no lyrics"))
     }
 
     private suspend fun search(
@@ -132,7 +133,7 @@ object NetEaseLyricsProvider : LyricsProvider {
         val query = listOf(cleanTitle, cleanArtist).filter { it.isNotBlank() }.joinToString(" ")
 
         val response =
-            runCatching {
+            runCatchingCancellable {
                 client.get("$BASE/search/get") {
                     parameter("s", query)
                     parameter("type", 1)
@@ -143,13 +144,13 @@ object NetEaseLyricsProvider : LyricsProvider {
 
         if (!response.status.isSuccess()) return emptyList()
 
-        val body = runCatching { response.body<NetEaseSearchResponse>() }.getOrNull() ?: return emptyList()
+        val body = runCatchingCancellable { response.body<NetEaseSearchResponse>() }.getOrNull() ?: return emptyList()
         return rankNetEaseSongs(body.result.songs, cleanTitle, cleanArtist, duration)
     }
 
     private suspend fun fetchLyrics(songId: Long): String? {
         val response =
-            runCatching {
+            runCatchingCancellable {
                 client.get("$BASE/song/lyric") {
                     parameter("id", songId)
                     parameter("lv", 1)
@@ -161,7 +162,7 @@ object NetEaseLyricsProvider : LyricsProvider {
 
         if (!response.status.isSuccess()) return null
 
-        val body = runCatching { response.body<NetEaseLyricResponse>() }.getOrNull() ?: return null
+        val body = runCatchingCancellable { response.body<NetEaseLyricResponse>() }.getOrNull() ?: return null
         return body.lrc?.lyric?.takeIf { it.isNotBlank() }
     }
 }

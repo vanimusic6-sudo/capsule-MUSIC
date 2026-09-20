@@ -6,6 +6,7 @@
 
 package com.nikhil.yt.lyrics
 
+import com.nikhil.yt.utils.runCatchingCancellable
 import android.content.Context
 import com.nikhil.yt.constants.EnableLyricsPlusKey
 import com.nikhil.yt.utils.dataStore
@@ -108,19 +109,19 @@ object LyricsPlusLyricsProvider : LyricsProvider {
         duration: Int,
     ): Result<String> {
         if (title.isBlank() || artist.isBlank()) {
-            return Result.failure(IllegalStateException("LyricsPlus needs a title and an artist"))
+            return Result.failure(NoLyricsFromProvider("LyricsPlus needs a title and an artist"))
         }
         val sinceOutage = System.currentTimeMillis() - allMirrorsFailedAtMs
         if (allMirrorsFailedAtMs != 0L && sinceOutage in 0 until OUTAGE_COOLDOWN_MS) {
-            return Result.failure(IllegalStateException("LyricsPlus is down; not asking again yet"))
+            return Result.failure(NoLyricsFromProvider("LyricsPlus is down; not asking again yet"))
         }
 
         val response =
             fetch(title, artist, album, duration)
-                ?: return Result.failure(IllegalStateException("No LyricsPlus mirror answered"))
+                ?: return Result.failure(NoLyricsFromProvider("No LyricsPlus mirror answered"))
         val lrc =
             toLrc(response)
-                ?: return Result.failure(IllegalStateException("LyricsPlus returned no usable lines"))
+                ?: return Result.failure(NoLyricsFromProvider("LyricsPlus returned no usable lines"))
         return Result.success(lrc)
     }
 
@@ -141,7 +142,7 @@ object LyricsPlusLyricsProvider : LyricsProvider {
     ): LyricsPlusResponse? {
         for (baseUrl in prioritizedServers()) {
             val result =
-                runCatching {
+                runCatchingCancellable {
                     val response =
                         client.get("$baseUrl/v2/lyrics/get") {
                             parameter("title", title)

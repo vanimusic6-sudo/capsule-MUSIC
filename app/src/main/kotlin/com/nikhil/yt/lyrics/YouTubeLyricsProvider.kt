@@ -8,6 +8,7 @@
 
 package com.nikhil.yt.lyrics
 
+import com.nikhil.yt.utils.runCatchingCancellable
 import android.content.Context
 import com.nikhil.yt.innertube.YouTube
 import com.nikhil.yt.innertube.models.WatchEndpoint
@@ -24,13 +25,13 @@ object YouTubeLyricsProvider : LyricsProvider {
         album: String?,
         duration: Int,
     ): Result<String> =
-        runCatching {
+        runCatchingCancellable {
             val nextResult = YouTube.next(WatchEndpoint(videoId = id)).getOrThrow()
             YouTube
                 .lyrics(
                     endpoint = nextResult.lyricsEndpoint
-                        ?: throw IllegalStateException("Lyrics endpoint not found"),
-                ).getOrThrow() ?: throw IllegalStateException("Lyrics unavailable")
+                        ?: throw NoLyricsFromProvider("YouTube has no lyrics panel for the track"),
+                ).getOrThrow() ?: throw NoLyricsFromProvider("YouTube returned an empty lyrics panel")
         }
 
     override suspend fun getAllLyrics(

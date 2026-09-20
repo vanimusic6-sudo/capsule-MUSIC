@@ -6,6 +6,7 @@
 
 package com.nikhil.yt.lyrics
 
+import com.nikhil.yt.utils.runCatchingCancellable
 import android.content.Context
 import com.nikhil.yt.constants.EnablePaxsenixKey
 import com.nikhil.yt.utils.dataStore
@@ -122,19 +123,19 @@ object PaxsenixLyricsProvider : LyricsProvider {
         duration: Int,
     ): Result<String> {
         if (title.isBlank()) {
-            return Result.failure(IllegalStateException("Paxsenix needs a title"))
+            return Result.failure(NoLyricsFromProvider("Paxsenix needs a title"))
         }
 
         val candidates = search(title, artist, album, duration)
         if (candidates.isEmpty()) {
-            return Result.failure(IllegalStateException("No Apple Music match for the track"))
+            return Result.failure(NoLyricsFromProvider("No Apple Music match for the track"))
         }
 
         for (track in candidates.take(MAX_TRACKS_TRIED)) {
             val lyrics = fetchLyrics(track.id) ?: continue
             return Result.success(lyrics)
         }
-        return Result.failure(IllegalStateException("Matched tracks had no lyrics"))
+        return Result.failure(NoLyricsFromProvider("Matched tracks had no lyrics"))
     }
 
     private suspend fun search(
@@ -162,7 +163,7 @@ object PaxsenixLyricsProvider : LyricsProvider {
     private suspend fun runSearch(query: String): List<AppleTrack> {
         val token = appleToken() ?: return emptyList()
         val response =
-            runCatching {
+            runCatchingCancellable {
                 client.get("$APPLE_CATALOG/search") {
                     parameter("term", query)
                     parameter("types", "songs")
@@ -183,7 +184,7 @@ object PaxsenixLyricsProvider : LyricsProvider {
         }
         if (!response.status.isSuccess()) return emptyList()
 
-        val body = runCatching { response.body<AppleSearchResponse>() }.getOrNull() ?: return emptyList()
+        val body = runCatchingCancellable { response.body<AppleSearchResponse>() }.getOrNull() ?: return emptyList()
         val songs = body.results.songs?.data ?: return emptyList()
         return songs.mapNotNull { ref ->
             val attributes = body.resources?.songs?.get(ref.id)?.attributes ?: return@mapNotNull null
@@ -257,12 +258,12 @@ object PaxsenixLyricsProvider : LyricsProvider {
      */
     private suspend fun fetchLyrics(trackId: String): String? {
         val response =
-            runCatching {
+            runCatchingCancellable {
                 client.get("$RELAY/apple-music/lyrics") { parameter("id", trackId) }
             }.getOrNull() ?: return null
         if (!response.status.isSuccess()) return null
 
-        val body = runCatching { response.body<PaxsenixLyrics>() }.getOrNull() ?: return null
+        val body = runCatchingCancellable { response.body<PaxsenixLyrics>() }.getOrNull() ?: return null
         return body.ttmlContent?.takeIf { it.isNotBlank() }
             ?: body.elrcMultiPerson?.takeIf { it.isNotBlank() }
             ?: body.elrc?.takeIf { it.isNotBlank() }
@@ -274,7 +275,7 @@ object PaxsenixLyricsProvider : LyricsProvider {
         return tokenMutex.withLock {
             cachedToken?.let { return@withLock it }
             val token =
-                runCatching {
+                runCatchingCancellable {
                     val index = client.get(APPLE_WEB).bodyAsText()
                     val bundle =
                         INDEX_JS_REGEX.find(index)?.value

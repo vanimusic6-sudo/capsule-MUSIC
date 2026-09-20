@@ -14,6 +14,27 @@ import kotlinx.coroutines.CancellationException
 import timber.log.Timber
 import java.util.Locale
 
+/**
+ * [runCatching], minus the part that breaks structured concurrency.
+ *
+ * `runCatching` catches `Throwable`, and a cancelled coroutine signals itself by throwing. So a
+ * lyrics lookup for a track the listener has already skipped past was catching its own
+ * cancellation, logging it, returning an empty list and carrying on working for a track nobody
+ * wants — visible in a capture as "The coroutine scope left the composition" arriving as a
+ * failure to be handled rather than as the scope leaving.
+ *
+ * The innertube module has had this for a while; it is `internal` there, so this is the same
+ * discipline where the rest of the app can reach it rather than a second copy of the idea.
+ */
+inline fun <T> runCatchingCancellable(block: () -> T): Result<T> =
+    try {
+        Result.success(block())
+    } catch (cancelled: CancellationException) {
+        throw cancelled
+    } catch (failure: Exception) {
+        Result.failure(failure)
+    }
+
 fun reportException(throwable: Throwable) {
     // Coroutine cancellation is normal control flow (track switch, stale prefetch, shutdown),
     // not an application error. Do not pollute diagnostics with an E/ stack trace for it.

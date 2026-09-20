@@ -20,7 +20,6 @@ import com.nikhil.yt.models.MediaMetadata
 import com.nikhil.yt.utils.dataStore
 import com.nikhil.yt.utils.reportException
 import com.nikhil.yt.utils.NetworkConnectivityObserver
-import com.nikhil.yt.betterlyrics.LyricsUnavailableException
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
@@ -206,11 +205,30 @@ constructor(
         }
     }
 
+    /**
+     * Records why a provider came back empty, at the level that outcome deserves.
+     *
+     * Most tracks have no lyrics at some provider or other, so a miss is the common case. It was
+     * reaching the log as an application error with a full stack trace: two and a half minutes of
+     * playback produced nine E/ entries, every one a provider saying it had nothing or that it
+     * was in its own cooldown. One of those, read by somebody else, was taken as proof that the
+     * cooldown was broken — the message it prints is the cooldown working, and it never touches
+     * the network. A healthy path that reads as a crash is a bug in the reporting, not a
+     * cosmetic one.
+     *
+     * Anything that is not an ordinary miss still gets the stack trace, because a parse failure
+     * or a null from our own mapping code is worth one.
+     */
     private fun reportProviderFailure(provider: LyricsProvider, failure: Throwable) {
-        when (failure) {
-            is CancellationException -> throw failure
-            is LyricsUnavailableException ->
-                GlobalLog.append(Log.DEBUG, "LyricsHelper", "No lyrics from ${provider.name}")
+        when {
+            failure is CancellationException -> throw failure
+            failure.isOrdinaryLyricsMiss() ->
+                GlobalLog.append(
+                    Log.DEBUG,
+                    "LyricsHelper",
+                    "No lyrics from ${provider.name}" +
+                        failure.message?.let { ": $it" }.orEmpty(),
+                )
             else -> reportException(failure)
         }
     }
