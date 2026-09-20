@@ -267,11 +267,13 @@ fun CapsuleImmersiveContent(
      * off, and goes on darkening below it. Continuity at the seam, legibility by the time there
      * is anything to read.
      */
-    val artworkColors = rememberCapsuleArtworkColors(mediaMetadata = mediaMetadata)
-    val fallbackEdge =
-        remember(artworkColors) { artworkColors.firstOrNull() ?: Color.Black }
-    val edge = rememberImmersiveEdgeColor(mediaMetadata = mediaMetadata, fallback = fallbackEdge)
-    val floor = remember(edge) { lerp(edge, Color.Black, 0.86f) }
+    // No theme-derived bright accent on the very first open: the tone starts charcoal
+    // and only transitions after Coil has actually decoded the selected artwork.
+    val artworkTone = rememberImmersiveEdgeColor(mediaMetadata = mediaMetadata)
+    val edge = artworkTone.edge
+    // Darken only within the artwork's own colour family. The previous 86% black blend
+    // turned every cover (even saturated red ones) into a nearly black bottom third.
+    val floor = remember(edge) { lerp(edge, IMMERSIVE_NEUTRAL_COLOR, 0.24f) }
 
     /*
      * Audio has one floor, the colour the cover dissolves into. Video does not: there is no cover
@@ -290,7 +292,7 @@ fun CapsuleImmersiveContent(
 
         val pageBackground =
             if (isVideo) {
-                Brush.verticalGradient(listOf(Color(0xFF121212), Color.Black))
+                Brush.verticalGradient(listOf(IMMERSIVE_NEUTRAL_COLOR, Color(0xFF1E1E1E)))
             } else {
                 Brush.verticalGradient(
                     0f to edge,
@@ -378,9 +380,12 @@ fun CapsuleImmersiveContent(
                                  */
                                 Brush.verticalGradient(
                                     0f to Color.Transparent,
-                                    ImmersiveFadeStart to Color.Transparent,
-                                    0.72f to edge.copy(alpha = 0.22f),
-                                    0.88f to edge.copy(alpha = 0.70f),
+                                    // A widescreen video frame can have black bars baked into its
+                                    // bottom edge. Dissolve earlier, before those bars can become
+                                    // a hard black stripe between the image and coloured page.
+                                    (if (artworkTone.landscape) 0.38f else ImmersiveFadeStart) to Color.Transparent,
+                                    (if (artworkTone.landscape) 0.57f else 0.72f) to edge.copy(alpha = if (artworkTone.landscape) 0.50f else 0.22f),
+                                    (if (artworkTone.landscape) 0.78f else 0.88f) to edge.copy(alpha = 0.86f),
                                     1f to edge,
                                 ),
                             ),
