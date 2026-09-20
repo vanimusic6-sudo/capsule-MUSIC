@@ -19,6 +19,8 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -275,7 +277,8 @@ fun AutoPlaylistScreen(
 
         LazyColumn(
             state = lazyListState,
-            contentPadding = LocalPlayerAwareWindowInsets.current.asPaddingValues(),
+            contentPadding = LocalPlayerAwareWindowInsets.current
+                .only(WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom).asPaddingValues(),
         ) {
             if (songs != null) {
                 if (songs!!.isEmpty()) {
@@ -290,6 +293,7 @@ fun AutoPlaylistScreen(
                         // Hero Header Item
                         item(key = "header") {
                             PlaylistHero(
+                                title = playlist,
                                 thumbnails = songs.orEmpty().mapNotNull { it.song.thumbnailUrl }.take(4),
                                 songCount = pluralStringResource(R.plurals.n_song, songs.orEmpty().size, songs.orEmpty().size),
                                 duration = likeLength.takeIf { it > 0 }?.let { makeTimeString(it * 1000L) },
