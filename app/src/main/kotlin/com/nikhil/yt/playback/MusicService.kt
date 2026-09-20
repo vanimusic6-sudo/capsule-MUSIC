@@ -811,7 +811,7 @@ class MusicService :
                 // next-in-queue item while the new foreground track is still BUFFERING.
                 // The normal just-in-time prefetch below schedules it again if the user
                 // actually listens long enough to make it relevant.
-                upcoming.filter(::isUpcomingAudioNetworkEligible).forEach(::add)
+                upcoming.filter(::isUpcomingAudioNetworkEligible).forEach { add(it) }
             }
 
         /*
