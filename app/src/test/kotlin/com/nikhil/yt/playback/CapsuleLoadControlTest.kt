@@ -54,6 +54,13 @@ class CapsuleLoadControlTest {
         )
     }
 
+    @Test
+    fun startingPlaybackMustHaveMoreThanOneSecondOfAudio() {
+        // The captured slow CDN track resumed at 941 ms, then rebuffered at 1.97 s.
+        assertTrue(CAPSULE_BUFFER_FOR_PLAYBACK_MS >= 2_000)
+        assertTrue(CAPSULE_BUFFER_FOR_PLAYBACK_MS < 5_000)
+    }
+
     /** Resuming on a cushion is what turns a dozen stutters into one pause. */
     @Test
     fun resumingAfterAStallWaitsForMoreThanAMoment() {
