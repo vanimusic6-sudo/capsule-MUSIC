@@ -25,11 +25,22 @@ import timber.log.Timber
  * while the service is not running.
  */
 internal class PlaybackPowerWatch(
-    private val context: Context,
+    context: Context,
     private val isPlaying: () -> Boolean,
 ) {
+    /*
+     * No Context is kept.
+     *
+     * [describeNow] hands this object to code that has no route to a Context, which means a
+     * process-wide reference to it — and a Context behind one of those leaks whatever it belongs
+     * to the moment stop() is missed. Only what the reading needs is kept: the power manager,
+     * which is a process-wide system service, and the package name, which is a string. The
+     * Context for registering and unregistering is passed in at those two moments instead.
+     */
     private val power: PowerManager? =
         ContextCompat.getSystemService(context, PowerManager::class.java)
+
+    private val packageName: String = context.packageName
 
     private val receiver =
         object : BroadcastReceiver() {
@@ -48,8 +59,9 @@ internal class PlaybackPowerWatch(
 
     private var registered = false
 
-    fun start() {
+    fun start(context: Context) {
         if (registered) return
+        current = this
         val filter =
             IntentFilter().apply {
                 addAction(Intent.ACTION_SCREEN_OFF)
@@ -65,12 +77,39 @@ internal class PlaybackPowerWatch(
             ContextCompat.RECEIVER_NOT_EXPORTED,
         )
         registered = true
+        /*
+         * A baseline, once per service.
+         *
+         * batteryOptimised is a fixed fact about this install and it decides which remedy
+         * applies, but it never announces itself — waiting for a transition to learn it means a
+         * capture with no screen-off in it cannot answer the question at all.
+         */
+        report("watch-started")
     }
 
-    fun stop() {
+    fun stop(context: Context) {
+        if (current === this) current = null
         if (!registered) return
         runCatching { context.unregisterReceiver(receiver) }
         registered = false
+    }
+
+    companion object {
+        /**
+         * The watch belonging to the running service, for code that cannot be handed one.
+         *
+         * The audio-sink diagnostics live in an ExoPlayer extension with no route to a Context,
+         * and the power state has to be read *at the moment a frozen stretch is noticed* — by
+         * the time the screen comes back on, Doze has already lifted and the reading says
+         * nothing. A process-wide reference for a diagnostic is a poor seam, and it is here
+         * rather than anywhere load-bearing: nothing reads it except logging, and it is null
+         * whenever there is no foreground service.
+         */
+        @Volatile
+        private var current: PlaybackPowerWatch? = null
+
+        /** The power picture right now, or null when there is no service to ask. */
+        fun describeNow(): String? = current?.describe()
     }
 
     /** The current power picture, as one line. Also used to annotate a frozen stretch. */
@@ -80,7 +119,7 @@ internal class PlaybackPowerWatch(
         append(" powerSave=").append(power?.isPowerSaveMode)
         // Reported as "optimised", because that is the state that suspends playback.
         append(" batteryOptimised=")
-            .append(power?.isIgnoringBatteryOptimizations(context.packageName)?.let { !it })
+            .append(power?.isIgnoringBatteryOptimizations(packageName)?.let { !it })
     }
 
     private fun report(event: String) {

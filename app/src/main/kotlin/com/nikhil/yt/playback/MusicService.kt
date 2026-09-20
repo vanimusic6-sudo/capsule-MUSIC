@@ -1265,7 +1265,7 @@ class MusicService :
             }
             hasCalledStartForeground = true
             // Only while there is a foreground service to keep alive.
-            playbackPowerWatch.start()
+            playbackPowerWatch.start(this)
         } catch (e: Exception) {
             reportException(e)
         }
@@ -5152,7 +5152,7 @@ class MusicService :
     }
 
     override fun onDestroy() {
-        playbackPowerWatch.stop()
+        playbackPowerWatch.stop(this)
         super.onDestroy()
         playbackPersistence.cancelPending()
         unregisterCapsuleScreenStateReceiver()

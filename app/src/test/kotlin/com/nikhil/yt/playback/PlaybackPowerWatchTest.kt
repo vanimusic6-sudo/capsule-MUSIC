@@ -48,40 +48,41 @@ class PlaybackPowerWatchTest {
 
     @Test fun `turning the screen off is recorded, with what playback thought it was doing`() {
         val watch = PlaybackPowerWatch(context, isPlaying = { true })
-        watch.start()
+        watch.start(context)
 
         context.sendBroadcast(Intent(Intent.ACTION_SCREEN_OFF))
 
         val lines = linesFor(watch)
-        assertEquals(lines.toString(), 1, lines.size)
-        assertTrue(lines[0], lines[0].contains("screen-off"))
-        assertTrue(lines[0], lines[0].contains("playing=true"))
-        watch.stop()
+        assertEquals(lines.toString(), 2, lines.size)
+        assertTrue(lines[0], lines[0].contains("watch-started"))
+        assertTrue(lines[1], lines[1].contains("screen-off"))
+        assertTrue(lines[1], lines[1].contains("playing=true"))
+        watch.stop(context)
     }
 
     @Test fun `the screen coming back is recorded too, so a frozen stretch has two ends`() {
         val watch = PlaybackPowerWatch(context, isPlaying = { true })
-        watch.start()
+        watch.start(context)
 
         context.sendBroadcast(Intent(Intent.ACTION_SCREEN_OFF))
         context.sendBroadcast(Intent(Intent.ACTION_SCREEN_ON))
 
-        assertEquals(2, linesFor(watch).size)
-        watch.stop()
+        assertEquals(3, linesFor(watch).size)
+        watch.stop(context)
     }
 
     @Test fun `power save and doze changes are recorded, because they are the suspects`() {
         val watch = PlaybackPowerWatch(context, isPlaying = { false })
-        watch.start()
+        watch.start(context)
 
         context.sendBroadcast(Intent(PowerManager.ACTION_POWER_SAVE_MODE_CHANGED))
         context.sendBroadcast(Intent(PowerManager.ACTION_DEVICE_IDLE_MODE_CHANGED))
 
         val lines = linesFor(watch)
-        assertEquals(lines.toString(), 2, lines.size)
+        assertEquals(lines.toString(), 3, lines.size)
         assertTrue(lines.any { it.contains("power-save-changed") })
         assertTrue(lines.any { it.contains("doze-changed") })
-        watch.stop()
+        watch.stop(context)
     }
 
     @Test fun `the line names every suspect, so one capture can rule them out`() {
@@ -94,24 +95,47 @@ class PlaybackPowerWatchTest {
 
     @Test fun `nothing is recorded once the service has gone`() {
         val watch = PlaybackPowerWatch(context, isPlaying = { true })
-        watch.start()
-        watch.stop()
+        watch.start(context)
+        watch.stop(context)
 
         context.sendBroadcast(Intent(Intent.ACTION_SCREEN_OFF))
 
-        assertEquals(0, linesFor(watch).size)
+        // Only the baseline from start(); the screen-off after stop() reaches nothing.
+        assertEquals(1, linesFor(watch).size)
     }
 
     @Test fun `stopping twice, or before starting, is not an error`() {
         val watch = PlaybackPowerWatch(context, isPlaying = { true })
 
-        watch.stop()
-        watch.start()
-        watch.start()
-        watch.stop()
-        watch.stop()
+        watch.stop(context)
+        watch.start(context)
+        watch.start(context)
+        watch.stop(context)
+        watch.stop(context)
 
         context.sendBroadcast(Intent(Intent.ACTION_SCREEN_OFF))
-        assertEquals(0, linesFor(watch).size)
+        assertEquals(1, linesFor(watch).size)
+    }
+
+    @Test fun `the baseline names the battery exemption, which never announces itself`() {
+        // A capture with no screen-off in it still has to be able to answer the question.
+        val watch = PlaybackPowerWatch(context, isPlaying = { false })
+
+        watch.start(context)
+
+        val baseline = linesFor(watch).single()
+        assertTrue(baseline, baseline.contains("watch-started"))
+        assertTrue(baseline, baseline.contains("batteryOptimised="))
+        watch.stop(context)
+    }
+
+    @Test fun `the frozen-stretch reading is available while the service runs, and not after`() {
+        val watch = PlaybackPowerWatch(context, isPlaying = { true })
+        watch.start(context)
+
+        assertTrue(PlaybackPowerWatch.describeNow().orEmpty().contains("doze="))
+
+        watch.stop(context)
+        assertEquals(null, PlaybackPowerWatch.describeNow())
     }
 }

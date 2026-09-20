@@ -17,6 +17,7 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.analytics.AnalyticsListener
 import androidx.media3.exoplayer.audio.DefaultAudioOffloadSupportProvider
 import com.nikhil.yt.App
+import com.nikhil.yt.playback.PlaybackPowerWatch
 import com.nikhil.yt.utils.GlobalLog
 import timber.log.Timber
 import java.lang.ref.WeakReference
@@ -367,12 +368,15 @@ private fun ExoPlayer.ensureCapsuleOffloadDiagnostics(): Boolean {
                          */
                         Timber.tag("PlaybackHealth").i(
                             "audio-resume-after-idle id=%s posMs=%d idleMs=%d playingForMs=%d " +
-                                "bufferedAheadMs=%d",
+                                "bufferedAheadMs=%d %s",
                             player.currentMediaItem?.mediaId,
                             player.currentPosition,
                             elapsedSinceLastFeedMs,
                             playingForMs ?: -1L,
                             bufferedAheadMs,
+                            // Read here rather than on the next screen-on: by then Doze has
+                            // lifted and the reading would describe the wrong moment.
+                            PlaybackPowerWatch.describeNow() ?: "power=unknown",
                         )
                         return
                     }
