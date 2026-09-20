@@ -85,3 +85,80 @@ class AudioCdnConnectionLedgerTest {
         assertFalse(isCdnWireWorthReporting(statusCode = 206, requestIndexOnConnection = 2))
     }
 }
+
+/**
+ * Whether a response leaves its socket fit for another request, which is what decides how many
+ * "first request on a new connection" events a session has — and every refusal in the capture
+ * that prompted this landed on exactly such a request.
+ */
+class CdnConnectionReuseTest {
+    @Test fun `a response that declares its length can be followed by another`() {
+        assertTrue(
+            cdnResponseKeepsConnectionUsable(
+                connectionHeader = null,
+                contentLength = 1_048_576L,
+                transferEncoding = null,
+            ),
+        )
+    }
+
+    @Test fun `an empty redirect that declares zero length is still reusable`() {
+        // The interesting case: a 302 with Content-Length: 0 keeps the socket, one without it
+        // does not, and that difference is worth a whole TLS handshake per redirect.
+        assertTrue(
+            cdnResponseKeepsConnectionUsable(
+                connectionHeader = null,
+                contentLength = 0L,
+                transferEncoding = null,
+            ),
+        )
+    }
+
+    @Test fun `a response with no length and no chunking ends by closing`() {
+        assertFalse(
+            cdnResponseKeepsConnectionUsable(
+                connectionHeader = null,
+                contentLength = -1L,
+                transferEncoding = null,
+            ),
+        )
+    }
+
+    @Test fun `chunked framing delimits the body without a length`() {
+        assertTrue(
+            cdnResponseKeepsConnectionUsable(
+                connectionHeader = null,
+                contentLength = -1L,
+                transferEncoding = "chunked",
+            ),
+        )
+    }
+
+    @Test fun `an explicit close wins over any framing`() {
+        assertFalse(
+            cdnResponseKeepsConnectionUsable(
+                connectionHeader = "close",
+                contentLength = 1_048_576L,
+                transferEncoding = "chunked",
+            ),
+        )
+        // Header values are case-insensitive and arrive combined with other tokens.
+        assertFalse(
+            cdnResponseKeepsConnectionUsable(
+                connectionHeader = "Keep-Alive, Close",
+                contentLength = 0L,
+                transferEncoding = null,
+            ),
+        )
+    }
+
+    @Test fun `keep-alive is not mistaken for close`() {
+        assertTrue(
+            cdnResponseKeepsConnectionUsable(
+                connectionHeader = "keep-alive",
+                contentLength = 512L,
+                transferEncoding = null,
+            ),
+        )
+    }
+}

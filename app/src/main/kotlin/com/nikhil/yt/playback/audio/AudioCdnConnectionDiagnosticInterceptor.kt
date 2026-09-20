@@ -41,6 +41,29 @@ internal fun addressFamilyOf(address: String?): String =
 internal fun isCdnRefusalStatus(code: Int): Boolean = code >= 400
 
 /**
+ * Whether a response leaves its connection fit to be used again.
+ *
+ * A capture showed forty-nine googlevideo requests spread over thirty connections, none of them
+ * older than four and a half seconds, and every refusal landing on a connection's very first
+ * request. So what decides how many first requests there are decides how much exposure there is,
+ * and for HTTP/1.1 that is whether the response told OkHttp where its body ends. A reply that
+ * declares a length or arrives chunked can be followed by another on the same socket; one that
+ * delimits its body by closing the connection cannot, and neither can one that asks to close.
+ * Redirects are the suspects: each one here was followed by a new connection to the same host.
+ *
+ * Only the shape of the framing is reported, never a header's contents.
+ */
+internal fun cdnResponseKeepsConnectionUsable(
+    connectionHeader: String?,
+    contentLength: Long,
+    transferEncoding: String?,
+): Boolean {
+    if (connectionHeader?.contains("close", ignoreCase = true) == true) return false
+    if (transferEncoding?.contains("chunked", ignoreCase = true) == true) return true
+    return contentLength >= 0L
+}
+
+/**
  * Whether a wire line is worth an unconditional info entry rather than a debug one.
  *
  * Refusals always are. So is the first request on a connection, and only the first: that is the
@@ -75,13 +98,19 @@ internal class AudioCdnConnectionDiagnosticInterceptor(
         return try {
             chain.proceed(request).also { response ->
                 if (GlobalLog.isEnabled) {
+                    val reusable =
+                        cdnResponseKeepsConnectionUsable(
+                            connectionHeader = response.header("Connection"),
+                            contentLength = response.body?.contentLength() ?: -1L,
+                            transferEncoding = response.header("Transfer-Encoding"),
+                        )
                     // Spelled out three times rather than shared: Timber's lint check reads the
                     // format string at the call site, and a shared one it cannot see is a build
                     // error.
                     if (isCdnRefusalStatus(response.code)) {
                         Timber.tag("AudioCDN").w(
                             "cdn-wire host=%s routeHost=%s protocol=%s coalesced=%s conn=%d " +
-                                "reqOnConn=%d connAgeMs=%d " +
+                                "reqOnConn=%d connAgeMs=%d reusable=%s " +
                                 "status=%d linkIssuedFamily=%s remoteAddressFamily=%s " +
                                 "localAddressFamily=%s proxyType=%s",
                             requestHost,
@@ -91,6 +120,7 @@ internal class AudioCdnConnectionDiagnosticInterceptor(
                             connectionId,
                             use.requestIndex,
                             use.ageMs,
+                            reusable,
                             response.code,
                             linkFamily,
                             remoteFamily,
@@ -100,7 +130,7 @@ internal class AudioCdnConnectionDiagnosticInterceptor(
                     } else if (isCdnWireWorthReporting(response.code, use.requestIndex)) {
                         Timber.tag("AudioCDN").i(
                             "cdn-wire host=%s routeHost=%s protocol=%s coalesced=%s conn=%d " +
-                                "reqOnConn=%d connAgeMs=%d " +
+                                "reqOnConn=%d connAgeMs=%d reusable=%s " +
                                 "status=%d linkIssuedFamily=%s remoteAddressFamily=%s " +
                                 "localAddressFamily=%s proxyType=%s",
                             requestHost,
@@ -110,6 +140,7 @@ internal class AudioCdnConnectionDiagnosticInterceptor(
                             connectionId,
                             use.requestIndex,
                             use.ageMs,
+                            reusable,
                             response.code,
                             linkFamily,
                             remoteFamily,
@@ -119,7 +150,7 @@ internal class AudioCdnConnectionDiagnosticInterceptor(
                     } else {
                         Timber.tag("AudioCDN").d(
                             "cdn-wire host=%s routeHost=%s protocol=%s coalesced=%s conn=%d " +
-                                "reqOnConn=%d connAgeMs=%d " +
+                                "reqOnConn=%d connAgeMs=%d reusable=%s " +
                                 "status=%d linkIssuedFamily=%s remoteAddressFamily=%s " +
                                 "localAddressFamily=%s proxyType=%s",
                             requestHost,
@@ -129,6 +160,7 @@ internal class AudioCdnConnectionDiagnosticInterceptor(
                             connectionId,
                             use.requestIndex,
                             use.ageMs,
+                            reusable,
                             response.code,
                             linkFamily,
                             remoteFamily,
