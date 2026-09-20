@@ -144,11 +144,11 @@ internal class AudioCdnRedirectInterceptor(
              * of the track being refused, which is a far worse failure than the redirect this
              * is saving.
              */
-            // A cached redirect is only invalidated by a link-specific refusal. A 429 on
-            // a shortcut MUST reach CapsuleAudioRequestInterceptor and the global rate-limit
-            // breaker unchanged: swallowing it behind a retry against the issuing host can
-            // conceal YouTube's explicit back-off signal and generate another forbidden GET.
-            if (usingShortcut && response.code in setOf(403, 410)) {
+            // A 429 on a shortcut MUST reach CapsuleAudioRequestInterceptor and the global
+            // rate-limit breaker unchanged. All other HTTP errors retain the existing fallback
+            // to the issuing URL, including a transient 5xx or a stale shortcut's 404.
+            // Swallowing 429 behind that fallback concealed explicit back-off and sent another GET.
+            if (usingShortcut && isCdnRefusalStatus(response.code) && response.code != 429) {
                 response.close()
                 targets.forget(origin.url)
                 if (GlobalLog.isEnabled) {
