@@ -119,16 +119,18 @@ internal class AudioCdnRedirectInterceptor(
          * landed.
          */
         val shortcut = targets.shortcutFor(origin.url)
-        // Keep the same anonymous link reference through every redirect/shortcut. A 403 after
-        // a redirect is a response from that destination, not necessarily the issuing host.
+        // Anchor diagnostics on the original signed link for every internal request,
+        // including a cross-group reissue and a fallback after a refused shortcut.
+        // Reusing raw `origin` used to drop this tag on exactly those paths, yielding
+        // ref=unknown at the decisive 403 and hiding which redirected URL had failed.
         val trace = if (GlobalLog.isEnabled) {
             AudioCdnRequestTrace(
                 originalUrl = origin.url,
                 linkRef = AudioCdnLinkIdentity.ref(origin.url.toString()),
             )
         } else null
-        var request = (if (shortcut != null) origin.newBuilder().url(shortcut).build() else origin)
-            .newBuilder().tag(AudioCdnRequestTrace::class.java, trace).build()
+        val taggedOrigin = origin.newBuilder().tag(AudioCdnRequestTrace::class.java, trace).build()
+        var request = if (shortcut != null) taggedOrigin.newBuilder().url(shortcut).build() else taggedOrigin
         var usingShortcut = shortcut != null
         var extraRequests = 0
         var reissues = 0
@@ -154,7 +156,7 @@ internal class AudioCdnRedirectInterceptor(
                 }
                 usingShortcut = false
                 extraRequests += 1
-                request = origin
+                request = taggedOrigin
                 continue
             }
 
@@ -190,7 +192,7 @@ internal class AudioCdnRedirectInterceptor(
                             reissues,
                         )
                     }
-                    origin
+                    taggedOrigin
                 } else {
                     /*
                      * A followed redirect is reported too, and at the same level as a declined one.
