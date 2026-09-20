@@ -69,7 +69,9 @@ internal fun ArtistHeroLayout(
         val heroHeight = referenceWidth * 1.69f + 16.dp
         Box(Modifier.fillMaxWidth().height(referenceWidth * 1.36f)) {
             Box(Modifier.fillMaxSize()) { artwork() }
-            ArtworkSurfaceFade(background, Modifier.matchParentSize(), portrait = true)
+            // No dark veil across the forehead of the artist image. The toolbar remains
+            // inset for touch safety; only the photo itself reaches the physical top edge.
+            ArtworkSurfaceFade(background, Modifier.matchParentSize(), portrait = true, topScrim = false)
         }
         Column(
             Modifier.fillMaxWidth().heightIn(min = heroHeight)
@@ -130,18 +132,7 @@ internal fun ArtistHero(
              * quietly.
              */
             Box(
-                Modifier
-                    .fillMaxSize()
-                    .background(background)
-                    .background(
-                        Brush.verticalGradient(
-                            colors =
-                                listOf(
-                                    StandardChrome.muted.copy(alpha = 0.10f),
-                                    Color.Transparent,
-                                ),
-                        ),
-                    ),
+                Modifier.fillMaxSize().background(background),
                 contentAlignment = Alignment.Center,
             ) {
                 AsyncImage(
