@@ -12,6 +12,7 @@ internal class PlaybackDataCache(
         val context: Any?,
         val storedAtMs: Long,
         val prefetched: Boolean,
+        var deliveredAudioBytes: Boolean = false,
     )
     private val entries = LinkedHashMap<String, Entry>(16, 0.75f, true)
 
@@ -38,14 +39,18 @@ internal class PlaybackDataCache(
     ): CapsuleAudioEngine.PlaybackData? {
         val entry = entries[mediaId] ?: return null
         val now = nowMs()
-        val stalePrefetch =
-            entry.prefetched &&
+        // A fast-swipe item is often resolved with PLAYBACK priority even though its CDN
+        // stream is never opened. Prefetch-only TTL let such a signed URL sit untested for
+        // minutes and later return a 403 on the first open. Apply the short lifetime to every
+        // link until a real CDN read has confirmed that the link can deliver audio.
+        val staleUnopenedLink =
+            !entry.deliveredAudioBytes &&
                 maxPrefetchedAgeMs != null &&
                 now - entry.storedAtMs > maxPrefetchedAgeMs
         if (
             entry.context != currentContext() ||
             entry.expiresAtMs <= now + minimumRemainingMs ||
-            stalePrefetch
+            staleUnopenedLink
         ) {
             entries.remove(mediaId)
             return null
@@ -70,6 +75,14 @@ internal class PlaybackDataCache(
                 prefetched = prefetched,
             )
         while (entries.size > capacity) entries.remove(entries.keys.first())
+    }
+
+    /** Only mark the *same* URL healthy after the transport returned actual audio bytes. */
+    @Synchronized
+    fun markDeliveredAudioBytes(mediaId: String, streamUrl: String) {
+        entries[mediaId]
+            ?.takeIf { it.data.streamUrl == streamUrl }
+            ?.deliveredAudioBytes = true
     }
 
     @Synchronized
