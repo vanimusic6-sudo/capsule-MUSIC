@@ -1,13 +1,12 @@
 package com.nikhil.yt.ui.component
 
-import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.semantics
 import androidx.annotation.DrawableRes
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -20,30 +19,20 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
 import com.nikhil.yt.R
 
 /**
- * Shared cover, counters and actions for local, online and automatic playlists.
- *
- * Built to match the artist screen, because the two are the same kind of place and used to look
- * like different apps. The artist screen lets its artwork reach the edges and dissolve into the
- * page; the playlist cover sat in the middle as a hard-edged card on a flat background, with every
- * action crammed into one bordered strip.
- *
- * Three things bring them together, and all three already existed or cost nothing:
- *
- * - the cover is full width and hands over to the page through [ArtworkSurfaceFade] — the same
- *   component the artist hero uses, so the seam is gone rather than merely softened;
- * - [ArtworkGlow] adds the light the cover spills onto the interface below it. Drawn, never
- *   blurred;
- * - the actions are individual rounded buttons on the panel colour with a hairline border, which is
- *   the artist screen's button, instead of one long tray.
- *
- * The parameters are unchanged, so the five playlist screens did not have to be touched.
+ * Playlist and album use the SAME header geometry: edge-to-edge 0.85 portrait artwork,
+ * the same matte fade, centred title, compact metadata and one 56dp action tray.
+ * Only the playlist-specific actions supplied by the caller differ.
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -54,47 +43,40 @@ internal fun PlaylistHero(
     modifier: Modifier = Modifier,
     @DrawableRes placeholderIcon: Int = R.drawable.queue_music,
     loading: Boolean = false,
+    title: String = "",
     subtitle: (@Composable () -> Unit)? = null,
     secondaryAction: (@Composable () -> Unit)? = null,
     actions: @Composable RowScope.() -> Unit,
 ) {
-    val background = StandardChrome.background
-    Column(
-        modifier = modifier.fillMaxWidth().padding(bottom = 20.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
-        BoxWithConstraints(Modifier.fillMaxWidth()) {
-            // Square, and capped so it does not swallow a tablet. The cover reaches both edges: an
-            // inset cover cannot dissolve into the page, it can only sit on it.
-            val coverHeight = maxWidth.coerceAtMost(480.dp)
-            Box(Modifier.fillMaxWidth().height(coverHeight)) {
-                Box(
-                    Modifier.fillMaxSize().background(StandardChrome.panel),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    val covers = thumbnails.filter { it.isNotBlank() }.take(4)
-                    if (covers.isEmpty()) {
-                        if (loading) {
-                            VeluneLoader(size = 30.dp)
-                        } else {
-                            Icon(
-                                painterResource(placeholderIcon), null, Modifier.size(72.dp),
-                                tint = StandardChrome.muted,
-                            )
-                        }
-                    } else if (covers.size == 1) {
-                        AsyncImage(
-                            covers.first(), null, Modifier.fillMaxSize(),
+    val background = if (StandardChrome.isDark) Color(0xFF090909) else StandardChrome.background
+    AlbumHeaderLayout(
+        modifier = modifier,
+        artwork = {
+            Box(
+                Modifier.widthIn(max = 560.dp)
+                    .fillMaxWidth()
+                    .aspectRatio(0.85f)
+                    .background(background),
+            ) {
+                val covers = thumbnails.filter(String::isNotBlank).take(4)
+                Box(Modifier.fillMaxSize().background(StandardChrome.panel), contentAlignment = Alignment.Center) {
+                    when (covers.size) {
+                        0 -> if (loading) VeluneLoader(size = 30.dp) else
+                            Icon(painterResource(placeholderIcon), null, Modifier.size(72.dp), tint = StandardChrome.muted)
+                        1 -> AsyncImage(
+                            model = covers.first(),
+                            contentDescription = null,
+                            modifier = Modifier.fillMaxSize(),
                             contentScale = ContentScale.Crop,
                         )
-                    } else {
-                        Column(Modifier.fillMaxSize()) {
+                        else -> Column(Modifier.fillMaxSize()) {
                             repeat(2) { row ->
                                 Row(Modifier.weight(1f)) {
                                     repeat(2) { column ->
                                         AsyncImage(
-                                            covers[(row * 2 + column) % covers.size], null,
-                                            Modifier.weight(1f).fillMaxHeight(),
+                                            model = covers[(row * 2 + column) % covers.size],
+                                            contentDescription = null,
+                                            modifier = Modifier.weight(1f).fillMaxHeight(),
                                             contentScale = ContentScale.Crop,
                                         )
                                     }
@@ -103,58 +85,80 @@ internal fun PlaylistHero(
                         }
                     }
                 }
-                // Hand over to the page, then let the cover light what is underneath. The glow goes
-                // on top of the fade on purpose: underneath it, the fade would wash it away exactly
-                // where it is meant to be seen.
-                ArtworkSurfaceFade(background, Modifier.matchParentSize())
-                ArtworkGlow(StandardChrome.text, Modifier.matchParentSize())
+                // Identical artwork-to-surface fade as album artwork, including portrait sizing.
+                ArtworkSurfaceFade(background, Modifier.matchParentSize(), portrait = true)
             }
-        }
-        if (subtitle != null) {
-            Spacer(Modifier.height(4.dp))
-            subtitle()
-        }
-        Spacer(Modifier.height(18.dp))
-        FlowRow(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp),
-            horizontalArrangement = Arrangement.spacedBy(10.dp, Alignment.CenterHorizontally),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            PlaylistMetadataChip(R.drawable.music_note, songCount)
-            duration?.let { PlaylistMetadataChip(R.drawable.timer, it) }
-        }
-        Spacer(Modifier.height(18.dp))
-        Row(
-            modifier = Modifier.fillMaxWidth(0.92f).widthIn(max = 480.dp),
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            content = actions,
-        )
-        secondaryAction?.invoke()
-    }
+        },
+        title = {
+            if (loading && title.isBlank()) {
+                Box(
+                    Modifier.fillMaxWidth(0.6f).height(32.dp)
+                        .padding(vertical = 6.dp).clip(RoundedCornerShape(8.dp))
+                        .background(StandardChrome.muted.copy(alpha = 0.18f)),
+                )
+            } else {
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.headlineSmall.copy(fontSize = 26.sp),
+                    fontWeight = FontWeight.Bold,
+                    textAlign = TextAlign.Center,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.padding(horizontal = 32.dp),
+                )
+            }
+        },
+        metadata = {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                subtitle?.invoke()
+                if (subtitle != null) Spacer(Modifier.height(8.dp))
+                FlowRow(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp, Alignment.CenterHorizontally),
+                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    PlaylistMetadataChip(R.drawable.music_note, songCount)
+                    duration?.let { PlaylistMetadataChip(R.drawable.timer, it) }
+                }
+            }
+        },
+        actions = {
+            Surface(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp),
+                shape = RoundedCornerShape(16.dp),
+                color = StandardChrome.panel.copy(alpha = 0.92f),
+                border = BorderStroke(1.dp, StandardChrome.muted.copy(alpha = 0.22f)),
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().height(56.dp).padding(horizontal = 4.dp),
+                    horizontalArrangement = Arrangement.SpaceEvenly,
+                    verticalAlignment = Alignment.CenterVertically,
+                    content = actions,
+                )
+            }
+            secondaryAction?.invoke()
+        },
+    )
 }
 
 @Composable
 private fun PlaylistMetadataChip(@DrawableRes icon: Int, text: String) {
-    Row(
-        Modifier.clip(RoundedCornerShape(10.dp)).background(StandardChrome.panel)
-            .padding(horizontal = 12.dp, vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(7.dp),
-    ) {
-        Icon(painterResource(icon), null, Modifier.size(17.dp), tint = StandardChrome.muted)
-        Text(text, color = StandardChrome.muted, style = MaterialTheme.typography.labelLarge,
-            fontWeight = FontWeight.Medium, maxLines = 2, overflow = TextOverflow.Ellipsis)
+    Surface(shape = RoundedCornerShape(20.dp), color = StandardChrome.panel) {
+        Row(
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(painterResource(icon), null, Modifier.size(16.dp), tint = StandardChrome.muted)
+            Text(text, color = StandardChrome.muted, style = MaterialTheme.typography.bodySmall,
+                maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
     }
 }
 
 /**
- * One action, shaped like the artist screen's buttons.
- *
- * It used to be a bare `IconButton` inside a single long bordered tray, which is why a playlist
- * read as a toolbar and an artist read as a page. Same rounding, same hairline border, same panel
- * colour as [CapsuleArtistAction] — icon only, because a playlist offers up to five of these and
- * five labels do not fit a phone.
+ * The same single-tray icon treatment as AlbumAction, while keeping playlist semantics,
+ * enabled states and download spinner supplied by each existing playlist screen.
  */
 @Composable
 internal fun RowScope.PlaylistAction(
@@ -165,25 +169,20 @@ internal fun RowScope.PlaylistAction(
     tint: Color = StandardChrome.text,
     loading: Boolean = false,
 ) {
-    Surface(
+    IconButton(
         onClick = onClick,
         enabled = enabled,
-        modifier = Modifier.weight(1f).heightIn(min = 52.dp)
-            .semantics { contentDescription = label },
-        shape = RoundedCornerShape(16.dp),
-        color = StandardChrome.panel.copy(alpha = if (enabled) 0.94f else 0.74f),
-        contentColor = tint,
-        border = BorderStroke(1.dp, StandardChrome.muted.copy(alpha = 0.16f)),
+        modifier = Modifier.weight(1f).height(56.dp).semantics { contentDescription = label },
     ) {
-        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            if (loading) {
-                VeluneLoader(size = 22.dp)
-            } else {
-                Icon(
-                    painterResource(icon), null, Modifier.size(24.dp),
-                    tint = if (enabled) tint else tint.copy(alpha = 0.35f),
-                )
-            }
+        if (loading) {
+            VeluneLoader(size = 22.dp)
+        } else {
+            Icon(
+                painter = painterResource(icon),
+                contentDescription = label,
+                modifier = Modifier.size(26.dp),
+                tint = if (enabled) tint else tint.copy(alpha = 0.35f),
+            )
         }
     }
 }
