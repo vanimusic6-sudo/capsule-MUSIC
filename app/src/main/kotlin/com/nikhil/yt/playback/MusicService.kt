@@ -1539,6 +1539,9 @@ class MusicService :
             connectivityObserver.networkStatus.collect { isConnected ->
                 isNetworkConnected.value = isConnected
                 playbackRecoveryCoordinator.onConnectivityChanged(isConnected)
+                // BUFFERING may begin before the connectivity observer emits its first value.
+                // Arm or cancel the stall check when the actual route status arrives.
+                updateAudioBufferStallWatch()
             }
         }
 
