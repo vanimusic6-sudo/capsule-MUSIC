@@ -783,9 +783,11 @@ class MusicService :
      */
     private fun isUpcomingAudioNetworkEligible(mediaId: String): Boolean =
         mediaId in upcomingAudioIds() &&
-            player.isPlaying &&
-            player.currentPosition >= AUDIO_PREFETCH_MIN_CURRENT_PROGRESS_MS &&
-            !isCurrentCapsuleVideoItem()
+            canResolveUpcomingAudioWhile(
+                currentIsPlaying = player.isPlaying,
+                currentPositionMs = player.currentPosition,
+                currentIsVideo = isCurrentCapsuleVideoItem(),
+            )
 
     private fun isAudioNetworkSelectionRelevant(mediaId: String): Boolean =
         mediaId == player.currentMediaItem?.mediaId ||
