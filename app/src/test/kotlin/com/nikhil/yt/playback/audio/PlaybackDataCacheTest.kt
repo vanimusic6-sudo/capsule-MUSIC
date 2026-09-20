@@ -70,15 +70,38 @@ class PlaybackDataCacheTest {
             ),
         )
 
+        // Foreground priority is not proof of playback: a rapid-skip item can resolve its
+        // URL and be abandoned before the CDN receives a request. Its untested URL also ages out.
         cache.put("foreground", data, prefetched = false)
         now = 2_002L
-        assertSame(
-            data,
+        assertNull(
             cache.getForPlayback(
                 mediaId = "foreground",
                 maxPrefetchedAgeMs = 1_000L,
             ),
         )
+    }
+
+    @Test fun confirmedAudioKeepsAWorkingUrlBeyondTheUnverifiedWindow() {
+        var now = 0L
+        val cache = PlaybackDataCache(nowMs = { now })
+        val data = playback()
+        cache.put("playing", data, prefetched = false)
+        cache.markDeliveredAudioBytes("playing", data.streamUrl)
+        now = 2_000L
+        assertSame(data, cache.getForPlayback("playing", maxPrefetchedAgeMs = 1_000L))
+    }
+
+    @Test fun oldCdnBytesCannotAccidentallyValidateANewUrlForTheSameTrack() {
+        var now = 0L
+        val cache = PlaybackDataCache(nowMs = { now })
+        val old = playback()
+        val renewed = playback().copy(streamUrl = "https://other.googlevideo.com/audio?sig=new")
+        cache.put("playing", old)
+        cache.put("playing", renewed)
+        cache.markDeliveredAudioBytes("playing", old.streamUrl)
+        now = 1_001L
+        assertNull(cache.getForPlayback("playing", maxPrefetchedAgeMs = 1_000L))
     }
 
 }
