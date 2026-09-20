@@ -19,6 +19,8 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -179,7 +181,8 @@ fun CachePlaylistScreen(
 
         LazyColumn(
             state = lazyListState,
-            contentPadding = LocalPlayerAwareWindowInsets.current.asPaddingValues(),
+            contentPadding = LocalPlayerAwareWindowInsets.current
+                .only(WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom).asPaddingValues(),
         ) {
             if (filteredSongs.isEmpty() && !isSearching) {
                 item {
@@ -202,6 +205,7 @@ fun CachePlaylistScreen(
                     // Hero Header Item
                     item(key = "header") {
                         PlaylistHero(
+                            title = playlistTitle,
                             thumbnails = filteredSongs.mapNotNull { it.item.thumbnailUrl }.take(4),
                             songCount = pluralStringResource(R.plurals.n_song, filteredSongs.size, filteredSongs.size),
                             placeholderIcon = R.drawable.cached,
