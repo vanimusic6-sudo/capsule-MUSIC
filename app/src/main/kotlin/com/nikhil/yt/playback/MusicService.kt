@@ -558,7 +558,15 @@ class MusicService :
     private val audioResolveCoordinator =
         AudioResolveCoordinator<CapsuleAudioEngine.PlaybackData>(
             scopeProvider = { ioScope },
-            cachedValue = { mediaId -> playbackUrlCache.get(mediaId) },
+            // The shared resolver must obey the same unverified-URL lifetime as the actual
+            // DataSource. Otherwise an expired rapid-skip URL can bypass getForPlayback()
+            // through this cache fast path and be returned as a fresh successful resolve.
+            cachedValue = { mediaId ->
+                playbackUrlCache.getForPlayback(
+                    mediaId = mediaId,
+                    maxPrefetchedAgeMs = AUDIO_PREFETCHED_URL_MAX_AGE_MS,
+                )
+            },
         )
 
     /*
