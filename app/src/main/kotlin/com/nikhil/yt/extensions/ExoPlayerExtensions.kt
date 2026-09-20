@@ -17,7 +17,6 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.analytics.AnalyticsListener
 import androidx.media3.exoplayer.audio.DefaultAudioOffloadSupportProvider
 import com.nikhil.yt.App
-import com.nikhil.yt.playback.PlaybackPowerWatch
 import com.nikhil.yt.utils.GlobalLog
 import timber.log.Timber
 import java.lang.ref.WeakReference
@@ -245,6 +244,13 @@ internal const val AUDIO_UNDERRUN_STARVED_BUFFER_MS = 5_000L
  * run dry for want of data that is already decoded and waiting in front of the playhead. Below
  * [AUDIO_UNDERRUN_STARVED_BUFFER_MS] ahead, a report is taken at its word.
  *
+ * What produces them is now known, and it is not this app: with the screen off and nothing
+ * plugged in, Android suspends the audio path, and playback picks up again when the screen comes
+ * back. It was reproduced the same way in other players. Most of a day went into hunting it as a
+ * fault of ours — a wake lock was added and taken back out, because the freezes continued while
+ * it was held. So these reports are expected on that path and this is the guard that keeps them
+ * from filling a capture with errors that are nobody's bug.
+ *
  * The buffer is read when the report is logged rather than when the sink raised it, a few
  * microseconds later. Tens of seconds of audio cannot appear in that window, so the reading
  * cannot manufacture an artefact; it could in principle hide a real underrun that refilled
@@ -361,22 +367,22 @@ private fun ExoPlayer.ensureCapsuleOffloadDiagnostics(): Boolean {
                     val bufferedAheadMs = player.bufferedAheadMs()
                     if (isAudioResumeArtefact(elapsedSinceLastFeedMs, playingForMs, bufferedAheadMs)) {
                         /*
-                         * Info, not debug. These name the stretches where playback stopped
-                         * moving with the screen off — the position advanced four seconds in
-                         * five minutes of wall clock — and a capture taken at the level people
-                         * actually use would not contain a single one of them.
+                         * Debug, because this is Android working as designed.
+                         *
+                         * With the screen off and nothing plugged in, the platform suspends the
+                         * audio path; playback resumes when the screen comes back. It was chased
+                         * for most of a day as a bug of ours and is not one — reproduced the
+                         * same way in other players — so it belongs with the other ordinary
+                         * events rather than up where the real faults are.
                          */
-                        Timber.tag("PlaybackHealth").i(
+                        Timber.tag("PlaybackHealth").d(
                             "audio-resume-after-idle id=%s posMs=%d idleMs=%d playingForMs=%d " +
-                                "bufferedAheadMs=%d %s",
+                                "bufferedAheadMs=%d",
                             player.currentMediaItem?.mediaId,
                             player.currentPosition,
                             elapsedSinceLastFeedMs,
                             playingForMs ?: -1L,
                             bufferedAheadMs,
-                            // Read here rather than on the next screen-on: by then Doze has
-                            // lifted and the reading would describe the wrong moment.
-                            PlaybackPowerWatch.describeNow() ?: "power=unknown",
                         )
                         return
                     }
