@@ -196,7 +196,12 @@ internal class AudioCdnHostHealthDataSource(
         }
 
         return try {
-            upstream.open(dataSpec).also { health.recordSuccess(requestHost) }
+            upstream.open(dataSpec).also {
+                // Redirects can land on a different server group. Crediting the issuing host
+                // for bytes served by another one clears the wrong group's failure history.
+                // When DataSource cannot expose its effective URI, fall back to the issuing host.
+                health.recordSuccess(upstream.uri?.host ?: requestHost)
+            }
         } catch (failure: IOException) {
             throw classifyFailure(failure, AudioCdnRefreshReason.OPEN_FAILURE)
         }
@@ -214,11 +219,17 @@ internal class AudioCdnHostHealthDataSource(
         if (failure.audioCdnRefreshRequiredOrNull() != null) return failure
         val httpCode = generateSequence(failure as Throwable?) { it.cause }
             .take(12).filterIsInstance<InvalidResponseCodeException>().firstOrNull()?.responseCode
-        // Rate limiting belongs to the global safety gate, not host selection.
-        if (httpCode == 429) return failure
+
+        // HTTP 403/410 is a rejection of this signed request, NOT evidence that the entire
+        // googlevideo group is offline. Three retries of the SAME first slice used to mark
+        // a healthy host cold for 90s, amplifying rather than preventing a transient refusal.
+        // All HTTP statuses (especially 429) remain with their existing per-link/safety policies.
+        // Only actual transport faults contribute to host reachability.
+        if (httpCode != null || !failure.isAudioCdnTransportFailure()) return failure
+
         health.recordFailure(host)
         val id = mediaId
-        return if (id != null && googlevideoServerGroup(host) != null && failure.isAudioCdnTransportFailure()) {
+        return if (id != null && googlevideoServerGroup(host) != null) {
             AudioCdnRefreshRequiredException(id, reason, failure)
         } else failure
     }
