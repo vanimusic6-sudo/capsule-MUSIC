@@ -200,6 +200,7 @@ import com.nikhil.yt.playback.audio.AudioNetworkDiagnosticDataSource
 import com.nikhil.yt.playback.audio.AudioCdnConnectionDiagnosticInterceptor
 import com.nikhil.yt.playback.audio.AudioCdnConnectionLedger
 import com.nikhil.yt.playback.audio.AudioCdnRedirectTargets
+import com.nikhil.yt.playback.audio.AudioCdnSessionStats
 import com.nikhil.yt.playback.audio.AudioCdnHostHealth
 import com.nikhil.yt.playback.audio.AudioCdnHostHealthDataSource
 import com.nikhil.yt.playback.audio.audioCdnRefreshRequiredOrNull
@@ -1454,6 +1455,7 @@ class MusicService :
                 authWallDetector.forget()
                 audioCdnConnectionLedger.forget()
                 audioCdnRedirectTargets.forgetAll()
+                AudioCdnSessionStats.forget()
                 audioResolveCoordinator.invalidatePolicy(
                     invalidatePrefetch = true,
                     onInvalidate = playbackUrlCache::clear,

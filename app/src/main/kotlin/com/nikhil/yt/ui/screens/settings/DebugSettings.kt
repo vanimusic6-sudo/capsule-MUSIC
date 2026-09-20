@@ -9,6 +9,7 @@
 package com.nikhil.yt.ui.screens.settings
 
 import com.nikhil.yt.BuildConfig
+import com.nikhil.yt.playback.audio.AudioCdnSessionStats
 import android.content.Intent
 import android.text.format.DateFormat
 import android.util.Log
@@ -747,6 +748,16 @@ private fun LogViewerPanel() {
                                     "${BuildConfig.GIT_COMMIT} ${BuildConfig.BUILD_TYPE} " +
                                     BuildConfig.ARCHITECTURE,
                             )
+                            /*
+                             * How the CDN treated this session, as one line.
+                             *
+                             * Every refusal rate in this investigation was counted by hand out of
+                             * a log, and three refusals in twelve opens reads exactly like three
+                             * in a hundred while meaning something completely different. Twice a
+                             * change could not be credited because before and after were
+                             * eyeballed from captures of different lengths.
+                             */
+                            AudioCdnSessionStats.summary()?.let(::appendLine)
                             appendLine("==========================")
                             appendLine()
                             filtered.forEach { entry -> appendLine(GlobalLog.format(entry)) }

@@ -174,6 +174,10 @@ internal class AudioNetworkDiagnosticDataSource(
         // pre-resolved URL must not bypass the rapid-skip guard and reach OkHttp before cancellation.
         beforeNetworkOpen?.invoke(dataSpec)
 
+        // Counted before the level check: a refusal rate is only comparable between sessions if
+        // it counts every session, not the ones somebody remembered to enable logging for.
+        AudioCdnSessionStats.recordOpen()
+
         diagnosticsEnabled = GlobalLog.isEnabled
         if (!diagnosticsEnabled) return upstream.open(dataSpec)
 

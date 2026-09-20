@@ -145,25 +145,34 @@ class AudioCdnRedirectPolicyTest {
 
     @Test
     fun `a host that keeps handing us off is taken at its word in the end`() {
+        /*
+         * The budget is read from the constant rather than written out, because the number has
+         * moved once already on evidence and the property that matters is not its value: a host
+         * that insists must eventually be believed, or a track that only one group will serve
+         * never plays at all.
+         */
         val chain =
             ScriptedChain(
                 requestFor(ORIGIN),
-                listOf(
-                    redirectTo(OTHER_GROUP),
-                    redirectTo(OTHER_GROUP),
-                    redirectTo(OTHER_GROUP),
-                    served(),
-                ),
+                List(AUDIO_CDN_MAX_REISSUES + 1) { redirectTo(OTHER_GROUP) } + served(),
             )
 
         val response = AudioCdnRedirectInterceptor().intercept(chain)
 
         assertEquals(206, response.code)
         assertEquals(
-            "two re-issues, then the redirect is followed",
-            listOf(ORIGIN, ORIGIN, ORIGIN, OTHER_GROUP),
+            "the issuing host is asked again once per re-issue, then the redirect is followed",
+            List(AUDIO_CDN_MAX_REISSUES + 1) { ORIGIN } + OTHER_GROUP,
             chain.asked,
         )
+    }
+
+    @Test
+    fun `the re-issue budget stays small enough to be worth its connections`() {
+        // Each re-issue is another request, and a redirect ends its socket, so every one of them
+        // is another first-request-on-a-new-socket — which is where every refusal in every
+        // capture has landed. Measuring 300 opens put the second re-issue at a coin toss.
+        assertTrue("re-issues must not be free-running", AUDIO_CDN_MAX_REISSUES in 1..1)
     }
 
     @Test

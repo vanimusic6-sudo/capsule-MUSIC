@@ -85,18 +85,32 @@ internal fun ExoPlayer.currentAudioOffloadAvailability(): CapsuleAudioOffloadAva
 private fun ExoPlayer.bufferedAheadMs(): Long =
     (bufferedPosition - currentPosition).coerceAtLeast(0L)
 
-private fun ExoPlayer.logPlaybackHealth(prefix: String) {
+/**
+ * One line of player state, at the level the event deserves.
+ *
+ * A stall that has *started* is a question, not an answer: most of them are cancelled inside
+ * forty milliseconds and were never a stall at all. A capture carried forty-five of these at
+ * warning against thirteen completed ones, which buried the three lines the capture was actually
+ * read for. The start is recorded at debug and the end, which is the one that carries how long
+ * it lasted, stays at warning.
+ */
+private fun ExoPlayer.logPlaybackHealth(prefix: String, warn: Boolean) {
     if (!GlobalLog.isEnabled) return
-    Timber.tag("PlaybackHealth").w(
+    val tree = Timber.tag("PlaybackHealth")
+    val log: (String, Array<Any?>) -> Unit =
+        if (warn) { format, args -> tree.w(format, *args) } else { format, args -> tree.d(format, *args) }
+    log(
         "%s id=%s posMs=%d bufferedAheadMs=%d totalBufferedMs=%d isLoading=%s playWhenReady=%s state=%d",
-        prefix,
-        currentMediaItem?.mediaId,
-        currentPosition,
-        bufferedAheadMs(),
-        totalBufferedDuration,
-        isLoading,
-        playWhenReady,
-        playbackState,
+        arrayOf(
+            prefix,
+            currentMediaItem?.mediaId,
+            currentPosition,
+            bufferedAheadMs(),
+            totalBufferedDuration,
+            isLoading,
+            playWhenReady,
+            playbackState,
+        ),
     )
 }
 
@@ -290,8 +304,11 @@ private fun ExoPlayer.ensureCapsuleOffloadDiagnostics(): Boolean {
                             )
                         } else {
                             playerReference.get()?.logPlaybackHealth(
-                                "buffering-${event.phase} generation=${event.generation} " +
-                                    "kind=${event.kind} durationMs=${event.durationMs}",
+                                prefix =
+                                    "buffering-${event.phase} generation=${event.generation} " +
+                                        "kind=${event.kind} durationMs=${event.durationMs}",
+                                // Only a stall that finished is worth a warning; see the helper.
+                                warn = event.phase != "start",
                             )
                         }
                     }

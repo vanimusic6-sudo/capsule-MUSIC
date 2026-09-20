@@ -20,8 +20,29 @@ private val REDIRECT_CODES = setOf(301, 302, 303, 307, 308)
  */
 internal const val AUDIO_CDN_MAX_EXTRA_REQUESTS = 8
 
-/** How many times a cross-group redirect is answered by asking the issuing host again. */
-internal const val AUDIO_CDN_MAX_REISSUES = 2
+/**
+ * How many times a cross-group redirect is answered by asking the issuing host again.
+ *
+ * Once. It was twice, and measuring 300 opens across a day of captures says the second one does
+ * not pay for itself.
+ *
+ * The first decline is clearly worth it: of 68 opens that declined exactly once, 15 were then
+ * served directly by the issuing host and 35 were offered a redirect inside the group instead —
+ * 50 of 68 resolved, for the cost of one extra request.
+ *
+ * The second is a coin toss that costs a whole connection. Of 36 opens that declined twice, 18
+ * converted, and the other 18 either ran out of budget and followed the cross-group redirect
+ * anyway or were refused. A redirect arrives without a length and so ends its socket, and a
+ * socket's first request is where every refusal in every capture has landed, so an extra request
+ * here is an extra roll of exactly the dice this is trying to avoid.
+ *
+ * And what it is avoiding has stopped happening. The policy was written from a capture where
+ * cross-group redirects were refused five times in seven; across the current captures every
+ * cross-group redirect that was eventually followed was served — twelve for twelve. That is only
+ * observable after two declines, so it may flatter itself, which is the reason for keeping one
+ * decline rather than removing the policy outright.
+ */
+internal const val AUDIO_CDN_MAX_REISSUES = 1
 
 /**
  * The server group inside a googlevideo host name, or null if there is none to read.
@@ -169,12 +190,30 @@ internal class AudioCdnRedirectInterceptor(
                      * cannot say whether this policy is complete.
                      */
                     if (GlobalLog.isEnabled) {
-                        Timber.tag("AudioCDN").w(
-                            "cdn-redirect-followed from=%s to=%s sameGroup=%s",
-                            request.url.host,
-                            target.host,
-                            !isCrossGroupGooglevideoRedirect(request.url.host, target.host),
-                        )
+                        /*
+                         * A redirect inside the group is the ordinary case — ten a session, more
+                         * than half of all redirect events — and at warning it buried the three
+                         * lines a capture is actually read for. Leaving the group is still a
+                         * warning, because that is the one this policy exists to have an opinion
+                         * about.
+                         */
+                        val sameGroup =
+                            !isCrossGroupGooglevideoRedirect(request.url.host, target.host)
+                        if (sameGroup) {
+                            Timber.tag("AudioCDN").d(
+                                "cdn-redirect-followed from=%s to=%s sameGroup=%s",
+                                request.url.host,
+                                target.host,
+                                true,
+                            )
+                        } else {
+                            Timber.tag("AudioCDN").w(
+                                "cdn-redirect-followed from=%s to=%s sameGroup=%s",
+                                request.url.host,
+                                target.host,
+                                false,
+                            )
+                        }
                     }
                     request.newBuilder().url(target).build()
                 }

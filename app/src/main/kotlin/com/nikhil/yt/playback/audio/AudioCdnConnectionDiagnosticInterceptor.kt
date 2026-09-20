@@ -97,6 +97,28 @@ internal class AudioCdnConnectionDiagnosticInterceptor(
 
         return try {
             chain.proceed(request).also { response ->
+                // Counted whatever the log level: a tally read once per capture is worth nothing
+                // if it only counts the sessions somebody remembered to turn logging on for.
+                AudioCdnSessionStats.recordResponse(response.code, use.requestIndex)
+                /*
+                 * A link is issued to the address that asked for it and carries that address in
+                 * its own query string, so leaving by a different family is close to a
+                 * guaranteed refusal. Every capture so far has been v4 to v4, which is why this
+                 * has only ever been three fields to compare by eye — and a condition nobody is
+                 * comparing is a condition nobody will notice. It gets its own line, above the
+                 * level captures are usually taken at, the first time it ever happens.
+                 */
+                if (GlobalLog.isEnabled && linkFamily != "none" && linkFamily != remoteFamily) {
+                    Timber.tag("AudioCDN").w(
+                        "cdn-family-mismatch host=%s linkIssuedFamily=%s remoteAddressFamily=%s " +
+                            "localAddressFamily=%s status=%d",
+                        requestHost,
+                        linkFamily,
+                        remoteFamily,
+                        localFamily,
+                        response.code,
+                    )
+                }
                 if (GlobalLog.isEnabled) {
                     val reusable =
                         cdnResponseKeepsConnectionUsable(
