@@ -318,6 +318,16 @@ internal const val AUDIO_CDN_IDLE_CONNECTION_SECONDS = 50L
 
 /** How many idle googlevideo sockets are worth keeping. OkHttp's default; a track uses one. */
 internal const val AUDIO_CDN_IDLE_CONNECTIONS = 5
+
+/**
+ * How long the loader has to wait for a stream URL before the wait is worth reporting.
+ *
+ * A quarter of a second, which is roughly where a delay before audio starts stops being
+ * invisible. Below it the loader is simply picking up a URL that was already resolved, and a
+ * capture carried four such lines in three seconds for a single track — 30, 14, 9 and 3
+ * milliseconds — all at info and all labelled "blocked".
+ */
+internal const val LOADER_WAIT_WORTH_REPORTING_MS = 250L
 internal const val SIGNED_URL_MAX_FRESH_RESOLVE_DELAY_MS = 3_000L
 
 /**
@@ -935,14 +945,6 @@ class MusicService :
     private val audioCdnHostHealth = AudioCdnHostHealth()
 
     /**
-     * A CPU wake lock of this app's own, held only while audio is playing.
-     *
-     * Media3's WAKE_MODE_LOCAL is supposed to cover this; a capture says it does not. See
-     * PlaybackWakeLock.
-     */
-    private val playbackWakeLock by lazy(LazyThreadSafetyMode.NONE) { PlaybackWakeLock(this) }
-
-    /**
      * What the system is doing to this app, for the stretches where playback stops moving.
      *
      * Broadcast-driven; see PlaybackPowerWatch. Nothing runs while nothing happens.
@@ -951,7 +953,6 @@ class MusicService :
         PlaybackPowerWatch(
             context = this,
             isPlaying = { runCatching { player.isPlaying }.getOrDefault(false) },
-            isWakeLockHeld = { playbackWakeLock.isHeld },
         )
     }
 
@@ -3347,8 +3348,6 @@ class MusicService :
 
     override fun onIsPlayingChanged(isPlaying: Boolean) {
         super.onIsPlayingChanged(isPlaying)
-        // Both edges come from here, so the lock cannot outlive playback by more than a callback.
-        playbackWakeLock.setPlaying(isPlaying)
         val activeMediaId = player.currentMediaItem?.mediaId
         playbackRecoveryCoordinator.onPlaybackActivity(
             mediaId = activeMediaId,
@@ -4057,12 +4056,32 @@ class MusicService :
                     }
                 }.also {
                     val waited = System.currentTimeMillis() - loaderWaitStartedAt
-                    Timber.tag(CAPSULE_RESOLVE_TAG).i(
-                        "loader blocked id=%s waitedMs=%d joinedExisting=%s",
-                        mediaId,
-                        waited,
-                        alreadyRunning,
-                    )
+                    /*
+                     * "blocked" was a lie for most of these, and it was written at info.
+                     *
+                     * A capture carried four of them in three seconds for one track, waiting 30,
+                     * 14, 9 and 3 milliseconds — the loader asking for a URL it already had.
+                     * Nothing was blocked and nobody could have noticed. The word and the level
+                     * both said "look here" about the ordinary path, which is how a reader ends
+                     * up mistrusting the lines that do matter.
+                     *
+                     * A wait long enough to be heard is still reported; the rest is debug.
+                     */
+                    if (waited >= LOADER_WAIT_WORTH_REPORTING_MS) {
+                        Timber.tag(CAPSULE_RESOLVE_TAG).i(
+                            "loader waited id=%s waitedMs=%d joinedExisting=%s",
+                            mediaId,
+                            waited,
+                            alreadyRunning,
+                        )
+                    } else {
+                        Timber.tag(CAPSULE_RESOLVE_TAG).d(
+                            "loader waited id=%s waitedMs=%d joinedExisting=%s",
+                            mediaId,
+                            waited,
+                            alreadyRunning,
+                        )
+                    }
                 }.getOrElse { throwable ->
                     when (throwable) {
                         is PlaybackException -> throw throwable
@@ -5166,7 +5185,6 @@ class MusicService :
     }
 
     override fun onDestroy() {
-        playbackWakeLock.release()
         playbackPowerWatch.stop(this)
         super.onDestroy()
         playbackPersistence.cancelPending()
