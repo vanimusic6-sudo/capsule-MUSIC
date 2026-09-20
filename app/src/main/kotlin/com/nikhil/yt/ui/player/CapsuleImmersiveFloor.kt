@@ -15,6 +15,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.graphics.get
 import coil3.imageLoader
@@ -120,7 +121,7 @@ internal fun rememberImmersiveEdgeColor(mediaMetadata: MediaMetadata?): Immersiv
                         } else {
                             bottom
                         }
-                    ImmersiveArtworkTone(sampled.comfortableImmersiveColor(), landscape)
+                    ImmersiveArtworkTone((sampled ?: IMMERSIVE_NEUTRAL_COLOR).comfortableImmersiveColor(), landscape)
                 }
             } catch (cancelled: CancellationException) {
                 throw cancelled
@@ -185,7 +186,7 @@ private fun android.graphics.Bitmap.averageBottomStrip(): Color? {
 /** The artwork may be very bright; controls always need a dark, coloured surface. */
 internal fun Color.comfortableImmersiveColor(): Color {
     val hsv = FloatArray(3)
-    android.graphics.Color.colorToHSV(androidx.compose.ui.graphics.toArgb(this), hsv)
+    android.graphics.Color.colorToHSV(toArgb(), hsv)
     hsv[2] = hsv[2].coerceIn(0.17f, 0.40f)
     return Color(android.graphics.Color.HSVToColor(hsv))
 }
