@@ -3946,6 +3946,15 @@ class MusicService :
                         upstreamFactory =
                             DefaultDataSource.Factory(this, OkHttpDataSource.Factory(audioHttpClient)),
                         beforeNetworkOpen = ::awaitAudioNetworkOpenPermit,
+                        onFirstAudioBytes = { dataSpec ->
+                            val context = dataSpec.customData as? AudioCdnOpenContext
+                            if (context != null) {
+                                playbackUrlCache.markDeliveredAudioBytes(
+                                    mediaId = context.mediaId,
+                                    streamUrl = dataSpec.uri.toString(),
+                                )
+                            }
+                        },
                     ),
                     health = audioCdnHostHealth,
                 ),
