@@ -601,8 +601,7 @@ class MusicService :
             runBlocking {
                 suspend fun isRelevant(): Boolean =
                     withContext(Dispatchers.Main.immediate) {
-                        mediaId == player.currentMediaItem?.mediaId ||
-                            mediaId in upcomingAudioIds()
+                        isAudioNetworkSelectionRelevant(mediaId)
                     }
 
                 audioResolveStability.awaitNetworkOpenStable(::isRelevant)
@@ -703,8 +702,7 @@ class MusicService :
                 },
             ) {
                 withContext(Dispatchers.Main.immediate) {
-                    mediaId == player.currentMediaItem?.mediaId ||
-                        mediaId in upcomingAudioIds()
+                    isAudioNetworkSelectionRelevant(mediaId)
                 }
             }
             val selection = playbackContext()
@@ -728,6 +726,17 @@ class MusicService :
                 .also { result ->
                     if (selection != playbackContext()) {
                         throw kotlinx.coroutines.CancellationException("Playback context changed")
+                    }
+                    // A /player request that was already on the wire when selection changed
+                    // may still finish successfully. Do not publish its URL just because its
+                    // id is again the queue's next item during rapid backwards scrubbing.
+                    val relevantAfterResponse = withContext(Dispatchers.Main.immediate) {
+                        isAudioNetworkSelectionRelevant(mediaId)
+                    }
+                    if (!relevantAfterResponse) {
+                        throw kotlinx.coroutines.CancellationException(
+                            "AUDIO resolve completed for a discarded selection",
+                        )
                     }
                     result.getOrNull()?.let {
                         cacheResolvedPlayback(
@@ -763,6 +772,25 @@ class MusicService :
         )
     }
 
+    /**
+     * Next-in-queue is NOT the same as wanted now: when the user swipes backwards,
+     * the just-discarded item becomes "upcoming" again. Never let that technical
+     * queue membership authorize a /player or CDN open while the current item is
+     * still BUFFERING. Real gapless look-ahead is permitted only after the selected
+     * audio has demonstrably played for a few seconds.
+     *
+     * Called from the player looper (or within withContext(Main.immediate)).
+     */
+    private fun isUpcomingAudioNetworkEligible(mediaId: String): Boolean =
+        mediaId in upcomingAudioIds() &&
+            player.isPlaying &&
+            player.currentPosition >= AUDIO_PREFETCH_MIN_CURRENT_PROGRESS_MS &&
+            !isCurrentCapsuleVideoItem()
+
+    private fun isAudioNetworkSelectionRelevant(mediaId: String): Boolean =
+        mediaId == player.currentMediaItem?.mediaId ||
+            isUpcomingAudioNetworkEligible(mediaId)
+
     private fun prefetchUpcomingAudio() {
         val prefetchGeneration = audioResolveCoordinator.nextPrefetchGeneration()
         val upcoming = upcomingAudioIds()
@@ -777,7 +805,11 @@ class MusicService :
                     ?.trim()
                     ?.takeIf { it.isNotBlank() }
                     ?.let(::add)
-                addAll(upcoming)
+                // Do not keep a discarded resolve merely because it turned into the
+                // next-in-queue item while the new foreground track is still BUFFERING.
+                // The normal just-in-time prefetch below schedules it again if the user
+                // actually listens long enough to make it relevant.
+                upcoming.filter(::isUpcomingAudioNetworkEligible).forEach(::add)
             }
 
         /*
