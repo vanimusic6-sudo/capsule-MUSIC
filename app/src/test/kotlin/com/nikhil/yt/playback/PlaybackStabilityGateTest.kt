@@ -102,6 +102,37 @@ class PlaybackStabilityGateTest {
     }
 
     @Test
+    fun mediumPacedSwipesAreStillOneBurstAndNeverResolveIntermediateTracks() = runTest {
+        val gate = PlaybackStabilityGate(nowMs = { currentTime })
+        var current = 0
+        val resolved = mutableListOf<Int>()
+        val jobs = mutableListOf<kotlinx.coroutines.Job>()
+
+        repeat(7) { id ->
+            current = id
+            gate.onSelectionChanged()
+            jobs += launch {
+                gate.awaitStable(
+                    requiredDelayMs = { PLAYBACK_RESOLVE_STABILITY_DELAY_MS },
+                ) { id == current }
+                resolved += id
+            }
+            runCurrent()
+            // The previous 400ms rapid-skip gap reset here, permitting a URL to escape.
+            advanceTimeBy(600)
+            runCurrent()
+        }
+        assertTrue("Intermediate tracks contacted YouTube while still scrubbing", resolved.isEmpty())
+        advanceTimeBy(RAPID_SKIP_PLAYBACK_SETTLE_DELAY_MS - 601)
+        runCurrent()
+        assertTrue(resolved.isEmpty())
+        advanceTimeBy(1)
+        runCurrent()
+        assertEquals(listOf(6), resolved)
+        jobs.forEach { it.cancel() }
+    }
+
+    @Test
     fun calmSelectionAfterBurstReturnsToFastPlaybackDelay() = runTest {
         val gate = PlaybackStabilityGate(nowMs = { currentTime })
 
