@@ -169,6 +169,8 @@ internal class AudioCdnHostHealthDataSource(
     private val health: AudioCdnHostHealth,
 ) : DataSource {
     private var host: String? = null
+    private var servedByHost: String? = null
+    private var deliveredBytes = false
     private var mediaId: String? = null
 
     override fun addTransferListener(transferListener: TransferListener) {
@@ -178,6 +180,8 @@ internal class AudioCdnHostHealthDataSource(
     override fun open(dataSpec: DataSpec): Long {
         val requestHost = runCatching { dataSpec.uri.host }.getOrNull()
         host = requestHost
+        servedByHost = null
+        deliveredBytes = false
         mediaId = (dataSpec.customData as? AudioCdnOpenContext)?.mediaId
             ?: dataSpec.key?.takeIf { it.startsWith("capsule:audio:") }?.let(AudioCacheIdentity::mediaId)
 
@@ -197,10 +201,10 @@ internal class AudioCdnHostHealthDataSource(
 
         return try {
             upstream.open(dataSpec).also {
-                // Redirects can land on a different server group. Crediting the issuing host
-                // for bytes served by another one clears the wrong group's failure history.
-                // When DataSource cannot expose its effective URI, fall back to the issuing host.
-                health.recordSuccess(upstream.uri?.host ?: requestHost)
+                // HTTP 206 means headers arrived, not that the CDN actually delivered audio.
+                // Keep a previously failing host under observation until the first successful
+                // body read. A redirect can change the group that really served the bytes.
+                servedByHost = upstream.uri?.host ?: requestHost
             }
         } catch (failure: IOException) {
             throw classifyFailure(failure, AudioCdnRefreshReason.OPEN_FAILURE)
@@ -208,7 +212,12 @@ internal class AudioCdnHostHealthDataSource(
     }
 
     override fun read(buffer: ByteArray, offset: Int, length: Int): Int = try {
-        upstream.read(buffer, offset, length)
+        upstream.read(buffer, offset, length).also { count ->
+            if (count > 0 && !deliveredBytes) {
+                deliveredBytes = true
+                health.recordSuccess(servedByHost ?: host)
+            }
+        }
     } catch (failure: IOException) {
         throw classifyFailure(failure, AudioCdnRefreshReason.READ_FAILURE)
     }
@@ -227,7 +236,9 @@ internal class AudioCdnHostHealthDataSource(
         // Only actual transport faults contribute to host reachability.
         if (httpCode != null || !failure.isAudioCdnTransportFailure()) return failure
 
-        health.recordFailure(host)
+        // A read failure belongs to the server that served the open, which may be the
+        // redirect target. For a failed open there is no reliable final URL; use the origin.
+        health.recordFailure(servedByHost ?: host)
         val id = mediaId
         return if (id != null && googlevideoServerGroup(host) != null) {
             AudioCdnRefreshRequiredException(id, reason, failure)
@@ -240,6 +251,8 @@ internal class AudioCdnHostHealthDataSource(
 
     override fun close() {
         host = null
+        servedByHost = null
+        deliveredBytes = false
         mediaId = null
         upstream.close()
     }
