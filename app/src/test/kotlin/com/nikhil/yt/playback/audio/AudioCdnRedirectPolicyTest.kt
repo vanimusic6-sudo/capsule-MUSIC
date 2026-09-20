@@ -273,6 +273,22 @@ class AudioCdnRedirectShortcutTest {
     }
 
     @Test
+    fun `rate limiting on a shortcut reaches the global breaker without another request`() {
+        val targets = AudioCdnRedirectTargets()
+        val interceptor = AudioCdnRedirectInterceptor(targets)
+        val warm = ScriptedChain(requestFor(ORIGIN), listOf(redirectTo(SAME_GROUP), served()))
+        interceptor.intercept(warm).close()
+
+        val limited = ScriptedChain(requestFor(ORIGIN), listOf(refused(429)))
+        val response = interceptor.intercept(limited)
+        assertEquals(429, response.code)
+        response.close()
+        assertEquals(listOf(SAME_GROUP), limited.asked)
+        // A throttled target is not a bad signed link; keep its redirect mapping intact.
+        assertEquals(requestFor(SAME_GROUP).url, targets.shortcutFor(requestFor(ORIGIN).url))
+    }
+
+    @Test
     fun `a refused shortcut is dropped and the original asked instead`() {
         val targets = AudioCdnRedirectTargets()
         val interceptor = AudioCdnRedirectInterceptor(targets)
