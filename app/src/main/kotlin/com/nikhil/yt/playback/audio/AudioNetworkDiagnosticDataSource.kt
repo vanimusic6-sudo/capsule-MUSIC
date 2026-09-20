@@ -164,6 +164,7 @@ internal class AudioNetworkDiagnosticDataSource(
     private var worstReadMs = 0L
     private var mediaKey: String? = null
     private var host: String? = null
+    private var linkRef: String? = null
 
     override fun addTransferListener(transferListener: TransferListener) {
         upstream.addTransferListener(transferListener)
@@ -190,13 +191,15 @@ internal class AudioNetworkDiagnosticDataSource(
         worstReadMs = 0L
         mediaKey = dataSpec.key?.take(64)
         host = dataSpec.uri.host?.take(96)
+        linkRef = AudioCdnLinkIdentity.ref(dataSpec.uri.toString())
 
         Timber.tag(TAG).i(
-            "cdn-open-start id=%s host=%s position=%d length=%d",
+            "cdn-open-start id=%s host=%s position=%d length=%d linkRef=%s",
             mediaKey ?: "none",
             host ?: "unknown",
             dataSpec.position,
             dataSpec.length,
+            linkRef ?: "unknown",
         )
 
         return try {
@@ -229,10 +232,11 @@ internal class AudioNetworkDiagnosticDataSource(
                  */
                 Timber.tag(TAG).w(
                     failure,
-                    "cdn-open-failed id=%s linkHost=%s elapsedMs=%d %s",
+                    "cdn-open-failed id=%s linkHost=%s elapsedMs=%d linkRef=%s %s",
                     mediaKey ?: "none",
                     host ?: "unknown",
                     elapsedMs(startedAtNs, now),
+                    linkRef ?: "unknown",
                     describeRejection(failure, dataSpec.uri),
                 )
             }
@@ -363,6 +367,7 @@ internal class AudioNetworkDiagnosticDataSource(
             bytesRead = 0L
             slowReadCount = 0
             worstReadMs = 0L
+            linkRef = null
             mediaKey = null
             host = null
         }
