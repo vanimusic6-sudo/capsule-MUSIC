@@ -207,6 +207,16 @@ private fun ExoPlayer.logSelectedAudioOffloadCapability(trigger: String) {
 private const val AUDIO_RESUME_SLACK_MS = 250L
 
 /**
+ * How much decoded audio in front of the playhead rules out the sink having starved.
+ *
+ * The output buffer these reports come from is 1.5 seconds, so a few seconds ahead of it is
+ * already more than the sink can consume before more arrives. Five is comfortably clear of the
+ * genuine case on record, which reported zero, and far below the 33 to 102 seconds the false
+ * ones were sitting on.
+ */
+internal const val AUDIO_UNDERRUN_STARVED_BUFFER_MS = 5_000L
+
+/**
  * Whether an underrun report is the sink being picked up again rather than audio breaking.
  *
  * Media3 raises onAudioUnderrun from the audio sink and hands it the time since the sink was last
@@ -222,12 +232,30 @@ private const val AUDIO_RESUME_SLACK_MS = 250L
  *
  * With no known start — a report before playback was ever seen to begin — there is nothing to
  * compare against, and it is treated as an artefact rather than raised as a fault on no evidence.
+ *
+ * That comparison alone was not enough, and the doc above admits it without noticing: the two it
+ * accepted as real had "three and a half minutes of audio sat decoded and waiting", which is not
+ * something a starved decoder has. It only catches a pause that happened before playback had got
+ * going. Pause a track twenty minutes in and resume it, and the gap is shorter than the time
+ * playback has been running, so the report passes — a later capture raised seven of these, naming
+ * gaps of 346 s, 104 s, 140 s, 143 s and 271 s while 33 to 102 seconds of audio sat buffered.
+ *
+ * So the buffer is consulted too, and it is the stronger test of the two: an audio sink cannot
+ * run dry for want of data that is already decoded and waiting in front of the playhead. Below
+ * [AUDIO_UNDERRUN_STARVED_BUFFER_MS] ahead, a report is taken at its word.
+ *
+ * The buffer is read when the report is logged rather than when the sink raised it, a few
+ * microseconds later. Tens of seconds of audio cannot appear in that window, so the reading
+ * cannot manufacture an artefact; it could in principle hide a real underrun that refilled
+ * instantly, which is why the threshold is seconds rather than tens of them.
  */
 internal fun isAudioResumeArtefact(
     elapsedSinceLastFeedMs: Long,
     playingForMs: Long?,
+    bufferedAheadMs: Long = 0L,
 ): Boolean {
     if (elapsedSinceLastFeedMs <= 0L) return true
+    if (bufferedAheadMs >= AUDIO_UNDERRUN_STARVED_BUFFER_MS) return true
     val playingFor = playingForMs ?: return true
     return elapsedSinceLastFeedMs > playingFor + AUDIO_RESUME_SLACK_MS
 }
@@ -329,13 +357,16 @@ private fun ExoPlayer.ensureCapsuleOffloadDiagnostics(): Boolean {
                         if (bufferSizeMs == C.TIME_UNSET) "unset" else bufferSizeMs.toString()
                     val playingForMs =
                         playingSinceElapsedMs?.let { SystemClock.elapsedRealtime() - it }
-                    if (isAudioResumeArtefact(elapsedSinceLastFeedMs, playingForMs)) {
+                    val bufferedAheadMs = player.bufferedAheadMs()
+                    if (isAudioResumeArtefact(elapsedSinceLastFeedMs, playingForMs, bufferedAheadMs)) {
                         Timber.tag("PlaybackHealth").d(
-                            "audio-resume-after-idle id=%s posMs=%d idleMs=%d playingForMs=%d",
+                            "audio-resume-after-idle id=%s posMs=%d idleMs=%d playingForMs=%d " +
+                                "bufferedAheadMs=%d",
                             player.currentMediaItem?.mediaId,
                             player.currentPosition,
                             elapsedSinceLastFeedMs,
                             playingForMs ?: -1L,
+                            bufferedAheadMs,
                         )
                         return
                     }
@@ -344,7 +375,7 @@ private fun ExoPlayer.ensureCapsuleOffloadDiagnostics(): Boolean {
                             "bufferBytes=%d outputBufferMs=%s elapsedSinceLastFeedMs=%d playingForMs=%d",
                         player.currentMediaItem?.mediaId,
                         player.currentPosition,
-                        player.bufferedAheadMs(),
+                        bufferedAheadMs,
                         player.totalBufferedDuration,
                         player.isLoading,
                         bufferSize,
