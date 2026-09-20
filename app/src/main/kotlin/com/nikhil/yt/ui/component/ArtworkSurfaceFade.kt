@@ -9,9 +9,14 @@ import androidx.compose.ui.graphics.Color
 
 /** The photograph supplies the colour; both headers dissolve into the exact page surface. */
 @Composable
-internal fun ArtworkSurfaceFade(background: Color, modifier: Modifier = Modifier, portrait: Boolean = false) {
+internal fun ArtworkSurfaceFade(
+    background: Color,
+    modifier: Modifier = Modifier,
+    portrait: Boolean = false,
+    topScrim: Boolean = true,
+) {
     Box(modifier.drawWithCache {
-        val navigationScrim = if (portrait) Brush.verticalGradient(
+        val navigationScrim = if (!topScrim) null else if (portrait) Brush.verticalGradient(
             0f to background,
             0.035f to background.copy(alpha = 0.94f),
             0.085f to background.copy(alpha = 0.58f),
@@ -45,7 +50,7 @@ internal fun ArtworkSurfaceFade(background: Color, modifier: Modifier = Modifier
             1f to background,
         )
         onDrawBehind {
-            drawRect(navigationScrim)
+            navigationScrim?.let { drawRect(it) }
             drawRect(surfaceFade)
         }
     })
