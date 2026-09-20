@@ -543,13 +543,16 @@ fun OnlinePlaylistScreen(
         )
 
         // Top App Bar
+        // Same overlay behaviour as AlbumScreen: cover reaches the top and the toolbar
+        // becomes solid only after its header scrolls away (or while searching/selecting).
+        val showPlaylistHero = lazyListState.firstVisibleItemIndex == 0 && !selection && !isSearching
         CenterAlignedTopAppBar(
             colors = TopAppBarDefaults.topAppBarColors(
-                containerColor = surfaceColor,
-                scrolledContainerColor = surfaceColor,
-                titleContentColor = StandardChrome.text,
-                navigationIconContentColor = StandardChrome.text,
-                actionIconContentColor = StandardChrome.text,
+                containerColor = if (showPlaylistHero) Color.Transparent else surfaceColor,
+                scrolledContainerColor = if (showPlaylistHero) Color.Transparent else surfaceColor,
+                titleContentColor = if (showPlaylistHero) Color.White else StandardChrome.text,
+                navigationIconContentColor = if (showPlaylistHero) Color.White else StandardChrome.text,
+                actionIconContentColor = if (showPlaylistHero) Color.White else StandardChrome.text,
             ),
             title = {
                 if (selection) {
@@ -582,7 +585,7 @@ fun OnlinePlaylistScreen(
                         modifier = Modifier.fillMaxWidth().focusRequester(focusRequester)
                     )
                 } else {
-                    Text(playlist?.title.orEmpty(), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    if (!showPlaylistHero) Text(playlist?.title.orEmpty(), maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
             },
             navigationIcon = {
