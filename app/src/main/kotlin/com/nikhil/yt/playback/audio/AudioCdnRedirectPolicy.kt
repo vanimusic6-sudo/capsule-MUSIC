@@ -83,16 +83,57 @@ internal fun isCrossGroupGooglevideoRedirect(
  * a host that genuinely handed its work over into a track that never plays, and two thirds odds
  * are still much better than none.
  */
-internal class AudioCdnRedirectInterceptor : Interceptor {
+internal class AudioCdnRedirectInterceptor(
+    private val targets: AudioCdnRedirectTargets = AudioCdnRedirectTargets(),
+) : Interceptor {
     override fun intercept(chain: Interceptor.Chain): Response {
         val origin = chain.request()
-        var request = origin
+
+        /*
+         * A track is read a megabyte at a time and every slice is built from the same link, so
+         * without this every slice asks a question the first one already had answered. Going
+         * straight to where the last slice landed removes a request, and with it a connection:
+         * a redirect arrives with no length and no chunked framing, so it always costs the
+         * socket, and a socket's first request is where every refusal in every capture has
+         * landed.
+         */
+        val shortcut = targets.shortcutFor(origin.url)
+        var request = if (shortcut != null) origin.newBuilder().url(shortcut).build() else origin
+        var usingShortcut = shortcut != null
         var extraRequests = 0
         var reissues = 0
 
         while (true) {
             val response = chain.proceed(request)
-            val target = redirectTargetOf(request, response) ?: return response
+
+            /*
+             * A remembered link that is refused is forgotten at once and the original asked
+             * instead. Otherwise one stale target could turn a single refusal into every slice
+             * of the track being refused, which is a far worse failure than the redirect this
+             * is saving.
+             */
+            if (usingShortcut && isCdnRefusalStatus(response.code)) {
+                response.close()
+                targets.forget(origin.url)
+                if (GlobalLog.isEnabled) {
+                    Timber.tag("AudioCDN").w(
+                        "cdn-shortcut-refused host=%s code=%d; asking the original link again",
+                        request.url.host,
+                        response.code,
+                    )
+                }
+                usingShortcut = false
+                extraRequests += 1
+                request = origin
+                continue
+            }
+
+            val target = redirectTargetOf(request, response)
+            if (target == null) {
+                // Where this landed is worth remembering only once it has actually served.
+                if (!isCdnRefusalStatus(response.code)) targets.remember(origin.url, request.url)
+                return response
+            }
 
             if (extraRequests >= AUDIO_CDN_MAX_EXTRA_REQUESTS) {
                 response.close()
@@ -104,6 +145,9 @@ internal class AudioCdnRedirectInterceptor : Interceptor {
                     isCrossGroupGooglevideoRedirect(request.url.host, target.host)
             response.close()
             extraRequests += 1
+            // Once the chain has moved off the remembered link, a later refusal belongs to
+            // wherever it has got to, not to the shortcut, and must not un-remember it twice.
+            usingShortcut = false
 
             request =
                 if (decline) {

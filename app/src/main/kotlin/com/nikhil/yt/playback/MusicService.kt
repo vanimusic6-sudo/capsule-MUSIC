@@ -199,6 +199,7 @@ import com.nikhil.yt.playback.audio.AudioCacheSource
 import com.nikhil.yt.playback.audio.AudioNetworkDiagnosticDataSource
 import com.nikhil.yt.playback.audio.AudioCdnConnectionDiagnosticInterceptor
 import com.nikhil.yt.playback.audio.AudioCdnConnectionLedger
+import com.nikhil.yt.playback.audio.AudioCdnRedirectTargets
 import com.nikhil.yt.playback.audio.AudioCdnHostHealth
 import com.nikhil.yt.playback.audio.AudioCdnHostHealthDataSource
 import com.nikhil.yt.playback.audio.audioCdnRefreshRequiredOrNull
@@ -918,6 +919,9 @@ class MusicService :
     /** How long each googlevideo connection has been up, and how much it has carried. */
     private val audioCdnConnectionLedger = AudioCdnConnectionLedger()
 
+    /** Where each signed link actually ends up, so later slices skip the redirect. */
+    private val audioCdnRedirectTargets = AudioCdnRedirectTargets()
+
     private val mediaOkHttpClient: OkHttpClient by lazy {
         OkHttpClient
             .Builder()
@@ -1414,6 +1418,7 @@ class MusicService :
                 audioCdnHostHealth.forget()
                 authWallDetector.forget()
                 audioCdnConnectionLedger.forget()
+                audioCdnRedirectTargets.forgetAll()
                 audioResolveCoordinator.invalidatePolicy(
                     invalidatePrefetch = true,
                     onInvalidate = playbackUrlCache::clear,
@@ -3755,7 +3760,7 @@ class MusicService :
                 .followRedirects(false)
                 .followSslRedirects(false)
                 .addInterceptor(CapsuleAudioRequestInterceptor(guardStreams = true))
-                .addInterceptor(AudioCdnRedirectInterceptor())
+                .addInterceptor(AudioCdnRedirectInterceptor(targets = audioCdnRedirectTargets))
                 .addNetworkInterceptor(
                     AudioCdnConnectionDiagnosticInterceptor(ledger = audioCdnConnectionLedger),
                 )

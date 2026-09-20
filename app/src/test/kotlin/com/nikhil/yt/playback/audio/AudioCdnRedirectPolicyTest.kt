@@ -214,3 +214,178 @@ class AudioCdnRedirectPolicyTest {
         assertEquals(AUDIO_CDN_MAX_EXTRA_REQUESTS + 1, chain.asked.size)
     }
 }
+
+private fun refused(code: Int = 403): (Request) -> Response = { request ->
+    Response.Builder()
+        .request(request)
+        .protocol(Protocol.HTTP_1_1)
+        .code(code)
+        .message("Forbidden")
+        .body("".toResponseBody())
+        .build()
+}
+
+/**
+ * Going straight to where the last slice landed.
+ *
+ * A track is read a megabyte at a time and every slice is built from the same link, so each one
+ * used to re-ask a question the first slice had already had answered. The redirect that answers
+ * it is never free: it carries no length and no chunked framing, so it ends the connection, and a
+ * connection's first request is where every refusal in every capture has landed.
+ */
+class AudioCdnRedirectShortcutTest {
+    @Test
+    fun `the second slice goes straight to where the first one landed`() {
+        val targets = AudioCdnRedirectTargets()
+        val interceptor = AudioCdnRedirectInterceptor(targets)
+
+        val first = ScriptedChain(requestFor(ORIGIN), listOf(redirectTo(SAME_GROUP), served()))
+        interceptor.intercept(first).close()
+        assertEquals(listOf(ORIGIN, SAME_GROUP), first.asked)
+
+        val second = ScriptedChain(requestFor(ORIGIN), listOf(served()))
+        interceptor.intercept(second).close()
+
+        assertEquals("the redirect was paid for twice", listOf(SAME_GROUP), second.asked)
+    }
+
+    @Test
+    fun `a link that never redirected is not rewritten`() {
+        val targets = AudioCdnRedirectTargets()
+        val interceptor = AudioCdnRedirectInterceptor(targets)
+
+        val first = ScriptedChain(requestFor(ORIGIN), listOf(served()))
+        interceptor.intercept(first).close()
+
+        val second = ScriptedChain(requestFor(ORIGIN), listOf(served()))
+        interceptor.intercept(second).close()
+
+        assertEquals(listOf(ORIGIN), second.asked)
+    }
+
+    @Test
+    fun `a refused shortcut is dropped and the original asked instead`() {
+        val targets = AudioCdnRedirectTargets()
+        val interceptor = AudioCdnRedirectInterceptor(targets)
+
+        val first = ScriptedChain(requestFor(ORIGIN), listOf(redirectTo(SAME_GROUP), served()))
+        interceptor.intercept(first).close()
+
+        // The remembered link has gone stale. The slice must still be served.
+        val second = ScriptedChain(requestFor(ORIGIN), listOf(refused(), served()))
+        val response = interceptor.intercept(second)
+        response.close()
+
+        assertEquals(206, response.code)
+        assertEquals(listOf(SAME_GROUP, ORIGIN), second.asked)
+    }
+
+    @Test
+    fun `a shortcut that has failed once is not tried again`() {
+        val targets = AudioCdnRedirectTargets()
+        val interceptor = AudioCdnRedirectInterceptor(targets)
+
+        val first = ScriptedChain(requestFor(ORIGIN), listOf(redirectTo(SAME_GROUP), served()))
+        interceptor.intercept(first).close()
+        val second = ScriptedChain(requestFor(ORIGIN), listOf(refused(), served()))
+        interceptor.intercept(second).close()
+
+        // One stale target must never turn a single refusal into every slice being refused.
+        val third = ScriptedChain(requestFor(ORIGIN), listOf(served()))
+        interceptor.intercept(third).close()
+
+        assertEquals(listOf(ORIGIN), third.asked)
+    }
+
+    @Test
+    fun `a refusal on the original link is still handed back to the caller`() {
+        val targets = AudioCdnRedirectTargets()
+        val interceptor = AudioCdnRedirectInterceptor(targets)
+
+        val chain = ScriptedChain(requestFor(ORIGIN), listOf(refused()))
+        val response = interceptor.intercept(chain)
+        response.close()
+
+        // Nothing was remembered, so nothing is retried: the refusal belongs to the caller's
+        // own bounded retry, which counts attempts and gives up.
+        assertEquals(403, response.code)
+        assertEquals(listOf(ORIGIN), chain.asked)
+    }
+
+    @Test
+    fun `a refused link is never remembered`() {
+        val targets = AudioCdnRedirectTargets()
+        val interceptor = AudioCdnRedirectInterceptor(targets)
+
+        val first = ScriptedChain(requestFor(ORIGIN), listOf(redirectTo(SAME_GROUP), refused()))
+        interceptor.intercept(first).close()
+
+        val second = ScriptedChain(requestFor(ORIGIN), listOf(served()))
+        interceptor.intercept(second).close()
+
+        assertEquals(listOf(ORIGIN), second.asked)
+    }
+
+    @Test
+    fun `declining a cross-group redirect still asks the true original`() {
+        val targets = AudioCdnRedirectTargets()
+        val interceptor = AudioCdnRedirectInterceptor(targets)
+
+        val first = ScriptedChain(requestFor(ORIGIN), listOf(redirectTo(SAME_GROUP), served()))
+        interceptor.intercept(first).close()
+
+        // Now the remembered link starts sending us out of the group.
+        val second =
+            ScriptedChain(requestFor(ORIGIN), listOf(redirectTo(OTHER_GROUP), served()))
+        interceptor.intercept(second).close()
+
+        assertEquals(listOf(SAME_GROUP, ORIGIN), second.asked)
+    }
+
+    @Test
+    fun `a route change forgets every remembered link`() {
+        val targets = AudioCdnRedirectTargets()
+        val interceptor = AudioCdnRedirectInterceptor(targets)
+
+        val first = ScriptedChain(requestFor(ORIGIN), listOf(redirectTo(SAME_GROUP), served()))
+        interceptor.intercept(first).close()
+
+        targets.forgetAll()
+
+        val second = ScriptedChain(requestFor(ORIGIN), listOf(served()))
+        interceptor.intercept(second).close()
+
+        assertEquals(listOf(ORIGIN), second.asked)
+    }
+
+    @Test
+    fun `a redirect that points at itself is not worth remembering`() {
+        val targets = AudioCdnRedirectTargets()
+        targets.remember(requestFor(ORIGIN).url, requestFor(ORIGIN).url)
+
+        assertNull(targets.shortcutFor(requestFor(ORIGIN).url))
+    }
+
+    @Test
+    fun `the memory cannot grow without bound`() {
+        val targets = AudioCdnRedirectTargets(capacity = 4)
+        for (n in 1..64) {
+            targets.remember(
+                requestFor("https://rr1---sn-ajixh5-55.googlevideo.com/videoplayback?id=$n").url,
+                requestFor(SAME_GROUP).url,
+            )
+        }
+
+        assertNull(
+            targets.shortcutFor(
+                requestFor("https://rr1---sn-ajixh5-55.googlevideo.com/videoplayback?id=1").url,
+            ),
+        )
+        assertEquals(
+            requestFor(SAME_GROUP).url,
+            targets.shortcutFor(
+                requestFor("https://rr1---sn-ajixh5-55.googlevideo.com/videoplayback?id=64").url,
+            ),
+        )
+    }
+}
