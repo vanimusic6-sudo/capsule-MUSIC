@@ -472,13 +472,16 @@ fun AutoPlaylistScreen(
             headerItems = headerItems
         )
 
+        // Same overlay behaviour as AlbumScreen: cover reaches the top and the toolbar
+        // becomes solid only after its header scrolls away (or while searching/selecting).
+        val showPlaylistHero = lazyListState.firstVisibleItemIndex == 0 && !selection && !isSearching
         CenterAlignedTopAppBar(
             colors = TopAppBarDefaults.topAppBarColors(
-                containerColor = surfaceColor,
-                scrolledContainerColor = surfaceColor,
-                titleContentColor = StandardChrome.text,
-                navigationIconContentColor = StandardChrome.text,
-                actionIconContentColor = StandardChrome.text,
+                containerColor = if (showPlaylistHero) Color.Transparent else surfaceColor,
+                scrolledContainerColor = if (showPlaylistHero) Color.Transparent else surfaceColor,
+                titleContentColor = if (showPlaylistHero) Color.White else StandardChrome.text,
+                navigationIconContentColor = if (showPlaylistHero) Color.White else StandardChrome.text,
+                actionIconContentColor = if (showPlaylistHero) Color.White else StandardChrome.text,
             ),
             title = {
                 when {
@@ -515,7 +518,7 @@ fun AutoPlaylistScreen(
                         )
                     }
                     else -> {
-                        Text(
+                        if (!showPlaylistHero) Text(
                             text = playlist,
                             maxLines = 1, overflow = TextOverflow.Ellipsis,
                             style = MaterialTheme.typography.titleLarge
