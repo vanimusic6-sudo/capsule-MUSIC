@@ -119,7 +119,16 @@ internal class AudioCdnRedirectInterceptor(
          * landed.
          */
         val shortcut = targets.shortcutFor(origin.url)
-        var request = if (shortcut != null) origin.newBuilder().url(shortcut).build() else origin
+        // Keep the same anonymous link reference through every redirect/shortcut. A 403 after
+        // a redirect is a response from that destination, not necessarily the issuing host.
+        val trace = if (GlobalLog.isEnabled) {
+            AudioCdnRequestTrace(
+                originalUrl = origin.url,
+                linkRef = AudioCdnLinkIdentity.ref(origin.url.toString()),
+            )
+        } else null
+        var request = (if (shortcut != null) origin.newBuilder().url(shortcut).build() else origin)
+            .newBuilder().tag(AudioCdnRequestTrace::class.java, trace).build()
         var usingShortcut = shortcut != null
         var extraRequests = 0
         var reissues = 0
