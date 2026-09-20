@@ -23,6 +23,8 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -222,7 +224,8 @@ fun OnlinePlaylistScreen(
         LazyColumn(
             state = lazyListState,
             contentPadding =
-                LocalPlayerAwareWindowInsets.current.union(WindowInsets.ime).asPaddingValues(),
+                LocalPlayerAwareWindowInsets.current.union(WindowInsets.ime)
+                    .only(WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom).asPaddingValues(),
         ) {
             playlist.let { playlist ->
                 if (isLoading) {
@@ -230,6 +233,7 @@ fun OnlinePlaylistScreen(
                     item(key = "shimmer") {
                         ShimmerHost {
                         PlaylistHero(
+                            title = playlist?.title.orEmpty(),
                             thumbnails = listOfNotNull(playlist?.thumbnail),
                             songCount = stringResource(R.string.loading),
                             loading = true,
@@ -246,6 +250,7 @@ fun OnlinePlaylistScreen(
                         // Hero Header
                         item(key = "header") {
                             PlaylistHero(
+                                title = playlist.title,
                                 thumbnails = listOfNotNull(playlist.thumbnail),
                                 songCount = playlist.songCountText ?: pluralStringResource(R.plurals.n_song, songs.size, songs.size),
                                 subtitle = {
