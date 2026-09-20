@@ -125,6 +125,20 @@ private fun describeRejection(failure: Throwable, uri: Uri): String {
 }
 
 /**
+ * Whether a read was slow in a way that says something about the server.
+ *
+ * Both halves matter. A read that returns quickly is not evidence of throttling however little it
+ * moved, and a read that waited a long time for a handful of bytes is evidence about the player's
+ * appetite rather than the network's pace.
+ */
+internal fun isSlowAudioRead(
+    readMs: Long,
+    requestedBytes: Int,
+    thresholdMs: Long = 250L,
+    minRequestedBytes: Int = 16 * 1024,
+): Boolean = readMs >= thresholdMs && requestedBytes >= minRequestedBytes
+
+/**
  * Debug-only timing around the real AUDIO network upstream.
  *
  * The wrapper deliberately logs only host/key/timings and never the resolved
@@ -132,9 +146,9 @@ private fun describeRejection(failure: Throwable, uri: Uri): String {
  * logging is disabled it becomes a thin pass-through: no timestamps, strings,
  * counters, or diagnostic allocations are produced.
  *
- * Successful reads that block for at least [SLOW_READ_THRESHOLD_MS] are also
- * reported. A CDN can stall long enough to starve AudioTrack and still return
- * bytes successfully, so relying only on exceptions would miss the real stall.
+ * Successful reads that [isSlowAudioRead] judges slow are also reported. A CDN
+ * can stall long enough to starve AudioTrack and still return bytes
+ * successfully, so relying only on exceptions would miss the real stall.
  */
 internal class AudioNetworkDiagnosticDataSource(
     private val upstream: DataSource,
@@ -255,7 +269,13 @@ internal class AudioNetworkDiagnosticDataSource(
                     )
                 }
 
-                if (readMs >= SLOW_READ_THRESHOLD_MS) {
+                if (isSlowAudioRead(
+                        readMs = readMs,
+                        requestedBytes = length,
+                        thresholdMs = SLOW_READ_THRESHOLD_MS,
+                        minRequestedBytes = SLOW_READ_MIN_REQUESTED_BYTES,
+                    )
+                ) {
                     slowReadCount += 1
                     worstReadMs = maxOf(worstReadMs, readMs)
                     /*
@@ -358,6 +378,21 @@ internal class AudioNetworkDiagnosticDataSource(
     private companion object {
         const val TAG = "AudioCDN"
         const val SLOW_READ_THRESHOLD_MS = 250L
+
+        /**
+         * How much a read has to have asked for before its duration says anything about the host.
+         *
+         * A capture raised eight of these warnings and not one was a slow server: the reads asked
+         * for 19, 54, 152, 211, 248, 249, 313 and 327 bytes. A read that asks for a few dozen
+         * bytes and waits a quarter of a second is describing when the player wanted them, not
+         * how fast the far end can send — the same confusion between "what was asked for" and
+         * "what arrived per second" that this file's own history has already been caught in once.
+         *
+         * Sixteen kilobytes is a real buffer. The throttled stream this warning exists to catch
+         * asks for a full buffer and dribbles it back, so it still trips; the tail-end dribble at
+         * the end of a chunk no longer does.
+         */
+        const val SLOW_READ_MIN_REQUESTED_BYTES = 16 * 1024
 
         fun elapsedMs(startNs: Long, endNs: Long): Long =
             if (startNs == 0L || endNs < startNs) -1L else (endNs - startNs) / 1_000_000L

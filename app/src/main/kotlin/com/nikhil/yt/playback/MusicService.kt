@@ -259,6 +259,7 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.withContext
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
+import okhttp3.ConnectionPool
 import okhttp3.OkHttpClient
 import timber.log.Timber
 import java.io.InterruptedIOException
@@ -297,6 +298,25 @@ internal const val SIGNED_URL_CIPHER_REFRESH_THRESHOLD_MS = 3_000L
  * that repeatedly fail. Neither path resets the shared automatic retry budget.
  */
 internal const val AUDIO_CDN_TIMEOUT_SECONDS = 15L
+
+/**
+ * How long an idle googlevideo connection is kept before this app drops it.
+ *
+ * Shorter than the server keeps it, which is the entire point. OkHttp's default is five minutes;
+ * googlevideo's is about one. A capture caught both ends of that mismatch — two
+ * ConnectionResetExceptions, on connections aged 61.1 s and 62.4 s, and nothing reset below that.
+ * Holding a socket the far end has already closed does not save a handshake, it spends a failed
+ * round trip discovering the socket is dead and then does the handshake anyway.
+ *
+ * Fifty seconds leaves ten of margin under the observed floor. The cost of being wrong in this
+ * direction is one extra handshake; the cost of being wrong in the other is what the capture
+ * shows, and it lands on exactly the resume-after-a-pause case that has been the complaint from
+ * the start.
+ */
+internal const val AUDIO_CDN_IDLE_CONNECTION_SECONDS = 50L
+
+/** How many idle googlevideo sockets are worth keeping. OkHttp's default; a track uses one. */
+internal const val AUDIO_CDN_IDLE_CONNECTIONS = 5
 internal const val SIGNED_URL_MAX_FRESH_RESOLVE_DELAY_MS = 3_000L
 
 /**
@@ -921,6 +941,21 @@ class MusicService :
 
     /** Where each signed link actually ends up, so later slices skip the redirect. */
     private val audioCdnRedirectTargets = AudioCdnRedirectTargets()
+
+    /**
+     * The audio client's own connection pool, held here so it survives a player rebuild.
+     *
+     * The player is rebuilt from more than one place, and a pool created alongside it would be a
+     * new pool each time — which is not a pool. See AUDIO_CDN_IDLE_CONNECTION_SECONDS for why the
+     * shared default one is not used.
+     */
+    private val audioCdnConnectionPool by lazy(LazyThreadSafetyMode.NONE) {
+        ConnectionPool(
+            maxIdleConnections = AUDIO_CDN_IDLE_CONNECTIONS,
+            keepAliveDuration = AUDIO_CDN_IDLE_CONNECTION_SECONDS,
+            timeUnit = TimeUnit.SECONDS,
+        )
+    }
 
     private val mediaOkHttpClient: OkHttpClient by lazy {
         OkHttpClient
@@ -3754,9 +3789,14 @@ class MusicService :
                 // a group is AudioCdnHostHealth's job on evidence, not this stopwatch's.
                 .connectTimeout(AUDIO_CDN_TIMEOUT_SECONDS, TimeUnit.SECONDS)
                 .readTimeout(AUDIO_CDN_TIMEOUT_SECONDS, TimeUnit.SECONDS)
-                // Redirects are followed by AudioCdnRedirectInterceptor instead, which declines the
-                // ones that would carry a signed link out of the group that issued it. Every failed
-                // open in the capture that found this was on the hop after such a redirect.
+                // A pool of this app's own, because the shared default outlives what googlevideo
+                // keeps a socket open for. See AUDIO_CDN_IDLE_CONNECTION_SECONDS.
+                .connectionPool(audioCdnConnectionPool)
+                // Redirects are followed by AudioCdnRedirectInterceptor instead, which declines
+                // the ones that would carry a signed link out of the group that issued it. In the
+                // capture that found this, every failed open was on the hop after a redirect;
+                // later captures showed refusals arriving on direct requests too, so this is one
+                // cause of them rather than the only one.
                 .followRedirects(false)
                 .followSslRedirects(false)
                 .addInterceptor(CapsuleAudioRequestInterceptor(guardStreams = true))

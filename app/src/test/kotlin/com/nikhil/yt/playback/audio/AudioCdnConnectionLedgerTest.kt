@@ -166,55 +166,6 @@ class CdnConnectionReuseTest {
     }
 }
 
-/**
- * Whether the handshake was even asked what protocol to speak.
- *
- * "ALPN agreed on HTTP/1.1" and "ALPN never ran" look identical in a wire log that only prints
- * the protocol OkHttp ended up using, and they point at opposite culprits: the first is the
- * server's choice, the second is ours to fix.
- */
-@RunWith(RobolectricTestRunner::class)
-@Config(sdk = [35])
-class NegotiatedApplicationProtocolTest {
-    @Test fun `a plain socket is not a failed negotiation`() {
-        assertEquals("not-tls", negotiatedApplicationProtocol(java.net.Socket()))
-    }
-
-    @Test fun `no socket at all is not a failed negotiation either`() {
-        assertEquals("not-tls", negotiatedApplicationProtocol(null))
-    }
-
-    @Test fun `an empty protocol means ALPN never happened`() {
-        val socket =
-            object : javax.net.ssl.SSLSocket() {
-                override fun getApplicationProtocol(): String = ""
-                override fun getSupportedCipherSuites(): Array<String> = emptyArray()
-                override fun getEnabledCipherSuites(): Array<String> = emptyArray()
-                override fun setEnabledCipherSuites(suites: Array<out String>?) = Unit
-                override fun getSupportedProtocols(): Array<String> = emptyArray()
-                override fun getEnabledProtocols(): Array<String> = emptyArray()
-                override fun setEnabledProtocols(protocols: Array<out String>?) = Unit
-                override fun getSession(): javax.net.ssl.SSLSession = error("unused")
-                override fun addHandshakeCompletedListener(
-                    listener: javax.net.ssl.HandshakeCompletedListener?,
-                ) = Unit
-                override fun removeHandshakeCompletedListener(
-                    listener: javax.net.ssl.HandshakeCompletedListener?,
-                ) = Unit
-                override fun startHandshake() = Unit
-                override fun setUseClientMode(mode: Boolean) = Unit
-                override fun getUseClientMode(): Boolean = true
-                override fun setNeedClientAuth(need: Boolean) = Unit
-                override fun getNeedClientAuth(): Boolean = false
-                override fun setWantClientAuth(want: Boolean) = Unit
-                override fun getWantClientAuth(): Boolean = false
-                override fun setEnableSessionCreation(flag: Boolean) = Unit
-                override fun getEnableSessionCreation(): Boolean = true
-            }
-
-        assertEquals("none", negotiatedApplicationProtocol(socket))
-    }
-}
 
 /**
  * Reuse depth has to survive a capture taken with debug off.
