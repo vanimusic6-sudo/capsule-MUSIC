@@ -4176,7 +4176,10 @@ class MusicService :
                             Result.success(awaitForegroundAudioResolve(
                                 isRelevant = {
                                     withContext(Dispatchers.Main.immediate) {
-                                        mediaId == player.currentMediaItem?.mediaId || mediaId in upcomingAudioIds()
+                                        // The loader must use the SAME relevance rule as
+                                        // the resolver and CDN open gate. A just-skipped item
+                                        // becoming 'upcoming' must not retain foreground demand.
+                                        isAudioNetworkSelectionRelevant(mediaId)
                                     }
                                 },
                                 resolve = {
