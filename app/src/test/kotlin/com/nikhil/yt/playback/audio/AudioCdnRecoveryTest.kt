@@ -159,10 +159,11 @@ class AudioCdnRecoveryTest {
             assertSame(refusal, assertThrows(IOException::class.java) { source.open(spec) })
             assertFalse(refusal.isAudioCdnTransportFailure())
             source.close()
-            if (code == 429) {
-                repeat(3) { runCatching { source.open(spec) }; source.close() }
-                repeat(2) { assertFalse(health.shouldSkipHost(host)) }
-            }
+            // A repeatedly refused signed link must never mark its whole CDN group dead.
+            // This used to happen for 403/410 after the chunk layer repeated position=0 three
+            // times, suppressing a perfectly usable host for the next unrelated track.
+            repeat(3) { runCatching { source.open(spec) }; source.close() }
+            repeat(2) { assertFalse("HTTP $code condemned a healthy CDN group", health.shouldSkipHost(host)) }
         }
     }
 
