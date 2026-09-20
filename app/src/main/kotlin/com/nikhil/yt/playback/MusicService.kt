@@ -939,6 +939,113 @@ class MusicService :
         )
     }
     private var streamRetryJob: Job? = null
+
+    /** One low-frequency check only while the foreground AUDIO item remains BUFFERING. */
+    private var audioBufferStallWatchJob: Job? = null
+    private var audioBufferStallWatchMediaId: String? = null
+    private var audioBufferStallWatchGeneration = -1L
+    private var audioBufferLastReadyMediaId: String? = null
+    /** Separate from the normal retry budget: a slow-but-live CDN must not cause endless refreshes. */
+    private val audioBufferStallRefreshes = LinkedHashMap<String, Int>()
+
+    private fun updateAudioBufferStallWatch() {
+        val mediaId = player.currentMediaItem?.mediaId
+        val eligible = mediaId != null &&
+            player.playbackState == Player.STATE_BUFFERING &&
+            player.playWhenReady &&
+            !isCurrentCapsuleVideoItem() &&
+            !suppressAutoPlayback &&
+            isNetworkConnected.value &&
+            CapsuleAudioEngine.playbackBlockedExceptionOrNull() == null
+
+        if (!eligible) {
+            audioBufferStallWatchJob?.cancel()
+            audioBufferStallWatchJob = null
+            audioBufferStallWatchMediaId = null
+            return
+        }
+        val id = requireNotNull(mediaId)
+        val generation = playbackPositionGeneration.snapshot()
+        if (audioBufferStallWatchJob?.isActive == true &&
+            audioBufferStallWatchMediaId == id &&
+            audioBufferStallWatchGeneration == generation
+        ) return
+
+        audioBufferStallWatchJob?.cancel()
+        audioBufferStallWatchMediaId = id
+        audioBufferStallWatchGeneration = generation
+        val itemIndex = player.currentMediaItemIndex
+        val firstWaitMs = if (audioBufferLastReadyMediaId == id) {
+            AudioBufferStallPolicy.REBUFFER_WAIT_MS
+        } else {
+            AudioBufferStallPolicy.INITIAL_WAIT_MS
+        }
+        audioBufferStallWatchJob = scope.launch {
+            delay(firstWaitMs)
+            while (true) {
+                // Measure whether the source actually gained a playable cushion, not whether a
+                // socket happens to be open. A CDN can keep drip-feeding bytes forever without
+                // throwing an HTTP error, leaving Media3 waiting with an empty buffer.
+                val beforeBufferedPositionMs = player.bufferedPosition
+                delay(AudioBufferStallPolicy.SAMPLE_WINDOW_MS)
+                if (player.currentMediaItem?.mediaId != id ||
+                    player.currentMediaItemIndex != itemIndex ||
+                    !playbackPositionGeneration.isCurrent(generation)
+                ) return@launch
+
+                val bufferedAheadMs = player.totalBufferedDuration.coerceAtLeast(0L)
+                val growthMs = (player.bufferedPosition - beforeBufferedPositionMs).coerceAtLeast(0L)
+                if (!AudioBufferStallPolicy.shouldRefresh(
+                        buffering = player.playbackState == Player.STATE_BUFFERING,
+                        playWhenReady = player.playWhenReady,
+                        connected = isNetworkConnected.value,
+                        blocked = CapsuleAudioEngine.playbackBlockedExceptionOrNull() != null,
+                        isVideo = isCurrentCapsuleVideoItem(),
+                        bufferedAheadMs = bufferedAheadMs,
+                        bufferedGrowthMs = growthMs,
+                    )
+                ) {
+                    if (player.playbackState != Player.STATE_BUFFERING ||
+                        !player.playWhenReady || !isNetworkConnected.value
+                    ) return@launch
+                    delay(AudioBufferStallPolicy.REBUFFER_WAIT_MS)
+                    continue
+                }
+                if (playbackRecoveryCoordinator.waitingForNetworkConnection.value ||
+                    streamRetryJob?.isActive == true
+                ) return@launch
+                val attempts = audioBufferStallRefreshes[id] ?: 0
+                if (attempts >= AudioBufferStallPolicy.MAX_AUTOMATIC_REFRESHES_PER_TRACK) {
+                    Timber.tag("PlaybackRecovery").w(
+                        "audio-buffer-stall bounded id=%s attempts=%d aheadMs=%d growthMs=%d",
+                        id, attempts, bufferedAheadMs, growthMs,
+                    )
+                    return@launch
+                }
+                val delayMs = playbackRecoveryCoordinator.nextRetryDelayMs(id) ?: return@launch
+                audioBufferStallRefreshes.remove(id)
+                audioBufferStallRefreshes[id] = attempts + 1
+                if (audioBufferStallRefreshes.size > 64) {
+                    audioBufferStallRefreshes.remove(audioBufferStallRefreshes.keys.first())
+                }
+                Timber.tag("PlaybackRecovery").w(
+                    "audio-buffer-stall id=%s aheadMs=%d growthMs=%d attempt=%d; fresh URL requested",
+                    id, bufferedAheadMs, growthMs, attempts + 1,
+                )
+                // This is NOT a 403 or bot-check: do not quarantine clients, rebuild BotGuard or
+                // refresh cipher config. Replace only this mediaId's cached stream URL.
+                audioResolveCoordinator.cancelMedia(id) { playbackUrlCache.remove(id) }
+                scheduleStreamRefreshRetry(
+                    mediaId = id,
+                    refreshCipherConfig = false,
+                    retryReason = "audio buffer stall",
+                    retryDelayMs = delayMs,
+                    forceRecreateSources = true,
+                )
+                return@launch
+            }
+        }
+    }
     private var prefetchScheduleJob: Job? = null
 
     /** Which googlevideo server groups are currently refusing everything, on this network. */
@@ -3267,6 +3374,10 @@ class MusicService :
     override fun onPlaybackStateChanged(@Player.State playbackState: Int) {
     super.onPlaybackStateChanged(playbackState)
 
+    if (playbackState == Player.STATE_READY && !isCurrentCapsuleVideoItem()) {
+        audioBufferLastReadyMediaId = player.currentMediaItem?.mediaId
+    }
+    updateAudioBufferStallWatch()
     val activeMediaId = player.currentMediaItem?.mediaId
     playbackRecoveryCoordinator.onPlaybackActivity(
         mediaId = activeMediaId,
@@ -3349,6 +3460,12 @@ class MusicService :
         if (events.contains(EVENT_POSITION_DISCONTINUITY)) {
             playbackPositionGeneration.markDiscontinuity()
         }
+        if (events.containsAny(
+                Player.EVENT_PLAY_WHEN_READY_CHANGED,
+                Player.EVENT_MEDIA_ITEM_TRANSITION,
+                EVENT_POSITION_DISCONTINUITY,
+            )
+        ) updateAudioBufferStallWatch()
     val joined = togetherSessionState.value as? com.nikhil.yt.together.TogetherSessionState.Joined
     if (joined?.role is com.nikhil.yt.together.TogetherRole.Guest &&
         events.contains(Player.EVENT_PLAY_WHEN_READY_CHANGED)
@@ -4672,6 +4789,7 @@ class MusicService :
         streamRetryJob?.cancel()
         streamRetryJob = null
         playbackRecoveryCoordinator.resetRetry(mediaId)
+        audioBufferStallRefreshes.remove(mediaId)
         playbackRecoveryCoordinator.cancelNetworkRecovery()
         CapsuleAudioEngine.clearTrackClientFailures(mediaId)
         CapsuleAudioEngine.invalidateCachedStreamUrls(mediaId)
@@ -4726,6 +4844,7 @@ class MusicService :
         refreshCipherConfig: Boolean,
         retryReason: String,
         retryDelayMs: Long,
+        forceRecreateSources: Boolean = false,
     ) {
         val retryPosition = player.currentPosition
         val retryIndex = player.currentMediaItemIndex
@@ -4792,9 +4911,15 @@ class MusicService :
                     return@launch
                 }
 
-                player.seekTo(retryIndex, retryPosition)
-                player.prepare()
-                player.playWhenReady = retryPlayWhenReady
+                if (forceRecreateSources) {
+                    // prepare() on an already BUFFERING Media3 item does not necessarily drop
+                    // its current source; rebuild it so the freshly resolved URL is consumed.
+                    recreateAudioSources(retryIndex, retryPosition, retryPlayWhenReady)
+                } else {
+                    player.seekTo(retryIndex, retryPosition)
+                    player.prepare()
+                    player.playWhenReady = retryPlayWhenReady
+                }
                 Timber.tag("MusicService").i(
                     "Retrying playback for $mediaId after $retryReason",
                 )
@@ -5171,6 +5296,8 @@ class MusicService :
     }
 
     override fun onDestroy() {
+        audioBufferStallWatchJob?.cancel()
+        audioBufferStallWatchJob = null
         super.onDestroy()
         playbackPersistence.cancelPending()
         unregisterCapsuleScreenStateReceiver()
