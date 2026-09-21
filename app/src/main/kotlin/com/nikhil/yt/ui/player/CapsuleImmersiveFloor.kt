@@ -105,7 +105,9 @@ internal fun rememberImmersiveEdgeColor(
             resolvedKey = key
             return@LaunchedEffect
         }
-        if (resolvedKey == key) return@LaunchedEffect
+        // A failed sample must be retried when the user reopens this sheet; do not
+        // permanently freeze an otherwise valid thumbnail in the grey placeholder.
+        if (resolvedKey == key && resolved?.ready == true) return@LaunchedEffect
 
         val candidates = immersiveArtworkCandidates(mediaMetadata.id, sourceUrl)
         val isYtimg = candidates.size > 1
@@ -153,7 +155,11 @@ internal fun rememberImmersiveEdgeColor(
         // A failed decode has neither reliable crop geometry nor a sampled background.
         // Leave the player neutral instead of showing a raw thumbnail with black bars.
         val finalTone = resultTone ?: ImmersiveArtworkTone()
-        synchronized(immersiveArtworkCache) { immersiveArtworkCache[key] = finalTone }
+        // Cache only a real decoded image with a sampled background. Transient thumbnail
+        // errors should not poison every later attempt for this same track.
+        if (resultTone != null) {
+            synchronized(immersiveArtworkCache) { immersiveArtworkCache[key] = finalTone }
+        }
         resolved = finalTone
         resolvedKey = key
     }
