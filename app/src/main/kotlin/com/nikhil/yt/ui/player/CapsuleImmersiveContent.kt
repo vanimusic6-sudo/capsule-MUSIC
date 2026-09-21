@@ -316,16 +316,12 @@ fun CapsuleImmersiveContent(
         val settled = (seam + 0.34f).coerceAtMost(1f)
 
         val pageBackground =
-            if (presentingVideo) {
-                Brush.verticalGradient(listOf(IMMERSIVE_NEUTRAL_COLOR, Color(0xFF1E1E1E)))
-            } else {
-                Brush.verticalGradient(
-                    0f to edge,
-                    seam to edge,
-                    settled to floor,
-                    1f to floor,
-                )
-            }
+            Brush.verticalGradient(
+                0f to edge,
+                seam to edge,
+                settled to floor,
+                1f to floor,
+            )
 
         // The completed artwork AND its sampled background appear in ONE frame. No
         // alpha tween and no separate colour animation: gray stays gray while Coil
@@ -334,12 +330,26 @@ fun CapsuleImmersiveContent(
             modifier = Modifier
                 .fillMaxSize()
                 .background(
-                    if (presentingVideo || coverAndGradientReady) pageBackground
+                    if (coverAndGradientReady) pageBackground
                     else Brush.verticalGradient(
                         listOf(IMMERSIVE_NEUTRAL_COLOR, IMMERSIVE_NEUTRAL_COLOR),
                     ),
                 ),
         )
+        // The video colour scheme transitions ONLY after the first decoded video frame,
+        // not while a YouTube resolve/guard request is pending or failing.
+        if (isVideo) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .graphicsLayer(alpha = videoTransition)
+                    .background(
+                        Brush.verticalGradient(
+                            listOf(IMMERSIVE_NEUTRAL_COLOR, Color(0xFF1E1E1E)),
+                        ),
+                    ),
+            )
+        }
 
         Box(
             modifier =
@@ -362,54 +372,14 @@ fun CapsuleImmersiveContent(
                         onClick = onShowLyrics,
                     ),
         ) {
-            if (presentingVideo) {
-                // The 16:9 card has the same horizontal inset and centred placement as
-                // standard Capsule players. Keep its bounds through RESOLVING so the
-                // first video frame cannot move the controls or briefly show audio art.
-                Box(
-                    modifier = Modifier
-                        .align(Alignment.TopCenter)
-                        .padding(top = videoFrameTop, start = videoSidePadding, end = videoSidePadding)
-                        .fillMaxWidth()
-                        .height(videoFrameHeight)
-                        .clip(RoundedCornerShape(28.dp))
-                        .background(Color.Black),
-                ) {
-                    if (isVideo) {
-                        AndroidView(
-                            factory = { viewContext ->
-                                PlayerView(viewContext).apply {
-                                    player = playerConnection.player
-                                    useController = false
-                                    setShowBuffering(PlayerView.SHOW_BUFFERING_NEVER)
-                                    resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM
-                                    setShutterBackgroundColor(android.graphics.Color.BLACK)
-                                    keepScreenOn = true
-                                }
-                            },
-                            update = { playerView ->
-                                if (playerView.player !== playerConnection.player) {
-                                    playerView.player = playerConnection.player
-                                }
-                            },
-                            modifier = Modifier.fillMaxSize(),
-                        )
-                    }
-                }
-            } else {
-                /*
-                 * Crossfaded rather than swapped. The floor colour under it already eases from
-                 * one track's to the next over 1.4 s, so a cover that changed in a single frame
-                 * left the two halves of the same transition visibly out of step.
-                 */
-                // A *single* centre-cropped image: FillBounds distorted the video into a
-                // second, elongated frame above the real picture. Fit left letterboxed
-                // padding, so we zoom in uniformly from the centre instead. It is the
-                // artwork itself that enlarges; no stretched duplicate is drawn behind it.
-                // Never submit the original video thumbnail before crop dimensions and the
-                // matching background are known. Coil's display decode can finish after the
-                // palette's smaller sampling decode, so keep the actual pixels transparent
-                // until onSuccess confirms that the final selected image is ready.
+            // Continue showing the fully prepared audio cover until a real VIDEO frame
+            // arrives. A protected /player failure must not teleport to an empty black card.
+            // The only animation here is the transition between two READY surfaces.
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .graphicsLayer(alpha = 1f - videoTransition),
+            ) {
                 if (artworkTone.ready && artworkTone.displayUrl != null) {
                     val artworkRequest =
                         ImageRequest.Builder(LocalContext.current)
@@ -448,6 +418,38 @@ fun CapsuleImmersiveContent(
                                         1f to edge,
                                     ),
                                 ),
+                    )
+                }
+            }
+
+            if (isVideo) {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .padding(top = videoFrameTop, start = videoSidePadding, end = videoSidePadding)
+                        .fillMaxWidth()
+                        .height(videoFrameHeight)
+                        .graphicsLayer(alpha = videoTransition)
+                        .clip(RoundedCornerShape(28.dp))
+                        .background(Color.Black),
+                ) {
+                    AndroidView(
+                        factory = { viewContext ->
+                            PlayerView(viewContext).apply {
+                                player = playerConnection.player
+                                useController = false
+                                setShowBuffering(PlayerView.SHOW_BUFFERING_NEVER)
+                                resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM
+                                setShutterBackgroundColor(android.graphics.Color.BLACK)
+                                keepScreenOn = true
+                            }
+                        },
+                        update = { playerView ->
+                            if (playerView.player !== playerConnection.player) {
+                                playerView.player = playerConnection.player
+                            }
+                        },
+                        modifier = Modifier.fillMaxSize(),
                     )
                 }
             }
