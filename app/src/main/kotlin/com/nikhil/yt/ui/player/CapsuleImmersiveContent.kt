@@ -40,6 +40,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -246,42 +247,20 @@ fun CapsuleImmersiveContent(
     val safeDuration = durationMs.coerceAtLeast(0L)
     val shownPosition = (sliderPosition ?: positionMs).coerceIn(0L, safeDuration)
 
-    /*
-     * One colour, used for both the floor under everything and the end of the cover's dissolve.
-     * Being literally the same value is what makes the join invisible: there is no boundary where
-     * two nearly-equal colours can disagree.
-     *
-     * Taken from the artwork and darkened, because a page in the cover's own colour is the point
-     * of the design, and because the controls and their labels sit on it in the player's text
-     * colour and have to stay readable whatever the cover is.
-     */
-    /*
-     * Two colours, and the reason there are two.
-     *
-     * The cover has to end on the colour of its own last pixels or the join shows — that is edge,
-     * measured off the foot of the artwork rather than taken from its palette, because a palette
-     * reports what an image is about and the join cares about what it ends with.
-     *
-     * But a page in that colour is not always a page anyone can read: a cover ending in pale grey
-     * would leave white text on white. So the page starts at edge, exactly where the cover left
-     * off, and goes on darkening below it. Continuity at the seam, legibility by the time there
-     * is anything to read.
-     */
-    // No theme-derived bright accent on the very first open: the tone starts charcoal
-    // and only transitions after Coil has actually decoded the selected artwork.
-    val artworkTone = rememberImmersiveEdgeColor(mediaMetadata = mediaMetadata, enabled = visible)
-    val edge = artworkTone.edge
-    // Darken only within the artwork's own colour family. The previous 86% black blend
-    // turned every cover (even saturated red ones) into a nearly black bottom third.
-    val floor = remember(edge, artworkTone.accent) { lerp(edge, artworkTone.accent, 0.38f) }
-
-    /*
-     * Audio has one floor, the colour the cover dissolves into. Video does not: there is no cover
-     * to take a colour from and nothing to dissolve, so the page is a plain dark gradient and the
-     * only colour on the screen is the video's own.
-     */
     BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
         val artworkHeight = immersiveArtworkHeight(maxHeight)
+        // Colour is sampled from the EXACT centre crop visible in this viewport, not
+        // the full image or another song's palette. This also keeps landscape layouts sane.
+        val artworkAspect = maxWidth.value / artworkHeight.value.coerceAtLeast(1f)
+        val artworkTone = rememberImmersiveEdgeColor(
+            mediaMetadata = mediaMetadata,
+            enabled = visible,
+            visibleArtworkAspectRatio = artworkAspect,
+        )
+        val edge = artworkTone.edge
+        // Keep the entire fade in the lower background's hue. Never mix in a vibrant
+        // foreground accent (a green logo on white paper is not a green background).
+        val floor = artworkTone.accent
 
         /*
          * Where the cover ends, as a fraction of the sheet. The page has to be exactly edge at
@@ -309,6 +288,7 @@ fun CapsuleImmersiveContent(
                 Modifier
                     .fillMaxWidth()
                     .height(artworkHeight)
+                    .clipToBounds()
                     /*
                      * The cover opens the words, as it does in the other two designs. A button
                      * for it was a button this screen did not need: the cover is the largest
@@ -356,28 +336,25 @@ fun CapsuleImmersiveContent(
                  * one track's to the next over 1.4 s, so a cover that changed in a single frame
                  * left the two halves of the same transition visibly out of step.
                  */
-                // Match ArchiveTune's artwork-only approach to widescreen media: a softly
-                // stretched, partially transparent copy fills the *background*, while the
-                // actual video thumbnail uses Fit so the entire frame stays on screen.
-                // Ordinary square album covers retain the original edge-to-edge Crop.
+                // A *single* centre-cropped image: FillBounds distorted the video into a
+                // second, elongated frame above the real picture. Fit left letterboxed
+                // padding, so we zoom in uniformly from the centre instead. It is the
+                // artwork itself that enlarges; no stretched duplicate is drawn behind it.
                 val artworkRequest =
                     ImageRequest.Builder(LocalContext.current)
                         .data(artworkTone.displayUrl ?: mediaMetadata.thumbnailUrl)
                         .crossfade(ImmersiveCoverCrossfadeMs)
                         .build()
-                if (artworkTone.landscape) {
-                    AsyncImage(
-                        model = artworkRequest,
-                        contentDescription = null,
-                        contentScale = ContentScale.FillBounds,
-                        modifier = Modifier.fillMaxSize().graphicsLayer(alpha = 0.60f),
-                    )
-                }
                 AsyncImage(
                     model = artworkRequest,
                     contentDescription = null,
-                    contentScale = if (artworkTone.landscape) ContentScale.Fit else ContentScale.Crop,
-                    modifier = Modifier.fillMaxSize(),
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .graphicsLayer(
+                            scaleX = if (artworkTone.landscape) 1.06f else 1f,
+                            scaleY = if (artworkTone.landscape) 1.06f else 1f,
+                        ),
                 )
 
                 Box(
@@ -393,12 +370,12 @@ fun CapsuleImmersiveContent(
                                  */
                                 Brush.verticalGradient(
                                     0f to Color.Transparent,
-                                    // Wide frames now retain their entire image (Fit). Begin
-                                    // dissolving the filled background before the fitted frame
-                                    // ends, rather than cutting the frame at a fixed black edge.
-                                    (if (artworkTone.landscape) 0.43f else ImmersiveFadeStart) to Color.Transparent,
-                                    (if (artworkTone.landscape) 0.64f else 0.72f) to edge.copy(alpha = if (artworkTone.landscape) 0.32f else 0.22f),
-                                    (if (artworkTone.landscape) 0.83f else 0.88f) to edge.copy(alpha = 0.83f),
+                                    // Fade from the lower *background* colour of the exact
+                                    // image crop. Spread the transition over most of the lower
+                                    // half so no coloured band separates the picture and text.
+                                    (if (artworkTone.landscape) 0.40f else ImmersiveFadeStart) to Color.Transparent,
+                                    (if (artworkTone.landscape) 0.62f else 0.72f) to edge.copy(alpha = 0.35f),
+                                    (if (artworkTone.landscape) 0.83f else 0.88f) to edge.copy(alpha = 0.80f),
                                     1f to edge,
                                 ),
                             ),
