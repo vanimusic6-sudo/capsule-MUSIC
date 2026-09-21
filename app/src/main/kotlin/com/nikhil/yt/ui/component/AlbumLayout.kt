@@ -65,6 +65,7 @@ internal fun AlbumHeaderLayout(
     metadata: @Composable () -> Unit,
     actions: @Composable () -> Unit,
     modifier: Modifier = Modifier,
+    bottomSpacing: androidx.compose.ui.unit.Dp = 56.dp,
 ) {
     Column(modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
         artwork()
@@ -74,7 +75,7 @@ internal fun AlbumHeaderLayout(
         metadata()
         Spacer(Modifier.height(24.dp))
         actions()
-        Spacer(Modifier.height(56.dp))
+        Spacer(Modifier.height(bottomSpacing))
     }
 }
 
