@@ -10,7 +10,6 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -18,7 +17,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -45,7 +43,6 @@ internal fun PlaylistHero(
     loading: Boolean = false,
     title: String = "",
     subtitle: (@Composable () -> Unit)? = null,
-    secondaryAction: (@Composable () -> Unit)? = null,
     actions: @Composable RowScope.() -> Unit,
 ) {
     val background = if (StandardChrome.isDark) Color(0xFF090909) else StandardChrome.background
@@ -86,7 +83,7 @@ internal fun PlaylistHero(
                     }
                 }
                 // Identical artwork-to-surface fade as album artwork, including portrait sizing.
-                ArtworkSurfaceFade(background, Modifier.matchParentSize(), portrait = true)
+                ArtworkSurfaceFade(background, Modifier.matchParentSize(), portrait = true, topScrim = false)
             }
         },
         title = {
@@ -136,7 +133,6 @@ internal fun PlaylistHero(
                     content = actions,
                 )
             }
-            secondaryAction?.invoke()
         },
     )
 }
@@ -187,11 +183,3 @@ internal fun RowScope.PlaylistAction(
     }
 }
 
-@Composable
-internal fun PlaylistMixAction(onClick: () -> Unit, enabled: Boolean = true) {
-    TextButton(onClick, enabled = enabled, modifier = Modifier.padding(top = 6.dp)) {
-        Icon(painterResource(R.drawable.mix), null, Modifier.size(18.dp), tint = StandardChrome.muted)
-        Spacer(Modifier.width(8.dp))
-        Text(stringResource(R.string.start_mix), color = StandardChrome.muted)
-    }
-}
