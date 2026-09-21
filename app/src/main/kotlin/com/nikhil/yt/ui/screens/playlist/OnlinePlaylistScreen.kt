@@ -9,7 +9,6 @@ package com.nikhil.yt.ui.screens.playlist
 
 import androidx.compose.foundation.clickable
 import com.nikhil.yt.playback.queues.ListQueue
-import com.nikhil.yt.ui.component.PlaylistMixAction
 import androidx.compose.material3.CenterAlignedTopAppBar
 import com.nikhil.yt.ui.component.PlaylistAction
 import com.nikhil.yt.ui.component.PlaylistHero
@@ -237,7 +236,6 @@ fun OnlinePlaylistScreen(
                             thumbnails = listOfNotNull(playlist?.thumbnail),
                             songCount = stringResource(R.string.loading),
                             loading = true,
-                            secondaryAction = { PlaylistMixAction(onClick = {}, enabled = false) },
                         ) {
                             repeat(5) { PlaylistAction(R.drawable.play, stringResource(R.string.loading), {}, enabled = false) }
                         }
@@ -263,15 +261,6 @@ fun OnlinePlaylistScreen(
                                                 .clickable(enabled = artist.id != null) { navController.navigate("artist/${artist.id}") },
                                         )
                                     }
-                                },
-                                secondaryAction = {
-                                    PlaylistMixAction(onClick = {
-                                        playlist.shuffleEndpoint?.let { shuffleEndpoint ->
-                                            playerConnection.playQueue(
-                                                YouTubeQueue(shuffleEndpoint)
-                                            )
-                                        }
-                                    }, enabled = playlist.shuffleEndpoint != null)
                                 },
                             ) {
                                 if (playlist.id != "LM") {
