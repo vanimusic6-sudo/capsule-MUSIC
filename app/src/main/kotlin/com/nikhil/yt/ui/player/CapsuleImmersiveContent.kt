@@ -26,6 +26,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
@@ -184,6 +185,14 @@ fun CapsuleImmersiveContent(
         videoPlaybackState.mode == CapsulePlaybackMode.VIDEO &&
             videoPlaybackState.phase == CapsuleVideoPhase.PLAYING
 
+    // The user has already selected VIDEO during RESOLVING. Reserve the final video
+    // geometry immediately, instead of briefly drawing the old square audio artwork
+    // and moving the controls only after the stream enters PLAYING.
+    val presentingVideo =
+        isVideo ||
+            (videoPlaybackState.preferredMode == CapsulePlaybackMode.VIDEO &&
+                videoPlaybackState.phase == CapsuleVideoPhase.RESOLVING)
+
     /*
      * The status bar goes while this screen is up.
      *
@@ -248,7 +257,14 @@ fun CapsuleImmersiveContent(
     val shownPosition = (sliderPosition ?: positionMs).coerceIn(0L, safeDuration)
 
     BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
-        val artworkHeight = immersiveArtworkHeight(maxHeight)
+        val artworkHeight =
+            if (presentingVideo) {
+                // The other Capsule designs reserve a real 16:9 video card. Do not
+                // letterbox the same PlayerView inside a tall portrait cover slot.
+                (maxWidth * (9f / 16f)).coerceAtMost(maxHeight * 0.65f)
+            } else {
+                immersiveArtworkHeight(maxHeight)
+            }
         // Colour is sampled from the EXACT centre crop visible in this viewport, not
         // the full image or another song's palette. This also keeps landscape layouts sane.
         val artworkAspect = maxWidth.value / artworkHeight.value.coerceAtLeast(1f)
@@ -270,7 +286,7 @@ fun CapsuleImmersiveContent(
         val settled = (seam + 0.34f).coerceAtMost(1f)
 
         val pageBackground =
-            if (isVideo) {
+            if (presentingVideo) {
                 Brush.verticalGradient(listOf(IMMERSIVE_NEUTRAL_COLOR, Color(0xFF1E1E1E)))
             } else {
                 Brush.verticalGradient(
@@ -289,6 +305,10 @@ fun CapsuleImmersiveContent(
                     .fillMaxWidth()
                     .height(artworkHeight)
                     .clipToBounds()
+                    .then(
+                        if (presentingVideo) Modifier.clip(RoundedCornerShape(28.dp))
+                        else Modifier,
+                    )
                     /*
                      * The cover opens the words, as it does in the other two designs. A button
                      * for it was a button this screen did not need: the cover is the largest
@@ -300,17 +320,15 @@ fun CapsuleImmersiveContent(
                     .clickable(
                         interactionSource = remember { MutableInteractionSource() },
                         indication = null,
-                        enabled = !isVideo,
+                        enabled = !presentingVideo,
                         onClick = onShowLyrics,
                     ),
         ) {
-            if (isVideo) {
-                /*
-                 * A video is watched, not dissolved into a page. It keeps its own frame, black
-                 * behind it, and none of the cover's gradient runs over it — the whole reason to
-                 * switch to video is to see all of it.
-                 */
-                AndroidView(
+            if (presentingVideo) {
+                // Keep the video slot stable throughout RESOLVING → PLAYING. Attach the
+                // PlayerView only once the service has switched to the video stream, so
+                // audio artwork cannot flash inside a second-sized card on first open.
+                if (isVideo) AndroidView(
                     factory = { viewContext ->
                         PlayerView(viewContext).apply {
                             player = playerConnection.player
@@ -318,7 +336,9 @@ fun CapsuleImmersiveContent(
                             // Capsule shows its own loading state; a second spinner over the
                             // surface would be one indicator too many.
                             setShowBuffering(PlayerView.SHOW_BUFFERING_NEVER)
-                            resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
+                            // Same video scaling as the other Capsule player designs:
+                            // preserve aspect ratio while cropping overflow, not letterboxing.
+                            resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM
                             setShutterBackgroundColor(android.graphics.Color.BLACK)
                             keepScreenOn = true
                         }
@@ -373,9 +393,10 @@ fun CapsuleImmersiveContent(
                                     // Fade from the lower *background* colour of the exact
                                     // image crop. Spread the transition over most of the lower
                                     // half so no coloured band separates the picture and text.
-                                    (if (artworkTone.landscape) 0.40f else ImmersiveFadeStart) to Color.Transparent,
-                                    (if (artworkTone.landscape) 0.62f else 0.72f) to edge.copy(alpha = 0.35f),
-                                    (if (artworkTone.landscape) 0.83f else 0.88f) to edge.copy(alpha = 0.80f),
+                                    (if (artworkTone.landscape) 0.27f else 0.42f) to Color.Transparent,
+                                    (if (artworkTone.landscape) 0.49f else 0.60f) to edge.copy(alpha = 0.46f),
+                                    (if (artworkTone.landscape) 0.69f else 0.77f) to edge.copy(alpha = 0.91f),
+                                    (if (artworkTone.landscape) 0.84f else 0.91f) to edge,
                                     1f to edge,
                                 ),
                             ),
