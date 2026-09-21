@@ -37,6 +37,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -84,6 +85,8 @@ private data class ImmersiveGradientFrame(
     val key: String,
     val edge: Color,
     val floor: Color,
+    val imageUrl: String,
+    val landscape: Boolean,
 )
 
 /** How much of the sheet the cover takes before it starts to go. */
@@ -311,37 +314,42 @@ fun CapsuleImmersiveContent(
             mutableStateOf(false)
         }
         val coverAndGradientReady = canRevealImmersiveArtwork(artworkTone, coverImageReady)
-        // Retain the PREVIOUS completed gradient while it fades into neutral grey.
-        // Then reveal the NEXT completed cover + gradient from that same grey, never
-        // fading directly between unrelated palette colours or showing an unprepared
-        // video thumbnail. The animation lives outside the track key so a song switch
-        // cannot discard the outgoing gradient before its fade-out begins.
+        // The remembered frame contains the PREVIOUS song's actual image and all its
+        // background colours. It remains intact during fade-out even if Media3 has already
+        // switched its metadata to the NEXT song.
         val visualKey = "${mediaMetadata.id}|${mediaMetadata.thumbnailUrl}|${artworkAspect}"
         var shownGradient by remember { mutableStateOf<ImmersiveGradientFrame?>(null) }
         val gradientAlpha = remember { Animatable(0f) }
         LaunchedEffect(visualKey, coverAndGradientReady, edge, floor, visible) {
             if (!visible || shownGradient?.key != visualKey || !coverAndGradientReady) {
                 if (shownGradient != null) {
-                    gradientAlpha.animateTo(0f, animationSpec = tween(durationMillis = 260))
+                    // One continuous fade, not an abrupt switch to the next image at the
+                    // start of the animation. An interrupted tween resumes from its alpha.
+                    gradientAlpha.animateTo(
+                        0f,
+                        animationSpec = tween(durationMillis = 540, easing = FastOutSlowInEasing),
+                    )
                     shownGradient = null
                 } else {
                     gradientAlpha.snapTo(0f)
                 }
             }
-            if (visible && coverAndGradientReady) {
-                // This assignment occurs only AFTER the previous gradient has fully left.
-                shownGradient = ImmersiveGradientFrame(visualKey, edge, floor)
-                gradientAlpha.animateTo(1f, animationSpec = tween(durationMillis = 360))
+            if (visible && coverAndGradientReady && artworkTone.displayUrl != null) {
+                shownGradient = ImmersiveGradientFrame(
+                    key = visualKey,
+                    edge = edge,
+                    floor = floor,
+                    imageUrl = artworkTone.displayUrl,
+                    landscape = artworkTone.landscape,
+                )
+                // Reveal the COMPLETE decoded image, colour floor and lower scrim
+                // together from neutral grey. No per-layer animations.
+                gradientAlpha.animateTo(
+                    1f,
+                    animationSpec = tween(durationMillis = 720, easing = FastOutSlowInEasing),
+                )
             }
         }
-        // A new cover remains invisible while the OLD background goes to grey; its
-        // image, colour floor and lower dissolve then emerge together, using one alpha.
-        val artworkReveal =
-            if (shownGradient?.key == visualKey && coverAndGradientReady) {
-                gradientAlpha.value
-            } else {
-                0f
-            }
         /*
          * Where the cover ends, as a fraction of the sheet. The page has to be exactly edge at
          * that line and nowhere else, so the stop is computed rather than guessed.
@@ -349,139 +357,128 @@ fun CapsuleImmersiveContent(
         val seam = (artworkHeight / maxHeight).coerceIn(0.05f, 0.95f)
         val settled = (seam + 0.34f).coerceAtMost(1f)
 
-        val displayedEdge = shownGradient?.edge ?: IMMERSIVE_NEUTRAL_COLOR
-        val displayedFloor = shownGradient?.floor ?: IMMERSIVE_NEUTRAL_COLOR
-        val pageBackground =
-            Brush.verticalGradient(
-                0f to displayedEdge,
-                seam to displayedEdge,
-                settled to displayedFloor,
-                1f to displayedFloor,
-            )
-
-        // The placeholder is a flat neutral surface. The *completed* backdrop fades over
-        // it at the same rate as the decoded cover and the cover's bottom scrim; the
-        // sampled colour itself never animates. VIDEO switches immediately when ready.
-        Box(modifier = Modifier.fillMaxSize().background(IMMERSIVE_NEUTRAL_COLOR))
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .graphicsLayer(alpha = if (presentingVideo) 0f else gradientAlpha.value)
-                .background(pageBackground),
+        val frame = shownGradient
+        val pageBackground = Brush.verticalGradient(
+            0f to (frame?.edge ?: IMMERSIVE_NEUTRAL_COLOR),
+            seam to (frame?.edge ?: IMMERSIVE_NEUTRAL_COLOR),
+            settled to (frame?.floor ?: IMMERSIVE_NEUTRAL_COLOR),
+            1f to (frame?.floor ?: IMMERSIVE_NEUTRAL_COLOR),
         )
-        if (presentingVideo) {
-            Box(
+
+        // Preload the NEXT image invisibly. Coil must finish decoding this exact URL
+        // before the frame is allowed to replace the old one. It is never rendered early.
+        if (artworkTone.ready && artworkTone.displayUrl != null) {
+            AsyncImage(
+                model = ImageRequest.Builder(LocalContext.current)
+                    .data(artworkTone.displayUrl)
+                    .crossfade(false)
+                    .build(),
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                onSuccess = { coverImageReady = true },
+                onError = { coverImageReady = false },
                 modifier = Modifier
-                    .fillMaxSize()
-                    .background(
-                        Brush.verticalGradient(
-                            listOf(IMMERSIVE_NEUTRAL_COLOR, Color(0xFF1E1E1E)),
-                        ),
-                    ),
+                    .fillMaxWidth()
+                    .height(artworkHeight)
+                    .graphicsLayer(alpha = 0f),
             )
         }
 
-        Box(
-            modifier =
-                Modifier
-                    .fillMaxWidth()
-                    .height(artworkHeight)
-                    .clipToBounds()
-                    /*
-                     * The cover opens the words, as it does in the other two designs. A button
-                     * for it was a button this screen did not need: the cover is the largest
-                     * thing on it and the gesture is already the app's own.
-                     *
-                     * Not while a video is playing — there the frame is the thing being watched,
-                     * and a tap that replaced it with lyrics would be a trap.
-                     */
-                    .clickable(
-                        interactionSource = remember { MutableInteractionSource() },
-                        indication = null,
-                        enabled = !presentingVideo,
-                        onClick = onShowLyrics,
-                    ),
-        ) {
-            // Continue showing the fully prepared audio cover until a real VIDEO frame
-            // arrives. A protected /player failure must not teleport to an empty black card.
-            // The only animation here is the transition between two READY surfaces.
+        // One layer, one alpha: the old cover+scrim+page leave together, then the
+        // new cover+scrim+page enter together. There is NO separately animated colour
+        // layer that can lag behind the image.
+        Box(modifier = Modifier.fillMaxSize().background(IMMERSIVE_NEUTRAL_COLOR))
+        if (frame != null) {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .graphicsLayer(alpha = if (presentingVideo) 0f else 1f),
+                    .graphicsLayer(alpha = if (presentingVideo) 0f else gradientAlpha.value),
             ) {
-                if (artworkTone.ready && artworkTone.displayUrl != null) {
-                    val artworkRequest =
-                        ImageRequest.Builder(LocalContext.current)
-                            .data(artworkTone.displayUrl)
-                            // A single coordinated reveal avoids a second, asynchronous Coil
-                            // crossfade whose intermediate frame could still show black bars.
-                            .crossfade(false)
-                            .build()
+                Box(modifier = Modifier.fillMaxSize().background(pageBackground))
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(artworkHeight)
+                        .clipToBounds()
+                        .clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null,
+                            enabled = !presentingVideo,
+                            onClick = onShowLyrics,
+                        ),
+                ) {
                     AsyncImage(
-                        model = artworkRequest,
+                        model = ImageRequest.Builder(LocalContext.current)
+                            .data(frame.imageUrl)
+                            .crossfade(false)
+                            .build(),
                         contentDescription = null,
                         contentScale = ContentScale.Crop,
-                        onSuccess = { coverImageReady = true },
-                        onError = { coverImageReady = false },
                         modifier = Modifier
                             .fillMaxSize()
                             .graphicsLayer(
-                                scaleX = if (artworkTone.landscape) 1.06f else 1f,
-                                scaleY = if (artworkTone.landscape) 1.06f else 1f,
-                                alpha = artworkReveal,
+                                scaleX = if (frame.landscape) 1.06f else 1f,
+                                scaleY = if (frame.landscape) 1.06f else 1f,
                             ),
                     )
-
                     Box(
-                        modifier =
-                            Modifier
-                                .fillMaxSize()
-                                .graphicsLayer(alpha = artworkReveal)
-                                .background(
-                                    Brush.verticalGradient(
-                                        0f to Color.Transparent,
-                                        (if (artworkTone.landscape) 0.27f else 0.42f) to Color.Transparent,
-                                        (if (artworkTone.landscape) 0.49f else 0.60f) to edge.copy(alpha = 0.46f),
-                                        (if (artworkTone.landscape) 0.69f else 0.77f) to edge.copy(alpha = 0.91f),
-                                        (if (artworkTone.landscape) 0.84f else 0.91f) to edge,
-                                        1f to edge,
-                                    ),
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(
+                                Brush.verticalGradient(
+                                    0f to Color.Transparent,
+                                    (if (frame.landscape) 0.27f else 0.42f) to Color.Transparent,
+                                    (if (frame.landscape) 0.49f else 0.60f) to frame.edge.copy(alpha = 0.46f),
+                                    (if (frame.landscape) 0.69f else 0.77f) to frame.edge.copy(alpha = 0.91f),
+                                    (if (frame.landscape) 0.84f else 0.91f) to frame.edge,
+                                    1f to frame.edge,
                                 ),
+                            ),
                     )
                 }
             }
+        }
 
-            if (isVideo) {
-                Box(
-                    modifier = Modifier
-                        .align(Alignment.TopCenter)
-                        .padding(top = videoFrameTop, start = videoSidePadding, end = videoSidePadding)
-                        .fillMaxWidth()
-                        .height(videoFrameHeight)
-                        .graphicsLayer(alpha = if (presentingVideo) 1f else 0f)
-                        .clip(RoundedCornerShape(28.dp))
-                        .background(Color.Black),
-                ) {
-                    AndroidView(
-                        factory = { viewContext ->
-                            PlayerView(viewContext).apply {
-                                player = playerConnection.player
-                                useController = false
-                                setShowBuffering(PlayerView.SHOW_BUFFERING_NEVER)
-                                resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM
-                                setShutterBackgroundColor(android.graphics.Color.BLACK)
-                                keepScreenOn = true
-                            }
-                        },
-                        update = { playerView ->
-                            if (playerView.player !== playerConnection.player) {
-                                playerView.player = playerConnection.player
-                            }
-                        },
-                        modifier = Modifier.fillMaxSize(),
-                    )
-                }
+        // VIDEO still switches instantly on the first rendered frame, independently of
+        // the slow cover-to-neutral-to-cover animation. The request guard stays intact.
+        if (presentingVideo) {
+            Box(
+                modifier = Modifier.fillMaxSize().background(
+                    Brush.verticalGradient(
+                        listOf(IMMERSIVE_NEUTRAL_COLOR, Color(0xFF1E1E1E)),
+                    ),
+                ),
+            )
+        }
+        if (isVideo) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .padding(top = videoFrameTop, start = videoSidePadding, end = videoSidePadding)
+                    .fillMaxWidth()
+                    .height(videoFrameHeight)
+                    .graphicsLayer(alpha = if (presentingVideo) 1f else 0f)
+                    .clip(RoundedCornerShape(28.dp))
+                    .background(Color.Black),
+            ) {
+                AndroidView(
+                    factory = { viewContext ->
+                        PlayerView(viewContext).apply {
+                            player = playerConnection.player
+                            useController = false
+                            setShowBuffering(PlayerView.SHOW_BUFFERING_NEVER)
+                            resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM
+                            setShutterBackgroundColor(android.graphics.Color.BLACK)
+                            keepScreenOn = true
+                        }
+                    },
+                    update = { playerView ->
+                        if (playerView.player !== playerConnection.player) {
+                            playerView.player = playerConnection.player
+                        }
+                    },
+                    modifier = Modifier.fillMaxSize(),
+                )
             }
         }
 
