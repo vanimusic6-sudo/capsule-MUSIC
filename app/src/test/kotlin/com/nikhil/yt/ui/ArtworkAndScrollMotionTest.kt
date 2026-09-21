@@ -72,15 +72,17 @@ class ArtworkAndScrollMotionTest {
         return bitmap
     }
 
-    @Test fun albumPreservesThePortraitAndDissolvesIntoThePage() {
+    @Test fun albumStartsWithUnobscuredArtworkAndDissolvesIntoThePage() {
         val cover = Bitmap.createBitmap(200, 236, Bitmap.Config.ARGB_8888).apply { eraseColor(android.graphics.Color.WHITE) }.asImageBitmap()
         compose.setContent {
             AlbumArtworkLayers(BitmapPainter(cover), cover, Color(0xFF080808), Modifier.width(200.dp).testTag("album"))
         }
         val frame = capture("album", "album-reference-fade")
         val x = frame.width / 2
-        assertTrue("Top edge must merge into the matte page surface", red(frame, x, 0) in 8..12)
-        assertTrue("Upper portrait stays clear after the navigation matte", red(frame, x, frame.height / 4) > 245)
+        // The user requested an edge-to-edge cover like the artist page: the previous
+        // top-black-matte assertion now contradicts the intended album design.
+        assertTrue("The cover must begin at the top without a dark veil", red(frame, x, 0) > 245)
+        assertTrue("Upper portrait stays clear", red(frame, x, frame.height / 4) > 245)
         assertTrue("Bottom joins the page without a seam", red(frame, x, frame.height - 1) in 8..12)
         for (y in frame.height / 3 until frame.height - 1) {
             assertTrue("Fade must not brighten again at row $y", red(frame, x, y + 1) <= red(frame, x, y) + 1)
