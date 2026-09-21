@@ -26,6 +26,13 @@ class CapsuleImmersiveContentTest {
     }
 
     @Test
+    fun `webp video thumbnails can select a full frame jpeg fallback`() {
+        val id = "ABC123def45"
+        val url = "https://i.ytimg.com/vi_webp/$id/hqdefault.webp"
+        assertTrue(immersiveArtworkCandidates(id, url).first().endsWith("/maxresdefault.jpg"))
+    }
+
+    @Test
     fun `ordinary album art never starts extra YouTube thumbnail requests`() {
         assertEquals(1, immersiveArtworkCandidates("ABC123def45", "https://lh3.googleusercontent.com/test").size)
         assertTrue(immersiveArtworkCandidates(null, null).isEmpty())
