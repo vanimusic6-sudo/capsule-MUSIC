@@ -40,6 +40,9 @@ internal data class ImmersiveArtworkTone(
     val landscape: Boolean = false,
     val accent: Color = IMMERSIVE_NEUTRAL_COLOR,
     val displayUrl: String? = null,
+    // A thumbnail URL alone does not imply the dimensions and background are prepared.
+    // The player must not render the raw 16:9 preview while this is false.
+    val ready: Boolean = false,
 )
 
 private val immersiveArtworkCache = object : LinkedHashMap<String, ImmersiveArtworkTone>(24, 0.75f, true) {
@@ -138,11 +141,14 @@ internal fun rememberImmersiveEdgeColor(
                     accent = lerp(background, Color.Black, 0.18f),
                     landscape = landscape,
                     displayUrl = url,
+                    ready = true,
                 )
             }
             break
         }
-        val finalTone = resultTone ?: ImmersiveArtworkTone(displayUrl = sourceUrl.toHighResThumbnail())
+        // A failed decode has neither reliable crop geometry nor a sampled background.
+        // Leave the player neutral instead of showing a raw thumbnail with black bars.
+        val finalTone = resultTone ?: ImmersiveArtworkTone()
         synchronized(immersiveArtworkCache) { immersiveArtworkCache[key] = finalTone }
         resolved = finalTone
         resolvedKey = key
@@ -163,10 +169,16 @@ internal fun rememberImmersiveEdgeColor(
         animationSpec = tween(ARTWORK_TRANSITION_MS, easing = CapsuleStandardEasing),
         label = "immersiveArtworkSecondary",
     )
-    // Never render a previously selected song's URL while new metadata is being decoded.
-    val visibleUrl = if (cached != null || resolvedKey == key) target.displayUrl
-        else sourceUrl?.toHighResThumbnail()
-    return target.copy(edge = edge, accent = accent, displayUrl = visibleUrl)
+    // Do NOT expose the unsampled original URL during a new selection: AsyncImage used
+    // to draw it immediately with the default square zoom before the real 16:9 dimensions
+    // and matching background had been calculated.
+    val readyForCurrentTrack = target.ready && (cached != null || resolvedKey == key)
+    return target.copy(
+        edge = edge,
+        accent = accent,
+        displayUrl = if (readyForCurrentTrack) target.displayUrl else null,
+        ready = readyForCurrentTrack,
+    )
 }
 
 /**
