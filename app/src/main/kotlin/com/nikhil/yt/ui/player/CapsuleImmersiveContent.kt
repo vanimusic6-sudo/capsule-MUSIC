@@ -40,6 +40,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.lerp
@@ -65,7 +66,6 @@ import coil3.compose.AsyncImage
 import com.nikhil.yt.R
 import com.nikhil.yt.extensions.togglePlayPause
 import com.nikhil.yt.extensions.toggleRepeatMode
-import com.nikhil.yt.innertube.toHighResThumbnail
 import com.nikhil.yt.models.MediaMetadata
 import com.nikhil.yt.playback.PlayerConnection
 import com.nikhil.yt.playback.video.CapsulePlaybackMode
@@ -273,7 +273,7 @@ fun CapsuleImmersiveContent(
     val edge = artworkTone.edge
     // Darken only within the artwork's own colour family. The previous 86% black blend
     // turned every cover (even saturated red ones) into a nearly black bottom third.
-    val floor = remember(edge) { lerp(edge, IMMERSIVE_NEUTRAL_COLOR, 0.24f) }
+    val floor = remember(edge, artworkTone.accent) { lerp(edge, artworkTone.accent, 0.38f) }
 
     /*
      * Audio has one floor, the colour the cover dissolves into. Video does not: there is no cover
@@ -356,14 +356,27 @@ fun CapsuleImmersiveContent(
                  * one track's to the next over 1.4 s, so a cover that changed in a single frame
                  * left the two halves of the same transition visibly out of step.
                  */
+                // Match ArchiveTune's artwork-only approach to widescreen media: a softly
+                // stretched, partially transparent copy fills the *background*, while the
+                // actual video thumbnail uses Fit so the entire frame stays on screen.
+                // Ordinary square album covers retain the original edge-to-edge Crop.
+                val artworkRequest =
+                    ImageRequest.Builder(LocalContext.current)
+                        .data(artworkTone.displayUrl ?: mediaMetadata.thumbnailUrl)
+                        .crossfade(ImmersiveCoverCrossfadeMs)
+                        .build()
+                if (artworkTone.landscape) {
+                    AsyncImage(
+                        model = artworkRequest,
+                        contentDescription = null,
+                        contentScale = ContentScale.FillBounds,
+                        modifier = Modifier.fillMaxSize().graphicsLayer(alpha = 0.60f),
+                    )
+                }
                 AsyncImage(
-                    model =
-                        ImageRequest.Builder(LocalContext.current)
-                            .data(mediaMetadata.thumbnailUrl?.toHighResThumbnail())
-                            .crossfade(ImmersiveCoverCrossfadeMs)
-                            .build(),
+                    model = artworkRequest,
                     contentDescription = null,
-                    contentScale = ContentScale.Crop,
+                    contentScale = if (artworkTone.landscape) ContentScale.Fit else ContentScale.Crop,
                     modifier = Modifier.fillMaxSize(),
                 )
 
@@ -380,12 +393,12 @@ fun CapsuleImmersiveContent(
                                  */
                                 Brush.verticalGradient(
                                     0f to Color.Transparent,
-                                    // A widescreen video frame can have black bars baked into its
-                                    // bottom edge. Dissolve earlier, before those bars can become
-                                    // a hard black stripe between the image and coloured page.
-                                    (if (artworkTone.landscape) 0.38f else ImmersiveFadeStart) to Color.Transparent,
-                                    (if (artworkTone.landscape) 0.57f else 0.72f) to edge.copy(alpha = if (artworkTone.landscape) 0.50f else 0.22f),
-                                    (if (artworkTone.landscape) 0.78f else 0.88f) to edge.copy(alpha = 0.86f),
+                                    // Wide frames now retain their entire image (Fit). Begin
+                                    // dissolving the filled background before the fitted frame
+                                    // ends, rather than cutting the frame at a fixed black edge.
+                                    (if (artworkTone.landscape) 0.43f else ImmersiveFadeStart) to Color.Transparent,
+                                    (if (artworkTone.landscape) 0.64f else 0.72f) to edge.copy(alpha = if (artworkTone.landscape) 0.32f else 0.22f),
+                                    (if (artworkTone.landscape) 0.83f else 0.88f) to edge.copy(alpha = 0.83f),
                                     1f to edge,
                                 ),
                             ),
