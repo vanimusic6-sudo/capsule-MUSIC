@@ -80,6 +80,17 @@ import com.nikhil.yt.ui.component.CapsuleFavoriteColors
 import com.nikhil.yt.ui.component.CapsuleFavoriteIcon
 import com.nikhil.yt.utils.makeTimeString
 
+/**
+ * The outgoing fade is a SINGLE operation for a displayed frame, regardless of how
+ * many newer songs arrive while it is running. Explicitly avoid the current song's
+ * readiness here: an unprepared next cover must not delay or restart the fade.
+ */
+internal fun shouldFadeOutImmersiveFrame(
+    displayedKey: String?,
+    selectedKey: String,
+    visible: Boolean,
+): Boolean = displayedKey != null && (!visible || displayedKey != selectedKey)
+
 /** The outgoing gradient survives a media-item change until it has faded to neutral. */
 private data class ImmersiveGradientFrame(
     val key: String,
@@ -90,7 +101,7 @@ private data class ImmersiveGradientFrame(
 )
 
 /** How much of the sheet the cover takes before it starts to go. */
-private const val ImmersiveArtworkFraction = 0.52f
+private const val ImmersiveArtworkFraction = 0.55f
 
 /**
  * Where inside the cover the dissolve begins, as a fraction of its height.
@@ -100,7 +111,7 @@ private const val ImmersiveArtworkFraction = 0.52f
  * softer dissolve, which is what the design was asking for in the first place — the picture does
  * not end anywhere, it stops being there.
  */
-private const val ImmersiveFadeStart = 0.55f
+private const val ImmersiveFadeStart = 0.52f
 
 /** Smallest cover that still reads as one; largest that still leaves the controls their room. */
 private val ImmersiveArtworkMin = 200.dp
@@ -320,33 +331,52 @@ fun CapsuleImmersiveContent(
         val visualKey = "${mediaMetadata.id}|${mediaMetadata.thumbnailUrl}|${artworkAspect}"
         var shownGradient by remember { mutableStateOf<ImmersiveGradientFrame?>(null) }
         val gradientAlpha = remember { Animatable(0f) }
-        LaunchedEffect(visualKey, coverAndGradientReady, edge, floor, visible) {
-            if (!visible || shownGradient?.key != visualKey || !coverAndGradientReady) {
-                if (shownGradient != null) {
-                    // One continuous fade, not an abrupt switch to the next image at the
-                    // start of the animation. An interrupted tween resumes from its alpha.
-                    gradientAlpha.animateTo(
-                        0f,
-                        animationSpec = tween(durationMillis = 540, easing = FastOutSlowInEasing),
-                    )
-                    shownGradient = null
-                } else {
-                    gradientAlpha.snapTo(0f)
-                }
+        // Selection changes must START the outgoing fade immediately. Crucially, its
+        // coroutine is keyed only by whether the OLD frame is still on screen, not by
+        // each incoming song id. Rapid A -> B -> C -> D skips therefore cannot restart
+        // the same A -> grey animation four times and keep A visible indefinitely.
+        val fadingOldFrame = shouldFadeOutImmersiveFrame(
+            shownGradient?.key,
+            visualKey,
+            visible,
+        )
+        LaunchedEffect(fadingOldFrame) {
+            if (fadingOldFrame) {
+                gradientAlpha.animateTo(
+                    0f,
+                    animationSpec = tween(durationMillis = 380, easing = FastOutSlowInEasing),
+                )
+                shownGradient = null
             }
-            if (visible && coverAndGradientReady && artworkTone.displayUrl != null) {
+        }
+        // Only the newest selected song can enter AFTER the old frame has fully
+        // disappeared and its own final bitmap and background are BOTH ready.
+        LaunchedEffect(
+            visualKey,
+            coverAndGradientReady,
+            edge,
+            floor,
+            artworkTone.displayUrl,
+            visible,
+            fadingOldFrame,
+        ) {
+            if (!visible || !coverAndGradientReady || fadingOldFrame) return@LaunchedEffect
+            val readyUrl = artworkTone.displayUrl ?: return@LaunchedEffect
+            if (shownGradient == null) {
                 shownGradient = ImmersiveGradientFrame(
                     key = visualKey,
                     edge = edge,
                     floor = floor,
-                    imageUrl = artworkTone.displayUrl,
+                    imageUrl = readyUrl,
                     landscape = artworkTone.landscape,
                 )
-                // Reveal the COMPLETE decoded image, colour floor and lower scrim
-                // together from neutral grey. No per-layer animations.
+            }
+            // Also handles reopening the sheet while its previous fade-out was being
+            // cancelled. Alpha carries on from its current value, not a new zero.
+            if (shownGradient?.key == visualKey) {
                 gradientAlpha.animateTo(
                     1f,
-                    animationSpec = tween(durationMillis = 720, easing = FastOutSlowInEasing),
+                    animationSpec = tween(durationMillis = 630, easing = FastOutSlowInEasing),
                 )
             }
         }
@@ -427,10 +457,10 @@ fun CapsuleImmersiveContent(
                             .background(
                                 Brush.verticalGradient(
                                     0f to Color.Transparent,
-                                    (if (frame.landscape) 0.27f else 0.42f) to Color.Transparent,
-                                    (if (frame.landscape) 0.49f else 0.60f) to frame.edge.copy(alpha = 0.46f),
-                                    (if (frame.landscape) 0.69f else 0.77f) to frame.edge.copy(alpha = 0.91f),
-                                    (if (frame.landscape) 0.84f else 0.91f) to frame.edge,
+                                    (if (frame.landscape) 0.38f else ImmersiveFadeStart) to Color.Transparent,
+                                    (if (frame.landscape) 0.61f else 0.70f) to frame.edge.copy(alpha = 0.28f),
+                                    (if (frame.landscape) 0.83f else 0.86f) to frame.edge.copy(alpha = 0.83f),
+                                    (if (frame.landscape) 0.95f else 0.96f) to frame.edge,
                                     1f to frame.edge,
                                 ),
                             ),
