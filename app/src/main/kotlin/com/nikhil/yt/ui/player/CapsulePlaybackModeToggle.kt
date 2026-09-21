@@ -74,6 +74,12 @@ fun CapsuleAudioVideoToggle(
     val videoRequestError =
         state.preferredMode == CapsulePlaybackMode.VIDEO &&
             state.phase == CapsuleVideoPhase.REQUEST_ERROR
+    // A request-guard cooldown is not a broken video decoder. Surface its actual meaning
+    // instead of the alarming, misleading "VIDEO ERROR" label while AUDIO keeps playing.
+    val videoRequestPaused =
+        videoRequestError &&
+            (state.message?.contains("paused", ignoreCase = true) == true ||
+                state.message?.contains("quota", ignoreCase = true) == true)
     val videoSelected =
         state.mode == CapsulePlaybackMode.VIDEO || videoResolving
     val audioSelected = !videoSelected
@@ -124,6 +130,7 @@ fun CapsuleAudioVideoToggle(
             shape = segmentShape,
             text =
                 when {
+                    videoRequestPaused -> "VIDEO PAUSED"
                     videoRequestError -> "VIDEO ERROR"
                     videoUnavailable -> "VIDEO N/A"
                     else -> if (lightStyle) "video" else "VIDEO"
