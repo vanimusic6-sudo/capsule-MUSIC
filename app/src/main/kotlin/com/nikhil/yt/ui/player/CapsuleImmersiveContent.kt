@@ -33,7 +33,6 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.key
 import androidx.compose.runtime.getValue
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
@@ -96,8 +95,6 @@ private const val ImmersiveFadeStart = 0.55f
 private val ImmersiveArtworkMin = 200.dp
 private val ImmersiveArtworkMax = 520.dp
 
-/** As long as the floor colour's own ease, so cover and background arrive together. */
-private const val ImmersiveCoverCrossfadeMs = 1_400
 
 /** The grab rail near the bottom, which opens the queue. */
 private val ImmersiveQueueRailWidth = 132.dp
@@ -290,17 +287,6 @@ fun CapsuleImmersiveContent(
             mutableStateOf(false)
         }
         val coverAndGradientReady = canRevealImmersiveArtwork(artworkTone, coverImageReady)
-        // The reveal is scoped to the selected song. A newly selected 16:9 cover must
-        // start at zero instead of inheriting the previous cover's alpha for one frame.
-        val artworkReveal = key(mediaMetadata.id, mediaMetadata.thumbnailUrl, artworkAspect) {
-            val alpha by animateFloatAsState(
-                targetValue = if (coverAndGradientReady) 1f else 0f,
-                animationSpec = tween(durationMillis = ImmersiveCoverCrossfadeMs),
-                label = "immersivePreparedArtworkReveal",
-            )
-            alpha
-        }
-
         /*
          * Where the cover ends, as a fraction of the sheet. The page has to be exactly edge at
          * that line and nowhere else, so the stop is computed rather than guessed.
@@ -320,15 +306,18 @@ fun CapsuleImmersiveContent(
                 )
             }
 
-        // Both image AND gradient are neutral until the final image is decoded. Once ready,
-        // dissolve the whole prepared pair together rather than showing a partly cropped
-        // bright preview over a grey background while its palette is still loading.
-        Box(modifier = Modifier.fillMaxSize().background(IMMERSIVE_NEUTRAL_COLOR))
+        // The completed artwork AND its sampled background appear in ONE frame. No
+        // alpha tween and no separate colour animation: gray stays gray while Coil
+        // prepares the final picture, then both layers switch together.
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .graphicsLayer(alpha = if (presentingVideo) 1f else artworkReveal)
-                .background(pageBackground),
+                .background(
+                    if (presentingVideo || coverAndGradientReady) pageBackground
+                    else Brush.verticalGradient(
+                        listOf(IMMERSIVE_NEUTRAL_COLOR, IMMERSIVE_NEUTRAL_COLOR),
+                    ),
+                ),
         )
 
         Box(
@@ -419,7 +408,7 @@ fun CapsuleImmersiveContent(
                             .graphicsLayer(
                                 scaleX = if (artworkTone.landscape) 1.06f else 1f,
                                 scaleY = if (artworkTone.landscape) 1.06f else 1f,
-                                alpha = artworkReveal,
+                                alpha = if (coverAndGradientReady) 1f else 0f,
                             ),
                     )
 
@@ -427,7 +416,7 @@ fun CapsuleImmersiveContent(
                         modifier =
                             Modifier
                                 .fillMaxSize()
-                                .graphicsLayer(alpha = artworkReveal)
+                                .graphicsLayer(alpha = if (coverAndGradientReady) 1f else 0f)
                                 .background(
                                     Brush.verticalGradient(
                                         0f to Color.Transparent,
