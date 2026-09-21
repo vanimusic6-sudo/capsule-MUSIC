@@ -33,9 +33,9 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.key
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -78,6 +78,13 @@ import com.nikhil.yt.playback.video.CapsuleVideoPhase
 import com.nikhil.yt.ui.component.CapsuleFavoriteColors
 import com.nikhil.yt.ui.component.CapsuleFavoriteIcon
 import com.nikhil.yt.utils.makeTimeString
+
+/** The outgoing gradient survives a media-item change until it has faded to neutral. */
+private data class ImmersiveGradientFrame(
+    val key: String,
+    val edge: Color,
+    val floor: Color,
+)
 
 /** How much of the sheet the cover takes before it starts to go. */
 private const val ImmersiveArtworkFraction = 0.52f
@@ -304,17 +311,37 @@ fun CapsuleImmersiveContent(
             mutableStateOf(false)
         }
         val coverAndGradientReady = canRevealImmersiveArtwork(artworkTone, coverImageReady)
-        // Only animate the fully prepared artwork AND its final sampled gradient as one
-        // visual. A fresh song's first frame stays neutral; no partial palette colours
-        // or raw 16:9 preview are exposed during image decode.
-        val artworkReveal = key(mediaMetadata.id, mediaMetadata.thumbnailUrl, artworkAspect) {
-            val alpha by animateFloatAsState(
-                targetValue = if (coverAndGradientReady) 1f else 0f,
-                animationSpec = tween(durationMillis = 320),
-                label = "immersivePreparedArtworkReveal",
-            )
-            alpha
+        // Retain the PREVIOUS completed gradient while it fades into neutral grey.
+        // Then reveal the NEXT completed cover + gradient from that same grey, never
+        // fading directly between unrelated palette colours or showing an unprepared
+        // video thumbnail. The animation lives outside the track key so a song switch
+        // cannot discard the outgoing gradient before its fade-out begins.
+        val visualKey = "${mediaMetadata.id}|${mediaMetadata.thumbnailUrl}|${artworkAspect}"
+        var shownGradient by remember { mutableStateOf<ImmersiveGradientFrame?>(null) }
+        val gradientAlpha = remember { Animatable(0f) }
+        LaunchedEffect(visualKey, coverAndGradientReady, edge, floor, visible) {
+            if (!visible || shownGradient?.key != visualKey || !coverAndGradientReady) {
+                if (shownGradient != null) {
+                    gradientAlpha.animateTo(0f, animationSpec = tween(durationMillis = 260))
+                    shownGradient = null
+                } else {
+                    gradientAlpha.snapTo(0f)
+                }
+            }
+            if (visible && coverAndGradientReady) {
+                // This assignment occurs only AFTER the previous gradient has fully left.
+                shownGradient = ImmersiveGradientFrame(visualKey, edge, floor)
+                gradientAlpha.animateTo(1f, animationSpec = tween(durationMillis = 360))
+            }
         }
+        // A new cover remains invisible while the OLD background goes to grey; its
+        // image, colour floor and lower dissolve then emerge together, using one alpha.
+        val artworkReveal =
+            if (shownGradient?.key == visualKey && coverAndGradientReady) {
+                gradientAlpha.value
+            } else {
+                0f
+            }
         /*
          * Where the cover ends, as a fraction of the sheet. The page has to be exactly edge at
          * that line and nowhere else, so the stop is computed rather than guessed.
@@ -322,12 +349,14 @@ fun CapsuleImmersiveContent(
         val seam = (artworkHeight / maxHeight).coerceIn(0.05f, 0.95f)
         val settled = (seam + 0.34f).coerceAtMost(1f)
 
+        val displayedEdge = shownGradient?.edge ?: IMMERSIVE_NEUTRAL_COLOR
+        val displayedFloor = shownGradient?.floor ?: IMMERSIVE_NEUTRAL_COLOR
         val pageBackground =
             Brush.verticalGradient(
-                0f to edge,
-                seam to edge,
-                settled to floor,
-                1f to floor,
+                0f to displayedEdge,
+                seam to displayedEdge,
+                settled to displayedFloor,
+                1f to displayedFloor,
             )
 
         // The placeholder is a flat neutral surface. The *completed* backdrop fades over
@@ -337,7 +366,7 @@ fun CapsuleImmersiveContent(
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .graphicsLayer(alpha = if (presentingVideo) 0f else artworkReveal)
+                .graphicsLayer(alpha = if (presentingVideo) 0f else gradientAlpha.value)
                 .background(pageBackground),
         )
         if (presentingVideo) {
