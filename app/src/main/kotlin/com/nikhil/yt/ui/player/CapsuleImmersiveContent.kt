@@ -257,14 +257,16 @@ fun CapsuleImmersiveContent(
     val shownPosition = (sliderPosition ?: positionMs).coerceIn(0L, safeDuration)
 
     BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
-        val artworkHeight =
-            if (presentingVideo) {
-                // The other Capsule designs reserve a real 16:9 video card. Do not
-                // letterbox the same PlayerView inside a tall portrait cover slot.
-                (maxWidth * (9f / 16f)).coerceAtMost(maxHeight * 0.65f)
-            } else {
-                immersiveArtworkHeight(maxHeight)
-            }
+        // The artwork region stays at the same height for both audio and video.
+        // The actual 16:9 video is centred INSIDE this region, exactly as the other
+        // Capsule layouts centre their video card inside the available artwork slot.
+        // Shrinking the whole region to 16:9 used to glue the video to the top edge
+        // and prematurely pull the title/controls upwards.
+        val artworkHeight = immersiveArtworkHeight(maxHeight)
+        val videoSidePadding = 22.dp
+        val videoFrameWidth = (maxWidth - videoSidePadding * 2).coerceAtLeast(120.dp)
+        val videoFrameHeight = (videoFrameWidth * (9f / 16f)).coerceAtMost(artworkHeight)
+        val videoFrameTop = ((artworkHeight - videoFrameHeight) / 2f).coerceAtLeast(0.dp)
         // Colour is sampled from the EXACT centre crop visible in this viewport, not
         // the full image or another song's palette. This also keeps landscape layouts sane.
         val artworkAspect = maxWidth.value / artworkHeight.value.coerceAtLeast(1f)
@@ -305,10 +307,6 @@ fun CapsuleImmersiveContent(
                     .fillMaxWidth()
                     .height(artworkHeight)
                     .clipToBounds()
-                    .then(
-                        if (presentingVideo) Modifier.clip(RoundedCornerShape(28.dp))
-                        else Modifier,
-                    )
                     /*
                      * The cover opens the words, as it does in the other two designs. A button
                      * for it was a button this screen did not need: the cover is the largest
@@ -325,31 +323,39 @@ fun CapsuleImmersiveContent(
                     ),
         ) {
             if (presentingVideo) {
-                // Keep the video slot stable throughout RESOLVING → PLAYING. Attach the
-                // PlayerView only once the service has switched to the video stream, so
-                // audio artwork cannot flash inside a second-sized card on first open.
-                if (isVideo) AndroidView(
-                    factory = { viewContext ->
-                        PlayerView(viewContext).apply {
-                            player = playerConnection.player
-                            useController = false
-                            // Capsule shows its own loading state; a second spinner over the
-                            // surface would be one indicator too many.
-                            setShowBuffering(PlayerView.SHOW_BUFFERING_NEVER)
-                            // Same video scaling as the other Capsule player designs:
-                            // preserve aspect ratio while cropping overflow, not letterboxing.
-                            resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM
-                            setShutterBackgroundColor(android.graphics.Color.BLACK)
-                            keepScreenOn = true
-                        }
-                    },
-                    update = { playerView ->
-                        if (playerView.player !== playerConnection.player) {
-                            playerView.player = playerConnection.player
-                        }
-                    },
-                    modifier = Modifier.fillMaxSize().background(Color.Black),
-                )
+                // The 16:9 card has the same horizontal inset and centred placement as
+                // standard Capsule players. Keep its bounds through RESOLVING so the
+                // first video frame cannot move the controls or briefly show audio art.
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .padding(top = videoFrameTop, start = videoSidePadding, end = videoSidePadding)
+                        .fillMaxWidth()
+                        .height(videoFrameHeight)
+                        .clip(RoundedCornerShape(28.dp))
+                        .background(Color.Black),
+                ) {
+                    if (isVideo) {
+                        AndroidView(
+                            factory = { viewContext ->
+                                PlayerView(viewContext).apply {
+                                    player = playerConnection.player
+                                    useController = false
+                                    setShowBuffering(PlayerView.SHOW_BUFFERING_NEVER)
+                                    resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM
+                                    setShutterBackgroundColor(android.graphics.Color.BLACK)
+                                    keepScreenOn = true
+                                }
+                            },
+                            update = { playerView ->
+                                if (playerView.player !== playerConnection.player) {
+                                    playerView.player = playerConnection.player
+                                }
+                            },
+                            modifier = Modifier.fillMaxSize(),
+                        )
+                    }
+                }
             } else {
                 /*
                  * Crossfaded rather than swapped. The floor colour under it already eases from
