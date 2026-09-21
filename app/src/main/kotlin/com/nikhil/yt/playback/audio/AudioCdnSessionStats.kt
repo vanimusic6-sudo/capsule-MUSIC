@@ -24,6 +24,12 @@ import java.util.concurrent.atomic.AtomicLong
  * one nothing counted -- establishing it took a script over an exported log, which is exactly
  * what this object exists to make unnecessary.
  *
+ * The capture taken after this field was added agrees on both counts. Its summary line reads
+ * `abandonedBodies=19 abandonedPct=14%`, and recomputing the same figure from the log by hand
+ * gives 19 -- so what the field reports is what it claims to report. And the split it exists to
+ * explain held on a second, larger sample: 8 refusals in 73 first requests on a new socket, 0 in
+ * 72 on a reused one. Across both captures that is 15 of 120 against 0 of 120.
+ *
  * Counters only. No timers, no coroutines, nothing that runs when the app is idle — the tally
  * costs an atomic increment on requests that were going to hit the network anyway.
  */
