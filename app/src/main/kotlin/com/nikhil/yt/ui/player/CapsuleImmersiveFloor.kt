@@ -6,8 +6,6 @@
 package com.nikhil.yt.ui.player
 
 import android.graphics.Bitmap
-import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.core.tween
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -25,13 +23,11 @@ import coil3.request.allowHardware
 import coil3.toBitmap
 import com.nikhil.yt.innertube.toHighResThumbnail
 import com.nikhil.yt.models.MediaMetadata
-import com.nikhil.yt.ui.motion.CapsuleStandardEasing
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
 internal val IMMERSIVE_NEUTRAL_COLOR = Color(0xFF262626)
-private const val ARTWORK_TRANSITION_MS = 1_400
 private const val ARTWORK_SAMPLE_SIZE = 256
 private val videoIdPattern = Regex("^[a-zA-Z0-9_-]{11}$")
 
@@ -169,23 +165,16 @@ internal fun rememberImmersiveEdgeColor(
         resolvedKey == key -> resolved ?: ImmersiveArtworkTone()
         else -> ImmersiveArtworkTone()
     }
-    val edge by animateColorAsState(
-        targetValue = target.edge,
-        animationSpec = tween(ARTWORK_TRANSITION_MS, easing = CapsuleStandardEasing),
-        label = "immersiveArtworkPrimary",
-    )
-    val accent by animateColorAsState(
-        targetValue = target.accent,
-        animationSpec = tween(ARTWORK_TRANSITION_MS, easing = CapsuleStandardEasing),
-        label = "immersiveArtworkSecondary",
-    )
+    // A colour animation made the background visibly build itself after the cover appeared.
+    // The sample is computed off-thread; apply the completed palette atomically with the
+    // matching decoded image in the player. Video-card transitions are animated separately.
     // Do NOT expose the unsampled original URL during a new selection: AsyncImage used
     // to draw it immediately with the default square zoom before the real 16:9 dimensions
     // and matching background had been calculated.
     val readyForCurrentTrack = target.ready && (cached != null || resolvedKey == key)
     return target.copy(
-        edge = edge,
-        accent = accent,
+        edge = target.edge,
+        accent = target.accent,
         displayUrl = if (readyForCurrentTrack) target.displayUrl else null,
         ready = readyForCurrentTrack,
     )
