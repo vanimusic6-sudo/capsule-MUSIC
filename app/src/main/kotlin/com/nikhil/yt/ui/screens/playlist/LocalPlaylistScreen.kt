@@ -7,7 +7,6 @@
 
 package com.nikhil.yt.ui.screens.playlist
 
-import com.nikhil.yt.ui.component.PlaylistMixAction
 import androidx.compose.material3.CenterAlignedTopAppBar
 import com.nikhil.yt.ui.component.PlaylistAction
 import com.nikhil.yt.ui.component.PlaylistHero
@@ -449,17 +448,6 @@ fun LocalPlaylistScreen(
                                 thumbnails = playlist.thumbnails.filterNotNull(),
                                 songCount = pluralStringResource(R.plurals.n_song, count, count),
                                 duration = playlistLength.takeIf { it > 0 }?.let { makeTimeString(it * 1000L) },
-                                secondaryAction = {
-                                    PlaylistMixAction(onClick = {
-                                        playerConnection.playQueue(
-                                            LocalMixQueue(
-                                                database = database,
-                                                playlistId = playlist.id,
-                                                maxMixSize = 50,
-                                            ),
-                                        )
-                                    }, enabled = songs.isNotEmpty())
-                                },
                             ) {
                                 if (editable) {
                                     PlaylistAction(
