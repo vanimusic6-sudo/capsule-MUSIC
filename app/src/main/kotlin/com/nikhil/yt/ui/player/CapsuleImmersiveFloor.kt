@@ -129,9 +129,9 @@ internal fun rememberImmersiveEdgeColor(mediaMetadata: MediaMetadata?): Immersiv
                     ?: palette?.dominantSwatch?.rgb
                 val secondary = palette?.darkVibrantSwatch?.rgb ?: palette?.darkMutedSwatch?.rgb
                     ?: palette?.dominantSwatch?.rgb
-                val primaryColor = dominant?.let(::Color) ?: extracted.firstOrNull()
+                val primaryColor = dominant?.let { Color(it) } ?: extracted.firstOrNull()
                     ?: IMMERSIVE_NEUTRAL_COLOR
-                val secondaryColor = secondary?.let(::Color) ?: extracted.getOrNull(1)
+                val secondaryColor = secondary?.let { Color(it) } ?: extracted.getOrNull(1)
                     ?: primaryColor
                 ImmersiveArtworkTone(
                     edge = primaryColor.comfortableImmersiveColor(),
