@@ -45,6 +45,10 @@ internal data class ImmersiveArtworkTone(
     val ready: Boolean = false,
 )
 
+/** The raw 16:9 image and its coloured floor must become visible in the same frame. */
+internal fun canRevealImmersiveArtwork(tone: ImmersiveArtworkTone, imageLoaded: Boolean): Boolean =
+    tone.ready && !tone.displayUrl.isNullOrBlank() && imageLoaded
+
 private val immersiveArtworkCache = object : LinkedHashMap<String, ImmersiveArtworkTone>(24, 0.75f, true) {
     override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, ImmersiveArtworkTone>?): Boolean =
         size > 64
