@@ -72,6 +72,39 @@ class AudioCdnSessionStatsTest {
         assertTrue(summary, summary.contains("requestsPerSocket=3.0"))
     }
 
+    @Test fun `a body that stops short of the declared length is counted as abandoned`() {
+        // An undrained body cannot be followed by another request on that socket, so each of
+        // these is one more connection the next request has to open cold. In the capture of
+        // 21 September, 0 of 20 such closes were followed by a reused socket.
+        AudioCdnSessionStats.recordOpen()
+        AudioCdnSessionStats.recordClose(bytesDelivered = 1_257, declaredLength = 1_048_576)
+
+        val summary = requireNotNull(AudioCdnSessionStats.summary())
+
+        assertTrue(summary, summary.contains("abandonedBodies=1"))
+        assertTrue(summary, summary.contains("abandonedPct=100%"))
+    }
+
+    @Test fun `a body that arrived whole is not abandoned`() {
+        AudioCdnSessionStats.recordOpen()
+        AudioCdnSessionStats.recordClose(bytesDelivered = 1_048_576, declaredLength = 1_048_576)
+
+        val summary = requireNotNull(AudioCdnSessionStats.summary())
+
+        assertTrue(summary, summary.contains("abandonedBodies=0"))
+    }
+
+    @Test fun `a length the server never declared is not judged either way`() {
+        // A refused open resolves no length. Counting it as abandoned would double-count the
+        // refusal it already appears in and make the two fields say the same thing twice.
+        AudioCdnSessionStats.recordOpen()
+        AudioCdnSessionStats.recordClose(bytesDelivered = 0, declaredLength = -1)
+
+        val summary = requireNotNull(AudioCdnSessionStats.summary())
+
+        assertTrue(summary, summary.contains("abandonedBodies=0"))
+    }
+
     @Test fun `a route change starts the count again`() {
         AudioCdnSessionStats.recordOpen()
         AudioCdnSessionStats.recordResponse(403, requestIndexOnConnection = 1)

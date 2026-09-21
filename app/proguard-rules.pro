@@ -108,6 +108,39 @@
 -keep class com.nikhil.yt.models.QueueType$* { *; }
 -keep class com.nikhil.yt.playback.queues.** { *; }
 
+# A Java-serialized file stores the *name* of every class in the object graph, so
+# renaming a Serializable class breaks every file written by an earlier build. The
+# keep rules above cover this app's own models; they cannot cover the ones the
+# stdlib supplies underneath them. A capture caught exactly that -- the automix
+# snapshot failed to load on startup with
+#
+#   InvalidClassException: kk2; class invalid for deserialization
+#
+# and the mapping files say the whole story. Without this rule, R8 at ddb0c0f
+# assigns:
+#
+#   kotlin.collections.EmptyIterator -> kk2      (not Serializable)
+#   kotlin.collections.EmptyList     -> lk2      (Serializable)
+#   kotlin.collections.EmptyMap      -> nk2      (Serializable)
+#   kotlin.collections.EmptySet      -> tk2      (Serializable)
+#
+# EmptyList is what toList() returns for an empty collection, so it is what went into
+# the file -- under whatever short name it held in the build that wrote it, which was
+# kk2. By the build that read it back, kk2 belongs to EmptyIterator, which is not
+# Serializable, so the name resolves to a class that cannot be deserialized and the
+# queue is lost. Nothing is corrupt; the names just moved.
+#
+# How little it takes for them to move: adding this one rule shifts EmptyIterator from
+# kk2 to zi1 all by itself.
+#
+# With the rule, EmptyList, EmptyMap and EmptySet all keep their own names in every
+# build. Classes that are not Serializable are still renamed normally
+# (AbstractCollection -> j0, AbstractList -> z0, and so on), so this costs the names of
+# one interface's implementors and not the whole app's.
+#
+# Names, not just members: the pair is what Java serialization actually needs.
+-keepnames class * implements java.io.Serializable
+
 # Java serialization discovers these members reflectively. R8 must not strip
 # or rename the protocol members even when there is no direct bytecode call.
 -keepclassmembers class * implements java.io.Serializable {

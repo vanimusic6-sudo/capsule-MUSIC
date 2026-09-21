@@ -169,6 +169,18 @@ internal class AudioNetworkDiagnosticDataSource(
     private var openedDataSpec: DataSpec? = null
     private var firstAudioBytesSeen = false
 
+    /**
+     * Bytes handed up since this open, and the length the server answered the open with.
+     *
+     * Deliberately separate from [bytesRead] and [diagnosticsEnabled]: these two feed the
+     * session tally, and a rate is only comparable between sessions if it counts the ones
+     * nobody thought to turn logging on for. A read that stops short of the declared length
+     * leaves its body undrained, which under HTTP/1.1 costs the socket and so manufactures one
+     * more cold first request -- the only place a refusal has ever landed.
+     */
+    private var deliveredBytes = 0L
+    private var declaredLength = -1L
+
     override fun addTransferListener(transferListener: TransferListener) {
         upstream.addTransferListener(transferListener)
     }
@@ -180,13 +192,15 @@ internal class AudioNetworkDiagnosticDataSource(
 
         openedDataSpec = dataSpec
         firstAudioBytesSeen = false
+        deliveredBytes = 0L
+        declaredLength = -1L
 
         // Counted before the level check: a refusal rate is only comparable between sessions if
         // it counts every session, not the ones somebody remembered to enable logging for.
         AudioCdnSessionStats.recordOpen()
 
         diagnosticsEnabled = GlobalLog.isEnabled
-        if (!diagnosticsEnabled) return upstream.open(dataSpec)
+        if (!diagnosticsEnabled) return upstream.open(dataSpec).also { declaredLength = it }
 
         startedAtNs = System.nanoTime()
         openCompletedAtNs = 0L
@@ -210,6 +224,7 @@ internal class AudioNetworkDiagnosticDataSource(
 
         return try {
             upstream.open(dataSpec).also { resolvedLength ->
+                declaredLength = resolvedLength
                 openCompletedAtNs = System.nanoTime()
                 Timber.tag(TAG).i(
                     "cdn-open-ready id=%s host=%s openMs=%d resolvedLength=%d",
@@ -272,6 +287,7 @@ internal class AudioNetworkDiagnosticDataSource(
     override fun read(buffer: ByteArray, offset: Int, length: Int): Int {
         if (!diagnosticsEnabled) {
             val count = upstream.read(buffer, offset, length)
+            if (count > 0) deliveredBytes += count.toLong()
             markFirstAudioBytes(count)
             return count
         }
@@ -284,6 +300,7 @@ internal class AudioNetworkDiagnosticDataSource(
 
                 if (count > 0) {
                     markFirstAudioBytes(count)
+                    deliveredBytes += count.toLong()
                     bytesRead += count.toLong()
                     if (!firstByteLogged) {
                         firstByteLogged = true
@@ -388,6 +405,8 @@ internal class AudioNetworkDiagnosticDataSource(
         try {
             upstream.close()
         } finally {
+            // Counted whatever the level, like the open it closes.
+            AudioCdnSessionStats.recordClose(deliveredBytes, declaredLength)
             if (diagnosticsEnabled && startedAtNs != 0L) {
                 val elapsed = elapsedMs(startedAtNs, System.nanoTime())
                 // This is throughput *delivered to Media3*, not proof of raw network
@@ -418,6 +437,8 @@ internal class AudioNetworkDiagnosticDataSource(
             linkRef = null
             openedDataSpec = null
             firstAudioBytesSeen = false
+            deliveredBytes = 0L
+            declaredLength = -1L
             mediaKey = null
             host = null
         }

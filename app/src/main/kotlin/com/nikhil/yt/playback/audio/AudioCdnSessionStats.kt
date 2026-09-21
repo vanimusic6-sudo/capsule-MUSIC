@@ -16,6 +16,14 @@ import java.util.concurrent.atomic.AtomicLong
  * first request (they all have, so far), and how much of the traffic is redirects (each one ends
  * its socket, which manufactures more first requests).
  *
+ * Redirects are not the only thing that manufactures them. In the capture of 21 September the
+ * split was total: of 64 reads that delivered the length the server declared, 48 were followed
+ * by a request on the same socket; of 27 that stopped short of it, not one was. Every abandoned
+ * body costs its socket, and the next request down a new socket is where 7 refusals out of 7
+ * landed. That is one of the two things deciding how much exposure a session has, and it was the
+ * one nothing counted -- establishing it took a script over an exported log, which is exactly
+ * what this object exists to make unnecessary.
+ *
  * Counters only. No timers, no coroutines, nothing that runs when the app is idle — the tally
  * costs an atomic increment on requests that were going to hit the network anyway.
  */
@@ -26,6 +34,7 @@ internal object AudioCdnSessionStats {
     private val requests = AtomicLong()
     private val redirects = AtomicLong()
     private val sockets = AtomicLong()
+    private val abandoned = AtomicLong()
 
     fun recordOpen() {
         opens.incrementAndGet()
@@ -49,6 +58,20 @@ internal object AudioCdnSessionStats {
         }
     }
 
+    /**
+     * One finished read, and whether its body arrived whole.
+     *
+     * [declaredLength] is what the server answered the open with, so a read that stops short of
+     * it was abandoned rather than completed -- a skip, a seek, a pause left open until it timed
+     * out, or a refusal that never had a body at all. Under HTTP/1.1 an undrained body cannot be
+     * followed by another request on that socket, so each of these is one more connection the
+     * next request has to open cold. A length that was never declared cannot be judged and is
+     * not counted either way.
+     */
+    fun recordClose(bytesDelivered: Long, declaredLength: Long) {
+        if (declaredLength > 0L && bytesDelivered < declaredLength) abandoned.incrementAndGet()
+    }
+
     /** Forgotten with the rest of the CDN's memory when the route changes. */
     fun forget() {
         opens.set(0)
@@ -57,6 +80,7 @@ internal object AudioCdnSessionStats {
         requests.set(0)
         redirects.set(0)
         sockets.set(0)
+        abandoned.set(0)
     }
 
     /**
@@ -81,6 +105,8 @@ internal object AudioCdnSessionStats {
             append(" redirectPct=").append(percent(redirects.get(), requestCount))
             append(" sockets=").append(socketCount)
             append(" requestsPerSocket=").append(ratio(requestCount, socketCount))
+            append(" abandonedBodies=").append(abandoned.get())
+            append(" abandonedPct=").append(percent(abandoned.get(), openCount))
         }
     }
 

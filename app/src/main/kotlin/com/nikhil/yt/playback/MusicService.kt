@@ -170,6 +170,7 @@ import com.nikhil.yt.together.TogetherGuestControlCoordinator
 import com.nikhil.yt.lyrics.LyricsPreloadManager
 import com.nikhil.yt.models.PersistPlayerState
 import com.nikhil.yt.models.PersistQueue
+import com.nikhil.yt.models.persistableList
 import com.nikhil.yt.models.toMediaMetadata
 import com.nikhil.yt.playback.queues.EmptyQueue
 import com.nikhil.yt.playback.queues.Queue
@@ -5270,14 +5271,14 @@ class MusicService :
     private fun capturePersistentPlaybackSnapshot(): PersistentPlaybackSnapshot? {
         if (currentQueue == EmptyQueue || player.mediaItemCount <= 0) return null
 
-        val mediaItemsSnapshot = player.mediaItems.mapNotNull { it.metadata }
+        val mediaItemsSnapshot = persistableList(player.mediaItems.mapNotNull { it.metadata })
         if (mediaItemsSnapshot.isEmpty()) return null
 
         val currentMediaItemIndex = player.currentMediaItemIndex
         val currentPosition = player.currentPosition
-        val automixSnapshot = automixItems.value.mapNotNull { it.metadata }
+        val automixSnapshot = persistableList(automixItems.value.mapNotNull { it.metadata })
         val automixAutoAddedSnapshot =
-            synchronized(autoAddedMediaIds) { autoAddedMediaIds.toList() }
+            synchronized(autoAddedMediaIds) { persistableList(autoAddedMediaIds) }
         val playerState = capturePersistentPlayerState() ?: return null
 
         return PersistentPlaybackSnapshot(

@@ -51,15 +51,21 @@ internal class CapsuleAudioRequestInterceptor(private val guardStreams: Boolean 
     /**
      * What kind of item YouTube just described, in terms that separate a track from an upload.
      *
-     * The 403s cluster on the results of the Videos tab — fan compilations, remixes, re-uploads —
-     * while library tracks open first time. Nothing the app already records tells the two apart:
-     * same itag, same client, same CDN hosts, a fresh signed link with a token, and the same host
-     * serving 206 to one and 403 to the next. The difference, if there is one, is in the response
-     * that produced the link, and this is the part of it that could hold it.
+     * This was added to test a guess: that the 403s clustered on the results of the Videos tab —
+     * fan compilations, remixes, re-uploads — while library tracks opened first time. Nothing the
+     * app recorded told the two apart, so `musicVideoType` was logged to tell them apart, on the
+     * reasoning that an official track carries one and an arbitrary upload does not.
      *
-     * `musicVideoType` is the field to watch. An official track carries one; an arbitrary upload
-     * does not. If every refusal turns out to be an item without it, then the app is asking the
-     * music client for something that is not in the music catalogue, and that is the answer.
+     * The capture of 21 September answered it, and the answer is no. All seven refused items came
+     * back `MUSIC_VIDEO_TYPE_ATV` with `status=OK`, and so did 28 of the 29 tracks the session
+     * played; the twenty-ninth was an OMV and was served. What the item is has nothing to do with
+     * it. The variable that did separate the cases is not in the player response at all — it is
+     * the connection: 7 of 47 first requests on a new socket were refused and 0 of 48 on a reused
+     * one. See AudioCdnSessionStats.
+     *
+     * The line stays. It is one entry per player response, it is what closed this question, and
+     * an item flag is still the first thing worth ruling out when a *particular* track will not
+     * play at all — which is a different question from this one.
      *
      * Titles and channel names are deliberately absent. These are flags and short status words —
      * enough to classify an item, not enough to say which one it was.

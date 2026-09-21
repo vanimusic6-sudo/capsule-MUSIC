@@ -41,6 +41,22 @@ internal const val AUDIO_CDN_MAX_EXTRA_REQUESTS = 8
  * cross-group redirect that was eventually followed was served — twelve for twelve. That is only
  * observable after two declines, so it may flatter itself, which is the reason for keeping one
  * decline rather than removing the policy outright.
+ *
+ * The one decline that is left is now on the same watch. Its scorecard in the capture of
+ * 21 September, four declines:
+ *
+ *   issuing host served it directly       2
+ *   issuing host offered the same hop     1
+ *   issuing host refused it               1
+ *
+ * So it converted half, and the request it spent on the other half is a cold socket — where 7 of
+ * that session's 7 refusals landed, and one of these four is one of those seven. Meanwhile the
+ * job this was really doing has largely moved: AudioCdnRedirectTargets served 6 requests straight
+ * from a remembered target, all of them 206, without asking anything twice.
+ *
+ * Four declines is not a number to change a policy on, so it stays at one for now. The next
+ * capture decides it, and what it has to beat is written above: conversions against cold sockets
+ * manufactured.
  */
 internal const val AUDIO_CDN_MAX_REISSUES = 1
 

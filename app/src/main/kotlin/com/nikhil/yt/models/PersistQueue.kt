@@ -8,6 +8,31 @@ package com.nikhil.yt.models
 
 import java.io.Serializable
 
+/**
+ * The same items, in a list Java serialization can still read after the next release.
+ *
+ * A snapshot is written with Java serialization, which stores the *class name* of every object in
+ * the graph -- the lists included. The stdlib hands back its own implementations for the small
+ * cases: `toList()` on an empty collection returns the singleton `kotlin.collections.EmptyList`,
+ * which is Serializable and which R8 renames. A capture caught the consequence on startup --
+ * `InvalidClassException: kk2; class invalid for deserialization` on persistent_automix.data --
+ * and the release mapping names the culprit exactly: unshielded, this branch calls EmptyList
+ * `lk2` and gives `kk2` -- the name in the crash -- to `kotlin.collections.EmptyIterator`, which
+ * is not Serializable at all. The build that wrote the file had EmptyList under that name; the
+ * build that read it back had handed the name to something else.
+ *
+ * Only the automix file carried it. It is the only one of the three built from `toList()`, and
+ * its list of auto-added ids is empty whenever automix has added nothing yet.
+ *
+ * ArrayList is a platform class no shrinker renames, so a snapshot built from these survives an
+ * update whatever R8 does with the rest. proguard-rules.pro keeps the names of Serializable
+ * classes as well, which closes the same hole from the other side; this one makes the files
+ * correct rather than merely rescued, and does not depend on a rule staying in that file.
+ *
+ * Every list that goes into a persisted model should come through here.
+ */
+fun <T> persistableList(items: Collection<T>): List<T> = ArrayList(items)
+
 data class PersistQueue(
     val title: String?,
     val items: List<MediaMetadata>,
