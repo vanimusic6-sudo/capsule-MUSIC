@@ -71,7 +71,10 @@ internal fun immersiveArtworkCandidates(mediaId: String?, original: String?): Li
 }
 
 @Composable
-internal fun rememberImmersiveEdgeColor(mediaMetadata: MediaMetadata?): ImmersiveArtworkTone {
+internal fun rememberImmersiveEdgeColor(
+    mediaMetadata: MediaMetadata?,
+    enabled: Boolean = true,
+): ImmersiveArtworkTone {
     val context = LocalContext.current
     val sourceUrl = mediaMetadata?.thumbnailUrl
     val key = mediaMetadata?.id?.let { "$it|$sourceUrl" }
@@ -79,7 +82,10 @@ internal fun rememberImmersiveEdgeColor(mediaMetadata: MediaMetadata?): Immersiv
     var resolvedKey by remember { mutableStateOf<String?>(null) }
     val cached = key?.let { synchronized(immersiveArtworkCache) { immersiveArtworkCache[it] } }
 
-    LaunchedEffect(key, sourceUrl) {
+    LaunchedEffect(key, sourceUrl, enabled) {
+        // The player is still composed while its sheet is collapsed. Avoid spending
+        // energy (or trying multiple ytimg qualities) for rapidly skipped unseen songs.
+        if (!enabled) return@LaunchedEffect
         if (key == null || sourceUrl.isNullOrBlank()) {
             resolved = ImmersiveArtworkTone()
             resolvedKey = key
