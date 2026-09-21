@@ -225,7 +225,7 @@ fun TopPlaylistScreen(
 
     val lazyListState = rememberLazyListState()
 
-    val surfaceColor = StandardChrome.background
+    val surfaceColor = if (StandardChrome.isDark) Color(0xFF090909) else StandardChrome.background
 
 
 
