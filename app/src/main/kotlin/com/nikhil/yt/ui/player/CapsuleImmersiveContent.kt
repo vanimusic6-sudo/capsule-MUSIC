@@ -269,7 +269,7 @@ fun CapsuleImmersiveContent(
      */
     // No theme-derived bright accent on the very first open: the tone starts charcoal
     // and only transitions after Coil has actually decoded the selected artwork.
-    val artworkTone = rememberImmersiveEdgeColor(mediaMetadata = mediaMetadata)
+    val artworkTone = rememberImmersiveEdgeColor(mediaMetadata = mediaMetadata, enabled = visible)
     val edge = artworkTone.edge
     // Darken only within the artwork's own colour family. The previous 86% black blend
     // turned every cover (even saturated red ones) into a nearly black bottom third.
