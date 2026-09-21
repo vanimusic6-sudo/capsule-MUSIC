@@ -1,11 +1,11 @@
 /*
- * Velune - by Nikhil
- * Nikhil
- * Licensed Under GPL-3.0
+ * Capsule MUSIC — artwork-driven colours for the Immersion player only.
+ * The controls and all other player designs do not consume this state.
+ * GPL-3.0
  */
-
 package com.nikhil.yt.ui.player
 
+import android.graphics.Bitmap
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.runtime.Composable
@@ -17,205 +17,179 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
-import androidx.core.graphics.get
+import androidx.palette.graphics.Palette
 import coil3.imageLoader
 import coil3.request.ImageRequest
+import coil3.request.SuccessResult
 import coil3.request.allowHardware
 import coil3.toBitmap
 import com.nikhil.yt.innertube.toHighResThumbnail
 import com.nikhil.yt.models.MediaMetadata
 import com.nikhil.yt.ui.motion.CapsuleStandardEasing
+import com.nikhil.yt.ui.theme.PlayerColorExtractor
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
-/** Small enough that averaging it costs nothing, large enough that one row is not one object. */
-private const val EDGE_SAMPLE_SIZE = 48
-
-/** How much of the cover's foot is averaged. */
-private const val EDGE_SAMPLE_ROWS = 6
-
-/** Neutral first frame; never show a random theme accent while artwork is loading. */
 internal val IMMERSIVE_NEUTRAL_COLOR = Color(0xFF262626)
+private const val ARTWORK_TRANSITION_MS = 1_400
+private const val ARTWORK_SAMPLE_SIZE = 256
+private val videoIdPattern = Regex("^[a-zA-Z0-9_-]{11}$")
 
-/** As long as the artwork crossfade, so the dissolve never flashes between tones. */
-private const val EDGE_TRANSITION_MS = 1_400
+internal data class ImmersiveArtworkTone(
+    val edge: Color = IMMERSIVE_NEUTRAL_COLOR,
+    val landscape: Boolean = false,
+    val accent: Color = IMMERSIVE_NEUTRAL_COLOR,
+    val displayUrl: String? = null,
+)
 
-internal data class ImmersiveArtworkTone(val edge: Color, val landscape: Boolean = false)
-
-private val edgeColorCache = object : LinkedHashMap<String, ImmersiveArtworkTone>(24, 0.75f, true) {
+private val immersiveArtworkCache = object : LinkedHashMap<String, ImmersiveArtworkTone>(24, 0.75f, true) {
     override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, ImmersiveArtworkTone>?): Boolean =
         size > 64
 }
 
 /**
- * The colour along the very bottom of the cover.
- *
- * The first version of this screen took its floor from the artwork palette, which reports the
- * colours an image is *about* — the vibrant ones. On a painting of a red robe on a pale grey
- * floor that is the robe, so the page went maroon underneath a cover that ended in grey, and the
- * join the whole design rests on became the most visible line on the screen.
- *
- * What the gradient meets is not the picture's subject but its last few rows of pixels, so that
- * is what is measured: a short strip averaged off the foot of a thumbnail small enough that doing
- * so costs nothing. Once per track, off the main thread, and remembered — no clock, no polling.
- *
- * [fallback] is only ever seen before the first measurement of the session has landed, and the
- * crossfade runs from it, so even that one is a fade rather than a jump.
+ * ArchiveTune's relevant visual behaviour: try actual YouTube video thumbnails (when the
+ * original artwork already comes from ytimg), display widescreen frames with Fit over a
+ * separate, filled background, and extract a Palette from the SAME decoded image that
+ * will be displayed. Do not prefetch a YouTube image for every ordinary square album cover.
  */
+internal fun immersiveArtworkCandidates(mediaId: String?, original: String?): List<String> {
+    if (original.isNullOrBlank()) return emptyList()
+    val base = original.toHighResThumbnail()
+    if (mediaId == null || !videoIdPattern.matches(mediaId) ||
+        !original.contains("ytimg.com/vi/", ignoreCase = true)
+    ) return listOf(base)
+
+    return listOf(
+        "https://i.ytimg.com/vi/$mediaId/maxresdefault.jpg",
+        "https://i.ytimg.com/vi/$mediaId/hq720.jpg",
+        "https://i.ytimg.com/vi/$mediaId/hqdefault.jpg",
+        base,
+    ).distinct()
+}
+
 @Composable
 internal fun rememberImmersiveEdgeColor(mediaMetadata: MediaMetadata?): ImmersiveArtworkTone {
     val context = LocalContext.current
-    val thumbnailUrl = mediaMetadata?.thumbnailUrl
-    val cacheKey = mediaMetadata?.id?.let { "$it|$thumbnailUrl" }
+    val sourceUrl = mediaMetadata?.thumbnailUrl
+    val key = mediaMetadata?.id?.let { "$it|$sourceUrl" }
+    var resolved by remember { mutableStateOf<ImmersiveArtworkTone?>(null) }
+    var resolvedKey by remember { mutableStateOf<String?>(null) }
+    val cached = key?.let { synchronized(immersiveArtworkCache) { immersiveArtworkCache[it] } }
 
-    /*
-     * Deliberately not keyed on the track.
-     *
-     * Keyed, it emptied on every change, the caller fell back to the artwork palette for the few
-     * hundred milliseconds before the new measurement landed, and the page flashed whatever
-     * vivid colour that track happened to be about. Holding the previous track's floor instead
-     * means the page only ever moves from one measured colour to the next, and the crossfade
-     * below carries it. The palette is a fallback for the very first track and nothing else.
-     */
-    var measured by remember { mutableStateOf<ImmersiveArtworkTone?>(null) }
-
-    /** The track the held colour belongs to, so a stale one is never kept once its own arrives. */
-    var measuredFor by remember { mutableStateOf<String?>(null) }
-
-    val cached = cacheKey?.let { synchronized(edgeColorCache) { edgeColorCache[it] } }
-    if (cached != null && measuredFor != cacheKey) {
-        measured = cached
-        measuredFor = cacheKey
-    }
-
-    LaunchedEffect(cacheKey, thumbnailUrl) {
-        if (cacheKey == null || thumbnailUrl.isNullOrBlank()) {
-            measured = ImmersiveArtworkTone(IMMERSIVE_NEUTRAL_COLOR)
-            measuredFor = cacheKey
+    LaunchedEffect(key, sourceUrl) {
+        if (key == null || sourceUrl.isNullOrBlank()) {
+            resolved = ImmersiveArtworkTone()
+            resolvedKey = key
             return@LaunchedEffect
         }
-        if (measuredFor == cacheKey) return@LaunchedEffect
-        val request =
-            ImageRequest.Builder(context)
-                .data(thumbnailUrl.toHighResThumbnail())
-                .size(EDGE_SAMPLE_SIZE, EDGE_SAMPLE_SIZE)
-                .allowHardware(false)
-                .build()
-        val sample =
-            try {
-                val bitmap =
-                    withContext(Dispatchers.IO) { context.imageLoader.execute(request) }
-                        .image
-                        ?.toBitmap()
-                        ?: return@LaunchedEffect
-                withContext(Dispatchers.Default) {
-                    val landscape = bitmap.width > bitmap.height * 1.20f
-                    // Video thumbnails can contain a built-in black letterbox. That black strip
-                    // is not the artwork's colour: extract from the image body instead.
-                    val bottom = bitmap.averageBottomStrip()
-                    val middle = bitmap.averageMiddleStrip()
-                    val sampled =
-                        if ((landscape || bottom.isNearlyBlack()) && bottom.isNearlyBlack() && !middle.isNearlyBlack()) {
-                            middle
-                        } else {
-                            bottom
-                        }
-                    ImmersiveArtworkTone((sampled ?: IMMERSIVE_NEUTRAL_COLOR).comfortableImmersiveColor(), landscape)
-                }
+        cached?.let {
+            resolved = it
+            resolvedKey = key
+            return@LaunchedEffect
+        }
+        if (resolvedKey == key) return@LaunchedEffect
+
+        val candidates = immersiveArtworkCandidates(mediaMetadata.id, sourceUrl)
+        val isYtimg = candidates.size > 1
+        var resultTone: ImmersiveArtworkTone? = null
+
+        for ((index, url) in candidates.withIndex()) {
+            val image = try {
+                val request = ImageRequest.Builder(context)
+                    .data(url)
+                    .size(ARTWORK_SAMPLE_SIZE)
+                    .allowHardware(false)
+                    .build()
+                val result = withContext(Dispatchers.IO) { context.imageLoader.execute(request) }
+                (result as? SuccessResult)?.image?.toBitmap()
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (_: Exception) {
                 null
-            } ?: ImmersiveArtworkTone(IMMERSIVE_NEUTRAL_COLOR)
+            } ?: continue
 
-        synchronized(edgeColorCache) { edgeColorCache[cacheKey] = sample }
-        measured = sample
-        measuredFor = cacheKey
-    }
+            val landscape = image.width.toFloat() / image.height.coerceAtLeast(1) >= 4f / 3f
+            // maxresdefault/hq720 may return a small 'unavailable thumbnail' image with HTTP
+            // 200. Those must not replace the actual song cover or contaminate its palette.
+            if (isYtimg && index < 2 && (!landscape || image.width < 200)) continue
 
-    val target = measured ?: ImmersiveArtworkTone(IMMERSIVE_NEUTRAL_COLOR)
-    val animated by
-        animateColorAsState(
-            targetValue = target.edge,
-            animationSpec = tween(durationMillis = EDGE_TRANSITION_MS, easing = CapsuleStandardEasing),
-            label = "immersiveEdge",
-        )
-    return target.copy(edge = animated)
-}
-
-/**
- * The mean colour of the bottom rows, or null if there is nothing to measure.
- *
- * Averaged in linear terms would be more correct and is not worth it here: the strip is a few
- * hundred pixels of what is usually one flat area, and the answer only has to match the pixels
- * directly above it closely enough that no edge is visible.
- */
-private fun android.graphics.Bitmap.averageBottomStrip(): Color? {
-    val height = height
-    val width = width
-    if (width <= 0 || height <= 0) return null
-
-    val rows = EDGE_SAMPLE_ROWS.coerceAtMost(height)
-    val firstRow = (height - rows).coerceAtLeast(0)
-    var red = 0L
-    var green = 0L
-    var blue = 0L
-    var counted = 0L
-
-    for (y in firstRow until height) {
-        for (x in 0 until width) {
-            val pixel = this[x, y]
-            // Fully transparent pixels say nothing about what the edge looks like.
-            if ((pixel ushr 24 and 0xFF) < 8) continue
-            red += pixel shr 16 and 0xFF
-            green += pixel shr 8 and 0xFF
-            blue += pixel and 0xFF
-            counted += 1
+            resultTone = withContext(Dispatchers.Default) {
+                val palette = image.centralArtworkPalette()
+                val extracted = palette?.let {
+                    PlayerColorExtractor.extractGradientColors(
+                        palette = it,
+                        fallbackColor = IMMERSIVE_NEUTRAL_COLOR.toArgb(),
+                    )
+                }.orEmpty()
+                // Prefer *real* swatches; generated palette complements are only fallbacks.
+                // The middle of the image excludes a baked-in black letterbox at the bottom.
+                val dominant = palette?.vibrantSwatch?.rgb ?: palette?.mutedSwatch?.rgb
+                    ?: palette?.dominantSwatch?.rgb
+                val secondary = palette?.darkVibrantSwatch?.rgb ?: palette?.darkMutedSwatch?.rgb
+                    ?: palette?.dominantSwatch?.rgb
+                val primaryColor = dominant?.let(::Color) ?: extracted.firstOrNull()
+                    ?: IMMERSIVE_NEUTRAL_COLOR
+                val secondaryColor = secondary?.let(::Color) ?: extracted.getOrNull(1)
+                    ?: primaryColor
+                ImmersiveArtworkTone(
+                    edge = primaryColor.comfortableImmersiveColor(),
+                    accent = secondaryColor.comfortableImmersiveColor(),
+                    landscape = landscape,
+                    displayUrl = url,
+                )
+            }
+            break
         }
+        val finalTone = resultTone ?: ImmersiveArtworkTone(displayUrl = sourceUrl.toHighResThumbnail())
+        synchronized(immersiveArtworkCache) { immersiveArtworkCache[key] = finalTone }
+        resolved = finalTone
+        resolvedKey = key
     }
 
-    if (counted == 0L) return null
-    return Color(
-        red = (red / counted).toInt(),
-        green = (green / counted).toInt(),
-        blue = (blue / counted).toInt(),
+    val target = when {
+        cached != null -> cached
+        resolvedKey == key -> resolved ?: ImmersiveArtworkTone()
+        else -> resolved ?: ImmersiveArtworkTone()
+    }
+    val edge by animateColorAsState(
+        targetValue = target.edge,
+        animationSpec = tween(ARTWORK_TRANSITION_MS, easing = CapsuleStandardEasing),
+        label = "immersiveArtworkPrimary",
     )
+    val accent by animateColorAsState(
+        targetValue = target.accent,
+        animationSpec = tween(ARTWORK_TRANSITION_MS, easing = CapsuleStandardEasing),
+        label = "immersiveArtworkSecondary",
+    )
+    // Never render a previously selected song's URL while new metadata is being decoded.
+    val visibleUrl = if (cached != null || resolvedKey == key) target.displayUrl
+        else sourceUrl?.toHighResThumbnail()
+    return target.copy(edge = edge, accent = accent, displayUrl = visibleUrl)
 }
 
-/** The artwork may be very bright; controls always need a dark, coloured surface. */
+private fun Bitmap.centralArtworkPalette(): Palette? {
+    if (width <= 0 || height <= 0) return null
+    val y = (height * 0.18f).toInt().coerceIn(0, height - 1)
+    val h = (height * 0.64f).toInt().coerceIn(1, height - y)
+    val cropped = Bitmap.createBitmap(this, 0, y, width, h)
+    return try {
+        Palette.from(cropped)
+            .maximumColorCount(PlayerColorExtractor.Config.MAX_COLOR_COUNT)
+            .resizeBitmapArea(PlayerColorExtractor.Config.BITMAP_AREA)
+            .generate()
+    } finally {
+        // createBitmap may return the input for a full-sized crop.
+        if (cropped !== this) cropped.recycle()
+    }
+}
+
+/** ArchiveTune-like HSV limits keep white labels readable without crushing hues to black. */
 internal fun Color.comfortableImmersiveColor(): Color {
     val hsv = FloatArray(3)
     android.graphics.Color.colorToHSV(toArgb(), hsv)
-    hsv[2] = hsv[2].coerceIn(0.17f, 0.40f)
+    hsv[1] = hsv[1].coerceAtLeast(0.32f)
+    hsv[2] = hsv[2].coerceIn(0.18f, 0.50f)
     return Color(android.graphics.Color.HSVToColor(hsv))
-}
-
-private fun Color?.isNearlyBlack(): Boolean =
-    this == null || (red + green + blue) / 3f < 0.085f
-
-/** Sample the actual subject instead of a baked-in lower black bar on a video frame. */
-private fun android.graphics.Bitmap.averageMiddleStrip(): Color? {
-    if (width <= 0 || height <= 0) return null
-    val startY = (height * 0.46f).toInt().coerceIn(0, height - 1)
-    val endY = (startY + EDGE_SAMPLE_ROWS).coerceAtMost(height)
-    var red = 0L
-    var green = 0L
-    var blue = 0L
-    var count = 0L
-    for (y in startY until endY) {
-        for (x in 0 until width) {
-            val pixel = this[x, y]
-            if ((pixel ushr 24 and 0xFF) < 8) continue
-            red += pixel shr 16 and 0xFF
-            green += pixel shr 8 and 0xFF
-            blue += pixel and 0xFF
-            count++
-        }
-    }
-    return if (count == 0L) null else Color(
-        red = (red / count).toInt(),
-        green = (green / count).toInt(),
-        blue = (blue / count).toInt(),
-    )
 }
