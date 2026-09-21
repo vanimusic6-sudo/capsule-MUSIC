@@ -185,13 +185,34 @@ fun CapsuleImmersiveContent(
         videoPlaybackState.mode == CapsulePlaybackMode.VIDEO &&
             videoPlaybackState.phase == CapsuleVideoPhase.PLAYING
 
-    // The user has already selected VIDEO during RESOLVING. Reserve the final video
-    // geometry immediately, instead of briefly drawing the old square audio artwork
-    // and moving the controls only after the stream enters PLAYING.
-    val presentingVideo =
-        isVideo ||
-            (videoPlaybackState.preferredMode == CapsulePlaybackMode.VIDEO &&
-                videoPlaybackState.phase == CapsuleVideoPhase.RESOLVING)
+    // Requesting VIDEO is not the same as having a video to display. Keep the complete
+    // audio artwork in place throughout RESOLVING and any request-guard backoff. The
+    // service deliberately marks PLAYING before replacing the Media3 item; even that
+    // is too early for a visible video stage until its FIRST frame is rendered.
+    var videoFirstFrameRendered by remember(mediaMetadata.id, videoPlaybackState.videoId) {
+        mutableStateOf(false)
+    }
+    DisposableEffect(playerConnection.player, isVideo, videoPlaybackState.videoId, mediaMetadata.id) {
+        if (isVideo) {
+            val listener = object : Player.Listener {
+                override fun onRenderedFirstFrame() {
+                    videoFirstFrameRendered = true
+                }
+            }
+            playerConnection.player.addListener(listener)
+            onDispose { playerConnection.player.removeListener(listener) }
+        } else {
+            onDispose { }
+        }
+    }
+    val presentingVideo = isVideo && videoFirstFrameRendered
+    // Animate ONLY transitions between real audio/video surfaces. The selected song's
+    // artwork and its gradient are still revealed together in a single, instant frame.
+    val videoTransition by animateFloatAsState(
+        targetValue = if (presentingVideo) 1f else 0f,
+        animationSpec = tween(durationMillis = 360),
+        label = "immersiveVideoSurfaceTransition",
+    )
 
     /*
      * The status bar goes while this screen is up.
