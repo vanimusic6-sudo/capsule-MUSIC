@@ -289,8 +289,7 @@ fun CapsuleImmersiveContent(
         var coverImageReady by remember(mediaMetadata.id, artworkTone.displayUrl) {
             mutableStateOf(false)
         }
-        val coverAndGradientReady =
-            artworkTone.ready && artworkTone.displayUrl != null && coverImageReady
+        val coverAndGradientReady = canRevealImmersiveArtwork(artworkTone, coverImageReady)
         // The reveal is scoped to the selected song. A newly selected 16:9 cover must
         // start at zero instead of inheriting the previous cover's alpha for one frame.
         val artworkReveal = key(mediaMetadata.id, mediaMetadata.thumbnailUrl, artworkAspect) {
