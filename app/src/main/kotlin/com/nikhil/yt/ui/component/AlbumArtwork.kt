@@ -73,6 +73,6 @@ internal fun AlbumArtworkLayers(
         )
 
         // Identical matte fade to ArtistHero: the page colour replaces the photograph gradually.
-        ArtworkSurfaceFade(background, Modifier.matchParentSize(), portrait = true)
+        ArtworkSurfaceFade(background, Modifier.matchParentSize(), portrait = true, topScrim = false)
     }
 }
