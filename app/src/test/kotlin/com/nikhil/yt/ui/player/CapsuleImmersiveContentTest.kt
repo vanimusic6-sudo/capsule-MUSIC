@@ -15,6 +15,24 @@ private val Ceiling: Dp = immersiveArtworkHeight(100_000.dp)
 
 class CapsuleImmersiveContentTest {
     @Test
+    fun `rapid skips keep one outgoing fade active instead of restarting per incoming track`() {
+        val originalFrame = "track-A|cover-A"
+        // Once B has been selected, A must start leaving before B has decoded anything.
+        assertTrue(shouldFadeOutImmersiveFrame(originalFrame, "track-B|cover-B", visible = true))
+        // Further rapid changes B -> C -> D do not alter the boolean animation key.
+        assertTrue(shouldFadeOutImmersiveFrame(originalFrame, "track-C|cover-C", visible = true))
+        assertTrue(shouldFadeOutImmersiveFrame(originalFrame, "track-D|cover-D", visible = true))
+        // After A has fully left there is no outgoing frame left to restart.
+        assertTrue(!shouldFadeOutImmersiveFrame(null, "track-D|cover-D", visible = true))
+    }
+
+    @Test
+    fun `already selected song does not fade out while its thumbnail is still decoding`() {
+        assertTrue(!shouldFadeOutImmersiveFrame("selected", "selected", visible = true))
+        assertTrue(shouldFadeOutImmersiveFrame("selected", "selected", visible = false))
+    }
+
+    @Test
     fun `raw widescreen thumbnail stays neutral until its geometry and gradient are prepared`() {
         val raw = ImmersiveArtworkTone(displayUrl = null, landscape = false, ready = false)
         assertTrue(!canRevealImmersiveArtwork(raw, imageLoaded = false))
