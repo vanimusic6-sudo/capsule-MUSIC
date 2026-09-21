@@ -15,6 +15,23 @@ private val Ceiling: Dp = immersiveArtworkHeight(100_000.dp)
 
 class CapsuleImmersiveContentTest {
     @Test
+    fun `video thumbnail tries full frame qualities before an existing cropped cover`() {
+        val id = "ABC123def45"
+        val original = "https://i.ytimg.com/vi/$id/hqdefault.jpg"
+        val choices = immersiveArtworkCandidates(id, original)
+        assertTrue(choices.first().endsWith("/maxresdefault.jpg"))
+        assertTrue(choices.any { it.endsWith("/hq720.jpg") })
+        assertTrue(choices.any { it.endsWith("/hqdefault.jpg") })
+        assertEquals(choices.size, choices.distinct().size)
+    }
+
+    @Test
+    fun `ordinary album art never starts extra YouTube thumbnail requests`() {
+        assertEquals(1, immersiveArtworkCandidates("ABC123def45", "https://lh3.googleusercontent.com/test").size)
+        assertTrue(immersiveArtworkCandidates(null, null).isEmpty())
+    }
+
+    @Test
     fun `an ordinary phone gives the cover about half the sheet`() {
         val height = immersiveArtworkHeight(800.dp)
 
