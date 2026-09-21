@@ -15,6 +15,30 @@ private val Ceiling: Dp = immersiveArtworkHeight(100_000.dp)
 
 class CapsuleImmersiveContentTest {
     @Test
+    fun `raw widescreen thumbnail stays neutral until its geometry and gradient are prepared`() {
+        val raw = ImmersiveArtworkTone(displayUrl = null, landscape = false, ready = false)
+        assertTrue(!canRevealImmersiveArtwork(raw, imageLoaded = false))
+        assertTrue(!canRevealImmersiveArtwork(raw, imageLoaded = true))
+        val stillUnprepared = raw.copy(
+            displayUrl = "https://i.ytimg.com/vi/ABC123def45/hq720.jpg",
+            landscape = true,
+        )
+        assertTrue(!canRevealImmersiveArtwork(stillUnprepared, imageLoaded = true))
+    }
+
+    @Test
+    fun `sampled colour and final full image must both be ready before shared reveal`() {
+        val tone = ImmersiveArtworkTone(
+            landscape = true,
+            displayUrl = "https://i.ytimg.com/vi/ABC123def45/maxresdefault.jpg",
+            ready = true,
+        )
+        assertTrue(!canRevealImmersiveArtwork(tone, imageLoaded = false))
+        assertTrue(canRevealImmersiveArtwork(tone, imageLoaded = true))
+        assertTrue(!canRevealImmersiveArtwork(tone.copy(displayUrl = null), imageLoaded = true))
+    }
+
+    @Test
     fun `video thumbnail tries full frame qualities before an existing cropped cover`() {
         val id = "ABC123def45"
         val original = "https://i.ytimg.com/vi/$id/hqdefault.jpg"
