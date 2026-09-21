@@ -33,7 +33,10 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.key
 import androidx.compose.runtime.getValue
+import androidx.compose.animation.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -280,6 +283,25 @@ fun CapsuleImmersiveContent(
         // foreground accent (a green logo on white paper is not a green background).
         val floor = artworkTone.accent
 
+        // Decode + sample the SAME chosen URL before rendering either its thumbnail or
+        // coloured floor. AsyncImage may need its own larger decoded bitmap, so the palette
+        // being ready alone is not proof the actual cover can be drawn yet.
+        var coverImageReady by remember(mediaMetadata.id, artworkTone.displayUrl) {
+            mutableStateOf(false)
+        }
+        val coverAndGradientReady =
+            artworkTone.ready && artworkTone.displayUrl != null && coverImageReady
+        // The reveal is scoped to the selected song. A newly selected 16:9 cover must
+        // start at zero instead of inheriting the previous cover's alpha for one frame.
+        val artworkReveal = key(mediaMetadata.id, mediaMetadata.thumbnailUrl, artworkAspect) {
+            val alpha by animateFloatAsState(
+                targetValue = if (coverAndGradientReady) 1f else 0f,
+                animationSpec = tween(durationMillis = ImmersiveCoverCrossfadeMs),
+                label = "immersivePreparedArtworkReveal",
+            )
+            alpha
+        }
+
         /*
          * Where the cover ends, as a fraction of the sheet. The page has to be exactly edge at
          * that line and nowhere else, so the stop is computed rather than guessed.
@@ -299,7 +321,16 @@ fun CapsuleImmersiveContent(
                 )
             }
 
-        Box(modifier = Modifier.fillMaxSize().background(pageBackground))
+        // Both image AND gradient are neutral until the final image is decoded. Once ready,
+        // dissolve the whole prepared pair together rather than showing a partly cropped
+        // bright preview over a grey background while its palette is still loading.
+        Box(modifier = Modifier.fillMaxSize().background(IMMERSIVE_NEUTRAL_COLOR))
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .graphicsLayer(alpha = if (presentingVideo) 1f else artworkReveal)
+                .background(pageBackground),
+        )
 
         Box(
             modifier =
@@ -366,47 +397,50 @@ fun CapsuleImmersiveContent(
                 // second, elongated frame above the real picture. Fit left letterboxed
                 // padding, so we zoom in uniformly from the centre instead. It is the
                 // artwork itself that enlarges; no stretched duplicate is drawn behind it.
-                val artworkRequest =
-                    ImageRequest.Builder(LocalContext.current)
-                        .data(artworkTone.displayUrl ?: mediaMetadata.thumbnailUrl)
-                        .crossfade(ImmersiveCoverCrossfadeMs)
-                        .build()
-                AsyncImage(
-                    model = artworkRequest,
-                    contentDescription = null,
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .graphicsLayer(
-                            scaleX = if (artworkTone.landscape) 1.06f else 1f,
-                            scaleY = if (artworkTone.landscape) 1.06f else 1f,
-                        ),
-                )
-
-                Box(
-                    modifier =
-                        Modifier
+                // Never submit the original video thumbnail before crop dimensions and the
+                // matching background are known. Coil's display decode can finish after the
+                // palette's smaller sampling decode, so keep the actual pixels transparent
+                // until onSuccess confirms that the final selected image is ready.
+                if (artworkTone.ready && artworkTone.displayUrl != null) {
+                    val artworkRequest =
+                        ImageRequest.Builder(LocalContext.current)
+                            .data(artworkTone.displayUrl)
+                            // A single coordinated reveal avoids a second, asynchronous Coil
+                            // crossfade whose intermediate frame could still show black bars.
+                            .crossfade(false)
+                            .build()
+                    AsyncImage(
+                        model = artworkRequest,
+                        contentDescription = null,
+                        contentScale = ContentScale.Crop,
+                        onSuccess = { coverImageReady = true },
+                        onError = { coverImageReady = false },
+                        modifier = Modifier
                             .fillMaxSize()
-                            .background(
-                                /*
-                                 * Four stops, none of them abrupt. The two in the middle are what
-                                 * keep the ramp from reading as an edge: alpha rises slowly while
-                                 * there is still picture worth seeing and only crowds together
-                                 * near the bottom, where there is nothing left to hide.
-                                 */
-                                Brush.verticalGradient(
-                                    0f to Color.Transparent,
-                                    // Fade from the lower *background* colour of the exact
-                                    // image crop. Spread the transition over most of the lower
-                                    // half so no coloured band separates the picture and text.
-                                    (if (artworkTone.landscape) 0.27f else 0.42f) to Color.Transparent,
-                                    (if (artworkTone.landscape) 0.49f else 0.60f) to edge.copy(alpha = 0.46f),
-                                    (if (artworkTone.landscape) 0.69f else 0.77f) to edge.copy(alpha = 0.91f),
-                                    (if (artworkTone.landscape) 0.84f else 0.91f) to edge,
-                                    1f to edge,
-                                ),
+                            .graphicsLayer(
+                                scaleX = if (artworkTone.landscape) 1.06f else 1f,
+                                scaleY = if (artworkTone.landscape) 1.06f else 1f,
+                                alpha = artworkReveal,
                             ),
-                )
+                    )
+
+                    Box(
+                        modifier =
+                            Modifier
+                                .fillMaxSize()
+                                .graphicsLayer(alpha = artworkReveal)
+                                .background(
+                                    Brush.verticalGradient(
+                                        0f to Color.Transparent,
+                                        (if (artworkTone.landscape) 0.27f else 0.42f) to Color.Transparent,
+                                        (if (artworkTone.landscape) 0.49f else 0.60f) to edge.copy(alpha = 0.46f),
+                                        (if (artworkTone.landscape) 0.69f else 0.77f) to edge.copy(alpha = 0.91f),
+                                        (if (artworkTone.landscape) 0.84f else 0.91f) to edge,
+                                        1f to edge,
+                                    ),
+                                ),
+                    )
+                }
             }
         }
 
