@@ -43,6 +43,11 @@ internal fun isCdnRefusalStatus(code: Int): Boolean = code >= 400
 /**
  * Whether a response leaves its connection fit to be used again.
  *
+ * Not a matter of which machine the connection reached, either: each of these hosts resolves to a
+ * single address, so a reconnect goes back to the same server. The refusal is something that
+ * server decides about a connection, not a lottery between replicas -- which is why a retry down
+ * a fresh socket to the identical address is served.
+ *
  * A capture showed forty-nine googlevideo requests spread over thirty connections, none of them
  * older than four and a half seconds, and every refusal landing on a connection's very first
  * request. So what decides how many first requests there are decides how much exposure there is,
@@ -100,6 +105,7 @@ internal class AudioCdnConnectionDiagnosticInterceptor(
                 // Counted whatever the log level: a tally read once per capture is worth nothing
                 // if it only counts the sessions somebody remembered to turn logging on for.
                 AudioCdnSessionStats.recordResponse(response.code, use.requestIndex)
+                AudioCdnSessionStats.recordProtocol(protocol)
                 if (GlobalLog.isEnabled &&
                     (isCdnRefusalStatus(response.code) || use.requestIndex == 1)
                 ) {

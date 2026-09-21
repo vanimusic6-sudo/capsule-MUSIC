@@ -41,6 +41,7 @@ internal object AudioCdnSessionStats {
     private val redirects = AtomicLong()
     private val sockets = AtomicLong()
     private val abandoned = AtomicLong()
+    private val overHttp2 = AtomicLong()
 
     fun recordOpen() {
         opens.incrementAndGet()
@@ -78,6 +79,21 @@ internal object AudioCdnSessionStats {
         if (declaredLength > 0L && bytesDelivered < declaredLength) abandoned.incrementAndGet()
     }
 
+    /**
+     * The protocol one googlevideo response actually arrived over.
+     *
+     * The per-request line carries this too, but only at debug, and captures keep arriving with
+     * debug off. It belongs in the summary because it is not a detail: under HTTP/1.1 one request
+     * occupies a connection at a time, so a track's slices open a new socket every other request,
+     * and a socket's first request is the only place a refusal has ever landed. Under h2 they
+     * share one. Two captures so far report http/1.1 for all 240 requests at 2.0 requests per
+     * socket, while the same client negotiates h2 against the same hosts when asked directly --
+     * so this is the number to watch, and it should not take a script over an exported log.
+     */
+    fun recordProtocol(protocol: String?) {
+        if (protocol.equals("h2", ignoreCase = true)) overHttp2.incrementAndGet()
+    }
+
     /** Forgotten with the rest of the CDN's memory when the route changes. */
     fun forget() {
         opens.set(0)
@@ -87,6 +103,7 @@ internal object AudioCdnSessionStats {
         redirects.set(0)
         sockets.set(0)
         abandoned.set(0)
+        overHttp2.set(0)
     }
 
     /**
@@ -113,6 +130,8 @@ internal object AudioCdnSessionStats {
             append(" requestsPerSocket=").append(ratio(requestCount, socketCount))
             append(" abandonedBodies=").append(abandoned.get())
             append(" abandonedPct=").append(percent(abandoned.get(), openCount))
+            append(" http2=").append(overHttp2.get())
+            append(" http2Pct=").append(percent(overHttp2.get(), requestCount))
         }
     }
 

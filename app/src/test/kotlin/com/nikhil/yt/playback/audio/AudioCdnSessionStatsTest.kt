@@ -105,6 +105,33 @@ class AudioCdnSessionStatsTest {
         assertTrue(summary, summary.contains("abandonedBodies=0"))
     }
 
+    @Test fun `the protocol mix is reported, because it decides how many sockets there are`() {
+        // Under HTTP/1.1 one request holds a connection at a time, so a track's slices open a new
+        // socket every other request -- and a socket's first request is the only place a refusal
+        // has ever landed. Two captures report http/1.1 for all 240 requests.
+        AudioCdnSessionStats.recordOpen()
+        AudioCdnSessionStats.recordResponse(206, requestIndexOnConnection = 1)
+        AudioCdnSessionStats.recordProtocol("h2")
+        AudioCdnSessionStats.recordResponse(206, requestIndexOnConnection = 1)
+        AudioCdnSessionStats.recordProtocol("http/1.1")
+
+        val summary = requireNotNull(AudioCdnSessionStats.summary())
+
+        assertTrue(summary, summary.contains("http2=1"))
+        assertTrue(summary, summary.contains("http2Pct=50%"))
+    }
+
+    @Test fun `an unknown or absent protocol is not counted as h2`() {
+        AudioCdnSessionStats.recordOpen()
+        AudioCdnSessionStats.recordResponse(206, requestIndexOnConnection = 1)
+        AudioCdnSessionStats.recordProtocol(null)
+        AudioCdnSessionStats.recordProtocol("unknown")
+
+        val summary = requireNotNull(AudioCdnSessionStats.summary())
+
+        assertTrue(summary, summary.contains("http2=0"))
+    }
+
     @Test fun `a route change starts the count again`() {
         AudioCdnSessionStats.recordOpen()
         AudioCdnSessionStats.recordResponse(403, requestIndexOnConnection = 1)

@@ -13,25 +13,34 @@ import timber.log.Timber
 /**
  * How much of a stream one request asks for before the next one is opened.
  *
- * A megabyte, so that essentially every audio request is a *part* of a file rather than the whole
- * of it. That distinction turned out to be the one that matters, and it took two captures and
- * eighty-five opens to see it, because at four megabytes only long items were ever split:
+ * A megabyte, chosen when it looked as though bounded requests were the ones that never got
+ * refused:
  *
  *   asked for part of a file   29 opens   0 refused
  *   asked for a whole file     56 opens   6 refused   (11%)
  *
- * If a bounded request were refused at the same rate, the chance of twenty-nine of them in a row
- * being accepted is under four percent. That is not proof, and the mechanism is still unexplained —
- * the server gives no reason for any refusal, an empty body and its own name in the only header —
- * but it is the first thing in this whole investigation that the numbers actually support.
+ * That reading did not survive. Two later captures split the same way and the difference is gone:
  *
- * A megabyte rather than two, because the refusals include files of 1.9 MB: a chunk has to be
- * smaller than the files it is meant to split, or those keep going out whole.
+ *                              12:41                 15:38
+ *   first slice of a track     6 of 40  (15.0%)      3 of 44  (6.8%)
+ *   a later slice              1 of 55  ( 1.8%)      5 of 86  (5.8%)
  *
- * The cost is more requests per track, and one risk worth naming: a refusal now lands part way
+ * A later slice is a bounded request by definition, and in the second capture it is refused at
+ * very nearly the rate of the first one. Twenty-nine for twenty-nine was a small sample landing
+ * the lucky way. The one split that has held across both captures is not about the request at all
+ * but about the connection carrying it -- 15 refusals in 120 first requests on a new socket, 0 in
+ * 120 on a reused one -- and that is also the thing this size actually moves, in the wrong
+ * direction: a megabyte means more requests per track, and under HTTP/1.1 more requests mean more
+ * sockets.
+ *
+ * So the number is kept for the reason below this comment, which is throttling, and no longer for
+ * refusals. Raising it would cut the request count and with it the socket count; it would also
+ * put more of a track behind a single paced response. That trade wants measuring, not guessing --
+ * see AudioCdnSessionStats, whose summary now carries requestsPerSocket and the protocol mix.
+ *
+ * The cost is more requests per track, and one risk worth naming: a refusal can land part way
  * through a track instead of before it starts, which interrupts audio rather than delaying it.
- * Twenty-nine for twenty-nine says that should not happen; if it does, this number is where to
- * look.
+ * The 15:38 capture has five of those; all five recovered on retry.
  */
 internal const val AUDIO_CHUNK_BYTES = 1L * 1024 * 1024
 

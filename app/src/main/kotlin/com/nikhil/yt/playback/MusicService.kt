@@ -263,6 +263,7 @@ import kotlinx.coroutines.withContext
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.ConnectionPool
 import okhttp3.OkHttpClient
+import okhttp3.Protocol
 import timber.log.Timber
 import java.io.InterruptedIOException
 import java.net.ConnectException
@@ -3956,6 +3957,25 @@ class MusicService :
                 .newBuilder()
                 // Safe transport-level reconnect for an already-resolved CDN GET.
                 // No player/InnerTube request or client rotation happens here.
+                // Ask for HTTP/2, out loud.
+                //
+                // This is OkHttp's own default, and saying it changes nothing today. It is here
+                // because it is the one thing in this client that decides how many cold sockets a
+                // session opens, and a default is the kind of thing a later newBuilder() chain
+                // silently takes away.
+                //
+                // Two captures have every one of 240 googlevideo requests on http/1.1, at 2.0
+                // requests per socket. Yet this exact library, at this version, with these
+                // headers, negotiates h2 against these same hosts when asked directly -- so the
+                // server offers it and something between here and the wire is not taking it.
+                // Under h2 a track's slices share one connection instead of opening a new one
+                // every other request, and a connection's first request is the only place a
+                // refusal has ever landed: 15 of 120 against 0 of 120.
+                //
+                // AudioCdnSessionStats now reports the protocol mix in its summary line, so the
+                // next capture says whether this is ever negotiated without anyone grepping for
+                // it.
+                .protocols(listOf(Protocol.HTTP_2, Protocol.HTTP_1_1))
                 .retryOnConnectionFailure(true)
                 // Preserve the per-operation allowance for slow working routes. Failed opens and
                 // reads exit through the bounded fresh-URL recovery path instead of repeating here.
