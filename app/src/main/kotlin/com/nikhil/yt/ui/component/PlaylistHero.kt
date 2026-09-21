@@ -48,6 +48,9 @@ internal fun PlaylistHero(
     val background = if (StandardChrome.isDark) Color(0xFF090909) else StandardChrome.background
     AlbumHeaderLayout(
         modifier = modifier,
+        // No mix row below the actions: the track list should start promptly instead
+        // of keeping the old two-row header's empty vertical reservation.
+        bottomSpacing = 20.dp,
         artwork = {
             Box(
                 Modifier.widthIn(max = 560.dp)
