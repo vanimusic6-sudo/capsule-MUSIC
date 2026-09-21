@@ -33,6 +33,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.key
 import androidx.compose.runtime.getValue
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
@@ -205,14 +206,9 @@ fun CapsuleImmersiveContent(
             onDispose { }
         }
     }
+    // Once a video has rendered its first frame, switch surfaces in one frame. Do not
+    // animate AUDIO <-> VIDEO; only the neutral placeholder -> prepared artwork fades.
     val presentingVideo = isVideo && videoFirstFrameRendered
-    // Animate ONLY transitions between real audio/video surfaces. The selected song's
-    // artwork and its gradient are still revealed together in a single, instant frame.
-    val videoTransition by animateFloatAsState(
-        targetValue = if (presentingVideo) 1f else 0f,
-        animationSpec = tween(durationMillis = 360),
-        label = "immersiveVideoSurfaceTransition",
-    )
 
     /*
      * The status bar goes while this screen is up.
@@ -308,6 +304,17 @@ fun CapsuleImmersiveContent(
             mutableStateOf(false)
         }
         val coverAndGradientReady = canRevealImmersiveArtwork(artworkTone, coverImageReady)
+        // Only animate the fully prepared artwork AND its final sampled gradient as one
+        // visual. A fresh song's first frame stays neutral; no partial palette colours
+        // or raw 16:9 preview are exposed during image decode.
+        val artworkReveal = key(mediaMetadata.id, mediaMetadata.thumbnailUrl, artworkAspect) {
+            val alpha by animateFloatAsState(
+                targetValue = if (coverAndGradientReady) 1f else 0f,
+                animationSpec = tween(durationMillis = 320),
+                label = "immersivePreparedArtworkReveal",
+            )
+            alpha
+        }
         /*
          * Where the cover ends, as a fraction of the sheet. The page has to be exactly edge at
          * that line and nowhere else, so the stop is computed rather than guessed.
@@ -323,26 +330,20 @@ fun CapsuleImmersiveContent(
                 1f to floor,
             )
 
-        // The completed artwork AND its sampled background appear in ONE frame. No
-        // alpha tween and no separate colour animation: gray stays gray while Coil
-        // prepares the final picture, then both layers switch together.
+        // The placeholder is a flat neutral surface. The *completed* backdrop fades over
+        // it at the same rate as the decoded cover and the cover's bottom scrim; the
+        // sampled colour itself never animates. VIDEO switches immediately when ready.
+        Box(modifier = Modifier.fillMaxSize().background(IMMERSIVE_NEUTRAL_COLOR))
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .background(
-                    if (coverAndGradientReady) pageBackground
-                    else Brush.verticalGradient(
-                        listOf(IMMERSIVE_NEUTRAL_COLOR, IMMERSIVE_NEUTRAL_COLOR),
-                    ),
-                ),
+                .graphicsLayer(alpha = if (presentingVideo) 0f else artworkReveal)
+                .background(pageBackground),
         )
-        // The video colour scheme transitions ONLY after the first decoded video frame,
-        // not while a YouTube resolve/guard request is pending or failing.
-        if (isVideo) {
+        if (presentingVideo) {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .graphicsLayer(alpha = videoTransition)
                     .background(
                         Brush.verticalGradient(
                             listOf(IMMERSIVE_NEUTRAL_COLOR, Color(0xFF1E1E1E)),
@@ -378,7 +379,7 @@ fun CapsuleImmersiveContent(
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .graphicsLayer(alpha = 1f - videoTransition),
+                    .graphicsLayer(alpha = if (presentingVideo) 0f else 1f),
             ) {
                 if (artworkTone.ready && artworkTone.displayUrl != null) {
                     val artworkRequest =
@@ -399,7 +400,7 @@ fun CapsuleImmersiveContent(
                             .graphicsLayer(
                                 scaleX = if (artworkTone.landscape) 1.06f else 1f,
                                 scaleY = if (artworkTone.landscape) 1.06f else 1f,
-                                alpha = if (coverAndGradientReady) 1f else 0f,
+                                alpha = artworkReveal,
                             ),
                     )
 
@@ -407,7 +408,7 @@ fun CapsuleImmersiveContent(
                         modifier =
                             Modifier
                                 .fillMaxSize()
-                                .graphicsLayer(alpha = if (coverAndGradientReady) 1f else 0f)
+                                .graphicsLayer(alpha = artworkReveal)
                                 .background(
                                     Brush.verticalGradient(
                                         0f to Color.Transparent,
@@ -429,7 +430,7 @@ fun CapsuleImmersiveContent(
                         .padding(top = videoFrameTop, start = videoSidePadding, end = videoSidePadding)
                         .fillMaxWidth()
                         .height(videoFrameHeight)
-                        .graphicsLayer(alpha = videoTransition)
+                        .graphicsLayer(alpha = if (presentingVideo) 1f else 0f)
                         .clip(RoundedCornerShape(28.dp))
                         .background(Color.Black),
                 ) {
