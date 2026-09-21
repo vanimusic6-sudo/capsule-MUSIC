@@ -58,7 +58,8 @@ internal fun immersiveArtworkCandidates(mediaId: String?, original: String?): Li
     if (original.isNullOrBlank()) return emptyList()
     val base = original.toHighResThumbnail()
     if (mediaId == null || !videoIdPattern.matches(mediaId) ||
-        !original.contains("ytimg.com/vi/", ignoreCase = true)
+        (!original.contains("ytimg.com/vi/", ignoreCase = true) &&
+            !original.contains("ytimg.com/vi_webp/", ignoreCase = true))
     ) return listOf(base)
 
     return listOf(
