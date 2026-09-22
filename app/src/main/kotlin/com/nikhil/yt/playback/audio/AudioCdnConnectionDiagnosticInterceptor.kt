@@ -131,7 +131,7 @@ internal class AudioCdnConnectionDiagnosticInterceptor(
                     val safeContentRange = response.header("Content-Range")
                         ?.takeIf {
                             it.length <= 80 &&
-                                it.matches(Regex("bytes [0-9]+-[0-9]+/([0-9]+|\\\\*)"))
+                                it.matches(Regex("""bytes [0-9]+-[0-9]+/[0-9]+"""))
                         } ?: "none"
                     Timber.tag("AudioCDN").i(
                         "cdn-case flow=%d hop=%d stage=%s linkRef=%s effectiveRef=%s " +
