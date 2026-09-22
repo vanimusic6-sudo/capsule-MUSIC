@@ -8,7 +8,9 @@ import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.DataSpec
 import androidx.media3.datasource.HttpDataSource.InvalidResponseCodeException
 import androidx.media3.datasource.TransferListener
+import com.nikhil.yt.utils.isTransientClosedTlsHandshake
 import timber.log.Timber
+import java.io.IOException
 
 /**
  * How much of a stream one request asks for before the next one is opened.
@@ -46,6 +48,9 @@ internal const val AUDIO_CHUNK_BYTES = 1L * 1024 * 1024
 
 /** How many times one slice is asked for before the refusal is handed to the player. */
 internal const val CHUNK_OPEN_ATTEMPTS = 3
+
+/** Retry only TLS handshakes closed before a response body exists, without re-resolving the song. */
+internal const val CHUNK_TLS_OPEN_ATTEMPTS = 4
 
 /** Response codes that mean "not this request" rather than "not this stream". */
 internal val REFUSAL_CODES = setOf(403, 410)
@@ -157,20 +162,37 @@ internal class AudioChunkedDataSource(
      * to the service's shared recovery budget. Never retry 429 or a cancellation here.
      */
     private fun openWithRefusalRetry(spec: DataSpec): Long {
-        var attempt = 1
+        var refusalAttempt = 1
+        var tlsAttempt = 1
         while (true) {
             try {
                 return upstream.open(spec)
             } catch (refused: InvalidResponseCodeException) {
-                if (refused.responseCode !in REFUSAL_CODES || attempt >= CHUNK_OPEN_ATTEMPTS) throw refused
+                if (refused.responseCode !in REFUSAL_CODES || refusalAttempt >= CHUNK_OPEN_ATTEMPTS) throw refused
                 Timber.tag("AudioCDN").w(
                     "cdn-chunk-refused position=%d attempt=%d code=%d; asking again",
                     spec.position,
-                    attempt,
+                    refusalAttempt,
                     refused.responseCode,
                 )
                 upstream.close()
-                attempt += 1
+                refusalAttempt += 1
+            } catch (failure: IOException) {
+                // A peer-closed TLS handshake happens before any audio bytes are delivered.
+                // Recover this one transport error locally rather than rebuilding Media3 and
+                // resolving the same YouTube track again. Never retry an HTTP response, a
+                // certificate validation error, cancellation, or a failed body read here.
+                if (!failure.isTransientClosedTlsHandshake() ||
+                    tlsAttempt >= CHUNK_TLS_OPEN_ATTEMPTS
+                ) throw failure
+                Timber.tag("AudioCDN").w(
+                    "cdn-chunk-tls-retry position=%d attempt=%d/%d; same signed URL",
+                    spec.position,
+                    tlsAttempt,
+                    CHUNK_TLS_OPEN_ATTEMPTS,
+                )
+                upstream.close()
+                tlsAttempt += 1
             }
         }
     }
