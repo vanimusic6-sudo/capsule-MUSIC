@@ -151,6 +151,7 @@ internal class AudioCdnRedirectInterceptor(
             AudioCdnRequestTrace(
                 originalUrl = origin.url,
                 linkRef = AudioCdnLinkIdentity.ref(origin.url.toString()),
+                flowId = AudioCdnTraceIds.next(),
             )
         } else null
         val taggedOrigin = origin.newBuilder().tag(AudioCdnRequestTrace::class.java, trace).build()
@@ -158,9 +159,15 @@ internal class AudioCdnRedirectInterceptor(
         var usingShortcut = shortcut != null
         var extraRequests = 0
         var reissues = 0
+        var stage = if (shortcut != null) "shortcut" else "original"
+        var hop = 0
 
         while (true) {
-            val response = chain.proceed(request)
+            hop += 1
+            val sent = if (trace == null) request else request.newBuilder()
+                .tag(AudioCdnRequestTrace::class.java, trace.copy(hop = hop, stage = stage))
+                .build()
+            val response = chain.proceed(sent)
 
             /*
              * A remembered link that is refused is forgotten at once and the original asked
@@ -177,7 +184,10 @@ internal class AudioCdnRedirectInterceptor(
                 targets.forget(origin.url)
                 if (GlobalLog.isEnabled) {
                     Timber.tag("AudioCDN").w(
-                        "cdn-shortcut-refused host=%s code=%d; asking the original link again",
+                        "cdn-shortcut-refused flow=%d hop=%d linkRef=%s host=%s code=%d; asking the original link again",
+                        trace?.flowId ?: -1L,
+                        hop,
+                        trace?.linkRef ?: "unknown",
                         request.url.host,
                         response.code,
                     )
@@ -185,6 +195,7 @@ internal class AudioCdnRedirectInterceptor(
                 usingShortcut = false
                 extraRequests += 1
                 request = taggedOrigin
+                stage = "original-after-shortcut"
                 continue
             }
 
@@ -203,6 +214,21 @@ internal class AudioCdnRedirectInterceptor(
             val decline =
                 reissues < AUDIO_CDN_MAX_REISSUES &&
                     isCrossGroupGooglevideoRedirect(request.url.host, target.host)
+            if (GlobalLog.isEnabled) {
+                Timber.tag("AudioCDN").i(
+                    "cdn-redirect-decision flow=%d hop=%d linkRef=%s fromRef=%s toRef=%s " +
+                        "status=%d decision=%s fromGroup=%s toGroup=%s",
+                    trace?.flowId ?: -1L,
+                    hop,
+                    trace?.linkRef ?: "unknown",
+                    AudioCdnLinkIdentity.ref(request.url.toString()),
+                    AudioCdnLinkIdentity.ref(target.toString()),
+                    response.code,
+                    if (decline) "decline-once" else "follow",
+                    googlevideoServerGroup(request.url.host) ?: "unknown",
+                    googlevideoServerGroup(target.host) ?: "unknown",
+                )
+            }
             response.close()
             extraRequests += 1
             // Once the chain has moved off the remembered link, a later refusal belongs to
@@ -212,6 +238,7 @@ internal class AudioCdnRedirectInterceptor(
             request =
                 if (decline) {
                     reissues += 1
+                    stage = "original-after-decline"
                     if (GlobalLog.isEnabled) {
                         Timber.tag("AudioCDN").w(
                             "cdn-redirect-declined from=%s to=%s attempt=%d; asking the issuing host again",
@@ -222,6 +249,7 @@ internal class AudioCdnRedirectInterceptor(
                     }
                     taggedOrigin
                 } else {
+                    stage = "redirect-followed"
                     /*
                      * A followed redirect is reported too, and at the same level as a declined one.
                      * A refusal that arrives after one of these came from a machine no other line
