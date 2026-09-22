@@ -235,7 +235,7 @@ internal class AudioCdnHostHealthDataSource(
         // a healthy host cold for 90s, amplifying rather than preventing a transient refusal.
         // All HTTP statuses (especially 429) remain with their existing per-link/safety policies.
         // Only actual transport faults contribute to host reachability.
-        if (httpCode != null || !failure.isAudioCdnTransportFailure()) return failure
+        if (httpCode != null) return failure
 
         // This trace can close TLS on MULTIPLE unrelated googlevideo groups after a
         // phone/VPN route change. No HTTP response was received: there is no evidence
@@ -250,6 +250,7 @@ internal class AudioCdnHostHealthDataSource(
             )
             return failure
         }
+        if (!failure.isAudioCdnTransportFailure()) return failure
 
         // A read failure belongs to the server that served the open, which may be the
         // redirect target. For a failed open there is no reliable final URL; use the origin.
