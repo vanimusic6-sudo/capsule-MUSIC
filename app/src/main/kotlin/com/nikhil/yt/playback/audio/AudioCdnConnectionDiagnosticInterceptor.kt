@@ -5,7 +5,6 @@ import okhttp3.Interceptor
 import okhttp3.Response
 import timber.log.Timber
 import java.io.IOException
-import java.util.Locale
 
 internal fun audioCdnCrossHostCoalesced(
     requestHost: String,
