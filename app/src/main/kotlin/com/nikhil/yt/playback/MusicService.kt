@@ -1000,6 +1000,9 @@ class MusicService :
     private var audioBufferLastReadyMediaId: String? = null
     /** Separate from the normal retry budget: a slow-but-live CDN must not cause endless refreshes. */
     private val audioBufferStallRefreshes = LinkedHashMap<String, Int>()
+    // One service-local retry covers startup configuration races without issuing
+    // repeated BotGuard/config work on every READY transition.
+    private var startupWebWarmRetryScheduled = false
 
     private fun updateAudioBufferStallWatch() {
         val mediaId = player.currentMediaItem?.mediaId
@@ -3452,6 +3455,14 @@ class MusicService :
 
     if (playbackState == Player.STATE_READY && !isCurrentCapsuleVideoItem()) {
         audioBufferLastReadyMediaId = player.currentMediaItem?.mediaId
+        if (!startupWebWarmRetryScheduled && !CapsuleAudioEngine.isStartupWebReady()) {
+            startupWebWarmRetryScheduled = true
+            // Startup settings/locale may settle after the app's first prewarm attempt.
+            // Retry once only after audio is READY, so this cannot delay first sound.
+            ioScope.launch {
+                CapsuleAudioEngine.prewarmWebRemixForStartup()
+            }
+        }
     }
     updateAudioBufferStallWatch()
     val activeMediaId = player.currentMediaItem?.mediaId
