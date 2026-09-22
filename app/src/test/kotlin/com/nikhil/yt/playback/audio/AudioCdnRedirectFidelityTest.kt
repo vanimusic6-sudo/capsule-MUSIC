@@ -8,6 +8,8 @@ import okhttp3.Request
 import okhttp3.Response
 import okhttp3.ResponseBody.Companion.toResponseBody
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
+import com.nikhil.yt.utils.GlobalLog
 import org.junit.Test
 import java.util.concurrent.TimeUnit
 
@@ -88,6 +90,64 @@ class AudioCdnRedirectFidelityTest {
             .header("Range", "bytes=1048576-2097151")
             .header("Accept-Language", "en-US,en;q=0.9")
             .build()
+
+    @Test fun `diagnostic hop numbers identify the exact request across redirects`() {
+        GlobalLog.setEnabled(true)
+        try {
+            val chain = RecordingChain(signedRequest(), listOf(found(REDIRECTED), partial()))
+            AudioCdnRedirectInterceptor(AudioCdnRedirectTargets()).intercept(chain).close()
+
+            val original = requireNotNull(chain.sent[0].tag(AudioCdnRequestTrace::class.java))
+            val redirected = requireNotNull(chain.sent[1].tag(AudioCdnRequestTrace::class.java))
+            assertTrue(original.flowId > 0L)
+            assertEquals(original.flowId, redirected.flowId)
+            assertEquals(original.linkRef, redirected.linkRef)
+            assertEquals(1, original.hop)
+            assertEquals(2, redirected.hop)
+            assertEquals("original", original.stage)
+            assertEquals("redirect-followed", redirected.stage)
+            assertEquals(audioCdnHeaderRef(chain.sent[0]), audioCdnHeaderRef(chain.sent[1]))
+            assertEquals("bytes=1048576-2097151", audioCdnSafeRange(chain.sent[1].header("Range")))
+        } finally {
+            GlobalLog.setEnabled(false)
+        }
+    }
+
+    @Test fun `refused shortcut retains same link ID and identifies fallback to original`() {
+        GlobalLog.setEnabled(true)
+        try {
+            val targets = AudioCdnRedirectTargets()
+            val interceptor = AudioCdnRedirectInterceptor(targets)
+            interceptor.intercept(
+                RecordingChain(signedRequest(), listOf(found(REDIRECTED), partial())),
+            ).close()
+
+            val retry = RecordingChain(
+                signedRequest(),
+                listOf(
+                    { request ->
+                        Response.Builder().request(request).protocol(Protocol.HTTP_1_1)
+                            .code(403).message("Forbidden").body("".toResponseBody()).build()
+                    },
+                    partial(),
+                ),
+            )
+            interceptor.intercept(retry).close()
+            assertEquals(2, retry.sent.size)
+            val shortcut = requireNotNull(retry.sent[0].tag(AudioCdnRequestTrace::class.java))
+            val fallback = requireNotNull(retry.sent[1].tag(AudioCdnRequestTrace::class.java))
+            assertEquals(shortcut.flowId, fallback.flowId)
+            assertEquals(shortcut.linkRef, fallback.linkRef)
+            assertEquals("shortcut", shortcut.stage)
+            assertEquals("original-after-shortcut", fallback.stage)
+            assertEquals(1, shortcut.hop)
+            assertEquals(2, fallback.hop)
+            assertEquals(signedRequest().url, retry.sent[1].url)
+            assertEquals(audioCdnHeaderRef(retry.sent[0]), audioCdnHeaderRef(retry.sent[1]))
+        } finally {
+            GlobalLog.setEnabled(false)
+        }
+    }
 
     @Test fun `every header survives the hop after a redirect`() {
         val chain = RecordingChain(signedRequest(), listOf(found(REDIRECTED), partial()))
