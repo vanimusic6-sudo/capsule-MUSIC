@@ -56,16 +56,16 @@ internal data class AudioCdnRequestTrace(
  */
 internal fun audioCdnHeaderRef(request: Request): String {
     val canonical = buildString {
-        append(request.method).append('\\n')
+        append(request.method).append('\n')
         request.headers.names().sortedWith(String.CASE_INSENSITIVE_ORDER).forEach { name ->
             append(name.lowercase(Locale.ROOT)).append(':')
             request.headers.values(name).forEach { value ->
                 append(value.length).append(':').append(value).append(';')
             }
-            append('\\n')
+            append('\n')
         }
     }
-    return AudioCdnLinkIdentity.ref("headers\\n" + canonical)
+    return AudioCdnLinkIdentity.ref("headers\n" + canonical)
 }
 
 /** Never print a verbatim header value except an explicitly validated numerical byte range. */
