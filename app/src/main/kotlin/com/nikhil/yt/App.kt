@@ -38,6 +38,7 @@ import com.nikhil.yt.innertube.CapsuleAnonymousSession
 import com.nikhil.yt.innertube.YouTube
 import com.nikhil.yt.innertube.models.YouTubeLocale
 import com.nikhil.yt.playback.audio.CapsuleInnerTubeXPlayer
+import com.nikhil.yt.playback.audio.CapsuleAudioEngine
 import com.nikhil.yt.lastfm.LastFM
 import dagger.hilt.android.HiltAndroidApp
 import kotlinx.coroutines.CancellationException
@@ -109,6 +110,18 @@ class App : Application(), SingletonImageLoader.Factory {
             dataStore.data.map { it.playbackAuthState() }.distinctUntilChanged().collect { state ->
                 YouTube.authState = state
                 CapsuleAnonymousSession.reset()
+
+                // Warm WEB_REMIX even when the selected AUDIO client is VISIONOS.
+                // The visitor observer below obtains missing visitorData and publishes it
+                // through DataStore; this collector then starts the one shared BotGuard/
+                // extractor prewarm for the new authenticated/anonymous session.
+                if (!state.visitorData.isNullOrBlank() ||
+                    (!state.poTokenPlayer.isNullOrBlank() && !state.poTokenGvs.isNullOrBlank())
+                ) {
+                    applicationScope.launch(Dispatchers.IO) {
+                        CapsuleAudioEngine.prewarmWebRemixForStartup()
+                    }
+                }
             }
         }
 
@@ -258,7 +271,8 @@ class App : Application(), SingletonImageLoader.Factory {
                             }
 
                     // Publishing through DataStore keeps visitor/account/token updates coherent.
-                    // Web extraction starts its shared prewarm on demand; visionOS needs none.
+                    // The auth collector above independently warms WEB_REMIX once it arrives,
+                    // regardless of the currently selected playback client.
 
                 }
         }
