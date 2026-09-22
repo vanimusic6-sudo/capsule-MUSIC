@@ -6,6 +6,7 @@ import androidx.media3.datasource.DataSpec
 import androidx.media3.datasource.HttpDataSource.InvalidResponseCodeException
 import androidx.media3.datasource.TransferListener
 import com.nikhil.yt.utils.GlobalLog
+import com.nikhil.yt.utils.isTransientClosedTlsHandshake
 import timber.log.Timber
 import java.io.IOException
 import java.io.InterruptedIOException
@@ -255,7 +256,18 @@ internal class AudioNetworkDiagnosticDataSource(
                     generateSequence(failure as Throwable?) { it.cause }
                         .take(8)
                         .any { it is InvalidResponseCodeException }
-                if (rejection) {
+                if (failure.isTransientClosedTlsHandshake()) {
+                    // The actionable fact is a peer-closed TLS connection, not an
+                    // unbounded 40-frame OkHttp/Guava stack trace for every retry.
+                    // Keep this readable in the finite shared-log export.
+                    Timber.tag(TAG).w(
+                        "cdn-open-tls-closed id=%s linkHost=%s elapsedMs=%d linkRef=%s",
+                        mediaKey ?: "none",
+                        host ?: "unknown",
+                        elapsedMs(startedAtNs, now),
+                        linkRef ?: "unknown",
+                    )
+                } else if (rejection) {
                     // A bounded first-chunk retry can encounter several 403s in a row. Keep
                     // every refusal's code, server route and anonymous link reference, but
                     // do not export the same 20-frame Media3 stack trace for each attempt.
