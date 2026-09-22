@@ -44,6 +44,7 @@ import dagger.hilt.android.HiltAndroidApp
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
@@ -68,6 +69,7 @@ class App : Application(), SingletonImageLoader.Factory {
         applicationScope.launch(Dispatchers.IO) { block() }
     @Volatile private var isInitialized = false
     private val didRunImageCacheTrim = AtomicBoolean(false)
+    private var webRemixWarmupJob: Job? = null
 
     private fun currentProcessName(): String? {
         return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
@@ -110,6 +112,9 @@ class App : Application(), SingletonImageLoader.Factory {
             dataStore.data.map { it.playbackAuthState() }.distinctUntilChanged().collect { state ->
                 YouTube.authState = state
                 CapsuleAnonymousSession.reset()
+                // A visitor/account change supersedes the old session: do not let
+                // a stale BotGuard warmup republish an obsolete visitor binding.
+                webRemixWarmupJob?.cancel()
 
                 // Warm WEB_REMIX even when the selected AUDIO client is VISIONOS.
                 // The visitor observer below obtains missing visitorData and publishes it
@@ -118,7 +123,7 @@ class App : Application(), SingletonImageLoader.Factory {
                 if (!state.visitorData.isNullOrBlank() ||
                     (!state.poTokenPlayer.isNullOrBlank() && !state.poTokenGvs.isNullOrBlank())
                 ) {
-                    applicationScope.launch(Dispatchers.IO) {
+                    webRemixWarmupJob = applicationScope.launch(Dispatchers.IO) {
                         CapsuleAudioEngine.prewarmWebRemixForStartup()
                     }
                 }
