@@ -106,9 +106,11 @@ object CapsuleInnerTubeXPlayer {
     // The app starts with VISIONOS while the independent WEB_REMIX preparation runs.
     @Volatile private var startupWebReady = false
     @Volatile private var warmedWebSession: Any? = null
+    @Volatile private var warmedWebAuth: PlaybackAuthState? = null
     private val webStartupWarmupMutex = Mutex()
 
-    fun isStartupWebReady(): Boolean = startupWebReady
+    fun isStartupWebReady(): Boolean =
+        startupWebReady && warmedWebAuth == YouTube.authState
 
     /**
      * Warm the actual InnerTubeX extractor and the reusable, visitor-bound BotGuard session
@@ -142,6 +144,7 @@ object CapsuleInnerTubeXPlayer {
         val ready = tokenReady && extractorReady && snapshot == sessionSnapshot()
         if (ready) {
             warmedWebSession = snapshot
+            warmedWebAuth = snapshot.auth
             startupWebReady = true
             Timber.tag(TAG).i("Web startup prewarm ready; restoring configured AUDIO client order")
         } else {
