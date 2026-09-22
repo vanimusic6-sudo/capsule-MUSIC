@@ -46,6 +46,12 @@ object CapsuleAudioEngine {
 
     suspend fun prewarm() = CapsuleInnerTubeXPlayer.prewarm()
 
+    /** Independent startup warming: also runs when playback uses VISIONOS. */
+    suspend fun prewarmWebRemixForStartup(): Boolean =
+        CapsuleInnerTubeXPlayer.prewarmWebRemixForStartup()
+
+    fun isStartupWebReady(): Boolean = CapsuleInnerTubeXPlayer.isStartupWebReady()
+
     fun playbackBlockedExceptionOrNull(): PlaybackException? = CapsulePlaybackSafety.blockedExceptionOrNull()
 
     fun markRateLimitedFailure() = CapsulePlaybackSafety.markHttpStatusFailure(429)
