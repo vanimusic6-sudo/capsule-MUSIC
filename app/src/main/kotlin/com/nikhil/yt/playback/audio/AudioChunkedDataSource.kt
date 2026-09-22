@@ -8,6 +8,7 @@ import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.DataSpec
 import androidx.media3.datasource.HttpDataSource.InvalidResponseCodeException
 import androidx.media3.datasource.TransferListener
+import com.nikhil.yt.utils.GlobalLog
 import timber.log.Timber
 
 /**
@@ -163,12 +164,16 @@ internal class AudioChunkedDataSource(
                 return upstream.open(spec)
             } catch (refused: InvalidResponseCodeException) {
                 if (refused.responseCode !in REFUSAL_CODES || attempt >= CHUNK_OPEN_ATTEMPTS) throw refused
-                Timber.tag("AudioCDN").w(
-                    "cdn-chunk-refused position=%d attempt=%d code=%d; asking again",
-                    spec.position,
-                    attempt,
-                    refused.responseCode,
-                )
+                if (GlobalLog.isEnabled) {
+                    Timber.tag("AudioCDN").w(
+                        "cdn-chunk-refused linkRef=%s position=%d length=%d attempt=%d code=%d; asking again",
+                        AudioCdnLinkIdentity.ref(spec.uri.toString()),
+                        spec.position,
+                        spec.length,
+                        attempt,
+                        refused.responseCode,
+                    )
+                }
                 upstream.close()
                 attempt += 1
             }
