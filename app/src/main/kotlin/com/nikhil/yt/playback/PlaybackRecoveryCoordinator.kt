@@ -105,11 +105,17 @@ internal class PlaybackRecoveryCoordinator(
     }
 
     fun onConnectivityChanged(isConnected: Boolean) {
-        if (
-            isConnected &&
-            waitingForNetworkConnection.value &&
-            networkRecoveryJob?.isActive != true
-        ) {
+        if (!waitingForNetworkConnection.value) return
+        if (!isConnected) {
+            // When connectivity drops DURING a scheduled retry, cancel that timer but
+            // preserve the waiting flag. Without this, an early reconnect event may
+            // arrive while the old timer is still active, get ignored, and leave
+            // playback permanently waiting when that timer later exits offline.
+            // This path does not consume another retry slot or touch the stream URL.
+            cancelNetworkRecovery(clearWaiting = false)
+            return
+        }
+        if (networkRecoveryJob?.isActive != true) {
             recoverFromNetworkError()
         }
     }
