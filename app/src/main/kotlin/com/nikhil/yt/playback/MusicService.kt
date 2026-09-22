@@ -194,6 +194,7 @@ import com.nikhil.yt.utils.NetworkConnectivityObserver
 import com.nikhil.yt.utils.StreamClientUtils
 import com.nikhil.yt.utils.SyncUtils
 import com.nikhil.yt.utils.GlobalLog
+import com.nikhil.yt.utils.isTransientClosedTlsHandshake
 import com.nikhil.yt.playback.audio.AudioCacheDataSource
 import com.nikhil.yt.playback.audio.AudioChunkedDataSource
 import com.nikhil.yt.playback.audio.AudioCacheSource
@@ -5014,6 +5015,12 @@ class MusicService :
     }
 
     private fun PlaybackException.isTransientNetworkFailure(): Boolean {
+        // A closed TLS handshake (often wrapped in OkHttp/Guava ExecutionException)
+        // is a route/connection fault, not proof that the signed URL, WEB_REMIX
+        // profile or whole CDN group has become invalid. Keep the existing same-
+        // stream bounded network recovery instead of re-resolving /player per song.
+        if (httpStatusCodeOrNull() == null && isTransientClosedTlsHandshake()) return true
+
         val networkErrorCodes =
             setOf(
                 PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED,
