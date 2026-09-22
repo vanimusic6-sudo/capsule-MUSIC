@@ -1,6 +1,7 @@
 package com.nikhil.yt.playback.audio
 
 import android.net.Uri
+import android.os.SystemClock
 import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.DataSpec
 import androidx.media3.datasource.HttpDataSource.InvalidResponseCodeException
@@ -214,13 +215,21 @@ internal class AudioNetworkDiagnosticDataSource(
         host = dataSpec.uri.host?.take(96)
         linkRef = AudioCdnLinkIdentity.ref(dataSpec.uri.toString())
 
+        val context = dataSpec.customData as? AudioCdnOpenContext
+        val linkAgeMs = context?.resolvedAtElapsedMs?.takeIf { it > 0L }
+            ?.let { (SystemClock.elapsedRealtime() - it).coerceAtLeast(0L) }
         Timber.tag(TAG).i(
-            "cdn-open-start id=%s host=%s position=%d length=%d linkRef=%s",
+            "cdn-open-start id=%s host=%s position=%d length=%d linkRef=%s " +
+                "streamClient=%s source=%s linkAgeMs=%s urlRange=%s",
             mediaKey ?: "none",
             host ?: "unknown",
             dataSpec.position,
             dataSpec.length,
             linkRef ?: "unknown",
+            context?.streamClient ?: "unknown",
+            context?.source ?: "unknown",
+            linkAgeMs?.toString() ?: "unknown",
+            runCatching { dataSpec.uri.getQueryParameter("range") != null }.getOrDefault(false),
         )
 
         return try {
