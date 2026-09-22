@@ -3422,6 +3422,26 @@ class MusicService :
     override fun onPlaybackStateChanged(@Player.State playbackState: Int) {
     super.onPlaybackStateChanged(playbackState)
 
+    // Diagnostic-only bridge between CDN 206/403 lines and *audible* buffering. A 206 whose
+    // body was read slowly is not, by itself, evidence of a slow server: Media3 may have stopped
+    // reading because its buffer was already full. Log player state at transitions, not per frame.
+    if (GlobalLog.isEnabled && !isCurrentCapsuleVideoItem() &&
+        (playbackState == Player.STATE_BUFFERING || playbackState == Player.STATE_READY)
+    ) {
+        Timber.tag("AudioCDN").i(
+            "cdn-player-state id=%s state=%s playWhenReady=%s isPlaying=%s isLoading=%s " +
+                "positionMs=%d bufferedPositionMs=%d bufferedAheadMs=%d",
+            player.currentMediaItem?.mediaId ?: "unknown",
+            if (playbackState == Player.STATE_BUFFERING) "BUFFERING" else "READY",
+            player.playWhenReady,
+            player.isPlaying,
+            player.isLoading,
+            player.currentPosition,
+            player.bufferedPosition,
+            player.totalBufferedDuration,
+        )
+    }
+
     if (playbackState == Player.STATE_READY && !isCurrentCapsuleVideoItem()) {
         audioBufferLastReadyMediaId = player.currentMediaItem?.mediaId
     }
