@@ -10,6 +10,7 @@ import kotlinx.coroutines.TimeoutCancellationException
 import java.net.SocketException
 import java.net.SocketTimeoutException
 import java.net.UnknownHostException
+import javax.net.ssl.SSLHandshakeException
 
 internal enum class NetworkFailureKind { CONNECTION, TIMEOUT }
 
@@ -33,6 +34,19 @@ internal fun Throwable.httpFailureStatus(): Int? =
         }
     }
 
+/**
+ * A peer closing a TLS handshake before returning HTTP is a transport failure, NOT an
+ * expired stream URL or an invalid YouTube client. OkHttp/Media3 may wrap it inside
+ * IOException -> ExecutionException -> SSLHandshakeException. Do not treat unrelated
+ * certificate/hostname validation failures as transient: retries cannot repair those.
+ */
+internal fun Throwable.isTransientClosedTlsHandshake(): Boolean =
+    failureChain().any { cause ->
+        cause is SSLHandshakeException &&
+            (cause.message?.contains("connection closed", ignoreCase = true) == true ||
+                cause.message?.contains("connection reset", ignoreCase = true) == true)
+    }
+
 internal fun Throwable.networkFailureKind(): NetworkFailureKind? {
     if (this is CancellationException) return null
     // An HTTP/API rejection is a response from a reachable server, not a transport outage.
@@ -45,7 +59,7 @@ internal fun Throwable.networkFailureKind(): NetworkFailureKind? {
                 (it is PlaybackException &&
                     it.errorCode == PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT)
         }) return NetworkFailureKind.TIMEOUT
-    if (causes.any {
+    if (isTransientClosedTlsHandshake() || causes.any {
             it is UnknownHostException || it is SocketException ||
                 (it is PlaybackException &&
                     it.errorCode == PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED)
