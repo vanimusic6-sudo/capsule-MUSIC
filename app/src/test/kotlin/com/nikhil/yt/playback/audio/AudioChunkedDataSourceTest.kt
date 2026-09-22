@@ -322,6 +322,90 @@ class AudioChunkedDataSourceTest {
         assertEquals("a pre-windowed link must go out as one request", 1, upstream.opens.size)
     }
 
+    /** A failed handshake must close the half-open source before reopening the same slice. */
+    private class ClosedTlsUpstream(
+        content: ByteArray,
+        private var failuresLeft: Int,
+        private val handshakeMessage: String = "Connection closed by peer",
+    ) : DataSource {
+        private val inner = FakeUpstream(content)
+        var opens = 0
+            private set
+        var closes = 0
+            private set
+        private var isOpen = false
+
+        override fun addTransferListener(transferListener: TransferListener) = Unit
+
+        override fun open(dataSpec: DataSpec): Long {
+            check(!isOpen) { "new TLS attempt started before the previous attempt was closed" }
+            isOpen = true
+            opens += 1
+            if (failuresLeft > 0) {
+                failuresLeft -= 1
+                throw java.io.IOException(
+                    "Media3 wrapper",
+                    javax.net.ssl.SSLHandshakeException(handshakeMessage),
+                )
+            }
+            return inner.open(dataSpec)
+        }
+
+        override fun read(buffer: ByteArray, offset: Int, length: Int) =
+            inner.read(buffer, offset, length)
+
+        override fun getUri(): Uri? = Uri.EMPTY
+
+        override fun close() {
+            isOpen = false
+            closes += 1
+            inner.close()
+        }
+    }
+
+    @Test
+    fun threeTransientTlsClosuresAreRetriedLocallyWithoutLosingAudio() {
+        val bytes = content(1000)
+        val upstream = ClosedTlsUpstream(bytes, failuresLeft = 3)
+        val source = AudioChunkedDataSource(upstream, chunkBytes = 128)
+
+        source.open(spec(bytes.size.toLong()))
+
+        assertArrayEquals(bytes, drain(source))
+        assertEquals(3 + 8, upstream.opens) // 3 failed opens + 8 contiguous audio slices.
+        assertTrue(upstream.closes >= 3)
+        source.close()
+    }
+
+    @Test
+    fun persistentTlsClosuresLeaveAfterFourAttempts() {
+        val upstream = ClosedTlsUpstream(content(64), failuresLeft = Int.MAX_VALUE)
+        val source = AudioChunkedDataSource(upstream, chunkBytes = 128)
+
+        val failure = runCatching { source.open(spec(64)) }.exceptionOrNull()
+
+        assertTrue(failure is java.io.IOException)
+        assertEquals(CHUNK_TLS_OPEN_ATTEMPTS, upstream.opens)
+        assertEquals(CHUNK_TLS_OPEN_ATTEMPTS - 1, upstream.closes)
+        source.close()
+    }
+
+    @Test
+    fun unrelatedTlsCertificateFailureIsNotRetried() {
+        val upstream = ClosedTlsUpstream(
+            content(64),
+            failuresLeft = Int.MAX_VALUE,
+            handshakeMessage = "PKIX path building failed",
+        )
+        val source = AudioChunkedDataSource(upstream, chunkBytes = 128)
+
+        val failure = runCatching { source.open(spec(64)) }.exceptionOrNull()
+
+        assertTrue(failure is java.io.IOException)
+        assertEquals(1, upstream.opens)
+        source.close()
+    }
+
     /** Refuses the first N opens with the given code, then behaves normally. */
     private class RefusingUpstream(
         content: ByteArray,
