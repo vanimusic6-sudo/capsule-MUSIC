@@ -1,6 +1,7 @@
 package com.nikhil.yt.playback.audio
 
 import com.nikhil.yt.utils.GlobalLog
+import com.nikhil.yt.utils.isTransientClosedTlsHandshake
 import okhttp3.HttpUrl
 import okhttp3.Interceptor
 import okhttp3.Request
@@ -167,7 +168,35 @@ internal class AudioCdnRedirectInterceptor(
             val sent = if (trace == null) request else request.newBuilder()
                 .tag(AudioCdnRequestTrace::class.java, trace.copy(hop = hop, stage = stage))
                 .build()
-            val response = chain.proceed(sent)
+            // TLS/DNS failures can occur before OkHttp creates a network interceptor or socket,
+            // so log the attempted hop here too; otherwise the decisive failed hop vanishes.
+            val hopStartedAtNs = if (GlobalLog.isEnabled) System.nanoTime() else 0L
+            val response = try {
+                chain.proceed(sent)
+            } catch (failure: IOException) {
+                if (GlobalLog.isEnabled) {
+                    Timber.tag("AudioCDN").w(
+                        "cdn-hop-failed flow=%d hop=%d stage=%s linkRef=%s effectiveRef=%s " +
+                            "host=%s group=%s range=%s appHeaderRef=%s failureType=%s " +
+                            "closedTls=%s elapsedMs=%d",
+                        trace?.flowId ?: -1L,
+                        hop,
+                        stage,
+                        trace?.linkRef ?: "unknown",
+                        AudioCdnLinkIdentity.ref(sent.url.toString()),
+                        sent.url.host,
+                        googlevideoServerGroup(sent.url.host) ?: "unknown",
+                        audioCdnSafeRange(sent.header("Range")),
+                        audioCdnHeaderRef(sent),
+                        failure::class.java.simpleName,
+                        failure.isTransientClosedTlsHandshake(),
+                        if (hopStartedAtNs > 0L) {
+                            (System.nanoTime() - hopStartedAtNs).coerceAtLeast(0L) / 1_000_000L
+                        } else -1L,
+                    )
+                }
+                throw failure
+            }
 
             /*
              * A remembered link that is refused is forgotten at once and the original asked
