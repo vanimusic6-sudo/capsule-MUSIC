@@ -77,28 +77,30 @@ private fun describeRejection(failure: Throwable, uri: Uri): String {
             .firstOrNull()
             ?: return ""
 
-    val reason =
-        rejection.responseBody
-            .decodeToString()
-            .lineSequence()
-            .map { it.trim() }
-            .firstOrNull { it.isNotEmpty() }
-            ?.take(160)
-            .orEmpty()
+    // A server response may echo credentials or a complete signed URL. Export only a salted
+    // reference and a small fixed-category hint; never copy its untrusted text into shared logs.
+    val reason = rejection.responseBody.decodeToString()
+        .lineSequence().map { it.trim() }.firstOrNull { it.isNotEmpty() }.orEmpty()
+    val reasonHint = when {
+        reason.isEmpty() -> "none"
+        reason.contains("signature", ignoreCase = true) -> "signature"
+        reason.contains("expired", ignoreCase = true) -> "expired"
+        reason.contains("token", ignoreCase = true) -> "token"
+        reason.contains("rate limit", ignoreCase = true) -> "rate-limit"
+        reason.contains("quota", ignoreCase = true) -> "quota"
+        reason.contains("bot", ignoreCase = true) -> "bot"
+        reason.contains("access", ignoreCase = true) -> "access"
+        else -> "other"
+    }
 
     /*
      * googlevideo states a refusal in its own headers as often as in the body, and the interesting
      * ones all begin with the same few prefixes. Only these are read: a blanket dump of the headers
      * would carry the session's identifiers into a log that gets shared.
      */
-    val serverNote =
-        rejection.headerFields
-            .entries
-            .filter { entry ->
-                val key = entry.key.orEmpty()
-                REJECTION_HEADERS.any { key.startsWith(it, ignoreCase = true) }
-            }
-            .joinToString(" ") { "${it.key}=${it.value.firstOrNull().orEmpty().take(80)}" }
+    val serverHints = REJECTION_HEADERS.filter { safeName ->
+        rejection.headerFields.keys.any { it.equals(safeName, ignoreCase = true) }
+    }.joinToString(",")
 
     val expiresInSeconds =
         uri.getQueryParameter("expire")
@@ -115,14 +117,18 @@ private fun describeRejection(failure: Throwable, uri: Uri): String {
         append("code=").append(rejection.responseCode)
         append(" bodyBytes=").append(rejection.responseBody.size)
         expiresInSeconds?.let { append(" linkExpiresInSec=").append(it) }
-        append(" itag=").append(uri.getQueryParameter("itag") ?: "none")
-        append(" urlClient=").append(uri.getQueryParameter("c") ?: "none")
+        append(" itag=").append(uri.getQueryParameter("itag")
+            ?.toIntOrNull()?.takeIf { it in 1..9999 } ?: "none")
+        append(" urlClient=").append(uri.getQueryParameter("c")
+            ?.takeIf { it.length <= 32 && it.matches(Regex("[A-Za-z0-9_]+")) } ?: "none")
         append(" hasPoToken=").append(uri.getQueryParameter("pot") != null)
         append(" hasSignature=")
             .append(uri.getQueryParameter("sig") != null || uri.getQueryParameter("lsig") != null)
         append(" bakedRange=").append(uri.getQueryParameter("range") != null)
-        if (reason.isNotEmpty()) append(" reason=\"").append(reason).append('"')
-        if (serverNote.isNotEmpty()) append(" serverSaid=\"").append(serverNote).append('"')
+        append(" reasonHint=").append(reasonHint)
+        if (reason.isNotEmpty()) append(" reasonRef=")
+            .append(AudioCdnLinkIdentity.ref("refusal-body:" + reason))
+        if (serverHints.isNotEmpty()) append(" serverHeaderNames=").append(serverHints)
     }
 }
 
