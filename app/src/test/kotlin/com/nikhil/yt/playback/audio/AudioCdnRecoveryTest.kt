@@ -14,6 +14,9 @@ import androidx.media3.exoplayer.source.LoadEventInfo
 import androidx.media3.exoplayer.source.MediaLoadData
 import androidx.media3.exoplayer.upstream.LoadErrorHandlingPolicy.LoadErrorInfo
 import com.nikhil.yt.playback.CapsuleLoadErrorHandlingPolicy
+import com.nikhil.yt.utils.NetworkFailureKind
+import com.nikhil.yt.utils.isTransientClosedTlsHandshake
+import com.nikhil.yt.utils.networkFailureKind
 import org.junit.Assert.*
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -23,6 +26,8 @@ import java.io.IOException
 import java.io.InterruptedIOException
 import java.net.SocketTimeoutException
 import java.util.concurrent.CancellationException
+import java.util.concurrent.ExecutionException
+import javax.net.ssl.SSLHandshakeException
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35])
@@ -60,6 +65,43 @@ class AudioCdnRecoveryTest {
                 MediaLoadData(C.DATA_TYPE_MEDIA), failure, count,
             ),
         )
+
+    @Test
+    fun peerClosedTlsHandshakeRetriesTheSameStreamWithoutCondemningMultipleCdnGroups() {
+        // Actual production trace: HttpDataSourceException -> IOException ->
+        // ExecutionException -> SSLHandshakeException("connection closed").
+        val wrapped = IOException(
+            "OkHttp failed",
+            ExecutionException(SSLHandshakeException("connection closed")),
+        )
+        val health = AudioCdnHostHealth(now = { 0L })
+        val upstream = Upstream().apply { openFailure = wrapped }
+        val source = AudioCdnHostHealthDataSource(upstream, health)
+        repeat(4) {
+            assertSame(wrapped, assertThrows(IOException::class.java) { source.open(spec) })
+            source.close()
+        }
+        // A route-wide failed TLS handshake cannot prove the entire host group is dead.
+        repeat(2) { assertFalse(health.shouldSkipHost(host)) }
+        assertTrue(wrapped.isTransientClosedTlsHandshake())
+        assertNull(wrapped.audioCdnRefreshRequiredOrNull())
+        assertFalse(wrapped.requiresFreshAudioUrlFor("song"))
+        assertEquals(NetworkFailureKind.CONNECTION, wrapped.networkFailureKind())
+        val playbackFailure = PlaybackException(
+            "Source error",
+            wrapped,
+            PlaybackException.ERROR_CODE_IO_UNSPECIFIED,
+        )
+        assertEquals(NetworkFailureKind.CONNECTION, playbackFailure.networkFailureKind())
+        assertNotEquals(C.TIME_UNSET, retryDelay(wrapped))
+    }
+
+    @Test
+    fun certificateValidationFailureMustNotBeRetriedAsTransientPeerClosure() {
+        val certificateError = SSLHandshakeException("Trust anchor for certification path not found")
+        assertFalse(certificateError.isTransientClosedTlsHandshake())
+        assertNull(certificateError.networkFailureKind())
+    }
 
     @Test
     fun cancellationsNeverMakeAHostCold() {
