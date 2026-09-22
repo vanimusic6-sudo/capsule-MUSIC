@@ -9,6 +9,7 @@ import androidx.media3.datasource.DataSourceException
 import androidx.media3.datasource.DataSpec
 import androidx.media3.datasource.HttpDataSource.InvalidResponseCodeException
 import androidx.media3.datasource.TransferListener
+import com.nikhil.yt.utils.isTransientClosedTlsHandshake
 import timber.log.Timber
 import java.io.IOException
 
@@ -235,6 +236,20 @@ internal class AudioCdnHostHealthDataSource(
         // All HTTP statuses (especially 429) remain with their existing per-link/safety policies.
         // Only actual transport faults contribute to host reachability.
         if (httpCode != null || !failure.isAudioCdnTransportFailure()) return failure
+
+        // This trace can close TLS on MULTIPLE unrelated googlevideo groups after a
+        // phone/VPN route change. No HTTP response was received: there is no evidence
+        // against this group and a fresh /player URL does not repair the handshake.
+        // Let the bounded same-stream network recovery reopen a socket instead of
+        // marking the group cold and triggering repeated expensive fresh resolves.
+        // Certificate/hostname validation errors remain outside this narrow case.
+        if (failure.isTransientClosedTlsHandshake()) {
+            Timber.tag("AudioCDN").w(
+                "cdn-tls-peer-closed group=%s; keeping original URL and host eligible",
+                googlevideoServerGroup(servedByHost ?: host) ?: "unknown",
+            )
+            return failure
+        }
 
         // A read failure belongs to the server that served the open, which may be the
         // redirect target. For a failed open there is no reliable final URL; use the origin.
