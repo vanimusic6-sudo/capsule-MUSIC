@@ -44,6 +44,9 @@ class AudioCdnLinkIdentityTest {
         assertEquals("none", audioCdnSafeRange("bytes=0-1\\r\\nCookie: secret"))
         assertEquals("none", audioCdnSafeRange("private"))
         assertEquals("none", audioCdnSafeRange(null))
+        assertEquals("0-1048575", audioCdnSafeBakedRange("0-1048575"))
+        assertEquals("none", audioCdnSafeBakedRange("0-1048575&pot=secret"))
+        assertEquals("none", audioCdnSafeBakedRange(null))
     }
 
     @Test fun urlQueryReferencesAreStableButNeverPrintTokenValues() {
