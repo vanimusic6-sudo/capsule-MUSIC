@@ -135,7 +135,7 @@ internal class AudioCdnConnectionDiagnosticInterceptor(
                         } ?: "none"
                     Timber.tag("AudioCDN").i(
                         "cdn-case flow=%d hop=%d stage=%s linkRef=%s effectiveRef=%s " +
-                            "status=%d method=%s host=%s group=%s range=%s urlRange=%s " +
+                            "status=%d method=%s host=%s group=%s range=%s bakedRange=%s urlRange=%s " +
                             "headerRef=%s cookie=%s authorization=%s origin=%s referer=%s " +
                             "conn=%d reqOnConn=%d connAgeMs=%d protocol=%s proxy=%s " +
                             "remoteRef=%s remoteFamily=%s issuedIpRef=%s issuedFamily=%s " +
@@ -151,6 +151,7 @@ internal class AudioCdnConnectionDiagnosticInterceptor(
                         requestHost,
                         googlevideoServerGroup(requestHost) ?: "unknown",
                         audioCdnSafeRange(request.header("Range")),
+                        audioCdnSafeBakedRange(request.url.queryParameter("range")),
                         request.url.queryParameter("range") != null,
                         audioCdnHeaderRef(request),
                         request.header("Cookie") != null,
