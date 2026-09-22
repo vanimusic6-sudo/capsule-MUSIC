@@ -102,6 +102,57 @@ object CapsuleInnerTubeXPlayer {
 
     private val networkGeneration = AtomicLong()
 
+    // A process-local startup gate only: never rewrite the user's saved client priority.
+    // The app starts with VISIONOS while the independent WEB_REMIX preparation runs.
+    @Volatile private var startupWebReady = false
+    @Volatile private var warmedWebSession: Any? = null
+    private val webStartupWarmupMutex = Mutex()
+
+    fun isStartupWebReady(): Boolean = startupWebReady
+
+    /**
+     * Warm the actual InnerTubeX extractor and the reusable, visitor-bound BotGuard session
+     * independently of the selected playback profile. No /player calls, stream URLs or
+     * additional client fallbacks are issued here. A foreground VISIONOS resolve only
+     * contends for the short bundle lookup, never for the WebView/remote prewarm itself.
+     */
+    suspend fun prewarmWebRemixForStartup(): Boolean = webStartupWarmupMutex.withLock {
+        val snapshot = sessionSnapshot()
+        if (warmedWebSession == snapshot) return@withLock true
+        val auth = snapshot.auth
+        val configuredTokens = !auth.poTokenPlayer.isNullOrBlank() && !auth.poTokenGvs.isNullOrBlank()
+        val visitorData = auth.visitorData?.trim()?.takeIf { it.isNotBlank() && it != "null" }
+        if (!configuredTokens && visitorData == null) {
+            Timber.tag(TAG).d("Web startup prewarm postponed: visitor data is not available")
+            return@withLock false
+        }
+
+        // SharedPrewarm owns the extractor task after start(), outside resolveMutex.
+        val extractorPreparation = resolveMutex.withLock { bundle().prewarm.start() }
+        val tokenReady = configuredTokens || (
+            visitorData != null && poTokenGenerator.prewarm(visitorData)
+        )
+        val extractorReady = try {
+            extractorPreparation.await().isSuccess
+        } catch (cancelled: CancellationException) {
+            currentCoroutineContext().ensureActive()
+            false
+        }
+
+        val ready = tokenReady && extractorReady && snapshot == sessionSnapshot()
+        if (ready) {
+            warmedWebSession = snapshot
+            startupWebReady = true
+            Timber.tag(TAG).i("Web startup prewarm ready; restoring configured AUDIO client order")
+        } else {
+            Timber.tag(TAG).w(
+                "Web startup prewarm incomplete tokenReady=%s extractorReady=%s sameSession=%s",
+                tokenReady, extractorReady, snapshot == sessionSnapshot(),
+            )
+        }
+        ready
+    }
+
     private val poTokenGenerator: PoTokenGenerator by lazy {
         PoTokenGenerator(App.instance.applicationContext)
     }
