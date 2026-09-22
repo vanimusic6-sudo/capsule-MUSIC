@@ -13,6 +13,75 @@ import org.junit.Test
 @OptIn(ExperimentalCoroutinesApi::class)
 class PlaybackRecoveryTransportTest {
     @Test
+    fun disconnectDuringScheduledRetryDoesNotMissTheReconnectEvent() = runTest {
+        var connected = true
+        var prepares = 0
+        var pauses = 0
+        val coordinator = PlaybackRecoveryCoordinator(
+            scopeProvider = { this },
+            maxConsecutiveTrackFailures = 3,
+            currentMediaIdProvider = { "song" },
+            playWhenReadyProvider = { true },
+            currentIndexProvider = { 0 },
+            positionGenerationProvider = { 0L },
+            connectedProvider = { connected },
+            playbackBlockedProvider = { false },
+            healthyPlaybackProvider = { prepares > 0 },
+            recoveryProgressProvider = { prepares > 0 },
+            pausePlayback = { pauses++ },
+            preparePlayback = { prepares++ },
+            networkRetryProgressGraceMs = 100L,
+        )
+
+        coordinator.recoverFromNetworkError()
+        assertTrue(coordinator.waitingForNetworkConnection.value)
+        // A Wi-Fi/VPN handoff can emit false and true before the old delay runs.
+        connected = false
+        coordinator.onConnectivityChanged(false)
+        assertTrue(coordinator.waitingForNetworkConnection.value)
+        advanceTimeBy(2_000L)
+        runCurrent()
+        assertEquals(0, prepares)
+        connected = true
+        coordinator.onConnectivityChanged(true)
+        advanceTimeBy(3_000L)
+        runCurrent()
+        assertEquals(1, prepares)
+        assertEquals(0, pauses)
+        assertFalse(coordinator.waitingForNetworkConnection.value)
+    }
+
+    @Test
+    fun offlineRecoveryWaitsForConnectivityWithoutConsumingTheRetryBudget() = runTest {
+        var connected = false
+        var prepares = 0
+        val coordinator = PlaybackRecoveryCoordinator(
+            scopeProvider = { this },
+            maxConsecutiveTrackFailures = 3,
+            currentMediaIdProvider = { "song" },
+            playWhenReadyProvider = { true },
+            currentIndexProvider = { 0 },
+            positionGenerationProvider = { 0L },
+            connectedProvider = { connected },
+            playbackBlockedProvider = { false },
+            healthyPlaybackProvider = { prepares > 0 },
+            recoveryProgressProvider = { prepares > 0 },
+            pausePlayback = {},
+            preparePlayback = { prepares++ },
+            networkRetryProgressGraceMs = 100L,
+        )
+        coordinator.recoverFromNetworkError()
+        advanceTimeBy(10_000L)
+        runCurrent()
+        assertEquals(0, prepares)
+        connected = true
+        coordinator.onConnectivityChanged(true)
+        advanceTimeBy(1_500L)
+        runCurrent()
+        assertEquals(1, prepares)
+    }
+
+    @Test
     fun silentBufferingAfterTransportRetryUsesNextBoundedSameStreamAttempt() = runTest {
         var ready = false
         var prepares = 0
