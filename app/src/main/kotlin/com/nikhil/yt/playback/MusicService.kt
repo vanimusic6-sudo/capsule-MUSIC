@@ -712,6 +712,14 @@ class MusicService :
             val priority = withContext(Dispatchers.Main.immediate) {
                 audioResolvePriority(mediaId)
             }
+            // Only the effective order for new resolutions changes. Keep persisted
+            // preferences and already-playing signed URLs untouched while the app
+            // prewarms Web BotGuard/extractor in the background.
+            val effectiveClientOrder =
+                AudioWebStartupClientPolicy.effectiveOrder(
+                    configuredOrder = selection.clientOrder,
+                    webReady = CapsuleAudioEngine.isStartupWebReady(),
+                )
             val startedAt = System.currentTimeMillis()
             Timber.tag(CAPSULE_RESOLVE_TAG).i(
                 "resolve start id=%s",
@@ -723,7 +731,7 @@ class MusicService :
                     audioQuality = selection.quality,
                     connectivityManager = connectivityManager,
                     streamPolicy = selection.policy,
-                    clientOrder = selection.clientOrder,
+                    clientOrder = effectiveClientOrder,
                     priority = priority,
                 )
                 .also { result ->
