@@ -177,7 +177,7 @@ internal class AudioCdnRedirectInterceptor(
                 if (GlobalLog.isEnabled) {
                     Timber.tag("AudioCDN").w(
                         "cdn-hop-failed flow=%d hop=%d stage=%s linkRef=%s effectiveRef=%s " +
-                            "host=%s group=%s range=%s appHeaderRef=%s failureType=%s " +
+                            "host=%s group=%s range=%s bakedRange=%s appHeaderRef=%s failureType=%s " +
                             "closedTls=%s elapsedMs=%d",
                         trace?.flowId ?: -1L,
                         hop,
@@ -187,6 +187,7 @@ internal class AudioCdnRedirectInterceptor(
                         sent.url.host,
                         googlevideoServerGroup(sent.url.host) ?: "unknown",
                         audioCdnSafeRange(sent.header("Range")),
+                        audioCdnSafeBakedRange(sent.url.queryParameter("range")),
                         audioCdnHeaderRef(sent),
                         failure::class.java.simpleName,
                         failure.isTransientClosedTlsHandshake(),
