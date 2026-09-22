@@ -72,6 +72,10 @@ internal fun audioCdnHeaderRef(request: Request): String {
 internal fun audioCdnSafeRange(range: String?): String =
     range?.takeIf { it.length <= 45 && it.matches(Regex("bytes=[0-9]+-[0-9]*")) } ?: "none"
 
+/** Some clients put a numeric byte range in the signed URL instead of an HTTP header. */
+internal fun audioCdnSafeBakedRange(range: String?): String =
+    range?.takeIf { it.length <= 45 && it.matches(Regex("[0-9]+-[0-9]+")) } ?: "none"
+
 /** Only a query field's presence and a per-process salted reference may leave the phone. */
 internal fun audioCdnQueryRef(url: HttpUrl, key: String): String =
     url.queryParameter(key)?.let { AudioCdnLinkIdentity.ref("query:" + key + ":" + it) } ?: "none"
