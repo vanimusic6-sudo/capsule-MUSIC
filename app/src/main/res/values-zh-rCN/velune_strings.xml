@@ -87,9 +87,7 @@
     <string name="player_design_v4">空间感</string>
     <string name="player_design_v5">小</string>
     <string name="new_mini_player_design">新迷你播放器设计</string>
-    <string name="player_background_blur">模糊</string>
     <string name="coloring">着色</string>
-    <string name="blur_gradient">模糊渐变</string>
     <string name="glow">发光</string>
     <string name="player_buttons_style">播放器按钮颜色</string>
     <string name="default_style">默认</string>
@@ -107,7 +105,6 @@
     <string name="open_supported_links">默认打开支持的链接</string>
     <string name="configure_supported_links">配置支持的链接</string>
     <string name="intent_supported_links_not_found">找不到支持的链接设置，请手动配置</string>
-    <string name="set_first_lyrics_provider">首选歌词提供者</string>
     <string name="enable_similar_content">启用类似内容</string>
     <string name="similar_content_desc">当排队结束时，自动添加更多相似歌曲</string>
     <string name="min_playback_duration_title">最小播放时长</string>

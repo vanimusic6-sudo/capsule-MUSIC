@@ -1,5 +1,10 @@
 name: YouTube client policy sync
 
+# This workflow maintains Capsule's legacy/browse client identity snapshot. Core
+# AUDIO playback uses InnerTubeX; this sync covers the safe legacy/browse identities.
+# Keep this sync fail-closed so an upstream yt-dlp schema rename cannot silently
+# make the PO-token safety check ineffective.
+
 on:
   workflow_dispatch:
   schedule:
@@ -7,7 +12,6 @@ on:
 
 permissions:
   contents: write
-  pull-requests: write
   issues: write
 
 concurrency:
@@ -21,10 +25,10 @@ jobs:
     timeout-minutes: 45
 
     steps:
-      - name: Checkout Capsule main
+      - name: Checkout Capsule cleanup
         uses: actions/checkout@v6
         with:
-          ref: main
+          ref: cleanup/capsule-player-only
           fetch-depth: 0
 
       - name: Set up JDK 21
@@ -33,10 +37,10 @@ jobs:
           distribution: temurin
           java-version: "21"
 
-      - name: Set up Gradle 9.3.1
+      - name: Set up Gradle 9.5
         uses: gradle/actions/setup-gradle@v6
         with:
-          gradle-version: "9.3.1"
+          gradle-version: "9.5.0"
 
       - name: Read yt-dlp client table and regenerate Capsule snapshot
         id: sync
@@ -79,6 +83,15 @@ jobs:
 
           source = source_path.read_text(encoding="utf-8")
           source_sha = os.environ["YTDLP_SOURCE_SHA"]
+
+          # The policy below depends on yt-dlp's PO_TOKEN marker. If upstream
+          # renames/removes that marker, continuing would turn the safety check
+          # into a silent fail-open. Stop and require a manual schema review.
+          if "PO_TOKEN" not in source:
+              raise RuntimeError(
+                  "yt-dlp YouTube client schema changed: PO_TOKEN marker is missing; "
+                  "manual policy review required"
+              )
 
           def client_block(name: str) -> str:
               marker = f"    '{name}': {{"
@@ -168,6 +181,12 @@ jobs:
           }
 
           blocks = {key: client_block(value) for key, value in names.items()}
+          if not any("PO_TOKEN" in block for block in blocks.values()):
+              raise RuntimeError(
+                  "No parsed client contains a PO_TOKEN policy marker; "
+                  "manual upstream schema review required"
+              )
+
 
           safe_active = ("visionos", "web_embedded", "tv", "tv_downgraded")
           policy_changes = []
@@ -408,72 +427,24 @@ jobs:
             --stacktrace \
             --no-daemon
 
-      - name: Push update branch
+      # Keep only main and cleanup: never create automation/* branches or PRs.
+      # This is a verified identity snapshot, NOT an automatic policy override.
+      # Any PO-token policy change above still fails closed and requires review.
+      - name: Commit validated AUDIO source update to cleanup
         if: steps.sync.outputs.changed == 'true'
-        id: branch
         shell: bash
         env:
           UPSTREAM_SHA: ${{ steps.sync.outputs.upstream_sha }}
         run: |
           set -euo pipefail
-
           short="${UPSTREAM_SHA:0:12}"
-          branch="automation/youtube-clients-$short"
 
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-          git checkout -B "$branch"
           git add \
             innertube/src/main/kotlin/com/nikhil/yt/innertube/models/YouTubeClientUpstream.kt
 
-          git commit \
-            -m "Sync YouTube client identities from yt-dlp $short"
-
-          git push --force origin "$branch"
-
-          echo "name=$branch" >> "$GITHUB_OUTPUT"
-
-      - name: Open compatibility PR
-        if: steps.sync.outputs.changed == 'true'
-        shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
-          BRANCH: ${{ steps.branch.outputs.name }}
-          UPSTREAM_SHA: ${{ steps.sync.outputs.upstream_sha }}
-        run: |
-          set -euo pipefail
-
-          existing="$(
-            gh pr list \
-              --head "$BRANCH" \
-              --state open \
-              --json number \
-              --jq '.[0].number // empty'
-          )"
-
-          if [[ -n "$existing" ]]; then
-            echo "PR #$existing already exists."
-            exit 0
-          fi
-
-          gh pr create \
-            --base main \
-            --head "$BRANCH" \
-            --title "Sync safe YouTube playback clients" \
-            --body "$(cat <<EOF
-          Automatic client-identity synchronization from yt-dlp.
-
-          Upstream commit:
-          \`$UPSTREAM_SHA\`
-
-          Safety checks passed before this PR was opened:
-          - Capsule's active allowlist clients still have no newly declared PO-token policy in yt-dlp;
-          - no new client was added to the fallback chain;
-          - no runtime client rotation was enabled;
-          - \`:innertube:test\` passed;
-          - \`:app:assembleUniversalDebug\` passed.
-
-          This PR is intentionally **not auto-merged**. A newer identity is not automatically safer; upstream playback-policy changes still require review.
-          EOF
-          )"
+          git commit -m "Sync safe YouTube client identities from yt-dlp $short"
+          # Do NOT force-push over concurrent development; a conflict fails safely.
+          git push origin HEAD:refs/heads/cleanup/capsule-player-only

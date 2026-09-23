@@ -13,6 +13,7 @@ import android.os.Build
 import android.widget.Toast
 import android.widget.Toast.LENGTH_SHORT
 import androidx.datastore.preferences.core.edit
+import com.nikhil.yt.playback.audio.playbackAuthState
 import coil3.ImageLoader
 import coil3.PlatformContext
 import coil3.SingletonImageLoader
@@ -27,27 +28,30 @@ import com.nikhil.yt.ui.screens.settings.ThemePalettes
 import com.nikhil.yt.ui.theme.ThemeSeedPalette
 import com.nikhil.yt.ui.theme.ThemeSeedPaletteCodec
 import com.nikhil.yt.utils.dataStore
+import com.nikhil.yt.utils.CapsuleBrand
 import com.nikhil.yt.utils.PreferenceStore
 import com.nikhil.yt.utils.DebugLoggingController
 import com.nikhil.yt.utils.get
+import com.nikhil.yt.utils.reportRecoverableException
 import com.nikhil.yt.utils.reportException
+import com.nikhil.yt.innertube.CapsuleAnonymousSession
 import com.nikhil.yt.innertube.YouTube
 import com.nikhil.yt.innertube.models.YouTubeLocale
-import com.nikhil.yt.kugou.KuGou
+import com.nikhil.yt.playback.audio.CapsuleInnerTubeXPlayer
+import com.nikhil.yt.playback.audio.CapsuleAudioEngine
 import com.nikhil.yt.lastfm.LastFM
-import com.nikhil.yt.ui.player.CanvasArtworkPlaybackCache
 import dagger.hilt.android.HiltAndroidApp
-import kotlinx.coroutines.DelicateCoroutinesApi
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import android.content.Intent
 import java.io.PrintWriter
 import java.io.StringWriter
@@ -60,8 +64,12 @@ import java.util.concurrent.atomic.AtomicBoolean
 @HiltAndroidApp
 class App : Application(), SingletonImageLoader.Factory {
     private val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+
+    internal fun launchLifecycleCleanup(block: suspend () -> Unit) =
+        applicationScope.launch(Dispatchers.IO) { block() }
     @Volatile private var isInitialized = false
     private val didRunImageCacheTrim = AtomicBoolean(false)
+    private var webRemixWarmupJob: Job? = null
 
     private fun currentProcessName(): String? {
         return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
@@ -75,7 +83,6 @@ class App : Application(), SingletonImageLoader.Factory {
         }
     }
 
-    @OptIn(DelicateCoroutinesApi::class)
     override fun onCreate() {
         super.onCreate()
         instance = this
@@ -96,6 +103,33 @@ class App : Application(), SingletonImageLoader.Factory {
         }
 
         PreferenceStore.start(this)
+        migrateLegacyBrandPreferences()
+
+
+        // Seed all account fields from the same preference transaction before playback starts.
+        PreferenceStore.snapshot()?.let { YouTube.authState = it.playbackAuthState() }
+        applicationScope.launch(Dispatchers.IO) {
+            dataStore.data.map { it.playbackAuthState() }.distinctUntilChanged().collect { state ->
+                YouTube.authState = state
+                CapsuleAnonymousSession.reset()
+                // A visitor/account change supersedes the old session: do not let
+                // a stale BotGuard warmup republish an obsolete visitor binding.
+                webRemixWarmupJob?.cancel()
+
+                // Warm WEB_REMIX even when the selected AUDIO client is VISIONOS.
+                // The visitor observer below obtains missing visitorData and publishes it
+                // through DataStore; this collector then starts the one shared BotGuard/
+                // extractor prewarm for the new authenticated/anonymous session.
+                if (!state.visitorData.isNullOrBlank() ||
+                    (!state.poTokenPlayer.isNullOrBlank() && !state.poTokenGvs.isNullOrBlank())
+                ) {
+                    webRemixWarmupJob = applicationScope.launch(Dispatchers.IO) {
+                        CapsuleAudioEngine.prewarmWebRemixForStartup()
+                    }
+                }
+            }
+        }
+
         applicationScope.launch(Dispatchers.IO) {
             dataStore.data
                 .map { it[DebugLoggingEnabledKey] ?: false }
@@ -107,9 +141,32 @@ class App : Application(), SingletonImageLoader.Factory {
         initializeDeferredAsync()
     }
 
-    private fun initializeCriticalSync() {
-        CanvasArtworkPlaybackCache.init(this)
+    private fun migrateLegacyBrandPreferences() {
+        applicationScope.launch(Dispatchers.IO) {
+            try {
+                dataStore.edit { preferences ->
+                    if (
+                        preferences[DiscordActivityButton2LabelKey] ==
+                        CapsuleBrand.LEGACY_DISCORD_BUTTON_LABEL
+                    ) {
+                        preferences[DiscordActivityButton2LabelKey] =
+                            CapsuleBrand.DEFAULT_DISCORD_BUTTON_LABEL
+                    }
+                    if (
+                        preferences[DiscordActivityButton2CustomUrlKey] ==
+                        CapsuleBrand.LEGACY_REPOSITORY_URL
+                    ) {
+                        preferences[DiscordActivityButton2CustomUrlKey] =
+                            CapsuleBrand.REPOSITORY_URL
+                    }
+                }
+            } catch (error: Exception) {
+                reportRecoverableException("App", "migrate legacy Discord branding", error)
+            }
+        }
+    }
 
+    private fun initializeCriticalSync() {
         val locale = Locale.getDefault()
         val languageTag = locale.toLanguageTag().replace("-Hant", "")
         YouTube.locale = YouTubeLocale(
@@ -118,9 +175,6 @@ class App : Application(), SingletonImageLoader.Factory {
                 ?: languageTag.takeIf { it in LanguageCodeToName }
                 ?: "en"
         )
-        if (languageTag == "zh-TW") {
-            KuGou.useTraditionalChinese = true
-        }
         LastFM.initialize(
             apiKey = BuildConfig.LASTFM_API_KEY,
             secret = BuildConfig.LASTFM_SECRET
@@ -141,11 +195,33 @@ class App : Application(), SingletonImageLoader.Factory {
 
                 LastFM.sessionKey = prefs[LastFMSessionKey]
 
+                /*
+                 * This flag still controls the legacy anonymous web session.
+                 * Modern AUDIO has its own InnerTubeX TokenProvider and does not
+                 * use this preference as a gate for Web BotGuard PoTokens.
+                 */
+                YouTube.webClientPoTokenEnabled = prefs[WebClientPoTokenEnabledKey] ?: false
+
+                /*
+                 * Hardware audio offload lets supported devices keep decoding
+                 * and playback out of the main CPU path while the screen is
+                 * off. Respect an explicit user choice, but make the efficient
+                 * path the default for installs that never chose a value.
+                 */
+                if (prefs[AudioOffload] == null) {
+                    dataStore.edit { settings ->
+                        settings[AudioOffload] = true
+                    }
+                }
+
                 if (prefs[ProxyEnabledKey] == true) {
                     try {
+                        val proxyUrl = requireNotNull(prefs[ProxyUrlKey]) {
+                            "Proxy is enabled but its URL is missing"
+                        }
                         YouTube.proxy = Proxy(
                             prefs[ProxyTypeKey].toEnum(defaultValue = Proxy.Type.HTTP),
-                            prefs[ProxyUrlKey]!!.toInetSocketAddress()
+                            proxyUrl.toInetSocketAddress()
                         )
                     } catch (e: Exception) {
                         withContext(Dispatchers.Main) {
@@ -175,6 +251,8 @@ class App : Application(), SingletonImageLoader.Factory {
                 }
 
                 isInitialized = true
+            } catch (cancelled: CancellationException) {
+                throw cancelled
             } catch (e: Exception) {
                 Timber.e(e, "Error during deferred initialization")
                 reportException(e)
@@ -186,15 +264,21 @@ class App : Application(), SingletonImageLoader.Factory {
                 .map { it[VisitorDataKey] }
                 .distinctUntilChanged()
                 .collect { visitorData ->
-                    YouTube.visitorData = visitorData
-                        ?.takeIf { it != "null" }
-                        ?: YouTube.visitorData().onFailure {
-                            reportException(it)
-                        }.getOrNull()?.also { newVisitorData ->
-                            dataStore.edit { settings ->
-                                settings[VisitorDataKey] = newVisitorData
+                    visitorData
+                            ?.trim()
+                            ?.takeIf { it.isNotBlank() && it != "null" }
+                            ?: YouTube.visitorData().onFailure {
+                                reportException(it)
+                            }.getOrNull()?.also { newVisitorData ->
+                                dataStore.edit { settings ->
+                                    settings[VisitorDataKey] = newVisitorData
+                                }
                             }
-                        }
+
+                    // Publishing through DataStore keeps visitor/account/token updates coherent.
+                    // The auth collector above independently warms WEB_REMIX once it arrives,
+                    // regardless of the currently selected playback client.
+
                 }
         }
 
@@ -221,55 +305,6 @@ class App : Application(), SingletonImageLoader.Factory {
             }
         } catch (e: Exception) {
             reportException(e)
-        }
-        applicationScope.launch(Dispatchers.IO) {
-            dataStore.data
-                .map { it[DataSyncIdKey] }
-                .distinctUntilChanged()
-                .collect { dataSyncId ->
-                    YouTube.dataSyncId = dataSyncId?.let {
-                        it.takeIf { !it.contains("||") }
-                            ?: it.takeIf { it.endsWith("||") }?.substringBefore("||")
-                            ?: it.substringAfter("||")
-                    }
-                }
-        }
-        applicationScope.launch(Dispatchers.IO) {
-            dataStore.data
-                .map { it[InnerTubeCookieKey] }
-                .distinctUntilChanged()
-                .collect { cookie ->
-                    try {
-                        YouTube.cookie = cookie
-                    } catch (e: Exception) {
-                        Timber.e("Could not parse cookie. Clearing existing cookie. %s", e.message)
-                        forgetAccount(this@App)
-                    }
-                }
-        }
-        applicationScope.launch(Dispatchers.IO) {
-            dataStore.data
-                .map { it[PoTokenKey] }
-                .distinctUntilChanged()
-                .collect { token ->
-                    YouTube.poToken = token?.takeIf { it.isNotBlank() }
-                }
-        }
-        applicationScope.launch(Dispatchers.IO) {
-            dataStore.data
-                .map { it[PoTokenGvsKey] }
-                .distinctUntilChanged()
-                .collect { token ->
-                    YouTube.poTokenGvs = token?.takeIf { it.isNotBlank() }
-                }
-        }
-        applicationScope.launch(Dispatchers.IO) {
-            dataStore.data
-                .map { it[PoTokenPlayerKey] }
-                .distinctUntilChanged()
-                .collect { token ->
-                    YouTube.poTokenPlayer = token?.takeIf { it.isNotBlank() }
-                }
         }
         applicationScope.launch(Dispatchers.IO) {
             dataStore.data
@@ -319,7 +354,8 @@ class App : Application(), SingletonImageLoader.Factory {
                 val size = file.length()
                 if (runCatching { file.delete() }.getOrDefault(false)) currentSize -= size
             }
-        } catch (_: Exception) {
+        } catch (error: Exception) {
+            reportRecoverableException("App", "trim image disk cache", error)
         }
     }
 

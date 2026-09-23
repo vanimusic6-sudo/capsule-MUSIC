@@ -37,23 +37,31 @@ import com.nikhil.yt.constants.ThumbnailCornerRadius
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlin.random.Random
+import com.nikhil.yt.ui.motion.CapsuleExitEasing
+import com.nikhil.yt.ui.motion.CapsuleEnterEasing
 
 @Composable
 fun PlayingIndicator(
     color: Color,
     modifier: Modifier = Modifier,
+    isPlaying: Boolean = true,
     bars: Int = 3,
     barWidth: Dp = 4.dp,
     cornerRadius: Dp = ThumbnailCornerRadius,
 ) {
     val animatables =
-        remember {
+        remember(bars) {
             List(bars) {
                 Animatable(0.1f)
             }
         }
 
-    LaunchedEffect(Unit) {
+    LaunchedEffect(isPlaying, animatables) {
+        if (!isPlaying) {
+            animatables.forEach { it.snapTo(0.1f) }
+            return@LaunchedEffect
+        }
+
         delay(300)
         animatables.forEach { animatable ->
             launch {
@@ -97,8 +105,8 @@ fun PlayingIndicatorBox(
 ) {
     AnimatedVisibility(
         visible = isActive,
-        enter = fadeIn(tween(500)),
-        exit = fadeOut(tween(500)),
+        enter = fadeIn(tween(500, easing = CapsuleEnterEasing)),
+        exit = fadeOut(tween(500, easing = CapsuleExitEasing)),
     ) {
         Box(
             contentAlignment = Alignment.Center,
@@ -108,6 +116,7 @@ fun PlayingIndicatorBox(
                 PlayingIndicator(
                     color = color,
                     modifier = Modifier.height(24.dp),
+                    isPlaying = playWhenReady,
                 )
             } else {
                 Icon(

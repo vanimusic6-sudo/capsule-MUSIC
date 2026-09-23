@@ -68,14 +68,30 @@ class AppBarScrollBehavior(
         }
 }
 
+/**
+ * Brings the app bar back to its full height.
+ *
+ * [animated] is not a detail. The bar is drawn at `state.heightOffset`, so animating this back to
+ * zero slides the bar down the screen — which is right when the bar returns on its own (leaving
+ * search, a scroll-to-top), and wrong when it happens because the user changed destination. In that
+ * second case the slide arrives on top of the destination's own entrance, and the two read as one
+ * movement in opposite directions: Home, which is excluded from the reset, rises into place, while
+ * Library, History and Stats appeared to come down from above. That was the bar, not the screen.
+ *
+ * Snapping instead means the bar is simply already where it belongs by the first frame of the new
+ * destination, and every tab arrives the same way.
+ */
 @OptIn(ExperimentalMaterial3Api::class)
-suspend fun TopAppBarState.resetHeightOffset() {
-    if (heightOffset != 0f) {
-        animate(
-            initialValue = heightOffset,
-            targetValue = 0f,
-        ) { value, _ ->
-            heightOffset = value
-        }
+suspend fun TopAppBarState.resetHeightOffset(animated: Boolean = true) {
+    if (heightOffset == 0f) return
+    if (!animated) {
+        heightOffset = 0f
+        return
+    }
+    animate(
+        initialValue = heightOffset,
+        targetValue = 0f,
+    ) { value, _ ->
+        heightOffset = value
     }
 }

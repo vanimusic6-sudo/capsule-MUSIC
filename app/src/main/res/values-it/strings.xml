@@ -312,7 +312,6 @@
     <string name="palette_spring">Primavera</string>
     <string name="palette_summer">Estate</string>
     <string name="palette_twilight">Crepuscolo</string>
-    <string name="palette_aurora">Aurora</string>
     <string name="palette_candy">Caramella</string>
     <string name="palette_rainbow">Arcobaleno</string>
     <!-- Additional Palettes -->
@@ -340,8 +339,6 @@
     <string name="ok_button">Va bene</string>
     <string name="custom_radius">Personalizza il raggio dell\'angolo della miniatura</string>
     <string name="custom">Personalizzato</string>
-    <string name="customized_background">Sfondo personalizzato</string>
-    <string name="customize_background_title">Personalizza lo sfondo</string>
     <string name="add_image">Aggiungi immagine</string>
     <string name="blur">Sfocatura</string>
     <string name="contrast">Contrasto</string>
@@ -396,7 +393,6 @@
     <string name="proxy_url">URL proxy</string>
     <string name="restart_to_take_effect">Riavvia per avere effetto</string>
     <string name="enable_betterlyrics">Abilita BetterLyrics</string>
-    <string name="enable_simpmusic_lyrics">Abilita i testi di SimpMusic</string>
     <string name="player_and_audio">Lettore e audio</string>
     <string name="audio_quality">Qualità audio</string>
     <string name="audio_quality_auto">Automatico</string>
@@ -473,7 +469,6 @@
     <string name="disable_screenshot">Disabilita schermata</string>
     <string name="disable_screenshot_desc">Quando questa opzione è attiva, gli screenshot e la visualizzazione dell\'app in Recenti sono disabilitati.</string>
     <string name="enable_lrclib">Abilita il provider di testi LrcLib</string>
-    <string name="enable_kugou">Abilita il provider di testi KuGou</string>
     <string name="hide_explicit">Nascondi contenuti espliciti</string>
     <string name="hide_video">Nascondi video musicali</string>
     <string name="backup_restore">Backup e ripristino</string>

@@ -98,9 +98,7 @@
     <string name="player_design_v4">Kinematisch</string>
     <string name="player_design_v5">Metro</string>
     <string name="new_mini_player_design">Neues Mini-Player-Design</string>
-    <string name="player_background_blur">Verwischen</string>
     <string name="coloring">Farbung</string>
-    <string name="blur_gradient">Weichzeichnerverlauf</string>
     <string name="glow">Leuchten</string>
     <string name="player_buttons_style">Farben der Player-Tasten</string>
     <string name="default_style">Standard</string>
@@ -143,7 +141,6 @@
     <string name="open_supported_links">Unterstützten Link standardmäßig öffnen</string>
     <string name="configure_supported_links">Konfigurieren Sie unterstützte Links</string>
     <string name="intent_supported_links_not_found">Es konnten keine unterstützten Linkeinstellungen gefunden werden. Bitte konfigurieren Sie sie manuell</string>
-    <string name="set_first_lyrics_provider">Bevorzugter Textanbieter</string>
     <string name="audio_quality_max">Max (Beta)</string>
     <string name="enable_similar_content">Aktivieren Sie ähnliche Inhalte</string>
     <string name="similar_content_desc">Fügen Sie automatisch weitere ähnliche Songs hinzu, wenn das Ende der Warteschlange erreicht ist</string>

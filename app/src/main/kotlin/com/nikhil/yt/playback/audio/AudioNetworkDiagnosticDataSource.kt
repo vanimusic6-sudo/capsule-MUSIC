@@ -1,0 +1,509 @@
+package com.nikhil.yt.playback.audio
+
+import android.net.Uri
+import android.os.SystemClock
+import androidx.media3.datasource.DataSource
+import androidx.media3.datasource.DataSpec
+import androidx.media3.datasource.HttpDataSource.InvalidResponseCodeException
+import androidx.media3.datasource.TransferListener
+import com.nikhil.yt.utils.GlobalLog
+import com.nikhil.yt.utils.isTransientClosedTlsHandshake
+import timber.log.Timber
+import java.io.IOException
+import java.io.InterruptedIOException
+import java.net.SocketTimeoutException
+import java.util.concurrent.CancellationException
+
+internal fun Throwable.isExpectedAudioCdnInterruption(): Boolean {
+    val causes = generateSequence(this as Throwable?) { it.cause }
+        .take(8)
+        .toList()
+
+    // Socket/read timeouts are real network failures even though
+    // SocketTimeoutException derives from InterruptedIOException.
+    if (causes.any { it is SocketTimeoutException }) return false
+
+    return causes.any { cause ->
+        when (cause) {
+            is CancellationException, is InterruptedException -> true
+            is InterruptedIOException ->
+                !cause.message.orEmpty().contains("timeout", ignoreCase = true)
+            is IOException -> {
+                val message = cause.message?.trim().orEmpty()
+                message.equals("Canceled", ignoreCase = true) ||
+                    message.equals("Cancelled", ignoreCase = true)
+            }
+            else -> false
+        }
+    }
+}
+
+/**
+ * Why the CDN said no, in terms that can be read from a shared log.
+ *
+ * A rejected stream used to be recorded as "Response code: 403" and nothing else, which is why
+ * three separate attempts at this were made from guesswork: the server states its reason and we
+ * were throwing it away. googlevideo puts the reason in the response body and in its own headers,
+ * and the answer is usually one word — expired, invalid signature, a different IP than the one the
+ * URL was issued to.
+ *
+ * Nothing secret is included, in keeping with the rest of this file: signatures, proof-of-origin
+ * tokens and cookies are reported as present or absent and never by value. The one number taken
+ * from the URL is how long the link had left to live, which is the single most useful fact about a
+ * rejected link and identifies nobody.
+ */
+/**
+ * How many slow reads are printed in full before the rest are thinned, and how often after that.
+ *
+ * A throttled stream produces one every few seconds, and the session worth capturing is exactly the
+ * one that suffers: a capture of an hour-long episode carried ninety-two of them, which is enough
+ * to push the start of that session out of an export holding a couple of thousand lines. The first
+ * few establish the pattern and every tenth tracks it. Each line carries the running count and the
+ * totals, and the closing line carries the final tally, so the thinning removes repetition rather
+ * than information.
+ */
+internal const val SLOW_READS_LOGGED_IN_FULL = 5
+internal const val SLOW_READ_LOG_INTERVAL = 10
+
+/** The few response headers googlevideo states a refusal in; everything else stays unread. */
+private val REJECTION_HEADERS =
+    listOf("X-Squid-Error", "X-Restrict", "X-Walled-Garden", "Server")
+
+private fun describeRejection(failure: Throwable, uri: Uri): String {
+    val rejection =
+        generateSequence(failure as Throwable?) { it.cause }
+            .take(8)
+            .filterIsInstance<InvalidResponseCodeException>()
+            .firstOrNull()
+            ?: return ""
+
+    // A server response may echo credentials or a complete signed URL. Export only a salted
+    // reference and a small fixed-category hint; never copy its untrusted text into shared logs.
+    val reason = rejection.responseBody.decodeToString()
+        .lineSequence().map { it.trim() }.firstOrNull { it.isNotEmpty() }.orEmpty()
+    val reasonHint = when {
+        reason.isEmpty() -> "none"
+        reason.contains("signature", ignoreCase = true) -> "signature"
+        reason.contains("expired", ignoreCase = true) -> "expired"
+        reason.contains("token", ignoreCase = true) -> "token"
+        reason.contains("rate limit", ignoreCase = true) -> "rate-limit"
+        reason.contains("quota", ignoreCase = true) -> "quota"
+        reason.contains("bot", ignoreCase = true) -> "bot"
+        reason.contains("access", ignoreCase = true) -> "access"
+        else -> "other"
+    }
+
+    /*
+     * googlevideo states a refusal in its own headers as often as in the body, and the interesting
+     * ones all begin with the same few prefixes. Only these are read: a blanket dump of the headers
+     * would carry the session's identifiers into a log that gets shared.
+     */
+    val serverHints = REJECTION_HEADERS.filter { safeName ->
+        rejection.headerFields.keys.any { it.equals(safeName, ignoreCase = true) }
+    }.joinToString(",")
+
+    val expiresInSeconds =
+        uri.getQueryParameter("expire")
+            ?.toLongOrNull()
+            ?.let { it - System.currentTimeMillis() / 1000L }
+
+    /*
+     * The body length is reported even when it is zero, because "googlevideo gave no reason" and
+     * "the reason was not captured" are different findings and looked identical before: a refusal
+     * with no `reason=` could mean either, and one of them points at this code rather than at the
+     * server.
+     */
+    return buildString {
+        append("code=").append(rejection.responseCode)
+        append(" bodyBytes=").append(rejection.responseBody.size)
+        expiresInSeconds?.let { append(" linkExpiresInSec=").append(it) }
+        append(" itag=").append(uri.getQueryParameter("itag")
+            ?.toIntOrNull()?.takeIf { it in 1..9999 } ?: "none")
+        append(" urlClient=").append(uri.getQueryParameter("c")
+            ?.takeIf { it.length <= 32 && it.matches(Regex("[A-Za-z0-9_]+")) } ?: "none")
+        append(" hasPoToken=").append(uri.getQueryParameter("pot") != null)
+        append(" hasSignature=")
+            .append(uri.getQueryParameter("sig") != null || uri.getQueryParameter("lsig") != null)
+        append(" bakedRange=").append(uri.getQueryParameter("range") != null)
+        append(" reasonHint=").append(reasonHint)
+        if (reason.isNotEmpty()) append(" reasonRef=")
+            .append(AudioCdnLinkIdentity.ref("refusal-body:" + reason))
+        if (serverHints.isNotEmpty()) append(" serverHeaderNames=").append(serverHints)
+    }
+}
+
+/**
+ * Whether a read was slow in a way that says something about the server.
+ *
+ * Both halves matter. A read that returns quickly is not evidence of throttling however little it
+ * moved, and a read that waited a long time for a handful of bytes is evidence about the player's
+ * appetite rather than the network's pace.
+ */
+internal fun isSlowAudioRead(
+    readMs: Long,
+    requestedBytes: Int,
+    thresholdMs: Long = 250L,
+    minRequestedBytes: Int = 16 * 1024,
+): Boolean = readMs >= thresholdMs && requestedBytes >= minRequestedBytes
+
+/**
+ * Debug-only timing around the real AUDIO network upstream.
+ *
+ * The wrapper deliberately logs only host/key/timings and never the resolved
+ * googlevideo URL, query string, signatures, cookies, or PoTokens. When field
+ * logging is disabled it becomes a thin pass-through: no timestamps, strings,
+ * counters, or diagnostic allocations are produced.
+ *
+ * Successful reads that [isSlowAudioRead] judges slow are also reported. A CDN
+ * can stall long enough to starve AudioTrack and still return bytes
+ * successfully, so relying only on exceptions would miss the real stall.
+ */
+internal class AudioNetworkDiagnosticDataSource(
+    private val upstream: DataSource,
+    private val beforeNetworkOpen: ((DataSpec) -> Unit)? = null,
+    private val onFirstAudioBytes: ((DataSpec) -> Unit)? = null,
+) : DataSource {
+    private var diagnosticsEnabled = false
+    private var startedAtNs = 0L
+    private var openCompletedAtNs = 0L
+    private var firstByteLogged = false
+    private var endLogged = false
+    private var bytesRead = 0L
+    private var slowReadCount = 0
+    private var worstReadMs = 0L
+    private var mediaKey: String? = null
+    private var host: String? = null
+    private var linkRef: String? = null
+    private var openedDataSpec: DataSpec? = null
+    private var firstAudioBytesSeen = false
+
+    /**
+     * Bytes handed up since this open, and the length the server answered the open with.
+     *
+     * Deliberately separate from [bytesRead] and [diagnosticsEnabled]: these two feed the
+     * session tally, and a rate is only comparable between sessions if it counts the ones
+     * nobody thought to turn logging on for. A read that stops short of the declared length
+     * leaves its body undrained, which under HTTP/1.1 costs the socket and so manufactures one
+     * more cold first request -- the only place a refusal has ever landed.
+     */
+    private var deliveredBytes = 0L
+    private var declaredLength = -1L
+
+    override fun addTransferListener(transferListener: TransferListener) {
+        upstream.addTransferListener(transferListener)
+    }
+
+    override fun open(dataSpec: DataSpec): Long {
+        // Selection settling belongs before the physical network open. In particular, a cached
+        // pre-resolved URL must not bypass the rapid-skip guard and reach OkHttp before cancellation.
+        beforeNetworkOpen?.invoke(dataSpec)
+
+        openedDataSpec = dataSpec
+        firstAudioBytesSeen = false
+        deliveredBytes = 0L
+        declaredLength = -1L
+
+        // Counted before the level check: a refusal rate is only comparable between sessions if
+        // it counts every session, not the ones somebody remembered to enable logging for.
+        AudioCdnSessionStats.recordOpen()
+
+        diagnosticsEnabled = GlobalLog.isEnabled
+        if (!diagnosticsEnabled) return upstream.open(dataSpec).also { declaredLength = it }
+
+        startedAtNs = System.nanoTime()
+        openCompletedAtNs = 0L
+        firstByteLogged = false
+        endLogged = false
+        bytesRead = 0L
+        slowReadCount = 0
+        worstReadMs = 0L
+        mediaKey = dataSpec.key?.take(64)
+        host = dataSpec.uri.host?.take(96)
+        linkRef = AudioCdnLinkIdentity.ref(dataSpec.uri.toString())
+
+        val context = dataSpec.customData as? AudioCdnOpenContext
+        val linkAgeMs = context?.resolvedAtElapsedMs?.takeIf { it > 0L }
+            ?.let { (SystemClock.elapsedRealtime() - it).coerceAtLeast(0L) }
+        Timber.tag(TAG).i(
+            "cdn-open-start id=%s host=%s position=%d length=%d linkRef=%s " +
+                "streamClient=%s source=%s linkAgeMs=%s urlRange=%s",
+            mediaKey ?: "none",
+            host ?: "unknown",
+            dataSpec.position,
+            dataSpec.length,
+            linkRef ?: "unknown",
+            context?.streamClient ?: "unknown",
+            context?.source ?: "unknown",
+            linkAgeMs?.toString() ?: "unknown",
+            runCatching { dataSpec.uri.getQueryParameter("range") != null }.getOrDefault(false),
+        )
+
+        return try {
+            upstream.open(dataSpec).also { resolvedLength ->
+                declaredLength = resolvedLength
+                openCompletedAtNs = System.nanoTime()
+                Timber.tag(TAG).i(
+                    "cdn-open-ready id=%s host=%s openMs=%d resolvedLength=%d",
+                    mediaKey ?: "none",
+                    host ?: "unknown",
+                    elapsedMs(startedAtNs, openCompletedAtNs),
+                    resolvedLength,
+                )
+            }
+        } catch (failure: Throwable) {
+            val now = System.nanoTime()
+            if (failure.isExpectedAudioCdnInterruption()) {
+                Timber.tag(TAG).d(
+                    "cdn-open-interrupted id=%s host=%s elapsedMs=%d",
+                    mediaKey ?: "none",
+                    host ?: "unknown",
+                    elapsedMs(startedAtNs, now),
+                )
+            } else {
+                /*
+                 * linkHost, not host: this is the address the link names, which is not necessarily
+                 * the server that refused us. A redirect can move a request to another host, and a
+                 * capture where every single refusal came from such a host read as though the link
+                 * host had refused forty-five requests it had in fact served. The cdn-wire line is
+                 * the one that says who answered.
+                 */
+                val rejection =
+                    generateSequence(failure as Throwable?) { it.cause }
+                        .take(8)
+                        .any { it is InvalidResponseCodeException }
+                if (failure.isTransientClosedTlsHandshake()) {
+                    // The actionable fact is a peer-closed TLS connection, not an
+                    // unbounded 40-frame OkHttp/Guava stack trace for every retry.
+                    // Keep this readable in the finite shared-log export.
+                    Timber.tag(TAG).w(
+                        "cdn-open-tls-closed id=%s linkHost=%s elapsedMs=%d linkRef=%s",
+                        mediaKey ?: "none",
+                        host ?: "unknown",
+                        elapsedMs(startedAtNs, now),
+                        linkRef ?: "unknown",
+                    )
+                } else if (rejection) {
+                    // A bounded first-chunk retry can encounter several 403s in a row. Keep
+                    // every refusal's code, server route and anonymous link reference, but
+                    // do not export the same 20-frame Media3 stack trace for each attempt.
+                    // The repeated stacks consumed the finite log buffer during swipe tests.
+                    Timber.tag(TAG).w(
+                        "cdn-open-failed id=%s linkHost=%s elapsedMs=%d linkRef=%s %s",
+                        mediaKey ?: "none",
+                        host ?: "unknown",
+                        elapsedMs(startedAtNs, now),
+                        linkRef ?: "unknown",
+                        describeRejection(failure, dataSpec.uri),
+                    )
+                } else {
+                    Timber.tag(TAG).w(
+                        failure,
+                        "cdn-open-failed id=%s linkHost=%s elapsedMs=%d linkRef=%s %s",
+                        mediaKey ?: "none",
+                        host ?: "unknown",
+                        elapsedMs(startedAtNs, now),
+                        linkRef ?: "unknown",
+                        describeRejection(failure, dataSpec.uri),
+                    )
+                }
+            }
+            throw failure
+        }
+    }
+
+    override fun read(buffer: ByteArray, offset: Int, length: Int): Int {
+        if (!diagnosticsEnabled) {
+            val count = upstream.read(buffer, offset, length)
+            if (count > 0) deliveredBytes += count.toLong()
+            markFirstAudioBytes(count)
+            return count
+        }
+
+        val readStartedAtNs = System.nanoTime()
+        return try {
+            upstream.read(buffer, offset, length).also { count ->
+                val now = System.nanoTime()
+                val readMs = elapsedMs(readStartedAtNs, now)
+
+                if (count > 0) {
+                    markFirstAudioBytes(count)
+                    deliveredBytes += count.toLong()
+                    bytesRead += count.toLong()
+                    if (!firstByteLogged) {
+                        firstByteLogged = true
+                        Timber.tag(TAG).i(
+                            "cdn-first-byte id=%s host=%s fromOpenStartMs=%d afterOpenMs=%d firstReadBytes=%d",
+                            mediaKey ?: "none",
+                            host ?: "unknown",
+                            elapsedMs(startedAtNs, now),
+                            if (openCompletedAtNs != 0L) elapsedMs(openCompletedAtNs, now) else -1L,
+                            count,
+                        )
+                    }
+                } else if (count == -1 && !endLogged) {
+                    endLogged = true
+                    Timber.tag(TAG).d(
+                        "cdn-eof id=%s host=%s bytes=%d elapsedMs=%d",
+                        mediaKey ?: "none",
+                        host ?: "unknown",
+                        bytesRead,
+                        elapsedMs(startedAtNs, now),
+                    )
+                }
+
+                if (isSlowAudioRead(
+                        readMs = readMs,
+                        requestedBytes = length,
+                        thresholdMs = SLOW_READ_THRESHOLD_MS,
+                        minRequestedBytes = SLOW_READ_MIN_REQUESTED_BYTES,
+                    )
+                ) {
+                    slowReadCount += 1
+                    worstReadMs = maxOf(worstReadMs, readMs)
+                    /*
+                     * A throttled stream produces one of these every few seconds, and an hour-long
+                     * episode is exactly the session worth capturing: ninety-two of them in one
+                     * capture, which is enough to push the rest of the session out of an export
+                     * that holds a couple of thousand lines. The first few establish the pattern
+                     * and every tenth after that tracks it; the running count and the totals are on
+                     * each line, and cdn-close carries the final tally, so nothing is lost by not
+                     * printing the ones in between.
+                     */
+                    val worthPrinting =
+                        slowReadCount <= SLOW_READS_LOGGED_IN_FULL ||
+                            slowReadCount % SLOW_READ_LOG_INTERVAL == 0
+                    if (worthPrinting) {
+                        Timber.tag(TAG).w(
+                            "cdn-slow-read id=%s host=%s readMs=%d requestedBytes=%d " +
+                                "returnedBytes=%d totalBytes=%d slowReads=%d",
+                            mediaKey ?: "none",
+                            host ?: "unknown",
+                            readMs,
+                            length,
+                            count,
+                            bytesRead,
+                            slowReadCount,
+                        )
+                    }
+                }
+            }
+        } catch (failure: Throwable) {
+            val now = System.nanoTime()
+            if (failure.isExpectedAudioCdnInterruption()) {
+                Timber.tag(TAG).d(
+                    "cdn-read-interrupted id=%s host=%s readMs=%d bytes=%d elapsedMs=%d",
+                    mediaKey ?: "none",
+                    host ?: "unknown",
+                    elapsedMs(readStartedAtNs, now),
+                    bytesRead,
+                    elapsedMs(startedAtNs, now),
+                )
+            } else {
+                Timber.tag(TAG).w(
+                    failure,
+                    "cdn-read-failed id=%s host=%s readMs=%d bytes=%d elapsedMs=%d",
+                    mediaKey ?: "none",
+                    host ?: "unknown",
+                    elapsedMs(readStartedAtNs, now),
+                    bytesRead,
+                    elapsedMs(startedAtNs, now),
+                )
+            }
+            throw failure
+        }
+    }
+
+    private fun markFirstAudioBytes(count: Int) {
+        if (count <= 0 || firstAudioBytesSeen) return
+        firstAudioBytesSeen = true
+        // Never let a telemetry/cache update interrupt the audio read. Unlike logs, this
+        // callback runs with diagnostics turned off as well, and only once per CDN open.
+        openedDataSpec?.let { spec ->
+            runCatching { onFirstAudioBytes?.invoke(spec) }
+                .onFailure { Timber.tag(TAG).w("Failed to confirm CDN link cache entry: %s", it.javaClass.simpleName) }
+        }
+    }
+
+    override fun getUri(): Uri? = upstream.uri
+
+    override fun getResponseHeaders(): Map<String, List<String>> = upstream.responseHeaders
+
+    override fun close() {
+        try {
+            upstream.close()
+        } finally {
+            // Counted whatever the level, like the open it closes.
+            AudioCdnSessionStats.recordClose(deliveredBytes, declaredLength)
+            if (diagnosticsEnabled && startedAtNs != 0L) {
+                val elapsed = elapsedMs(startedAtNs, System.nanoTime())
+                // This is throughput *delivered to Media3*, not proof of raw network
+                // throttling: Media3 itself may pause reads when its buffer is full.
+                val deliveredToLoaderBps =
+                    if (elapsed > 0L) bytesRead * 1000L / elapsed else 0L
+                Timber.tag(TAG).d(
+                    "cdn-close id=%s host=%s bytes=%d firstByte=%s elapsedMs=%d " +
+                        "deliveredToLoaderBps=%d slowReads=%d worstReadMs=%d",
+                    mediaKey ?: "none",
+                    host ?: "unknown",
+                    bytesRead,
+                    firstByteLogged,
+                    elapsed,
+                    deliveredToLoaderBps,
+                    slowReadCount,
+                    worstReadMs,
+                )
+            }
+            diagnosticsEnabled = false
+            startedAtNs = 0L
+            openCompletedAtNs = 0L
+            firstByteLogged = false
+            endLogged = false
+            bytesRead = 0L
+            slowReadCount = 0
+            worstReadMs = 0L
+            linkRef = null
+            openedDataSpec = null
+            firstAudioBytesSeen = false
+            deliveredBytes = 0L
+            declaredLength = -1L
+            mediaKey = null
+            host = null
+        }
+    }
+
+    internal class Factory(
+        private val upstreamFactory: DataSource.Factory,
+        private val beforeNetworkOpen: ((DataSpec) -> Unit)? = null,
+        private val onFirstAudioBytes: ((DataSpec) -> Unit)? = null,
+    ) : DataSource.Factory {
+        override fun createDataSource(): DataSource =
+            AudioNetworkDiagnosticDataSource(
+                upstream = upstreamFactory.createDataSource(),
+                beforeNetworkOpen = beforeNetworkOpen,
+                onFirstAudioBytes = onFirstAudioBytes,
+            )
+    }
+
+    private companion object {
+        const val TAG = "AudioCDN"
+        const val SLOW_READ_THRESHOLD_MS = 250L
+
+        /**
+         * How much a read has to have asked for before its duration says anything about the host.
+         *
+         * A capture raised eight of these warnings and not one was a slow server: the reads asked
+         * for 19, 54, 152, 211, 248, 249, 313 and 327 bytes. A read that asks for a few dozen
+         * bytes and waits a quarter of a second is describing when the player wanted them, not
+         * how fast the far end can send — the same confusion between "what was asked for" and
+         * "what arrived per second" that this file's own history has already been caught in once.
+         *
+         * Sixteen kilobytes is a real buffer. The throttled stream this warning exists to catch
+         * asks for a full buffer and dribbles it back, so it still trips; the tail-end dribble at
+         * the end of a chunk no longer does.
+         */
+        const val SLOW_READ_MIN_REQUESTED_BYTES = 16 * 1024
+
+        fun elapsedMs(startNs: Long, endNs: Long): Long =
+            if (startNs == 0L || endNs < startNs) -1L else (endNs - startNs) / 1_000_000L
+    }
+}

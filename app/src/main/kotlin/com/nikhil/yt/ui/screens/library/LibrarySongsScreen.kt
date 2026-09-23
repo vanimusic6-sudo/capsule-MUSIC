@@ -43,6 +43,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.pluralStringResource
@@ -50,8 +51,9 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.navigation.NavController
-import androidx.navigation.compose.currentBackStackEntryAsState
 import com.nikhil.yt.LocalPlayerAwareWindowInsets
+import com.nikhil.yt.ui.screens.LocalNavBackStackEntry
+import com.nikhil.yt.ui.utils.liveSavedStateHandle
 import com.nikhil.yt.LocalPlayerConnection
 import com.nikhil.yt.R
 import com.nikhil.yt.constants.CONTENT_TYPE_HEADER
@@ -86,6 +88,7 @@ fun LibrarySongsScreen(
     viewModel: LibrarySongsViewModel = hiltViewModel(),
 ) {
     val context = LocalContext.current
+    val resources = LocalResources.current
     val menuState = LocalMenuState.current
     val haptic = LocalHapticFeedback.current
     val playerConnection = LocalPlayerConnection.current ?: return
@@ -109,8 +112,8 @@ fun LibrarySongsScreen(
     LaunchedEffect(Unit) {
         if (ytmSync) {
             when (filter) {
-                SongFilter.LIKED -> viewModel.syncLikedSongs()
-                SongFilter.LIBRARY -> viewModel.syncLibrarySongs()
+                SongFilter.LIKED -> viewModel.syncLikedSongs(automatic = true)
+                SongFilter.LIBRARY -> viewModel.syncLibrarySongs(automatic = true)
                 else -> return@LaunchedEffect
             }
         }
@@ -124,14 +127,16 @@ fun LibrarySongsScreen(
     val lazyListState = rememberLazyListState()
     val pullRefreshState = rememberPullToRefreshState()
 
-    val backStackEntry by navController.currentBackStackEntryAsState()
+    // This screen's own entry: it cannot be destroyed while this composition is alive,
+    // and observing it does not recompose the screen on unrelated navigation.
+    val backStackEntry = LocalNavBackStackEntry.current
     val scrollToTop =
-        backStackEntry?.savedStateHandle?.getStateFlow("scrollToTop", false)?.collectAsState()
+        backStackEntry?.liveSavedStateHandle()?.getStateFlow("scrollToTop", false)?.collectAsState()
 
     LaunchedEffect(scrollToTop?.value) {
         if (scrollToTop?.value == true) {
             lazyListState.animateScrollToItem(0)
-            backStackEntry?.savedStateHandle?.set("scrollToTop", false)
+            backStackEntry?.liveSavedStateHandle()?.set("scrollToTop", false)
         }
     }
 
@@ -152,7 +157,16 @@ fun LibrarySongsScreen(
                 key = "filter",
                 contentType = CONTENT_TYPE_HEADER,
             ) {
-                Row {
+                /*
+                 * Centred, because this row is the reason the chips jumped between tabs.
+                 *
+                 * The tabs that have no deselect chip put ChipsRow in the header on its own, and it
+                 * carries 8dp of vertical padding. Here it sits beside a bare FilterChip that carries
+                 * none, and a Row aligns its children to the top by default -- so the chips landed 8dp
+                 * higher on this tab than on the others, and switching between them moved the text.
+                 * Centring makes the chips sit at the same height whichever tab draws them.
+                 */
+                Row(verticalAlignment = Alignment.CenterVertically) {
                     Spacer(Modifier.width(12.dp))
                     FilterChip(
                         label = { Text(stringResource(R.string.songs)) },
@@ -318,7 +332,7 @@ fun LibrarySongsScreen(
                                     } else {
                                         playerConnection.playQueue(
                                             ListQueue(
-                                                title = context.getString(R.string.queue_all_songs),
+                                                title = resources.getString(R.string.queue_all_songs),
                                                 items = songs.map { it.toMediaItem() },
                                                 startIndex = index,
                                             ),
@@ -338,8 +352,7 @@ fun LibrarySongsScreen(
                                 } // Clear previous selections
                                 songWrapper.isSelected = true // Select current item
                             },
-                        )
-                        .animateItem(),
+                        ),
                 )
             }
         }
@@ -351,7 +364,7 @@ fun LibrarySongsScreen(
             onClick = {
                 playerConnection.playQueue(
                     ListQueue(
-                        title = context.getString(R.string.queue_all_songs),
+                        title = resources.getString(R.string.queue_all_songs),
                         items = songs.shuffled().map { it.toMediaItem() },
                     ),
                 )

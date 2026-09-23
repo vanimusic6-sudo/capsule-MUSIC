@@ -86,6 +86,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.isSpecified
 import androidx.compose.ui.graphics.painter.Painter
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.res.painterResource
@@ -98,7 +99,6 @@ import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
 import coil3.compose.AsyncImage
-import kotlinx.coroutines.delay
 import com.nikhil.yt.App.Companion.forgetAccount
 import com.nikhil.yt.BuildConfig
 import com.nikhil.yt.LocalPlayerAwareWindowInsets
@@ -113,7 +113,10 @@ import com.nikhil.yt.viewmodels.HomeViewModel
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.runtime.collectAsState
-import androidx.compose.ui.layout.ContentScale
+import com.nikhil.yt.ui.motion.CapsuleStandardEasing
+import com.nikhil.yt.ui.motion.CapsuleExitEasing
+import com.nikhil.yt.ui.motion.CapsuleShortestVisible
+import com.nikhil.yt.ui.motion.CapsuleEnterEasing
 
 data class SettingsQuickAction(
     val icon: Painter,
@@ -210,7 +213,6 @@ fun SettingsScreen(
     val isAndroid12OrLater = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
     val listState = rememberLazyListState()
 
-    // Account state
     val viewModel: HomeViewModel = hiltViewModel(context as androidx.activity.ComponentActivity)
     val accountName by viewModel.accountName.collectAsState()
     val accountImageUrl by viewModel.accountImageUrl.collectAsState()
@@ -264,26 +266,14 @@ fun SettingsScreen(
     }
 
     val shouldShowPermissionHint = !isStorageGranted || !isNotificationGranted
-    val hasUpdate = false // disabled for v1.0.0
+    val hasUpdate = false
 
-    var heroVisible by remember { mutableStateOf(false) }
-    var bannerVisible by remember { mutableStateOf(false) }
-    var quickActionsVisible by remember { mutableStateOf(false) }
-    var integrationsVisible by remember { mutableStateOf(false) }
-    var categoriesVisible by remember { mutableStateOf(false) }
-
-    LaunchedEffect(Unit) {
-        delay(50)
-        heroVisible = true
-        delay(60)
-        bannerVisible = true
-        delay(60)
-        quickActionsVisible = true
-        delay(70)
-        integrationsVisible = true
-        delay(70)
-        categoriesVisible = true
-    }
+    /*
+     * The route transition owns entrance motion. These sections must already be present on the
+     * first frame; otherwise their old delayed fade/slide cascade runs on top of the route spring
+     * and makes Settings look like several animations are fighting each other.
+     */
+    val bannerVisible = true
 
     val quickActions = listOf(
         SettingsQuickAction(
@@ -596,22 +586,6 @@ fun SettingsScreen(
         )
         add(
             PremiumSettingsItem(
-                icon = painterResource(R.drawable.image),
-                title = stringResource(R.string.customize_background_title),
-                subtitle = stringResource(R.string.appearance),
-                accentColor = MaterialTheme.colorScheme.secondary,
-                keywords = listOf(
-                    "background",
-                    "wallpaper",
-                    "image",
-                    "blur",
-                    "gradient",
-                ),
-                onClick = { navController.navigate("customize_background") },
-            ),
-        )
-        add(
-            PremiumSettingsItem(
                 icon = painterResource(R.drawable.discord),
                 title = stringResource(R.string.discord_integration),
                 subtitle = stringResource(R.string.integration),
@@ -764,37 +738,18 @@ fun SettingsScreen(
                 }
 
                 item(key = "hero") {
-                    AnimatedVisibility(
-                        visible = heroVisible,
-                        enter = fadeIn(spring(stiffness = Spring.StiffnessLow)) +
-                                slideInVertically(
-                                    initialOffsetY = { it / 5 },
-                                    animationSpec = spring(
-                                        stiffness = Spring.StiffnessLow,
-                                        dampingRatio = 0.85f,
-                                    ),
-                                ),
-                    ) {
-                        SettingsHeroHeader(
-                            modifier = Modifier
-                                .padding(horizontal = 16.dp)
-                                .padding(top = 4.dp, bottom = 14.dp),
-                        )
-                    }
+                    SettingsHeroHeader(
+                        modifier = Modifier
+                            .padding(horizontal = 16.dp)
+                            .padding(top = 4.dp, bottom = 14.dp),
+                    )
                 }
 
                 item(key = "account") {
-                    AnimatedVisibility(
-                        visible = heroVisible,
-                        enter = fadeIn(spring(stiffness = Spring.StiffnessLow)) +
-                                slideInVertically(
-                                    initialOffsetY = { it / 5 },
-                                    animationSpec = spring(stiffness = Spring.StiffnessLow, dampingRatio = 0.85f),
-                                ),
-                    ) {
+                    run {
                         SettingsAccountCard(
                             isLoggedIn = isLoggedIn,
-                            accountName = accountName ?:"Guest",
+                            accountName = accountName ?: "Guest",
                             accountImageUrl = accountImageUrl,
                             onAccountClick = {
                                 if (isLoggedIn) navController.navigate("settings/account")
@@ -824,7 +779,7 @@ fun SettingsScreen(
                                             dampingRatio = 0.85f,
                                         ),
                                     ),
-                            exit = fadeOut(tween(300)) + shrinkVertically(tween(300)),
+                            exit = fadeOut(tween(300, easing = CapsuleExitEasing)) + shrinkVertically(tween(300, easing = CapsuleExitEasing)),
                         ) {
                             PremiumPermissionCard(
                                 onRequestPermission = {
@@ -846,22 +801,9 @@ fun SettingsScreen(
                     }
                 }
 
-
-
-
                 if (queryText.isBlank() || filteredIntegrations.isNotEmpty()) {
                     item(key = "integrations") {
-                        AnimatedVisibility(
-                            visible = integrationsVisible,
-                            enter = fadeIn(spring(stiffness = Spring.StiffnessLow)) +
-                                    slideInVertically(
-                                        initialOffsetY = { it / 6 },
-                                        animationSpec = spring(
-                                            stiffness = Spring.StiffnessLow,
-                                            dampingRatio = 0.85f,
-                                        ),
-                                    ),
-                        ) {
+                        run {
                             val toShow = if (queryText.isBlank()) {
                                 wrappedIntegrations
                             } else {
@@ -908,21 +850,12 @@ fun SettingsScreen(
                         key = { categoriesToShow[it].title },
                     ) { index ->
                         val category = categoriesToShow[index]
-                        AnimatedVisibility(
-                            visible = categoriesVisible,
-                            enter = fadeIn(tween(420, delayMillis = index * 60)) +
-                                    slideInVertically(
-                                        initialOffsetY = { it / 5 },
-                                        animationSpec = tween(420, delayMillis = index * 60),
-                                    ),
-                        ) {
-                            PremiumSettingsSection(
-                                category = category,
-                                modifier = Modifier
-                                    .padding(horizontal = 16.dp)
-                                    .padding(bottom = 12.dp),
-                            )
-                        }
+                        PremiumSettingsSection(
+                            category = category,
+                            modifier = Modifier
+                                .padding(horizontal = 16.dp)
+                                .padding(bottom = 12.dp),
+                        )
                     }
                 }
             }
@@ -969,8 +902,8 @@ fun SettingsScreen(
 
         AnimatedVisibility(
             visible = showSearchBar,
-            enter = fadeIn(tween(durationMillis = 220)),
-            exit = fadeOut(tween(durationMillis = 160)),
+            enter = fadeIn(tween(durationMillis = 220, easing = CapsuleEnterEasing)),
+            exit = fadeOut(tween(CapsuleShortestVisible, easing = CapsuleExitEasing)),
         ) {
             TopSearch(
                 query = query,
@@ -1091,7 +1024,7 @@ private fun SettingsHeroHeader(modifier: Modifier = Modifier) {
             Icon(
                 painter = painterResource(R.drawable.ic_velune_concept),
                 contentDescription = null,
-                tint = MaterialTheme.colorScheme.primary,
+                tint = Color.Unspecified,
                 modifier = Modifier.size(34.dp),
             )
         }
@@ -1709,7 +1642,7 @@ private fun SettingsAccountCard(
             MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f)
         else
             MaterialTheme.colorScheme.surfaceContainerLow,
-        animationSpec = androidx.compose.animation.core.tween(300),
+        animationSpec = androidx.compose.animation.core.tween(300, easing = CapsuleStandardEasing),
         label = "accountCardColor",
     )
 

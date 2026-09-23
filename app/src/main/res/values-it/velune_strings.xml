@@ -97,9 +97,7 @@
     <string name="player_design_v4">Cinematografico</string>
     <string name="player_design_v5">Poco</string>
     <string name="new_mini_player_design">Nuovo design del minilettore</string>
-    <string name="player_background_blur">Sfocatura</string>
     <string name="coloring">Colorazione</string>
-    <string name="blur_gradient">Gradiente di sfocatura</string>
     <string name="glow">Bagliore</string>
     <string name="player_buttons_style">Colori dei pulsanti del giocatore</string>
     <string name="default_style">Predefinito</string>
@@ -140,7 +138,6 @@
     <string name="open_supported_links">Apri il collegamento supportato per impostazione predefinita</string>
     <string name="configure_supported_links">Configura i collegamenti supportati</string>
     <string name="intent_supported_links_not_found">Impossibile trovare le impostazioni dei collegamenti supportati, configurale manualmente</string>
-    <string name="set_first_lyrics_provider">Fornitore di testi preferito</string>
     <string name="audio_quality_max">Massimo (beta)</string>
     <string name="enable_similar_content">Abilita contenuti simili</string>
     <string name="similar_content_desc">Aggiungi automaticamente altri brani simili quando viene raggiunta la fine della coda</string>

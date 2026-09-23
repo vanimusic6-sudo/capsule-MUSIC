@@ -13,7 +13,7 @@ data class Track(
     val id: Int,
     val trackName: String,
     val artistName: String,
-    val duration: Double,
+    val duration: Double? = null,
     val plainLyrics: String?,
     val syncedLyrics: String?,
 )
@@ -32,8 +32,13 @@ internal fun List<Track>.bestMatchingFor(
         return firstOrNull { it.syncedLyrics != null } ?: firstOrNull()
     }
 
-    return minByOrNull { abs(it.duration.toInt() - duration) }
-        ?.takeIf { abs(it.duration.toInt() - duration) <= 2 }
+    return mapNotNull { track ->
+        track.duration
+            ?.takeIf { it.isFinite() }
+            ?.let { value -> track to abs(value.toInt() - duration) }
+    }.minByOrNull { (_, delta) -> delta }
+        ?.takeIf { (_, delta) -> delta <= 2 }
+        ?.first
 }
 
 private fun List<Track>.findBestMatch(trackName: String, artistName: String): Track? {

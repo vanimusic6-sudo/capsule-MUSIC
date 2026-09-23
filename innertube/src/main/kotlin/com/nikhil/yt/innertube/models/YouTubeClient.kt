@@ -87,6 +87,13 @@ data class YouTubeClient(
         const val REFERER_YOUTUBE_TV = "$ORIGIN_YOUTUBE/tv"
 
         /*
+         * WEB_EMBEDDED must describe a real third-party embed. Pointing its
+         * thirdParty context back at youtube.com makes it indistinguishable
+         * from the normal WEB client and YouTube rejects many player calls.
+         */
+        const val THIRD_PARTY_EMBED_URL = "https://www.reddit.com/"
+
+        /*
          * ------------------------------------------------------------------
          * CURRENT IDENTITIES
          * ------------------------------------------------------------------
@@ -157,6 +164,7 @@ data class YouTubeClient(
                 userAgent = YouTubeClientUpstream.MWEB_USER_AGENT,
                 friendlyName = "Mobile Web",
                 loginSupported = false,
+                useSignatureTimestamp = true,
             )
 
         val IOS =
@@ -211,15 +219,9 @@ data class YouTubeClient(
             )
 
         /*
-         * The TV identities answered every anonymous player call with
-         * "reload the page" (UNPLAYABLE): 92 attempts, 0 successes.
-         *
-         * Two settings differ from a working implementation of the same
-         * client: signatureTimestamp, and repeating the user agent inside the
-         * context. signatureTimestamp alone changed nothing, so both are on
-         * now. If this still fails, the remaining difference is that the
-         * working implementations run TVHTML5 signed in, which is not
-         * something Capsule does for stream requests.
+         * TV needs signatureTimestamp, its user agent repeated in context,
+         * and the runtime configInfo obtained from youtube.com/tv. InnerTube
+         * supplies the page bootstrap before using this identity.
          */
         val TVHTML5 =
             YouTubeClient(

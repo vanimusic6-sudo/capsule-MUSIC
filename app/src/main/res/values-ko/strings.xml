@@ -286,7 +286,6 @@
     <string name="palette_spring">봄</string>
     <string name="palette_summer">여름</string>
     <string name="palette_twilight">트와일라이트</string>
-    <string name="palette_aurora">오로라</string>
     <string name="palette_candy">캔디</string>
     <string name="palette_rainbow">레인보우</string>
     <!-- Additional Palettes -->
@@ -314,8 +313,6 @@
     <string name="cancel_button">모서리 반경 조정</string>
     <string name="ok_button">취소</string>
     <string name="custom_radius">확인</string>
-    <string name="customized_background">사용자 지정 배경</string>
-    <string name="customize_background_title">배경 사용자 지정</string>
     <string name="add_image">이미지 추가</string>
     <string name="blur">블러</string>
     <string name="contrast">대비</string>
@@ -419,7 +416,6 @@
     <string name="disable_screenshot">이는 표시되는 콘텐츠에 영향을 줄 수 있으며 예를 들어 프리미엄 계정으로 로그인한 경우 프리미엄 전용 앨범을 표시합니다.</string>
     <string name="disable_screenshot_desc">스크린샷 비활성화</string>
     <string name="enable_lrclib">이 옵션이 켜져 있으면 스크린샷과 앱의 최근 항목 보기가 비활성화되었습니다.</string>
-    <string name="enable_kugou">LrcLib 가사 공급자 활성화</string>
     <string name="hide_explicit">KuGou 가사 공급자 활성화</string>
     <string name="backup_restore">노골적인 콘텐츠 숨기기</string>
     <string name="action_backup">백업 및 복원</string>
@@ -573,7 +569,6 @@
     <string name="use_system_font">시스템 글꼴 사용</string>
     <string name="use_system_font_desc">앱 글꼴 대신 장치 글꼴을 사용합니다.</string>
     <string name="lyrics_line_spacing">가사 줄 간격</string>
-    <string name="enable_simpmusic_lyrics">SimpMusic 가사 활성화</string>
     <string name="permanent_shuffle">영구 셔플 모드</string>
     <string name="permanent_shuffle_desc">새 노래를 시작할 때 셔플을 활성화 상태로 유지합니다.</string>
     <string name="eq_waiting_for_audio_session">오디오 세션 대기 중…</string>

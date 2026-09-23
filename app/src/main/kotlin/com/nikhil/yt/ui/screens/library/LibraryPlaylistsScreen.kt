@@ -72,9 +72,10 @@ import coil3.request.ImageRequest
 import coil3.request.allowHardware
 import coil3.toBitmap
 import com.nikhil.yt.ui.theme.PlayerColorExtractor
+import com.nikhil.yt.ui.screens.LocalNavBackStackEntry
+import com.nikhil.yt.ui.utils.liveSavedStateHandle
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.navigation.NavController
-import androidx.navigation.compose.currentBackStackEntryAsState
 import com.nikhil.yt.innertube.utils.parseCookieString
 import com.nikhil.yt.LocalPlayerAwareWindowInsets
 import com.nikhil.yt.R
@@ -143,7 +144,7 @@ fun LibraryPlaylistsScreen(
         true
     )
     val gridItemSize by rememberEnumPreference(GridItemsSizeKey, GridItemSize.BIG)
-    val useNewLibraryDesign by rememberPreference(UseNewLibraryDesignKey, false)
+    val useNewLibraryDesign by rememberPreference(UseNewLibraryDesignKey, true)
 
 
     val (selectedTagsFilter, onSelectedTagsFilterChange) = rememberPreference(PlaylistTagsFilterKey, "")
@@ -278,9 +279,11 @@ fun LibraryPlaylistsScreen(
         if (!canEnterReorderMode) reorderEnabled = false
     }
 
-    val backStackEntry by navController.currentBackStackEntryAsState()
+    // This screen's own entry: it cannot be destroyed while this composition is alive,
+    // and observing it does not recompose the screen on unrelated navigation.
+    val backStackEntry = LocalNavBackStackEntry.current
     val scrollToTop =
-        backStackEntry?.savedStateHandle?.getStateFlow("scrollToTop", false)?.collectAsState()
+        backStackEntry?.liveSavedStateHandle()?.getStateFlow("scrollToTop", false)?.collectAsState()
 
     val (innerTubeCookie) = rememberPreference(InnerTubeCookieKey, "")
     val isLoggedIn = remember(innerTubeCookie) {
@@ -288,12 +291,12 @@ fun LibraryPlaylistsScreen(
     }
 
     val (ytmSync) = rememberPreference(YtmSyncKey, true)
-    val (disableBlur) = rememberPreference(DisableBlurKey, false)
+    val (disableBlur) = rememberPreference(DisableBlurKey, true)
 
     LaunchedEffect(Unit) {
         if (ytmSync) {
             withContext(Dispatchers.IO) {
-                viewModel.sync()
+                viewModel.sync(automatic = true)
             }
         }
     }
@@ -304,7 +307,7 @@ fun LibraryPlaylistsScreen(
                 LibraryViewType.LIST -> lazyListState.animateScrollToItem(0)
                 LibraryViewType.GRID -> lazyGridState.animateScrollToItem(0)
             }
-            backStackEntry?.savedStateHandle?.set("scrollToTop", false)
+            backStackEntry?.liveSavedStateHandle()?.set("scrollToTop", false)
         }
     }
 
@@ -618,8 +621,7 @@ fun LibraryPlaylistsScreen(
                                     .fillMaxWidth()
                                     .clickable {
                                         navController.navigate("auto_playlist/liked")
-                                    }
-                                    .animateItem(),
+                                    },
                             )
                         }
                     }
@@ -637,8 +639,7 @@ fun LibraryPlaylistsScreen(
                                     .fillMaxWidth()
                                     .clickable {
                                         navController.navigate("auto_playlist/downloaded")
-                                    }
-                                    .animateItem(),
+                                    },
                             )
                         }
                     }
@@ -656,8 +657,7 @@ fun LibraryPlaylistsScreen(
                                     .fillMaxWidth()
                                     .clickable {
                                         navController.navigate("top_playlist/$topSize")
-                                    }
-                                    .animateItem(),
+                                    },
                             )
                         }
                     }
@@ -675,8 +675,7 @@ fun LibraryPlaylistsScreen(
                                     .fillMaxWidth()
                                     .clickable {
                                         navController.navigate("cache_playlist/cached")
-                                    }
-                                    .animateItem(),
+                                    },
                             )
                         }
                     }
@@ -704,7 +703,7 @@ fun LibraryPlaylistsScreen(
                                     useNewDesign = useNewLibraryDesign,
                                     showDragHandle = true,
                                     dragHandleModifier = Modifier.draggableHandle(),
-                                    modifier = Modifier.animateItem(),
+                                    modifier = Modifier,
                                 )
                             }
                         }
@@ -720,7 +719,7 @@ fun LibraryPlaylistsScreen(
                                 coroutineScope = coroutineScope,
                                 playlist = playlist,
                                 useNewDesign = useNewLibraryDesign,
-                                modifier = Modifier.animateItem(),
+                                modifier = Modifier,
                             )
                         }
                     }
@@ -776,8 +775,7 @@ fun LibraryPlaylistsScreen(
                                         onClick = {
                                             navController.navigate("auto_playlist/liked")
                                         },
-                                    )
-                                    .animateItem(),
+                                    ),
                             )
                         }
                     }
@@ -798,8 +796,7 @@ fun LibraryPlaylistsScreen(
                                         onClick = {
                                             navController.navigate("auto_playlist/downloaded")
                                         },
-                                    )
-                                    .animateItem(),
+                                    ),
                             )
                         }
                     }
@@ -820,8 +817,7 @@ fun LibraryPlaylistsScreen(
                                         onClick = {
                                             navController.navigate("top_playlist/$topSize")
                                         },
-                                    )
-                                    .animateItem(),
+                                    ),
                             )
                         }
                     }
@@ -842,8 +838,7 @@ fun LibraryPlaylistsScreen(
                                         onClick = {
                                             navController.navigate("cache_playlist/cached")
                                         },
-                                    )
-                                    .animateItem(),
+                                    ),
                             )
                         }
                     }
@@ -863,8 +858,7 @@ fun LibraryPlaylistsScreen(
                             menuState = menuState,
                             coroutineScope = coroutineScope,
                             playlist = playlist,
-                            modifier = Modifier.animateItem()
-                        )
+                            modifier = Modifier)
                     }
                 }
 
@@ -887,4 +881,3 @@ fun LibraryPlaylistsScreen(
         )
     }
 }
-

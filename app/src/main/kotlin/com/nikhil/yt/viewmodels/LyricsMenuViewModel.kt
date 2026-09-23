@@ -16,6 +16,7 @@ import com.nikhil.yt.lyrics.LyricsHelper
 import com.nikhil.yt.lyrics.LyricsResult
 import com.nikhil.yt.models.MediaMetadata
 import com.nikhil.yt.utils.NetworkConnectivityObserver
+import com.nikhil.yt.utils.reportRecoverableException
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -93,7 +94,8 @@ constructor(
                     lyricsEntity?.let(::delete)
                     upsert(LyricsEntity(mediaMetadata.id, lyrics))
                 }
-            } catch (_: Exception) {
+            } catch (error: Exception) {
+                reportRecoverableException("LyricsMenu", "refetch lyrics", error)
             }
         }
     }

@@ -96,9 +96,7 @@
     <string name="player_design_v4">Sinematik</string>
     <string name="player_design_v5">Metro</string>
     <string name="new_mini_player_design">Desain pemutar mini baru</string>
-    <string name="player_background_blur">Mengaburkan</string>
     <string name="coloring">Pewarnaan</string>
-    <string name="blur_gradient">Gradasi buram</string>
     <string name="glow">Bersinar</string>
     <string name="player_buttons_style">Warna tombol pemutar</string>
     <string name="default_style">Bawaan</string>
@@ -141,7 +139,6 @@
     <string name="open_supported_links">Buka tautan yang didukung secara default</string>
     <string name="configure_supported_links">Konfigurasikan tautan yang didukung</string>
     <string name="intent_supported_links_not_found">Tidak dapat menemukan setelan tautan yang didukung, harap konfigurasikan secara manual</string>
-    <string name="set_first_lyrics_provider">Penyedia lirik pilihan</string>
     <string name="audio_quality_max">Maks (beta)</string>
     <string name="enable_similar_content">Aktifkan konten serupa</string>
     <string name="similar_content_desc">Secara otomatis menambahkan lebih banyak lagu serupa ketika akhir antrian tercapai</string>

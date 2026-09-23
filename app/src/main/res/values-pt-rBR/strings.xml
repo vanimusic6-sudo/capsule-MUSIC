@@ -14,6 +14,7 @@
     <!-- Top bar -->
     <plurals name="n_selected">
         <item quantity="one">%d selecionado</item>
+        <item quantity="many">%d selecionados</item>
         <item quantity="other">%d selecionados</item>
     </plurals>
     <!-- Home -->
@@ -176,30 +177,37 @@
     <!-- Noun -->
     <plurals name="n_song">
         <item quantity="one">%d música</item>
+        <item quantity="many">%d músicas</item>
         <item quantity="other">%d músicas</item>
     </plurals>
     <plurals name="n_artist">
         <item quantity="one">%d artista</item>
+        <item quantity="many">%d artistas</item>
         <item quantity="other">%d artistas</item>
     </plurals>
     <plurals name="n_album">
         <item quantity="one">%d álbum</item>
+        <item quantity="many">%d álbuns</item>
         <item quantity="other">%d álbuns</item>
     </plurals>
     <plurals name="n_playlist">
         <item quantity="one">%d playlist</item>
+        <item quantity="many">%d playlists</item>
         <item quantity="other">%d playlists</item>
     </plurals>
     <plurals name="n_week">
         <item quantity="one">%d semana</item>
+        <item quantity="many">%d semanas</item>
         <item quantity="other">%d semanas</item>
     </plurals>
     <plurals name="n_month">
         <item quantity="one">%d mês</item>
+        <item quantity="many">%d meses</item>
         <item quantity="other">%d meses</item>
     </plurals>
     <plurals name="n_year">
         <item quantity="one">%d ano</item>
+        <item quantity="many">%d anos</item>
         <item quantity="other">%d anos</item>
     </plurals>
     <!-- Snackbar -->
@@ -216,7 +224,8 @@
     <string name="sleep_timer">Temporizador</string>
     <string name="end_of_song">Fim da música</string>
     <plurals name="minute">
-        <item quantity="one">1 minuto</item>
+        <item quantity="one">%d minuto</item>
+        <item quantity="many">%d minutos</item>
         <item quantity="other">%d minutos</item>
     </plurals>
     <string name="error_no_stream">Nenhuma transmissão disponível</string>
@@ -333,7 +342,6 @@
     <string name="palette_spring">Primavera</string>
     <string name="palette_summer">Verão</string>
     <string name="palette_twilight">Crepúsculo</string>
-    <string name="palette_aurora">Aurora</string>
     <string name="palette_candy">Doce</string>
     <string name="palette_rainbow">Arco-íris</string>
     <!-- Additional Palettes -->
@@ -360,8 +368,6 @@
     <string name="ok_button">OK</string>
     <string name="custom_radius">Personalize o raio do canto da miniatura</string>
     <string name="custom">Customizado</string>
-    <string name="customized_background">Fundo customizado</string>
-    <string name="customize_background_title">Personalize o fundo</string>
     <string name="add_image">Adicionar imagem</string>
     <string name="blur">Borrão</string>
     <string name="contrast">Contraste</string>
@@ -425,7 +431,6 @@
     <string name="stream_bypass_proxy_desc">Use your direct IP for stream playback to avoid IP mismatch</string>
     <string name="restart_to_take_effect">Reinicie o app para aplicar as alterações</string>
     <string name="enable_betterlyrics">Ativar BetterLyrics</string>
-    <string name="enable_simpmusic_lyrics">Ativar letras da SimpMusic</string>
     <string name="player_and_audio">Reprodutor e áudio</string>
     <string name="audio_quality">Qualidade do Áudio</string>
     <string name="audio_quality_auto">Automático</string>
@@ -508,7 +513,6 @@
     <string name="disable_screenshot">Desativar captura de tela</string>
     <string name="disable_screenshot_desc">Quando essa opção está ativada, as capturas de tela e a visualização do aplicativo na tela de Recentes são desativadas.</string>
     <string name="enable_lrclib">Ativar o provedor de letras LrcLib</string>
-    <string name="enable_kugou">Ativar o provedor de letras KuGou</string>
     <string name="preload_queue_lyrics">Preload queue lyrics</string>
     <string name="queue_lyrics_preload_count">Number of songs to preload</string>
     <string name="hide_explicit">Ocultar conteúdo explícito</string>

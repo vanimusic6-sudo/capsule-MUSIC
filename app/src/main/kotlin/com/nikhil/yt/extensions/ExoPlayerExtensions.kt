@@ -1,35 +1,482 @@
+@file:Suppress("UnsafeOptInUsageError")
+
 /*
  * Velune - by Nikhil
  * Nikhil
  * Licensed Under GPL-3.0
  */
 
-
-
 package com.nikhil.yt.extensions
 
+import android.os.SystemClock
+import androidx.media3.common.C
+import androidx.media3.common.Player
+import androidx.media3.common.TrackSelectionParameters
+import androidx.media3.common.Tracks
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.analytics.AnalyticsListener
+import androidx.media3.exoplayer.audio.DefaultAudioOffloadSupportProvider
+import com.nikhil.yt.App
+import com.nikhil.yt.utils.GlobalLog
 import timber.log.Timber
+import java.lang.ref.WeakReference
+import java.util.WeakHashMap
 
-fun ExoPlayer.setOffloadEnabled(enabled: Boolean) {
-    val candidates =
-        listOf(
-            "experimentalSetOffloadSchedulingEnabled",
-            "setOffloadSchedulingEnabled",
-            "setOffloadEnabled",
-        )
+private data class CapsuleOffloadDiagnostics(
+    val audioOffloadListener: ExoPlayer.AudioOffloadListener,
+    val playerListener: Player.Listener,
+    val analyticsListener: AnalyticsListener,
+)
 
-    for (name in candidates) {
-        try {
-            val method = this::class.java.getMethod(name, Boolean::class.javaPrimitiveType)
-            method.invoke(this, enabled)
-            return
-        } catch (_: NoSuchMethodException) {
-        } catch (t: Throwable) {
-            Timber.tag("ExoPlayerExtensions").v(t, "$name reflection failed")
-            return
+private val capsuleOffloadDiagnostics =
+    WeakHashMap<ExoPlayer, CapsuleOffloadDiagnostics>()
+
+private val capsuleOffloadSupportProvider by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
+    DefaultAudioOffloadSupportProvider(App.instance.applicationContext)
+}
+
+internal enum class CapsuleAudioOffloadAvailability {
+    SUPPORTED,
+    UNSUPPORTED,
+    UNKNOWN,
+}
+
+internal fun ExoPlayer.isAudioOffloadRequested(): Boolean =
+    trackSelectionParameters.audioOffloadPreferences.audioOffloadMode !=
+        TrackSelectionParameters.AudioOffloadPreferences.AUDIO_OFFLOAD_MODE_DISABLED
+
+/**
+ * Returns platform capability for the currently selected audio format and
+ * current audio route. This is deliberately tri-state: before Media3 has a
+ * selected audio track, Capsule must not pretend that support is known.
+ *
+ * SUPPORTED means the platform reports this format/route as offload-capable;
+ * actual renderer engagement is still confirmed by onOffloadedPlayback(true).
+ */
+internal fun ExoPlayer.currentAudioOffloadAvailability(): CapsuleAudioOffloadAvailability {
+    val selectedFormats =
+        currentTracks.groups.flatMap { group ->
+            if (group.type != C.TRACK_TYPE_AUDIO) {
+                emptyList()
+            } else {
+                (0 until group.length)
+                    .filter(group::isTrackSelected)
+                    .map(group::getTrackFormat)
+            }
         }
+
+    if (selectedFormats.size != 1) return CapsuleAudioOffloadAvailability.UNKNOWN
+
+    val support =
+        runCatching {
+            capsuleOffloadSupportProvider.getAudioOffloadSupport(
+                selectedFormats.single(),
+                audioAttributes,
+            )
+        }.getOrNull() ?: return CapsuleAudioOffloadAvailability.UNKNOWN
+
+    return if (support.isFormatSupported) {
+        CapsuleAudioOffloadAvailability.SUPPORTED
+    } else {
+        CapsuleAudioOffloadAvailability.UNSUPPORTED
+    }
+}
+
+private fun ExoPlayer.bufferedAheadMs(): Long =
+    (bufferedPosition - currentPosition).coerceAtLeast(0L)
+
+/**
+ * One line of player state, at the level the event deserves.
+ *
+ * A stall that has *started* is a question, not an answer: most of them are cancelled inside
+ * forty milliseconds and were never a stall at all. A capture carried forty-five of these at
+ * warning against thirteen completed ones, which buried the three lines the capture was actually
+ * read for. The start is recorded at debug and the end, which is the one that carries how long
+ * it lasted, stays at warning.
+ */
+private fun ExoPlayer.logPlaybackHealth(prefix: String, warn: Boolean) {
+    if (!GlobalLog.isEnabled) return
+    val tree = Timber.tag("PlaybackHealth")
+    val log: (String, Array<Any?>) -> Unit =
+        if (warn) { format, args -> tree.w(format, *args) } else { format, args -> tree.d(format, *args) }
+    log(
+        "%s id=%s posMs=%d bufferedAheadMs=%d totalBufferedMs=%d isLoading=%s playWhenReady=%s state=%d",
+        arrayOf(
+            prefix,
+            currentMediaItem?.mediaId,
+            currentPosition,
+            bufferedAheadMs(),
+            totalBufferedDuration,
+            isLoading,
+            playWhenReady,
+            playbackState,
+        ),
+    )
+}
+
+private fun ExoPlayer.logSelectedAudioOffloadCapability(trigger: String) {
+    val preferences = trackSelectionParameters.audioOffloadPreferences
+    val selectedFormats =
+        currentTracks.groups.flatMap { group ->
+            if (group.type != C.TRACK_TYPE_AUDIO) {
+                emptyList()
+            } else {
+                (0 until group.length)
+                    .filter(group::isTrackSelected)
+                    .map(group::getTrackFormat)
+            }
+        }
+
+    if (selectedFormats.isEmpty()) {
+        Timber.tag("AudioOffload").i(
+            "capability trigger=%s selectedAudio=none preferenceMode=%d speed=%.3f",
+            trigger,
+            preferences.audioOffloadMode,
+            playbackParameters.speed,
+        )
+        return
     }
 
-    Timber.tag("ExoPlayerExtensions").v("No offload toggle method found")
+    selectedFormats.forEachIndexed { index, format ->
+        val support =
+            runCatching {
+                capsuleOffloadSupportProvider.getAudioOffloadSupport(format, audioAttributes)
+            }.getOrElse { error ->
+                Timber.tag("AudioOffload").w(
+                    error,
+                    "capability query failed trigger=%s mime=%s codecs=%s sampleRate=%d channels=%d",
+                    trigger,
+                    format.sampleMimeType,
+                    format.codecs,
+                    format.sampleRate,
+                    format.channelCount,
+                )
+                return@forEachIndexed
+            }
+
+        val knownEligible =
+            preferences.audioOffloadMode !=
+                TrackSelectionParameters.AudioOffloadPreferences.AUDIO_OFFLOAD_MODE_DISABLED &&
+                selectedFormats.size == 1 &&
+                support.isFormatSupported &&
+                (!preferences.isGaplessSupportRequired || support.isGaplessSupported) &&
+                (!preferences.isSpeedChangeSupportRequired || support.isSpeedChangeSupported)
+
+        val reason =
+            when {
+                preferences.audioOffloadMode ==
+                    TrackSelectionParameters.AudioOffloadPreferences.AUDIO_OFFLOAD_MODE_DISABLED ->
+                    "preference-disabled"
+                selectedFormats.size != 1 -> "multiple-selected-audio-tracks"
+                !support.isFormatSupported -> "platform-format-unsupported"
+                preferences.isGaplessSupportRequired && !support.isGaplessSupported ->
+                    "gapless-required-unsupported"
+                preferences.isSpeedChangeSupportRequired && !support.isSpeedChangeSupported ->
+                    "speed-change-required-unsupported"
+                else -> "platform-and-policy-eligible-awaiting-renderer"
+            }
+
+        Timber.tag("AudioOffload").i(
+            "capability trigger=%s track=%d/%d mime=%s codecs=%s sampleRate=%d channels=%d bitrate=%d " +
+                "formatSupported=%s gaplessSupported=%s speedChangeSupported=%s preferenceMode=%d " +
+                "gaplessRequired=%s speedChangeRequired=%s speed=%.3f knownEligible=%s reason=%s",
+            trigger,
+            index + 1,
+            selectedFormats.size,
+            format.sampleMimeType,
+            format.codecs,
+            format.sampleRate,
+            format.channelCount,
+            format.bitrate,
+            support.isFormatSupported,
+            support.isGaplessSupported,
+            support.isSpeedChangeSupported,
+            preferences.audioOffloadMode,
+            preferences.isGaplessSupportRequired,
+            preferences.isSpeedChangeSupportRequired,
+            playbackParameters.speed,
+            knownEligible,
+            reason,
+        )
+    }
+}
+
+/**
+ * A little slack, so a report that races the resume it belongs to is still read as one.
+ */
+private const val AUDIO_RESUME_SLACK_MS = 250L
+
+/**
+ * How much decoded audio in front of the playhead rules out the sink having starved.
+ *
+ * The output buffer these reports come from is 1.5 seconds, so a few seconds ahead of it is
+ * already more than the sink can consume before more arrives. Five is comfortably clear of the
+ * genuine case on record, which reported zero, and far below the 33 to 102 seconds the false
+ * ones were sitting on.
+ */
+internal const val AUDIO_UNDERRUN_STARVED_BUFFER_MS = 5_000L
+
+/**
+ * Whether an underrun report is the sink being picked up again rather than audio breaking.
+ *
+ * Media3 raises onAudioUnderrun from the audio sink and hands it the time since the sink was last
+ * fed. Nothing feeds a sink that is not playing, so a pause leaves that clock running and the
+ * first report after the resume carries the whole idle stretch. A capture of forty-two minutes
+ * held eleven reports, and the gaps they named were 2.6 s, 4.2 s, 12.8, 14.8, 16.6, 28.7, 47.0,
+ * 126.9, 382.4 and 1285.9 — twenty-one minutes of "underrun" that nobody could have heard.
+ *
+ * Rather than guess a threshold, compare the gap with how long playback has actually been running.
+ * A gap that reaches back past the moment playback started did not happen during playback. One
+ * that fits inside it did, and that is worth an error: on the two real ones the sink went dry for
+ * 2.6 and 4.2 seconds while three and a half minutes of audio sat decoded and waiting.
+ *
+ * With no known start — a report before playback was ever seen to begin — there is nothing to
+ * compare against, and it is treated as an artefact rather than raised as a fault on no evidence.
+ *
+ * That comparison alone was not enough, and the doc above admits it without noticing: the two it
+ * accepted as real had "three and a half minutes of audio sat decoded and waiting", which is not
+ * something a starved decoder has. It only catches a pause that happened before playback had got
+ * going. Pause a track twenty minutes in and resume it, and the gap is shorter than the time
+ * playback has been running, so the report passes — a later capture raised seven of these, naming
+ * gaps of 346 s, 104 s, 140 s, 143 s and 271 s while 33 to 102 seconds of audio sat buffered.
+ *
+ * So the buffer is consulted too, and it is the stronger test of the two: an audio sink cannot
+ * run dry for want of data that is already decoded and waiting in front of the playhead. Below
+ * [AUDIO_UNDERRUN_STARVED_BUFFER_MS] ahead, a report is taken at its word.
+ *
+ * What produces them is now known, and it is not this app: with the screen off and nothing
+ * plugged in, Android suspends the audio path, and playback picks up again when the screen comes
+ * back. It was reproduced the same way in other players. Most of a day went into hunting it as a
+ * fault of ours — a wake lock was added and taken back out, because the freezes continued while
+ * it was held. So these reports are expected on that path and this is the guard that keeps them
+ * from filling a capture with errors that are nobody's bug.
+ *
+ * The buffer is read when the report is logged rather than when the sink raised it, a few
+ * microseconds later. Tens of seconds of audio cannot appear in that window, so the reading
+ * cannot manufacture an artefact; it could in principle hide a real underrun that refilled
+ * instantly, which is why the threshold is seconds rather than tens of them.
+ */
+internal fun isAudioResumeArtefact(
+    elapsedSinceLastFeedMs: Long,
+    playingForMs: Long?,
+    bufferedAheadMs: Long = 0L,
+): Boolean {
+    if (elapsedSinceLastFeedMs <= 0L) return true
+    if (bufferedAheadMs >= AUDIO_UNDERRUN_STARVED_BUFFER_MS) return true
+    val playingFor = playingForMs ?: return true
+    return elapsedSinceLastFeedMs > playingFor + AUDIO_RESUME_SLACK_MS
+}
+
+private fun ExoPlayer.ensureCapsuleOffloadDiagnostics(): Boolean {
+    synchronized(capsuleOffloadDiagnostics) {
+        if (capsuleOffloadDiagnostics.containsKey(this)) return false
+
+        val playerReference = WeakReference(this)
+        val audioOffloadListener =
+            object : ExoPlayer.AudioOffloadListener {
+                override fun onOffloadedPlayback(isOffloadedPlayback: Boolean) {
+                    Timber.tag("AudioOffload").i(
+                        "offloadedPlayback=%s",
+                        isOffloadedPlayback,
+                    )
+                }
+
+                override fun onSleepingForOffloadChanged(isSleepingForOffload: Boolean) {
+                    Timber.tag("AudioOffload").i(
+                        "sleepingForOffload=%s",
+                        isSleepingForOffload,
+                    )
+                }
+            }
+
+        val bufferingTracker = PlaybackBufferingTracker(SystemClock::elapsedRealtime)
+        var discontinuityKind = "discontinuity"
+        var playingSinceElapsedMs: Long? = null
+        val playerListener =
+            object : Player.Listener {
+                override fun onTracksChanged(tracks: Tracks) {
+                    playerReference.get()?.logSelectedAudioOffloadCapability("tracksChanged")
+                }
+
+                override fun onIsPlayingChanged(isPlaying: Boolean) {
+                    playingSinceElapsedMs =
+                        if (isPlaying) SystemClock.elapsedRealtime() else null
+                }
+
+                override fun onPositionDiscontinuity(
+                    oldPosition: Player.PositionInfo,
+                    newPosition: Player.PositionInfo,
+                    reason: Int,
+                ) {
+                    discontinuityKind = if (reason == Player.DISCONTINUITY_REASON_SEEK ||
+                        reason == Player.DISCONTINUITY_REASON_SEEK_ADJUSTMENT
+                    ) "seek" else "discontinuity"
+                }
+
+                override fun onEvents(player: Player, events: Player.Events) {
+                    if (!GlobalLog.isEnabled) {
+                        bufferingTracker.reset()
+                        return
+                    }
+                    // Observe the final state of the event batch, after selection and state callbacks.
+                    val boundary = when {
+                        events.contains(Player.EVENT_MEDIA_ITEM_TRANSITION) -> "transition"
+                        events.contains(Player.EVENT_POSITION_DISCONTINUITY) -> discontinuityKind
+                        else -> null
+                    }
+                    bufferingTracker.update(
+                        nextMediaId = player.currentMediaItem?.mediaId,
+                        nextIndex = player.currentMediaItemIndex,
+                        buffering = player.playbackState == Player.STATE_BUFFERING,
+                        ready = player.playbackState == Player.STATE_READY,
+                        boundary = boundary,
+                    ).forEach { event ->
+                        if (event.phase == "cancel") {
+                            // The player's live position may already belong to the next item.
+                            Timber.tag("PlaybackHealth").d(
+                                "buffering-cancel id=%s generation=%d kind=%s durationMs=%d",
+                                event.mediaId, event.generation, event.kind, event.durationMs,
+                            )
+                        } else {
+                            playerReference.get()?.logPlaybackHealth(
+                                prefix =
+                                    "buffering-${event.phase} generation=${event.generation} " +
+                                        "kind=${event.kind} durationMs=${event.durationMs}",
+                                // Only a stall that finished is worth a warning; see the helper.
+                                warn = event.phase != "start",
+                            )
+                        }
+                    }
+                }
+            }
+
+        val analyticsListener =
+            object : AnalyticsListener {
+                override fun onAudioUnderrun(
+                    eventTime: AnalyticsListener.EventTime,
+                    bufferSize: Int,
+                    bufferSizeMs: Long,
+                    elapsedSinceLastFeedMs: Long,
+                ) {
+                    if (!GlobalLog.isEnabled) return
+                    val player = playerReference.get() ?: return
+                    val outputBufferMs =
+                        if (bufferSizeMs == C.TIME_UNSET) "unset" else bufferSizeMs.toString()
+                    val playingForMs =
+                        playingSinceElapsedMs?.let { SystemClock.elapsedRealtime() - it }
+                    val bufferedAheadMs = player.bufferedAheadMs()
+                    if (isAudioResumeArtefact(elapsedSinceLastFeedMs, playingForMs, bufferedAheadMs)) {
+                        /*
+                         * Debug, because this is Android working as designed.
+                         *
+                         * With the screen off and nothing plugged in, the platform suspends the
+                         * audio path; playback resumes when the screen comes back. It was chased
+                         * for most of a day as a bug of ours and is not one — reproduced the
+                         * same way in other players — so it belongs with the other ordinary
+                         * events rather than up where the real faults are.
+                         */
+                        Timber.tag("PlaybackHealth").d(
+                            "audio-resume-after-idle id=%s posMs=%d idleMs=%d playingForMs=%d " +
+                                "bufferedAheadMs=%d",
+                            player.currentMediaItem?.mediaId,
+                            player.currentPosition,
+                            elapsedSinceLastFeedMs,
+                            playingForMs ?: -1L,
+                            bufferedAheadMs,
+                        )
+                        return
+                    }
+                    Timber.tag("PlaybackHealth").e(
+                        "AUDIO UNDERRUN id=%s posMs=%d bufferedAheadMs=%d totalBufferedMs=%d isLoading=%s " +
+                            "bufferBytes=%d outputBufferMs=%s elapsedSinceLastFeedMs=%d playingForMs=%d",
+                        player.currentMediaItem?.mediaId,
+                        player.currentPosition,
+                        bufferedAheadMs,
+                        player.totalBufferedDuration,
+                        player.isLoading,
+                        bufferSize,
+                        outputBufferMs,
+                        elapsedSinceLastFeedMs,
+                        playingForMs ?: -1L,
+                    )
+                }
+
+                override fun onAudioSinkError(
+                    eventTime: AnalyticsListener.EventTime,
+                    audioSinkError: Exception,
+                ) {
+                    if (!GlobalLog.isEnabled) return
+                    val player = playerReference.get()
+                    Timber.tag("PlaybackHealth").e(
+                        audioSinkError,
+                        "audio-sink-error id=%s posMs=%d bufferedAheadMs=%d totalBufferedMs=%d isLoading=%s",
+                        player?.currentMediaItem?.mediaId,
+                        player?.currentPosition ?: C.TIME_UNSET,
+                        player?.bufferedAheadMs() ?: C.TIME_UNSET,
+                        player?.totalBufferedDuration ?: C.TIME_UNSET,
+                        player?.isLoading ?: false,
+                    )
+                }
+            }
+
+        capsuleOffloadDiagnostics[this] =
+            CapsuleOffloadDiagnostics(
+                audioOffloadListener = audioOffloadListener,
+                playerListener = playerListener,
+                analyticsListener = analyticsListener,
+            )
+        addAudioOffloadListener(audioOffloadListener)
+        addListener(playerListener)
+        addAnalyticsListener(analyticsListener)
+        return true
+    }
+}
+
+/**
+ * Applies Capsule's low-power audio playback policy to an ExoPlayer.
+ *
+ * Media3 1.9 moved offload configuration into
+ * TrackSelectionParameters.AudioOffloadPreferences and removed the old
+ * ExoPlayer offload-scheduling toggles. Using the old reflection names left
+ * Capsule on normal CPU decoding even when the setting said "enabled".
+ *
+ * Capsule used to build the music player with WAKE_MODE_NETWORK. That keeps a
+ * WifiLock in addition to the CPU wake lock while playback is READY/BUFFERING.
+ * Streaming music does not require low-latency Wi-Fi, so force WAKE_MODE_LOCAL
+ * on the already-created player. The foreground media service still keeps
+ * playback alive with the screen off, but Wi-Fi is free to use its normal
+ * power-saving behaviour between network reads.
+ */
+fun ExoPlayer.setOffloadEnabled(enabled: Boolean) {
+    val firstApplication = ensureCapsuleOffloadDiagnostics()
+
+    val mode =
+        if (enabled) {
+            TrackSelectionParameters.AudioOffloadPreferences.AUDIO_OFFLOAD_MODE_ENABLED
+        } else {
+            TrackSelectionParameters.AudioOffloadPreferences.AUDIO_OFFLOAD_MODE_DISABLED
+        }
+
+    val offloadPreferences =
+        TrackSelectionParameters.AudioOffloadPreferences
+            .Builder()
+            .setAudioOffloadMode(mode)
+            .setIsGaplessSupportRequired(false)
+            .setIsSpeedChangeSupportRequired(false)
+            .build()
+
+    if (!firstApplication && trackSelectionParameters.audioOffloadPreferences == offloadPreferences) return
+
+    setWakeMode(C.WAKE_MODE_LOCAL)
+    trackSelectionParameters =
+        trackSelectionParameters
+            .buildUpon()
+            .setAudioOffloadPreferences(offloadPreferences)
+            .build()
+
+    Timber.tag("AudioOffload").i(
+        "Media3 low-power audio policy offload=%s wakeMode=LOCAL",
+        enabled,
+    )
+    logSelectedAudioOffloadCapability("policyChanged")
 }

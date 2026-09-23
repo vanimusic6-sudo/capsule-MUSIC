@@ -303,7 +303,6 @@
     <string name="palette_spring">Bahar</string>
     <string name="palette_summer">Yaz</string>
     <string name="palette_twilight">Alacakaranlık</string>
-    <string name="palette_aurora">Aurora</string>
     <string name="palette_candy">Şeker</string>
     <string name="palette_rainbow">Gökkuşağı</string>
     <!-- Additional Palettes -->
@@ -331,8 +330,6 @@
     <string name="ok_button">tamam</string>
     <string name="custom_radius">Küçük resim köşe yarıçapını özelleştirin</string>
     <string name="custom">Özel</string>
-    <string name="customized_background">Özelleştirilmiş arka plan</string>
-    <string name="customize_background_title">Arka planı özelleştir</string>
     <string name="add_image">Resim ekle</string>
     <string name="blur">Bulanıklaştırma</string>
     <string name="contrast">Kontrast</string>
@@ -387,7 +384,6 @@
     <string name="proxy_url">Proxy URL\'si</string>
     <string name="restart_to_take_effect">Etkili olması için yeniden başlatın</string>
     <string name="enable_betterlyrics">BetterLyrics\'i etkinleştir</string>
-    <string name="enable_simpmusic_lyrics">SimpMusic şarkı sözlerini etkinleştir</string>
     <string name="player_and_audio">Oynatıcı ve ses</string>
     <string name="audio_quality">Ses kalitesi</string>
     <string name="audio_quality_auto">Otomatik</string>
@@ -464,7 +460,6 @@
     <string name="disable_screenshot">Ekran görüntüsünü devre dışı bırak</string>
     <string name="disable_screenshot_desc">Bu seçenek açıkken ekran görüntüleri ve uygulamanın Son Kullanılanlar\'daki görünümü devre dışı bırakılır.</string>
     <string name="enable_lrclib">LrcLib şarkı sözü sağlayıcısını etkinleştir</string>
-    <string name="enable_kugou">KuGou şarkı sözü sağlayıcısını etkinleştir</string>
     <string name="hide_explicit">Uygunsuz içeriği gizle</string>
     <string name="hide_video">Müzik videolarını gizle</string>
     <string name="backup_restore">Yedekleme ve geri yükleme</string>

@@ -206,8 +206,6 @@
     <string name="ok_button">Sobib</string>
     <string name="custom_radius">Kohenda pisipiltide nurgaraadiust</string>
     <string name="custom">Kohandatud</string>
-    <string name="customized_background">Kohendatud taust</string>
-    <string name="customize_background_title">Kohenda tausta</string>
     <string name="add_image">Lisa pilt</string>
     <string name="blur">Hägusta</string>
     <string name="contrast">Kontrastus</string>
@@ -280,7 +278,6 @@
     <string name="disable_screenshot">Keela ekraanitõmmised</string>
     <string name="disable_screenshot_desc">Kui see eelistus on kasutusel, siis ekraanitõmmiste tegemine ja rakenduse vaade Viimaste rakenduste all on keelatud.</string>
     <string name="enable_lrclib">Kasuta laulusõnade kuvamiseks teenusepakkujat LrcLib</string>
-    <string name="enable_kugou">Kasuta laulusõnade kuvamiseks teenusepakkujat KuGou</string>
     <string name="hide_explicit">Peida ebasobilik sisu</string>
     <string name="hide_video">Peida muusikavideod</string>
     <string name="backup_restore">Varundamine ja taastamine</string>

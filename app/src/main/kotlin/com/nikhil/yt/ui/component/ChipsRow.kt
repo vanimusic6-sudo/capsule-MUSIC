@@ -53,6 +53,13 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.nikhil.yt.R
 import com.nikhil.yt.ui.screens.OptionStats
+import com.nikhil.yt.ui.motion.CapsuleStandardEasing
+import androidx.compose.animation.expandHorizontally
+import androidx.compose.animation.shrinkHorizontally
+import androidx.compose.ui.Alignment
+import com.nikhil.yt.ui.motion.CapsuleEnterEasing
+import com.nikhil.yt.ui.motion.CapsuleExitEasing
+import com.nikhil.yt.ui.motion.CapsuleShortestVisible
 
 @Composable
 fun <E> ChipsRow(
@@ -81,18 +88,45 @@ fun <E> ChipsRow(
                 onClick = { onValueUpdate(value) },
                 label = { Text(label) },
                 leadingIcon = {
-                    if (isSelected) {
-                        Icon(
-                            painter = painterResource(R.drawable.done),
-                            contentDescription = null,
-                            modifier = Modifier.size(FilterChipDefaults.IconSize),
-                        )
-                    } else if (iconRes != null) {
+                    /*
+                     * The tick is what made the labels jump.
+                     *
+                     * A chip with a leading icon is wider than one without, so the instant the
+                     * selection moved, the chosen chip grew by an icon and every chip to its right
+                     * was shoved sideways in a single frame. That snap is the jerk — the row has no
+                     * transition of its own, so this was the only thing moving, and it moved
+                     * without any travel at all.
+                     *
+                     * Growing the slot instead of appearing in it costs nothing and turns the same
+                     * width change into the movement it always was. A chip that carries its own
+                     * icon has no width change to make, so it is left alone.
+                     */
+                    if (iconRes != null && !isSelected) {
                         Icon(
                             painter = painterResource(iconRes),
                             contentDescription = null,
                             modifier = Modifier.size(FilterChipDefaults.IconSize),
                         )
+                    } else {
+                        AnimatedVisibility(
+                            visible = isSelected,
+                            enter =
+                                expandHorizontally(
+                                    animationSpec = tween(220, easing = CapsuleEnterEasing),
+                                    expandFrom = Alignment.Start,
+                                ) + fadeIn(tween(220, easing = CapsuleEnterEasing)),
+                            exit =
+                                shrinkHorizontally(
+                                    animationSpec = tween(CapsuleShortestVisible, easing = CapsuleExitEasing),
+                                    shrinkTowards = Alignment.Start,
+                                ) + fadeOut(tween(CapsuleShortestVisible, easing = CapsuleExitEasing)),
+                        ) {
+                            Icon(
+                                painter = painterResource(R.drawable.done),
+                                contentDescription = null,
+                                modifier = Modifier.size(FilterChipDefaults.IconSize),
+                            )
+                        }
                     }
                 },
                 shape = RoundedCornerShape(16.dp),
@@ -122,7 +156,7 @@ fun <Int> ChoiceChipsRow(
     var expandIconDegree by remember { mutableFloatStateOf(0f) }
     val rotationAnimation by animateFloatAsState(
         targetValue = expandIconDegree,
-        animationSpec = tween(durationMillis = 400),
+        animationSpec = tween(durationMillis = 400, easing = CapsuleStandardEasing),
         label = "",
     )
 

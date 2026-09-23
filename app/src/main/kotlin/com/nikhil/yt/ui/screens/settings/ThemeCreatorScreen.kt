@@ -91,6 +91,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.AnnotatedString
@@ -127,6 +128,7 @@ fun ThemeCreatorScreen(
     navController: NavController,
 ) {
     val context = LocalContext.current
+    val resources = LocalResources.current
     val scope = rememberCoroutineScope()
 
     val (customThemeValue, setCustomThemeValue) = rememberPreference(
@@ -168,7 +170,7 @@ fun ThemeCreatorScreen(
     fun applyThemeToPrefs() {
         setDynamicThemeEnabled(false)
         setCustomThemeValue(ThemeSeedPaletteCodec.encodeForPreference(currentPalette, themeName.takeIf { it.isNotBlank() }))
-        Toast.makeText(context, context.getString(R.string.theme_applied), Toast.LENGTH_SHORT).show()
+        Toast.makeText(context, resources.getString(R.string.theme_applied), Toast.LENGTH_SHORT).show()
     }
 
     val exportLauncher =
@@ -186,9 +188,9 @@ fun ThemeCreatorScreen(
                         }.isSuccess
                     }
                 if (ok) {
-                    Toast.makeText(context, context.getString(R.string.theme_export_success), Toast.LENGTH_SHORT).show()
+                    Toast.makeText(context, resources.getString(R.string.theme_export_success), Toast.LENGTH_SHORT).show()
                 } else {
-                    Toast.makeText(context, context.getString(R.string.theme_export_failed), Toast.LENGTH_SHORT).show()
+                    Toast.makeText(context, resources.getString(R.string.theme_export_failed), Toast.LENGTH_SHORT).show()
                 }
             }
         }
@@ -208,7 +210,7 @@ fun ThemeCreatorScreen(
                     val name = ThemeSeedPaletteCodec.extractNameFromJsonOrNull(text)
                     setDynamicThemeEnabled(false)
                     setCustomThemeValue(ThemeSeedPaletteCodec.encodeForPreference(importedPalette, name))
-                    Toast.makeText(context, context.getString(R.string.theme_import_success), Toast.LENGTH_SHORT).show()
+                    Toast.makeText(context, resources.getString(R.string.theme_import_success), Toast.LENGTH_SHORT).show()
                 } else {
                     importErrorText = text.take(1200)
                     showImportErrorDialog = true
@@ -1239,6 +1241,7 @@ private fun SeedColorEditor(
 ) {
     val clipboard = LocalClipboardManager.current
     val context = LocalContext.current
+    val resources = LocalResources.current
     val roleLabel =
         when (role) {
             SeedRole.PRIMARY -> stringResource(R.string.theme_seed_primary)
@@ -1307,7 +1310,7 @@ private fun SeedColorEditor(
                         modifier = Modifier
                             .clickable {
                                 clipboard.setText(AnnotatedString(hex))
-                                Toast.makeText(context, context.getString(R.string.copied), Toast.LENGTH_SHORT).show()
+                                Toast.makeText(context, resources.getString(R.string.copied), Toast.LENGTH_SHORT).show()
                             }
                             .padding(horizontal = 12.dp, vertical = 10.dp),
                         verticalAlignment = Alignment.CenterVertically,

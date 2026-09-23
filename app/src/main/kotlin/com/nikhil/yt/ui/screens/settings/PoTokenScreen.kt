@@ -63,6 +63,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.AnnotatedString
@@ -90,9 +91,7 @@ import com.nikhil.yt.viewmodels.PoTokenViewModel
 
 private const val DEFAULT_EXTRACT_URL = "https://youtube.com/account"
 
-private val SUPPORTED_CLIENTS = listOf(
-    "web", "mweb", "web_safari", "web_embedded", "web_creator", "web_music"
-)
+private val SUPPORTED_CLIENTS = listOf("WEB", "MWEB")
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
@@ -102,6 +101,7 @@ fun PoTokenScreen(
     viewModel: PoTokenViewModel = hiltViewModel(),
 ) {
     val context = LocalContext.current
+    val resources = LocalResources.current
     val clipboardManager = LocalClipboardManager.current
     val tokenState by viewModel.state.collectAsState()
     var showRegenerateSheet by remember { mutableStateOf(false) }
@@ -145,14 +145,14 @@ fun PoTokenScreen(
             val playerToken = data?.getStringExtra(PoTokenExtractionActivity.EXTRA_PLAYER_TOKEN).orEmpty()
             val visitorData = data?.getStringExtra(PoTokenExtractionActivity.EXTRA_VISITOR_DATA).orEmpty()
 
-            if (gvsToken.isNotBlank() && playerToken.isNotBlank() && visitorData.isNotBlank()) {
+            if (gvsToken.isNotBlank() && visitorData.isNotBlank()) {
                 viewModel.onTokensExtracted(
                     visitorData = visitorData,
                     poToken = gvsToken,
                     playerToken = playerToken,
                 )
             } else {
-                viewModel.onExtractionError(context.getString(R.string.token_generation_failed))
+                viewModel.onExtractionError(resources.getString(R.string.token_generation_failed))
             }
         } else {
             val error = result.data?.getStringExtra(PoTokenExtractionActivity.EXTRA_ERROR).orEmpty()

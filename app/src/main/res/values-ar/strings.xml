@@ -305,7 +305,6 @@
     <string name="palette_spring">ربيع</string>
     <string name="palette_summer">صيف</string>
     <string name="palette_twilight">الشفق</string>
-    <string name="palette_aurora">أورورا</string>
     <string name="palette_candy">حلوى</string>
     <string name="palette_rainbow">قوس قزح</string>
     <string name="palette_aquamarine">زبرجد</string>
@@ -330,8 +329,6 @@
     <string name="ok_button">موافق</string>
     <string name="custom_radius">تخصيص نصف قطر زاوية الصورة المصغرة</string>
     <string name="custom">مخصص</string>
-    <string name="customized_background">خلفية مخصصة</string>
-    <string name="customize_background_title">تخصيص الخلفية</string>
     <string name="add_image">أضف صورة</string>
     <string name="blur">ضبابية</string>
     <string name="contrast">التباين</string>

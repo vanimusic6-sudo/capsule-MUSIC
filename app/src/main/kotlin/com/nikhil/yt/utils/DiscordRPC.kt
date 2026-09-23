@@ -27,10 +27,6 @@ class DiscordRPC(
 
     companion object {
         private const val APPLICATION_ID = "1165706613961789445"
-        private const val PAUSE_IMAGE_URL =
-            "https://raw.githubusercontent.com/nikhilvishwakarma00/Velune/main/fastlane/metadata/android/en-US/images/RPC/pause_icon.png"
-        private const val APP_ICON_URL = 
-            "https://raw.githubusercontent.com/nikhilvishwakarma00/Velune/main/fastlane/metadata/android/en-US/images/icon.png"
         private const val logtag = "DiscordRPC"
     }
 
@@ -182,13 +178,17 @@ class DiscordRPC(
 
         val button1Label = context.dataStore[DiscordActivityButton1LabelKey] ?: "Listen on YouTube Music"
         val button1Enabled = context.dataStore[DiscordActivityButton1EnabledKey] ?: true
-        val button2Label = context.dataStore[DiscordActivityButton2LabelKey] ?: "Go to Velune"
+        val button2Label =
+            context.dataStore[DiscordActivityButton2LabelKey]
+                ?: CapsuleBrand.DEFAULT_DISCORD_BUTTON_LABEL
         val button2Enabled = context.dataStore[DiscordActivityButton2EnabledKey] ?: true
 
         val button1UrlSource = context.dataStore[DiscordActivityButton1UrlSourceKey] ?: "songurl"
         val button1CustomUrl = context.dataStore[DiscordActivityButton1CustomUrlKey] ?: ""
         val button2UrlSource = context.dataStore[DiscordActivityButton2UrlSourceKey] ?: "custom"
-        val button2CustomUrl = context.dataStore[DiscordActivityButton2CustomUrlKey] ?: "https://github.com/nikhilvishwakarma00/Velune"
+        val button2CustomUrl =
+            context.dataStore[DiscordActivityButton2CustomUrlKey]
+                ?: CapsuleBrand.REPOSITORY_URL
 
         val resolvedButton1Url = resolveUrl(button1UrlSource, song, button1CustomUrl)
         val resolvedButton2Url = resolveUrl(button2UrlSource, song, button2CustomUrl)
@@ -235,7 +235,7 @@ class DiscordRPC(
                     ?: createRpcImage(resolvedImages.artistOriginalUrl)
                     ?: song.artists.firstOrNull()?.thumbnailUrl?.takeIf { it.isNotBlank() }?.let { RpcImage.ExternalImage(it) }
             }
-            "appicon" -> RpcImage.ExternalImage(APP_ICON_URL)
+            "appicon" -> RpcImage.ExternalImage(CapsuleBrand.APP_ICON_URL)
             "custom" -> {
                 val customUrl = largeImageCustomPref.takeIf { it.isNotBlank() }
                 if (customUrl != null) {
@@ -254,9 +254,10 @@ class DiscordRPC(
         }
 
         val finalSmallImage: RpcImage? = when {
-            isPaused -> RpcImage.ExternalImage(PAUSE_IMAGE_URL)
+            isPaused -> RpcImage.ExternalImage(CapsuleBrand.PAUSE_IMAGE_URL)
             smallImageTypePref.lowercase() in listOf("none", "dontshow") -> null
-            smallImageTypePref.lowercase() == "appicon" -> RpcImage.ExternalImage(APP_ICON_URL)
+            smallImageTypePref.lowercase() == "appicon" ->
+                RpcImage.ExternalImage(CapsuleBrand.APP_ICON_URL)
             smallImageTypePref.lowercase() == "artist" -> {
                 createRpcImage(resolvedImages.artistResolvedId)
                     ?: createRpcImage(resolvedImages.artistOriginalUrl)
@@ -318,7 +319,7 @@ class DiscordRPC(
                 "custom" -> song.artists.firstOrNull()?.name
                 else -> translatedMap["{artist}"] ?: song.artists.firstOrNull()?.name
             }
-            "$baseSmallText on Velune"
+            "$baseSmallText on ${context.getString(R.string.app_name)}"
         }
 
         val applicationIdToSend = APPLICATION_ID

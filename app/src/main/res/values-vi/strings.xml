@@ -317,7 +317,6 @@
     <string name="palette_spring">Mùa xuân</string>
     <string name="palette_summer">Mùa hè</string>
     <string name="palette_twilight">Chạng vạng</string>
-    <string name="palette_aurora">Cực quang</string>
     <string name="palette_candy">Kẹo</string>
     <string name="palette_rainbow">Cầu vồng</string>
     <!-- Additional Palettes -->
@@ -345,8 +344,6 @@
     <string name="ok_button">OK</string>
     <string name="custom_radius">Tùy chỉnh bán kính góc ảnh thumbnail</string>
     <string name="custom">Tùy chỉnh</string>
-    <string name="customized_background">Nền được tùy chỉnh</string>
-    <string name="customize_background_title">Tùy chỉnh nền</string>
     <string name="add_image">Thêm hình ảnh</string>
     <string name="blur">Làm mờ</string>
     <string name="contrast">Độ tương phản</string>
@@ -402,7 +399,6 @@
     <string name="proxy_url">URL proxy</string>
     <string name="restart_to_take_effect">Khởi động lại để có hiệu lực</string>
     <string name="enable_betterlyrics">Bật BetterLyrics</string>
-    <string name="enable_simpmusic_lyrics">Bật lời bài hát SimpMusic</string>
     <string name="player_and_audio">Trình phát và âm thanh</string>
     <string name="audio_quality">Chất lượng âm thanh</string>
     <string name="audio_quality_auto">Tự động</string>
@@ -479,7 +475,6 @@
     <string name="disable_screenshot">Tắt chụp màn hình</string>
     <string name="disable_screenshot_desc">Khi tùy chọn này được bật, chụp màn hình và chế độ xem ứng dụng trong Ứng dụng gần đây sẽ bị tắt.</string>
     <string name="enable_lrclib">Bật nhà cung cấp lời bài hát LrcLib</string>
-    <string name="enable_kugou">Bật nhà cung cấp lời bài hát KuGou</string>
     <string name="preload_queue_lyrics">Tải trước lời bài hát trong danh sách</string>
     <string name="queue_lyrics_preload_count">Số lượng bài hát được tải trước</string>
     <string name="hide_explicit">Ẩn nội dung rõ ràng</string>

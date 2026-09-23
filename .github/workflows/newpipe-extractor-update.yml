@@ -26,11 +26,11 @@ jobs:
       KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
 
     steps:
-      - name: Checkout main
+      - name: Checkout cleanup
         uses: actions/checkout@v6
         with:
           fetch-depth: 0
-          ref: main
+          ref: cleanup/capsule-player-only
 
       - name: Set up JDK 21
         uses: actions/setup-java@v5
@@ -38,10 +38,10 @@ jobs:
           distribution: temurin
           java-version: "21"
 
-      - name: Set up Gradle 9.3.1
+      - name: Set up Gradle 9.5
         uses: gradle/actions/setup-gradle@v6
         with:
-          gradle-version: "9.3.1"
+          gradle-version: "9.5.0"
 
       - name: Discover latest stable NewPipeExtractor
         id: version
@@ -164,7 +164,7 @@ jobs:
             --stacktrace \
             --no-daemon
 
-      - name: Create reproducible source commit
+      - name: Create reproducible source commit locally
         if: steps.version.outputs.changed == 'true' && steps.existing.outputs.exists != 'true'
         id: source
         shell: bash
@@ -173,20 +173,16 @@ jobs:
         run: |
           set -euo pipefail
 
-          branch="video-engine/$LATEST"
-
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-          git checkout -B "$branch"
           git add \
             gradle/libs.versions.toml \
             app/src/main/kotlin/com/nikhil/yt/playback/video/CapsuleVideoEngineUpdater.kt
 
           git commit -m "Build VIDEO engine with NewPipeExtractor $LATEST"
-          git push --force origin "$branch"
-
-          echo "branch=$branch" >> "$GITHUB_OUTPUT"
+          # Tagging this commit below preserves exact reproducible source.
+          # Never create an additional video-engine/* branch.
           echo "commit=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
       - name: Restore release keystore
@@ -275,6 +271,15 @@ jobs:
             --verbose \
             --print-certs \
             "${{ steps.apk.outputs.path }}"
+
+      - name: Publish validated VIDEO source to cleanup
+        if: steps.version.outputs.changed == 'true' && steps.existing.outputs.exists != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Push only after the candidate passed tests, signed release build
+          # and APK signature verification. No force-push or extra branches.
+          git push origin HEAD:refs/heads/cleanup/capsule-player-only
 
       - name: Tag exact source commit
         if: steps.version.outputs.changed == 'true' && steps.existing.outputs.exists != 'true'

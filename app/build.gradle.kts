@@ -9,6 +9,26 @@ plugins {
     alias(libs.plugins.compose.compiler)
 }
 
+/**
+ * The commit this APK was built from, or "unknown" outside a git checkout.
+ *
+ * Captures from the field arrive with no way to tell which build produced them, and that has
+ * already cost a clean answer: a capture showing exactly the improvement a change predicted could
+ * not be credited to it, because nothing in the log said whether the change was in the build.
+ * Read through the Gradle provider API so it does not defeat the configuration cache.
+ */
+val gitCommit: String =
+    providers
+        .exec {
+            commandLine("git", "rev-parse", "--short", "HEAD")
+            isIgnoreExitValue = true
+        }.standardOutput
+        .asText
+        .map { it.trim() }
+        .orElse("")
+        .get()
+        .ifEmpty { "unknown" }
+
 val localProperties = Properties()
 val localPropertiesFile = rootProject.file("local.properties")
 if (localPropertiesFile.exists()) {
@@ -17,10 +37,10 @@ if (localPropertiesFile.exists()) {
 
 android {
     namespace = "com.nikhil.yt"
-    compileSdk = 36
+    compileSdk = 37
 
     defaultConfig {
-    applicationId = "com.nikhil.yt"
+        applicationId = "com.nikhil.yt"
         minSdk = 26
         targetSdk = 36
         versionCode = 10
@@ -45,6 +65,8 @@ android {
                 ?: System.getenv("TOGETHER_BEARER_TOKEN")
                 ?: ""
         buildConfigField("String", "TOGETHER_BEARER_TOKEN", "\"$togetherBearerToken\"")
+
+        buildConfigField("String", "GIT_COMMIT", "\"$gitCommit\"")
     }
 
     flavorDimensions += "abi"
@@ -81,7 +103,7 @@ android {
     signingConfigs {
         create("release") {
             val keystoreFile = file("keystore/release.keystore")
-            if(keystoreFile.exists()) {
+            if (keystoreFile.exists()) {
                 storeFile = keystoreFile
                 storePassword = System.getenv("STORE_PASSWORD")
                 keyAlias = System.getenv("KEY_ALIAS")
@@ -119,15 +141,8 @@ android {
 
     testOptions {
         unitTests {
-            /*
-             * JVM unit tests run against a stub android.jar whose methods throw
-             * by default. Media3's PlaybackException constructor calls
-             * SystemClock.elapsedRealtime(), so constructing one in a plain unit
-             * test blows up before the assertion is ever reached. Returning
-             * defaults instead keeps these pure-logic tests runnable without
-             * pulling in Robolectric.
-             */
             isReturnDefaultValues = true
+            isIncludeAndroidResources = true
         }
     }
 
@@ -139,7 +154,7 @@ android {
     lint {
         lintConfig = file("lint.xml")
         warningsAsErrors = false
-        abortOnError = false
+        abortOnError = true
         checkDependencies = false
     }
 
@@ -225,18 +240,18 @@ dependencies {
     ksp(libs.hilt.compiler)
 
     implementation(project(":innertube"))
-    implementation(project(":kugou"))
+    implementation(libs.innertubex)
     implementation(project(":lrclib"))
     implementation(project(":lastfm"))
     implementation(project(":betterlyrics"))
     implementation(project(":kizzy"))
-    implementation(project(":simpmusic"))
     implementation(project(":canvas"))
     implementation("com.github.Kyant0:m3color:2025.4")
     implementation(libs.backdrop)
 
     implementation(libs.ktor.client.core)
     implementation(libs.ktor.client.okhttp)
+    implementation(libs.ktor.client.content.negotiation)
     implementation(libs.ktor.serialization.json)
     implementation(libs.ktor.client.websockets)
     implementation(libs.ktor.server.core)
@@ -248,7 +263,11 @@ dependencies {
 
     implementation(libs.timber)
     testImplementation(libs.junit)
-    // Ensure ProcessLifecycleOwner is available for the presence manager and CI unit tests
+    testImplementation("androidx.compose.ui:ui-test-junit4:${libs.versions.compose.get()}")
+    debugImplementation("androidx.compose.ui:ui-test-manifest:${libs.versions.compose.get()}")
+    testImplementation("org.robolectric:robolectric:4.16")
+    testImplementation(libs.coroutines.test)
+    testImplementation(libs.ktor.client.mock)
     implementation("com.github.therealbush:translator:1.1.1")
     implementation("androidx.lifecycle:lifecycle-process:2.10.0")
     implementation("androidx.compose.material3.adaptive:adaptive:1.2.0")
@@ -261,23 +280,12 @@ tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>().configureEach 
     compilerOptions {
         jvmTarget.set(JvmTarget.JVM_21)
         freeCompilerArgs.add("-Xannotation-default-target=param-property")
-        freeCompilerArgs.addAll(
-            "-opt-in=kotlin.RequiresOptIn",
-            "-Xcontext-receivers"
-        )
-        // Suppress warnings
+        freeCompilerArgs.add("-opt-in=kotlin.RequiresOptIn")
         suppressWarnings.set(true)
     }
 }
 
-configurations.configureEach {
-    resolutionStrategy.force(
-        "androidx.compose.runtime:runtime:${libs.versions.compose.get()}",
-        "androidx.compose.foundation:foundation:${libs.versions.compose.get()}",
-        "androidx.compose.ui:ui:${libs.versions.compose.get()}",
-        "androidx.compose.ui:ui-util:${libs.versions.compose.get()}",
-        "androidx.compose.ui:ui-tooling:${libs.versions.compose.get()}",
-        "androidx.compose.animation:animation-graphics:${libs.versions.compose.get()}",
-    )
+// Surface the underlying assertion/Compose failure directly in CI logs.
+tasks.withType<org.gradle.api.tasks.testing.Test>().configureEach {
+    testLogging.exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
 }
-

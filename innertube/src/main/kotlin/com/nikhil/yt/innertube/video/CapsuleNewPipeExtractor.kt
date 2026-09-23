@@ -120,9 +120,9 @@ object CapsuleNewPipeExtractor {
 
     fun classify(throwable: Throwable): CapsuleNewPipeFailure {
         val text =
-            generateSequence(throwable as Throwable?) { it?.cause }
+            generateSequence(throwable) { it.cause }
                 .take(8)
-                .mapNotNull { it?.message }
+                .mapNotNull { it.message }
                 .joinToString(" ")
 
         /*
@@ -215,7 +215,7 @@ object CapsuleNewPipeExtractor {
             videoId = videoId,
             videoUrl = content,
             audioUrl = audio?.content,
-            qualityLabel = resolution.takeIf { it.isNotBlank() } ?: "${height}p",
+            qualityLabel = getResolution().takeIf { it.isNotBlank() } ?: "${height}p",
             width = width,
             height = height,
             videoItag = itag,

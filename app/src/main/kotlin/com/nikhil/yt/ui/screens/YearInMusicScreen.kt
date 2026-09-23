@@ -12,7 +12,6 @@ import android.content.Intent
 import android.view.View
 import android.view.ViewTreeObserver
 import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.Spring
@@ -88,6 +87,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.painterResource
@@ -132,6 +132,10 @@ import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.sin
 import kotlin.random.Random
+import com.nikhil.yt.ui.motion.CapsuleStandardEasing
+import com.nikhil.yt.ui.motion.CapsuleExitEasing
+import com.nikhil.yt.ui.motion.CapsuleShortestVisible
+import com.nikhil.yt.ui.motion.CapsuleEnterEasing
 
 private val NeonPink = Color(0xFFFF006E)
 private val ElectricPurple = Color(0xFF8338EC)
@@ -162,6 +166,7 @@ fun YearInMusicScreen(
     viewModel: YearInMusicViewModel = hiltViewModel(),
 ) {
     val context = LocalContext.current
+    val resources = LocalResources.current
     val menuState = LocalMenuState.current
     val haptic = LocalHapticFeedback.current
     val playerConnection = LocalPlayerConnection.current ?: return
@@ -289,7 +294,7 @@ fun YearInMusicScreen(
                                     context.startActivity(
                                         Intent.createChooser(
                                             shareIntent,
-                                            context.getString(R.string.share_summary)
+                                            resources.getString(R.string.share_summary)
                                         )
                                     )
                                 } finally {
@@ -562,7 +567,7 @@ private fun PulsingDot() {
         initialValue = 0.8f,
         targetValue = 1.2f,
         animationSpec = infiniteRepeatable(
-            animation = tween(1000, easing = FastOutSlowInEasing),
+            animation = tween(1000, easing = CapsuleStandardEasing),
             repeatMode = RepeatMode.Reverse
         ),
         label = "dotScale"
@@ -571,7 +576,7 @@ private fun PulsingDot() {
         initialValue = 0.6f,
         targetValue = 1f,
         animationSpec = infiniteRepeatable(
-            animation = tween(1000, easing = FastOutSlowInEasing),
+            animation = tween(1000, easing = CapsuleStandardEasing),
             repeatMode = RepeatMode.Reverse
         ),
         label = "dotAlpha"
@@ -596,7 +601,7 @@ private fun PremiumYearChip(
         initialValue = 0.4f,
         targetValue = 0.8f,
         animationSpec = infiniteRepeatable(
-            animation = tween(1500, easing = FastOutSlowInEasing),
+            animation = tween(1500, easing = CapsuleStandardEasing),
             repeatMode = RepeatMode.Reverse
         ),
         label = "glowAlpha"
@@ -804,7 +809,7 @@ private fun PremiumStoryProgressIndicator(
                     index == currentPage -> 1f
                     else -> 0f
                 },
-                animationSpec = tween(300),
+                animationSpec = tween(300, easing = CapsuleStandardEasing),
                 label = "progress"
             )
             val alpha by animateFloatAsState(
@@ -813,7 +818,7 @@ private fun PremiumStoryProgressIndicator(
                     index == currentPage -> 1f
                     else -> 0.2f
                 },
-                animationSpec = tween(300),
+                animationSpec = tween(300, easing = CapsuleStandardEasing),
                 label = "alpha"
             )
 
@@ -982,11 +987,11 @@ private fun YearInMusicStoryPager(
                 slideInHorizontally(
                     animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
                     initialOffsetX = { it * direction }
-                ) + fadeIn(animationSpec = tween(200)) togetherWith
+                ) + fadeIn(animationSpec = tween(200, easing = CapsuleEnterEasing)) togetherWith
                     slideOutHorizontally(
                         animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
                         targetOffsetX = { -it * direction }
-                    ) + fadeOut(animationSpec = tween(150))
+                    ) + fadeOut(animationSpec = tween(CapsuleShortestVisible, easing = CapsuleExitEasing))
             },
             label = "yearInMusicPage"
         ) { pageIndex ->

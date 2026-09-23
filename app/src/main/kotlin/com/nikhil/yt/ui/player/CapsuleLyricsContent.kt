@@ -66,7 +66,6 @@ import com.nikhil.yt.R
 import com.nikhil.yt.extensions.togglePlayPause
 import com.nikhil.yt.models.MediaMetadata
 import com.nikhil.yt.ui.component.Lyrics
-import com.nikhil.yt.ui.component.LyricsV2
 import com.nikhil.yt.utils.makeTimeString
 import kotlinx.coroutines.isActive
 import kotlin.math.cos
@@ -98,7 +97,6 @@ fun CapsuleLyricsContent(
     sliderPosition: Long?,
     positionMs: Long,
     durationMs: Long,
-    useLyricsV2: Boolean,
     onClose: () -> Unit,
     onMenuClick: () -> Unit,
     onSeekPreview: (Long) -> Unit,
@@ -313,19 +311,11 @@ fun CapsuleLyricsContent(
                         bottom = 8.dp,
                     ),
         ) {
-            if (useLyricsV2) {
-                LyricsV2(
-                    sliderPositionProvider = {
-                        sliderPosition
-                    },
-                )
-            } else {
-                Lyrics(
-                    sliderPositionProvider = {
-                        sliderPosition
-                    },
-                )
-            }
+            Lyrics(
+                sliderPositionProvider = {
+                    sliderPosition
+                },
+            )
         }
 
         CapsuleThinSlider(
@@ -602,209 +592,11 @@ fun CapsuleLyricsContent(
 }
 
 
-@Composable
-private fun CapsuleThinSlider(
-    value: Float,
-    valueRange: ClosedFloatingPointRange<Float>,
-    enabled: Boolean,
-    activeColor: Color,
-    inactiveColor: Color,
-    onValueChange: (Float) -> Unit,
-    onValueChangeFinished: () -> Unit,
-    modifier: Modifier = Modifier,
-    trackHeight: Dp = 4.dp,
-    thumbRadius: Dp = 4.dp,
-) {
-    val rangeSize =
-        (
-            valueRange.endInclusive -
-                valueRange.start
-        ).coerceAtLeast(0.0001f)
-
-    val fraction =
-        (
-            (value - valueRange.start) /
-                rangeSize
-        ).coerceIn(0f, 1f)
-
-    Canvas(
-        modifier =
-            modifier
-                .pointerInput(
-                    enabled,
-                    valueRange.start,
-                    valueRange.endInclusive,
-                ) {
-                    if (!enabled) {
-                        return@pointerInput
-                    }
-
-                    val widthPx =
-                        size.width
-                            .toFloat()
-                            .coerceAtLeast(1f)
-
-                    val insetPx =
-                        thumbRadius.toPx()
-
-                    val usableWidth =
-                        (
-                            widthPx -
-                                insetPx * 2f
-                        ).coerceAtLeast(1f)
-
-                    fun updateFromX(
-                        x: Float,
-                    ) {
-                        val newFraction =
-                            (
-                                (x - insetPx) /
-                                    usableWidth
-                            ).coerceIn(0f, 1f)
-
-                        onValueChange(
-                            valueRange.start +
-                                rangeSize *
-                                newFraction,
-                        )
-                    }
-
-                    awaitEachGesture {
-                        val down =
-                            awaitFirstDown(
-                                requireUnconsumed =
-                                    false,
-                            )
-
-                        updateFromX(
-                            down.position.x,
-                        )
-
-                        down.consume()
-
-                        while (true) {
-                            val event =
-                                awaitPointerEvent()
-
-                            val change =
-                                event.changes
-                                    .firstOrNull {
-                                        it.id ==
-                                            down.id
-                                    }
-                                    ?: break
-
-                            if (!change.pressed) {
-                                onValueChangeFinished()
-                                break
-                            }
-
-                            updateFromX(
-                                change.position.x,
-                            )
-
-                            change.consume()
-                        }
-                    }
-                },
-    ) {
-        val centerY =
-            size.height / 2f
-
-        val radiusPx =
-            thumbRadius.toPx()
-
-        val startX =
-            radiusPx
-
-        val endX =
-            (
-                size.width -
-                    radiusPx
-            ).coerceAtLeast(startX)
-
-        val activeEnd =
-            startX +
-                (
-                    endX -
-                        startX
-                ) * fraction
-
-        val resolvedActive =
-            if (enabled) {
-                activeColor
-            } else {
-                activeColor.copy(
-                    alpha =
-                        activeColor.alpha *
-                            0.38f,
-                )
-            }
-
-        val resolvedInactive =
-            if (enabled) {
-                inactiveColor
-            } else {
-                inactiveColor.copy(
-                    alpha =
-                        inactiveColor.alpha *
-                            0.45f,
-                )
-            }
-
-        drawLine(
-            color =
-                resolvedInactive,
-            start =
-                Offset(
-                    startX,
-                    centerY,
-                ),
-            end =
-                Offset(
-                    endX,
-                    centerY,
-                ),
-            strokeWidth =
-                trackHeight.toPx(),
-            cap =
-                StrokeCap.Round,
-        )
-
-        if (activeEnd > startX) {
-            drawLine(
-                color =
-                    resolvedActive,
-                start =
-                    Offset(
-                        startX,
-                        centerY,
-                    ),
-                end =
-                    Offset(
-                        activeEnd,
-                        centerY,
-                    ),
-                strokeWidth =
-                    trackHeight.toPx(),
-                cap =
-                    StrokeCap.Round,
-            )
-        }
-
-        drawCircle(
-            color =
-                resolvedActive,
-            radius =
-                radiusPx,
-            center =
-                Offset(
-                    activeEnd,
-                    centerY,
-                ),
-        )
-    }
-}
+/*
+ * CapsuleThinSlider used to be copied here verbatim — two hundred identical lines in two files
+ * in the same package. Sharing the player's copy removed the duplicate rather than adding a
+ * third for the immersive screen.
+ */
 
 @Composable
 private fun CapsuleLyricsSideButton(

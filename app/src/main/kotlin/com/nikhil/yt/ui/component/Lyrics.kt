@@ -106,7 +106,6 @@ import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.animateFloatAsState
@@ -127,6 +126,7 @@ import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -156,6 +156,7 @@ import com.nikhil.yt.constants.LyricsClickKey
 import com.nikhil.yt.constants.LyricsRomanizeJapaneseKey
 import com.nikhil.yt.constants.LyricsRomanizeKoreanKey
 import com.nikhil.yt.constants.LyricsScrollKey
+import com.nikhil.yt.constants.LyricsSyncOffsetKey
 import com.nikhil.yt.constants.LyricsTextPositionKey
 import com.nikhil.yt.constants.LyricsAnimationStyle
 import com.nikhil.yt.constants.LyricsAnimationStyleKey
@@ -178,6 +179,7 @@ import com.nikhil.yt.lyrics.LyricsUtils.romanizeKorean
 import com.nikhil.yt.ui.component.shimmer.ShimmerHost
 import com.nikhil.yt.ui.component.shimmer.TextPlaceholder
 import com.nikhil.yt.ui.menu.LyricsMenu
+import com.nikhil.yt.ui.menu.clampOffset
 import com.nikhil.yt.ui.screens.settings.DarkMode
 import com.nikhil.yt.ui.screens.settings.LyricsPosition
 import com.nikhil.yt.ui.utils.fadingEdge
@@ -185,6 +187,7 @@ import com.nikhil.yt.ui.utils.smoothFadingEdge
 import com.nikhil.yt.utils.ComposeToImage
 import com.nikhil.yt.utils.rememberEnumPreference
 import com.nikhil.yt.utils.rememberPreference
+import com.nikhil.yt.utils.reportRecoverableException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
@@ -194,6 +197,7 @@ import kotlin.math.pow
 import kotlin.math.abs
 import kotlin.math.exp
 import kotlin.time.Duration.Companion.seconds
+import com.nikhil.yt.ui.motion.CapsuleStandardEasing
 
 
 private val AppleMusicEasing = CubicBezierEasing(0.25f, 0.1f, 0.25f, 1.0f)
@@ -428,6 +432,7 @@ fun Lyrics(
     val menuState = LocalMenuState.current
     val density = LocalDensity.current
     val context = LocalContext.current
+    val resources = LocalResources.current
     val configuration = LocalConfiguration.current
 
     DisposableEffect(Unit) {
@@ -465,7 +470,7 @@ fun Lyrics(
 
     val playerBackground by rememberEnumPreference(
         key = PlayerBackgroundStyleKey,
-        defaultValue = PlayerBackgroundStyle.DEFAULT
+        defaultValue = PlayerBackgroundStyle.CAPSULE_STAR
     )
 
     val darkTheme by rememberEnumPreference(DarkModeKey, defaultValue = DarkMode.AUTO)
@@ -575,11 +580,22 @@ fun Lyrics(
     val lyricsGlowColor = if (useDarkTheme || playerBackground != PlayerBackgroundStyle.DEFAULT) Color.White else Color.Black
     val textColor = lyricsBaseColor
 
-    val wordSyncLeadMs = remember(lyrics) {
-        if (lyrics != null && isTtml(lyrics)) 0L else LyricsWordSyncLeadMs
+    /*
+     * The user's own correction, on top of the built-in lead.
+     *
+     * A lyrics file that is uniformly early or late is the common defect and the only one a single
+     * number can fix, so this is a shift rather than a rate: positive shows lines sooner, negative
+     * later. Clamped on read as well as on write, because a value can also arrive from a restored
+     * backup or an older build.
+     */
+    val syncOffsetMs by rememberPreference(LyricsSyncOffsetKey, defaultValue = 0)
+    val userOffsetMs = clampOffset(syncOffsetMs).toLong()
+
+    val wordSyncLeadMs = remember(lyrics, userOffsetMs) {
+        (if (lyrics != null && isTtml(lyrics)) 0L else LyricsWordSyncLeadMs) + userOffsetMs
     }
-    val lineSyncLeadMs = remember(lyrics) {
-        if (lyrics != null && isTtml(lyrics)) 0L else LyricsWordSyncLeadMs
+    val lineSyncLeadMs = remember(lyrics, userOffsetMs) {
+        (if (lyrics != null && isTtml(lyrics)) 0L else LyricsWordSyncLeadMs) + userOffsetMs
     }
 
     var currentLineIndex by remember {
@@ -641,7 +657,7 @@ fun Lyrics(
         if (showMaxSelectionToast) {
             Toast.makeText(
                 context,
-                context.getString(R.string.max_selection_limit, maxSelectionLimit),
+                resources.getString(R.string.max_selection_limit, maxSelectionLimit),
                 Toast.LENGTH_SHORT
             ).show()
             showMaxSelectionToast = false
@@ -953,7 +969,7 @@ fun Lyrics(
                         targetValue = targetBlur,
                         animationSpec = tween(
                             durationMillis = 300,
-                            easing = FastOutSlowInEasing
+                            easing = CapsuleStandardEasing
                         ),
                         label = "lyricBlur"
                     )
@@ -1754,7 +1770,7 @@ fun Lyrics(
                                     targetValue = 1f,
                                     animationSpec = tween(
                                         durationMillis = 200,
-                                        easing = FastOutSlowInEasing
+                                        easing = CapsuleStandardEasing
                                     )
                                 )
 
@@ -1763,7 +1779,7 @@ fun Lyrics(
                                     targetValue = 1f,
                                     animationSpec = tween(
                                         durationMillis = 1200,
-                                        easing = FastOutSlowInEasing
+                                        easing = CapsuleStandardEasing
                                     )
                                 )
                             }
@@ -2100,16 +2116,16 @@ fun Lyrics(
             AnimatedVisibility(
                 visible = isManualScrolling && scrollLyrics && !isSelectionModeActive,
                 enter = slideInVertically(
-                    animationSpec = tween(durationMillis = 300, easing = FastOutSlowInEasing),
+                    animationSpec = tween(durationMillis = 300, easing = CapsuleStandardEasing),
                     initialOffsetY = { it * 2 }
                 ) + fadeIn(
-                    animationSpec = tween(durationMillis = 300, easing = FastOutSlowInEasing)
+                    animationSpec = tween(durationMillis = 300, easing = CapsuleStandardEasing)
                 ),
                 exit = slideOutVertically(
-                    animationSpec = tween(durationMillis = 200, easing = FastOutSlowInEasing),
+                    animationSpec = tween(durationMillis = 200, easing = CapsuleStandardEasing),
                     targetOffsetY = { it * 2 }
                 ) + fadeOut(
-                    animationSpec = tween(durationMillis = 200, easing = FastOutSlowInEasing)
+                    animationSpec = tween(durationMillis = 200, easing = CapsuleStandardEasing)
                 ),
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
@@ -2259,7 +2275,8 @@ fun Lyrics(
     }
 
     if (showShareDialog && shareDialogData != null) {
-        val (lyricsText, songTitle, artists) = shareDialogData!! 
+        val (lyricsText, songTitle, artists) =
+            requireNotNull(shareDialogData) { "Lyrics share dialog data is missing" }
         BasicAlertDialog(onDismissRequest = { showShareDialog = false }) {
             Card(
                 shape = MaterialTheme.shapes.medium,
@@ -2291,7 +2308,7 @@ fun Lyrics(
 
                                     putExtra(Intent.EXTRA_TEXT, "\"$lyricsText\"\n\n$songTitle - $artists\n$songLink")
                                 }
-                                context.startActivity(Intent.createChooser(shareIntent, context.getString(R.string.share_lyrics)))
+                                context.startActivity(Intent.createChooser(shareIntent, resources.getString(R.string.share_lyrics)))
                                 showShareDialog = false
                             }
                             .padding(vertical = 12.dp),
@@ -2357,7 +2374,8 @@ fun Lyrics(
     }
 
     if (showColorPickerDialog && shareDialogData != null) {
-        val (lyricsText, songTitle, artists) = shareDialogData!!
+        val (lyricsText, songTitle, artists) =
+            requireNotNull(shareDialogData) { "Lyrics image dialog data is missing" }
         val coverUrl = mediaMetadata?.thumbnailUrl
 
         LaunchedEffect(coverUrl) {
@@ -2372,7 +2390,9 @@ fun Lyrics(
                             val palette = Palette.from(bmp).generate()
                             paletteGlassStyle = LyricsGlassStyle.fromPalette(palette)
                         }
-                    } catch (_: Exception) {}
+                    } catch (error: Exception) {
+                        reportRecoverableException("Lyrics", "derive lyrics palette", error)
+                    }
                 }
             }
         }

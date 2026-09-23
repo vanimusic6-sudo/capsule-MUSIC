@@ -66,6 +66,7 @@ import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import java.text.Collator
@@ -146,14 +147,14 @@ constructor(
                 }
             }.stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
 
-    fun refresh(filter: SongFilter) {
+    fun refresh(filter: SongFilter, automatic: Boolean = false) {
         if (_isRefreshing.value) return
         viewModelScope.launch(Dispatchers.IO) {
             _isRefreshing.value = true
             try {
                 when (filter) {
-                    SongFilter.LIKED -> syncUtils.syncLikedSongs()
-                    SongFilter.LIBRARY -> syncUtils.syncLibrarySongs()
+                    SongFilter.LIKED -> syncUtils.syncLikedSongs(automatic = automatic)
+                    SongFilter.LIBRARY -> syncUtils.syncLibrarySongs(automatic = automatic)
                     SongFilter.DOWNLOADED -> Unit
                 }
             } catch (e: Exception) {
@@ -164,12 +165,12 @@ constructor(
         }
     }
 
-    fun syncLikedSongs() {
-        refresh(SongFilter.LIKED)
+    fun syncLikedSongs(automatic: Boolean = false) {
+        refresh(SongFilter.LIKED, automatic = automatic)
     }
 
-    fun syncLibrarySongs() {
-        refresh(SongFilter.LIBRARY)
+    fun syncLibrarySongs(automatic: Boolean = false) {
+        refresh(SongFilter.LIBRARY, automatic = automatic)
     }
 }
 
@@ -184,6 +185,19 @@ constructor(
     private val _isRefreshing = MutableStateFlow(false)
     val isRefreshing = _isRefreshing.asStateFlow()
 
+
+/*
+ * Seeded with null, not with an empty list, and the difference is the whole point.
+ *
+ * `SharingStarted.Lazily` starts the query when the first screen subscribes, so the first value a
+ * screen sees is whatever the seed was — and Room's real answer arrives at least a frame later. With
+ * an empty list as the seed, "nothing here yet" and "you own nothing" are the same value, so every
+ * library tab opened by drawing its *empty state* and then replacing it with the content a frame
+ * later. That flash of a centred placeholder giving way to a grid is what reads as a lurch in the
+ * first moments of the tab.
+ *
+ * Null says "not known yet", which is the truth, and lets a screen draw neither.
+ */
     val allArtists =
         context.dataStore.data
             .map {
@@ -198,15 +212,15 @@ constructor(
                     ArtistFilter.LIBRARY -> database.artists(sortType, descending)
                     ArtistFilter.LIKED -> database.artistsBookmarked(sortType, descending)
                 }
-            }.stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
+            }.stateIn(viewModelScope, SharingStarted.Lazily, null)
 
-    fun refresh(filter: ArtistFilter) {
+    fun refresh(filter: ArtistFilter, automatic: Boolean = false) {
         if (filter != ArtistFilter.LIKED) return
         if (_isRefreshing.value) return
         viewModelScope.launch(Dispatchers.IO) {
             _isRefreshing.value = true
             try {
-                syncUtils.syncArtistsSubscriptions()
+                syncUtils.syncArtistsSubscriptions(automatic = automatic)
             } catch (e: Exception) {
                 reportException(e)
             } finally {
@@ -215,13 +229,15 @@ constructor(
         }
     }
 
-    fun sync() {
-        refresh(ArtistFilter.LIKED)
+    fun sync(automatic: Boolean = false) {
+        refresh(ArtistFilter.LIKED, automatic = automatic)
     }
 
     init {
         viewModelScope.launch(Dispatchers.IO) {
-            allArtists.collect { artists ->
+            // Null is "the query has not answered", not "no artists" — there is nothing to sync
+            // until it has.
+            allArtists.filterNotNull().collect { artists ->
                 artists
                     .map { it.artist }
                     .filter {
@@ -253,6 +269,8 @@ constructor(
     private val _isRefreshing = MutableStateFlow(false)
     val isRefreshing = _isRefreshing.asStateFlow()
 
+
+    /** Null until the query answers. See [allArtists]. */
     val allAlbums =
         context.dataStore.data
             .map {
@@ -307,15 +325,15 @@ constructor(
                     AlbumFilter.LIBRARY -> database.albums(sortType, descending).map { it.filterExplicitAlbums(hideExplicit) }
                     AlbumFilter.LIKED -> database.albumsLiked(sortType, descending).map { it.filterExplicitAlbums(hideExplicit) }
                 }
-            }.stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
+            }.stateIn(viewModelScope, SharingStarted.Lazily, null)
 
-    fun refresh(filter: AlbumFilter) {
+    fun refresh(filter: AlbumFilter, automatic: Boolean = false) {
         if (filter != AlbumFilter.LIKED) return
         if (_isRefreshing.value) return
         viewModelScope.launch(Dispatchers.IO) {
             _isRefreshing.value = true
             try {
-                syncUtils.syncLikedAlbums()
+                syncUtils.syncLikedAlbums(automatic = automatic)
             } catch (e: Exception) {
                 reportException(e)
             } finally {
@@ -324,13 +342,14 @@ constructor(
         }
     }
 
-    fun sync() {
-        refresh(AlbumFilter.LIKED)
+    fun sync(automatic: Boolean = false) {
+        refresh(AlbumFilter.LIKED, automatic = automatic)
     }
 
     init {
         viewModelScope.launch(Dispatchers.IO) {
-            allAlbums.collect { albums ->
+            // Null is "the query has not answered", not "no albums".
+            allAlbums.filterNotNull().collect { albums ->
                 albums
                     .filter {
                         it.album.songCount == 0
@@ -376,12 +395,18 @@ constructor(
     private val _isRefreshing = MutableStateFlow(false)
     val isRefreshing = _isRefreshing.asStateFlow()
 
-    fun sync() {
+    fun sync(automatic: Boolean = false) {
+        if (_isRefreshing.value) return
         viewModelScope.launch(Dispatchers.IO) {
             _isRefreshing.value = true
-            syncUtils.syncSavedPlaylists()
-            syncUtils.syncAutoSyncPlaylists()
-            _isRefreshing.value = false
+            try {
+                syncUtils.syncSavedPlaylists(automatic = automatic)
+                syncUtils.syncAutoSyncPlaylists(automatic = automatic)
+            } catch (e: Exception) {
+                reportException(e)
+            } finally {
+                _isRefreshing.value = false
+            }
         }
     }
 
@@ -428,14 +453,14 @@ constructor(
     database: MusicDatabase,
     private val syncUtils: SyncUtils,
 ) : ViewModel() {
-    val syncAllLibrary = {
-         viewModelScope.launch(Dispatchers.IO) {
-             try {
-                 syncUtils.performFullSync()
-             } catch (e: Exception) {
-                 timber.log.Timber.e(e, "Error during manual sync")
-             }
-         }
+    fun syncAllLibrary(automatic: Boolean = false) {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                syncUtils.performFullSync(automatic = automatic)
+            } catch (e: Exception) {
+                timber.log.Timber.e(e, "Error during library sync")
+            }
+        }
     }
     val topValue =
         context.dataStore.data

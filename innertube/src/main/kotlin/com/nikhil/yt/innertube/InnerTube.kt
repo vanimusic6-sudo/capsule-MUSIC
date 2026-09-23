@@ -8,7 +8,6 @@
 
 package com.nikhil.yt.innertube
 
-import com.nikhil.yt.innertube.models.Context
 import com.nikhil.yt.innertube.models.MediaInfo
 import com.nikhil.yt.innertube.models.ReturnYouTubeDislikeResponse
 import com.nikhil.yt.innertube.models.YouTubeClient
@@ -29,28 +28,87 @@ import io.ktor.client.statement.bodyAsText
 import io.ktor.http.*
 import io.ktor.serialization.kotlinx.json.*
 import kotlinx.serialization.ExperimentalSerializationApi
-import kotlinx.serialization.json.Json
 import java.net.Proxy
 import java.io.IOException
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import java.util.*
+import java.util.concurrent.ConcurrentHashMap
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
+
+internal data class PlayerRequestProfile(
+    val endpoint: String,
+    val origin: String,
+    val referer: String,
+)
+
+internal fun resolvePlayerRequestProfile(client: YouTubeClient): PlayerRequestProfile {
+    val usesYouTubeMusic =
+        client.clientName.equals("WEB_REMIX", ignoreCase = true) ||
+            client.clientName.equals("ANDROID_MUSIC", ignoreCase = true) ||
+            client.clientName.equals("IOS_MUSIC", ignoreCase = true)
+    val origin =
+        if (usesYouTubeMusic) {
+            YouTubeClient.ORIGIN_YOUTUBE_MUSIC
+        } else {
+            YouTubeClient.ORIGIN_YOUTUBE
+        }
+    val referer =
+        when {
+            client.clientName.equals("TVHTML5", ignoreCase = true) ->
+                YouTubeClient.REFERER_YOUTUBE_TV
+            client.isEmbedded -> YouTubeClient.THIRD_PARTY_EMBED_URL
+            usesYouTubeMusic -> YouTubeClient.REFERER_YOUTUBE_MUSIC
+            else -> "${YouTubeClient.ORIGIN_YOUTUBE}/"
+        }
+    return PlayerRequestProfile(
+        endpoint = "$origin/youtubei/v1/player",
+        origin = origin,
+        referer = referer,
+    )
+}
 
 /**
  * Provide access to InnerTube endpoints.
  * For making HTTP requests, not parsing response.
  */
 @OptIn(ExperimentalEncodingApi::class)
-class InnerTube {
-    private var httpClient = createClient()
+class InnerTube(injectedClient: HttpClient? = null) {
+    private data class CachedPlayerBootstrap(
+        val value: PlayerBootstrapConfig,
+        val expiresAtMs: Long,
+    )
+
+    private companion object {
+        const val PLAYER_BOOTSTRAP_TTL_MS = 30 * 60 * 1000L
+        const val PLAYER_BOOTSTRAP_MISS_TTL_MS = 2 * 60 * 1000L
+    }
+
+    private var httpClient = injectedClient ?: createClient()
+    private val playerBootstrapCache =
+        ConcurrentHashMap<String, CachedPlayerBootstrap>()
+    private val playerBootstrapMutex = Mutex()
 
     var locale = YouTubeLocale(
         gl = Locale.getDefault().country,
         hl = Locale.getDefault().toLanguageTag()
     )
 
-    var authState: PlaybackAuthState = PlaybackAuthState.EMPTY
+    private val auth = MutableStateFlow(PlaybackAuthState.EMPTY)
+    val authStates = auth.asStateFlow()
+
+    var authState: PlaybackAuthState
+        get() = auth.value
+        set(value) { auth.value = value }
+
+    fun updateAuthState(update: (PlaybackAuthState) -> PlaybackAuthState) {
+        auth.update(update)
+    }
 
     // We map the old variables to the new state so you don't have to rewrite the rest of the file!
     val visitorData: String? get() = authState.visitorData
@@ -70,13 +128,10 @@ class InnerTube {
     @OptIn(ExperimentalSerializationApi::class)
     private fun createClient() = HttpClient(OkHttp) {
         expectSuccess = true
+        engine { config { retryOnConnectionFailure(false) } }
 
         install(ContentNegotiation) {
-            json(Json {
-                ignoreUnknownKeys = true
-                explicitNulls = false
-                encodeDefaults = true
-            })
+            json(PlayerRequestJson)
         }
 
         install(ContentEncoding) {
@@ -101,36 +156,21 @@ class InnerTube {
         }
     }
 
-    private fun YouTubeClient.usesMainYouTubePlayer(): Boolean =
-        clientName.equals("TVHTML5", ignoreCase = true) ||
-            clientName.equals("WEB", ignoreCase = true) ||
-            clientName.equals("WEB_EMBEDDED_PLAYER", ignoreCase = true)
-
     private fun playerEndpoint(client: YouTubeClient): String =
-        if (client.usesMainYouTubePlayer()) {
-            "${YouTubeClient.ORIGIN_YOUTUBE}/youtubei/v1/player"
-        } else {
-            "${YouTubeClient.ORIGIN_YOUTUBE_MUSIC}/youtubei/v1/player"
-        }
+        resolvePlayerRequestProfile(client).endpoint
 
     private fun requestOrigin(client: YouTubeClient): String =
-        if (client.usesMainYouTubePlayer()) {
-            YouTubeClient.ORIGIN_YOUTUBE
-        } else {
-            YouTubeClient.ORIGIN_YOUTUBE_MUSIC
-        }
+        resolvePlayerRequestProfile(client).origin
 
     private fun requestReferer(client: YouTubeClient): String =
-        when {
-            client.clientName.equals("TVHTML5", ignoreCase = true) ->
-                YouTubeClient.REFERER_YOUTUBE_TV
+        resolvePlayerRequestProfile(client).referer
 
-            client.isEmbedded -> "${YouTubeClient.ORIGIN_YOUTUBE}/embed/"
-            client.usesMainYouTubePlayer() -> "${YouTubeClient.ORIGIN_YOUTUBE}/"
-            else -> YouTubeClient.REFERER_YOUTUBE_MUSIC
-        }
-
-    private fun HttpRequestBuilder.ytClient(client: YouTubeClient, setLogin: Boolean = false) {
+    private fun HttpRequestBuilder.ytClient(
+        client: YouTubeClient,
+        setLogin: Boolean = false,
+        forPlayer: Boolean = false,
+    ) {
+        val requestAuth = authState
         val origin = requestOrigin(client)
 
         contentType(ContentType.Application.Json)
@@ -139,13 +179,24 @@ class InnerTube {
             append("X-YouTube-Client-Name", client.clientId)
             append("X-YouTube-Client-Version", client.clientVersion)
             append("Origin", origin)
-            append("X-Origin", origin)
-            append("Referer", requestReferer(client))
 
-            authState.visitorData?.let { append("X-Goog-Visitor-Id", it) }
+            /*
+             * Match YouTube's own player API call. Anonymous player requests
+             * do not carry X-Origin or a page Referer; the embedded page is
+             * represented by context.thirdParty instead. Sending both was one
+             * of the differences behind the generic "reload the page" reply.
+             */
+            if (!forPlayer || (setLogin && requestAuth.hasLoginCookie)) {
+                append("X-Origin", origin)
+            }
+            if (!forPlayer) {
+                append("Referer", requestReferer(client))
+            }
 
-            if (setLogin && authState.hasLoginCookie) {
-                val cookieStr = authState.cookie!!
+            requestAuth.visitorData?.let { append("X-Goog-Visitor-Id", it) }
+
+            if (setLogin && requestAuth.hasLoginCookie) {
+                val cookieStr = requestAuth.cookie!!
                 append("cookie", cookieStr)
 
                 if (client.loginSupported) {
@@ -220,33 +271,94 @@ class InnerTube {
         signatureTimestamp: Int?,
         poToken: String? = null,
     ) = withRetry {
+        val bootstrap = resolvePlayerBootstrap(client, videoId)
+
         httpClient.post(playerEndpoint(client)) {
-        ytClient(client, setLogin = true)
-        setBody(
-            PlayerBody(
-                context = client.toContext(locale, visitorData, dataSyncId).let {
-                    if (client.isEmbedded) {
-                        it.copy(
-                            thirdParty = Context.ThirdParty(
-                                embedUrl = "https://www.youtube.com/embed/${videoId}"
-                            )
-                        )
-                    } else it
-                },
-                videoId = videoId,
-                playlistId = playlistId,
-                playbackContext = if (client.useSignatureTimestamp && signatureTimestamp != null) {
-                    PlayerBody.PlaybackContext(
-                        PlayerBody.PlaybackContext.ContentPlaybackContext(
-                            signatureTimestamp
-                        )
-                    )
-                } else null,
-                serviceIntegrityDimensions = poToken?.let {
-                    PlayerBody.ServiceIntegrityDimensions(poToken = it)
-                },
+            ytClient(
+                client = client,
+                setLogin = true,
+                forPlayer = true,
             )
-        )
+            bootstrap.apiKey?.let { parameter("key", it) }
+            setBody(
+                buildPlayerRequestPayload(
+                    client = client,
+                    locale = locale,
+                    visitorData = visitorData,
+                    dataSyncId = dataSyncId,
+                    videoId = videoId,
+                    playlistId = playlistId,
+                    signatureTimestamp =
+                        signatureTimestamp.takeIf {
+                            client.useSignatureTimestamp
+                        },
+                    poToken = poToken,
+                    bootstrap = bootstrap,
+                ),
+            )
+        }
+    }
+
+    private suspend fun resolvePlayerBootstrap(
+        client: YouTubeClient,
+        videoId: String,
+    ): PlayerBootstrapConfig {
+        val url = playerBootstrapUrl(client, videoId)
+            ?: return PlayerBootstrapConfig.EMPTY
+        val cacheKey =
+            listOf(
+                client.clientName.uppercase(Locale.US),
+                client.clientVersion,
+                if (client.isEmbedded) "embedded" else "standard",
+            ).joinToString(":")
+        val now = System.currentTimeMillis()
+
+        playerBootstrapCache[cacheKey]
+            ?.takeIf { it.expiresAtMs > now }
+            ?.let { return it.value }
+
+        return playerBootstrapMutex.withLock {
+            val lockedNow = System.currentTimeMillis()
+            playerBootstrapCache[cacheKey]
+                ?.takeIf { it.expiresAtMs > lockedNow }
+                ?.let { return@withLock it.value }
+
+            val parsed =
+                runCatchingCancellable {
+                    val html =
+                        withRetry(
+                            maxAttempts = 2,
+                            initialDelay = 250L,
+                        ) {
+                            httpClient
+                                .get(url) {
+                                    userAgent(client.userAgent)
+                                    if (client.isEmbedded) {
+                                        header(
+                                            "Referer",
+                                            YouTubeClient.THIRD_PARTY_EMBED_URL,
+                                        )
+                                    }
+                                }
+                                .bodyAsText()
+                        }
+                    parsePlayerBootstrapConfig(html, client)
+                }.getOrElse {
+                    PlayerBootstrapConfig.EMPTY
+                }
+
+            playerBootstrapCache[cacheKey] =
+                CachedPlayerBootstrap(
+                    value = parsed,
+                    expiresAtMs =
+                        lockedNow +
+                            if (parsed.hasRuntimeData) {
+                                PLAYER_BOOTSTRAP_TTL_MS
+                            } else {
+                                PLAYER_BOOTSTRAP_MISS_TTL_MS
+                            },
+                )
+            parsed
         }
     }
 
@@ -256,23 +368,27 @@ class InnerTube {
         playlistId: String?,
         poToken: String? = null,
         client: YouTubeClient = YouTubeClient.WEB_REMIX,
-    ) = withRetry {
-        httpClient.get(url) {
-            ytClient(client, true)
-            parameter("ver", "2")
-            parameter("c", client.clientName)
-            parameter("cpn", cpn)
+    ) = withRetry(maxAttempts = 1) {
+        requireTrustedTrackingUrl(url)
+        httpClient.config { followRedirects = false }.use { trackingClient ->
+            trackingClient.get(url) {
+                ytClient(client, true)
+                parameter("ver", "2")
+                parameter("c", client.clientName)
+                parameter("cpn", cpn)
 
-            if (!poToken.isNullOrBlank()) {
-                parameter("pot", poToken)
-            }
+                if (!poToken.isNullOrBlank()) {
+                    parameter("pot", poToken)
+                }
 
-            if (playlistId != null) {
-                parameter("list", playlistId)
-                parameter("referrer", "https://music.youtube.com/playlist?list=$playlistId")
+                if (playlistId != null) {
+                    parameter("list", playlistId)
+                    parameter("referrer", "https://music.youtube.com/playlist?list=$playlistId")
+                }
             }
         }
     }
+
 
     suspend fun browse(
         client: YouTubeClient,
@@ -388,7 +504,7 @@ class InnerTube {
     suspend fun likeVideo(
         client: YouTubeClient,
         videoId: String,
-    ) = withRetry {
+    ) = withRetry(maxAttempts = 1) {
         httpClient.post("like/like") {
             ytClient(client, setLogin = true)
             setBody(
@@ -403,7 +519,7 @@ class InnerTube {
     suspend fun unlikeVideo(
         client: YouTubeClient,
         videoId: String,
-    ) = withRetry {
+    ) = withRetry(maxAttempts = 1) {
         httpClient.post("like/removelike") {
             ytClient(client, setLogin = true)
             setBody(
@@ -418,7 +534,7 @@ class InnerTube {
     suspend fun subscribeChannel(
         client: YouTubeClient,
         channelId: String,
-    ) = withRetry {
+    ) = withRetry(maxAttempts = 1) {
         httpClient.post("subscription/subscribe") {
             ytClient(client, setLogin = true)
             setBody(
@@ -433,7 +549,7 @@ class InnerTube {
     suspend fun unsubscribeChannel(
         client: YouTubeClient,
         channelId: String,
-    ) = withRetry {
+    ) = withRetry(maxAttempts = 1) {
         httpClient.post("subscription/unsubscribe") {
             ytClient(client, setLogin = true)
             setBody(
@@ -448,7 +564,7 @@ class InnerTube {
     suspend fun likePlaylist(
         client: YouTubeClient,
         playlistId: String,
-    ) = withRetry {
+    ) = withRetry(maxAttempts = 1) {
         httpClient.post("like/like") {
             ytClient(client, setLogin = true)
             setBody(
@@ -463,7 +579,7 @@ class InnerTube {
     suspend fun unlikePlaylist(
         client: YouTubeClient,
         playlistId: String,
-    ) = withRetry {
+    ) = withRetry(maxAttempts = 1) {
         httpClient.post("like/removelike") {
             ytClient(client, setLogin = true)
             setBody(
@@ -479,7 +595,7 @@ class InnerTube {
         client: YouTubeClient,
         playlistId: String,
         videoId: String,
-    ) = withRetry {
+    ) = withRetry(maxAttempts = 1) {
         httpClient.post("browse/edit_playlist") {
             ytClient(client, setLogin = true)
             setBody(
@@ -498,7 +614,7 @@ class InnerTube {
         client: YouTubeClient,
         playlistId: String,
         addPlaylistId: String,
-    ) = withRetry {
+    ) = withRetry(maxAttempts = 1) {
         httpClient.post("browse/edit_playlist") {
             ytClient(client, setLogin = true)
             setBody(
@@ -518,7 +634,7 @@ class InnerTube {
         playlistId: String,
         videoId: String,
         setVideoId: String,
-    ) = withRetry {
+    ) = withRetry(maxAttempts = 1) {
         httpClient.post("browse/edit_playlist") {
             ytClient(client, setLogin = true)
             setBody(
@@ -541,7 +657,7 @@ class InnerTube {
         playlistId: String,
         setVideoId: String,
         successorSetVideoId: String?,
-    ) = withRetry {
+    ) = withRetry(maxAttempts = 1) {
         httpClient.post("browse/edit_playlist") {
             ytClient(client, setLogin = true)
             setBody(
@@ -563,7 +679,7 @@ class InnerTube {
     suspend fun createPlaylist(
         client: YouTubeClient,
         title: String,
-    ) = withRetry {
+    ) = withRetry(maxAttempts = 1) {
         httpClient.post("playlist/create") {
             ytClient(client, true)
             setBody(
@@ -579,7 +695,7 @@ class InnerTube {
         client: YouTubeClient,
         playlistId: String,
         name: String,
-    ) = withRetry {
+    ) = withRetry(maxAttempts = 1) {
         httpClient.post("browse/edit_playlist") {
             ytClient(client, setLogin = true)
             setBody(
@@ -599,9 +715,8 @@ class InnerTube {
     suspend fun deletePlaylist(
         client: YouTubeClient,
         playlistId: String,
-    ) = withRetry {
+    ) = withRetry(maxAttempts = 1) {
         httpClient.post("playlist/delete") {
-            println("deleting $playlistId")
             ytClient(client, setLogin = true)
             setBody(
                 PlaylistDeleteBody(
@@ -620,7 +735,7 @@ class InnerTube {
 
 
     suspend fun getMediaInfo(videoId: String): Result<MediaInfo> =
-        runCatching {
+        runCatchingCancellable {
             val response = next(client = YouTubeClient.WEB, videoId, null, null, null, null, null).body<NextResponse>()
 
             val baseForInfo =
@@ -644,7 +759,7 @@ class InnerTube {
             val returnYouTubeDislikeResponse =
                 returnYouTubeDislike(videoId).body<ReturnYouTubeDislikeResponse>()
 
-            return@runCatching MediaInfo(
+            return@runCatchingCancellable MediaInfo(
                 videoId = videoId,
                 title = baseForTitle
                     ?.title
