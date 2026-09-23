@@ -180,6 +180,46 @@ class AudioCdnRecoveryTest {
     }
 
     @Test
+    fun onlyNoByteTimeoutsAtCdnOpenSkipSameUrlReconnect() {
+        val timeout = IOException(
+            "OkHttp wrapper",
+            java.util.concurrent.ExecutionException(
+                SocketTimeoutException("TLS handshake read timed out"),
+            ),
+        )
+        val open = AudioCdnRefreshRequiredException(
+            "song",
+            AudioCdnRefreshReason.OPEN_FAILURE,
+            timeout,
+        )
+        assertTrue(open.isUnresponsiveCdnOpenFor("song"))
+        assertFalse(open.isUnresponsiveCdnOpenFor("other-song"))
+        assertFalse(open.isUnresponsiveCdnOpenFor(null))
+        assertFalse(
+            AudioCdnRefreshRequiredException(
+                "song", AudioCdnRefreshReason.READ_FAILURE, timeout,
+            ).isUnresponsiveCdnOpenFor("song"),
+        )
+        assertFalse(
+            AudioCdnRefreshRequiredException(
+                "song", AudioCdnRefreshReason.HOST_COOLDOWN, timeout,
+            ).isUnresponsiveCdnOpenFor("song"),
+        )
+        assertFalse(
+            AudioCdnRefreshRequiredException(
+                "song", AudioCdnRefreshReason.OPEN_FAILURE,
+                IOException("Canceled"),
+            ).isUnresponsiveCdnOpenFor("song"),
+        )
+        assertFalse(
+            AudioCdnRefreshRequiredException(
+                "song", AudioCdnRefreshReason.OPEN_FAILURE,
+                IOException("a short-lived reset", java.net.SocketException("reset")),
+            ).isUnresponsiveCdnOpenFor("song"),
+        )
+    }
+
+    @Test
     fun aStalledBodyCanRefreshWithoutTurningCancellationIntoAnError() {
         val upstream = Upstream().apply { readFailure = SocketTimeoutException("body stalled") }
         val source = AudioCdnHostHealthDataSource(upstream, AudioCdnHostHealth())
