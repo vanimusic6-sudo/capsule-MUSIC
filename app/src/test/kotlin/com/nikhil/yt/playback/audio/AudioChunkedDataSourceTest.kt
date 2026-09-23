@@ -153,6 +153,54 @@ class AudioChunkedDataSourceTest {
         source.close()
     }
 
+    @Test
+    fun stagedFirstSliceWorksForAnOtherwiseUnchunkedShortSong() {
+        val bytes = content(100)
+        val upstream = FakeUpstream(bytes)
+        val source = AudioChunkedDataSource(
+            upstream,
+            chunkBytes = 128,
+            initialChunkBytes = { 32L },
+        )
+
+        source.open(spec(bytes.size.toLong()))
+        assertArrayEquals(bytes, drain(source))
+        assertEquals(listOf(0L to 32L, 32L to 68L), upstream.opens)
+    }
+
+    @Test
+    fun onlyFirstSliceIsStagedAndNormalChunkSizeResumes() {
+        val bytes = content(300)
+        val upstream = FakeUpstream(bytes)
+        val source = AudioChunkedDataSource(
+            upstream,
+            chunkBytes = 128,
+            initialChunkBytes = { 32L },
+        )
+
+        source.open(spec(bytes.size.toLong()))
+        assertArrayEquals(bytes, drain(source))
+        assertEquals(
+            listOf(0L to 32L, 32L to 128L, 160L to 128L, 288L to 12L),
+            upstream.opens,
+        )
+    }
+
+    @Test
+    fun aResumedStreamDoesNotGetASecondFirstChunk() {
+        val bytes = content(300)
+        val upstream = FakeUpstream(bytes)
+        val source = AudioChunkedDataSource(
+            upstream,
+            chunkBytes = 128,
+            initialChunkBytes = { 32L },
+        )
+
+        source.open(spec(200L, position = 100L))
+        assertArrayEquals(bytes.copyOfRange(100, 300), drain(source))
+        assertEquals(listOf(100L to 128L, 228L to 72L), upstream.opens)
+    }
+
     /** A file that fits in one chunk is handed through untouched, which is every ordinary song. */
     @Test
     fun aShortStreamIsNotSplitAtAll() {
