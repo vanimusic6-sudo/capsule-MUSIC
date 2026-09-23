@@ -602,7 +602,7 @@ fun AboutScreen(
                     iconUrl = "https://github.com/nikhilvishwakarma00.png",
                     title = "Nikhil — Velune",
                     subtitle =
-                        "Developer of Velune, the original codebase on which Capsule is built",
+                        "Developer of Velune, the original codebase on which Capsule is built.",
                     onClick = {
                         uriHandler.openUri(
                             "https://github.com/nikhilvishwakarma00/Velune",
@@ -616,7 +616,7 @@ fun AboutScreen(
                     iconUrl =
                         "https://avatars.githubusercontent.com/u/107134739?v=4",
                     title = "ArchiveTune — koiverse",
-                    subtitle = "Developer of ArchiveTune and inspiration for Capsule's interface design",
+                    subtitle = "Developer of ArchiveTune, whose interface design inspired Capsule.",
                     onClick = {
                         uriHandler.openUri(
                             "https://github.com/koiverse/ArchiveTune",
@@ -630,7 +630,7 @@ fun AboutScreen(
                     iconUrl =
                         "https://avatars.githubusercontent.com/u/80542861?v=4",
                     title = "MO AGAMY — Metrolist",
-                    subtitle = "Developer of Metrolist • Foundation for Capsule's YouTube integration and my introduction to open source",
+                    subtitle = "Developer of Metrolist, whose YouTube codebase serves as a foundation for Capsule's YouTube integration. Metrolist was also my personal introduction to open-source development.",
                     onClick = {
                         uriHandler.openUri(
                             "https://github.com/mostafaalagamy",
