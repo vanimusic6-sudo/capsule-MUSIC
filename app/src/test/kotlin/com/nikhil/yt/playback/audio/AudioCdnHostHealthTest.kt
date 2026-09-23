@@ -18,6 +18,57 @@ private fun healthWith(clock: TestClock) = AudioCdnHostHealth(now = { clock.inst
 
 class AudioCdnHostHealthTest {
     @Test
+    fun `one no-byte open timeout shortens only the same CDN group temporarily`() {
+        val clock = TestClock()
+        val health = healthWith(clock)
+
+        health.recordUnresponsiveOpen(DEAD)
+        assertTrue(health.isUnresponsiveHost(DEAD))
+        assertTrue("same edge group has multiple rr replicas", health.isUnresponsiveHost(DEAD_REPLICA))
+        assertFalse(health.isUnresponsiveHost(GOOD))
+        assertFalse(health.isUnresponsiveHost("example.invalid"))
+
+        clock.advance(CDN_HOST_SUSPECT_MS)
+        assertFalse("suspect budget expires", health.isUnresponsiveHost(DEAD))
+    }
+
+    @Test
+    fun `successful body bytes restore the normal timeout for the served group`() {
+        val health = healthWith(TestClock())
+        health.recordUnresponsiveOpen(DEAD)
+        health.recordUnresponsiveOpen(GOOD)
+        health.recordSuccess(DEAD_REPLICA)
+        assertFalse(health.isUnresponsiveHost(DEAD))
+        assertTrue("unrelated failing CDN remains suspect", health.isUnresponsiveHost(GOOD))
+    }
+
+    @Test
+    fun `a route change forgets unresponsive groups`() {
+        val health = healthWith(TestClock())
+        health.recordUnresponsiveOpen(DEAD)
+        health.forget()
+        assertFalse(health.isUnresponsiveHost(DEAD))
+    }
+
+    @Test
+    fun `second client on same cold group gets a real probe after first local skip`() {
+        val clock = TestClock()
+        val health = healthWith(clock)
+        repeat(CDN_HOST_FAILURES_BEFORE_COLD) { health.recordFailure(DEAD) }
+        assertFalse("initial cold-group probe", health.shouldSkipHost(DEAD, "previous"))
+        assertTrue("first client is skipped locally", health.shouldSkipHost(DEAD, "song"))
+        assertFalse(
+            "the same song must not exhaust both clients without a network request",
+            health.shouldSkipHost(DEAD_REPLICA, "song"),
+        )
+        assertFalse(
+            "further opens of this song cannot be refused solely by this local cooldown",
+            health.shouldSkipHost(DEAD, "song"),
+        )
+        assertTrue("another song retains cold-group protection", health.shouldSkipHost(DEAD, "other"))
+    }
+
+    @Test
     fun `a fresh host is asked`() {
         assertFalse(healthWith(TestClock()).shouldSkipHost(DEAD))
     }
