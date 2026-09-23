@@ -2098,12 +2098,16 @@ class MusicService :
         player.pause()
     }
 
-    private fun handleTerminalPlaybackError() {
+    private fun handleTerminalPlaybackError(
+        autoSkipAfterCdnExhaustion: Boolean = false,
+    ) {
         val mediaId = player.currentMediaItem?.mediaId
         val decision =
             playbackRecoveryCoordinator.recordTerminalFailure(
                 mediaId = mediaId,
-                autoSkipEnabled = dataStore.get(AutoSkipNextOnErrorKey, false),
+                autoSkipEnabled =
+                    (autoSkipAfterCdnExhaustion && isNetworkConnected.value) ||
+                        dataStore.get(AutoSkipNextOnErrorKey, false),
             )
 
         if (decision.circuitOpenedNow) {
@@ -3878,6 +3882,18 @@ class MusicService :
                 return
             }
 
+            // If an alternate extractor has already been tried after a CDN
+            // failure, do not restart the whole waterfall on "no playable
+            // stream". Let the bounded queue-failure guard choose the next song.
+            if (playbackRecoveryCoordinator.hasTriedAlternativeCdnClient(currentMediaId)) {
+                Timber.tag("PlaybackRecovery").w(
+                    "cdn-failover-exhausted id=%s alternate=no-playable-stream; next item",
+                    currentMediaId,
+                )
+                handleTerminalPlaybackError(autoSkipAfterCdnExhaustion = true)
+                return
+            }
+
             val claimed = playbackRecoveryCoordinator.claimNoPlayableFreshResolve(currentMediaId)
             val retryDelay = if (claimed) playbackRecoveryCoordinator.nextRetryDelayMs(currentMediaId) else null
             if (retryDelay != null && CapsuleAudioEngine.playbackBlockedExceptionOrNull() == null) {
@@ -3937,6 +3953,85 @@ class MusicService :
         }
 
         if (shouldAttemptStreamRefresh && currentMediaId != null) {
+            val signedUrlRejected = httpStatusCode in setOf(403, 410)
+            val cdnTransportFailure = requiresFreshCdnUrl
+            // Only actual signed-URL rejections and typed CDN transport failures
+            // use the compact two-client failover. HTTP 429/bot/offline have
+            // already returned above and must never rotate identities.
+            if (signedUrlRejected || cdnTransportFailure) {
+                // The request layer already performed one retry of the SAME
+                // URL on 403/410; transport failures still need one reconnect.
+                val recoveryAction = playbackRecoveryCoordinator.onCdnFailure(
+                    currentMediaId,
+                    signedUrlRejected = signedUrlRejected ||
+                        error.audioCdnRefreshRequiredOrNull()?.refreshReason ==
+                            com.nikhil.yt.playback.audio.AudioCdnRefreshReason.HOST_COOLDOWN,
+                )
+
+                if (recoveryAction == AudioCdnRecoveryAction.SKIP_TRACK) {
+                    Timber.tag("PlaybackRecovery").w(
+                        "cdn-failover-exhausted id=%s status=%s; next item",
+                        currentMediaId, httpStatusCode?.toString() ?: "transport",
+                    )
+                    handleTerminalPlaybackError(autoSkipAfterCdnExhaustion = true)
+                    return
+                }
+                val retryDelay = playbackRecoveryCoordinator.nextRetryDelayMs(currentMediaId)
+                if (retryDelay == null) {
+                    handleTerminalPlaybackError(autoSkipAfterCdnExhaustion = true)
+                    return
+                }
+
+                if (recoveryAction == AudioCdnRecoveryAction.RETRY_SAME_URL) {
+                    // Do not invalidate the signed URL or session; rebuild the
+                    // failed Media3 source so it reopens the exact stream once.
+                    Timber.tag("PlaybackRecovery").i(
+                        "cdn-recovery id=%s action=same-url delayMs=%d",
+                        currentMediaId, minOf(250L, retryDelay),
+                    )
+                    scheduleStreamRefreshRetry(
+                        mediaId = currentMediaId,
+                        refreshCipherConfig = false,
+                        retryReason = "cdn same-url reconnect",
+                        retryDelayMs = minOf(250L, retryDelay),
+                        forceRecreateSources = true,
+                    )
+                    return
+                }
+
+                // A genuinely different client must issue its OWN /player
+                // request and signed URL. Changing only the headers on the old
+                // URL would not change the client that produced the stream.
+                val failedClient = playbackUrlCache.get(currentMediaId)?.streamClient
+                CapsuleAudioEngine.markStreamClientFailed(
+                    videoId = currentMediaId,
+                    clientKey = failedClient,
+                    httpStatusCode = httpStatusCode,
+                )
+                audioResolveCoordinator.cancelMedia(currentMediaId) {
+                    playbackUrlCache.remove(currentMediaId)
+                }
+                Timber.tag("PlaybackRecovery").i(
+                    "cdn-recovery id=%s action=next-client failedClient=%s delayMs=%d",
+                    currentMediaId,
+                    failedClient ?: "last-resolved",
+                    minOf(350L, retryDelay),
+                )
+                scheduleStreamRefreshRetry(
+                    mediaId = currentMediaId,
+                    refreshCipherConfig = false,
+                    retryReason = "cdn alternate client",
+                    retryDelayMs = minOf(350L, retryDelay),
+                    forceRecreateSources = true,
+                )
+                return
+            }
+
+            // Non-CDN HTTP errors keep the existing conservative retry rules.
+            if (playbackRecoveryCoordinator.hasTriedAlternativeCdnClient(currentMediaId)) {
+                handleTerminalPlaybackError(autoSkipAfterCdnExhaustion = true)
+                return
+            }
             val retryDelay = playbackRecoveryCoordinator.nextRetryDelayMs(currentMediaId)
             if (
                 retryDelay == null ||
@@ -3945,72 +4040,16 @@ class MusicService :
                 handleTerminalPlaybackError()
                 return
             }
-            // A CDN 403/410 names one signed URL on one CDN node. It is not, on its own, evidence
-            // against the extraction profile that produced it: a re-resolve almost always lands on
-            // a different node, and the URL cache is dropped just below, so the retry gets a fresh
-            // URL either way. Retiring the profile immediately — as this did — gave up a working
-            // client, typically the PoToken-carrying one, to fix something the new URL alone would
-            // usually have fixed, and left the song on a weaker fallback for the rest of playback.
-            //
-            // So the first rejection buys the same client another node. Only a second rejection for
-            // the same song implicates the client, and quarantines it for this mediaId so the
-            // bounded foreground plan moves to the next maintained profile.
-            //
-            // Never rotate visitorData/account identity here, and never use this path for rate
-            // limits or bot-checks (handled above as hard stops). Note that the skipped call is
-            // harmless for this status: its only side effect beyond the quarantine is
-            // markHttpStatusFailure, which acts on 429 alone.
-            var signedUrlRejections = SIGNED_URL_REJECTIONS_BEFORE_CLIENT_ROLLOVER
-            if (httpStatusCode in setOf(403, 410)) {
-                val rejections =
-                    playbackRecoveryCoordinator.recordSignedUrlRejection(currentMediaId)
-                signedUrlRejections = rejections
-                if (shouldRollOverClientAfterSignedUrlRejection(rejections)) {
-                    CapsuleAudioEngine.markStreamClientFailed(
-                        videoId = currentMediaId,
-                        clientKey = null,
-                        httpStatusCode = httpStatusCode,
-                    )
-                } else {
-                    Timber.tag("MusicService").i(
-                        "Signed URL rejected id=%s http=%d rejections=%d; retrying the same client for a different CDN node",
-                        currentMediaId,
-                        httpStatusCode,
-                        rejections,
-                    )
-                }
-            } else if (!requiresFreshCdnUrl) {
-                CapsuleAudioEngine.clearTrackClientFailures(currentMediaId)
-            }
-            if (requiresFreshCdnUrl) {
-                Timber.tag("AudioCDN").i(
-                    "cdn-refresh-scheduled id=%s reason=%s delayMs=%d",
-                    currentMediaId,
-                    error.audioCdnRefreshRequiredOrNull()?.refreshReason,
-                    retryDelay,
-                )
-            }
+            CapsuleAudioEngine.clearTrackClientFailures(currentMediaId)
             audioResolveCoordinator.cancelMedia(currentMediaId) {
                 playbackUrlCache.remove(currentMediaId)
             }
             scheduleStreamRefreshRetry(
                 mediaId = currentMediaId,
-                refreshCipherConfig =
-                    shouldRefreshCipherConfigAfterSignedUrlRejection(
-                        httpStatusCode = httpStatusCode,
-                        budgetDelayMs = retryDelay,
-                    ),
-                retryReason = if (requiresFreshCdnUrl) {
-                    "cdn=${error.audioCdnRefreshRequiredOrNull()?.refreshReason} code=${error.errorCode}"
-                } else {
-                    "http=$httpStatusCode code=${error.errorCode}"
-                },
-                retryDelayMs =
-                    signedUrlRefreshDelayMs(
-                        httpStatusCode = httpStatusCode,
-                        budgetDelayMs = retryDelay,
-                        rejectionCount = signedUrlRejections,
-                    ),
+                refreshCipherConfig = false,
+                retryReason = "http=$httpStatusCode code=${error.errorCode}",
+                retryDelayMs = retryDelay,
+                forceRecreateSources = true,
             )
             return
         }
