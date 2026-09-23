@@ -4,7 +4,6 @@
 
 package com.nikhil.yt.ui.screens.settings
 
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.only
@@ -27,7 +26,6 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
 import coil3.compose.AsyncImage
 import com.nikhil.yt.LocalPlayerAwareWindowInsets
-import com.nikhil.yt.BuildConfig
 import com.nikhil.yt.R
 import com.nikhil.yt.viewmodels.HomeViewModel
 import androidx.compose.ui.platform.LocalContext
@@ -78,45 +76,6 @@ fun VeluneSettingsScreen(
                 .padding(paddingValues)
                 .padding(horizontal = 16.dp)
         ) {
-            item {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = 16.dp, horizontal = 4.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .size(60.dp)
-                            .clip(RoundedCornerShape(16.dp))
-                            .background(MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.5f)),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Image(
-                            painter = painterResource(id = R.drawable.ic_velune_concept),
-                            contentDescription = "capsule Logo",
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .padding(12.dp)
-                        )
-                    }
-                    Spacer(Modifier.width(16.dp))
-                    Column {
-                        Text(
-                            text = "capsule",
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Normal
-                        )
-                        Spacer(Modifier.height(4.dp))
-                        Text(
-                            text = "v${BuildConfig.VERSION_NAME.trim()}",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                }
-            }
-
             item {
                 SettingsItemScreenshotStyle(
                     icon = painterResource(R.drawable.palette),

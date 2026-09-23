@@ -6,7 +6,6 @@
 
 package com.nikhil.yt.ui.screens.settings
 
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -48,6 +47,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -254,19 +254,20 @@ fun AboutScreen(
                                 .size(78.dp)
                                 .clip(CircleShape)
                                 .background(
-                                    MaterialTheme.colorScheme.surfaceContainerHigh.copy(
-                                        alpha = 0.55f,
+                                    Brush.linearGradient(
+                                        colors = listOf(
+                                            Color(0xFF2A2A2A),
+                                            Color(0xFF151515),
+                                        ),
                                     ),
                                 ),
                         contentAlignment = Alignment.Center,
                     ) {
-                        Image(
-                            painter = painterResource(R.drawable.ic_velune_concept),
+                        Icon(
+                            painter = painterResource(R.drawable.ic_capsule_monochrome),
                             contentDescription = stringResource(R.string.app_name),
-                            modifier = Modifier
-                                .size(70.dp)
-                                .clip(CircleShape),
-                            contentScale = ContentScale.Crop,
+                            modifier = Modifier.size(70.dp),
+                            tint = Color.White,
                         )
                     }
 
@@ -601,7 +602,7 @@ fun AboutScreen(
                     iconUrl = "https://github.com/nikhilvishwakarma00.png",
                     title = "Nikhil — Velune",
                     subtitle =
-                        "Original Velune developer • code base & main inspiration",
+                        "Developer of Velune, the original codebase on which Capsule is built",
                     onClick = {
                         uriHandler.openUri(
                             "https://github.com/nikhilvishwakarma00/Velune",
@@ -615,7 +616,7 @@ fun AboutScreen(
                     iconUrl =
                         "https://avatars.githubusercontent.com/u/107134739?v=4",
                     title = "ArchiveTune — koiverse",
-                    subtitle = "Base framework inspiration",
+                    subtitle = "Developer of ArchiveTune and inspiration for Capsule's interface design",
                     onClick = {
                         uriHandler.openUri(
                             "https://github.com/koiverse/ArchiveTune",
@@ -628,8 +629,8 @@ fun AboutScreen(
                 AboutItemCard(
                     iconUrl =
                         "https://avatars.githubusercontent.com/u/80542861?v=4",
-                    title = "MO AGAMY — MetroList",
-                    subtitle = "Upstream project inspiration",
+                    title = "MO AGAMY — Metrolist",
+                    subtitle = "Developer of Metrolist • Foundation for Capsule's YouTube integration and my introduction to open source",
                     onClick = {
                         uriHandler.openUri(
                             "https://github.com/mostafaalagamy",
