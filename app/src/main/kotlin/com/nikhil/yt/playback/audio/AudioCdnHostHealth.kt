@@ -47,6 +47,15 @@ internal const val CDN_HOST_PROBE_INTERVAL_MS = 20 * 1000L
 internal const val CDN_HOST_MAX_CONSECUTIVE_SKIPS = 2
 
 /**
+ * After an actual long no-byte open timeout, use a shorter connect/header-read
+ * budget for subsequent opens on this SAME group only. A successful body read
+ * immediately restores the standard network timeout.
+ */
+internal const val CDN_HOST_SUSPECT_MS = 90 * 1000L
+internal const val CDN_HOST_SUSPECT_OPEN_TIMEOUT_SECONDS = 5L
+internal const val CDN_HOST_LONG_OPEN_MS = 10_000L
+
+/**
  * Remembers which googlevideo server groups are currently refusing everything.
  *
  * A capture settled a question that an earlier one had answered the other way. Split by server
@@ -77,6 +86,10 @@ internal class AudioCdnHostHealth(
     private val failures = HashMap<String, Int>()
     private val coldUntil = HashMap<String, Long>()
     private val lastProbe = HashMap<String, Long>()
+    private val suspectUntil = HashMap<String, Long>()
+
+    /** A song locally skipped on a cold group MUST get a real second-client probe. */
+    private val locallySkippedGroupByMediaId = LinkedHashMap<String, String>()
 
     /** Refusals raised here since the last request that was served, by anyone, anywhere. */
     private var consecutiveSkips = 0
@@ -89,6 +102,7 @@ internal class AudioCdnHostHealth(
         val wasCold = coldUntil.remove(group) != null
         failures.remove(group)
         lastProbe.remove(group)
+        suspectUntil.remove(group)
         if (wasCold) {
             Timber.tag("AudioCDN").w("cdn-host-recovered group=%s", group)
         }
@@ -111,13 +125,37 @@ internal class AudioCdnHostHealth(
     }
 
     /**
+     * One failed open does not mean that a whole CDN group must be rejected.
+     * It does justify not wasting ANOTHER full 15-second connect/header wait
+     * on that same route. Ordinary working groups retain their original budget.
+     */
+    @Synchronized
+    fun recordUnresponsiveOpen(host: String?) {
+        val group = googlevideoServerGroup(host) ?: return
+        suspectUntil[group] = now() + CDN_HOST_SUSPECT_MS
+        Timber.tag("AudioCDN").w(
+            "cdn-host-suspect group=%s; next opens use %ds connect/read timeout",
+            group, CDN_HOST_SUSPECT_OPEN_TIMEOUT_SECONDS,
+        )
+    }
+
+    @Synchronized
+    fun isUnresponsiveHost(host: String?): Boolean {
+        val group = googlevideoServerGroup(host) ?: return false
+        val expiry = suspectUntil[group] ?: return false
+        if (now() < expiry) return true
+        suspectUntil.remove(group)
+        return false
+    }
+
+    /**
      * Whether this request should be refused locally rather than sent.
      *
      * Consumes the probe slot, so a caller that asks must act on the answer: asking twice in the
      * same probe interval reports cold the second time even if the first was let through.
      */
     @Synchronized
-    fun shouldSkipHost(host: String?): Boolean {
+    fun shouldSkipHost(host: String?, mediaId: String? = null): Boolean {
         /*
          * The escape hatch, checked before anything else. Whatever this memory believes about the
          * group, it must never be the reason a song cannot start: once refusing has stopped
@@ -134,12 +172,25 @@ internal class AudioCdnHostHealth(
             lastProbe.remove(group)
             return false
         }
+        // The first client's local skip is NOT a network attempt. If a second
+        // client returns to the same group, it gets one real bounded probe
+        // instead of exhausting the song with two purely local rejections.
+        if (mediaId != null && locallySkippedGroupByMediaId[mediaId] == group) {
+            lastProbe[group] = instant
+            return false
+        }
         val probedAt = lastProbe[group]
         if (probedAt == null || instant - probedAt >= CDN_HOST_PROBE_INTERVAL_MS) {
             lastProbe[group] = instant
             return false
         }
         consecutiveSkips += 1
+        if (mediaId != null) {
+            locallySkippedGroupByMediaId[mediaId] = group
+            while (locallySkippedGroupByMediaId.size > 128) {
+                locallySkippedGroupByMediaId.remove(locallySkippedGroupByMediaId.keys.first())
+            }
+        }
         return true
     }
 
@@ -154,6 +205,8 @@ internal class AudioCdnHostHealth(
         failures.clear()
         coldUntil.clear()
         lastProbe.clear()
+        suspectUntil.clear()
+        locallySkippedGroupByMediaId.clear()
         consecutiveSkips = 0
     }
 }
@@ -186,7 +239,7 @@ internal class AudioCdnHostHealthDataSource(
         mediaId = (dataSpec.customData as? AudioCdnOpenContext)?.mediaId
             ?: dataSpec.key?.takeIf { it.startsWith("capsule:audio:") }?.let(AudioCacheIdentity::mediaId)
 
-        if (health.shouldSkipHost(requestHost)) {
+        if (health.shouldSkipHost(requestHost, mediaId)) {
             Timber.tag("AudioCDN").w(
                 "cdn-host-skipped group=%s; requesting a fresh stream URL",
                 googlevideoServerGroup(requestHost) ?: "unknown",
@@ -200,6 +253,7 @@ internal class AudioCdnHostHealthDataSource(
             )
         }
 
+        val openStartedAtNs = System.nanoTime()
         return try {
             upstream.open(dataSpec).also {
                 // HTTP 206 means headers arrived, not that the CDN actually delivered audio.
@@ -208,7 +262,8 @@ internal class AudioCdnHostHealthDataSource(
                 servedByHost = upstream.uri?.host ?: requestHost
             }
         } catch (failure: IOException) {
-            throw classifyFailure(failure, AudioCdnRefreshReason.OPEN_FAILURE)
+            val elapsedMs = (System.nanoTime() - openStartedAtNs).coerceAtLeast(0L) / 1_000_000L
+            throw classifyFailure(failure, AudioCdnRefreshReason.OPEN_FAILURE, elapsedMs)
         }
     }
 
@@ -223,7 +278,11 @@ internal class AudioCdnHostHealthDataSource(
         throw classifyFailure(failure, AudioCdnRefreshReason.READ_FAILURE)
     }
 
-    private fun classifyFailure(failure: IOException, reason: AudioCdnRefreshReason): IOException {
+    private fun classifyFailure(
+        failure: IOException,
+        reason: AudioCdnRefreshReason,
+        openElapsedMs: Long = 0L,
+    ): IOException {
         // Includes stale-selection cancellation before a physical request was ever sent.
         if (failure.isExpectedAudioCdnInterruption()) return failure
         if (failure.audioCdnRefreshRequiredOrNull() != null) return failure
@@ -252,6 +311,17 @@ internal class AudioCdnHostHealthDataSource(
         }
         if (!failure.isAudioCdnTransportFailure()) return failure
 
+        // Mark an unresponsive group as SUSPECT after a real timed-out open,
+        // not after a quick socket reset, canceled seek, HTTP status, or a
+        // transient TLS peer closure. A very long wrapped socket failure also
+        // qualifies when a timeout exception has been lost by the HTTP wrapper.
+        if (reason == AudioCdnRefreshReason.OPEN_FAILURE &&
+            (openElapsedMs >= CDN_HOST_LONG_OPEN_MS ||
+                generateSequence(failure as Throwable?) { it.cause }
+                    .take(12).any { it is java.net.SocketTimeoutException })
+        ) {
+            health.recordUnresponsiveOpen(host)
+        }
         // A read failure belongs to the server that served the open, which may be the
         // redirect target. For a failed open there is no reliable final URL; use the origin.
         health.recordFailure(servedByHost ?: host)
