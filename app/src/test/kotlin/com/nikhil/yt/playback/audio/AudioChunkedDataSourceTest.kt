@@ -419,14 +419,14 @@ class AudioChunkedDataSourceTest {
     @Test
     fun aRefusedSliceIsAskedForAgain() {
         val bytes = content(1000)
-        val upstream = RefusingUpstream(bytes, refusalsLeft = 2)
+        val upstream = RefusingUpstream(bytes, refusalsLeft = 1)
         val source = AudioChunkedDataSource(upstream, chunkBytes = 128)
 
         source.open(spec(bytes.size.toLong()))
         val delivered = drain(source)
 
-        assertArrayEquals("the stream did not survive a refused slice", bytes, delivered)
-        assertEquals("both refusals should have been retried", 2, upstream.refusalsServed)
+        assertArrayEquals("a single same-link retry must recover a transient refusal", bytes, delivered)
+        assertEquals("only one refusal is retried before client failover", 1, upstream.refusalsServed)
     }
 
     /** A slice that keeps being refused is handed to the player rather than retried forever. */
@@ -445,11 +445,11 @@ class AudioChunkedDataSourceTest {
     @Test
     fun aShortTrackGetsTheSameBoundedRefusalRecovery() {
         val bytes = content(64)
-        val upstream = RefusingUpstream(bytes, refusalsLeft = 2)
+        val upstream = RefusingUpstream(bytes, refusalsLeft = 1)
         val source = AudioChunkedDataSource(upstream, chunkBytes = 128)
         assertEquals(64L, source.open(spec(64)))
         assertArrayEquals(bytes, drain(source))
-        assertEquals(2, upstream.refusalsServed)
+        assertEquals(1, upstream.refusalsServed)
     }
 
     @Test
