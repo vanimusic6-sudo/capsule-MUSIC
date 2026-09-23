@@ -8,6 +8,7 @@ import okhttp3.Request
 import okhttp3.Response
 import timber.log.Timber
 import java.io.IOException
+import java.util.concurrent.TimeUnit
 
 /** Statuses that carry a `Location` rather than a body. */
 private val REDIRECT_CODES = setOf(301, 302, 303, 307, 308)
@@ -131,6 +132,7 @@ internal fun isCrossGroupGooglevideoRedirect(
  */
 internal class AudioCdnRedirectInterceptor(
     private val targets: AudioCdnRedirectTargets = AudioCdnRedirectTargets(),
+    private val health: AudioCdnHostHealth? = null,
 ) : Interceptor {
     override fun intercept(chain: Interceptor.Chain): Response {
         val origin = chain.request()
@@ -171,8 +173,28 @@ internal class AudioCdnRedirectInterceptor(
             // TLS/DNS failures can occur before OkHttp creates a network interceptor or socket,
             // so log the attempted hop here too; otherwise the decisive failed hop vanishes.
             val hopStartedAtNs = if (GlobalLog.isEnabled) System.nanoTime() else 0L
+            val suspectGroup = health?.isUnresponsiveHost(sent.url.host) == true
+            val networkChain = if (suspectGroup) {
+                // Only the requested hop's group is known to have failed a
+                // previous no-byte open. A new client can be redirected back
+                // onto that SAME route, so select the budget for each hop,
+                // not just the signed URL's original host.
+                chain
+                    .withConnectTimeout(CDN_HOST_SUSPECT_OPEN_TIMEOUT_SECONDS.toInt(), TimeUnit.SECONDS)
+                    .withReadTimeout(CDN_HOST_SUSPECT_OPEN_TIMEOUT_SECONDS.toInt(), TimeUnit.SECONDS)
+            } else {
+                chain
+            }
+            if (suspectGroup && GlobalLog.isEnabled) {
+                Timber.tag("AudioCDN").i(
+                    "cdn-suspect-open group=%s connectTimeoutSec=%d readTimeoutSec=%d",
+                    googlevideoServerGroup(sent.url.host) ?: "unknown",
+                    CDN_HOST_SUSPECT_OPEN_TIMEOUT_SECONDS,
+                    CDN_HOST_SUSPECT_OPEN_TIMEOUT_SECONDS,
+                )
+            }
             val response = try {
-                chain.proceed(sent)
+                networkChain.proceed(sent)
             } catch (failure: IOException) {
                 if (GlobalLog.isEnabled) {
                     Timber.tag("AudioCDN").w(
