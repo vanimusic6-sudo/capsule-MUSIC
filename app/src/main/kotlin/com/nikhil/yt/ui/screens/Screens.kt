@@ -59,6 +59,7 @@ sealed class Screens(
     companion object {
         // A destination can initialize its superclass before its own INSTANCE is
         // assigned. Defer the list so opening Home first cannot capture a null tab.
-        val MainScreens: List<Screens> by lazy { listOf(Home, Stats, History, Library) }
+        // Stats and History remain available by route, but are not bottom-bar tabs.
+        val MainScreens: List<Screens> by lazy { listOf(Home, Search, Library) }
     }
 }
