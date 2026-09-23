@@ -4189,7 +4189,12 @@ class MusicService :
                 .followRedirects(false)
                 .followSslRedirects(false)
                 .addInterceptor(CapsuleAudioRequestInterceptor(guardStreams = true))
-                .addInterceptor(AudioCdnRedirectInterceptor(targets = audioCdnRedirectTargets))
+                .addInterceptor(
+                    AudioCdnRedirectInterceptor(
+                        targets = audioCdnRedirectTargets,
+                        health = audioCdnHostHealth,
+                    ),
+                )
                 .addNetworkInterceptor(
                     AudioCdnConnectionDiagnosticInterceptor(ledger = audioCdnConnectionLedger),
                 )
