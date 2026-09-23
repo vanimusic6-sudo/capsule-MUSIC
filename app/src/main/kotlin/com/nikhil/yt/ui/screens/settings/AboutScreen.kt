@@ -55,7 +55,6 @@ import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
@@ -630,7 +629,7 @@ fun AboutScreen(
                     iconUrl =
                         "https://avatars.githubusercontent.com/u/80542861?v=4",
                     title = "MO AGAMY — Metrolist",
-                    subtitle = "Developer of Metrolist, whose YouTube codebase serves as a foundation for Capsule's YouTube integration. Metrolist was also my personal introduction to open-source development.",
+                    subtitle = "Developer of Metrolist • Foundation for Capsule's YouTube integration • My introduction to open source",
                     onClick = {
                         uriHandler.openUri(
                             "https://github.com/mostafaalagamy",
@@ -794,8 +793,6 @@ fun AboutItemCard(
                 text = subtitle,
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
             )
         }
     }
