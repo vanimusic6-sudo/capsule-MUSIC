@@ -127,7 +127,14 @@ internal class AudioChunkedDataSource(
             return openWithRefusalRetry(dataSpec)
         }
 
-        if (!shouldChunkAudioRequest(dataSpec.length, chunkBytes)) {
+        // Stage the first slice even when the entire song is smaller than the
+        // extractor's normal chunk: those short songs are the common rapid-skip case.
+        val firstBytes =
+            initialChunkBytes(dataSpec)
+                .takeIf { it > 0L && dataSpec.position == 0L }
+                ?.coerceAtMost(chunkBytes)
+                ?: chunkBytes
+        if (!shouldChunkAudioRequest(dataSpec.length, firstBytes)) {
             request = null
             opened = true
             return openWithRefusalRetry(dataSpec)
@@ -135,13 +142,7 @@ internal class AudioChunkedDataSource(
 
         request = dataSpec
         activeChunkBytes = chunkBytes
-        // Only the first slice is shortened during a confirmed skip burst.
-        // All later slices retain the extractor's original pacing policy.
-        firstChunkBytes =
-            initialChunkBytes(dataSpec)
-                .takeIf { it > 0L && dataSpec.position == 0L }
-                ?.coerceAtMost(chunkBytes)
-                ?: chunkBytes
+        firstChunkBytes = firstBytes
         firstChunkPending = true
         nextPosition = dataSpec.position
         bytesLeft = dataSpec.length
