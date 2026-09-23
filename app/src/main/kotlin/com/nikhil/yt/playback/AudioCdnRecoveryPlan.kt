@@ -5,9 +5,10 @@ package com.nikhil.yt.playback
  * fallback: callers must classify those failures before invoking this plan.
  *
  * HTTP 403/410 already gets one same-link retry in AudioChunkedDataSource.
- * An actual transport failure does not, so it gets one same-link reconnect here.
- * Only after that do we retire the extraction client for this track and obtain
- * a different client's freshly signed URL. No client carousel after that.
+ * A transient transport failure gets one same-link reconnect here, EXCEPT an
+ * open that exhausted its network timeout before receiving any bytes. Retrying
+ * that precise route can cost another full timeout, so it goes directly to
+ * the next client's freshly signed URL. No client carousel after that.
  */
 internal enum class AudioCdnRecoveryAction {
     RETRY_SAME_URL,
@@ -19,11 +20,19 @@ internal class AudioCdnRecoveryPlan {
     private enum class Stage { INITIAL, SAME_URL_RETRIED, NEXT_CLIENT_TRIED }
     private val stages = LinkedHashMap<String, Stage>()
 
-    fun onFailure(mediaId: String, signedUrlRejected: Boolean): AudioCdnRecoveryAction {
+    fun onFailure(
+        mediaId: String,
+        signedUrlRejected: Boolean,
+        unresponsiveOpen: Boolean = false,
+    ): AudioCdnRecoveryAction {
         val stage = stages[mediaId] ?: Stage.INITIAL
         val action = when (stage) {
+            // A 403/410 already used the chunk layer's one same-link retry.
+            // A no-byte open timeout used its entire connection/TLS budget:
+            // repeating that precise route immediately adds another long
+            // silence without any evidence that the link itself changed.
             Stage.INITIAL ->
-                if (signedUrlRejected) AudioCdnRecoveryAction.TRY_NEXT_CLIENT
+                if (signedUrlRejected || unresponsiveOpen) AudioCdnRecoveryAction.TRY_NEXT_CLIENT
                 else AudioCdnRecoveryAction.RETRY_SAME_URL
             Stage.SAME_URL_RETRIED -> AudioCdnRecoveryAction.TRY_NEXT_CLIENT
             Stage.NEXT_CLIENT_TRIED -> AudioCdnRecoveryAction.SKIP_TRACK
