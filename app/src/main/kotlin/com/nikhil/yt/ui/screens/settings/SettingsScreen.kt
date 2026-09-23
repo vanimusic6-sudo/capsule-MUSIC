@@ -100,7 +100,6 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
 import coil3.compose.AsyncImage
 import com.nikhil.yt.App.Companion.forgetAccount
-import com.nikhil.yt.BuildConfig
 import com.nikhil.yt.LocalPlayerAwareWindowInsets
 import com.nikhil.yt.R
 import com.nikhil.yt.constants.InnerTubeCookieKey
@@ -737,14 +736,6 @@ fun SettingsScreen(
                     )
                 }
 
-                item(key = "hero") {
-                    SettingsHeroHeader(
-                        modifier = Modifier
-                            .padding(horizontal = 16.dp)
-                            .padding(top = 4.dp, bottom = 14.dp),
-                    )
-                }
-
                 item(key = "account") {
                     run {
                         SettingsAccountCard(
@@ -1003,43 +994,6 @@ fun SettingsScreen(
                     }
                 }
             }
-        }
-    }
-}
-
-@Composable
-private fun SettingsHeroHeader(modifier: Modifier = Modifier) {
-    Row(
-        modifier = modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(14.dp),
-    ) {
-        Box(
-            modifier = Modifier
-                .size(48.dp)
-                .clip(RoundedCornerShape(16.dp))
-                .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.6f)),
-            contentAlignment = Alignment.Center,
-        ) {
-            Icon(
-                painter = painterResource(R.drawable.ic_velune_concept),
-                contentDescription = null,
-                tint = Color.Unspecified,
-                modifier = Modifier.size(34.dp),
-            )
-        }
-        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            Text(
-                text = stringResource(R.string.app_name),
-                style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onSurface,
-            )
-            Text(
-                text = "v${BuildConfig.VERSION_NAME}",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
         }
     }
 }
