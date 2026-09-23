@@ -148,6 +148,27 @@ class AudioCdnRecoveryTest {
     }
 
     @Test
+    fun timedOutRedirectMarksOnlyTheActualFailedDestinationGroup() {
+        val issuer = host
+        val target = "rr3---sn-other.googlevideo.com"
+        val health = AudioCdnHostHealth(now = { 0L })
+        val upstream = Upstream().apply {
+            openFailure = AudioCdnFailedHopException(
+                target,
+                SocketTimeoutException("redirect target could not open"),
+            )
+        }
+        val source = AudioCdnHostHealthDataSource(upstream, health)
+        assertThrows(AudioCdnRefreshRequiredException::class.java) { source.open(spec) }
+        source.close()
+        assertTrue("redirect destination timed out", health.isUnresponsiveHost(target))
+        assertFalse("issuer returned redirect successfully", health.isUnresponsiveHost(issuer))
+        repeat(2) {
+            assertFalse("healthy issuing host must not become cold", health.shouldSkipHost(issuer))
+        }
+    }
+
+    @Test
     fun cancellationAndMidstreamTimeoutDoNotMarkAnUnresponsiveOpen() {
         val health = AudioCdnHostHealth(now = { 0L })
         val upstream = Upstream().apply { openFailure = IOException("Canceled") }
