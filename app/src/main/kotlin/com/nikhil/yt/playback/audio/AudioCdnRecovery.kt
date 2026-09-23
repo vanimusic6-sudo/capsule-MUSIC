@@ -31,6 +31,25 @@ internal fun Throwable.audioCdnRefreshRequiredOrNull(): AudioCdnRefreshRequiredE
 internal fun Throwable.requiresFreshAudioUrlFor(mediaId: String?): Boolean =
     mediaId != null && audioCdnRefreshRequiredOrNull()?.mediaId == mediaId
 
+/**
+ * A timed-out CDN open yielded no HTTP response or audio bytes. Reopening the
+ * identical signed URL immediately can repeat a full TLS/read timeout on the
+ * same route; for this narrow case, prefer the next configured playback client.
+ *
+ * Do not apply this to a slow mid-stream read, a transient peer closure, a
+ * cancellation, an ordinary refused URL, or an unrelated track.
+ */
+internal fun Throwable.isUnresponsiveCdnOpenFor(mediaId: String?): Boolean {
+    if (mediaId == null) return false
+    val refresh = audioCdnRefreshRequiredOrNull() ?: return false
+    if (refresh.mediaId != mediaId || refresh.refreshReason != AudioCdnRefreshReason.OPEN_FAILURE) {
+        return false
+    }
+    return generateSequence(refresh.cause as Throwable?) { it.cause }
+        .take(12)
+        .any { it is SocketTimeoutException }
+}
+
 /** Keep HTTP refusal retries in the chunk layer; never turn cancellation into a fresh resolve. */
 internal fun IOException.isAudioCdnTransportFailure(): Boolean {
     if (isExpectedAudioCdnInterruption()) return false
