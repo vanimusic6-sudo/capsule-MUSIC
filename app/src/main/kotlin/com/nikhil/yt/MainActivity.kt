@@ -1163,7 +1163,9 @@ class MainActivity : ComponentActivity() {
                                 ) {
                                     navigationItems.fastForEach { screen ->
                                         val isSelected =
-                                            navBackStackEntry?.destination?.hierarchy?.any { it.route == screen.route } == true
+                                            navBackStackEntry?.destination?.hierarchy?.any { it.route == screen.route } == true ||
+                                                (screen.route == Screens.Search.route &&
+                                                    currentRoute?.startsWith("search/") == true)
 
                                         NavigationRailItem(
                                             selected = isSelected,
