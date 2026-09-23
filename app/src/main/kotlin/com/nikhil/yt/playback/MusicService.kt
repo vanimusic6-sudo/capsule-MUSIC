@@ -4021,8 +4021,8 @@ class MusicService :
                 )
                 if (unresponsiveOpen) {
                     Timber.tag("PlaybackRecovery").w(
-                        "cdn-open-timeout id=%s; skip same-route reconnect, request next client",
-                        currentMediaId,
+                        "cdn-open-timeout id=%s; no same-route reconnect action=%s",
+                        currentMediaId, recoveryAction,
                     )
                 }
 
