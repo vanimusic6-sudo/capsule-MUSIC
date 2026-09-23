@@ -218,6 +218,15 @@ internal class AudioCdnRedirectInterceptor(
                         } else -1L,
                     )
                 }
+                // The issuing server may have replied 302 successfully: attribute
+                // a failed cross-group hop to the actual destination, not the
+                // original link's group. Preserve the original IOException as
+                // the cause for the existing timeout/cancellation classifier.
+                if (isCrossGroupGooglevideoRedirect(origin.url.host, sent.url.host) &&
+                    !failure.isExpectedAudioCdnInterruption()
+                ) {
+                    throw AudioCdnFailedHopException(sent.url.host, failure)
+                }
                 throw failure
             }
 
