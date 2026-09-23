@@ -672,23 +672,33 @@ class MusicService :
                     delay(skipBurstDelayMs)
                 }
 
-                // When the staged first slice already holds enough playable audio,
-                // give a user who is previewing tracks a moment to decide before
-                // opening another full slice. This is bounded and never holds a
-                // starving buffer or playback that has not reached READY.
+                // After a small first slice, avoid immediately starting another
+                // large request for a track the user is previewing. A short grace
+                // lets Media3 publish READY from the just-delivered bytes; further
+                // holding requires a healthy >=8 s buffer. Never hold a starving
+                // buffer, a paused/abandoned item, or an already-playing selection.
                 if (dataSpec.position > 0L &&
                     audioCdnSkipBurstPolicy.isBurst(mediaId)
                 ) {
                     val holdStartedMs = android.os.SystemClock.elapsedRealtime()
-                    while (android.os.SystemClock.elapsedRealtime() - holdStartedMs < 1_400L) {
-                        val canHold = withContext(Dispatchers.Main.immediate) {
-                            player.currentMediaItem?.mediaId == mediaId &&
-                                player.playWhenReady &&
-                                player.playbackState == Player.STATE_READY &&
-                                player.totalBufferedDuration >= 8_000L &&
-                                player.currentPosition < 1_200L
+                    while (true) {
+                        val holdElapsedMs =
+                            android.os.SystemClock.elapsedRealtime() - holdStartedMs
+                        if (holdElapsedMs >= 1_400L) break
+                        val hold = withContext(Dispatchers.Main.immediate) {
+                            if (player.currentMediaItem?.mediaId != mediaId ||
+                                !player.playWhenReady ||
+                                player.currentPosition >= 1_200L
+                            ) {
+                                false
+                            } else {
+                                (player.playbackState == Player.STATE_READY &&
+                                    player.totalBufferedDuration >= 8_000L) ||
+                                    (holdElapsedMs < 250L &&
+                                        player.playbackState == Player.STATE_BUFFERING)
+                            }
                         }
-                        if (!canHold) break
+                        if (!hold) break
                         delay(100L)
                     }
                 }
