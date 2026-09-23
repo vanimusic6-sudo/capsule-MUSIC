@@ -2106,7 +2106,8 @@ class MusicService :
             playbackRecoveryCoordinator.recordTerminalFailure(
                 mediaId = mediaId,
                 autoSkipEnabled =
-                    (autoSkipAfterCdnExhaustion && isNetworkConnected.value) ||
+                    (autoSkipAfterCdnExhaustion && isNetworkConnected.value &&
+                        player.playWhenReady) ||
                         dataStore.get(AutoSkipNextOnErrorKey, false),
             )
 
