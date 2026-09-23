@@ -1192,7 +1192,9 @@ class MainActivity : ComponentActivity() {
                                                     playerBottomSheetState.collapse(spring())
                                                 }
 
-                                                mainTabNavigator.select(screen.route) {
+                                                if (screen.route == Screens.Search.route) {
+                                                    onActiveChange(true)
+                                                } else mainTabNavigator.select(screen.route) {
                                                     if (!wasPlayerActive) {
                                                         navController.currentBackStackEntry?.liveSavedStateHandle()?.set("scrollToTop", true)
                                                         coroutineScope.launch {
@@ -1285,13 +1287,6 @@ class MainActivity : ComponentActivity() {
                                                 },
 
                                                 actions = {
-                                                    IconButton(onClick = { onActiveChange(true) }) {
-                                                        Icon(
-                                                            painter = painterResource(R.drawable.search),
-                                                            contentDescription = stringResource(R.string.search)
-                                                        )
-                                                    }
-
                                                     IconButton(onClick = { navController.navigate("settings") }) {
                                                         Icon(
                                                             painter = painterResource(R.drawable.settings),
