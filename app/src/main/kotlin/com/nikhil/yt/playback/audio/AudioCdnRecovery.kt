@@ -20,6 +20,7 @@ internal class AudioCdnRefreshRequiredException(
     val mediaId: String,
     val refreshReason: AudioCdnRefreshReason,
     cause: IOException? = null,
+    val openElapsedMs: Long = 0L,
 ) : IOException("Audio CDN requires a fresh URL ($refreshReason)", cause)
 
 /**
@@ -62,9 +63,10 @@ internal fun Throwable.isUnresponsiveCdnOpenFor(mediaId: String?): Boolean {
     if (refresh.mediaId != mediaId || refresh.refreshReason != AudioCdnRefreshReason.OPEN_FAILURE) {
         return false
     }
-    return generateSequence(refresh.cause as Throwable?) { it.cause }
-        .take(12)
-        .any { it is SocketTimeoutException }
+    return refresh.openElapsedMs >= CDN_HOST_LONG_OPEN_MS ||
+        generateSequence(refresh.cause as Throwable?) { it.cause }
+            .take(12)
+            .any { it is SocketTimeoutException }
 }
 
 /** Keep HTTP refusal retries in the chunk layer; never turn cancellation into a fresh resolve. */
