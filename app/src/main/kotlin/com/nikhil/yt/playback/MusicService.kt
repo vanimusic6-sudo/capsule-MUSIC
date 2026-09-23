@@ -655,6 +655,44 @@ class MusicService :
                     delay(settleMs)
                 }
 
+                // A confirmed burst of READY -> immediate next transitions can
+                // create a run of cold HTTP/1.1 sockets. Pace ONLY fresh first
+                // opens, never a mid-song segment or a normal queue transition.
+                val skipBurstDelayMs = audioCdnSkipBurstPolicy.firstOpenDelayMs(
+                    mediaId,
+                    dataSpec.position,
+                )
+                if (skipBurstDelayMs > 0L) {
+                    if (GlobalLog.isEnabled) {
+                        Timber.tag("AudioCDN").i(
+                            "cdn-skip-burst-gate id=%s position=%d delayMs=%d",
+                            mediaId, dataSpec.position, skipBurstDelayMs,
+                        )
+                    }
+                    delay(skipBurstDelayMs)
+                }
+
+                // When the staged first slice already holds enough playable audio,
+                // give a user who is previewing tracks a moment to decide before
+                // opening another full slice. This is bounded and never holds a
+                // starving buffer or playback that has not reached READY.
+                if (dataSpec.position > 0L &&
+                    audioCdnSkipBurstPolicy.isBurst(mediaId)
+                ) {
+                    val holdStartedMs = android.os.SystemClock.elapsedRealtime()
+                    while (android.os.SystemClock.elapsedRealtime() - holdStartedMs < 1_400L) {
+                        val canHold = withContext(Dispatchers.Main.immediate) {
+                            player.currentMediaItem?.mediaId == mediaId &&
+                                player.playWhenReady &&
+                                player.playbackState == Player.STATE_READY &&
+                                player.totalBufferedDuration >= 8_000L &&
+                                player.currentPosition < 1_200L
+                        }
+                        if (!canHold) break
+                        delay(100L)
+                    }
+                }
+
                 /*
                  * The last word before anything leaves the phone.
                  *
@@ -1106,6 +1144,9 @@ class MusicService :
 
     /** Which googlevideo server groups are currently refusing everything, on this network. */
     private val audioCdnHostHealth = AudioCdnHostHealth()
+
+    /** Only confirmed READY -> quick-skip bursts activate staged CDN buffering. */
+    private val audioCdnSkipBurstPolicy = AudioCdnSkipBurstPolicy()
 
     /** Whether it is these songs that need an account, or this way out of the phone. */
     private val authWallDetector = AuthWallDetector()
@@ -3221,6 +3262,8 @@ class MusicService :
                 ?.trim()
                 ?.takeIf { it.isNotBlank() }
 
+        audioCdnSkipBurstPolicy.onTransition(transitionedMediaId)
+
         val videoState = videoPlaybackState.value
         val previousCanonicalId =
             videoOriginalMediaId
@@ -3455,6 +3498,10 @@ class MusicService :
 
     if (playbackState == Player.STATE_READY && !isCurrentCapsuleVideoItem()) {
         audioBufferLastReadyMediaId = player.currentMediaItem?.mediaId
+        audioCdnSkipBurstPolicy.onReady(
+            player.currentMediaItem?.mediaId,
+            player.playWhenReady,
+        )
         if (!startupWebWarmRetryScheduled && !CapsuleAudioEngine.isStartupWebReady()) {
             startupWebWarmRetryScheduled = true
             // Startup settings/locale may settle after the app's first prewarm attempt.
@@ -4061,6 +4108,10 @@ class MusicService :
                     ),
                     health = audioCdnHostHealth,
                 ),
+                initialChunkBytes = { spec ->
+                    val id = spec.key?.let(AudioCacheIdentity::mediaId)
+                    audioCdnSkipBurstPolicy.stagedFirstChunkBytes(id, spec.position)
+                },
             )
         val streaming = CacheDataSource.Factory().setCache(playerCache)
             .setUpstreamDataSourceFactory(networkUpstream)
