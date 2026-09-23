@@ -60,8 +60,12 @@ internal class PlaybackRecoveryCoordinator(
 
     fun nextRetryDelayMs(mediaId: String): Long? = retryBudget.nextDelayMs(mediaId)
 
-    fun onCdnFailure(mediaId: String, signedUrlRejected: Boolean): AudioCdnRecoveryAction =
-        cdnRecoveryPlan.onFailure(mediaId, signedUrlRejected)
+    fun onCdnFailure(
+        mediaId: String,
+        signedUrlRejected: Boolean,
+        unresponsiveOpen: Boolean = false,
+    ): AudioCdnRecoveryAction =
+        cdnRecoveryPlan.onFailure(mediaId, signedUrlRejected, unresponsiveOpen)
 
     fun hasTriedAlternativeCdnClient(mediaId: String): Boolean =
         cdnRecoveryPlan.nextClientAlreadyTried(mediaId)
