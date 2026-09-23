@@ -220,6 +220,7 @@ import com.nikhil.yt.playback.audio.AudioResolveCoordinator
 import com.nikhil.yt.playback.audio.AudioResolvePriority
 import com.nikhil.yt.playback.audio.awaitForegroundAudioResolve
 import com.nikhil.yt.playback.audio.cancelledAudioLoad
+import com.nikhil.yt.playback.audio.isExpectedAudioCdnInterruption
 import com.nikhil.yt.playback.audio.CapsuleAudioEngine
 import com.nikhil.yt.playback.audio.PlaybackDataCache
 import com.nikhil.yt.playback.presence.DiscordPresenceOwner
@@ -1040,6 +1041,9 @@ class MusicService :
         )
     }
     private var streamRetryJob: Job? = null
+    /** Prevent an obsolete Media3 cancellation from re-preparing the same selection in a loop. */
+    private var cancelledLoadRecoveredId: String? = null
+    private var cancelledLoadRecoveredGeneration: Long = -1L
 
     /** One low-frequency check only while the foreground AUDIO item remains BUFFERING. */
     private var audioBufferStallWatchJob: Job? = null
@@ -3265,6 +3269,8 @@ class MusicService :
     override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
         super.onMediaItemTransition(mediaItem, reason)
 
+        cancelledLoadRecoveredId = null
+        cancelledLoadRecoveredGeneration = -1L
         streamRetryJob?.cancel()
         streamRetryJob = null
         playbackRecoveryCoordinator.cancelNetworkRecovery()
@@ -3513,6 +3519,8 @@ class MusicService :
 
     if (playbackState == Player.STATE_READY && !isCurrentCapsuleVideoItem()) {
         audioBufferLastReadyMediaId = player.currentMediaItem?.mediaId
+        cancelledLoadRecoveredId = null
+        cancelledLoadRecoveredGeneration = -1L
         audioCdnSkipBurstPolicy.onReady(
             player.currentMediaItem?.mediaId,
             player.playWhenReady,
@@ -3814,6 +3822,44 @@ class MusicService :
 
         val currentMediaId = player.currentMediaItem?.mediaId
         val httpStatusCode = error.httpStatusCodeOrNull()
+
+        // A cancelled obsolete resolve is not a failed CDN request or a rejected
+        // extraction client. Media3 can still surface it as Source error when a
+        // skip races with source replacement; do not consume the CDN failover or
+        // terminal queue-skip budget for that cancellation.
+        if (error.isExpectedAudioCdnInterruption()) {
+            val selectionGeneration = playbackPositionGeneration.snapshot()
+            val selectionIndex = player.currentMediaItemIndex
+            Timber.tag("PlaybackRecovery").d(
+                "Discarded cancelled AUDIO load id=%s; keeping client recovery budget",
+                currentMediaId ?: "none",
+            )
+            if (currentMediaId != null && player.playWhenReady &&
+                (cancelledLoadRecoveredId != currentMediaId ||
+                    cancelledLoadRecoveredGeneration != selectionGeneration)
+            ) {
+                cancelledLoadRecoveredId = currentMediaId
+                cancelledLoadRecoveredGeneration = selectionGeneration
+                scope.launch {
+                    delay(100L)
+                    // Only the surviving selected item can be re-prepared, once.
+                    // Never resurrect something the listener skipped or paused.
+                    if (player.currentMediaItem?.mediaId == currentMediaId &&
+                        player.currentMediaItemIndex == selectionIndex &&
+                        playbackPositionGeneration.isCurrent(selectionGeneration) &&
+                        player.playWhenReady &&
+                        player.playbackState == Player.STATE_IDLE
+                    ) {
+                        Timber.tag("PlaybackRecovery").i(
+                            "Recovering current item after obsolete AUDIO load cancellation id=%s",
+                            currentMediaId,
+                        )
+                        player.prepare()
+                    }
+                }
+            }
+            return
+        }
 
         if (generateSequence<Throwable>(error) { it.cause }.take(8).any { it is AudioFormatChangedException }) {
             if (currentMediaId != null && playbackRecoveryCoordinator.nextRetryDelayMs(currentMediaId) != null) {
