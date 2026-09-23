@@ -9,91 +9,12 @@ on:
 
 permissions:
   contents: read
-  actions: write # Temporary: only for one-time history cleanup.
 
 concurrency:
-  group: capsule-debug-${{ github.ref }}
+  group: capsule-debug-after-history-cleanup-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  cleanup-obsolete-history:
-    name: One-time purge of obsolete Actions run history
-    if: github.event_name == 'push' && contains(github.event.head_commit.message, '[prune-obsolete-action-runs]')
-    runs-on: ubuntu-latest
-    timeout-minutes: 330
-    steps:
-      - name: Delete completed runs of retired workflow files only
-        shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          gh api --paginate -X GET "repos/$GITHUB_REPOSITORY/actions/runs?per_page=100" \
-            --jq '.workflow_runs[] | select(.status == "completed") | [.id, (.path // "")] | @tsv' \
-            > "$RUNNER_TEMP/all-runs.tsv"
-          : > "$RUNNER_TEMP/obsolete-run-ids.txt"
-          preserved=0
-          unknown=0
-          while read -r run_id workflow_path; do
-            case "$workflow_path" in
-              .github/workflows/release-apk.yml|.github/workflows/debug-apk.yml|.github/workflows/newpipe-extractor-update.yml|.github/workflows/youtube-client-policy-update.yml)
-                preserved=$((preserved + 1))
-                ;;
-              .github/workflows/*)
-                printf '%s\n' "$run_id" >> "$RUNNER_TEMP/obsolete-run-ids.txt"
-                ;;
-              *)
-                echo "::warning::Unknown workflow path for $run_id, preserving"
-                unknown=$((unknown + 1))
-                ;;
-            esac
-          done < "$RUNNER_TEMP/all-runs.tsv"
-          target="$(wc -l < "$RUNNER_TEMP/obsolete-run-ids.txt" | tr -d ' ')"
-          echo "Preserve $preserved active-workflow runs. Delete $target obsolete runs. Unknown paths: $unknown."
-          deleted=0
-          while IFS= read -r run_id; do
-            [[ "$run_id" =~ ^[0-9]+$ ]] || { echo "::error::Invalid run id"; exit 1; }
-            attempt=0
-            while true; do
-              if gh api -X DELETE "repos/$GITHUB_REPOSITORY/actions/runs/$run_id" \
-                > /dev/null 2> "$RUNNER_TEMP/delete-error.txt"; then
-                deleted=$((deleted + 1))
-                break
-              fi
-              if grep -qE 'HTTP 404|Not Found' "$RUNNER_TEMP/delete-error.txt"; then
-                break
-              fi
-              if grep -qi 'Resource not accessible by integration' "$RUNNER_TEMP/delete-error.txt"; then
-                echo "::error::No permission to delete run history"
-                cat "$RUNNER_TEMP/delete-error.txt"
-                exit 1
-              fi
-              attempt=$((attempt + 1))
-              if ((attempt > 12)); then
-                echo "::error::Delete failed for $run_id"
-                cat "$RUNNER_TEMP/delete-error.txt"
-                exit 1
-              fi
-              wait_sec=$((attempt * attempt * 5))
-              if ((wait_sec > 300)); then wait_sec=300; fi
-              echo "::warning::Retrying deletion of $run_id in $wait_sec seconds"
-              sleep "$wait_sec"
-            done
-            if ((deleted > 0 && deleted % 50 == 0)); then
-              echo "Deleted $deleted / $target obsolete runs"
-            fi
-            sleep 1
-          done < "$RUNNER_TEMP/obsolete-run-ids.txt"
-          echo "Deleted $deleted obsolete workflow runs"
-          gh api --paginate -X GET "repos/$GITHUB_REPOSITORY/actions/runs?per_page=100" \
-            --jq '.workflow_runs[] | [.id, (.path // "")] | @tsv' \
-            > "$RUNNER_TEMP/remaining.tsv"
-          if awk -F '\t' '$2 ~ /^\.github\/workflows\// && $2 != ".github/workflows/release-apk.yml" && $2 != ".github/workflows/debug-apk.yml" && $2 != ".github/workflows/newpipe-extractor-update.yml" && $2 != ".github/workflows/youtube-client-policy-update.yml" { print }' "$RUNNER_TEMP/remaining.tsv" | grep .; then
-            echo "::error::Obsolete workflow runs still remain"
-            exit 1
-          fi
-          echo "PASS: only run history of four active workflows remains."
-
   build:
     name: Build Universal Debug APK
     runs-on: ubuntu-latest
