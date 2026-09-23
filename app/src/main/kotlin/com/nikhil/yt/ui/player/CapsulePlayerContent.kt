@@ -1597,16 +1597,8 @@ internal fun CapsuleOrbitButton(
                 .clip(
                     CircleShape,
                 )
-                .background(
-                    if (isPlaying) {
-                        Color.Transparent
-                    } else {
-                        Color.Gray.copy(
-                            alpha =
-                                0.055f,
-                        )
-                    },
-                )
+                // No paused-state disc: the orbit is the play/pause button in
+                // Super, Light and Immersive, so the three designs stay aligned.
                 .clickable(
                     onClick =
                         onClick,
