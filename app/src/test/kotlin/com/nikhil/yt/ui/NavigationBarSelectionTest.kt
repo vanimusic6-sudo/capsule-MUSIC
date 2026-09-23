@@ -75,13 +75,17 @@ class NavigationBarSelectionTest {
         }
     }
 
-    @Test fun `the highlight follows the last tab actually visited`() {
+    @Test fun `Search is in the dock while Stats and History are not`() {
+        assertEquals(listOf(Screens.Home, Screens.Search, Screens.Library), items)
         show(Screens.Home.route)
 
-        val onHistory = navigateTo(Screens.History.route)
-        assertEquals(items.indexOf(Screens.History), onHistory)
-
-        assertEquals("settings fell back to the first tab", onHistory, navigateTo("settings"))
+        val onSearch = navigateTo(Screens.Search.route)
+        assertEquals(items.indexOf(Screens.Search), onSearch)
+        assertEquals("search results keep Search selected", onSearch, navigateTo("search/{query}"))
+        assertEquals("a song search result keeps Search selected", onSearch, navigateTo("search/track"))
+        assertEquals("history is not a dock tab", onSearch, navigateTo(Screens.History.route))
+        assertEquals("stats is not a dock tab", onSearch, navigateTo(Screens.Stats.route))
+        assertEquals("settings fell back to Home", onSearch, navigateTo("settings"))
     }
 
     @Test fun `a sub-route of a tab still counts as that tab`() {
