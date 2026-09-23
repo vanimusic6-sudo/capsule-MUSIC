@@ -45,8 +45,8 @@ import timber.log.Timber
  */
 internal const val AUDIO_CHUNK_BYTES = 1L * 1024 * 1024
 
-/** How many times one slice is asked for before the refusal is handed to the player. */
-internal const val CHUNK_OPEN_ATTEMPTS = 3
+/** Initial CDN open plus ONE same-link retry before the service tries the next client. */
+internal const val CHUNK_OPEN_ATTEMPTS = 2
 
 /** Response codes that mean "not this request" rather than "not this stream". */
 internal val REFUSAL_CODES = setOf(403, 410)
