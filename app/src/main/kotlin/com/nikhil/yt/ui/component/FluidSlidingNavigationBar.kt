@@ -154,7 +154,7 @@ private fun isRouteSelected(
 
     if (
         screenRoute ==
-        "search_input" &&
+        Screens.Search.route &&
         (
             currentRoute.startsWith(
                 "search/",
