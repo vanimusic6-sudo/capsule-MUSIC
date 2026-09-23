@@ -26,11 +26,15 @@ private class ScriptedChain(
 ) : Interceptor.Chain {
     private val remaining = ArrayDeque(replies)
     val asked = mutableListOf<String>()
+    val timeoutsByHop = mutableListOf<Pair<Int?, Int?>>()
+    private var selectedConnectMs: Int? = null
+    private var selectedReadMs: Int? = null
 
     override fun request(): Request = request
 
     override fun proceed(request: Request): Response {
         asked += request.url.toString()
+        timeoutsByHop += selectedConnectMs to selectedReadMs
         val next = remaining.removeFirstOrNull() ?: error("proceed() called more times than scripted")
         return next(request)
     }
@@ -41,11 +45,17 @@ private class ScriptedChain(
 
     override fun connectTimeoutMillis(): Int = 0
 
-    override fun withConnectTimeout(timeout: Int, unit: TimeUnit): Interceptor.Chain = this
+    override fun withConnectTimeout(timeout: Int, unit: TimeUnit): Interceptor.Chain {
+        selectedConnectMs = unit.toMillis(timeout.toLong()).toInt()
+        return this
+    }
 
     override fun readTimeoutMillis(): Int = 0
 
-    override fun withReadTimeout(timeout: Int, unit: TimeUnit): Interceptor.Chain = this
+    override fun withReadTimeout(timeout: Int, unit: TimeUnit): Interceptor.Chain {
+        selectedReadMs = unit.toMillis(timeout.toLong()).toInt()
+        return this
+    }
 
     override fun writeTimeoutMillis(): Int = 0
 
@@ -76,6 +86,36 @@ private fun served(): (Request) -> Response = { request ->
 private fun requestFor(url: String): Request = Request.Builder().url(url).build()
 
 class AudioCdnRedirectPolicyTest {
+    @Test
+    fun `normal CDN groups never inherit shorter timeout from a different suspect group`() {
+        val health = AudioCdnHostHealth(now = { 0L })
+        health.recordUnresponsiveOpen(host = "rr1---sn-unrelated.googlevideo.com")
+        val chain = ScriptedChain(requestFor(ORIGIN), listOf(served()))
+
+        AudioCdnRedirectInterceptor(health = health).intercept(chain).close()
+
+        assertEquals(listOf(null to null), chain.timeoutsByHop)
+    }
+
+    @Test
+    fun `only a hop redirected into a suspect CDN group receives shorter timeout`() {
+        val health = AudioCdnHostHealth(now = { 0L })
+        health.recordUnresponsiveOpen(OTHER_GROUP.substringAfter("https://").substringBefore('/'))
+        val chain = ScriptedChain(
+            requestFor(ORIGIN),
+            listOf(redirectTo(OTHER_GROUP), redirectTo(OTHER_GROUP), served()),
+        )
+
+        AudioCdnRedirectInterceptor(health = health).intercept(chain).close()
+
+        assertEquals(listOf(ORIGIN, ORIGIN, OTHER_GROUP), chain.asked)
+        assertEquals(
+            listOf(null to null, null to null,
+                5_000 to 5_000),
+            chain.timeoutsByHop,
+        )
+    }
+
     @Test
     fun `a googlevideo host names the group that signed the link`() {
         assertEquals("sn-ajixh5-55", googlevideoServerGroup("rr1---sn-ajixh5-55.googlevideo.com"))
