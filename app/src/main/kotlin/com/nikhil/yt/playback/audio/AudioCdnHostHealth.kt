@@ -311,6 +311,10 @@ internal class AudioCdnHostHealthDataSource(
         }
         if (!failure.isAudioCdnTransportFailure()) return failure
 
+        // A cross-group redirect may have succeeded on the issuing server
+        // before timing out on the target. Attribute the network failure to
+        // the actual failed hop rather than condemning the responsive issuer.
+        val failedHost = failure.failedCdnHopHostOrNull() ?: servedByHost ?: host
         // Mark an unresponsive group as SUSPECT after a real timed-out open,
         // not after a quick socket reset, canceled seek, HTTP status, or a
         // transient TLS peer closure. A very long wrapped socket failure also
@@ -320,11 +324,12 @@ internal class AudioCdnHostHealthDataSource(
                 generateSequence(failure as Throwable?) { it.cause }
                     .take(12).any { it is java.net.SocketTimeoutException })
         ) {
-            health.recordUnresponsiveOpen(host)
+            health.recordUnresponsiveOpen(failedHost)
         }
-        // A read failure belongs to the server that served the open, which may be the
-        // redirect target. For a failed open there is no reliable final URL; use the origin.
-        health.recordFailure(servedByHost ?: host)
+        // A read failure belongs to the server that served the open, which may
+        // be the redirect target. An open failure also carries its actual hop
+        // when a cross-group redirect has already happened.
+        health.recordFailure(failedHost)
         val id = mediaId
         return if (id != null && googlevideoServerGroup(host) != null) {
             AudioCdnRefreshRequiredException(id, reason, failure)
