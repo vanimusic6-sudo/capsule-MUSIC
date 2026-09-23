@@ -84,6 +84,7 @@ internal fun shouldChunkAudioRequest(
 internal class AudioChunkedDataSource(
     private val upstream: DataSource,
     private val chunkBytes: Long = AUDIO_CHUNK_BYTES,
+    private val initialChunkBytes: (DataSpec) -> Long = { 0L },
 ) : DataSource {
     private var request: DataSpec? = null
     private var nextPosition = 0L
@@ -91,6 +92,8 @@ internal class AudioChunkedDataSource(
     private var chunkLeft = 0L
     private var opened = false
     private var activeChunkBytes = chunkBytes
+    private var firstChunkBytes = 0L
+    private var firstChunkPending = false
 
     override fun addTransferListener(transferListener: TransferListener) {
         upstream.addTransferListener(transferListener)
@@ -132,6 +135,14 @@ internal class AudioChunkedDataSource(
 
         request = dataSpec
         activeChunkBytes = chunkBytes
+        // Only the first slice is shortened during a confirmed skip burst.
+        // All later slices retain the extractor's original pacing policy.
+        firstChunkBytes =
+            initialChunkBytes(dataSpec)
+                .takeIf { it > 0L && dataSpec.position == 0L }
+                ?.coerceAtMost(chunkBytes)
+                ?: chunkBytes
+        firstChunkPending = true
         nextPosition = dataSpec.position
         bytesLeft = dataSpec.length
         opened = true
@@ -142,7 +153,8 @@ internal class AudioChunkedDataSource(
     /** Opens the next bounded slice without changing the original URL or extraction contract. */
     private fun openNextChunk() {
         val spec = requireNotNull(request)
-        chunkLeft = minOf(activeChunkBytes, bytesLeft)
+        chunkLeft = minOf(if (firstChunkPending) firstChunkBytes else activeChunkBytes, bytesLeft)
+        firstChunkPending = false
         val chunkSpec =
             spec.buildUpon()
                 .setPosition(nextPosition)
@@ -227,14 +239,16 @@ internal class AudioChunkedDataSource(
     override fun close() {
         opened = false
         request = null
+        firstChunkPending = false
         upstream.close()
     }
 
     internal class Factory(
         private val upstreamFactory: DataSource.Factory,
         private val chunkBytes: Long = AUDIO_CHUNK_BYTES,
+        private val initialChunkBytes: (DataSpec) -> Long = { 0L },
     ) : DataSource.Factory {
         override fun createDataSource(): DataSource =
-            AudioChunkedDataSource(upstreamFactory.createDataSource(), chunkBytes)
+            AudioChunkedDataSource(upstreamFactory.createDataSource(), chunkBytes, initialChunkBytes)
     }
 }
