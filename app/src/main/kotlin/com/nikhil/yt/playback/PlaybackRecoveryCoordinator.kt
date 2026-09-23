@@ -43,6 +43,7 @@ internal class PlaybackRecoveryCoordinator(
     private val networkRetryProgressGraceMs: Long = 5_000L,
 ) {
     private val retryBudget = PlaybackRetryBudget()
+    private val cdnRecoveryPlan = AudioCdnRecoveryPlan()
     private val noPlayableFreshResolveUsed = LinkedHashSet<String>()
 
     /**
@@ -59,14 +60,22 @@ internal class PlaybackRecoveryCoordinator(
 
     fun nextRetryDelayMs(mediaId: String): Long? = retryBudget.nextDelayMs(mediaId)
 
+    fun onCdnFailure(mediaId: String, signedUrlRejected: Boolean): AudioCdnRecoveryAction =
+        cdnRecoveryPlan.onFailure(mediaId, signedUrlRejected)
+
+    fun hasTriedAlternativeCdnClient(mediaId: String): Boolean =
+        cdnRecoveryPlan.nextClientAlreadyTried(mediaId)
+
     fun resetRetry(mediaId: String) {
         retryBudget.reset(mediaId)
+        cdnRecoveryPlan.reset(mediaId)
         noPlayableFreshResolveUsed.remove(mediaId)
         signedUrlRejections.remove(mediaId)
     }
 
     fun clearRetryBudget() {
         retryBudget.clear()
+        cdnRecoveryPlan.clear()
         noPlayableFreshResolveUsed.clear()
         signedUrlRejections.clear()
     }
