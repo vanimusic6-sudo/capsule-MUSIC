@@ -207,6 +207,7 @@ import com.nikhil.yt.playback.audio.AudioCdnHostHealth
 import com.nikhil.yt.playback.audio.AudioCdnHostHealthDataSource
 import com.nikhil.yt.playback.audio.audioCdnRefreshRequiredOrNull
 import com.nikhil.yt.playback.audio.requiresFreshAudioUrlFor
+import com.nikhil.yt.playback.audio.isUnresponsiveCdnOpenFor
 import com.nikhil.yt.playback.audio.AudioCdnRedirectInterceptor
 import com.nikhil.yt.playback.audio.AudioCdnOpenContext
 import com.nikhil.yt.playback.audio.AudioCdnOpenSource
@@ -4007,13 +4008,23 @@ class MusicService :
             // already returned above and must never rotate identities.
             if (signedUrlRejected || cdnTransportFailure) {
                 // The request layer already performed one retry of the SAME
-                // URL on 403/410; transport failures still need one reconnect.
+                // URL on 403/410. Ordinary transport failures get one reconnect;
+                // a no-byte CDN open timeout has already used a full 15-second
+                // network budget and moves directly to the next client.
+                val unresponsiveOpen = error.isUnresponsiveCdnOpenFor(currentMediaId)
                 val recoveryAction = playbackRecoveryCoordinator.onCdnFailure(
                     currentMediaId,
                     signedUrlRejected = signedUrlRejected ||
                         error.audioCdnRefreshRequiredOrNull()?.refreshReason ==
                             com.nikhil.yt.playback.audio.AudioCdnRefreshReason.HOST_COOLDOWN,
+                    unresponsiveOpen = unresponsiveOpen,
                 )
+                if (unresponsiveOpen) {
+                    Timber.tag("PlaybackRecovery").w(
+                        "cdn-open-timeout id=%s; skip same-route reconnect, request next client",
+                        currentMediaId,
+                    )
+                }
 
                 if (recoveryAction == AudioCdnRecoveryAction.SKIP_TRACK) {
                     Timber.tag("PlaybackRecovery").w(
