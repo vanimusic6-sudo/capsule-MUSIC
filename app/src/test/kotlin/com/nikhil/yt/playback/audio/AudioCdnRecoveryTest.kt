@@ -281,6 +281,13 @@ class AudioCdnRecoveryTest {
                 IOException("a short-lived reset", java.net.SocketException("reset")),
             ).isUnresponsiveCdnOpenFor("song"),
         )
+        assertTrue(
+            AudioCdnRefreshRequiredException(
+                "song", AudioCdnRefreshReason.OPEN_FAILURE,
+                IOException("very late reset", java.net.SocketException("reset")),
+                openElapsedMs = CDN_HOST_LONG_OPEN_MS,
+            ).isUnresponsiveCdnOpenFor("song"),
+        )
     }
 
     @Test
