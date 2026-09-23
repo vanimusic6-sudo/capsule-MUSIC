@@ -31,6 +31,7 @@ on:
     branches:
       - main
       - cleanup/capsule-player-only
+      - diagnostic/cdn-403-correlation-20260922
     paths:
       - "app/src/main/kotlin/com/nikhil/yt/ui/**"
       - "app/src/main/kotlin/com/nikhil/yt/MainActivity.kt"
