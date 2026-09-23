@@ -6,6 +6,7 @@
 
 package com.nikhil.yt.ui.screens.settings
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -259,11 +260,13 @@ fun AboutScreen(
                                 ),
                         contentAlignment = Alignment.Center,
                     ) {
-                        Icon(
+                        Image(
                             painter = painterResource(R.drawable.ic_velune_concept),
-                            contentDescription = "capsule",
-                            modifier = Modifier.size(68.dp),
-                            tint = Color.Unspecified,
+                            contentDescription = stringResource(R.string.app_name),
+                            modifier = Modifier
+                                .size(70.dp)
+                                .clip(CircleShape),
+                            contentScale = ContentScale.Crop,
                         )
                     }
 
