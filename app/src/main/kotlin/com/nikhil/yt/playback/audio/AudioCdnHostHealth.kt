@@ -332,7 +332,7 @@ internal class AudioCdnHostHealthDataSource(
         health.recordFailure(failedHost)
         val id = mediaId
         return if (id != null && googlevideoServerGroup(host) != null) {
-            AudioCdnRefreshRequiredException(id, reason, failure)
+            AudioCdnRefreshRequiredException(id, reason, failure, openElapsedMs)
         } else failure
     }
 
