@@ -487,13 +487,19 @@ jobs:
             -H "Authorization: Bearer ${{ github.token }}" \
             https://api.github.com/repos/MetrolistGroup/innertubex/releases/latest \
             | jq -r '.tag_name // empty')"
-          current="$(sed -n 's/^innertubex[[:space:]]*=[[:space:]]*"\\([^"]*\\)".*/\\1/p' gradle/libs.versions.toml | head -n1)"
+          current="$(python3 - <<'PY'
+          from pathlib import Path
+          import re
+          match = re.search(r'(?m)^innertubex[ \t]*=[ \t]*"([^"]+)"', Path("gradle/libs.versions.toml").read_text())
+          print(match.group(1) if match else "")
+          PY
+          )"
           export LATEST="$latest" CURRENT="$current"
           python3 - <<'PY'
           import os, re
           from pathlib import Path
           latest, current = os.environ["LATEST"], os.environ["CURRENT"]
-          pattern = r"v?(\\d+)\\.(\\d+)\\.(\\d+)"
+          pattern = r"v?(\d+)\.(\d+)\.(\d+)"
           a, b = re.fullmatch(pattern, current), re.fullmatch(pattern, latest)
           if not a or not b:
               raise SystemExit("Unexpected InnerTubeX release tag or existing version; manual review required")
@@ -502,9 +508,9 @@ jobs:
               print("::warning::InnerTubeX minor/major release requires manual compatibility review")
           outputs = Path(os.environ["GITHUB_OUTPUT"])
           with outputs.open("a") as fp:
-              fp.write(f"changed={'true' if changed else 'false'}\\n")
-              fp.write(f"latest={latest}\\n")
-              fp.write(f"current={current}\\n")
+              fp.write(f"changed={'true' if changed else 'false'}\n")
+              fp.write(f"latest={latest}\n")
+              fp.write(f"current={current}\n")
           print(f"InnerTubeX current={current} upstream={latest} safePatchUpdate={changed}")
           PY
 
@@ -534,7 +540,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p app/src/main/res
-          printf 'unqualifiedResLocale=en-US\\n' > app/src/main/res/resources.properties
+          printf 'unqualifiedResLocale=en-US\n' > app/src/main/res/resources.properties
           gradle :innertube:test :app:testUniversalDebugUnitTest :app:lintUniversalDebug :app:assembleUniversalDebug \
             --stacktrace --no-daemon
 
