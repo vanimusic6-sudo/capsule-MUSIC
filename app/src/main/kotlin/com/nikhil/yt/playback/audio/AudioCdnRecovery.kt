@@ -22,6 +22,23 @@ internal class AudioCdnRefreshRequiredException(
     cause: IOException? = null,
 ) : IOException("Audio CDN requires a fresh URL ($refreshReason)", cause)
 
+/**
+ * Preserve the host of the *actual failed redirect hop*. The issuing CDN group
+ * may have returned HTTP 302 successfully; a timeout on its target must not
+ * falsely mark the issuing group as unreachable.
+ */
+internal class AudioCdnFailedHopException(
+    val failedHost: String,
+    cause: IOException,
+) : IOException("Audio CDN redirected hop failed", cause)
+
+internal fun Throwable.failedCdnHopHostOrNull(): String? =
+    generateSequence(this as Throwable?) { it.cause }
+        .take(12)
+        .filterIsInstance<AudioCdnFailedHopException>()
+        .firstOrNull()
+        ?.failedHost
+
 internal fun Throwable.audioCdnRefreshRequiredOrNull(): AudioCdnRefreshRequiredException? =
     generateSequence(this as Throwable?) { it.cause }
         .take(12)
