@@ -124,6 +124,49 @@ class AudioCdnRecoveryTest {
     }
 
     @Test
+    fun onlyRealNoByteOpenTimeoutMakesCdnGroupSuspect() {
+        val health = AudioCdnHostHealth(now = { 0L })
+        val upstream = Upstream().apply {
+            openFailure = IOException(
+                "upstream wrapper",
+                java.util.concurrent.ExecutionException(SocketTimeoutException("Read timed out")),
+            )
+        }
+        val source = AudioCdnHostHealthDataSource(upstream, health)
+        assertThrows(AudioCdnRefreshRequiredException::class.java) { source.open(spec) }
+        source.close()
+        assertTrue(health.isUnresponsiveHost(host))
+        assertFalse(health.isUnresponsiveHost("rr1---sn-other.googlevideo.com"))
+
+        // Any real body bytes from the same group restore its original budget.
+        upstream.openFailure = null
+        upstream.readResult = 4
+        source.open(spec)
+        assertEquals(4, source.read(ByteArray(4), 0, 4))
+        source.close()
+        assertFalse(health.isUnresponsiveHost(host))
+    }
+
+    @Test
+    fun cancellationAndMidstreamTimeoutDoNotMarkAnUnresponsiveOpen() {
+        val health = AudioCdnHostHealth(now = { 0L })
+        val upstream = Upstream().apply { openFailure = IOException("Canceled") }
+        val source = AudioCdnHostHealthDataSource(upstream, health)
+        assertThrows(IOException::class.java) { source.open(spec) }
+        source.close()
+        assertFalse(health.isUnresponsiveHost(host))
+
+        upstream.openFailure = null
+        upstream.readFailure = SocketTimeoutException("midstream read timed out")
+        source.open(spec)
+        assertThrows(AudioCdnRefreshRequiredException::class.java) {
+            source.read(ByteArray(4), 0, 4)
+        }
+        source.close()
+        assertFalse(health.isUnresponsiveHost(host))
+    }
+
+    @Test
     fun twoTimeoutsAndOneCancellationAreOnlyTwoHostFailures() {
         val health = AudioCdnHostHealth(now = { 0L })
         val upstream = Upstream().apply { openFailure = IOException("wrapped", SocketTimeoutException()) }
