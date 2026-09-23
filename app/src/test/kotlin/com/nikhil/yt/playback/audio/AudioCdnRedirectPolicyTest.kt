@@ -117,6 +117,27 @@ class AudioCdnRedirectPolicyTest {
     }
 
     @Test
+    fun `failed redirect carries the actual target host while preserving original timeout`() {
+        val timeout = java.net.SocketTimeoutException("redirect target timed out")
+        val chain = ScriptedChain(
+            requestFor(ORIGIN),
+            listOf(
+                redirectTo(OTHER_GROUP),
+                redirectTo(OTHER_GROUP),
+                { throw timeout },
+            ),
+        )
+        val failure = org.junit.Assert.assertThrows(
+            AudioCdnFailedHopException::class.java,
+        ) {
+            AudioCdnRedirectInterceptor().intercept(chain)
+        }
+        assertEquals(OTHER_GROUP.substringAfter("https://").substringBefore('/'), failure.failedHost)
+        assertEquals(timeout, failure.cause)
+        assertEquals(failure.failedHost, failure.failedCdnHopHostOrNull())
+    }
+
+    @Test
     fun `a googlevideo host names the group that signed the link`() {
         assertEquals("sn-ajixh5-55", googlevideoServerGroup("rr1---sn-ajixh5-55.googlevideo.com"))
         assertEquals("sn-aj4g55-5o", googlevideoServerGroup("rr5---sn-aj4g55-5o.googlevideo.com"))
