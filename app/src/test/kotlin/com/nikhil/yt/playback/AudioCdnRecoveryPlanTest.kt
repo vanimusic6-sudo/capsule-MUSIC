@@ -17,6 +17,33 @@ class AudioCdnRecoveryPlanTest {
     }
 
     @Test
+    fun noByteCdnOpenTimeoutGoesDirectlyToNextClientWithoutRepeatingFifteenSecondWait() {
+        val plan = AudioCdnRecoveryPlan()
+        assertEquals(
+            AudioCdnRecoveryAction.TRY_NEXT_CLIENT,
+            plan.onFailure("song", signedUrlRejected = false, unresponsiveOpen = true),
+        )
+        assertTrue(plan.nextClientAlreadyTried("song"))
+        assertEquals(
+            AudioCdnRecoveryAction.SKIP_TRACK,
+            plan.onFailure("song", signedUrlRejected = false, unresponsiveOpen = true),
+        )
+    }
+
+    @Test
+    fun aReadTimeoutOnAnOpenedStreamStillGetsOneSameLinkReconnect() {
+        val plan = AudioCdnRecoveryPlan()
+        assertEquals(
+            AudioCdnRecoveryAction.RETRY_SAME_URL,
+            plan.onFailure("song", signedUrlRejected = false, unresponsiveOpen = false),
+        )
+        assertEquals(
+            AudioCdnRecoveryAction.TRY_NEXT_CLIENT,
+            plan.onFailure("song", signedUrlRejected = false, unresponsiveOpen = true),
+        )
+    }
+
+    @Test
     fun rejectedSignedUrlAlreadyRetriedInChunkLayerSoNextClientComesFirst() {
         val plan = AudioCdnRecoveryPlan()
         assertEquals(AudioCdnRecoveryAction.TRY_NEXT_CLIENT, plan.onFailure("track", true))
