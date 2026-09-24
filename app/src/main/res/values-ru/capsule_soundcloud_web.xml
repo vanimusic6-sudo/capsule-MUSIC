@@ -1,22 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="capsule_soundcloud_group">Экспериментальные источники</string>
-    <string name="capsule_soundcloud_web_title">SoundCloud: нативный поиск (тест)</string>
-    <string name="capsule_soundcloud_web_description">Показывает настоящие карточки SoundCloud прямо в поиске Capsule. Нужен действующий токен официального API SoundCloud; воспроизведение в Capsule пока не подключено.</string>
+    <string name="capsule_soundcloud_web_title">SoundCloud (NewPipe, тест)</string>
+    <string name="capsule_soundcloud_web_description">Настоящие результаты SoundCloud и воспроизведение прямо в Capsule через NewPipeExtractor. API-токен не нужен. Пока отдельный тестовый плеер: без общей очереди и загрузок.</string>
     <string name="capsule_soundcloud_badge">SoundCloud</string>
-    <string name="capsule_soundcloud_find_on_site">Найти и послушать в SoundCloud (веб-режим)</string>
-    <string name="capsule_soundcloud_close">Назад в Capsule</string>
-    <string name="capsule_soundcloud_open_browser">Открыть в браузере</string>
-    <string name="capsule_soundcloud_web_notice">SoundCloud • тестовый веб-плеер. Здесь настоящие результаты SoundCloud, а не совпадения YouTube. Воспроизведение работает на сайте SoundCloud и не добавляется в очередь Capsule.</string>
-    <string name="capsule_soundcloud_token_title">Токен доступа к API SoundCloud</string>
-    <string name="capsule_soundcloud_token_missing">Не задан: поиск SoundCloud не сможет загрузить треки</string>
-    <string name="capsule_soundcloud_token_set">Задан: периодически истекает; изменить или очистить можно здесь</string>
-    <string name="capsule_soundcloud_token_notice">Только для теста. Укажи OAuth-токен своего авторизованного приложения SoundCloud API. Не вводи пароль, client secret или чужой токен. Токен хранится в настройках приложения и имеет срок действия; не используй на общем устройстве.</string>
     <string name="capsule_soundcloud_loading">Ищем в SoundCloud…</string>
-    <string name="capsule_soundcloud_needs_token">Для настоящих результатов SoundCloud укажи действующий токен API в Настройки → Контент.</string>
-    <string name="capsule_soundcloud_invalid_token">Доступ SoundCloud истёк или отклонён. Обнови токен API в настройках.</string>
     <string name="capsule_soundcloud_rate_limited">SoundCloud временно ограничил запросы. Попробуй позже.</string>
-    <string name="capsule_soundcloud_request_failed">Поиск SoundCloud сейчас недоступен. Проверь соединение и доступ к API.</string>
+    <string name="capsule_soundcloud_request_failed">Поиск SoundCloud сейчас недоступен. Проверь подключение или попробуй позже.</string>
     <string name="capsule_soundcloud_no_results">В SoundCloud ничего не найдено.</string>
-    <string name="capsule_soundcloud_native_playback_pending">Результаты SoundCloud показываются прямо в Capsule. Воспроизведение в Capsule пока не подключено.</string>
+    <string name="capsule_soundcloud_play">Слушать</string>
+    <string name="capsule_soundcloud_pause">Пауза</string>
+    <string name="capsule_soundcloud_playback_error">Не удалось воспроизвести аудио SoundCloud: трек недоступен или временно заблокирован.</string>
 </resources>
