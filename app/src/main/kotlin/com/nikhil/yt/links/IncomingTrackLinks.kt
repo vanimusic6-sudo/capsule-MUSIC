@@ -14,7 +14,7 @@ internal sealed interface IncomingTrackLink {
 
 /** Pure URL parser: also accepts a link embedded in a Share sheet's descriptive text. */
 internal object IncomingTrackLinks {
-    private val webLink = Regex("""https?://[^\\s<>"']+""", RegexOption.IGNORE_CASE)
+    private val webLink = Regex("""https?://[^\s<>"']+""", RegexOption.IGNORE_CASE)
     private val videoId = Regex("[A-Za-z0-9_-]{11}")
     private val spotifyId = Regex("[A-Za-z0-9]{22}")
 
