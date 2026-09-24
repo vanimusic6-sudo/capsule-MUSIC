@@ -157,7 +157,7 @@ fun AboutScreen(
                             }
                     }
                 }
-                .onFailure { error ->
+                .onFailure { _ ->
                     updateMessage = AboutStatus(R.string.capsule_about_update_error)
                 }
 
@@ -186,7 +186,7 @@ fun AboutScreen(
                                 AboutStatus(R.string.capsule_about_engine_preparing, status.upstreamVersion)
                         }
                 }
-                .onFailure { error ->
+                .onFailure { _ ->
                     engineMessage = AboutStatus(R.string.capsule_about_engine_error)
                 }
 
@@ -661,6 +661,7 @@ fun AboutScreen(
                 SectionTitle(stringResource(R.string.capsule_about_app_info))
                 Spacer(Modifier.height(8.dp))
 
+                val unknownInstallDate = stringResource(R.string.capsule_about_unknown)
                 val installDate =
                     try {
                         val packageInfo =
@@ -672,7 +673,7 @@ fun AboutScreen(
                             .getDateInstance(DateFormat.MEDIUM, context.resources.configuration.locales[0])
                             .format(Date(packageInfo.firstInstallTime))
                     } catch (_: Exception) {
-                        stringResource(R.string.capsule_about_unknown)
+                        unknownInstallDate
                     }
 
                 AboutItemCard(
