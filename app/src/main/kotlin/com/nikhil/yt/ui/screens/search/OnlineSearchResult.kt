@@ -38,6 +38,21 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.LocalContext
+import androidx.media3.common.AudioAttributes
+import androidx.media3.common.C
+import androidx.media3.common.MediaItem
+import androidx.media3.common.MimeTypes
+import androidx.media3.common.PlaybackException
+import androidx.media3.common.Player
+import androidx.media3.exoplayer.ExoPlayer
+import com.nikhil.yt.innertube.soundcloud.SoundCloudNewPipe
+import com.nikhil.yt.soundcloud.SoundCloudCatalog
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
@@ -107,6 +122,71 @@ fun OnlineSearchResult(
     val coroutineScope = rememberCoroutineScope()
     val lazyListState = rememberLazyListState()
     val (showSoundCloudPreview, _) = rememberPreference(SoundCloudWebPreviewEnabledKey, false)
+    val context = LocalContext.current
+    // Keep this preview player outside LazyColumn: scrolling a row off-screen must
+    // not release audio. It is isolated from YouTube's custom resolver/caches.
+    val soundCloudPlayer = remember(showSoundCloudPreview, context) {
+        if (showSoundCloudPreview) {
+            ExoPlayer.Builder(context)
+                .build()
+                .apply {
+                    setAudioAttributes(
+                        AudioAttributes.Builder()
+                            .setUsage(C.USAGE_MEDIA)
+                            .setContentType(C.AUDIO_CONTENT_TYPE_MUSIC)
+                            .build(),
+                        true,
+                    )
+                    setHandleAudioBecomingNoisy(true)
+                }
+        } else null
+    }
+    var selectedSoundCloudTrack by remember { mutableStateOf<SoundCloudCatalog.Track?>(null) }
+    var soundCloudPlaying by remember { mutableStateOf(false) }
+    var soundCloudLoading by remember { mutableStateOf(false) }
+    var soundCloudPlaybackError by remember { mutableStateOf(false) }
+    DisposableEffect(soundCloudPlayer) {
+        val listener = object : Player.Listener {
+            override fun onIsPlayingChanged(isPlaying: Boolean) {
+                soundCloudPlaying = isPlaying
+            }
+            override fun onPlayerError(error: PlaybackException) {
+                soundCloudLoading = false
+                soundCloudPlaybackError = true
+            }
+            override fun onPlaybackStateChanged(playbackState: Int) {
+                if (playbackState == Player.STATE_READY || playbackState == Player.STATE_ENDED) {
+                    soundCloudLoading = false
+                }
+            }
+        }
+        soundCloudPlayer?.addListener(listener)
+        onDispose {
+            soundCloudPlayer?.removeListener(listener)
+            soundCloudPlayer?.release()
+        }
+    }
+    LaunchedEffect(selectedSoundCloudTrack, soundCloudPlayer) {
+        val track = selectedSoundCloudTrack ?: return@LaunchedEffect
+        val player = soundCloudPlayer ?: return@LaunchedEffect
+        soundCloudLoading = true
+        soundCloudPlaybackError = false
+        val stream = withContext(Dispatchers.IO) {
+            runCatching { SoundCloudNewPipe.resolve(track.permalink) }
+        }
+        stream.onSuccess { resolved ->
+            val item = MediaItem.Builder()
+                .setUri(resolved.url)
+                .apply { if (resolved.isHls) setMimeType(MimeTypes.APPLICATION_M3U8) }
+                .build()
+            player.setMediaItem(item)
+            player.prepare()
+            player.play()
+        }.onFailure {
+            soundCloudLoading = false
+            soundCloudPlaybackError = true
+        }
+    }
 
     val searchFilter by viewModel.filter.collectAsState()
     val searchSummary = viewModel.summaryPage
@@ -218,7 +298,32 @@ fun OnlineSearchResult(
     ) {
         if (showSoundCloudPreview && searchFilter == null) {
             item(key = "soundcloud_native_results") {
-                SoundCloudNativeResults(query = viewModel.query)
+                SoundCloudNativeResults(
+                    query = viewModel.query,
+                    selectedUrl = selectedSoundCloudTrack?.permalink,
+                    playing = soundCloudPlaying,
+                    loadingTrack = soundCloudLoading,
+                    onTrackClick = { track ->
+                        val player = soundCloudPlayer ?: return@SoundCloudNativeResults
+                        if (selectedSoundCloudTrack?.permalink == track.permalink) {
+                            if (!soundCloudLoading) {
+                                if (player.isPlaying) player.pause() else player.play()
+                            }
+                        } else {
+                            // Do not let Capsule's YouTube queue play over SoundCloud.
+                            playerConnection.player.pause()
+                            player.stop()
+                            selectedSoundCloudTrack = track
+                        }
+                    },
+                )
+                if (soundCloudPlaybackError) {
+                    Text(
+                        text = stringResource(R.string.capsule_soundcloud_playback_error),
+                        color = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
+                    )
+                }
             }
         }
         if (searchFilter == null) {
