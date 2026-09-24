@@ -94,7 +94,8 @@ internal fun SoundCloudNativeResults(query: String) {
                             )
                         }
                         Text(
-                            text = "SC",
+                            text = stringResource(R.string.capsule_soundcloud_badge),
+                            style = MaterialTheme.typography.labelSmall,
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.primary,
                         )
