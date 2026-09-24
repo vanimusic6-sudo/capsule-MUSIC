@@ -184,6 +184,8 @@ import com.nikhil.yt.innertube.YouTube
 import com.nikhil.yt.links.ExternalTrackMetadata
 import com.nikhil.yt.links.IncomingTrackLink
 import com.nikhil.yt.links.IncomingTrackLinks
+import com.nikhil.yt.links.SmartTrackLinkResolver
+import com.nikhil.yt.links.SmartTrackResolution
 import com.nikhil.yt.innertube.models.SongItem
 import com.nikhil.yt.innertube.models.WatchEndpoint
 import com.nikhil.yt.extensions.toMediaItem
@@ -1702,6 +1704,11 @@ class MainActivity : ComponentActivity() {
      */
     private fun openIncomingTrackLink(raw: String, navController: NavHostController): Boolean {
         val link = IncomingTrackLinks.parse(raw) ?: return false
+        openClassifiedTrackLink(link, navController)
+        return true
+    }
+
+    private fun openClassifiedTrackLink(link: IncomingTrackLink, navController: NavHostController) {
         when (link) {
             is IncomingTrackLink.YouTube -> lifecycleScope.launch {
                 // Only play the requested video ID; a shuffled queue could start a different song.
@@ -1730,8 +1737,32 @@ class MainActivity : ComponentActivity() {
                 }
                 navController.navigate("search/${URLEncoder.encode(title, "UTF-8")}")
             }
+
+            is IncomingTrackLink.SmartLink -> lifecycleScope.launch {
+                val resolved = withContext(Dispatchers.IO) {
+                    SmartTrackLinkResolver.resolve(link.url)
+                }
+                when (resolved) {
+                    is SmartTrackResolution.Direct -> {
+                        // A SK Lane smart link can point to YouTube, Spotify or SoundCloud.
+                        // Reuse the existing source-specific flow and never invent a media ID.
+                        if (resolved.link !is IncomingTrackLink.SmartLink) {
+                            openClassifiedTrackLink(resolved.link, navController)
+                        }
+                    }
+                    is SmartTrackResolution.Search -> {
+                        navController.navigate("search/${URLEncoder.encode(resolved.query, "UTF-8")}")
+                    }
+                    null -> {
+                        Toast.makeText(
+                            this@MainActivity,
+                            R.string.capsule_track_link_metadata_error,
+                            Toast.LENGTH_LONG,
+                        ).show()
+                    }
+                }
+            }
         }
-        return true
     }
 
     private fun handleDeepLinkIntent(intent: Intent, navController: NavHostController) {
