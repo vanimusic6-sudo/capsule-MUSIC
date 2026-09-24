@@ -98,6 +98,16 @@ object NewPipeUtils {
 
     private var lastPlayerCacheRecoveryAtMs = 0L
 
+    /** SoundCloud uses the already bundled NewPipeExtractor downloader.
+     * Unlike the separate VIDEO process this prepares the main-process extractor
+     * without touching Capsule's InnerTubeX audio resolver or Google credentials.
+     */
+    fun prepareSoundCloud() {
+        synchronized(playerManagerLock) {
+            prepareDownloaderLocked()
+        }
+    }
+
     fun getSignatureTimestamp(videoId: String): Result<Int> =
         runCatching {
             withPlayerManagerRecovery {
