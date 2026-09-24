@@ -724,7 +724,7 @@ Velune will only extract your token, and everything else is stored locally.</str
     <string name="you_might_like">You might like</string>
     <string name="refresh_suggestions">Refresh suggestions</string>
 
-    <string name="music_together">Velune Music Together</string>
+    <string name="music_together">Capsule Music Together</string>
     <string name="together_display_name">Display name</string>
     <string name="together_display_name_placeholder">Your name</string>
     <string name="together_port">Session port</string>
@@ -759,7 +759,7 @@ Velune will only extract your token, and everything else is stored locally.</str
     <string name="not_allowed">Not allowed</string>
     <string name="network_unavailable">Network unavailable</string>
     <string name="together_online_not_configured">Online sessions aren\'t configured</string>
-    <string name="together_token_missing">Online sessions aren\'t available in this build</string>
+    <string name="together_token_missing">Online listening requires a server token in this APK. Configure TOGETHER_BEARER_TOKEN for your build.</string>
     <string name="together_server_unreachable">Server unreachable</string>
     <string name="together_connection_timed_out">Connection timed out</string>
     <string name="together_session_not_found">Session not found</string>
@@ -782,10 +782,10 @@ Velune will only extract your token, and everything else is stored locally.</str
 
     <string name="got_it">Got it</string>
     <string name="together_dont_show_again">Don\'t show this again</string>
-    <string name="together_welcome_title">Welcome to Velune Music Together</string>
-    <string name="together_welcome_body">Music Together lets multiple devices share a live session with a synced queue and playback.</string>
+    <string name="together_welcome_title">Welcome to Capsule Music Together</string>
+    <string name="together_welcome_body">Listen Together lets several devices share a live session with synchronized playback and a shared queue.</string>
     <string name="together_welcome_host_title">Host a session</string>
-    <string name="together_welcome_host_body">Tap Start session, then share the session link. Keep Velune open in the background while hosting.</string>
+    <string name="together_welcome_host_body">Tap Start session, then share the session link. Keep Capsule running in the background while hosting.</string>
     <string name="together_welcome_join_title">Join from another device</string>
     <string name="together_welcome_join_body">Open the shared link, or enter code and tap Join. Your queue and playback will follow the host.</string>
     <string name="together_welcome_permissions_title">Permissions and safety</string>

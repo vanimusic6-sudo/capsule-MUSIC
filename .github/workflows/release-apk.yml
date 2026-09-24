@@ -10,6 +10,9 @@ jobs:
   release:
     name: Build signed Universal APK
     runs-on: ubuntu-latest
+    # The online session token must be configured as a GitHub Actions secret.
+    env:
+      TOGETHER_BEARER_TOKEN: ${{ secrets.TOGETHER_BEARER_TOKEN }}
     timeout-minutes: 60
 
     env:

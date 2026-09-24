@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="capsule_video_quality_title">Качество видео</string>
+    <string name="capsule_video_quality_explanation">Автоматический режим выбирает наилучшее проверенное качество до 720p. При 480p и 720p видеопоток и аудиопоток YouTube могут загружаться отдельно.</string>
+    <string name="capsule_video_mode_title">Режим видео</string>
+    <string name="capsule_video_follow_switch">Следовать переключателю плеера</string>
+    <string name="capsule_video_follow_description">Если в плеере выбран режим VIDEO, для следующих треков приложение попытается открыть официальный клип. Если подходящий клип не найден, музыка продолжит играть, а переключатель покажет VIDEO N/A.</string>
+    <string name="capsule_video_settings_title">Воспроизведение видео</string>
+    <string name="capsule_video_auto">Авто</string>
+    <string name="capsule_video_best_quality">Лучшее проверенное качество до 720p</string>
+    <string name="capsule_video_low_data">Экономия трафика</string>
+    <string name="capsule_video_balanced">Сбалансированное качество</string>
+    <string name="capsule_video_high_quality">Высокое качество</string>
+</resources>

@@ -711,7 +711,7 @@
     <!-- Playlist Suggestions -->
     <string name="you_might_like">Вам может понравиться</string>
     <string name="refresh_suggestions">Обновить предложения</string>
-    <string name="music_together">Velune Music Together</string>
+    <string name="music_together">Capsule — Слушать вместе</string>
     <string name="together_display_name">Отображаемое имя</string>
     <string name="together_display_name_placeholder">Ваше имя</string>
     <string name="together_port">Порт сессии</string>
@@ -746,7 +746,7 @@
     <string name="not_allowed">Запрещено</string>
     <string name="network_unavailable">Сеть недоступна</string>
     <string name="together_online_not_configured">Онлайн сессии не настроены</string>
-    <string name="together_token_missing">Онлайн сессии недоступны в этой сборке</string>
+    <string name="together_token_missing">Для онлайн-прослушивания в этой сборке не задан токен сервера. Укажите TOGETHER_BEARER_TOKEN при сборке приложения.</string>
     <string name="together_server_unreachable">Сервер недоступен</string>
     <string name="together_connection_timed_out">Время ожидания соединения истекло</string>
     <string name="together_session_not_found">Сессия не найдена</string>
@@ -767,10 +767,10 @@
     <string name="together_error_state">Ошибка</string>
     <string name="got_it">Ясно</string>
     <string name="together_dont_show_again">Не показывать снова</string>
-    <string name="together_welcome_title">Добро пожаловать в Velune Music Together</string>
-    <string name="together_welcome_body">Music Together позволяет нескольким устройствам делить сессию в реальном времени с синхронизированными очередью и воспроизведением.</string>
+    <string name="together_welcome_title">Добро пожаловать в Capsule — Слушать вместе</string>
+    <string name="together_welcome_body">«Слушать вместе» позволяет нескольким устройствам слушать музыку синхронно и пользоваться общей очередью.</string>
     <string name="together_welcome_host_title">Захостить сессию</string>
-    <string name="together_welcome_host_body">Нажмите Начать сессию, потом поделитесь ссылкой сессии. Держите Velune открытым в фоне во время хостинга.</string>
+    <string name="together_welcome_host_body">Нажмите «Начать сессию» и поделитесь ссылкой. Пока вы ведущий, оставляйте Capsule работать в фоновом режиме.</string>
     <string name="together_welcome_join_title">Присоединиться с другого устройства</string>
     <string name="together_welcome_join_body">Откройте ссылку с которой вами поделились, или введите код и нажмите Присоединиться. Ваши очередь и воспроизведение будут следовать хосту.</string>
     <string name="together_welcome_permissions_title">Разрешения и безопасность</string>

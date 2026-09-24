@@ -31,6 +31,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
 import com.nikhil.yt.LocalPlayerAwareWindowInsets
+import com.nikhil.yt.R
+import androidx.compose.ui.res.stringResource
 import com.nikhil.yt.constants.CapsuleVideoQuality
 import com.nikhil.yt.constants.CapsuleVideoQualityKey
 import com.nikhil.yt.ui.component.IconButton
@@ -64,7 +66,7 @@ fun VideoPlaybackSettings(
             ),
         )
 
-        PreferenceGroupTitle(title = "Video quality")
+        PreferenceGroupTitle(title = stringResource(R.string.capsule_video_quality_title))
 
         Surface(
             modifier =
@@ -95,14 +97,13 @@ fun VideoPlaybackSettings(
 
         Text(
             text =
-                "Auto chooses the highest validated video up to 720p. " +
-                    "480p and 720p use separate YouTube video/audio streams when needed.",
+                stringResource(R.string.capsule_video_quality_explanation),
             modifier = Modifier.padding(horizontal = 24.dp, vertical = 14.dp),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
 
-        PreferenceGroupTitle(title = "Video mode")
+        PreferenceGroupTitle(title = stringResource(R.string.capsule_video_mode_title))
 
         Surface(
             modifier =
@@ -116,15 +117,13 @@ fun VideoPlaybackSettings(
                 Modifier.padding(horizontal = 18.dp, vertical = 16.dp),
             ) {
                 Text(
-                    text = "Follow the player switch",
+                    text = stringResource(R.string.capsule_video_follow_switch),
                     style = MaterialTheme.typography.titleMedium,
                 )
                 Spacer(Modifier.height(6.dp))
                 Text(
                     text =
-                        "After you select VIDEO in the player, following songs automatically " +
-                            "try to open their official clip. If a trustworthy clip is not found, " +
-                            "audio keeps playing and the switch shows VIDEO N/A.",
+                        stringResource(R.string.capsule_video_follow_description),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -135,7 +134,7 @@ fun VideoPlaybackSettings(
     }
 
     TopAppBar(
-        title = { Text("Video playback") },
+        title = { Text(stringResource(R.string.capsule_video_settings_title)) },
         navigationIcon = {
             IconButton(
                 onClick = navController::navigateUp,
@@ -175,7 +174,7 @@ private fun VideoQualityRow(
             Text(
                 text =
                     when (quality) {
-                        CapsuleVideoQuality.AUTO -> "Auto"
+                        CapsuleVideoQuality.AUTO -> stringResource(R.string.capsule_video_auto)
                         CapsuleVideoQuality.P360 -> "360p"
                         CapsuleVideoQuality.P480 -> "480p"
                         CapsuleVideoQuality.P720 -> "720p"
@@ -186,10 +185,10 @@ private fun VideoQualityRow(
             Text(
                 text =
                     when (quality) {
-                        CapsuleVideoQuality.AUTO -> "Best validated quality up to 720p"
-                        CapsuleVideoQuality.P360 -> "Lower data usage"
-                        CapsuleVideoQuality.P480 -> "Balanced quality"
-                        CapsuleVideoQuality.P720 -> "High quality"
+                        CapsuleVideoQuality.AUTO -> stringResource(R.string.capsule_video_best_quality)
+                        CapsuleVideoQuality.P360 -> stringResource(R.string.capsule_video_low_data)
+                        CapsuleVideoQuality.P480 -> stringResource(R.string.capsule_video_balanced)
+                        CapsuleVideoQuality.P720 -> stringResource(R.string.capsule_video_high_quality)
                     },
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,

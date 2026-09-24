@@ -18,6 +18,9 @@ jobs:
   build:
     name: Build Universal Debug APK
     runs-on: ubuntu-latest
+    # The online session token must be configured as a GitHub Actions secret.
+    env:
+      TOGETHER_BEARER_TOKEN: ${{ secrets.TOGETHER_BEARER_TOKEN }}
     timeout-minutes: 45
 
     steps:

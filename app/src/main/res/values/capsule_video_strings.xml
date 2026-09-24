@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="capsule_video_quality_title">Video quality</string>
+    <string name="capsule_video_quality_explanation">Auto selects the highest verified quality up to 720p. At 480p and 720p, YouTube video and audio streams may be loaded separately.</string>
+    <string name="capsule_video_mode_title">Video mode</string>
+    <string name="capsule_video_follow_switch">Follow the player switch</string>
+    <string name="capsule_video_follow_description">When you select VIDEO in the player, subsequent tracks attempt to open an official music video. If no reliable video is found, audio playback continues and the switch shows VIDEO N/A.</string>
+    <string name="capsule_video_settings_title">Video playback</string>
+    <string name="capsule_video_auto">Auto</string>
+    <string name="capsule_video_best_quality">Best verified quality up to 720p</string>
+    <string name="capsule_video_low_data">Lower data usage</string>
+    <string name="capsule_video_balanced">Balanced quality</string>
+    <string name="capsule_video_high_quality">High quality</string>
+</resources>
