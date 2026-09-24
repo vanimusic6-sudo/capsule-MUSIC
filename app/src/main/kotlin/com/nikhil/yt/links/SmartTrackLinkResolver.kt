@@ -113,6 +113,6 @@ internal object SmartTrackLinkResolver {
             .trim()
         val generic = setOf("sk lane", "music sk lane", "music", "song", "listen now")
         return title.takeIf { it.length in 3..160 && it.lowercase() !in generic }
-            ?.let(SmartTrackResolution::Search)
+            ?.let { SmartTrackResolution.Search(it) }
     }
 }
