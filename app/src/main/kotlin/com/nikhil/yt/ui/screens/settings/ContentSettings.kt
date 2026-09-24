@@ -69,6 +69,7 @@ fun ContentSettings(
     val (contentCountry, onContentCountryChange) = rememberPreference(key = ContentCountryKey, defaultValue = "system")
     val (hideExplicit, onHideExplicitChange) = rememberPreference(key = HideExplicitKey, defaultValue = false)
     val (hideVideo, onHideVideoChange) = rememberPreference(key = HideVideoKey, defaultValue = false)
+    val (soundCloudPreview, setSoundCloudPreview) = rememberPreference(SoundCloudWebPreviewEnabledKey, false)
     val (proxyEnabled, onProxyEnabledChange) = rememberPreference(key = ProxyEnabledKey, defaultValue = false)
     val (proxyType, onProxyTypeChange) = rememberEnumPreference(key = ProxyTypeKey, defaultValue = Proxy.Type.HTTP)
     val (proxyUrl, onProxyUrlChange) = rememberPreference(key = ProxyUrlKey, defaultValue = "host:port")
@@ -157,6 +158,15 @@ fun ContentSettings(
             icon = { Icon(painterResource(R.drawable.slow_motion_video), null) },
             checked = hideVideo,
             onCheckedChange = onHideVideoChange,
+        )
+
+        PreferenceGroupTitle(title = stringResource(R.string.capsule_soundcloud_group))
+        SwitchPreference(
+            title = { Text(stringResource(R.string.capsule_soundcloud_web_title)) },
+            description = stringResource(R.string.capsule_soundcloud_web_description),
+            icon = { Icon(painterResource(R.drawable.music_note), null) },
+            checked = soundCloudPreview,
+            onCheckedChange = setSoundCloudPreview,
         )
 
         PreferenceGroupTitle(title = stringResource(R.string.app_language))

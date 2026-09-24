@@ -55,6 +55,8 @@ val EnableNetEaseKey = booleanPreferencesKey("enableNetEase")
 val EnablePaxsenixKey = booleanPreferencesKey("enablePaxsenix")
 val HideExplicitKey = booleanPreferencesKey("hideExplicit")
 val HideVideoKey = booleanPreferencesKey("hideVideo")
+/** Experimental SoundCloud web preview, isolated from the Capsule/YouTube audio queue. */
+val SoundCloudWebPreviewEnabledKey = booleanPreferencesKey("soundcloudWebPreviewEnabled")
 val ProxyEnabledKey = booleanPreferencesKey("proxyEnabled")
 val ProxyUrlKey = stringPreferencesKey("proxyUrl")
 val ProxyTypeKey = stringPreferencesKey("proxyType")
