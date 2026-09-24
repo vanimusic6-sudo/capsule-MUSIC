@@ -718,6 +718,7 @@ fun SettingsScreen(
     Box(modifier = Modifier.fillMaxSize()) {
         if (!showSearchBar) {
             LazyColumn(
+            flingBehavior = rememberSettingsFlingBehavior(),
                 state = listState,
                 modifier = Modifier
                     .fillMaxSize()
@@ -942,6 +943,7 @@ fun SettingsScreen(
                 focusRequester = focusRequester,
             ) {
                 LazyColumn(
+            flingBehavior = rememberSettingsFlingBehavior(),
                     modifier = Modifier
                         .fillMaxWidth()
                         .windowInsetsPadding(

@@ -175,6 +175,7 @@ fun UpdateScreen(
         },
     ) { paddingValues ->
         LazyColumn(
+            flingBehavior = rememberSettingsFlingBehavior(),
             modifier = Modifier
                 .fillMaxSize()
                 .padding(paddingValues)

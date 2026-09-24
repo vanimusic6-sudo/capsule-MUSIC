@@ -306,7 +306,7 @@ fun ThemeCreatorScreen(
                 .fillMaxWidth()
                 .padding(paddingValues)
                 .windowInsetsPadding(LocalPlayerAwareWindowInsets.current.only(WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom))
-                .verticalScroll(rememberScrollState()),
+                .verticalScroll(rememberScrollState(), flingBehavior = rememberSettingsFlingBehavior()),
         ) {
             ThemeHeroPreview(
                 palette = currentPalette,
@@ -656,7 +656,7 @@ private fun ThemeRichPreview(
                 Column(
                     modifier = Modifier
                         .fillMaxSize()
-                        .verticalScroll(scrollState)
+                        .verticalScroll(scrollState, flingBehavior = rememberSettingsFlingBehavior())
                         .padding(16.dp),
                     verticalArrangement = Arrangement.spacedBy(14.dp),
                 ) {
