@@ -45,13 +45,27 @@ object SoundCloudNewPipe {
                     url = url,
                     title = title,
                     artist = item.uploaderName.orEmpty().trim().ifBlank { "SoundCloud" },
-                    artworkUrl = item.thumbnails.firstOrNull()?.url?.let(::soundCloudArtworkAtFullSize),
+                    artworkUrl = bestSoundCloudArtwork(item.thumbnails),
                     durationSeconds = item.duration,
                 )
             }
             .distinctBy { it.url }
             .take(20)
     }
+
+    /**
+     * NewPipe returns thumbnail variants from tiny (16px) to 500px.
+     * The first variant is NOT the album artwork suitable for the player.
+     */
+    internal fun bestSoundCloudArtwork(images: List<org.schabi.newpipe.extractor.Image>): String? =
+        images
+            .asSequence()
+            .filter { it.url.startsWith("https://") }
+            .maxByOrNull {
+                it.width.coerceAtLeast(0).toLong() * it.height.coerceAtLeast(0).toLong()
+            }
+            ?.url
+            ?.let(::soundCloudArtworkAtFullSize)
 
     /**
      * SoundCloud search thumbnails are typically -large (100px). Ask its image
