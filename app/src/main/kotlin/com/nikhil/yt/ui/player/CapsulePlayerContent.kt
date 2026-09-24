@@ -559,7 +559,12 @@ fun CapsulePlayerContent(
                         )
                     } else {
                         AsyncImage(
-                            model = mediaMetadata.thumbnailUrl?.toHighResThumbnail(),
+                            model = mediaMetadata.thumbnailUrl?.let { artwork ->
+                                // YouTube's =w540 URL rewrite corrupts SoundCloud CDN URLs
+                                // with query parameters; their full-size art is selected at search.
+                                if (mediaMetadata.id.startsWith("soundcloud:")) artwork
+                                else artwork.toHighResThumbnail()
+                            },
                             contentDescription = mediaMetadata.title,
                             contentScale =
                                 if (cropAlbumArt) {
