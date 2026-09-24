@@ -45,12 +45,26 @@ object SoundCloudNewPipe {
                     url = url,
                     title = title,
                     artist = item.uploaderName.orEmpty().trim().ifBlank { "SoundCloud" },
-                    artworkUrl = item.thumbnails.firstOrNull()?.url?.takeIf { it.startsWith("https://") },
+                    artworkUrl = item.thumbnails.firstOrNull()?.url?.let(::soundCloudArtworkAtFullSize),
                     durationSeconds = item.duration,
                 )
             }
             .distinctBy { it.url }
             .take(20)
+    }
+
+    /**
+     * SoundCloud search thumbnails are typically -large (100px). Ask its image
+     * CDN for the existing 500px artwork rather than stretching a 100px bitmap.
+     * Keep unknown/external URLs unchanged; not every upload has a 500px original.
+     */
+    internal fun soundCloudArtworkAtFullSize(url: String): String? {
+        if (!url.startsWith("https://")) return null
+        val host = runCatching { URI(url).host?.lowercase() }.getOrNull()
+        if (host !in setOf("i1.sndcdn.com", "i2.sndcdn.com", "i3.sndcdn.com", "i4.sndcdn.com")) {
+            return url
+        }
+        return url.replace(Regex("-large(?=\\.(?:jpg|jpeg|png|webp)(?:\\?|$))", RegexOption.IGNORE_CASE), "-t500x500")
     }
 
     /** Resolves the selected SoundCloud track, never a YouTube media ID. */
