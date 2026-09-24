@@ -130,7 +130,7 @@ fun DiscordExperimental(
                                     onDismissRequest = { showLangDialog = false },
                                     title = { Text(stringResource(R.string.select_language)) },
                                     text = {
-                                        LazyColumn(modifier = Modifier.fillMaxWidth()) {
+                                        LazyColumn(modifier = Modifier.fillMaxWidth(), flingBehavior = rememberSettingsFlingBehavior()) {
                                             items(languages) { lang ->
                                                 ListItem(
                                                     title = lang.name,
