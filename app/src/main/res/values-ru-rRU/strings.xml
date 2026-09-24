@@ -32,9 +32,9 @@
     <string name="new_release_albums">Новые релизы</string>
     <string name="select_playlist_to_sync">Выберите плейлист для синхронизации</string>
     <string name="integration">Интеграция</string>
-    <string name="integrations">Integrations</string>
-    <string name="internal_subcategory_settings">Internal &amp; subcategory settings</string>
-    <string name="search_try_different">Try a different search term</string>
+    <string name="integrations">Интеграции</string>
+    <string name="internal_subcategory_settings">Внутренние настройки и подразделы</string>
+    <string name="search_try_different">Попробуйте другой поисковый запрос</string>
     <!-- History -->
     <string name="today">Сегодня</string>
     <string name="yesterday">Вчера</string>
@@ -62,7 +62,7 @@
     <string name="filter_featured_playlists">Избранные плейлисты</string>
     <string name="filter_bookmarked">В закладках</string>
     <string name="no_results_found">Не найдено результатов</string>
-    <string name="top_results">Top Results</string>
+    <string name="top_results">Лучшие результаты</string>
     <!-- Library -->
     <string name="library_song_empty">Песни из библиотеки будут отображаться здесь</string>
     <string name="library_artist_empty">Артисты из библиотеки будут отображаться здесь</string>
@@ -224,7 +224,7 @@
     <string name="added_to_n_playlists">Добавлено в %d плейлистов</string>
     <string name="added_n_songs_to_n_playlists">Добавлено %1$d треков в %2$d плейлиста</string>
     <string name="playlist_imported">Плейлист импортирован</string>
-    <string name="removed_song_from_playlist">Removed %1$s from playlist</string>
+    <string name="removed_song_from_playlist">Трек «%1$s» удалён из плейлиста</string>
     <string name="playlist_synced">Плейлист синхронизирован</string>
     <string name="undo">Отменить</string>
     <!-- Player -->
@@ -407,11 +407,11 @@
     <string name="center">По центру</string>
     <string name="right">Справа</string>
     <string name="player_slider_style">Стиль ползунка плеера</string>
-    <string name="slider_style_standard">Standard</string>
-    <string name="slider_style_wavy">Wavy</string>
-    <string name="slider_style_thick">Thick</string>
-    <string name="slider_style_circular">Circular</string>
-    <string name="slider_style_simple">Simple</string>
+    <string name="slider_style_standard">Стандартный</string>
+    <string name="slider_style_wavy">Волнистый</string>
+    <string name="slider_style_thick">Толстый</string>
+    <string name="slider_style_circular">Круговой</string>
+    <string name="slider_style_simple">Простой</string>
     <string name="default_">По умолчанию</string>
     <string name="squiggly">Волнистый</string>
     <string name="misc">Разное</string>
@@ -441,8 +441,8 @@
     <string name="enable_proxy">Включить прокси</string>
     <string name="proxy_type">Тип прокси</string>
     <string name="proxy_url">URL прокси</string>
-    <string name="stream_bypass_proxy">Bypass proxy for streams</string>
-    <string name="stream_bypass_proxy_desc">Use your direct IP for stream playback to avoid IP mismatch</string>
+    <string name="stream_bypass_proxy">Не использовать прокси для потоков</string>
+    <string name="stream_bypass_proxy_desc">Использовать прямое подключение для воспроизведения, чтобы избежать несовпадения IP-адресов</string>
     <string name="restart_to_take_effect">Перезапустите приложение для применения</string>
     <string name="enable_betterlyrics">Включить BetterLyrics</string>
     <string name="player_and_audio">Плеер и аудио</string>
@@ -463,13 +463,13 @@
     <string name="audio_normalization">Нормализация аудио</string>
     <string name="audio_offload">Аппаратное ускорение звука</string>
     <string name="audio_offload_desc">Использовать аппаратное декодирование на поддерживаемых устройствах для экономии энергии. Некоторые звуковые эффекты будут отключены.</string>
-    <string name="pause_on_device_mute">Pause when device volume is 0</string>
-    <string name="pause_on_device_mute_desc">Automatically pause music when muted and resume when unmuted</string>
+    <string name="pause_on_device_mute">Пауза при нулевой громкости</string>
+    <string name="pause_on_device_mute_desc">Приостанавливать музыку, когда звук отключён, и возобновлять после включения звука</string>
     <string name="auto_skip_next_on_error">Автоматически включать следующую песню при ошибке</string>
     <string name="auto_skip_next_on_error_desc">Бесперебойное воспроизведение</string>
     <string name="stop_music_on_task_clear">Останавливать музыку при закрытии</string>
-    <string name="auto_start_on_bluetooth">Auto-start on Bluetooth connect</string>
-    <string name="auto_start_on_bluetooth_desc">Automatically resume playback when a Bluetooth audio device connects</string>
+    <string name="auto_start_on_bluetooth">Автозапуск при подключении Bluetooth</string>
+    <string name="auto_start_on_bluetooth_desc">Автоматически возобновлять воспроизведение при подключении Bluetooth-аудиоустройства</string>
     <string name="artist_separators">Символы для разделения исполнителей</string>
     <string name="artist_separators_desc">Символы, используемые для разделения нескольких исполнителей</string>
     <string name="add_symbol">Добавить символ</string>
@@ -527,8 +527,8 @@
     <string name="disable_screenshot">Отключить скриншоты</string>
     <string name="disable_screenshot_desc">При включении, скриншоты и предпросмотр приложения в списке недавних будут отключены.</string>
     <string name="enable_lrclib">Включить провайдера текста песен LrcLib</string>
-    <string name="preload_queue_lyrics">Preload queue lyrics</string>
-    <string name="queue_lyrics_preload_count">Number of songs to preload</string>
+    <string name="preload_queue_lyrics">Предзагрузка текстов песен в очереди</string>
+    <string name="queue_lyrics_preload_count">Количество песен для предзагрузки</string>
     <string name="hide_explicit">Скрывать нецензурный контент</string>
     <string name="hide_video">Скрывать музыкальные клипы</string>
     <string name="backup_restore">Резервное копирование и восстановление</string>
