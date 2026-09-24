@@ -10,11 +10,16 @@ import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.gestures.FlingBehavior
+import androidx.compose.foundation.gestures.ScrollScope
+import androidx.compose.foundation.gestures.ScrollableDefaults
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.painter.Painter
@@ -46,6 +51,20 @@ fun VeluneSettingsScreen(
     val isLoggedIn = accountName != "Guest" && !accountName.isNullOrEmpty()
     var showLogoutDialog by remember { mutableStateOf(false) }
     val (innerTubeCookie, onInnerTubeCookieChange) = rememberPreference(InnerTubeCookieKey, "")
+    val listState = rememberLazyListState()
+    val nativeFling = ScrollableDefaults.flingBehavior()
+    val density = LocalDensity.current
+    val softFling = remember(nativeFling, density) {
+        val maxVelocity = with(density) { 1800.dp.toPx() }
+        object : FlingBehavior {
+            override suspend fun ScrollScope.performFling(initialVelocity: Float): Float =
+                with(nativeFling) {
+                    this@performFling.performFling(
+                        initialVelocity.coerceIn(-maxVelocity, maxVelocity),
+                    )
+                }
+        }
+    }
 
     Scaffold(
         // Content stops above the dock and the navigation bar instead of running under them.
@@ -72,12 +91,14 @@ fun VeluneSettingsScreen(
         containerColor = MaterialTheme.colorScheme.background
     ) { paddingValues ->
         LazyColumn(
+            state = listState,
+            flingBehavior = softFling,
             modifier = Modifier
                 .fillMaxSize()
                 .padding(paddingValues)
                 .padding(horizontal = 16.dp)
         ) {
-            item {
+            item(key = "appearance") {
                 SettingsItemScreenshotStyle(
                     icon = painterResource(R.drawable.palette),
                     title = stringResource(R.string.capsule_settings_appearance),
@@ -85,7 +106,7 @@ fun VeluneSettingsScreen(
                 )
             }
 
-            item {
+            item(key = "account") {
                 if (isLoggedIn) {
                     SettingsItemAccountStyle(
                         model = accountImageUrl,
@@ -102,7 +123,7 @@ fun VeluneSettingsScreen(
                 }
             }
 
-            item {
+            item(key = "listen_together") {
                 SettingsItemScreenshotStyle(
                     icon = painterResource(R.drawable.multi_user),
                     title = stringResource(R.string.capsule_settings_listen_together),
@@ -110,7 +131,7 @@ fun VeluneSettingsScreen(
                 )
             }
 
-            item {
+            item(key = "player") {
                 SettingsItemScreenshotStyle(
                     icon = painterResource(R.drawable.play),
                     title = stringResource(R.string.capsule_settings_player),
@@ -118,7 +139,7 @@ fun VeluneSettingsScreen(
                 )
             }
 
-            item {
+            item(key = "video") {
                 SettingsItemScreenshotStyle(
                     icon = painterResource(R.drawable.play),
                     title = stringResource(R.string.capsule_settings_video),
@@ -126,7 +147,7 @@ fun VeluneSettingsScreen(
                 )
             }
 
-            item {
+            item(key = "content") {
                 SettingsItemScreenshotStyle(
                     icon = painterResource(R.drawable.language),
                     title = stringResource(R.string.capsule_settings_content),
@@ -134,7 +155,7 @@ fun VeluneSettingsScreen(
                 )
             }
 
-            item {
+            item(key = "discord") {
                 SettingsItemScreenshotStyle(
                     icon = painterResource(R.drawable.discord),
                     title = stringResource(R.string.capsule_settings_discord),
@@ -142,7 +163,7 @@ fun VeluneSettingsScreen(
                 )
             }
 
-            item {
+            item(key = "integration") {
                 SettingsItemScreenshotStyle(
                     icon = painterResource(R.drawable.integration),
                     title = stringResource(R.string.capsule_settings_integration),
@@ -150,7 +171,7 @@ fun VeluneSettingsScreen(
                 )
             }
 
-            item {
+            item(key = "privacy") {
                 SettingsItemScreenshotStyle(
                     icon = painterResource(R.drawable.security),
                     title = stringResource(R.string.capsule_settings_privacy),
@@ -158,7 +179,7 @@ fun VeluneSettingsScreen(
                 )
             }
 
-            item {
+            item(key = "storage") {
                 SettingsItemScreenshotStyle(
                     icon = painterResource(R.drawable.storage),
                     title = stringResource(R.string.capsule_settings_storage),
@@ -166,7 +187,7 @@ fun VeluneSettingsScreen(
                 )
             }
 
-            item {
+            item(key = "backup") {
                 SettingsItemScreenshotStyle(
                     icon = painterResource(R.drawable.backup),
                     title = stringResource(R.string.capsule_settings_backup),
@@ -178,7 +199,7 @@ fun VeluneSettingsScreen(
              * The debug screen was registered on settings/misc but nothing
              * linked to it, so the log viewer was unreachable from the app.
              */
-            item {
+            item(key = "developer") {
                 SettingsItemScreenshotStyle(
                     icon = painterResource(R.drawable.experiment),
                     title = stringResource(R.string.capsule_settings_developer),
@@ -186,7 +207,7 @@ fun VeluneSettingsScreen(
                 )
             }
 
-            item {
+            item(key = "about") {
                 SettingsItemScreenshotStyle(
                     icon = painterResource(R.drawable.info),
                     title = stringResource(R.string.capsule_settings_about),
@@ -194,7 +215,7 @@ fun VeluneSettingsScreen(
                 )
             }
 
-            item { Spacer(Modifier.height(32.dp)) }
+            item(key = "bottom_spacer") { Spacer(Modifier.height(32.dp)) }
         }
 
         if (showLogoutDialog) {

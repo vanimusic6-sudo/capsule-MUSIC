@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -200,6 +201,8 @@ fun AboutScreen(
     }
 
     Scaffold(
+        // Inset and backdrop for the dock are owned by the host activity.
+        contentWindowInsets = WindowInsets(0, 0, 0, 0),
         topBar = {
             TopAppBar(
                 title = { Text(stringResource(R.string.about)) },
@@ -217,11 +220,11 @@ fun AboutScreen(
                 scrollBehavior = scrollBehavior,
                 colors =
                     TopAppBarDefaults.topAppBarColors(
-                        containerColor = MaterialTheme.colorScheme.surface,
+                        containerColor = Color.Transparent,
                     ),
             )
         },
-        containerColor = MaterialTheme.colorScheme.surface,
+        containerColor = Color.Transparent,
     ) { innerPadding ->
         LazyColumn(
             modifier =

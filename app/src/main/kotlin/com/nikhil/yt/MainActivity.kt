@@ -1476,6 +1476,17 @@ class MainActivity : ComponentActivity() {
                                 },
                                 bottomBar = {
                                     Box {
+                                        // The About route needs a continuous background behind
+                                        // the mini-player rather than the outer Scaffold's surface.
+                                        if (navBackStackEntry?.destination?.route == "settings/about") {
+                                            Box(
+                                                modifier = Modifier
+                                                    .align(Alignment.BottomCenter)
+                                                    .fillMaxWidth()
+                                                    .height(MiniPlayerHeight + getBottomNavPadding() + bottomInset)
+                                                    .background(MaterialTheme.colorScheme.background),
+                                            )
+                                        }
                                         BottomSheetPlayer(
                                             state = playerBottomSheetState,
                                             navController = navController,
