@@ -178,7 +178,7 @@ fun DebugSettings(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
-                .verticalScroll(rememberScrollState()),
+                .verticalScroll(rememberScrollState(), flingBehavior = rememberSettingsFlingBehavior()),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             PreferenceGroupTitle(
@@ -660,6 +660,7 @@ private fun LogViewerPanel() {
                     EmptyLogPlaceholder()
                 } else {
                     LazyColumn(
+            flingBehavior = rememberSettingsFlingBehavior(),
                         state = listState,
                         modifier = Modifier
                             .fillMaxWidth()

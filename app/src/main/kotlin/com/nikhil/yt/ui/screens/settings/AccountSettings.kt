@@ -158,7 +158,7 @@ fun AccountSettings(
                 LocalPlayerAwareWindowInsets.current
                     .only(WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom),
             )
-            .verticalScroll(rememberScrollState())
+            .verticalScroll(rememberScrollState(), flingBehavior = rememberSettingsFlingBehavior())
     ) {
         // Header Section
         AccountSettingsHeader(onClose = onClose)
@@ -914,6 +914,7 @@ private fun PlaylistSelectionDialog(onDismiss: () -> Unit) {
                 }
             } else {
                 LazyColumn(
+            flingBehavior = rememberSettingsFlingBehavior(),
                     modifier = Modifier.height(400.dp),
                     verticalArrangement = Arrangement.spacedBy(4.dp)
                 ) {

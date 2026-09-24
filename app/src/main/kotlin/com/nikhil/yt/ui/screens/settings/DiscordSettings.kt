@@ -156,7 +156,7 @@ fun DiscordSettings(
             Modifier
                 .padding(innerPadding)
                 .consumeWindowInsets(innerPadding)
-                .verticalScroll(rememberScrollState())
+                .verticalScroll(rememberScrollState(), flingBehavior = rememberSettingsFlingBehavior())
         ) {
         Spacer(
             Modifier.windowInsetsPadding(

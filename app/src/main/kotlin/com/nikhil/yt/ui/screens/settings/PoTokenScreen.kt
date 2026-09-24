@@ -262,7 +262,7 @@ fun PoTokenScreen(
                     WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom
                 )
             )
-            .verticalScroll(rememberScrollState())
+            .verticalScroll(rememberScrollState(), flingBehavior = rememberSettingsFlingBehavior())
             .animateContentSize(
                 animationSpec = spring(stiffness = Spring.StiffnessMediumLow)
             )

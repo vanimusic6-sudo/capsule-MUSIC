@@ -133,6 +133,7 @@ fun ChangelogScreen(
                 }
                 else -> {
                     LazyColumn(
+            flingBehavior = rememberSettingsFlingBehavior(),
                         modifier = Modifier
                             .fillMaxSize()
                             .padding(horizontal = 16.dp),

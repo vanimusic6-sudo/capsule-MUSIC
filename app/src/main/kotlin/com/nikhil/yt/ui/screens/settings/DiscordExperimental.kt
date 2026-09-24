@@ -57,6 +57,7 @@ fun DiscordExperimental(
             )
 
             LazyColumn(
+            flingBehavior = rememberSettingsFlingBehavior(),
                 /*
                  * Bottom only, and from the real inset.
                  *
