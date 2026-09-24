@@ -1,5 +1,6 @@
 package com.nikhil.yt.innertube.soundcloud
 
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -11,6 +12,21 @@ class SoundCloudNewPipeUrlTest {
         assertFalse(SoundCloudNewPipe.isSoundCloudTrackUrl("http://soundcloud.com/artist/track"))
         assertFalse(SoundCloudNewPipe.isSoundCloudTrackUrl("https://soundcloud.com.evil.example/artist/track"))
         assertFalse(SoundCloudNewPipe.isSoundCloudTrackUrl("https://soundcloud.com@evil.example/artist/track"))
+    }
+
+    @Test fun upgradesOnlyRecognizedSoundCloudThumbnailSize() {
+        assertEquals(
+            "https://i1.sndcdn.com/artworks-ABC-t500x500.jpg",
+            SoundCloudNewPipe.soundCloudArtworkAtFullSize("https://i1.sndcdn.com/artworks-ABC-large.jpg"),
+        )
+        assertEquals(
+            "https://i1.sndcdn.com/artworks-ABC-t500x500.jpg?token=1",
+            SoundCloudNewPipe.soundCloudArtworkAtFullSize("https://i1.sndcdn.com/artworks-ABC-large.jpg?token=1"),
+        )
+        assertEquals(
+            "https://other.example/artworks-ABC-large.jpg",
+            SoundCloudNewPipe.soundCloudArtworkAtFullSize("https://other.example/artworks-ABC-large.jpg"),
+        )
     }
 
     @Test fun rejectsProfilesPlaylistsAndSearchPagesAsSongs() {
