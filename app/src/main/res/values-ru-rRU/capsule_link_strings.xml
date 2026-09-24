@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="capsule_track_link_unavailable">Не удалось открыть этот трек YouTube. Попробуйте найти его через поиск Capsule.</string>
+    <string name="capsule_track_link_metadata_error">Не удалось прочитать ссылку на трек. Убедитесь, что он доступен публично в Spotify или SoundCloud, и повторите попытку.</string>
+</resources>
