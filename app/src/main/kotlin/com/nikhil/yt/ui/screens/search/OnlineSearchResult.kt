@@ -304,7 +304,7 @@ fun OnlineSearchResult(
             .add(WindowInsets(top = SearchFilterHeight + 8.dp))
             .asPaddingValues(),
     ) {
-        if (showSoundCloudPreview && (searchFilter == null || searchFilter?.value == FILTER_SONG)) {
+        if (showSoundCloudPreview && (searchFilter == null || searchFilter == FILTER_SONG)) {
             item(key = "soundcloud_native_results") {
                 SoundCloudNativeResults(
                     query = viewModel.query,
