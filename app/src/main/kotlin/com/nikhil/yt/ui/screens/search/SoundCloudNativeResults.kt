@@ -1,5 +1,6 @@
 package com.nikhil.yt.ui.screens.search
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -25,27 +26,23 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
 import com.nikhil.yt.R
-import com.nikhil.yt.constants.SoundCloudOAuthTokenKey
 import com.nikhil.yt.soundcloud.SoundCloudCatalog
-import com.nikhil.yt.utils.rememberPreference
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
-/** Native catalogue cards. SoundCloud audio is not added to the YouTube queue. */
+/** Genuine SoundCloud cards, resolved with NewPipe, never disguised YouTube matches. */
 @Composable
-internal fun SoundCloudNativeResults(query: String) {
-    val (token, _) = rememberPreference(SoundCloudOAuthTokenKey, "")
-    var result by remember(query, token) {
-        mutableStateOf<SoundCloudCatalog.Result?>(null)
-    }
-    LaunchedEffect(query, token) {
-        result = if (token.isBlank()) {
-            SoundCloudCatalog.Result.MissingToken
-        } else {
-            withContext(Dispatchers.IO) {
-                SoundCloudCatalog.search(query, token)
-            }
-        }
+internal fun SoundCloudNativeResults(
+    query: String,
+    selectedUrl: String?,
+    playing: Boolean,
+    loadingTrack: Boolean,
+    onTrackClick: (SoundCloudCatalog.Track) -> Unit,
+) {
+    var result by remember(query) { mutableStateOf<SoundCloudCatalog.Result?>(null) }
+    LaunchedEffect(query) {
+        result = null
+        result = withContext(Dispatchers.IO) { SoundCloudCatalog.search(query) }
     }
     Column(modifier = Modifier.fillMaxWidth()) {
         Text(
@@ -56,21 +53,20 @@ internal fun SoundCloudNativeResults(query: String) {
             modifier = Modifier.padding(start = 20.dp, top = 16.dp, bottom = 6.dp),
         )
         when (val value = result) {
-            null -> Text(
-                text = stringResource(R.string.capsule_soundcloud_loading),
-                modifier = Modifier.padding(horizontal = 20.dp, vertical = 10.dp),
-            )
-            SoundCloudCatalog.Result.MissingToken -> Status(R.string.capsule_soundcloud_needs_token)
-            SoundCloudCatalog.Result.Unauthorized -> Status(R.string.capsule_soundcloud_invalid_token)
+            null -> Status(R.string.capsule_soundcloud_loading)
             SoundCloudCatalog.Result.RateLimited -> Status(R.string.capsule_soundcloud_rate_limited)
             SoundCloudCatalog.Result.Unavailable -> Status(R.string.capsule_soundcloud_request_failed)
             is SoundCloudCatalog.Result.Tracks -> {
                 if (value.items.isEmpty()) Status(R.string.capsule_soundcloud_no_results)
                 value.items.forEach { track ->
+                    val selected = track.permalink == selectedUrl
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(12.dp),
-                        modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { onTrackClick(track) }
+                            .padding(horizontal = 20.dp, vertical = 8.dp),
                     ) {
                         AsyncImage(
                             model = track.artworkUrl,
@@ -83,7 +79,7 @@ internal fun SoundCloudNativeResults(query: String) {
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
                                 style = MaterialTheme.typography.bodyMedium,
-                                fontWeight = FontWeight.SemiBold,
+                                fontWeight = if (selected) FontWeight.Bold else FontWeight.SemiBold,
                             )
                             Text(
                                 text = track.artist,
@@ -93,16 +89,25 @@ internal fun SoundCloudNativeResults(query: String) {
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                         }
-                        Text(
-                            text = stringResource(R.string.capsule_soundcloud_badge),
-                            style = MaterialTheme.typography.labelSmall,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.primary,
-                        )
+                        Column(horizontalAlignment = Alignment.End) {
+                            Text(
+                                text = stringResource(R.string.capsule_soundcloud_badge),
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.primary,
+                            )
+                            if (selected) Text(
+                                text = stringResource(
+                                    when {
+                                        loadingTrack -> R.string.capsule_soundcloud_loading
+                                        playing -> R.string.capsule_soundcloud_pause
+                                        else -> R.string.capsule_soundcloud_play
+                                    }
+                                ),
+                                style = MaterialTheme.typography.labelSmall,
+                            )
+                        }
                     }
-                }
-                if (value.items.isNotEmpty()) {
-                    Status(R.string.capsule_soundcloud_native_playback_pending)
                 }
             }
         }
