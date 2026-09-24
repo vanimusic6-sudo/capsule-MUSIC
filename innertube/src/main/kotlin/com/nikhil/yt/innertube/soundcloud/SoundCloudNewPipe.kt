@@ -79,11 +79,14 @@ object SoundCloudNewPipe {
         throw IllegalStateException("NewPipe returned no compatible SoundCloud audio stream")
     }
 
-    private fun isSoundCloudTrackUrl(url: String): Boolean =
+    internal fun isSoundCloudTrackUrl(url: String): Boolean =
         runCatching {
             val uri = URI(url)
+            val segments = uri.path.orEmpty().split('/').filter { it.isNotBlank() }
             uri.scheme.equals("https", ignoreCase = true) &&
                 uri.host?.lowercase() in setOf("soundcloud.com", "www.soundcloud.com", "m.soundcloud.com") &&
-                uri.path.orEmpty().split('/').count { it.isNotBlank() } >= 2
+                segments.size >= 2 &&
+                segments[0].lowercase() !in setOf("discover", "search", "stream", "you") &&
+                segments[1].lowercase() !in setOf("sets", "likes", "reposts", "albums")
         }.getOrDefault(false)
 }
