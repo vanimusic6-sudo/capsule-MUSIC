@@ -51,7 +51,12 @@ internal object ExternalTrackMetadata {
                         title.dropLast(artist.length + 4).trim()
                     } else title
                 }
-            if (title.length in 2..180) return TrackInfo(title, artist)
+            if (title.length in 2..180) {
+                val verifiedArtist = artist ?: if (external.provider == IncomingTrackLink.Provider.SPOTIFY) {
+                    getText(canonical.url)?.let(::spotifyArtistFromPage)
+                } else null
+                return TrackInfo(title, verifiedArtist)
+            }
         }
         // The oEmbed endpoint may be unavailable or may reject a public track.
         // Public page metadata is a fallback; without a confirmed artist the app
@@ -64,6 +69,25 @@ internal object ExternalTrackMetadata {
                 ?: ""
         ).replace(Regex("""\s*[|]\s*(?:Spotify|SoundCloud)\s*$""", RegexOption.IGNORE_CASE), "")
         return title.takeIf { it.length in 2..180 }?.let { TrackInfo(it, null) }
+    }
+
+    /** A public Spotify track page sometimes exposes the artist when oEmbed only has the title. */
+    internal fun spotifyArtistFromPage(html: String): String? {
+        val page = Jsoup.parse(html)
+        val description = normalizeMetadata(
+            page.selectFirst("meta[property=og:description]")?.attr("content")
+                ?: page.selectFirst("meta[name=description]")?.attr("content")
+                ?: ""
+        )
+        val patterns = listOf(
+            Regex(""",\s*(?:a\s+)?song\s+by\s+(.+?)\s+on\s+Spotify\b""", RegexOption.IGNORE_CASE),
+            Regex("""\bSong\s*[·•]\s*([^·•]+)\s*[·•]""", RegexOption.IGNORE_CASE),
+        )
+        return patterns.firstNotNullOfOrNull { expression ->
+            expression.find(description)?.groupValues?.getOrNull(1)
+                ?.let(::normalizeMetadata)
+                ?.takeIf { it.length in 2..100 && !it.equals("Spotify", ignoreCase = true) }
+        }
     }
 
     private fun normalizeMetadata(value: String): String =
