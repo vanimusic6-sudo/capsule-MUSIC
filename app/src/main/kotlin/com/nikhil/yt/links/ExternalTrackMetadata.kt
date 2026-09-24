@@ -47,18 +47,22 @@ internal object ExternalTrackMetadata {
         }
 
     private fun resolveShortLink(external: IncomingTrackLink.External): String? {
-        val connection = open(external.url, method = "HEAD") ?: return null
-        return try {
-            val status = connection.responseCode
-            if (status !in 200..399) return null
-            val finalUrl = connection.url.toString()
-            val final = IncomingTrackLinks.classify(finalUrl) as? IncomingTrackLink.External
-            final?.url?.takeIf { final.provider == external.provider && !isShortLink(it) }
-        } catch (_: Exception) {
-            null
-        } finally {
-            connection.disconnect()
+        // Some short-link services reject HEAD; follow with GET without reading the page body.
+        for (method in listOf("HEAD", "GET")) {
+            val connection = open(external.url, method = method) ?: continue
+            try {
+                if (connection.responseCode !in 200..399) continue
+                val final = IncomingTrackLinks.classify(connection.url.toString()) as? IncomingTrackLink.External
+                if (final != null && final.provider == external.provider && !isShortLink(final.url)) {
+                    return final.url
+                }
+            } catch (_: Exception) {
+                // Fall back to the next method, then show a readable link error.
+            } finally {
+                connection.disconnect()
+            }
         }
+        return null
     }
 
     private fun getText(url: String): String? {

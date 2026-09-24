@@ -40,7 +40,7 @@ internal object IncomingTrackLinks {
         val uri = runCatching { URI(raw) }.getOrNull() ?: return null
         if (uri.scheme?.lowercase() !in setOf("http", "https")) return null
         val host = uri.host?.lowercase() ?: return null
-        val parts = uri.path.orEmpty().split('/').filter(String::isNotEmpty)
+        val parts = uri.path.orEmpty().split('/').filter { it.isNotEmpty() }
         val first = parts.firstOrNull()?.lowercase()
         return when (host) {
             "youtube.com", "www.youtube.com", "m.youtube.com", "music.youtube.com", "www.youtube-nocookie.com" -> {

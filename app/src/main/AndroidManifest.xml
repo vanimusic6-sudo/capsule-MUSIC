@@ -132,6 +132,7 @@
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="https" android:host="open.spotify.com" android:pathPrefix="/track/" />
+                <data android:scheme="https" android:host="open.spotify.com" android:pathPrefix="/intl-" />
                 <data android:scheme="https" android:host="www.spotify.com" android:pathPrefix="/track/" />
                 <data android:scheme="https" android:host="spotify.com" android:pathPrefix="/track/" />
             </intent-filter>
