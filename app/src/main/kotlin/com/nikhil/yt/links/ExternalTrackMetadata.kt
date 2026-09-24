@@ -45,7 +45,7 @@ internal object ExternalTrackMetadata {
             val artist = normalizeMetadata(rawAuthor)
                 .takeIf { it.length in 2..100 && !it.equals(external.provider.name, ignoreCase = true) }
             val title = normalizeMetadata(rawTitle)
-                .replace(Regex("""\\s*[|]\\s*(?:Spotify|SoundCloud)\\s*$""", RegexOption.IGNORE_CASE), "")
+                .replace(Regex("""\s*[|]\s*(?:Spotify|SoundCloud)\s*$""", RegexOption.IGNORE_CASE), "")
                 .let { title ->
                     if (artist != null && title.endsWith(" by $artist", ignoreCase = true)) {
                         title.dropLast(artist.length + 4).trim()
@@ -62,12 +62,12 @@ internal object ExternalTrackMetadata {
             page.selectFirst("meta[property=og:title]")?.attr("content")
                 ?: page.selectFirst("meta[name=twitter:title]")?.attr("content")
                 ?: ""
-        ).replace(Regex("""\\s*[|]\\s*(?:Spotify|SoundCloud)\\s*$""", RegexOption.IGNORE_CASE), "")
+        ).replace(Regex("""\s*[|]\s*(?:Spotify|SoundCloud)\s*$""", RegexOption.IGNORE_CASE), "")
         return title.takeIf { it.length in 2..180 }?.let { TrackInfo(it, null) }
     }
 
     private fun normalizeMetadata(value: String): String =
-        Jsoup.parse(value).text().replace(Regex("""\\s+"""), " ").trim()
+        Jsoup.parse(value).text().replace(Regex("""\s+"""), " ").trim()
 
     private fun isShortLink(raw: String): Boolean =
         when (runCatching { URI(raw).host?.lowercase() }.getOrNull()) {
