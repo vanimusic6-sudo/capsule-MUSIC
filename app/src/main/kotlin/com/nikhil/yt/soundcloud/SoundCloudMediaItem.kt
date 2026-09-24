@@ -31,7 +31,7 @@ internal fun SoundCloudCatalog.Track.toSoundCloudMediaItem(
     return MediaItem.Builder()
         .setMediaId(id)
         .setUri(stream.url)
-        .setCustomCacheKey(id)
+        // A signed SoundCloud URL is transient; do not write it into YouTube's cache.
         .apply { if (stream.isHls) setMimeType(MimeTypes.APPLICATION_M3U8) }
         .setTag(metadata)
         .setMediaMetadata(
