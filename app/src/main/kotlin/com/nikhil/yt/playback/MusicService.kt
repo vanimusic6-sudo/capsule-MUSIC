@@ -196,6 +196,7 @@ import com.nikhil.yt.utils.SyncUtils
 import com.nikhil.yt.utils.GlobalLog
 import com.nikhil.yt.utils.isTransientClosedTlsHandshake
 import com.nikhil.yt.playback.audio.AudioCacheDataSource
+import com.nikhil.yt.soundcloud.SOUNDCLOUD_MEDIA_ID_PREFIX
 import com.nikhil.yt.playback.audio.AudioChunkedDataSource
 import com.nikhil.yt.playback.audio.AudioCacheSource
 import com.nikhil.yt.playback.audio.AudioNetworkDiagnosticDataSource
@@ -855,6 +856,13 @@ class MusicService :
             isUpcomingAudioNetworkEligible(mediaId)
 
     private fun prefetchUpcomingAudio() {
+        // SoundCloud has its own extractor and MediaSource; no YouTube prefetch.
+        if (player.currentMediaItem?.mediaId?.startsWith(SOUNDCLOUD_MEDIA_ID_PREFIX) == true) {
+            prefetchScheduleJob?.cancel()
+            prefetchScheduleJob = null
+            audioResolveCoordinator.cancelAll()
+            return
+        }
         val prefetchGeneration = audioResolveCoordinator.nextPrefetchGeneration()
         val upcoming = upcomingAudioIds()
 
@@ -3248,6 +3256,23 @@ class MusicService :
     override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
         super.onMediaItemTransition(mediaItem, reason)
 
+        if (mediaItem?.mediaId?.startsWith(SOUNDCLOUD_MEDIA_ID_PREFIX) == true) {
+            // Keep SoundCloud visible in the normal player without feeding its ID
+            // to YouTube metadata, prefetch, automix, 403 recovery or stream caches.
+            streamRetryJob?.cancel()
+            streamRetryJob = null
+            prefetchScheduleJob?.cancel()
+            prefetchScheduleJob = null
+            audioResolveCoordinator.cancelAll()
+            playbackRecoveryCoordinator.cancelNetworkRecovery()
+            songMetadataRecoveryCoordinator.cancelExcept(null)
+            crossfadeAudio?.stop(resetMainFade = true)
+            clearAutomix()
+            currentMediaMetadata.value = mediaItem.metadata
+            scrobbleCoordinator.onSongStop()
+            return
+        }
+
         cancelledLoadRecoveredId = null
         cancelledLoadRecoveredGeneration = -1L
         streamRetryJob?.cancel()
@@ -3475,6 +3500,10 @@ class MusicService :
 
     override fun onPlaybackStateChanged(@Player.State playbackState: Int) {
     super.onPlaybackStateChanged(playbackState)
+    if (player.currentMediaItem?.mediaId?.startsWith(SOUNDCLOUD_MEDIA_ID_PREFIX) == true) {
+        // Neither Youtube CDN readiness nor Youtube end-of-queue automix applies.
+        return
+    }
 
     // Diagnostic-only bridge between CDN 206/403 lines and *audible* buffering. A 206 whose
     // body was read slowly is not, by itself, evidence of a slow server: Media3 may have stopped
@@ -3790,6 +3819,13 @@ class MusicService :
 
     override fun onPlayerError(error: PlaybackException) {
         super.onPlayerError(error)
+
+        if (player.currentMediaItem?.mediaId?.startsWith(SOUNDCLOUD_MEDIA_ID_PREFIX) == true) {
+            // Do not classify a SoundCloud refusal as YouTube 403/bot detection.
+            Timber.tag("SoundCloud").w(error, "SoundCloud playback failed")
+            player.pause()
+            return
+        }
 
         if (isCurrentCapsuleVideoItem()) {
             Timber.tag("CapsuleVideo").w(error, "Video mode failed; restoring original audio item")
@@ -5221,6 +5257,19 @@ class MusicService :
 
 
     private fun createMediaSourceFactory(): MediaSource.Factory {
+        // Independent HTTP/HLS source: never pass SoundCloud's URLs through the
+        // YouTube signed-URL resolver, CDN diagnostics, retry policy or caches.
+        val soundCloudSource = DefaultMediaSourceFactory(
+            DefaultDataSource.Factory(
+                this,
+                OkHttpDataSource.Factory(
+                    OkHttpClient.Builder()
+                        .followRedirects(true)
+                        .followSslRedirects(true)
+                        .build(),
+                ),
+            ),
+        )
         val dataSourceFactory = createDataSourceFactory()
         val extractorsFactory =
             ExtractorsFactory {
@@ -5249,6 +5298,9 @@ class MusicService :
 
         return object : MediaSource.Factory {
             override fun createMediaSource(mediaItem: MediaItem): MediaSource {
+                if (mediaItem.mediaId.startsWith(SOUNDCLOUD_MEDIA_ID_PREFIX)) {
+                    return soundCloudSource.createMediaSource(mediaItem)
+                }
                 val uri = mediaItem.localConfiguration?.uri
                 val videoId =
                     uri
@@ -5305,6 +5357,7 @@ class MusicService :
                 drmSessionManagerProvider: DrmSessionManagerProvider,
             ): MediaSource.Factory {
                 delegate.setDrmSessionManagerProvider(drmSessionManagerProvider)
+                soundCloudSource.setDrmSessionManagerProvider(drmSessionManagerProvider)
                 progressive.setDrmSessionManagerProvider(drmSessionManagerProvider)
                 return this
             }
@@ -5313,6 +5366,7 @@ class MusicService :
                 loadErrorHandlingPolicy: LoadErrorHandlingPolicy,
             ): MediaSource.Factory {
                 delegate.setLoadErrorHandlingPolicy(loadErrorHandlingPolicy)
+                soundCloudSource.setLoadErrorHandlingPolicy(loadErrorHandlingPolicy)
                 progressive.setLoadErrorHandlingPolicy(loadErrorHandlingPolicy)
                 return this
             }
