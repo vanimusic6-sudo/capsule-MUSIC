@@ -18,6 +18,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.painter.Painter
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -53,12 +54,12 @@ fun VeluneSettingsScreen(
                 .only(WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom),
         topBar = {
             TopAppBar(
-                title = { Text("Settings", fontSize = 20.sp) },
+                title = { Text(stringResource(R.string.capsule_settings_title), fontSize = 20.sp) },
                 navigationIcon = {
                     IconButton(onClick = { navController.popBackStack() }) {
                         Icon(
                             painter = painterResource(R.drawable.arrow_back),
-                            contentDescription = "Back",
+                            contentDescription = stringResource(R.string.capsule_settings_back),
                             modifier = Modifier.size(24.dp)
                         )
                     }
@@ -79,7 +80,7 @@ fun VeluneSettingsScreen(
             item {
                 SettingsItemScreenshotStyle(
                     icon = painterResource(R.drawable.palette),
-                    title = "Appearance",
+                    title = stringResource(R.string.capsule_settings_appearance),
                     onClick = { navController.navigate("settings/appearance") }
                 )
             }
@@ -89,13 +90,13 @@ fun VeluneSettingsScreen(
                     SettingsItemAccountStyle(
                         model = accountImageUrl,
                         fallbackText = accountName?.firstOrNull()?.uppercase() ?: "",
-                        title = "Account",
+                        title = stringResource(R.string.capsule_settings_account),
                         onClick = { navController.navigate("settings/account") }
                     )
                 } else {
                     SettingsItemScreenshotStyle(
                         icon = painterResource(R.drawable.account),
-                        title = "Account",
+                        title = stringResource(R.string.capsule_settings_account),
                         onClick = { navController.navigate("settings/account") }
                     )
                 }
@@ -104,7 +105,7 @@ fun VeluneSettingsScreen(
             item {
                 SettingsItemScreenshotStyle(
                     icon = painterResource(R.drawable.multi_user),
-                    title = "Listen Together",
+                    title = stringResource(R.string.capsule_settings_listen_together),
                     onClick = { navController.navigate("settings/music_together") }
                 )
             }
@@ -112,7 +113,7 @@ fun VeluneSettingsScreen(
             item {
                 SettingsItemScreenshotStyle(
                     icon = painterResource(R.drawable.play),
-                    title = "Player and audio",
+                    title = stringResource(R.string.capsule_settings_player),
                     onClick = { navController.navigate("settings/player") }
                 )
             }
@@ -120,7 +121,7 @@ fun VeluneSettingsScreen(
             item {
                 SettingsItemScreenshotStyle(
                     icon = painterResource(R.drawable.play),
-                    title = "Video playback",
+                    title = stringResource(R.string.capsule_settings_video),
                     onClick = { navController.navigate("settings/video_playback") }
                 )
             }
@@ -128,7 +129,7 @@ fun VeluneSettingsScreen(
             item {
                 SettingsItemScreenshotStyle(
                     icon = painterResource(R.drawable.language),
-                    title = "Content",
+                    title = stringResource(R.string.capsule_settings_content),
                     onClick = { navController.navigate("settings/content") }
                 )
             }
@@ -136,7 +137,7 @@ fun VeluneSettingsScreen(
             item {
                 SettingsItemScreenshotStyle(
                     icon = painterResource(R.drawable.discord),
-                    title = "Discord",
+                    title = stringResource(R.string.capsule_settings_discord),
                     onClick = { navController.navigate("settings/discord") }
                 )
             }
@@ -144,7 +145,7 @@ fun VeluneSettingsScreen(
             item {
                 SettingsItemScreenshotStyle(
                     icon = painterResource(R.drawable.integration),
-                    title = "Integration",
+                    title = stringResource(R.string.capsule_settings_integration),
                     onClick = { navController.navigate("settings/integration") }
                 )
             }
@@ -152,7 +153,7 @@ fun VeluneSettingsScreen(
             item {
                 SettingsItemScreenshotStyle(
                     icon = painterResource(R.drawable.security),
-                    title = "Privacy",
+                    title = stringResource(R.string.capsule_settings_privacy),
                     onClick = { navController.navigate("settings/privacy") }
                 )
             }
@@ -160,7 +161,7 @@ fun VeluneSettingsScreen(
             item {
                 SettingsItemScreenshotStyle(
                     icon = painterResource(R.drawable.storage),
-                    title = "Storage",
+                    title = stringResource(R.string.capsule_settings_storage),
                     onClick = { navController.navigate("settings/storage") }
                 )
             }
@@ -168,7 +169,7 @@ fun VeluneSettingsScreen(
             item {
                 SettingsItemScreenshotStyle(
                     icon = painterResource(R.drawable.backup),
-                    title = "Backup and restore",
+                    title = stringResource(R.string.capsule_settings_backup),
                     onClick = { navController.navigate("settings/backup_restore") }
                 )
             }
@@ -180,7 +181,7 @@ fun VeluneSettingsScreen(
             item {
                 SettingsItemScreenshotStyle(
                     icon = painterResource(R.drawable.experiment),
-                    title = "Developer",
+                    title = stringResource(R.string.capsule_settings_developer),
                     onClick = { navController.navigate("settings/misc") }
                 )
             }
@@ -188,7 +189,7 @@ fun VeluneSettingsScreen(
             item {
                 SettingsItemScreenshotStyle(
                     icon = painterResource(R.drawable.info),
-                    title = "About",
+                    title = stringResource(R.string.capsule_settings_about),
                     onClick = { navController.navigate("settings/about") }
                 )
             }
@@ -199,20 +200,20 @@ fun VeluneSettingsScreen(
         if (showLogoutDialog) {
             AlertDialog(
                 onDismissRequest = { showLogoutDialog = false },
-                title = { Text("Sign Out") },
-                text = { Text("Are you sure you want to sign out of your YouTube Music account?") },
+                title = { Text(stringResource(R.string.capsule_settings_sign_out)) },
+                text = { Text(stringResource(R.string.capsule_settings_sign_out_confirm)) },
                 confirmButton = {
                     TextButton(onClick = {
                         showLogoutDialog = false
                         onInnerTubeCookieChange("")
                         forgetAccount(context)
                     }) {
-                        Text("Sign Out")
+                        Text(stringResource(R.string.capsule_settings_sign_out))
                     }
                 },
                 dismissButton = {
                     TextButton(onClick = { showLogoutDialog = false }) {
-                        Text("Cancel")
+                        Text(stringResource(R.string.capsule_settings_cancel))
                     }
                 }
             )

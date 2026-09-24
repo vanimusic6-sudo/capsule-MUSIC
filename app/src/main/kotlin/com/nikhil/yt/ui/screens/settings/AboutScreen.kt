@@ -71,6 +71,12 @@ import java.text.DateFormat
 import java.util.Date
 import kotlinx.coroutines.launch
 
+private data class AboutStatus(val resId: Int, val detail: String? = null)
+
+@Composable
+private fun AboutStatus.displayText(): String =
+    if (detail == null) stringResource(resId) else stringResource(resId, detail)
+
 private fun normalizeAboutVersion(value: String): String =
     value
         .removePrefix("Capsule ")
@@ -95,13 +101,13 @@ fun AboutScreen(
 
     var latestVersion by remember { mutableStateOf<String?>(null) }
     var latestReleaseUrl by remember { mutableStateOf<String?>(null) }
-    var updateMessage by remember { mutableStateOf("Checking for updates…") }
+    var updateMessage by remember { mutableStateOf(AboutStatus(R.string.capsule_about_checking_updates)) }
     var isCheckingUpdate by remember { mutableStateOf(false) }
 
     var engineStatus by remember { mutableStateOf<CapsuleVideoEngineStatus?>(null) }
     var engineMessage by remember {
         mutableStateOf(
-            "Bundled NewPipeExtractor ${CapsuleVideoEngineUpdater.BUNDLED_EXTRACTOR_VERSION}",
+            AboutStatus(R.string.capsule_about_bundled_extractor, CapsuleVideoEngineUpdater.BUNDLED_EXTRACTOR_VERSION),
         )
     }
     var isCheckingEngine by remember { mutableStateOf(false) }
@@ -115,7 +121,7 @@ fun AboutScreen(
     fun checkForUpdates(forceRefresh: Boolean) {
         coroutineScope.launch {
             isCheckingUpdate = true
-            updateMessage = "Checking vanimusic6-sudo/capsule-MUSIC…"
+            updateMessage = AboutStatus(R.string.capsule_about_checking_releases)
 
             Updater.getAllReleases(forceRefresh = forceRefresh)
                 .onSuccess { releases ->
@@ -134,7 +140,7 @@ fun AboutScreen(
                     if (release == null) {
                         latestVersion = null
                         latestReleaseUrl = null
-                        updateMessage = "No published capsule release found yet."
+                        updateMessage = AboutStatus(R.string.capsule_about_no_release)
                     } else {
                         val resolvedLatest =
                             normalizeAboutVersion(
@@ -145,15 +151,14 @@ fun AboutScreen(
                         latestReleaseUrl = release.htmlUrl
                         updateMessage =
                             if (resolvedLatest != currentVersion) {
-                                "New version available: $resolvedLatest"
+                                AboutStatus(R.string.capsule_about_new_version, resolvedLatest)
                             } else {
-                                "You already have the latest version."
+                                AboutStatus(R.string.capsule_about_up_to_date)
                             }
                     }
                 }
                 .onFailure { error ->
-                    updateMessage =
-                        error.message ?: "Could not check for updates."
+                    updateMessage = AboutStatus(R.string.capsule_about_update_error)
                 }
 
             isCheckingUpdate = false
@@ -163,7 +168,7 @@ fun AboutScreen(
     fun checkVideoEngine(forceRefresh: Boolean) {
         coroutineScope.launch {
             isCheckingEngine = true
-            engineMessage = "Checking official NewPipeExtractor releases…"
+            engineMessage = AboutStatus(R.string.capsule_about_checking_engine)
 
             CapsuleVideoEngineUpdater.check(forceRefresh = forceRefresh)
                 .onSuccess { status ->
@@ -172,19 +177,17 @@ fun AboutScreen(
                     engineMessage =
                         when {
                             !status.updateAvailable ->
-                                "NewPipeExtractor ${status.bundledVersion} • latest stable"
+                                AboutStatus(R.string.capsule_about_engine_latest, status.bundledVersion)
 
                             status.readyToInstall ->
-                                "NewPipeExtractor ${status.upstreamVersion} is ready as a signed Capsule VIDEO build"
+                                AboutStatus(R.string.capsule_about_engine_ready, status.upstreamVersion)
 
                             else ->
-                                "NewPipeExtractor ${status.upstreamVersion} found • Capsule CI is preparing the signed build"
+                                AboutStatus(R.string.capsule_about_engine_preparing, status.upstreamVersion)
                         }
                 }
                 .onFailure { error ->
-                    engineMessage =
-                        error.message
-                            ?: "Could not check the VIDEO engine right now."
+                    engineMessage = AboutStatus(R.string.capsule_about_engine_error)
                 }
 
             isCheckingEngine = false
@@ -214,11 +217,11 @@ fun AboutScreen(
                 scrollBehavior = scrollBehavior,
                 colors =
                     TopAppBarDefaults.topAppBarColors(
-                        containerColor = MaterialTheme.colorScheme.background,
+                        containerColor = MaterialTheme.colorScheme.surface,
                     ),
             )
         },
-        containerColor = MaterialTheme.colorScheme.background,
+        containerColor = MaterialTheme.colorScheme.surface,
     ) { innerPadding ->
         LazyColumn(
             modifier =
@@ -301,8 +304,7 @@ fun AboutScreen(
                         Spacer(Modifier.width(8.dp))
                         Text(
                             text =
-                                "v${BuildConfig.VERSION_NAME.trim()} • " +
-                                    if (BuildConfig.DEBUG) "DEBUG" else "STABLE",
+                                stringResource(R.string.capsule_about_version_badge, BuildConfig.VERSION_NAME.trim(), stringResource(if (BuildConfig.DEBUG) R.string.capsule_about_debug else R.string.capsule_about_stable)),
                             style = MaterialTheme.typography.labelMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             fontWeight = FontWeight.SemiBold,
@@ -314,7 +316,7 @@ fun AboutScreen(
             }
 
             item {
-                SectionTitle("UPDATES")
+                SectionTitle(stringResource(R.string.capsule_about_updates))
                 Spacer(Modifier.height(8.dp))
 
                 Column(
@@ -352,15 +354,15 @@ fun AboutScreen(
                             Text(
                                 text =
                                     if (hasUpdate) {
-                                        "Update available"
+                                        stringResource(R.string.capsule_about_update_available)
                                     } else {
-                                        "capsule updates"
+                                        stringResource(R.string.capsule_about_capsule_updates)
                                     },
                                 style = MaterialTheme.typography.titleMedium,
                                 fontWeight = FontWeight.SemiBold,
                             )
                             Text(
-                                text = updateMessage,
+                                text = updateMessage.displayText(),
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
@@ -380,7 +382,7 @@ fun AboutScreen(
                                 strokeWidth = 2.dp,
                             )
                             Spacer(Modifier.width(10.dp))
-                            Text("Checking…")
+                            Text(stringResource(R.string.capsule_about_checking))
                         } else {
                             Icon(
                                 painter = painterResource(R.drawable.update),
@@ -388,7 +390,7 @@ fun AboutScreen(
                                 modifier = Modifier.size(18.dp),
                             )
                             Spacer(Modifier.width(8.dp))
-                            Text("Check for updates")
+                            Text(stringResource(R.string.capsule_about_check_updates))
                         }
                     }
 
@@ -411,9 +413,9 @@ fun AboutScreen(
                         Spacer(Modifier.width(8.dp))
                         Text(
                             if (hasUpdate) {
-                                "Download update"
+                                stringResource(R.string.capsule_about_download_update)
                             } else {
-                                "Open latest release APK"
+                                stringResource(R.string.capsule_about_open_latest_apk)
                             },
                         )
                     }
@@ -454,12 +456,12 @@ fun AboutScreen(
 
                         Column(modifier = Modifier.weight(1f)) {
                             Text(
-                                text = "VIDEO engine",
+                                text = stringResource(R.string.capsule_about_video_engine),
                                 style = MaterialTheme.typography.titleMedium,
                                 fontWeight = FontWeight.SemiBold,
                             )
                             Text(
-                                text = engineMessage,
+                                text = engineMessage.displayText(),
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
@@ -471,8 +473,7 @@ fun AboutScreen(
                     val status = engineStatus
                     Text(
                         text =
-                            "Installed extractor: " +
-                                CapsuleVideoEngineUpdater.BUNDLED_EXTRACTOR_VERSION,
+                            stringResource(R.string.capsule_about_installed_extractor, CapsuleVideoEngineUpdater.BUNDLED_EXTRACTOR_VERSION),
                         style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -480,7 +481,7 @@ fun AboutScreen(
                     status?.let {
                         Spacer(Modifier.height(3.dp))
                         Text(
-                            text = "Latest upstream: ${it.upstreamVersion}",
+                            text = stringResource(R.string.capsule_about_latest_upstream, it.upstreamVersion),
                             style = MaterialTheme.typography.labelMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
@@ -499,7 +500,7 @@ fun AboutScreen(
                                 strokeWidth = 2.dp,
                             )
                             Spacer(Modifier.width(10.dp))
-                            Text("Checking…")
+                            Text(stringResource(R.string.capsule_about_checking))
                         } else {
                             Icon(
                                 painter = painterResource(R.drawable.update),
@@ -507,7 +508,7 @@ fun AboutScreen(
                                 modifier = Modifier.size(18.dp),
                             )
                             Spacer(Modifier.width(8.dp))
-                            Text("Check VIDEO engine")
+                            Text(stringResource(R.string.capsule_about_check_video_engine))
                         }
                     }
 
@@ -547,11 +548,11 @@ fun AboutScreen(
                         Spacer(Modifier.width(8.dp))
                         Text(
                             if (readyVersion != null) {
-                                "Install VIDEO engine $readyVersion"
+                                stringResource(R.string.capsule_about_install_video_engine, readyVersion)
                             } else if (status?.updateAvailable == true) {
-                                "Signed build is being prepared"
+                                stringResource(R.string.capsule_about_build_preparing)
                             } else {
-                                "Latest VIDEO engine installed"
+                                stringResource(R.string.capsule_about_latest_engine_installed)
                             },
                         )
                     }
@@ -569,7 +570,7 @@ fun AboutScreen(
                             },
                             modifier = Modifier.fillMaxWidth(),
                         ) {
-                            Text("Open automatic build status")
+                            Text(stringResource(R.string.capsule_about_open_build_status))
                         }
                     }
                 }
@@ -578,12 +579,12 @@ fun AboutScreen(
             }
 
             item {
-                SectionTitle("MAIN DEVELOPER")
+                SectionTitle(stringResource(R.string.capsule_about_main_developer))
                 Spacer(Modifier.height(8.dp))
                 AboutItemCard(
                     iconUrl = "https://github.com/vanimusic6-sudo.png",
                     title = "vani",
-                    subtitle = "Creator & primary developer of capsule",
+                    subtitle = stringResource(R.string.capsule_about_vani_credit),
                     onClick = {
                         uriHandler.openUri(
                             "https://github.com/vanimusic6-sudo",
@@ -594,14 +595,14 @@ fun AboutScreen(
             }
 
             item {
-                SectionTitle("CODE BASE & INSPIRATION")
+                SectionTitle(stringResource(R.string.capsule_about_credits))
                 Spacer(Modifier.height(8.dp))
 
                 AboutItemCard(
                     iconUrl = "https://github.com/nikhilvishwakarma00.png",
                     title = "Nikhil — Velune",
                     subtitle =
-                        "Developer of Velune, the original codebase on which Capsule is built.",
+                        stringResource(R.string.capsule_about_nikhil_credit),
                     onClick = {
                         uriHandler.openUri(
                             "https://github.com/nikhilvishwakarma00/Velune",
@@ -615,7 +616,7 @@ fun AboutScreen(
                     iconUrl =
                         "https://avatars.githubusercontent.com/u/107134739?v=4",
                     title = "ArchiveTune — koiverse",
-                    subtitle = "Developer of ArchiveTune, whose interface design inspired Capsule.",
+                    subtitle = stringResource(R.string.capsule_about_koiverse_credit),
                     onClick = {
                         uriHandler.openUri(
                             "https://github.com/koiverse/ArchiveTune",
@@ -629,7 +630,7 @@ fun AboutScreen(
                     iconUrl =
                         "https://avatars.githubusercontent.com/u/80542861?v=4",
                     title = "MO AGAMY — Metrolist",
-                    subtitle = "Developer of Metrolist • Foundation for Capsule's YouTube integration • My introduction to open source",
+                    subtitle = stringResource(R.string.capsule_about_metrolist_credit),
                     onClick = {
                         uriHandler.openUri(
                             "https://github.com/mostafaalagamy",
@@ -641,12 +642,12 @@ fun AboutScreen(
             }
 
             item {
-                SectionTitle("PROJECT")
+                SectionTitle(stringResource(R.string.capsule_about_project))
                 Spacer(Modifier.height(8.dp))
                 AboutItemCard(
                     iconRes = R.drawable.github,
-                    title = "capsule on GitHub",
-                    subtitle = "Source code, releases and updates",
+                    title = stringResource(R.string.capsule_about_on_github),
+                    subtitle = stringResource(R.string.capsule_about_source_releases),
                     onClick = {
                         uriHandler.openUri(
                             "https://github.com/vanimusic6-sudo/capsule-MUSIC",
@@ -657,7 +658,7 @@ fun AboutScreen(
             }
 
             item {
-                SectionTitle("APP INFO")
+                SectionTitle(stringResource(R.string.capsule_about_app_info))
                 Spacer(Modifier.height(8.dp))
 
                 val installDate =
@@ -668,15 +669,15 @@ fun AboutScreen(
                                 0,
                             )
                         DateFormat
-                            .getDateInstance(DateFormat.MEDIUM)
+                            .getDateInstance(DateFormat.MEDIUM, context.resources.configuration.locales[0])
                             .format(Date(packageInfo.firstInstallTime))
                     } catch (_: Exception) {
-                        "Unknown"
+                        stringResource(R.string.capsule_about_unknown)
                     }
 
                 AboutItemCard(
                     iconRes = R.drawable.storage,
-                    title = "Installed date",
+                    title = stringResource(R.string.capsule_about_installed_date),
                     subtitle = installDate,
                     onClick = null,
                 )
@@ -684,7 +685,7 @@ fun AboutScreen(
 
                 AboutItemCard(
                     iconRes = R.drawable.info,
-                    title = "Version code",
+                    title = stringResource(R.string.capsule_about_version_code),
                     subtitle = "${BuildConfig.VERSION_CODE}",
                     onClick = null,
                 )
@@ -693,7 +694,7 @@ fun AboutScreen(
                 AboutItemCard(
                     iconRes = R.drawable.security,
                     title = "GNU General Public License v3.0",
-                    subtitle = "GPL-3.0 • Free Open Source Software",
+                    subtitle = stringResource(R.string.capsule_about_license_caption),
                     onClick = {
                         uriHandler.openUri(
                             "https://www.gnu.org/licenses/gpl-3.0.html",
@@ -743,7 +744,7 @@ fun AboutItemCard(
                 .fillMaxWidth()
                 .then(clickableModifier)
                 .padding(vertical = 12.dp, horizontal = 4.dp),
-        verticalAlignment = Alignment.CenterVertically,
+        verticalAlignment = Alignment.Top,
         horizontalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         if (iconUrl != null) {
