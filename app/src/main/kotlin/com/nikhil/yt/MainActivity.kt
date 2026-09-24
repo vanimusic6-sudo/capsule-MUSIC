@@ -161,7 +161,6 @@ import com.nikhil.yt.constants.DefaultOpenTabKey
 import com.nikhil.yt.constants.DisableScreenshotKey
 import com.nikhil.yt.constants.DynamicThemeKey
 import com.nikhil.yt.constants.HasPressedStarKey
-import com.nikhil.yt.constants.HideExplicitKey
 import com.nikhil.yt.constants.LaunchCountKey
 import com.nikhil.yt.constants.MiniPlayerBottomSpacing
 import com.nikhil.yt.constants.MiniPlayerHeight
@@ -185,9 +184,6 @@ import com.nikhil.yt.innertube.YouTube
 import com.nikhil.yt.links.ExternalTrackMetadata
 import com.nikhil.yt.links.IncomingTrackLink
 import com.nikhil.yt.links.IncomingTrackLinks
-import com.nikhil.yt.links.IncomingTrackMatcher
-import com.nikhil.yt.links.SmartTrackLinkResolver
-import com.nikhil.yt.links.SmartTrackResolution
 import com.nikhil.yt.innertube.models.SongItem
 import com.nikhil.yt.innertube.models.WatchEndpoint
 import com.nikhil.yt.extensions.toMediaItem
@@ -261,6 +257,8 @@ class MainActivity : ComponentActivity() {
     private var pendingIntent: Intent? = null
     private var lastHandledIncomingIntent: Intent? = null
     private var pendingDeepLinkSong: PendingDeepLinkSong? = null
+    // Shared SoundCloud/Spotify links must open the full results screen regardless of current route.
+    private var pendingSharedSearchQuery by mutableStateOf<String?>(null)
     private var pendingTogetherJoinLink: String? = null
 
     private var playerConnection by mutableStateOf<PlayerConnection?>(null)
@@ -1079,6 +1077,18 @@ class MainActivity : ComponentActivity() {
                         }
                     }
 
+                    // Handle external shares inside the composition that owns the search overlay,
+                    // navigation graph and player sheet. Navigating from the Activity alone
+                    // could update the query while expanded player/search UI hid the results.
+                    LaunchedEffect(pendingSharedSearchQuery) {
+                        val sharedQuery = pendingSharedSearchQuery ?: return@LaunchedEffect
+                        onActiveChange(false)
+                        searchSource = SearchSource.ONLINE
+                        if (playerBottomSheetState.isExpanded) playerBottomSheetState.collapseSoft()
+                        navController.navigate("search/${URLEncoder.encode(sharedQuery, "UTF-8")}")
+                        pendingSharedSearchQuery = null
+                    }
+
                     var showStarDialog by remember { mutableStateOf(false) }
 
                     LaunchedEffect(Unit) {
@@ -1703,40 +1713,13 @@ class MainActivity : ComponentActivity() {
     }
 
     /**
-     * YouTube IDs identify the exact video. Other music services supply public
-     * metadata: auto-play only one title+artist match, otherwise show search.
-     * An external service's track ID is never treated as a YouTube video ID.
+     * YouTube links play by video ID. Spotify/SoundCloud links open full visible
+     * search results from public metadata; their IDs are not YouTube video IDs.
      */
     private fun openIncomingTrackLink(raw: String, navController: NavHostController): Boolean {
         val link = IncomingTrackLinks.parse(raw) ?: return false
         openClassifiedTrackLink(link, navController)
         return true
-    }
-
-    private suspend fun playExactExternalMatchOrShowSearch(
-        info: ExternalTrackMetadata.TrackInfo,
-        navController: NavHostController,
-    ) {
-        val matchedSong = withContext(Dispatchers.IO) {
-            val searchItems = YouTube.search(info.query, YouTube.SearchFilter.FILTER_SONG)
-                .getOrNull()?.items?.filterIsInstance<SongItem>().orEmpty()
-            val hideExplicit = dataStore.get(HideExplicitKey, false)
-            IncomingTrackMatcher.uniqueExactMatch(
-                title = info.title,
-                artist = info.artist,
-                results = searchItems,
-                allowExplicit = !hideExplicit,
-            )
-        }
-        if (matchedSong != null) {
-            pendingDeepLinkSong = PendingDeepLinkSong(matchedSong.toMediaItem())
-            startMusicServiceSafely()
-            playPendingDeepLinkSongIfReady()
-        } else {
-            // The provider track ID is not a YouTube ID. If title and artist do not
-            // identify one unique search result, let the listener choose a version.
-            navController.navigate("search/${URLEncoder.encode(info.query, "UTF-8")}")
-        }
     }
 
     private fun openClassifiedTrackLink(link: IncomingTrackLink, navController: NavHostController) {
@@ -1766,32 +1749,9 @@ class MainActivity : ComponentActivity() {
                     Toast.makeText(this@MainActivity, R.string.capsule_track_link_metadata_error, Toast.LENGTH_LONG).show()
                     return@launch
                 }
-                playExactExternalMatchOrShowSearch(info, navController)
-            }
-
-            is IncomingTrackLink.SmartLink -> lifecycleScope.launch {
-                val resolved = withContext(Dispatchers.IO) {
-                    SmartTrackLinkResolver.resolve(link.url)
-                }
-                when (resolved) {
-                    is SmartTrackResolution.Direct -> {
-                        // A SK Lane smart link can point to YouTube, Spotify or SoundCloud.
-                        // Reuse the existing source-specific flow and never invent a media ID.
-                        if (resolved.link !is IncomingTrackLink.SmartLink) {
-                            openClassifiedTrackLink(resolved.link, navController)
-                        }
-                    }
-                    is SmartTrackResolution.Search -> {
-                        navController.navigate("search/${URLEncoder.encode(resolved.query, "UTF-8")}")
-                    }
-                    null -> {
-                        Toast.makeText(
-                            this@MainActivity,
-                            R.string.capsule_track_link_metadata_error,
-                            Toast.LENGTH_LONG,
-                        ).show()
-                    }
-                }
+                // A provider ID does not identify a YouTube recording. Open visible
+                // search results instead of auto-playing a potentially wrong match.
+                pendingSharedSearchQuery = info.query
             }
         }
     }

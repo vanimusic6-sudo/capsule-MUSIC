@@ -37,19 +37,8 @@ class IncomingTrackLinksTest {
         assertTrue(IncomingTrackLinks.parse("https://on.soundcloud.com/abc123") is IncomingTrackLink.External)
     }
 
-    @Test fun recognizesSkLaneShortTrackLinksAndSharedText() {
-        val sample = "https://music.sk-lane.com/qMyvxk1GLAJuVJHo"
-        assertEquals(
-            IncomingTrackLink.SmartLink(sample),
-            IncomingTrackLinks.parse(sample),
-        )
-        assertEquals(
-            IncomingTrackLink.SmartLink(sample),
-            IncomingTrackLinks.parse("Look at this track: $sample?utm_source=share"),
-        )
-        assertNull(IncomingTrackLinks.parse("https://music.sk-lane.com/"))
-        assertNull(IncomingTrackLinks.parse("https://evil.music.sk-lane.com/qMyvxk1GLAJuVJHo"))
-        assertNull(IncomingTrackLinks.parse("https://music.sk-lane.com/a/b"))
+    @Test fun skLaneIsNotAnAcceptedMusicProvider() {
+        assertNull(IncomingTrackLinks.parse("https://music.sk-lane.com/qMyvxk1GLAJuVJHo"))
     }
 
     @Test fun ignoresOtherDomainsAndNonTrackPages() {

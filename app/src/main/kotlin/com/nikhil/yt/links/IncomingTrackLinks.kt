@@ -8,7 +8,6 @@ import java.nio.charset.StandardCharsets
 internal sealed interface IncomingTrackLink {
     data class YouTube(val videoId: String, val playlistId: String?) : IncomingTrackLink
     data class External(val provider: Provider, val url: String) : IncomingTrackLink
-    data class SmartLink(val url: String) : IncomingTrackLink
 
     enum class Provider { SPOTIFY, SOUNDCLOUD }
 }
@@ -65,9 +64,6 @@ internal object IncomingTrackLinks {
                     IncomingTrackLink.External(IncomingTrackLink.Provider.SPOTIFY, "https://open.spotify.com/track/$id")
                 } else null
             }
-            "music.sk-lane.com" -> if (uri.scheme.equals("https", ignoreCase = true) && parts.size == 1 && parts[0].matches(Regex("[A-Za-z0-9_-]{6,64}"))) {
-                IncomingTrackLink.SmartLink("https://music.sk-lane.com/${parts[0]}")
-            } else null
             "spotify.link" -> if (parts.isNotEmpty()) {
                 IncomingTrackLink.External(IncomingTrackLink.Provider.SPOTIFY, raw)
             } else null
