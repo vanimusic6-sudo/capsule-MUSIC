@@ -5,6 +5,7 @@ import java.net.URI
 import java.net.URL
 import java.net.URLEncoder
 import org.json.JSONObject
+import org.jsoup.Jsoup
 
 /**
  * Link previews, not stream extraction: Spotify / SoundCloud audio is NOT playable
@@ -14,7 +15,13 @@ import org.json.JSONObject
  * Call from Dispatchers.IO. No cookies, login tokens or user credentials are sent.
  */
 internal object ExternalTrackMetadata {
-    fun searchQuery(external: IncomingTrackLink.External): String? {
+    data class TrackInfo(val title: String, val artist: String?) {
+        val query: String get() = listOfNotNull(title, artist).joinToString(" ")
+    }
+
+    fun searchQuery(external: IncomingTrackLink.External): String? = trackInfo(external)?.query
+
+    fun trackInfo(external: IncomingTrackLink.External): TrackInfo? {
         val trackUrl = if (isShortLink(external.url)) {
             resolveShortLink(external) ?: return null
         } else {
@@ -28,17 +35,39 @@ internal object ExternalTrackMetadata {
             IncomingTrackLink.Provider.SPOTIFY -> "https://open.spotify.com/oembed?url="
             IncomingTrackLink.Provider.SOUNDCLOUD -> "https://soundcloud.com/oembed?format=json&url="
         }
-        val response = getText(endpoint + URLEncoder.encode(canonical.url, "UTF-8")) ?: return null
-        val json = runCatching { JSONObject(response) }.getOrNull() ?: return null
-        val provider = json.optString("provider_name")
-        if (!provider.equals(external.provider.name, ignoreCase = true)) return null
-        val title = json.optString("title")
-            .replace(Regex("""\s*[|]\s*(?:Spotify|SoundCloud)\s*$""", RegexOption.IGNORE_CASE), "")
-            .replace(Regex("""\s+"""), " ")
-            .trim()
-        // Never search for the opaque Spotify ID or play the first result blindly.
-        return title.takeIf { it.length in 2..180 }
+        val response = getText(endpoint + URLEncoder.encode(canonical.url, "UTF-8"))
+        val json = response?.let { runCatching { JSONObject(it) }.getOrNull() }
+        val provider = json?.optString("provider_name").orEmpty()
+        val oembedMatchesProvider = provider.equals(external.provider.name, ignoreCase = true)
+        if (oembedMatchesProvider) {
+            val rawTitle = json?.optString("title").orEmpty()
+            val rawAuthor = json?.optString("author_name").orEmpty()
+            val artist = normalizeMetadata(rawAuthor)
+                .takeIf { it.length in 2..100 && !it.equals(external.provider.name, ignoreCase = true) }
+            val title = normalizeMetadata(rawTitle)
+                .replace(Regex("""\\s*[|]\\s*(?:Spotify|SoundCloud)\\s*$""", RegexOption.IGNORE_CASE), "")
+                .let { title ->
+                    if (artist != null && title.endsWith(" by $artist", ignoreCase = true)) {
+                        title.dropLast(artist.length + 4).trim()
+                    } else title
+                }
+            if (title.length in 2..180) return TrackInfo(title, artist)
+        }
+        // The oEmbed endpoint may be unavailable or may reject a public track.
+        // Public page metadata is a fallback; without a confirmed artist the app
+        // offers search results rather than automatically playing an unrelated cover.
+        val html = getText(canonical.url) ?: return null
+        val page = Jsoup.parse(html, canonical.url)
+        val title = normalizeMetadata(
+            page.selectFirst("meta[property=og:title]")?.attr("content")
+                ?: page.selectFirst("meta[name=twitter:title]")?.attr("content")
+                ?: ""
+        ).replace(Regex("""\\s*[|]\\s*(?:Spotify|SoundCloud)\\s*$""", RegexOption.IGNORE_CASE), "")
+        return title.takeIf { it.length in 2..180 }?.let { TrackInfo(it, null) }
     }
+
+    private fun normalizeMetadata(value: String): String =
+        Jsoup.parse(value).text().replace(Regex("""\\s+"""), " ").trim()
 
     private fun isShortLink(raw: String): Boolean =
         when (runCatching { URI(raw).host?.lowercase() }.getOrNull()) {
