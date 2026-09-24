@@ -161,6 +161,7 @@ import com.nikhil.yt.constants.DefaultOpenTabKey
 import com.nikhil.yt.constants.DisableScreenshotKey
 import com.nikhil.yt.constants.DynamicThemeKey
 import com.nikhil.yt.constants.HasPressedStarKey
+import com.nikhil.yt.constants.HideExplicitKey
 import com.nikhil.yt.constants.LaunchCountKey
 import com.nikhil.yt.constants.MiniPlayerBottomSpacing
 import com.nikhil.yt.constants.MiniPlayerHeight
@@ -184,6 +185,7 @@ import com.nikhil.yt.innertube.YouTube
 import com.nikhil.yt.links.ExternalTrackMetadata
 import com.nikhil.yt.links.IncomingTrackLink
 import com.nikhil.yt.links.IncomingTrackLinks
+import com.nikhil.yt.links.IncomingTrackMatcher
 import com.nikhil.yt.links.SmartTrackLinkResolver
 import com.nikhil.yt.links.SmartTrackResolution
 import com.nikhil.yt.innertube.models.SongItem
@@ -1711,6 +1713,32 @@ class MainActivity : ComponentActivity() {
         return true
     }
 
+    private suspend fun playExactExternalMatchOrShowSearch(
+        info: ExternalTrackMetadata.TrackInfo,
+        navController: NavHostController,
+    ) {
+        val matchedSong = withContext(Dispatchers.IO) {
+            val searchItems = YouTube.search(info.query, YouTube.SearchFilter.FILTER_SONG)
+                .getOrNull()?.items?.filterIsInstance<SongItem>().orEmpty()
+            val hideExplicit = dataStore.get(HideExplicitKey, false)
+            IncomingTrackMatcher.uniqueExactMatch(
+                title = info.title,
+                artist = info.artist,
+                results = searchItems,
+                allowExplicit = !hideExplicit,
+            )
+        }
+        if (matchedSong != null) {
+            pendingDeepLinkSong = PendingDeepLinkSong(matchedSong.toMediaItem())
+            startMusicServiceSafely()
+            playPendingDeepLinkSongIfReady()
+        } else {
+            // The provider track ID is not a YouTube ID. If title and artist do not
+            // identify one unique search result, let the listener choose a version.
+            navController.navigate("search/${URLEncoder.encode(info.query, "UTF-8")}")
+        }
+    }
+
     private fun openClassifiedTrackLink(link: IncomingTrackLink, navController: NavHostController) {
         when (link) {
             is IncomingTrackLink.YouTube -> lifecycleScope.launch {
@@ -1731,14 +1759,14 @@ class MainActivity : ComponentActivity() {
             }
 
             is IncomingTrackLink.External -> lifecycleScope.launch {
-                val title = withContext(Dispatchers.IO) {
-                    ExternalTrackMetadata.searchQuery(link)
+                val info = withContext(Dispatchers.IO) {
+                    ExternalTrackMetadata.trackInfo(link)
                 }
-                if (title == null) {
+                if (info == null) {
                     Toast.makeText(this@MainActivity, R.string.capsule_track_link_metadata_error, Toast.LENGTH_LONG).show()
                     return@launch
                 }
-                navController.navigate("search/${URLEncoder.encode(title, "UTF-8")}")
+                playExactExternalMatchOrShowSearch(info, navController)
             }
 
             is IncomingTrackLink.SmartLink -> lifecycleScope.launch {
