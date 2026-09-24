@@ -55,10 +55,8 @@ val EnableNetEaseKey = booleanPreferencesKey("enableNetEase")
 val EnablePaxsenixKey = booleanPreferencesKey("enablePaxsenix")
 val HideExplicitKey = booleanPreferencesKey("hideExplicit")
 val HideVideoKey = booleanPreferencesKey("hideVideo")
-/** Experimental SoundCloud web preview, isolated from the Capsule/YouTube audio queue. */
+/** Experimental SoundCloud source (keeps the old preference name on existing installs). */
 val SoundCloudWebPreviewEnabledKey = booleanPreferencesKey("soundcloudWebPreviewEnabled")
-/** Temporary developer token, not an app client secret. OAuth expires; replace with PKCE before release. */
-val SoundCloudOAuthTokenKey = stringPreferencesKey("soundcloudOAuthToken")
 val ProxyEnabledKey = booleanPreferencesKey("proxyEnabled")
 val ProxyUrlKey = stringPreferencesKey("proxyUrl")
 val ProxyTypeKey = stringPreferencesKey("proxyType")
