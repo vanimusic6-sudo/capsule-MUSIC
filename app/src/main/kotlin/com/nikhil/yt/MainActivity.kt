@@ -185,6 +185,7 @@ import com.nikhil.yt.links.ExternalTrackMetadata
 import com.nikhil.yt.links.IncomingTrackLink
 import com.nikhil.yt.links.IncomingTrackLinks
 import com.nikhil.yt.innertube.models.SongItem
+import com.nikhil.yt.innertube.models.WatchEndpoint
 import com.nikhil.yt.extensions.toMediaItem
 import com.nikhil.yt.playback.DownloadUtil
 import com.nikhil.yt.playback.MusicService
@@ -1703,22 +1704,20 @@ class MainActivity : ComponentActivity() {
         val link = IncomingTrackLinks.parse(raw) ?: return false
         when (link) {
             is IncomingTrackLink.YouTube -> lifecycleScope.launch {
-                val queue = withContext(Dispatchers.IO) {
-                    YouTube.queue(listOf(link.videoId), link.playlistId)
+                // Only play the requested video ID; a shuffled queue could start a different song.
+                val song = withContext(Dispatchers.IO) {
+                    YouTube.queue(listOf(link.videoId), link.playlistId).getOrNull()
+                        ?.firstOrNull { it.id == link.videoId }
+                        ?: YouTube.next(WatchEndpoint(videoId = link.videoId)).getOrNull()
+                            ?.items?.firstOrNull { it.id == link.videoId }
                 }
-                queue.onSuccess { songs ->
-                    val song = songs.firstOrNull { it.id == link.videoId } ?: songs.singleOrNull()
-                    if (song == null) {
-                        Toast.makeText(this@MainActivity, R.string.capsule_track_link_unavailable, Toast.LENGTH_LONG).show()
-                        return@onSuccess
-                    }
-                    pendingDeepLinkSong = PendingDeepLinkSong(song.toMediaItem())
-                    startMusicServiceSafely()
-                    playPendingDeepLinkSongIfReady()
-                }.onFailure { error ->
-                    reportException(error)
+                if (song == null) {
                     Toast.makeText(this@MainActivity, R.string.capsule_track_link_unavailable, Toast.LENGTH_LONG).show()
+                    return@launch
                 }
+                pendingDeepLinkSong = PendingDeepLinkSong(song.toMediaItem())
+                startMusicServiceSafely()
+                playPendingDeepLinkSongIfReady()
             }
 
             is IncomingTrackLink.External -> lifecycleScope.launch {
@@ -1755,6 +1754,14 @@ class MainActivity : ComponentActivity() {
             joinPendingTogetherIfReady()
             return
         }
+
+        // Only YouTube URLs may enter the legacy playlist/artist navigation path.
+        // A shared Spotify playlist must never be mistaken for a YouTube playlist.
+        if (uri.host?.lowercase() !in setOf(
+                "youtube.com", "www.youtube.com", "m.youtube.com", "music.youtube.com",
+                "youtu.be", "www.youtu.be",
+            )
+        ) return
 
         when (val path = uri.pathSegments.firstOrNull()) {
             "playlist" -> uri.getQueryParameter("list")?.let { playlistId ->

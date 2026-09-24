@@ -70,9 +70,14 @@ internal object ExternalTrackMetadata {
         return try {
             if (connection.responseCode != HttpURLConnection.HTTP_OK) return null
             connection.inputStream.bufferedReader(Charsets.UTF_8).use { reader ->
-                val buf = CharArray(12000)
-                val count = reader.read(buf)
-                if (count > 0) String(buf, 0, count) else null
+                val body = StringBuilder()
+                val buffer = CharArray(2048)
+                while (body.length < 32768) {
+                    val read = reader.read(buffer, 0, minOf(buffer.size, 32768 - body.length))
+                    if (read < 0) break
+                    if (read > 0) body.append(buffer, 0, read)
+                }
+                body.toString().takeIf { it.isNotBlank() }
             }
         } catch (_: Exception) {
             null
