@@ -1703,9 +1703,9 @@ class MainActivity : ComponentActivity() {
     }
 
     /**
-     * YouTube IDs play as their own media item; Spotify/SoundCloud URLs are
-     * converted to a title query in Capsule so the user can choose the right
-     * YouTube Music recording. A title alone is NOT an exact cross-service ID.
+     * YouTube IDs identify the exact video. Other music services supply public
+     * metadata: auto-play only one title+artist match, otherwise show search.
+     * An external service's track ID is never treated as a YouTube video ID.
      */
     private fun openIncomingTrackLink(raw: String, navController: NavHostController): Boolean {
         val link = IncomingTrackLinks.parse(raw) ?: return false

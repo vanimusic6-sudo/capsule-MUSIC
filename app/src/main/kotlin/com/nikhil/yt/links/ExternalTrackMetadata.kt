@@ -8,11 +8,11 @@ import org.json.JSONObject
 import org.jsoup.Jsoup
 
 /**
- * Link previews, not stream extraction: Spotify / SoundCloud audio is NOT playable
- * with a YouTube media ID. Find its title, then let the listener choose the correct
- * matching item in Capsule's existing YouTube Music search screen.
+ * Public Spotify / SoundCloud track metadata, never external audio stream extraction.
+ * Title and artist support conservative YouTube Music matching, with manual search
+ * when there is no unique match. No account cookies or API tokens are sent.
  *
- * Call from Dispatchers.IO. No cookies, login tokens or user credentials are sent.
+ * Call from Dispatchers.IO.
  */
 internal object ExternalTrackMetadata {
     data class TrackInfo(val title: String, val artist: String?) {
