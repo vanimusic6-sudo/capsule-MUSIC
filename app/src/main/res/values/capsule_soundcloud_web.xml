@@ -1,11 +1,22 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="capsule_soundcloud_group">Experimental audio sources</string>
-    <string name="capsule_soundcloud_web_title">SoundCloud web preview</string>
-    <string name="capsule_soundcloud_web_description">Show a SoundCloud-labeled search entry. Opens SoundCloud’s own web results and player, separate from Capsule’s queue. No API key required.</string>
+    <string name="capsule_soundcloud_group">Experimental sources</string>
+    <string name="capsule_soundcloud_web_title">SoundCloud: native search (test)</string>
+    <string name="capsule_soundcloud_web_description">Show actual SoundCloud track cards within Capsule search. Requires an authorized SoundCloud API access token; playback in Capsule is not yet connected.</string>
     <string name="capsule_soundcloud_badge">SoundCloud</string>
     <string name="capsule_soundcloud_find_on_site">Find and play on SoundCloud (web preview)</string>
     <string name="capsule_soundcloud_close">Back to Capsule</string>
     <string name="capsule_soundcloud_open_browser">Open SoundCloud in browser</string>
     <string name="capsule_soundcloud_web_notice">SoundCloud • experimental web player. These are SoundCloud’s own results, not YouTube matches. Playback stays on SoundCloud’s website and is not added to Capsule’s queue.</string>
+    <string name="capsule_soundcloud_token_title">SoundCloud API access token</string>
+    <string name="capsule_soundcloud_token_missing">Not set: SoundCloud search cannot load tracks</string>
+    <string name="capsule_soundcloud_token_set">Set: expires periodically; change or clear here</string>
+    <string name="capsule_soundcloud_token_notice">Test only. Enter an OAuth access token issued to your own authorized SoundCloud API application. Do not enter your password, client secret or somebody else\'s token. This token is stored in app preferences and expires; do not use the feature on shared devices.</string>
+    <string name="capsule_soundcloud_loading">Searching SoundCloud…</string>
+    <string name="capsule_soundcloud_needs_token">To see actual SoundCloud results, configure an authorized SoundCloud API token in Settings → Content.</string>
+    <string name="capsule_soundcloud_invalid_token">SoundCloud authorization is expired or denied. Update your API access token in Settings.</string>
+    <string name="capsule_soundcloud_rate_limited">SoundCloud search is temporarily rate-limited. Try again later.</string>
+    <string name="capsule_soundcloud_request_failed">SoundCloud search is currently unavailable. Check the connection and API access.</string>
+    <string name="capsule_soundcloud_no_results">No SoundCloud tracks found.</string>
+    <string name="capsule_soundcloud_native_playback_pending">SoundCloud search results are native. Playback inside Capsule is not connected yet.</string>
 </resources>
