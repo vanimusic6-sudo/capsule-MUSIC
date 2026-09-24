@@ -153,6 +153,8 @@ fun OnlineSearchResult(
             override fun onPlayerError(error: PlaybackException) {
                 soundCloudLoading = false
                 soundCloudPlaybackError = true
+                // A failed stream must be selectable again; never resume a broken item.
+                selectedSoundCloudTrack = null
             }
             override fun onPlaybackStateChanged(playbackState: Int) {
                 if (playbackState == Player.STATE_READY || playbackState == Player.STATE_ENDED) {
@@ -185,6 +187,7 @@ fun OnlineSearchResult(
         }.onFailure {
             soundCloudLoading = false
             soundCloudPlaybackError = true
+            selectedSoundCloudTrack = null
         }
     }
 
@@ -266,6 +269,11 @@ fun OnlineSearchResult(
                     onClick = {
                         when (item) {
                             is SongItem -> {
+                                // Switching to YouTube stops the isolated SoundCloud preview
+                                // so two independent players cannot continue together.
+                                soundCloudPlayer?.stop()
+                                selectedSoundCloudTrack = null
+                                soundCloudPlaybackError = false
                                 if (item.id == mediaMetadata?.id) {
                                     playerConnection.player.togglePlayPause()
                                 } else {
