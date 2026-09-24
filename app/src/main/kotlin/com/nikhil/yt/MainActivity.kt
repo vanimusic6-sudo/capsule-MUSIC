@@ -29,6 +29,7 @@ import android.os.Bundle
 import android.os.IBinder
 import android.view.View
 import android.view.WindowManager
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
@@ -180,6 +181,9 @@ import com.nikhil.yt.constants.UseSystemFontKey
 import com.nikhil.yt.db.MusicDatabase
 import com.nikhil.yt.db.entities.SearchHistory
 import com.nikhil.yt.innertube.YouTube
+import com.nikhil.yt.links.ExternalTrackMetadata
+import com.nikhil.yt.links.IncomingTrackLink
+import com.nikhil.yt.links.IncomingTrackLinks
 import com.nikhil.yt.innertube.models.SongItem
 import com.nikhil.yt.extensions.toMediaItem
 import com.nikhil.yt.playback.DownloadUtil
@@ -711,13 +715,16 @@ class MainActivity : ComponentActivity() {
 
                     val searchBarFocusRequester = remember { FocusRequester() }
 
-                    val onSearch: (String) -> Unit = {
-                        if (it.isNotEmpty()) {
+                    val onSearch: (String) -> Unit = { submitted ->
+                        val trimmed = submitted.trim()
+                        if (trimmed.isNotEmpty()) {
                             onActiveChange(false)
-                            navController.navigate("search/${URLEncoder.encode(it, "UTF-8")}")
-                            if (!pauseSearchHistory) {
-                                database.query {
-                                    insert(SearchHistory(query = it))
+                            if (!openIncomingTrackLink(trimmed, navController)) {
+                                navController.navigate("search/${URLEncoder.encode(trimmed, "UTF-8")}")
+                                if (!pauseSearchHistory) {
+                                    database.query {
+                                        insert(SearchHistory(query = trimmed))
+                                    }
                                 }
                             }
                         }
@@ -1451,21 +1458,7 @@ class MainActivity : ComponentActivity() {
                                                             query = query.text,
                                                             onQueryChange = onQueryChange,
                                                             navController = navController,
-                                                            onSearch = {
-                                                                navController.navigate(
-                                                                    "search/${
-                                                                        URLEncoder.encode(
-                                                                            it,
-                                                                            "UTF-8"
-                                                                        )
-                                                                    }"
-                                                                )
-                                                                if (!pauseSearchHistory) {
-                                                                    database.query {
-                                                                        insert(SearchHistory(query = it))
-                                                                    }
-                                                                }
-                                                            },
+                                                            onSearch = { submitted -> onSearch(submitted) },
                                                             onDismiss = { onActiveChange(false) },
                                                             pureBlack = pureBlack
                                                         )
@@ -1701,8 +1694,51 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    /**
+     * YouTube IDs play as their own media item; Spotify/SoundCloud URLs are
+     * converted to a title query in Capsule so the user can choose the right
+     * YouTube Music recording. A title alone is NOT an exact cross-service ID.
+     */
+    private fun openIncomingTrackLink(raw: String, navController: NavHostController): Boolean {
+        val link = IncomingTrackLinks.parse(raw) ?: return false
+        when (link) {
+            is IncomingTrackLink.YouTube -> lifecycleScope.launch {
+                val queue = withContext(Dispatchers.IO) {
+                    YouTube.queue(listOf(link.videoId), link.playlistId)
+                }
+                queue.onSuccess { songs ->
+                    val song = songs.firstOrNull { it.id == link.videoId } ?: songs.singleOrNull()
+                    if (song == null) {
+                        Toast.makeText(this@MainActivity, R.string.capsule_track_link_unavailable, Toast.LENGTH_LONG).show()
+                        return@onSuccess
+                    }
+                    pendingDeepLinkSong = PendingDeepLinkSong(song.toMediaItem())
+                    startMusicServiceSafely()
+                    playPendingDeepLinkSongIfReady()
+                }.onFailure { error ->
+                    reportException(error)
+                    Toast.makeText(this@MainActivity, R.string.capsule_track_link_unavailable, Toast.LENGTH_LONG).show()
+                }
+            }
+
+            is IncomingTrackLink.External -> lifecycleScope.launch {
+                val title = withContext(Dispatchers.IO) {
+                    ExternalTrackMetadata.searchQuery(link)
+                }
+                if (title == null) {
+                    Toast.makeText(this@MainActivity, R.string.capsule_track_link_metadata_error, Toast.LENGTH_LONG).show()
+                    return@launch
+                }
+                navController.navigate("search/${URLEncoder.encode(title, "UTF-8")}")
+            }
+        }
+        return true
+    }
+
     private fun handleDeepLinkIntent(intent: Intent, navController: NavHostController) {
-        val uri = intent.data ?: intent.extras?.getString(Intent.EXTRA_TEXT)?.toUri() ?: return
+        val raw = intent.data?.toString() ?: intent.getStringExtra(Intent.EXTRA_TEXT) ?: return
+        if (openIncomingTrackLink(raw, navController)) return
+        val uri = intent.data ?: raw.toUri()
         val coroutineScope = lifecycleScope
 
         val authority = uri.authority?.lowercase()
