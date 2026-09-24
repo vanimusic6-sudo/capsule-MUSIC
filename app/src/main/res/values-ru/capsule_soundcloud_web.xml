@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="capsule_soundcloud_group">Экспериментальные источники</string>
+    <string name="capsule_soundcloud_web_title">SoundCloud: тестовый веб-режим</string>
+    <string name="capsule_soundcloud_web_description">Показывает отдельный пункт SoundCloud в поиске. Открывает оригинальный поиск и плеер SoundCloud, без подключения к очереди Capsule. Ключ API не нужен.</string>
+    <string name="capsule_soundcloud_badge">SoundCloud</string>
+    <string name="capsule_soundcloud_find_on_site">Найти и послушать в SoundCloud (веб-режим)</string>
+    <string name="capsule_soundcloud_close">Назад в Capsule</string>
+    <string name="capsule_soundcloud_open_browser">Открыть в браузере</string>
+    <string name="capsule_soundcloud_web_notice">SoundCloud • тестовый веб-плеер. Здесь настоящие результаты SoundCloud, а не совпадения YouTube. Воспроизведение работает на сайте SoundCloud и не добавляется в очередь Capsule.</string>
+</resources>

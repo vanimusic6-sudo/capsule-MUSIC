@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="capsule_soundcloud_group">Experimental audio sources</string>
+    <string name="capsule_soundcloud_web_title">SoundCloud web preview</string>
+    <string name="capsule_soundcloud_web_description">Show a SoundCloud-labeled search entry. Opens SoundCloud’s own web results and player, separate from Capsule’s queue. No API key required.</string>
+    <string name="capsule_soundcloud_badge">SoundCloud</string>
+    <string name="capsule_soundcloud_find_on_site">Find and play on SoundCloud (web preview)</string>
+    <string name="capsule_soundcloud_close">Back to Capsule</string>
+    <string name="capsule_soundcloud_open_browser">Open SoundCloud in browser</string>
+    <string name="capsule_soundcloud_web_notice">SoundCloud • experimental web player. These are SoundCloud’s own results, not YouTube matches. Playback stays on SoundCloud’s website and is not added to Capsule’s queue.</string>
+</resources>
