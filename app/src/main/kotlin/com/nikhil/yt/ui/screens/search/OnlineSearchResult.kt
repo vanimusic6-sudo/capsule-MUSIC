@@ -38,19 +38,13 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.platform.LocalContext
-import androidx.media3.common.AudioAttributes
-import androidx.media3.common.C
-import androidx.media3.common.MediaItem
-import androidx.media3.common.MimeTypes
-import androidx.media3.common.PlaybackException
-import androidx.media3.common.Player
-import androidx.media3.exoplayer.ExoPlayer
 import com.nikhil.yt.innertube.soundcloud.SoundCloudNewPipe
 import com.nikhil.yt.soundcloud.SoundCloudCatalog
+import com.nikhil.yt.soundcloud.soundCloudMediaId
+import com.nikhil.yt.soundcloud.toSoundCloudMediaItem
+import com.nikhil.yt.playback.queues.ListQueue
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import androidx.compose.runtime.LaunchedEffect
@@ -122,74 +116,12 @@ fun OnlineSearchResult(
     val coroutineScope = rememberCoroutineScope()
     val lazyListState = rememberLazyListState()
     val (showSoundCloudPreview, _) = rememberPreference(SoundCloudWebPreviewEnabledKey, false)
-    val context = LocalContext.current
-    // Keep this preview player outside LazyColumn: scrolling a row off-screen must
-    // not release audio. It is isolated from YouTube's custom resolver/caches.
-    val soundCloudPlayer = remember(showSoundCloudPreview, context) {
-        if (showSoundCloudPreview) {
-            ExoPlayer.Builder(context)
-                .build()
-                .apply {
-                    setAudioAttributes(
-                        AudioAttributes.Builder()
-                            .setUsage(C.USAGE_MEDIA)
-                            .setContentType(C.AUDIO_CONTENT_TYPE_MUSIC)
-                            .build(),
-                        true,
-                    )
-                    setHandleAudioBecomingNoisy(true)
-                }
-        } else null
-    }
+    // SoundCloud now uses the same service/player as YouTube. Only its HTTP
+    // source is isolated; all main player controls and notification remain live.
     var selectedSoundCloudTrack by remember { mutableStateOf<SoundCloudCatalog.Track?>(null) }
-    var soundCloudPlaying by remember { mutableStateOf(false) }
     var soundCloudLoading by remember { mutableStateOf(false) }
     var soundCloudPlaybackError by remember { mutableStateOf(false) }
-    DisposableEffect(soundCloudPlayer) {
-        val listener = object : Player.Listener {
-            override fun onIsPlayingChanged(isPlaying: Boolean) {
-                soundCloudPlaying = isPlaying
-            }
-            override fun onPlayerError(error: PlaybackException) {
-                soundCloudLoading = false
-                soundCloudPlaybackError = true
-                // A failed stream must be selectable again; never resume a broken item.
-                selectedSoundCloudTrack = null
-            }
-            override fun onPlaybackStateChanged(playbackState: Int) {
-                if (playbackState == Player.STATE_READY || playbackState == Player.STATE_ENDED) {
-                    soundCloudLoading = false
-                }
-            }
-        }
-        soundCloudPlayer?.addListener(listener)
-        onDispose {
-            soundCloudPlayer?.removeListener(listener)
-            soundCloudPlayer?.release()
-        }
-    }
-    LaunchedEffect(selectedSoundCloudTrack, soundCloudPlayer) {
-        val track = selectedSoundCloudTrack ?: return@LaunchedEffect
-        val player = soundCloudPlayer ?: return@LaunchedEffect
-        soundCloudLoading = true
-        soundCloudPlaybackError = false
-        val stream = withContext(Dispatchers.IO) {
-            runCatching { SoundCloudNewPipe.resolve(track.permalink) }
-        }
-        stream.onSuccess { resolved ->
-            val item = MediaItem.Builder()
-                .setUri(resolved.url)
-                .apply { if (resolved.isHls) setMimeType(MimeTypes.APPLICATION_M3U8) }
-                .build()
-            player.setMediaItem(item)
-            player.prepare()
-            player.play()
-        }.onFailure {
-            soundCloudLoading = false
-            soundCloudPlaybackError = true
-            selectedSoundCloudTrack = null
-        }
-    }
+    val soundCloudRequest = remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
 
     val searchFilter by viewModel.filter.collectAsState()
     val searchSummary = viewModel.summaryPage
@@ -271,8 +203,9 @@ fun OnlineSearchResult(
                             is SongItem -> {
                                 // Switching to YouTube stops the isolated SoundCloud preview
                                 // so two independent players cannot continue together.
-                                soundCloudPlayer?.stop()
+                                soundCloudRequest.value?.cancel()
                                 selectedSoundCloudTrack = null
+                                soundCloudLoading = false
                                 soundCloudPlaybackError = false
                                 if (item.id == mediaMetadata?.id) {
                                     playerConnection.player.togglePlayPause()
@@ -308,20 +241,37 @@ fun OnlineSearchResult(
             item(key = "soundcloud_native_results") {
                 SoundCloudNativeResults(
                     query = viewModel.query,
-                    selectedUrl = selectedSoundCloudTrack?.permalink,
-                    playing = soundCloudPlaying,
+                    selectedUrl = selectedSoundCloudTrack?.permalink?.takeIf {
+                        soundCloudLoading || mediaMetadata?.id == soundCloudMediaId(it)
+                    },
+                    playing = isPlaying,
                     loadingTrack = soundCloudLoading,
                     onTrackClick = { track ->
-                        val player = soundCloudPlayer ?: return@SoundCloudNativeResults
-                        if (selectedSoundCloudTrack?.permalink == track.permalink) {
-                            if (!soundCloudLoading) {
-                                if (player.isPlaying) player.pause() else player.play()
-                            }
+                        val mediaId = soundCloudMediaId(track.permalink)
+                        if (mediaMetadata?.id == mediaId) {
+                            playerConnection.player.togglePlayPause()
                         } else {
-                            // Do not let Capsule's YouTube queue play over SoundCloud.
-                            playerConnection.player.pause()
-                            player.stop()
+                            soundCloudRequest.value?.cancel()
                             selectedSoundCloudTrack = track
+                            soundCloudPlaybackError = false
+                            soundCloudLoading = true
+                            soundCloudRequest.value = coroutineScope.launch {
+                                try {
+                                    val stream = withContext(Dispatchers.IO) {
+                                        SoundCloudNewPipe.resolve(track.permalink)
+                                    }
+                                    val item = track.toSoundCloudMediaItem(stream)
+                                    playerConnection.playQueue(
+                                        ListQueue(title = "SoundCloud", items = listOf(item))
+                                    )
+                                } catch (failure: kotlinx.coroutines.CancellationException) {
+                                    throw failure
+                                } catch (failure: Exception) {
+                                    soundCloudPlaybackError = true
+                                } finally {
+                                    soundCloudLoading = false
+                                }
+                            }
                         }
                     },
                 )
