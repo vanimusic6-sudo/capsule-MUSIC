@@ -257,6 +257,7 @@ class MainActivity : ComponentActivity() {
 
     private lateinit var navController: NavHostController
     private var pendingIntent: Intent? = null
+    private var lastHandledIncomingIntent: Intent? = null
     private var pendingDeepLinkSong: PendingDeepLinkSong? = null
     private var pendingTogetherJoinLink: String? = null
 
@@ -655,6 +656,8 @@ class MainActivity : ComponentActivity() {
                         .isWidthAtLeastBreakpoint(WindowSizeClass.WIDTH_DP_MEDIUM_LOWER_BOUND)
 
                     val navController = rememberNavController()
+                    // The Activity field is used by onNewIntent when the app is already open.
+                    this@MainActivity.navController = navController
                     val homeViewModel: HomeViewModel = hiltViewModel()
                     val headerAccountName by homeViewModel.accountName.collectAsState()
                     val headerAccountImage by homeViewModel.accountImageUrl.collectAsState()
@@ -1766,7 +1769,16 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun handleDeepLinkIntent(intent: Intent, navController: NavHostController) {
-        val raw = intent.data?.toString() ?: intent.getStringExtra(Intent.EXTRA_TEXT) ?: return
+        // A share Intent can contain styled CharSequence text instead of String and
+        // may carry data in EXTRA_TEXT while its data URI points elsewhere.
+        if (lastHandledIncomingIntent === intent) return
+        lastHandledIncomingIntent = intent
+        val sharedText = intent.getCharSequenceExtra(Intent.EXTRA_TEXT)?.toString()
+        val raw = if (intent.action == Intent.ACTION_SEND) {
+            sharedText ?: intent.data?.toString()
+        } else {
+            intent.data?.toString() ?: sharedText
+        } ?: return
         if (openIncomingTrackLink(raw, navController)) return
         val uri = intent.data ?: raw.toUri()
         val coroutineScope = lifecycleScope
