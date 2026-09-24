@@ -11,7 +11,6 @@ package com.nikhil.yt.ui.screens.search
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -48,7 +47,6 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.snapshotFlow
 import com.nikhil.yt.constants.SoundCloudWebPreviewEnabledKey
 import com.nikhil.yt.utils.rememberPreference
-import java.net.URLEncoder
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -218,33 +216,9 @@ fun OnlineSearchResult(
             .add(WindowInsets(top = SearchFilterHeight + 8.dp))
             .asPaddingValues(),
     ) {
-        // This card is a separate first-party SoundCloud web search, NOT a YouTube
-        // result relabeled as SoundCloud or an unlicensed mixed-source audio stream.
-        if (showSoundCloudPreview) {
-            item(key = "soundcloud_web_preview") {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable {
-                            navController.navigate(
-                                "soundcloud_preview/${URLEncoder.encode(viewModel.query, "UTF-8")}"
-                            )
-                        }
-                        .padding(horizontal = 20.dp, vertical = 14.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Text(
-                        text = stringResource(R.string.capsule_soundcloud_badge),
-                        color = MaterialTheme.colorScheme.primary,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier.padding(end = 12.dp),
-                    )
-                    Text(
-                        text = stringResource(R.string.capsule_soundcloud_find_on_site),
-                        color = MaterialTheme.colorScheme.onSurface,
-                    )
-                }
-                HorizontalDivider()
+        if (showSoundCloudPreview && searchFilter == null) {
+            item(key = "soundcloud_native_results") {
+                SoundCloudNativeResults(query = viewModel.query)
             }
         }
         if (searchFilter == null) {

@@ -70,6 +70,8 @@ fun ContentSettings(
     val (hideExplicit, onHideExplicitChange) = rememberPreference(key = HideExplicitKey, defaultValue = false)
     val (hideVideo, onHideVideoChange) = rememberPreference(key = HideVideoKey, defaultValue = false)
     val (soundCloudPreview, setSoundCloudPreview) = rememberPreference(SoundCloudWebPreviewEnabledKey, false)
+    val (soundCloudOAuthToken, setSoundCloudOAuthToken) = rememberPreference(SoundCloudOAuthTokenKey, "")
+    var showSoundCloudTokenEditor by remember { mutableStateOf(false) }
     val (proxyEnabled, onProxyEnabledChange) = rememberPreference(key = ProxyEnabledKey, defaultValue = false)
     val (proxyType, onProxyTypeChange) = rememberEnumPreference(key = ProxyTypeKey, defaultValue = Proxy.Type.HTTP)
     val (proxyUrl, onProxyUrlChange) = rememberPreference(key = ProxyUrlKey, defaultValue = "host:port")
@@ -168,6 +170,16 @@ fun ContentSettings(
             checked = soundCloudPreview,
             onCheckedChange = setSoundCloudPreview,
         )
+        if (soundCloudPreview) {
+            PreferenceEntry(
+                title = { Text(stringResource(R.string.capsule_soundcloud_token_title)) },
+                description = if (soundCloudOAuthToken.isBlank())
+                    stringResource(R.string.capsule_soundcloud_token_missing)
+                else stringResource(R.string.capsule_soundcloud_token_set),
+                icon = { Icon(painterResource(R.drawable.token), null) },
+                onClick = { showSoundCloudTokenEditor = true },
+            )
+        }
 
         PreferenceGroupTitle(title = stringResource(R.string.app_language))
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -364,4 +376,21 @@ fun ContentSettings(
             }
         }
     )
+    if (showSoundCloudTokenEditor) {
+        TextFieldDialog(
+            initialTextFieldValue = androidx.compose.ui.text.input.TextFieldValue(soundCloudOAuthToken),
+            onDone = { value ->
+                setSoundCloudOAuthToken(value.trim())
+                showSoundCloudTokenEditor = false
+            },
+            onDismiss = { showSoundCloudTokenEditor = false },
+            singleLine = true,
+            maxLines = 1,
+            isInputValid = { true },
+            extraContent = {
+                InfoLabel(text = stringResource(R.string.capsule_soundcloud_token_notice))
+            },
+        )
+    }
+
 }

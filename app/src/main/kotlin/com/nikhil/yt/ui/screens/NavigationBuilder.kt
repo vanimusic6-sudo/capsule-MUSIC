@@ -57,7 +57,6 @@ import com.nikhil.yt.ui.screens.playlist.OnlinePlaylistScreen
 import com.nikhil.yt.ui.screens.playlist.TopPlaylistScreen
 import com.nikhil.yt.ui.screens.playlist.CachePlaylistScreen
 import com.nikhil.yt.ui.screens.search.OnlineSearchResult
-import com.nikhil.yt.ui.screens.search.SoundCloudWebPreview
 import com.nikhil.yt.ui.screens.settings.AboutScreen
 import com.nikhil.yt.ui.screens.settings.AppearanceSettings
 import com.nikhil.yt.ui.screens.settings.BackupAndRestore
@@ -140,15 +139,6 @@ fun NavGraphBuilder.navigationBuilder(
         ),
     ) {
         OnlineSearchResult(navController)
-    }
-    routeComposable(
-        route = "soundcloud_preview/{query}",
-        arguments = listOf(navArgument("query") { type = NavType.StringType }),
-    ) { entry ->
-        SoundCloudWebPreview(
-            query = entry.arguments?.getString("query").orEmpty(),
-            navController = navController,
-        )
     }
     routeComposable(
         route = "album/{albumId}",
