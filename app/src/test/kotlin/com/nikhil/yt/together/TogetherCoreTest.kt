@@ -22,8 +22,11 @@ class TogetherCoreTest {
                 sessionKey = "key456",
             )
         val encoded = TogetherLink.encode(join)
+        assertTrue(encoded.startsWith("capsule://together?"))
         val decoded = TogetherLink.decode(encoded)
         assertEquals(join, decoded)
+        // Existing Velune-branded local invitations remain readable.
+        assertEquals(join, TogetherLink.decode(encoded.replaceFirst("capsule://", "velune://")))
     }
 
     @Test

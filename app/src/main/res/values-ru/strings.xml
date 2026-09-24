@@ -676,7 +676,7 @@
     <string name="together_online">Онлайн</string>
     <string name="together_join_link">Ссылка</string>
     <string name="together_join_code">Код</string>
-    <string name="together_join_link_hint">Вставьте пригласительную ссылку или код</string>
+    <string name="together_join_link_hint">Вставьте ссылку-приглашение для локальной сети</string>
     <string name="together_join_code_hint">Введите код сессии</string>
     <string name="start_session">Начать сессию</string>
     <string name="end_session">Завершить сессию</string>
@@ -722,11 +722,11 @@
     <string name="got_it">Ясно</string>
     <string name="together_dont_show_again">Не показывать снова</string>
     <string name="together_welcome_title">Добро пожаловать в Capsule — Слушать вместе</string>
-    <string name="together_welcome_body">«Слушать вместе» позволяет нескольким устройствам слушать музыку синхронно и пользоваться общей очередью.</string>
+    <string name="together_welcome_body">«Слушать вместе» синхронизирует воспроизведение и общую очередь между устройствами в одной сети Wi-Fi или локальной сети.</string>
     <string name="together_welcome_host_title">Захостить сессию</string>
-    <string name="together_welcome_host_body">Нажмите «Начать сессию» и поделитесь ссылкой. Пока вы ведущий, оставляйте Capsule работать в фоновом режиме.</string>
+    <string name="together_welcome_host_body">Нажмите «Начать сессию» и поделитесь ссылкой на локальную комнату. Пока вы слушаете вместе, оставляйте Capsule запущенным на устройстве ведущего.</string>
     <string name="together_welcome_join_title">Присоединиться с другого устройства</string>
-    <string name="together_welcome_join_body">Откройте ссылку с которой вами поделились, или введите код и нажмите Присоединиться. Ваши очередь и воспроизведение будут следовать хосту.</string>
+    <string name="together_welcome_join_body">Подключитесь к той же сети Wi-Fi или локальной сети, что и ведущий, откройте его ссылку-приглашение или вставьте её сюда и нажмите «Присоединиться».</string>
     <string name="together_welcome_permissions_title">Разрешения и безопасность</string>
     <string name="together_welcome_permissions_body">Хосты могут решать, могут ли гости добавлять песни, управлять воспроизведением или требовать одобрения для присоединения.</string>
     <string name="po_token_generation">WEB PO-токен</string>

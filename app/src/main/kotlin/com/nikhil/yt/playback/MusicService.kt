@@ -2650,17 +2650,6 @@ class MusicService :
         }
     }
 
-    fun startTogetherOnlineHost(
-        displayName: String,
-        settings: com.nikhil.yt.together.TogetherRoomSettings,
-    ) {
-        ensureScopesActive()
-        togetherSessionController.startOnlineHost(
-            displayName = displayName,
-            settings = settings,
-        )
-    }
-
     fun joinTogether(
         rawLink: String,
         displayName: String,
@@ -2668,17 +2657,6 @@ class MusicService :
         ensureScopesActive()
         togetherSessionController.joinLan(
             rawLink = rawLink,
-            displayName = displayName,
-        )
-    }
-
-    fun joinTogetherOnline(
-        code: String,
-        displayName: String,
-    ) {
-        ensureScopesActive()
-        togetherSessionController.joinOnline(
-            code = code,
             displayName = displayName,
         )
     }

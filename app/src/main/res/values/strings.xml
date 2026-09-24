@@ -735,7 +735,7 @@ Velune will only extract your token, and everything else is stored locally.</str
     <string name="together_online">Online</string>
     <string name="together_join_link">Link</string>
     <string name="together_join_code">Code</string>
-    <string name="together_join_link_hint">Paste a join link or code</string>
+    <string name="together_join_link_hint">Paste the local-network invitation link</string>
     <string name="together_join_code_hint">Enter a session code</string>
     <string name="start_session">Start session</string>
     <string name="end_session">End session</string>
@@ -783,11 +783,11 @@ Velune will only extract your token, and everything else is stored locally.</str
     <string name="got_it">Got it</string>
     <string name="together_dont_show_again">Don\'t show this again</string>
     <string name="together_welcome_title">Welcome to Capsule Music Together</string>
-    <string name="together_welcome_body">Listen Together lets several devices share a live session with synchronized playback and a shared queue.</string>
+    <string name="together_welcome_body">Listen Together synchronizes playback and a shared queue between devices on the same Wi-Fi or local network.</string>
     <string name="together_welcome_host_title">Host a session</string>
-    <string name="together_welcome_host_body">Tap Start session, then share the session link. Keep Capsule running in the background while hosting.</string>
+    <string name="together_welcome_host_body">Tap Start session and share the local session link. Keep Capsule running on the host device while listening together.</string>
     <string name="together_welcome_join_title">Join from another device</string>
-    <string name="together_welcome_join_body">Open the shared link, or enter code and tap Join. Your queue and playback will follow the host.</string>
+    <string name="together_welcome_join_body">Connect to the same Wi-Fi or local network as the host, open their invitation link or paste it here, then tap Join.</string>
     <string name="together_welcome_permissions_title">Permissions and safety</string>
     <string name="together_welcome_permissions_body">Hosts can decide whether guests can add songs, control playback, or require approval to join.</string>
 

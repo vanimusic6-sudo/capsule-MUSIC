@@ -1713,7 +1713,7 @@ class MainActivity : ComponentActivity() {
             }
             return
         }
-        if (uri.scheme.equals("velune", ignoreCase = true) && authority == "together") {
+        if ((uri.scheme.equals("capsule", ignoreCase = true) || uri.scheme.equals("velune", ignoreCase = true)) && authority == "together") {
             pendingTogetherJoinLink = uri.toString()
             startMusicServiceSafely()
             joinPendingTogetherIfReady()
