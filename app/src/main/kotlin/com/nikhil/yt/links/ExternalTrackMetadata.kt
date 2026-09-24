@@ -148,7 +148,7 @@ internal object ExternalTrackMetadata {
             connection.connectTimeout = 5500
             connection.readTimeout = 5500
             connection.instanceFollowRedirects = true
-            connection.setRequestProperty("Accept", "application/json")
+            connection.setRequestProperty("Accept", if (uri.path?.contains("/oembed") == true) "application/json" else "text/html,application/xhtml+xml")
             connection
         }.getOrNull()
 }
