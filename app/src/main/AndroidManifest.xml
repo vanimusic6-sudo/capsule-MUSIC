@@ -91,6 +91,8 @@
                 <data android:pathPrefix="/v/" />
                 <data android:pathPrefix="/embed/" />
                 <data android:pathPrefix="/watch" />
+                <data android:pathPrefix="/shorts/" />
+                <data android:pathPrefix="/live/" />
                 <data android:pathPrefix="/channel/" />
                 <data android:pathPrefix="/user/" />
                 <data android:pathPrefix="/c/" />
@@ -122,6 +124,37 @@
 
                 <data android:scheme="vnd.youtube" />
                 <data android:scheme="vnd.youtube.launch" />
+            </intent-filter>
+
+            <!-- Independent filters avoid cross-matching unrelated provider hosts. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="https" android:host="open.spotify.com" android:pathPrefix="/track/" />
+                <data android:scheme="https" android:host="www.spotify.com" android:pathPrefix="/track/" />
+                <data android:scheme="https" android:host="spotify.com" android:pathPrefix="/track/" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="https" android:host="spotify.link" android:pathPrefix="/" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="https" android:host="soundcloud.com" android:pathPrefix="/" />
+                <data android:scheme="https" android:host="www.soundcloud.com" android:pathPrefix="/" />
+                <data android:scheme="https" android:host="m.soundcloud.com" android:pathPrefix="/" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="https" android:host="on.soundcloud.com" android:pathPrefix="/" />
+                <data android:scheme="https" android:host="snd.sc" android:pathPrefix="/" />
             </intent-filter>
 
             <intent-filter>
