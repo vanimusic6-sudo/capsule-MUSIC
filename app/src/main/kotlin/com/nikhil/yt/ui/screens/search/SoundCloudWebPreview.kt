@@ -88,7 +88,7 @@ fun SoundCloudWebPreview(query: String, navController: NavController) {
             modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
         ) {
-            TextButton(onClick = navController::navigateUp) {
+            TextButton(onClick = { navController.navigateUp() }) {
                 Text(stringResource(R.string.capsule_soundcloud_close))
             }
             TextButton(onClick = {
