@@ -306,7 +306,7 @@ fun PlayerSettings(
                         WindowInsetsSides.Bottom,
                 ),
             )
-            .verticalScroll(rememberScrollState()),
+            .verticalScroll(rememberScrollState(), flingBehavior = rememberSettingsFlingBehavior()),
     ) {
         Spacer(
             Modifier.windowInsetsPadding(

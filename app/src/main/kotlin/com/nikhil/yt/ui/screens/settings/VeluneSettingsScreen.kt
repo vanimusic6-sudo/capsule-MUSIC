@@ -11,15 +11,11 @@ import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.gestures.FlingBehavior
-import androidx.compose.foundation.gestures.ScrollScope
-import androidx.compose.foundation.gestures.ScrollableDefaults
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.painter.Painter
@@ -52,19 +48,7 @@ fun VeluneSettingsScreen(
     var showLogoutDialog by remember { mutableStateOf(false) }
     val (innerTubeCookie, onInnerTubeCookieChange) = rememberPreference(InnerTubeCookieKey, "")
     val listState = rememberLazyListState()
-    val nativeFling = ScrollableDefaults.flingBehavior()
-    val density = LocalDensity.current
-    val softFling = remember(nativeFling, density) {
-        val maxVelocity = with(density) { 1800.dp.toPx() }
-        object : FlingBehavior {
-            override suspend fun ScrollScope.performFling(initialVelocity: Float): Float =
-                with(nativeFling) {
-                    this@performFling.performFling(
-                        initialVelocity.coerceIn(-maxVelocity, maxVelocity),
-                    )
-                }
-        }
-    }
+
 
     Scaffold(
         // Content stops above the dock and the navigation bar instead of running under them.
@@ -92,7 +76,7 @@ fun VeluneSettingsScreen(
     ) { paddingValues ->
         LazyColumn(
             state = listState,
-            flingBehavior = softFling,
+            flingBehavior = rememberSettingsFlingBehavior(),
             modifier = Modifier
                 .fillMaxSize()
                 .padding(paddingValues)

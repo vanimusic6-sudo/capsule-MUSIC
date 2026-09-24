@@ -58,7 +58,7 @@ fun VideoPlaybackSettings(
                     WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom,
                 ),
             )
-            .verticalScroll(rememberScrollState()),
+            .verticalScroll(rememberScrollState(), flingBehavior = rememberSettingsFlingBehavior()),
     ) {
         Spacer(
             Modifier.windowInsetsPadding(

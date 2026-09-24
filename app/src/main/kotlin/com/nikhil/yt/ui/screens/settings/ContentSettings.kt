@@ -99,7 +99,7 @@ fun ContentSettings(
     Column(
         Modifier
             .windowInsetsPadding(LocalPlayerAwareWindowInsets.current)
-            .verticalScroll(rememberScrollState()),
+            .verticalScroll(rememberScrollState(), flingBehavior = rememberSettingsFlingBehavior()),
     ) {
         PreferenceGroupTitle(title = stringResource(R.string.general))
         ListPreference(

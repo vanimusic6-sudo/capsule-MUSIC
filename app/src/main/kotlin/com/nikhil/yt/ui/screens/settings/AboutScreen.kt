@@ -227,6 +227,7 @@ fun AboutScreen(
         containerColor = Color.Transparent,
     ) { innerPadding ->
         LazyColumn(
+            flingBehavior = rememberSettingsFlingBehavior(),
             modifier =
                 Modifier
                     .fillMaxSize()

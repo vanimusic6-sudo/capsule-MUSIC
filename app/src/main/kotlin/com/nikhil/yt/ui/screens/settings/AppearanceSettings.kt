@@ -430,9 +430,7 @@ fun AppearanceSettings(
             .windowInsetsPadding(
                 LocalPlayerAwareWindowInsets.current,
             )
-            .verticalScroll(
-                rememberScrollState(),
-            ),
+            .verticalScroll(rememberScrollState(), flingBehavior = rememberSettingsFlingBehavior()),
     ) {
         /*
          * =========================

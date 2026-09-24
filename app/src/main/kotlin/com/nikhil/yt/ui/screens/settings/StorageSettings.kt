@@ -237,6 +237,7 @@ fun StorageSettings(
         containerColor = MaterialTheme.colorScheme.background,
     ) { innerPadding ->
         LazyColumn(
+            flingBehavior = rememberSettingsFlingBehavior(),
             modifier =
                 Modifier
                     .fillMaxSize()
