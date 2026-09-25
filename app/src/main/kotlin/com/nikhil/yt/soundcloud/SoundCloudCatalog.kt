@@ -239,6 +239,9 @@ internal object SoundCloudCatalog {
             .filterNotNull()
     }
 
+    private fun track(
+        t: SoundCloudNewPipe.Track,
+    ) = Track(
         title = t.title,
         artist = t.artist,
         uploaderUrl = t.uploaderUrl,
