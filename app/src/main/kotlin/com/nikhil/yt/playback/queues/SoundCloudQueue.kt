@@ -15,6 +15,8 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.runInterruptible
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 internal class SoundCloudQueue private constructor(
     private val queueTitle: String?,
@@ -26,6 +28,7 @@ internal class SoundCloudQueue private constructor(
 
     private var nextTrackIndex = 0
     private var pageAnchor: MediaItem? = null
+    private val pageMutex = Mutex()
 
     override suspend fun getInitialStatus(): Queue.Status {
         val firstItem = resolveTrack(firstTrack)
@@ -36,9 +39,10 @@ internal class SoundCloudQueue private constructor(
 
     override fun hasNextPage(): Boolean = nextTrackIndex < pendingTracks.size
 
-    override suspend fun nextPage(): List<MediaItem> {
-        val anchor = pageAnchor ?: return emptyList()
-        if (!hasNextPage()) return listOf(anchor)
+    override suspend fun nextPage(): List<MediaItem> =
+        pageMutex.withLock {
+        val anchor = pageAnchor ?: return@withLock emptyList()
+        if (!hasNextPage()) return@withLock listOf(anchor)
 
         val end = (nextTrackIndex + PAGE_SIZE).coerceAtMost(pendingTracks.size)
         val batch = pendingTracks.subList(nextTrackIndex, end)
@@ -50,7 +54,7 @@ internal class SoundCloudQueue private constructor(
             }.awaitAll().filterNotNull()
         }
 
-        if (resolved.isEmpty()) return listOf(anchor)
+        if (resolved.isEmpty()) return@withLock listOf(anchor)
 
         return buildList {
             add(anchor)
