@@ -282,6 +282,13 @@ object SoundCloudNewPipe {
         )
     }
 
+    /**
+     * Public boundary for the app module. DownloadManager persists requests
+     * across app upgrades, so old builds may leave a signed sndcdn.com URL
+     * where the new downloader expects a canonical SoundCloud permalink.
+     */
+    fun isTrackUrl(url: String): Boolean = isSoundCloudTrackUrl(url)
+
     fun resolve(trackUrl: String): Stream =
         resolveInternal(trackUrl, progressiveOnly = false)
 

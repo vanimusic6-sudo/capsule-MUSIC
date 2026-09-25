@@ -38,10 +38,13 @@ import com.nikhil.yt.db.entities.SongEntity
 import com.nikhil.yt.di.DownloadCache
 import com.nikhil.yt.di.PlayerCache
 import com.nikhil.yt.innertube.YouTube
+import com.nikhil.yt.innertube.soundcloud.SoundCloudNewPipe
 import com.nikhil.yt.soundcloud.SOUNDCLOUD_MEDIA_ID_PREFIX
 import com.nikhil.yt.soundcloud.SoundCloudCatalog
 import com.nikhil.yt.soundcloud.soundCloudMediaId
 import com.nikhil.yt.soundcloud.hasSoundCloudDownload
+import com.nikhil.yt.soundcloud.soundCloudDownloadFile
+import com.nikhil.yt.soundcloud.soundCloudDownloadPartFile
 import com.nikhil.yt.soundcloud.toSoundCloudMetadata
 import com.nikhil.yt.playback.audio.CapsuleAudioEngine
 import com.nikhil.yt.playback.audio.CapsulePlaybackSafety
@@ -121,13 +124,32 @@ constructor(
 
         val mediaId = soundCloudMediaId(track.permalink)
         val current = downloads.value[mediaId]
+        val currentHasCanonicalTrackUri =
+            current == null ||
+                SoundCloudNewPipe.isTrackUrl(current.request.uri.toString())
+
         if (
             (current?.state == Download.STATE_COMPLETED &&
                 hasSoundCloudDownload(context, mediaId)) ||
-            current?.state == Download.STATE_QUEUED ||
-            current?.state == Download.STATE_DOWNLOADING
+            (
+                currentHasCanonicalTrackUri &&
+                    (
+                        current?.state == Download.STATE_QUEUED ||
+                            current?.state == Download.STATE_DOWNLOADING
+                    )
+            )
         ) {
             return
+        }
+
+        if (current != null && !currentHasCanonicalTrackUri) {
+            Timber.tag("SoundCloudDownload").w(
+                "replacing-legacy-request id=%s state=%d scheme=%s host=%s",
+                mediaId,
+                current.state,
+                current.request.uri.scheme ?: "?",
+                current.request.uri.host ?: "?",
+            )
         }
 
         synchronized(soundCloudPending) {
@@ -327,10 +349,58 @@ constructor(
     val downloadNotificationHelper =
         DownloadNotificationHelper(context, ExoDownloadService.CHANNEL_ID)
 
+    /*
+     * SoundCloud download requests survive APK updates in Media3's download
+     * index. Early SoundCloud builds stored the short-lived resolved CDN URL in
+     * request.uri. The file downloader introduced later expects request.uri to
+     * be the canonical SoundCloud track permalink, so those legacy rows can
+     * never resolve and DownloadManager keeps retrying them.
+     *
+     * Purge them before DownloadManager is constructed, otherwise Media3 will
+     * immediately resume the stale request on process start before the user can
+     * replace it.
+     */
+    private val downloadIndex =
+        DefaultDownloadIndex(databaseProvider).also { index ->
+            runCatching {
+                val staleSoundCloudIds = mutableListOf<String>()
+                index.getDownloads().use { cursor ->
+                    while (cursor.moveToNext()) {
+                        val download = cursor.download
+                        if (
+                            download.request.id.startsWith(SOUNDCLOUD_MEDIA_ID_PREFIX) &&
+                            !SoundCloudNewPipe.isTrackUrl(download.request.uri.toString())
+                        ) {
+                            staleSoundCloudIds += download.request.id
+                            Timber.tag("SoundCloudDownload").w(
+                                "purge-legacy-request id=%s state=%d scheme=%s host=%s",
+                                download.request.id,
+                                download.state,
+                                download.request.uri.scheme ?: "?",
+                                download.request.uri.host ?: "?",
+                            )
+                        }
+                    }
+                }
+
+                staleSoundCloudIds.forEach { id ->
+                    index.removeDownload(id)
+                    runCatching { downloadCache.removeResource(id) }
+                    runCatching { soundCloudDownloadPartFile(context, id).delete() }
+                    runCatching { soundCloudDownloadFile(context, id).delete() }
+                }
+            }.onFailure { failure ->
+                Timber.tag("SoundCloudDownload").w(
+                    failure,
+                    "legacy-request-migration-failed",
+                )
+            }
+        }
+
     val downloadManager: DownloadManager =
         DownloadManager(
             context,
-            DefaultDownloadIndex(databaseProvider),
+            downloadIndex,
             downloaderFactory,
         ).apply {
             maxParallelDownloads = currentMaxParallelDownloads
@@ -400,7 +470,7 @@ constructor(
         CoroutineScope(Dispatchers.IO).launch {
             try {
                 val result = mutableMapOf<String, Download>()
-                val cursor = downloadManager.downloadIndex.getDownloads()
+                val cursor = downloadIndex.getDownloads()
                 cursor.use {
                     while (it.moveToNext()) {
                         result[it.download.request.id] = it.download

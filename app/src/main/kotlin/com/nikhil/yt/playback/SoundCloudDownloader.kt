@@ -42,6 +42,22 @@ internal class SoundCloudDownloader(
     private var connection: HttpURLConnection? = null
 
     override fun download(progressListener: Downloader.ProgressListener?) {
+        val requestTrackUrl = request.uri.toString()
+        if (!SoundCloudNewPipe.isTrackUrl(requestTrackUrl)) {
+            Timber.tag(TAG).e(
+                "reject-legacy-request id=%s scheme=%s host=%s",
+                request.id,
+                request.uri.scheme ?: "?",
+                request.uri.host ?: "?",
+            )
+            // Runtime exception intentionally avoids Media3's IOException retry
+            // loop. A legacy CDN URL can never become a canonical track URL by
+            // retrying it.
+            throw IllegalArgumentException(
+                "Legacy SoundCloud download request has no canonical track URL",
+            )
+        }
+
         val finalFile = soundCloudDownloadFile(context, request.id)
         val partFile = soundCloudDownloadPartFile(context, request.id)
 
