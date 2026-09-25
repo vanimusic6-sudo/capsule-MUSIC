@@ -120,6 +120,8 @@ import com.nikhil.yt.constants.EqualizerVirtualizerEnabledKey
 import com.nikhil.yt.constants.EqualizerVirtualizerStrengthKey
 import com.nikhil.yt.constants.ListItemHeight
 import com.nikhil.yt.models.MediaMetadata
+import com.nikhil.yt.soundcloud.SOUNDCLOUD_MEDIA_ID_PREFIX
+import com.nikhil.yt.soundcloud.SoundCloudCatalog
 import com.nikhil.yt.playback.EqCapabilities
 import com.nikhil.yt.playback.EqProfile
 import com.nikhil.yt.playback.EqProfilesPayload
@@ -162,8 +164,10 @@ fun PlayerMenu(
     val librarySong by database.song(mediaMetadata.id).collectAsState(initial = null)
     val coroutineScope = rememberCoroutineScope()
 
-    val download by LocalDownloadUtil.current.getDownload(mediaMetadata.id)
+    val downloadUtil = LocalDownloadUtil.current
+    val download by downloadUtil.getDownload(mediaMetadata.id)
         .collectAsState(initial = null)
+    val isSoundCloud = mediaMetadata.id.startsWith(SOUNDCLOUD_MEDIA_ID_PREFIX)
 
     val artists =
         remember(mediaMetadata.artists) {
@@ -599,22 +603,45 @@ fun PlayerMenu(
                                 contentDescription = null,
                             )
                         },
-                        modifier = Modifier.clickable {
-                            database.transaction {
-                                insert(mediaMetadata)
+                        modifier = Modifier.clickable(
+                            enabled = !isSoundCloud || !mediaMetadata.sourceUrl.isNullOrBlank(),
+                        ) {
+                            if (isSoundCloud) {
+                                val permalink = mediaMetadata.sourceUrl
+                                    ?.takeIf { it.startsWith("https://") }
+                                    ?: return@clickable
+
+                                downloadUtil.enqueueSoundCloud(
+                                    SoundCloudCatalog.Track(
+                                        title = mediaMetadata.title,
+                                        artist = mediaMetadata.artists.firstOrNull()?.name
+                                            ?: "SoundCloud",
+                                        uploaderUrl = mediaMetadata.artists.firstOrNull()?.id,
+                                        artworkUrl = mediaMetadata.thumbnailUrl,
+                                        permalink = permalink,
+                                        durationSeconds = mediaMetadata.duration
+                                            .coerceAtLeast(0)
+                                            .toLong(),
+                                        downloadable = null,
+                                    ),
+                                )
+                            } else {
+                                database.transaction {
+                                    insert(mediaMetadata)
+                                }
+                                val downloadRequest =
+                                    DownloadRequest
+                                        .Builder(mediaMetadata.id, mediaMetadata.id.toUri())
+                                        .setCustomCacheKey(mediaMetadata.id)
+                                        .setData(mediaMetadata.title.toByteArray())
+                                        .build()
+                                DownloadService.sendAddDownload(
+                                    context,
+                                    ExoDownloadService::class.java,
+                                    downloadRequest,
+                                    false,
+                                )
                             }
-                            val downloadRequest =
-                                DownloadRequest
-                                    .Builder(mediaMetadata.id, mediaMetadata.id.toUri())
-                                    .setCustomCacheKey(mediaMetadata.id)
-                                    .setData(mediaMetadata.title.toByteArray())
-                                    .build()
-                            DownloadService.sendAddDownload(
-                                context,
-                                ExoDownloadService::class.java,
-                                downloadRequest,
-                                false,
-                            )
                         }
                         , colors = ListItemDefaults.colors(containerColor = Color.Transparent),
                         )

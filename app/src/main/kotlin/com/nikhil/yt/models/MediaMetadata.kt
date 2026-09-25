@@ -29,6 +29,15 @@ data class MediaMetadata(
     val liked: Boolean = false,
     val likedDate: LocalDateTime? = null,
     val inLibrary: LocalDateTime? = null,
+    /**
+     * Canonical source page for non-YouTube providers.
+     *
+     * SoundCloud needs this because mediaId is an internal stable hash, not a
+     * playable or resolvable URL. Keeping the permalink in persisted metadata
+     * lets the player menu download the real track and lets persistent queues
+     * re-resolve fresh signed CDN URLs after process death.
+     */
+    val sourceUrl: String? = null,
 ) : Serializable {
     companion object {
         private const val serialVersionUID = 1L

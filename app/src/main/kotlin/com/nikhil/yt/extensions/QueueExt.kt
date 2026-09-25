@@ -16,6 +16,9 @@ import com.nikhil.yt.playback.queues.LocalAlbumRadio
 import com.nikhil.yt.playback.queues.Queue
 import com.nikhil.yt.playback.queues.YouTubeAlbumRadio
 import com.nikhil.yt.playback.queues.YouTubeQueue
+import com.nikhil.yt.playback.queues.SoundCloudQueue
+import com.nikhil.yt.soundcloud.SOUNDCLOUD_MEDIA_ID_PREFIX
+import com.nikhil.yt.soundcloud.SoundCloudCatalog
 
 fun Queue.toPersistQueue(
     title: String?,
@@ -108,6 +111,61 @@ fun Queue.toPersistQueue(
     }
 
 fun PersistQueue.toQueue(): Queue {
+    /*
+     * SoundCloud media ids are internal hashes ("soundcloud:..."). They are not
+     * URLs. Generic MediaMetadata.toMediaItem() therefore cannot restore them,
+     * because it uses mediaId as the URI for ordinary YouTube items.
+     *
+     * Rebuild an all-SoundCloud persisted queue from canonical sourceUrl values
+     * and let SoundCloudQueue resolve fresh CDN URLs. Old snapshots created
+     * before sourceUrl existed are dropped instead of feeding "soundcloud:..."
+     * into OkHttp and producing a Malformed URL loop.
+     */
+    if (
+        items.isNotEmpty() &&
+        items.all { it.id.startsWith(SOUNDCLOUD_MEDIA_ID_PREFIX) }
+    ) {
+        val restoredTracks =
+            items.mapNotNull { metadata ->
+                val permalink =
+                    metadata.sourceUrl
+                        ?.takeIf { it.startsWith("https://") }
+                        ?: return@mapNotNull null
+
+                SoundCloudCatalog.Track(
+                    title = metadata.title,
+                    artist = metadata.artists.firstOrNull()?.name ?: "SoundCloud",
+                    uploaderUrl = metadata.artists.firstOrNull()?.id,
+                    artworkUrl = metadata.thumbnailUrl,
+                    permalink = permalink,
+                    durationSeconds = metadata.duration.coerceAtLeast(0).toLong(),
+                    downloadable = null,
+                )
+            }
+
+        if (restoredTracks.size == items.size) {
+            val safeIndex =
+                mediaItemIndex.coerceIn(
+                    0,
+                    (items.size - 1).coerceAtLeast(0),
+                )
+            val requestedStartUrl = items.getOrNull(safeIndex)?.sourceUrl
+            SoundCloudQueue.create(
+                title = title,
+                tracks = restoredTracks,
+                requestedStartUrl = requestedStartUrl,
+                startPositionMs = position,
+            )?.let { return it }
+        }
+
+        return ListQueue(
+            title = title,
+            items = emptyList(),
+            startIndex = 0,
+            position = 0L,
+        )
+    }
+
     val restoredStatus =
         Queue.Status(
             title = title,

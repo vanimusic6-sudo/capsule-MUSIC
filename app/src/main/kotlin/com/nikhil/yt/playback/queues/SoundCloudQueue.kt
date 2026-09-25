@@ -23,6 +23,7 @@ internal class SoundCloudQueue private constructor(
     private val firstTrack: SoundCloudCatalog.Track,
     private val pendingTracks: List<SoundCloudCatalog.Track>,
     private val downloads: Map<String, Download>,
+    private val initialPositionMs: Long,
 ) : Queue {
     override val preloadItem: MediaMetadata = firstTrack.toSoundCloudMetadata()
 
@@ -34,7 +35,12 @@ internal class SoundCloudQueue private constructor(
         val firstItem = resolveTrack(firstTrack)
             ?: return Queue.Status(queueTitle, emptyList(), 0, 0L)
         pageAnchor = firstItem
-        return Queue.Status(queueTitle, listOf(firstItem), 0, 0L)
+        return Queue.Status(
+            queueTitle,
+            listOf(firstItem),
+            0,
+            initialPositionMs.coerceAtLeast(0L),
+        )
     }
 
     override fun hasNextPage(): Boolean = nextTrackIndex < pendingTracks.size
@@ -100,6 +106,7 @@ internal class SoundCloudQueue private constructor(
             tracks: List<SoundCloudCatalog.Track>,
             requestedStartUrl: String?,
             downloads: Map<String, Download> = emptyMap(),
+            startPositionMs: Long = 0L,
         ): SoundCloudQueue? {
             val unique = tracks.distinctBy { it.permalink }
             if (unique.isEmpty()) return null
@@ -117,6 +124,7 @@ internal class SoundCloudQueue private constructor(
                     addAll(unique.take(startIndex))
                 },
                 downloads = downloads,
+                initialPositionMs = startPositionMs,
             )
         }
     }

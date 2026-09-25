@@ -57,6 +57,7 @@ internal fun SoundCloudCatalog.Track.toSoundCloudMetadata() =
         artists = listOf(MediaMetadata.Artist(id = uploaderUrl, name = artist)),
         duration = durationSeconds.coerceIn(0L, Int.MAX_VALUE.toLong()).toInt(),
         thumbnailUrl = artworkUrl,
+        sourceUrl = permalink,
     )
 
 internal fun SoundCloudCatalog.Track.toSoundCloudMediaItem(
