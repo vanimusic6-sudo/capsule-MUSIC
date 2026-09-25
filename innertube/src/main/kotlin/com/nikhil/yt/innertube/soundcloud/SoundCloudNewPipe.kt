@@ -19,12 +19,13 @@ import java.net.URI
  * SoundCloud adapter backed by the already bundled NewPipeExtractor.
  * Calls are blocking and must run on Dispatchers.IO.
  *
- * DRM / Go+ rule: a track is exposed to the app only if NewPipe can resolve at
- * least one non-encrypted playable audio stream. NewPipe itself rejects
- * encrypted transcodings and Go+/blocked policies; Capsule additionally probes
- * every track before it can enter search/profile/playlist UI.
+ * Browse/search stays metadata-only for speed. Actual stream availability is
+ * checked when a track is about to play; NewPipe itself rejects unsupported or
+ * encrypted transcodings during stream extraction.
  */
 object SoundCloudNewPipe {
+    private const val MAX_PLAYLIST_PAGES = 8
+
     data class Stream(val url: String, val isHls: Boolean)
 
     data class Track(
@@ -115,12 +116,17 @@ object SoundCloudNewPipe {
         val info = ChannelInfo.getInfo(service, url)
         val tracksTab = info.tabs.firstOrNull { it.contentFilters.firstOrNull() == ChannelTabs.TRACKS }
         val playlistsTab = info.tabs.firstOrNull { it.contentFilters.firstOrNull() == ChannelTabs.PLAYLISTS }
-        val tracks = tracksTab?.let { ChannelTabInfo.getInfo(service, it).relatedItems }
+        // One broken tab should not make the whole SoundCloud account page disappear.
+        val tracks = tracksTab?.let { tab ->
+            runCatching { ChannelTabInfo.getInfo(service, tab).relatedItems }.getOrNull()
+        }
             .orEmpty()
             .filterIsInstance<StreamInfoItem>()
             .mapNotNull(::toPlayableTrack)
             .distinctBy { it.url }
-        val playlists = playlistsTab?.let { ChannelTabInfo.getInfo(service, it).relatedItems }
+        val playlists = playlistsTab?.let { tab ->
+            runCatching { ChannelTabInfo.getInfo(service, tab).relatedItems }.getOrNull()
+        }
             .orEmpty()
             .filterIsInstance<PlaylistInfoItem>()
             .mapNotNull(::toPlaylist)
@@ -145,10 +151,18 @@ object SoundCloudNewPipe {
         val candidates = ArrayList<StreamInfoItem>()
         candidates += info.relatedItems
         var next = info.nextPage
-        while (next != null && candidates.size < maxTracks) {
-            val page = PlaylistInfo.getMoreItems(service, url, next)
+        var pagesLoaded = 0
+        while (next != null && candidates.size < maxTracks && pagesLoaded < MAX_PLAYLIST_PAGES) {
+            // SoundCloud playlists can contain deleted/private entries. NewPipe may
+            // reject a continuation containing one; keep the already valid first
+            // pages instead of turning the entire playlist into "unavailable".
+            val page = runCatching {
+                PlaylistInfo.getMoreItems(service, url, next)
+            }.getOrNull() ?: break
+            if (page.items.isEmpty()) break
             candidates += page.items
             next = page.nextPage
+            pagesLoaded++
         }
         val tracks = candidates.asSequence()
             .take(maxTracks)
