@@ -246,6 +246,15 @@ fun OnlineSearchResult(
                     },
                     playing = isPlaying,
                     loadingTrack = soundCloudLoading,
+                    onArtistClick = { url ->
+                        navController.navigate("soundcloud/profile?url=" + android.net.Uri.encode(url))
+                    },
+                    onPlaylistClick = { url ->
+                        navController.navigate("soundcloud/playlist?url=" + android.net.Uri.encode(url))
+                    },
+                    onUserClick = { url ->
+                        navController.navigate("soundcloud/profile?url=" + android.net.Uri.encode(url))
+                    },
                     onTrackClick = { track ->
                         val mediaId = soundCloudMediaId(track.permalink)
                         if (mediaMetadata?.id == mediaId) {

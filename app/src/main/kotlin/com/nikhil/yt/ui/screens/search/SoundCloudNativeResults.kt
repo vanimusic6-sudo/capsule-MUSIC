@@ -30,7 +30,6 @@ import com.nikhil.yt.soundcloud.SoundCloudCatalog
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
-/** Genuine SoundCloud cards, resolved with NewPipe, never disguised YouTube matches. */
 @Composable
 internal fun SoundCloudNativeResults(
     query: String,
@@ -38,27 +37,25 @@ internal fun SoundCloudNativeResults(
     playing: Boolean,
     loadingTrack: Boolean,
     onTrackClick: (SoundCloudCatalog.Track) -> Unit,
+    onArtistClick: (String) -> Unit,
+    onPlaylistClick: (String) -> Unit,
+    onUserClick: (String) -> Unit,
 ) {
-    var result by remember(query) { mutableStateOf<SoundCloudCatalog.Result?>(null) }
+    var result by remember(query) { mutableStateOf<SoundCloudCatalog.Result<SoundCloudCatalog.SearchPage>?>(null) }
     LaunchedEffect(query) {
         result = null
         result = withContext(Dispatchers.IO) { SoundCloudCatalog.search(query) }
     }
+
     Column(modifier = Modifier.fillMaxWidth()) {
-        Text(
-            text = stringResource(R.string.capsule_soundcloud_badge),
-            color = MaterialTheme.colorScheme.primary,
-            style = MaterialTheme.typography.titleSmall,
-            fontWeight = FontWeight.Bold,
-            modifier = Modifier.padding(start = 20.dp, top = 16.dp, bottom = 6.dp),
-        )
+        SectionTitle(stringResource(R.string.capsule_soundcloud_badge))
         when (val value = result) {
             null -> Status(R.string.capsule_soundcloud_loading)
             SoundCloudCatalog.Result.RateLimited -> Status(R.string.capsule_soundcloud_rate_limited)
             SoundCloudCatalog.Result.Unavailable -> Status(R.string.capsule_soundcloud_request_failed)
-            is SoundCloudCatalog.Result.Tracks -> {
-                if (value.items.isEmpty()) Status(R.string.capsule_soundcloud_no_results)
-                value.items.forEach { track ->
+            is SoundCloudCatalog.Result.Success -> {
+                val page = value.value
+                page.tracks.forEach { track ->
                     val selected = track.permalink == selectedUrl
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
@@ -86,17 +83,20 @@ internal fun SoundCloudNativeResults(
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
                                 style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                color = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.clickable(enabled = track.uploaderUrl != null) {
+                                    track.uploaderUrl?.let(onArtistClick)
+                                },
                             )
                         }
-                        Column(horizontalAlignment = Alignment.End) {
+                        Text(
+                            text = stringResource(R.string.capsule_soundcloud_badge),
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary,
+                        )
+                        if (selected) {
                             Text(
-                                text = stringResource(R.string.capsule_soundcloud_badge),
-                                style = MaterialTheme.typography.labelSmall,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.primary,
-                            )
-                            if (selected) Text(
                                 text = stringResource(
                                     when {
                                         loadingTrack -> R.string.capsule_soundcloud_loading
@@ -109,10 +109,83 @@ internal fun SoundCloudNativeResults(
                         }
                     }
                 }
+
+                if (page.playlists.isNotEmpty()) {
+                    SectionTitle(stringResource(R.string.capsule_soundcloud_playlists))
+                    page.playlists.forEach { playlist ->
+                        Row(
+                            modifier = Modifier.fillMaxWidth()
+                                .clickable { onPlaylistClick(playlist.url) }
+                                .padding(horizontal = 20.dp, vertical = 9.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        ) {
+                            AsyncImage(
+                                model = playlist.artworkUrl,
+                                contentDescription = null,
+                                modifier = Modifier.size(52.dp).clip(RoundedCornerShape(8.dp)),
+                            )
+                            Column(Modifier.weight(1f)) {
+                                Text(playlist.title, maxLines = 1, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.SemiBold)
+                                Text(
+                                    text = playlist.uploader,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                            Text(stringResource(R.string.capsule_soundcloud_badge), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+                        }
+                    }
+                }
+
+                if (page.users.isNotEmpty()) {
+                    SectionTitle(stringResource(R.string.capsule_soundcloud_accounts))
+                    page.users.forEach { user ->
+                        Row(
+                            modifier = Modifier.fillMaxWidth()
+                                .clickable { onUserClick(user.url) }
+                                .padding(horizontal = 20.dp, vertical = 9.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        ) {
+                            AsyncImage(
+                                model = user.avatarUrl,
+                                contentDescription = null,
+                                modifier = Modifier.size(48.dp).clip(RoundedCornerShape(24.dp)),
+                            )
+                            Column(Modifier.weight(1f)) {
+                                Text(user.name, maxLines = 1, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.SemiBold)
+                                Text(
+                                    text = stringResource(R.string.capsule_soundcloud_followers, user.followerCount.coerceAtLeast(0)),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                            Text(stringResource(R.string.capsule_soundcloud_badge), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+                        }
+                    }
+                }
+
+                if (page.tracks.isEmpty() && page.playlists.isEmpty() && page.users.isEmpty()) {
+                    Status(R.string.capsule_soundcloud_no_results)
+                }
             }
         }
         HorizontalDivider(modifier = Modifier.padding(top = 8.dp))
     }
+}
+
+@Composable
+private fun SectionTitle(text: String) {
+    Text(
+        text = text,
+        color = MaterialTheme.colorScheme.primary,
+        style = MaterialTheme.typography.titleSmall,
+        fontWeight = FontWeight.Bold,
+        modifier = Modifier.padding(start = 20.dp, top = 16.dp, bottom = 6.dp),
+    )
 }
 
 @Composable

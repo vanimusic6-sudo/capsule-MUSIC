@@ -11,4 +11,14 @@
     <string name="capsule_soundcloud_play">Play</string>
     <string name="capsule_soundcloud_pause">Pause</string>
     <string name="capsule_soundcloud_playback_error">SoundCloud audio could not be played. The track may be unavailable or temporarily blocked.</string>
+
+    <string name="capsule_soundcloud_tracks">Tracks</string>
+    <string name="capsule_soundcloud_playlists">SoundCloud playlists</string>
+    <string name="capsule_soundcloud_accounts">SoundCloud accounts</string>
+    <string name="capsule_soundcloud_account_title">SoundCloud profile</string>
+    <string name="capsule_soundcloud_playlist_title">SoundCloud playlist</string>
+    <string name="capsule_soundcloud_followers">%1$d followers</string>
+    <string name="capsule_soundcloud_play_all">Play playlist</string>
+    <string name="capsule_soundcloud_playable_tracks">%1$d playable of %2$d tracks</string>
+    <string name="capsule_soundcloud_no_playable_tracks">No playable non-DRM tracks are available in this playlist.</string>
 </resources>

@@ -2,43 +2,130 @@ package com.nikhil.yt.soundcloud
 
 import com.nikhil.yt.innertube.soundcloud.SoundCloudNewPipe
 
-/**
- * Real SoundCloud results from the already bundled NewPipeExtractor.
- * No pasted API/OAuth token and no YouTube fallback or mislabeled matches.
- */
 internal object SoundCloudCatalog {
     data class Track(
         val title: String,
         val artist: String,
+        val uploaderUrl: String?,
         val artworkUrl: String?,
         val permalink: String,
         val durationSeconds: Long,
     )
 
-    sealed interface Result {
-        data class Tracks(val items: List<Track>) : Result
-        data object RateLimited : Result
-        data object Unavailable : Result
+    data class User(
+        val url: String,
+        val name: String,
+        val avatarUrl: String?,
+        val followerCount: Long,
+        val verified: Boolean,
+    )
+
+    data class Playlist(
+        val url: String,
+        val title: String,
+        val uploader: String,
+        val uploaderUrl: String?,
+        val artworkUrl: String?,
+        val trackCount: Long,
+    )
+
+    data class SearchPage(
+        val tracks: List<Track>,
+        val users: List<User>,
+        val playlists: List<Playlist>,
+    )
+
+    data class Profile(
+        val url: String,
+        val name: String,
+        val avatarUrl: String?,
+        val bannerUrl: String?,
+        val description: String,
+        val followerCount: Long,
+        val verified: Boolean,
+        val tracks: List<Track>,
+        val playlists: List<Playlist>,
+    )
+
+    data class PlaylistDetails(
+        val url: String,
+        val title: String,
+        val uploader: String,
+        val uploaderUrl: String?,
+        val artworkUrl: String?,
+        val trackCount: Long,
+        val tracks: List<Track>,
+    )
+
+    sealed interface Result<out T> {
+        data class Success<T>(val value: T) : Result<T>
+        data object RateLimited : Result<Nothing>
+        data object Unavailable : Result<Nothing>
     }
 
-    fun search(query: String): Result = try {
-        Result.Tracks(
-            SoundCloudNewPipe.search(query).map { track ->
-                Track(
-                    title = track.title,
-                    artist = track.artist,
-                    artworkUrl = track.artworkUrl,
-                    permalink = track.url,
-                    durationSeconds = track.durationSeconds,
-                )
-            }
+    fun search(query: String): Result<SearchPage> = capture {
+        val r = SoundCloudNewPipe.searchAll(query)
+        SearchPage(
+            tracks = r.tracks.map(::track),
+            users = r.users.map { User(it.url, it.name, it.avatarUrl, it.followerCount, it.verified) },
+            playlists = r.playlists.map(::playlist),
         )
+    }
+
+    fun profile(url: String): Result<Profile> = capture {
+        val p = SoundCloudNewPipe.profile(url)
+        Profile(
+            url = p.url,
+            name = p.name,
+            avatarUrl = p.avatarUrl,
+            bannerUrl = p.bannerUrl,
+            description = p.description,
+            followerCount = p.followerCount,
+            verified = p.verified,
+            tracks = p.tracks.map(::track),
+            playlists = p.playlists.map(::playlist),
+        )
+    }
+
+    fun playlist(url: String): Result<PlaylistDetails> = capture {
+        val p = SoundCloudNewPipe.playlist(url)
+        PlaylistDetails(
+            url = p.url,
+            title = p.title,
+            uploader = p.uploader,
+            uploaderUrl = p.uploaderUrl,
+            artworkUrl = p.artworkUrl,
+            trackCount = p.trackCount,
+            tracks = p.tracks.map(::track),
+        )
+    }
+
+    private fun track(t: SoundCloudNewPipe.Track) = Track(
+        title = t.title,
+        artist = t.artist,
+        uploaderUrl = t.uploaderUrl,
+        artworkUrl = t.artworkUrl,
+        permalink = t.url,
+        durationSeconds = t.durationSeconds,
+    )
+
+    private fun playlist(p: SoundCloudNewPipe.Playlist) = Playlist(
+        url = p.url,
+        title = p.title,
+        uploader = p.uploader,
+        uploaderUrl = p.uploaderUrl,
+        artworkUrl = p.artworkUrl,
+        trackCount = p.trackCount,
+    )
+
+    private inline fun <T> capture(block: () -> T): Result<T> = try {
+        Result.Success(block())
     } catch (exception: Exception) {
         val message = generateSequence(exception as Throwable?) { it.cause }
-            .take(6)
+            .take(8)
             .mapNotNull { it?.message }
             .joinToString(" ")
-        if ("429" in message || "rate limit" in message.lowercase()) {
+        if ("429" in message || "rate limit" in message.lowercase() || "recaptcha" in message.lowercase()) {
             Result.RateLimited
         } else Result.Unavailable
     }

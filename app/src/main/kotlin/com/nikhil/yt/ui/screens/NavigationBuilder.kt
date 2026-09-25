@@ -57,6 +57,8 @@ import com.nikhil.yt.ui.screens.playlist.OnlinePlaylistScreen
 import com.nikhil.yt.ui.screens.playlist.TopPlaylistScreen
 import com.nikhil.yt.ui.screens.playlist.CachePlaylistScreen
 import com.nikhil.yt.ui.screens.search.OnlineSearchResult
+import com.nikhil.yt.ui.screens.soundcloud.SoundCloudPlaylistScreen
+import com.nikhil.yt.ui.screens.soundcloud.SoundCloudProfileScreen
 import com.nikhil.yt.ui.screens.settings.AboutScreen
 import com.nikhil.yt.ui.screens.settings.AppearanceSettings
 import com.nikhil.yt.ui.screens.settings.BackupAndRestore
@@ -139,6 +141,18 @@ fun NavGraphBuilder.navigationBuilder(
         ),
     ) {
         OnlineSearchResult(navController)
+    }
+    routeComposable(
+        route = "soundcloud/profile?url={url}",
+        arguments = listOf(navArgument("url") { type = NavType.StringType; defaultValue = "" }),
+    ) { entry ->
+        SoundCloudProfileScreen(entry.arguments?.getString("url").orEmpty(), navController)
+    }
+    routeComposable(
+        route = "soundcloud/playlist?url={url}",
+        arguments = listOf(navArgument("url") { type = NavType.StringType; defaultValue = "" }),
+    ) { entry ->
+        SoundCloudPlaylistScreen(entry.arguments?.getString("url").orEmpty(), navController)
     }
     routeComposable(
         route = "album/{albumId}",

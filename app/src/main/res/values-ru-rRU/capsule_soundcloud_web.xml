@@ -11,4 +11,14 @@
     <string name="capsule_soundcloud_play">Слушать</string>
     <string name="capsule_soundcloud_pause">Пауза</string>
     <string name="capsule_soundcloud_playback_error">Не удалось воспроизвести аудио SoundCloud: трек недоступен или временно заблокирован.</string>
+
+    <string name="capsule_soundcloud_tracks">Треки</string>
+    <string name="capsule_soundcloud_playlists">Плейлисты SoundCloud</string>
+    <string name="capsule_soundcloud_accounts">Аккаунты SoundCloud</string>
+    <string name="capsule_soundcloud_account_title">Профиль SoundCloud</string>
+    <string name="capsule_soundcloud_playlist_title">Плейлист SoundCloud</string>
+    <string name="capsule_soundcloud_followers">Подписчики: %1$d</string>
+    <string name="capsule_soundcloud_play_all">Слушать плейлист</string>
+    <string name="capsule_soundcloud_playable_tracks">Доступно %1$d из %2$d треков</string>
+    <string name="capsule_soundcloud_no_playable_tracks">В этом плейлисте нет доступных треков без DRM-защиты.</string>
 </resources>
