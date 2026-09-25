@@ -1,6 +1,7 @@
 package com.nikhil.yt.innertube.soundcloud
 
 import com.nikhil.yt.innertube.pages.NewPipeUtils
+import org.schabi.newpipe.extractor.Page
 import org.schabi.newpipe.extractor.NewPipe
 import org.schabi.newpipe.extractor.channel.ChannelInfo
 import org.schabi.newpipe.extractor.channel.ChannelInfoItem
@@ -24,8 +25,6 @@ import java.net.URI
  * encrypted transcodings during stream extraction.
  */
 object SoundCloudNewPipe {
-    private const val MAX_PLAYLIST_PAGES = 8
-
     data class Stream(val url: String, val isHls: Boolean)
 
     data class Track(
@@ -72,6 +71,17 @@ object SoundCloudNewPipe {
         val playlists: List<Playlist>,
     )
 
+    /**
+     * Opaque NewPipe continuation. The app can keep and pass it back without
+     * depending on extractor internals or serializing SoundCloud page state.
+     */
+    class PlaylistCursor internal constructor(internal val page: Page)
+
+    data class PlaylistPage(
+        val tracks: List<Track>,
+        val cursor: PlaylistCursor?,
+    )
+
     data class PlaylistDetails(
         val url: String,
         val title: String,
@@ -80,6 +90,7 @@ object SoundCloudNewPipe {
         val artworkUrl: String?,
         val trackCount: Long,
         val tracks: List<Track>,
+        val cursor: PlaylistCursor?,
     )
 
     /** Backwards-compatible track-only search used by older callers/tests. */
@@ -144,29 +155,20 @@ object SoundCloudNewPipe {
         )
     }
 
-    fun playlist(url: String, maxTracks: Int = 100): PlaylistDetails {
+    /**
+     * Returns only the initial playlist page.
+     *
+     * Loading every continuation before returning made opening a playlist wait
+     * for up to eight sequential network requests. Call [playlistMore] after
+     * painting this first page so the UI becomes usable immediately.
+     */
+    fun playlist(url: String): PlaylistDetails {
         NewPipeUtils.prepareSoundCloud()
         val service = NewPipe.getService("SoundCloud")
         val info = PlaylistInfo.getInfo(service, url)
-        val candidates = ArrayList<StreamInfoItem>()
-        candidates += info.relatedItems
-        var next = info.nextPage
-        var pagesLoaded = 0
-        while (next != null && candidates.size < maxTracks && pagesLoaded < MAX_PLAYLIST_PAGES) {
-            // SoundCloud playlists can contain deleted/private entries. NewPipe may
-            // reject a continuation containing one; keep the already valid first
-            // pages instead of turning the entire playlist into "unavailable".
-            val pageRequest = next ?: break
-            val page = runCatching {
-                PlaylistInfo.getMoreItems(service, url, pageRequest)
-            }.getOrNull() ?: break
-            if (page.items.isEmpty()) break
-            candidates += page.items
-            next = page.nextPage
-            pagesLoaded++
-        }
-        val tracks = candidates.asSequence()
-            .take(maxTracks)
+        val tracks = info.relatedItems
+            .asSequence()
+            .filterIsInstance<StreamInfoItem>()
             .mapNotNull(::toPlayableTrack)
             .distinctBy { it.url }
             .toList()
@@ -174,10 +176,33 @@ object SoundCloudNewPipe {
             url = info.url,
             title = info.name,
             uploader = info.uploaderName.orEmpty().ifBlank { "SoundCloud" },
-            uploaderUrl = info.uploaderUrl?.takeIf { it.startsWith("https://soundcloud.com/") },
+            uploaderUrl = info.uploaderUrl?.takeIf(::isSoundCloudUserUrl),
             artworkUrl = bestSoundCloudArtwork(info.thumbnails),
             trackCount = info.streamCount,
             tracks = tracks,
+            cursor = info.nextPage
+                ?.takeIf { Page.isValid(it) }
+                ?.let(::PlaylistCursor),
+        )
+    }
+
+    fun playlistMore(
+        url: String,
+        cursor: PlaylistCursor,
+    ): PlaylistPage {
+        NewPipeUtils.prepareSoundCloud()
+        val service = NewPipe.getService("SoundCloud")
+        val page = PlaylistInfo.getMoreItems(service, url, cursor.page)
+        return PlaylistPage(
+            tracks = page.items
+                .asSequence()
+                .filterIsInstance<StreamInfoItem>()
+                .mapNotNull(::toPlayableTrack)
+                .distinctBy { it.url }
+                .toList(),
+            cursor = page.nextPage
+                ?.takeIf { Page.isValid(it) }
+                ?.let(::PlaylistCursor),
         )
     }
 
@@ -228,7 +253,7 @@ object SoundCloudNewPipe {
             url = url,
             title = title,
             artist = item.uploaderName.orEmpty().trim().ifBlank { "SoundCloud" },
-            uploaderUrl = item.uploaderUrl?.takeIf(::isSoundCloudUserUrl),
+            uploaderUrl = item.uploaderUrl?.takeIf(::isSoundCloudUserUrl) ?: soundCloudUserUrlFromTrack(url),
             artworkUrl = bestSoundCloudArtwork(item.thumbnails),
             durationSeconds = item.duration,
         )
@@ -278,6 +303,21 @@ object SoundCloudNewPipe {
             Regex("-large(?=\\.(?:jpg|jpeg|png|webp)(?:\\?|$))", RegexOption.IGNORE_CASE),
             "-t500x500"
         )
+    }
+
+    /**
+     * Search/playlist items occasionally omit uploaderUrl even though the
+     * canonical track permalink already contains the account slug.
+     */
+    internal fun soundCloudUserUrlFromTrack(url: String): String? {
+        if (!isSoundCloudTrackUrl(url)) return null
+        return runCatching {
+            val user = URI(url).path.orEmpty()
+                .split('/')
+                .firstOrNull { it.isNotBlank() }
+                ?: return@runCatching null
+            "https://soundcloud.com/$user"
+        }.getOrNull()
     }
 
     internal fun isSoundCloudTrackUrl(url: String): Boolean =

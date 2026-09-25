@@ -28,7 +28,8 @@ import coil3.compose.AsyncImage
 import com.nikhil.yt.R
 import com.nikhil.yt.soundcloud.SoundCloudCatalog
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.runInterruptible
 
 @Composable
 internal fun SoundCloudNativeResults(
@@ -43,8 +44,22 @@ internal fun SoundCloudNativeResults(
 ) {
     var result by remember(query) { mutableStateOf<SoundCloudCatalog.Result<SoundCloudCatalog.SearchPage>?>(null) }
     LaunchedEffect(query) {
+        val normalized = query.trim()
+        if (normalized.isBlank()) {
+            result = SoundCloudCatalog.Result.Success(
+                SoundCloudCatalog.SearchPage(emptyList(), emptyList(), emptyList())
+            )
+            return@LaunchedEffect
+        }
+
+        // SearchInfo.getInfo is blocking. Without a debounce, every key stroke
+        // leaves another extractor request running even after Compose cancels
+        // the old LaunchedEffect.
+        delay(280L)
         result = null
-        result = withContext(Dispatchers.IO) { SoundCloudCatalog.search(query) }
+        result = runInterruptible(Dispatchers.IO) {
+            SoundCloudCatalog.search(normalized)
+        }
     }
 
     Column(modifier = Modifier.fillMaxWidth()) {

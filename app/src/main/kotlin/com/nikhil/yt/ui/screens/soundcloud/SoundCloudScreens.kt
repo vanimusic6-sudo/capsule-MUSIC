@@ -42,7 +42,7 @@ import com.nikhil.yt.playback.queues.SoundCloudQueue
 import com.nikhil.yt.soundcloud.SoundCloudCatalog
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
+import kotlinx.coroutines.runInterruptible
 import androidx.compose.foundation.layout.asPaddingValues
 
 private fun NavController.openSoundCloudProfile(url: String) =
@@ -60,7 +60,7 @@ fun SoundCloudProfileScreen(url: String, navController: NavController) {
     var loadingPlay by remember { mutableStateOf(false) }
 
     LaunchedEffect(url) {
-        result = withContext(Dispatchers.IO) { SoundCloudCatalog.profile(url) }
+        result = runInterruptible(Dispatchers.IO) { SoundCloudCatalog.profile(url) }
     }
 
     Column {
@@ -141,7 +141,40 @@ fun SoundCloudPlaylistScreen(url: String, navController: NavController) {
     var loadingPlay by remember { mutableStateOf(false) }
 
     LaunchedEffect(url) {
-        result = withContext(Dispatchers.IO) { SoundCloudCatalog.playlist(url) }
+        result = null
+        val initial = runInterruptible(Dispatchers.IO) {
+            SoundCloudCatalog.playlist(url)
+        }
+        result = initial
+
+        if (initial is SoundCloudCatalog.Result.Success) {
+            var page = initial.value
+            var continuation = page.continuation
+            var pagesLoaded = 0
+
+            // Page one is already visible. Continue filling the list without
+            // making the user wait for the entire 100-track budget up front.
+            while (page.tracks.size < 100 && pagesLoaded < 7) {
+                val pageRequest = continuation ?: break
+                val more = runInterruptible(Dispatchers.IO) {
+                    SoundCloudCatalog.playlistMore(url, pageRequest)
+                }
+                if (more !is SoundCloudCatalog.Result.Success) break
+
+                val chunk = more.value
+                if (chunk.tracks.isEmpty()) break
+
+                page = page.copy(
+                    tracks = (page.tracks + chunk.tracks)
+                        .distinctBy { it.permalink }
+                        .take(100),
+                    continuation = chunk.continuation,
+                )
+                result = SoundCloudCatalog.Result.Success(page)
+                continuation = chunk.continuation
+                pagesLoaded++
+            }
+        }
     }
 
     Column {

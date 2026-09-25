@@ -3,6 +3,17 @@ package com.nikhil.yt.soundcloud
 import com.nikhil.yt.innertube.soundcloud.SoundCloudNewPipe
 
 internal object SoundCloudCatalog {
+    private const val SEARCH_CACHE_TTL_MS = 90_000L
+
+    @Volatile
+    private var cachedSearch: CachedSearch? = null
+
+    private data class CachedSearch(
+        val query: String,
+        val loadedAtMs: Long,
+        val page: SearchPage,
+    )
+
     data class Track(
         val title: String,
         val artist: String,
@@ -47,6 +58,15 @@ internal object SoundCloudCatalog {
         val playlists: List<Playlist>,
     )
 
+    data class PlaylistContinuation(
+        val cursor: SoundCloudNewPipe.PlaylistCursor,
+    )
+
+    data class PlaylistChunk(
+        val tracks: List<Track>,
+        val continuation: PlaylistContinuation?,
+    )
+
     data class PlaylistDetails(
         val url: String,
         val title: String,
@@ -55,6 +75,7 @@ internal object SoundCloudCatalog {
         val artworkUrl: String?,
         val trackCount: Long,
         val tracks: List<Track>,
+        val continuation: PlaylistContinuation?,
     )
 
     sealed interface Result<out T> {
@@ -63,13 +84,29 @@ internal object SoundCloudCatalog {
         data object Unavailable : Result<Nothing>
     }
 
-    fun search(query: String): Result<SearchPage> = capture {
-        val r = SoundCloudNewPipe.searchAll(query)
-        SearchPage(
-            tracks = r.tracks.map(::track),
-            users = r.users.map { User(it.url, it.name, it.avatarUrl, it.followerCount, it.verified) },
-            playlists = r.playlists.map(::playlist),
-        )
+    fun search(query: String): Result<SearchPage> {
+        val normalized = query.trim()
+        val now = System.currentTimeMillis()
+        cachedSearch
+            ?.takeIf { it.query == normalized && now - it.loadedAtMs <= SEARCH_CACHE_TTL_MS }
+            ?.let { return Result.Success(it.page) }
+
+        val loaded = capture {
+            val r = SoundCloudNewPipe.searchAll(normalized)
+            SearchPage(
+                tracks = r.tracks.map(::track),
+                users = r.users.map { User(it.url, it.name, it.avatarUrl, it.followerCount, it.verified) },
+                playlists = r.playlists.map(::playlist),
+            )
+        }
+        if (loaded is Result.Success) {
+            cachedSearch = CachedSearch(
+                query = normalized,
+                loadedAtMs = System.currentTimeMillis(),
+                page = loaded.value,
+            )
+        }
+        return loaded
     }
 
     fun profile(url: String): Result<Profile> = capture {
@@ -97,6 +134,18 @@ internal object SoundCloudCatalog {
             artworkUrl = p.artworkUrl,
             trackCount = p.trackCount,
             tracks = p.tracks.map(::track),
+            continuation = p.cursor?.let(::PlaylistContinuation),
+        )
+    }
+
+    fun playlistMore(
+        url: String,
+        continuation: PlaylistContinuation,
+    ): Result<PlaylistChunk> = capture {
+        val p = SoundCloudNewPipe.playlistMore(url, continuation.cursor)
+        PlaylistChunk(
+            tracks = p.tracks.map(::track),
+            continuation = p.cursor?.let(::PlaylistContinuation),
         )
     }
 
