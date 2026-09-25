@@ -164,6 +164,14 @@ constructor(
             soundCloudPending.value = soundCloudPending.value + mediaId
         }
 
+        // Builds before the cache split could leave ordinary playback bytes in
+        // the persistent download cache under this exact id. They are not a
+        // valid resumable download and can also keep a stale format boundary,
+        // so start the first fixed download from a clean offline entry.
+        runCatching {
+            downloadCache.removeResource(mediaId)
+        }
+
         database.transaction {
             insert(track.toSoundCloudMetadata())
         }

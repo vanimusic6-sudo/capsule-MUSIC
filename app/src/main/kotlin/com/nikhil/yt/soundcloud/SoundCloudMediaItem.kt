@@ -10,12 +10,17 @@ import com.nikhil.yt.models.MediaMetadata
 import java.security.MessageDigest
 
 internal const val SOUNDCLOUD_MEDIA_ID_PREFIX = "soundcloud:"
+private const val SOUNDCLOUD_STREAM_CACHE_KEY_PREFIX = "soundcloud-stream:"
 
 internal fun soundCloudMediaId(url: String): String =
     SOUNDCLOUD_MEDIA_ID_PREFIX + MessageDigest.getInstance("SHA-256")
         .digest(url.toByteArray(Charsets.UTF_8))
         .take(12)
         .joinToString("") { "%02x".format(it.toInt() and 0xff) }
+
+internal fun soundCloudStreamCacheKey(url: String): String =
+    SOUNDCLOUD_STREAM_CACHE_KEY_PREFIX +
+        soundCloudMediaId(url).removePrefix(SOUNDCLOUD_MEDIA_ID_PREFIX)
 
 internal fun SoundCloudCatalog.Track.toSoundCloudMetadata() =
     MediaMetadata(
@@ -32,7 +37,10 @@ internal fun SoundCloudCatalog.Track.toSoundCloudMediaItem(
     buildSoundCloudMediaItem(
         uri = stream.url,
         isHls = stream.isHls,
-        customCacheKey = if (stream.isHls) null else soundCloudMediaId(permalink),
+        // Streaming and offline download bytes must never share a cache key.
+        // A currently playing SoundCloud track used to lock the exact cache
+        // entry the downloader was trying to fill.
+        customCacheKey = if (stream.isHls) null else soundCloudStreamCacheKey(permalink),
     )
 
 internal fun SoundCloudCatalog.Track.toDownloadedSoundCloudMediaItem(

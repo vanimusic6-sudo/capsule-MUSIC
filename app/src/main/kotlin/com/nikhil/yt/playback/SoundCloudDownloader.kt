@@ -80,10 +80,14 @@ internal class SoundCloudDownloader(
             var requestLength = C.LENGTH_UNSET.toLong()
             val active =
                 CacheWriter(
-                    dataSourceFactory.createDataSource(),
+                    // Match Media3's ProgressiveDownloader semantics for an
+                    // offline job: block on a cache hole instead of bypassing
+                    // it, and allow the resource to be committed in fragments.
+                    dataSourceFactory.createDataSourceForDownloading(),
                     DataSpec.Builder()
                         .setUri(stream.url)
                         .setKey(cacheKey)
+                        .setFlags(DataSpec.FLAG_ALLOW_CACHE_FRAGMENTATION)
                         .build(),
                     null,
                 ) { length, bytesCached, _ ->

@@ -5315,11 +5315,15 @@ class MusicService :
 
 
     private fun createMediaSourceFactory(): MediaSource.Factory {
-        // Independent HTTP/HLS source: never pass SoundCloud's URLs through the
-        // YouTube signed-URL resolver, CDN diagnostics, retry policy or caches.
-        val soundCloudSource = DefaultMediaSourceFactory(
+        // SoundCloud playback and SoundCloud downloads must use different
+        // storage. NewPipe downloads to a dedicated file while playback stays
+        // independent. Previously Capsule streamed into downloadCache using the
+        // same key as DownloadManager. When the current track was also being
+        // downloaded, playback could hold the cache hole and CacheWriter would
+        // read the CDN bytes without being able to persist them.
+        val soundCloudStreamingSource = DefaultMediaSourceFactory(
             CacheDataSource.Factory()
-                .setCache(downloadCache)
+                .setCache(playerCache)
                 .setUpstreamDataSourceFactory(
                     DefaultDataSource.Factory(
                         this,
@@ -5332,6 +5336,11 @@ class MusicService :
                     ),
                 )
                 .setFlags(FLAG_IGNORE_CACHE_ON_ERROR),
+        )
+        val soundCloudOfflineSource = DefaultMediaSourceFactory(
+            CacheDataSource.Factory()
+                .setCache(downloadCache)
+                .setCacheWriteDataSinkFactory(null),
         )
         val dataSourceFactory = createDataSourceFactory()
         val extractorsFactory =
@@ -5362,7 +5371,15 @@ class MusicService :
         return object : MediaSource.Factory {
             override fun createMediaSource(mediaItem: MediaItem): MediaSource {
                 if (mediaItem.mediaId.startsWith(SOUNDCLOUD_MEDIA_ID_PREFIX)) {
-                    return soundCloudSource.createMediaSource(mediaItem)
+                    val cacheKey = mediaItem.localConfiguration?.customCacheKey
+                    return if (cacheKey == mediaItem.mediaId) {
+                        // Completed downloads are cache-only. Never fall through
+                        // to the canonical SoundCloud webpage when offline bytes
+                        // are missing or corrupt.
+                        soundCloudOfflineSource.createMediaSource(mediaItem)
+                    } else {
+                        soundCloudStreamingSource.createMediaSource(mediaItem)
+                    }
                 }
                 val uri = mediaItem.localConfiguration?.uri
                 val videoId =
@@ -5420,7 +5437,8 @@ class MusicService :
                 drmSessionManagerProvider: DrmSessionManagerProvider,
             ): MediaSource.Factory {
                 delegate.setDrmSessionManagerProvider(drmSessionManagerProvider)
-                soundCloudSource.setDrmSessionManagerProvider(drmSessionManagerProvider)
+                soundCloudStreamingSource.setDrmSessionManagerProvider(drmSessionManagerProvider)
+                soundCloudOfflineSource.setDrmSessionManagerProvider(drmSessionManagerProvider)
                 progressive.setDrmSessionManagerProvider(drmSessionManagerProvider)
                 return this
             }
@@ -5429,7 +5447,8 @@ class MusicService :
                 loadErrorHandlingPolicy: LoadErrorHandlingPolicy,
             ): MediaSource.Factory {
                 delegate.setLoadErrorHandlingPolicy(loadErrorHandlingPolicy)
-                soundCloudSource.setLoadErrorHandlingPolicy(loadErrorHandlingPolicy)
+                soundCloudStreamingSource.setLoadErrorHandlingPolicy(loadErrorHandlingPolicy)
+                soundCloudOfflineSource.setLoadErrorHandlingPolicy(loadErrorHandlingPolicy)
                 progressive.setLoadErrorHandlingPolicy(loadErrorHandlingPolicy)
                 return this
             }
