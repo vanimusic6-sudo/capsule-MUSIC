@@ -84,7 +84,7 @@ internal class SoundCloudQueue private constructor(
     }
 
     companion object {
-        private const val PAGE_SIZE = 5
+        private const val PAGE_SIZE = 8
 
         fun create(
             title: String?,

@@ -294,6 +294,7 @@ fun SongListItem(
     isActive: Boolean = false,
     isPlaying: Boolean = false,
     isSwipeable: Boolean = true,
+    showSourceIcon: Boolean = false,
     trailingContent: @Composable RowScope.() -> Unit = {},
 ) {
     val swipeEnabled by rememberPreference(SwipeToSongKey, defaultValue = false)
@@ -936,17 +937,54 @@ fun YouTubeListItem(
     val content: @Composable () -> Unit = {
         ListItem(
             title = item.title,
-            subtitle = when (item) {
-                is SongItem -> joinByBullet(
-                    item.artists.joinToString { it.name },
-                    makeTimeString(item.duration?.times(1000L)),
-                    viewCountText
-                )
-                is AlbumItem -> joinByBullet(item.artists?.joinToString { it.name }, item.year?.toString())
-                is ArtistItem -> null
-                is PlaylistItem -> joinByBullet(item.author?.name, item.songCountText)
+            subtitle = {
+                badges()
+
+                val author = when (item) {
+                    is SongItem -> item.artists.joinToString { it.name }
+                    is AlbumItem -> item.artists?.joinToString { it.name }.orEmpty()
+                    is ArtistItem -> ""
+                    is PlaylistItem -> item.author?.name.orEmpty()
+                }
+                val details = when (item) {
+                    is SongItem -> listOfNotNull(
+                        makeTimeString(item.duration?.times(1000L)),
+                        viewCountText,
+                    ).filter { it.isNotBlank() }.joinToString(" • ")
+                    is AlbumItem -> item.year?.toString().orEmpty()
+                    is ArtistItem -> ""
+                    is PlaylistItem -> item.songCountText.orEmpty()
+                }
+
+                if (author.isNotBlank()) {
+                    Text(
+                        text = author,
+                        color = MaterialTheme.colorScheme.secondary,
+                        fontSize = 12.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f, fill = false),
+                    )
+                    if (showSourceIcon) {
+                        Spacer(Modifier.width(5.dp))
+                        Icon(
+                            painter = painterResource(R.drawable.youtube_source),
+                            contentDescription = "YouTube Music",
+                            tint = Color.Unspecified,
+                            modifier = Modifier.size(14.dp),
+                        )
+                    }
+                }
+                if (details.isNotBlank()) {
+                    Text(
+                        text = " • $details",
+                        color = MaterialTheme.colorScheme.secondary,
+                        fontSize = 12.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
             },
-            badges = badges,
             thumbnailContent = {
                 ItemThumbnail(
                     thumbnailUrl = item.thumbnail,

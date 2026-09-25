@@ -27,6 +27,20 @@ import java.net.URI
 object SoundCloudNewPipe {
     data class Stream(val url: String, val isHls: Boolean)
 
+    /**
+     * NewPipe's SoundCloud extractor removes encrypted transcodings before
+     * exposing AudioStream objects. A successful inspection with no playable
+     * streams therefore means the item is not usable by Capsule (DRM/protected,
+     * unavailable or non-streamable).
+     *
+     * Downloads intentionally mirror NewPipe: only progressive HTTP audio is
+     * downloadable. HLS remains valid for playback but is not offered offline.
+     */
+    data class TrackAccess(
+        val playable: Boolean,
+        val downloadable: Boolean,
+    )
+
     data class Track(
         val url: String,
         val title: String,
@@ -233,41 +247,90 @@ object SoundCloudNewPipe {
      * In NewPipe v0.26.5 encrypted protocols are excluded by the SoundCloud
      * extractor before AudioStream objects are returned.
      */
+    fun inspectTrack(trackUrl: String): TrackAccess {
+        val info = streamInfo(trackUrl)
+        val streams = playableAudioStreams(info)
+        val fallbackHls = info.hlsUrl.takeIf { it.startsWith("https://") }
+        return TrackAccess(
+            playable = streams.isNotEmpty() || fallbackHls != null,
+            downloadable = streams.any {
+                it.deliveryMethod == DeliveryMethod.PROGRESSIVE_HTTP
+            },
+        )
+    }
+
     fun resolve(trackUrl: String): Stream =
         resolveInternal(trackUrl, progressiveOnly = false)
 
     fun resolveProgressive(trackUrl: String): Stream =
         resolveInternal(trackUrl, progressiveOnly = true)
 
-    private fun resolveInternal(trackUrl: String, progressiveOnly: Boolean): Stream {
-        require(isSoundCloudTrackUrl(trackUrl)) { "Not a SoundCloud track URL" }
-        NewPipeUtils.prepareSoundCloud()
-        val info = StreamInfo.getInfo(NewPipe.getService("SoundCloud"), trackUrl)
-        val options = info.audioStreams
+    private fun resolveInternal(
+        trackUrl: String,
+        progressiveOnly: Boolean,
+    ): Stream {
+        val info = streamInfo(trackUrl)
+        val options = playableAudioStreams(info)
             .asSequence()
-            .filter { it.isUrl && it.content.startsWith("https://") }
             .filter {
                 it.deliveryMethod == DeliveryMethod.PROGRESSIVE_HTTP ||
                     (!progressiveOnly && it.deliveryMethod == DeliveryMethod.HLS)
             }
             .toList()
+
         val selected = options.maxWithOrNull(
             compareBy<org.schabi.newpipe.extractor.stream.AudioStream> {
                 if (it.deliveryMethod == DeliveryMethod.PROGRESSIVE_HTTP) 1 else 0
-            }.thenBy { it.averageBitrate }
+            }.thenBy { it.averageBitrate },
         )
+
         if (selected != null) {
-            return Stream(selected.content, selected.deliveryMethod == DeliveryMethod.HLS)
+            return Stream(
+                url = selected.content,
+                isHls = selected.deliveryMethod == DeliveryMethod.HLS,
+            )
         }
+
         if (!progressiveOnly) {
             val fallback = info.hlsUrl
-            if (fallback.startsWith("https://")) return Stream(fallback, true)
+            if (fallback.startsWith("https://")) {
+                return Stream(fallback, true)
+            }
         }
+
         throw IllegalStateException(
-            if (progressiveOnly) "NewPipe returned no progressive SoundCloud audio stream"
-            else "NewPipe returned no non-DRM SoundCloud audio stream"
+            if (progressiveOnly) {
+                "NewPipe returned no progressive SoundCloud audio stream"
+            } else {
+                "NewPipe returned no non-DRM SoundCloud audio stream"
+            },
         )
     }
+
+    private fun streamInfo(
+        trackUrl: String,
+    ): StreamInfo {
+        require(isSoundCloudTrackUrl(trackUrl)) { "Not a SoundCloud track URL" }
+        NewPipeUtils.prepareSoundCloud()
+        return StreamInfo.getInfo(
+            NewPipe.getService("SoundCloud"),
+            trackUrl,
+        )
+    }
+
+    private fun playableAudioStreams(
+        info: StreamInfo,
+    ) = info.audioStreams
+        .asSequence()
+        .filter { stream ->
+            stream.isUrl &&
+                stream.content.startsWith("https://") &&
+                (
+                    stream.deliveryMethod == DeliveryMethod.PROGRESSIVE_HTTP ||
+                        stream.deliveryMethod == DeliveryMethod.HLS
+                )
+        }
+        .toList()
 
     /**
      * Keep discovery metadata-only. Resolving every result here turns one search,

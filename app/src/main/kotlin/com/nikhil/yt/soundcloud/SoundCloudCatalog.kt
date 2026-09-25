@@ -1,9 +1,27 @@
 package com.nikhil.yt.soundcloud
 
 import com.nikhil.yt.innertube.soundcloud.SoundCloudNewPipe
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.runInterruptible
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
+import java.util.concurrent.ConcurrentHashMap
 
 internal object SoundCloudCatalog {
     private const val SEARCH_CACHE_TTL_MS = 90_000L
+    private const val TRACK_ACCESS_CACHE_TTL_MS = 10 * 60_000L
+    private const val TRACK_ACCESS_CONCURRENCY = 4
+
+    private data class CachedTrackAccess(
+        val loadedAtMs: Long,
+        val access: SoundCloudNewPipe.TrackAccess,
+    )
+
+    private val trackAccessCache =
+        ConcurrentHashMap<String, CachedTrackAccess>()
 
     @Volatile
     private var cachedSearch: CachedSearch? = null
@@ -21,6 +39,11 @@ internal object SoundCloudCatalog {
         val artworkUrl: String?,
         val permalink: String,
         val durationSeconds: Long,
+        /**
+         * null = not inspected yet, true = NewPipe exposes progressive HTTP,
+         * false = playback is possible but only via a non-downloadable delivery.
+         */
+        val downloadable: Boolean? = null,
     )
 
     data class User(
@@ -163,7 +186,59 @@ internal object SoundCloudCatalog {
         )
     }
 
-    private fun track(t: SoundCloudNewPipe.Track) = Track(
+    /**
+     * Remove tracks which NewPipe can positively identify as unplayable after
+     * encrypted SoundCloud transcodings have been filtered out. Network/parser
+     * failures are treated as unknown and kept so a temporary outage does not
+     * erase the user's results.
+     *
+     * The checks are bounded to four concurrent extractors and cached as flags
+     * only. Signed media URLs are never cached here.
+     */
+    suspend fun validateTracks(
+        tracks: List<Track>,
+    ): List<Track> = coroutineScope {
+        if (tracks.isEmpty()) return@coroutineScope emptyList()
+
+        val gate = Semaphore(TRACK_ACCESS_CONCURRENCY)
+        tracks
+            .distinctBy { it.permalink }
+            .map { track ->
+                async(Dispatchers.IO) {
+                    gate.withPermit {
+                        val now = System.currentTimeMillis()
+                        val cached = trackAccessCache[track.permalink]
+                            ?.takeIf {
+                                now - it.loadedAtMs <= TRACK_ACCESS_CACHE_TTL_MS
+                            }
+                            ?.access
+
+                        val access = cached ?: runCatching {
+                            runInterruptible {
+                                SoundCloudNewPipe.inspectTrack(track.permalink)
+                            }
+                        }.getOrNull()?.also {
+                            trackAccessCache[track.permalink] =
+                                CachedTrackAccess(
+                                    loadedAtMs = System.currentTimeMillis(),
+                                    access = it,
+                                )
+                        }
+
+                        when {
+                            access == null -> track
+                            !access.playable -> null
+                            else -> track.copy(
+                                downloadable = access.downloadable,
+                            )
+                        }
+                    }
+                }
+            }
+            .awaitAll()
+            .filterNotNull()
+    }
+
         title = t.title,
         artist = t.artist,
         uploaderUrl = t.uploaderUrl,

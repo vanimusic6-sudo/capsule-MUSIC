@@ -3,7 +3,6 @@ package com.nikhil.yt.soundcloud
 import androidx.core.net.toUri
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata.MEDIA_TYPE_MUSIC
-import androidx.media3.common.MimeTypes
 import androidx.media3.exoplayer.offline.Download
 import com.nikhil.yt.innertube.soundcloud.SoundCloudNewPipe
 import com.nikhil.yt.models.MediaMetadata
@@ -39,11 +38,10 @@ internal fun SoundCloudCatalog.Track.toDownloadedSoundCloudMediaItem(
     download: Download,
 ): MediaItem {
     require(download.request.id == soundCloudMediaId(permalink))
-    val isHls = download.request.mimeType == MimeTypes.APPLICATION_M3U8
     return buildSoundCloudMediaItem(
         uri = download.request.uri.toString(),
-        isHls = isHls,
-        customCacheKey = download.request.customCacheKey,
+        isHls = false,
+        customCacheKey = download.request.customCacheKey ?: download.request.id,
     )
 }
 

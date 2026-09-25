@@ -8,10 +8,8 @@ package com.nikhil.yt.playback
 
 import android.content.Context
 import android.net.ConnectivityManager
-import androidx.core.net.toUri
 import androidx.core.content.getSystemService
 import androidx.media3.common.C
-import androidx.media3.common.MimeTypes
 import androidx.media3.database.DatabaseProvider
 import androidx.media3.datasource.ResolvingDataSource
 import androidx.media3.datasource.cache.Cache
@@ -40,11 +38,11 @@ import com.nikhil.yt.db.entities.SongEntity
 import com.nikhil.yt.di.DownloadCache
 import com.nikhil.yt.di.PlayerCache
 import com.nikhil.yt.innertube.YouTube
+import com.nikhil.yt.innertube.models.YouTubeClient
 import com.nikhil.yt.soundcloud.SOUNDCLOUD_MEDIA_ID_PREFIX
 import com.nikhil.yt.soundcloud.SoundCloudCatalog
 import com.nikhil.yt.soundcloud.soundCloudMediaId
 import com.nikhil.yt.soundcloud.toSoundCloudMetadata
-import com.nikhil.yt.innertube.soundcloud.SoundCloudNewPipe
 import com.nikhil.yt.playback.audio.CapsuleAudioEngine
 import com.nikhil.yt.playback.audio.CapsulePlaybackSafety
 import com.nikhil.yt.utils.StreamClientUtils
@@ -60,7 +58,6 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.runInterruptible
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import okhttp3.OkHttpClient
@@ -111,12 +108,26 @@ constructor(
     }
 
     private val soundCloudDownloadDataSourceFactory by lazy {
-        CacheDataSource.Factory().setCache(downloadCache)
+        val client =
+            OkHttpClient.Builder()
+                .retryOnConnectionFailure(true)
+                .followRedirects(true)
+                .followSslRedirects(true)
+                .addInterceptor { chain ->
+                    val request =
+                        chain.request()
+                            .newBuilder()
+                            .header("User-Agent", YouTubeClient.USER_AGENT_WEB)
+                            .header("Accept", "*/*")
+                            .build()
+                    chain.proceed(request)
+                }
+                .build()
+
+        CacheDataSource.Factory()
+            .setCache(downloadCache)
             .setUpstreamDataSourceFactory(
-                OkHttpDataSource.Factory(
-                    OkHttpClient.Builder().retryOnConnectionFailure(true)
-                        .followRedirects(true).followSslRedirects(true).build()
-                )
+                OkHttpDataSource.Factory(client),
             )
             .setFlags(FLAG_IGNORE_CACHE_ON_ERROR)
     }
@@ -130,6 +141,8 @@ constructor(
     internal fun enqueueSoundCloud(
         track: SoundCloudCatalog.Track,
     ) {
+        if (track.downloadable == false) return
+
         val mediaId = soundCloudMediaId(track.permalink)
         val current = downloads.value[mediaId]
         if (
@@ -145,38 +158,35 @@ constructor(
             soundCloudPending.value = soundCloudPending.value + mediaId
         }
 
+        database.transaction {
+            insert(track.toSoundCloudMetadata())
+        }
+
+        // Persist the canonical SoundCloud permalink. The Downloader resolves
+        // a fresh progressive CDN URL when it actually runs and can recover
+        // from an expired signed URL without changing the download identity.
+        val request =
+            DownloadRequest.Builder(
+                mediaId,
+                android.net.Uri.parse(track.permalink),
+            )
+                .setCustomCacheKey(mediaId)
+                .setData(track.title.toByteArray())
+                .build()
+
+        DownloadService.sendAddDownload(
+            context,
+            ExoDownloadService::class.java,
+            request,
+            false,
+        )
+
         soundCloudDownloadScope.launch {
-            try {
-                val stream = runInterruptible {
-                    SoundCloudNewPipe.resolve(track.permalink)
-                }
-
-                database.transaction {
-                    insert(track.toSoundCloudMetadata())
-                }
-
-                val requestBuilder = DownloadRequest.Builder(
-                    mediaId,
-                    stream.url.toUri(),
-                )
-                    .setData(track.title.toByteArray())
-
-                if (stream.isHls) {
-                    requestBuilder.setMimeType(MimeTypes.APPLICATION_M3U8)
-                } else {
-                    requestBuilder.setCustomCacheKey(mediaId)
-                }
-
-                DownloadService.sendAddDownload(
-                    context,
-                    ExoDownloadService::class.java,
-                    requestBuilder.build(),
-                    false,
-                )
-            } finally {
-                soundCloudPending.update { pending ->
-                    pending - mediaId
-                }
+            // DownloadManager publishes QUEUED asynchronously. Keep the
+            // immediate resolving indicator long enough to bridge that gap.
+            delay(1_500L)
+            soundCloudPending.update { pending ->
+                pending - mediaId
             }
         }
     }
@@ -246,6 +256,7 @@ constructor(
         if (request.id.startsWith(SOUNDCLOUD_MEDIA_ID_PREFIX)) {
             SoundCloudDownloader(
                 request = request,
+                cache = downloadCache,
                 dataSourceFactory = soundCloudDownloadDataSourceFactory,
             )
         } else {

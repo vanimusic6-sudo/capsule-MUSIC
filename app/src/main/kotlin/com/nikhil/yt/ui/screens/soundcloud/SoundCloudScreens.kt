@@ -74,9 +74,21 @@ fun SoundCloudProfileScreen(
     val isPlaying = playerConnection?.isPlaying?.collectAsState()?.value == true
 
     LaunchedEffect(url) {
-        result = runInterruptible(Dispatchers.IO) {
+        val loaded = runInterruptible(Dispatchers.IO) {
             SoundCloudCatalog.profile(url)
         }
+        result =
+            if (loaded is SoundCloudCatalog.Result.Success) {
+                SoundCloudCatalog.Result.Success(
+                    loaded.value.copy(
+                        tracks = SoundCloudCatalog.validateTracks(
+                            loaded.value.tracks,
+                        ),
+                    ),
+                )
+            } else {
+                loaded
+            }
     }
 
     Column {
@@ -237,9 +249,21 @@ fun SoundCloudPlaylistScreen(
 
     LaunchedEffect(url) {
         result = null
-        val initial = runInterruptible(Dispatchers.IO) {
+        val initialRaw = runInterruptible(Dispatchers.IO) {
             SoundCloudCatalog.playlist(url)
         }
+        val initial =
+            if (initialRaw is SoundCloudCatalog.Result.Success) {
+                SoundCloudCatalog.Result.Success(
+                    initialRaw.value.copy(
+                        tracks = SoundCloudCatalog.validateTracks(
+                            initialRaw.value.tracks,
+                        ),
+                    ),
+                )
+            } else {
+                initialRaw
+            }
         result = initial
 
         if (initial is SoundCloudCatalog.Result.Success) {
@@ -255,10 +279,13 @@ fun SoundCloudPlaylistScreen(
                 if (more !is SoundCloudCatalog.Result.Success) break
 
                 val chunk = more.value
-                if (chunk.tracks.isEmpty()) break
+                val playableChunk = SoundCloudCatalog.validateTracks(
+                    chunk.tracks,
+                )
+                if (chunk.tracks.isEmpty() && chunk.continuation == null) break
 
                 page = page.copy(
-                    tracks = (page.tracks + chunk.tracks)
+                    tracks = (page.tracks + playableChunk)
                         .distinctBy { it.permalink }
                         .take(100),
                     continuation = chunk.continuation,

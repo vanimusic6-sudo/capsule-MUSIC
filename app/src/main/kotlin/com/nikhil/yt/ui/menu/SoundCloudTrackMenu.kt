@@ -99,6 +99,7 @@ internal fun SoundCloudTrackMenu(
             )
         }
 
+        if (track.downloadable != false) {
         item {
             when (downloadState) {
                 Download.STATE_COMPLETED -> {
@@ -166,6 +167,7 @@ internal fun SoundCloudTrackMenu(
                     )
                 }
             }
+        }
         }
 
         track.uploaderUrl?.let { artistUrl ->
