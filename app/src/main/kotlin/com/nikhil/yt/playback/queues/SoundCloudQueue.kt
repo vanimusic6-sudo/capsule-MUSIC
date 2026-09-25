@@ -72,7 +72,11 @@ internal class SoundCloudQueue private constructor(
         downloads[mediaId]
             ?.takeIf { it.state == Download.STATE_COMPLETED }
             ?.let { completed ->
-                return track.toDownloadedSoundCloudMediaItem(completed)
+                runCatching {
+                    track.toDownloadedSoundCloudMediaItem(completed)
+                }.getOrNull()?.let { localItem ->
+                    return localItem
+                }
             }
 
         return try {

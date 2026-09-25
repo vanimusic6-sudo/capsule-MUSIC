@@ -5338,9 +5338,7 @@ class MusicService :
                 .setFlags(FLAG_IGNORE_CACHE_ON_ERROR),
         )
         val soundCloudOfflineSource = DefaultMediaSourceFactory(
-            CacheDataSource.Factory()
-                .setCache(downloadCache)
-                .setCacheWriteDataSinkFactory(null),
+            DefaultDataSource.Factory(this),
         )
         val dataSourceFactory = createDataSourceFactory()
         val extractorsFactory =
@@ -5372,15 +5370,8 @@ class MusicService :
             override fun createMediaSource(mediaItem: MediaItem): MediaSource {
                 if (mediaItem.mediaId.startsWith(SOUNDCLOUD_MEDIA_ID_PREFIX)) {
                     val localConfiguration = mediaItem.localConfiguration
-                    val cacheKey = localConfiguration?.customCacheKey
-                    val sourceHost = localConfiguration?.uri?.host?.lowercase()
                     val isOfflineSoundCloudItem =
-                        cacheKey == mediaItem.mediaId &&
-                            sourceHost in setOf(
-                                "soundcloud.com",
-                                "www.soundcloud.com",
-                                "m.soundcloud.com",
-                            )
+                        localConfiguration?.uri?.scheme.equals("file", ignoreCase = true)
                     return if (isOfflineSoundCloudItem) {
                         // Completed downloads are cache-only. Never fall through
                         // to the canonical SoundCloud webpage when offline bytes

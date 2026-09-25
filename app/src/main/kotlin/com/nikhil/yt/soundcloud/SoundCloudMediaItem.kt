@@ -1,5 +1,7 @@
 package com.nikhil.yt.soundcloud
 
+import android.content.Context
+import android.net.Uri
 import androidx.core.net.toUri
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata.MEDIA_TYPE_MUSIC
@@ -7,6 +9,7 @@ import androidx.media3.common.MimeTypes
 import androidx.media3.exoplayer.offline.Download
 import com.nikhil.yt.innertube.soundcloud.SoundCloudNewPipe
 import com.nikhil.yt.models.MediaMetadata
+import java.io.File
 import java.security.MessageDigest
 
 internal const val SOUNDCLOUD_MEDIA_ID_PREFIX = "soundcloud:"
@@ -21,6 +24,31 @@ internal fun soundCloudMediaId(url: String): String =
 internal fun soundCloudStreamCacheKey(url: String): String =
     SOUNDCLOUD_STREAM_CACHE_KEY_PREFIX +
         soundCloudMediaId(url).removePrefix(SOUNDCLOUD_MEDIA_ID_PREFIX)
+
+
+private const val SOUNDCLOUD_DOWNLOAD_DIRECTORY = "soundcloud_downloads"
+
+internal fun soundCloudDownloadFile(
+    context: Context,
+    mediaId: String,
+): File {
+    val stableName =
+        mediaId.removePrefix(SOUNDCLOUD_MEDIA_ID_PREFIX)
+            .replace(Regex("[^a-zA-Z0-9._-]"), "_")
+    return context.filesDir
+        .resolve(SOUNDCLOUD_DOWNLOAD_DIRECTORY)
+        .resolve("$stableName.audio")
+}
+
+internal fun soundCloudDownloadPartFile(
+    context: Context,
+    mediaId: String,
+): File = File(soundCloudDownloadFile(context, mediaId).absolutePath + ".part")
+
+internal fun hasSoundCloudDownload(
+    context: Context,
+    mediaId: String,
+): Boolean = soundCloudDownloadFile(context, mediaId).let { it.isFile && it.length() > 0L }
 
 internal fun SoundCloudCatalog.Track.toSoundCloudMetadata() =
     MediaMetadata(
@@ -46,11 +74,16 @@ internal fun SoundCloudCatalog.Track.toSoundCloudMediaItem(
 internal fun SoundCloudCatalog.Track.toDownloadedSoundCloudMediaItem(
     download: Download,
 ): MediaItem {
-    require(download.request.id == soundCloudMediaId(permalink))
+    val mediaId = soundCloudMediaId(permalink)
+    require(download.request.id == mediaId)
+    val file = soundCloudDownloadFile(com.nikhil.yt.App.instance, mediaId)
+    require(file.isFile && file.length() > 0L) {
+        "Completed SoundCloud download file is missing"
+    }
     return buildSoundCloudMediaItem(
-        uri = download.request.uri.toString(),
+        uri = Uri.fromFile(file).toString(),
         isHls = false,
-        customCacheKey = download.request.customCacheKey ?: download.request.id,
+        customCacheKey = null,
     )
 }
 

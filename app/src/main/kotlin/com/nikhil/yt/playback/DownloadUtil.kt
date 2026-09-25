@@ -41,6 +41,7 @@ import com.nikhil.yt.innertube.YouTube
 import com.nikhil.yt.soundcloud.SOUNDCLOUD_MEDIA_ID_PREFIX
 import com.nikhil.yt.soundcloud.SoundCloudCatalog
 import com.nikhil.yt.soundcloud.soundCloudMediaId
+import com.nikhil.yt.soundcloud.hasSoundCloudDownload
 import com.nikhil.yt.soundcloud.toSoundCloudMetadata
 import com.nikhil.yt.playback.audio.CapsuleAudioEngine
 import com.nikhil.yt.playback.audio.CapsulePlaybackSafety
@@ -106,38 +107,6 @@ constructor(
             }.build()
     }
 
-    private val soundCloudDownloadDataSourceFactory by lazy {
-        val client =
-            OkHttpClient.Builder()
-                .retryOnConnectionFailure(true)
-                .followRedirects(true)
-                .followSslRedirects(true)
-                .addInterceptor { chain ->
-                    val request =
-                        chain.request()
-                            .newBuilder()
-                            // Match the downloader-side headers NewPipe uses.
-                            // In particular, an explicit Accept-Encoding keeps
-                            // byte ranges/content lengths stable for cache writes.
-                            .header("User-Agent", NEWPIPE_DOWNLOAD_USER_AGENT)
-                            .header("Accept", "*/*")
-                            .header("Accept-Encoding", "*")
-                            .build()
-                    chain.proceed(request)
-                }
-                .build()
-
-        CacheDataSource.Factory()
-            .setCache(downloadCache)
-            .setUpstreamDataSourceFactory(
-                OkHttpDataSource.Factory(client),
-            )
-            // Do not use FLAG_IGNORE_CACHE_ON_ERROR for offline downloads.
-            // Bypassing the cache after a write error can consume the whole
-            // network stream without leaving a persistent offline copy.
-            .setFlags(0)
-    }
-
     val downloads = MutableStateFlow<Map<String, Download>>(emptyMap())
     val soundCloudPending = MutableStateFlow<Set<String>>(emptySet())
 
@@ -152,7 +121,8 @@ constructor(
         val mediaId = soundCloudMediaId(track.permalink)
         val current = downloads.value[mediaId]
         if (
-            current?.state == Download.STATE_COMPLETED ||
+            (current?.state == Download.STATE_COMPLETED &&
+                hasSoundCloudDownload(context, mediaId)) ||
             current?.state == Download.STATE_QUEUED ||
             current?.state == Download.STATE_DOWNLOADING
         ) {
@@ -269,9 +239,8 @@ constructor(
     private val downloaderFactory = DownloaderFactory { request ->
         if (request.id.startsWith(SOUNDCLOUD_MEDIA_ID_PREFIX)) {
             SoundCloudDownloader(
+                context = context,
                 request = request,
-                cache = downloadCache,
-                dataSourceFactory = soundCloudDownloadDataSourceFactory,
             )
         } else {
             ResolvingAudioDownloader(
@@ -498,8 +467,6 @@ constructor(
     }
 
     companion object {
-        private const val NEWPIPE_DOWNLOAD_USER_AGENT =
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:140.0) Gecko/20100101 Firefox/140.0"
         private const val DEFAULT_MAX_PARALLEL_DOWNLOADS = 3
         private const val MIN_PARALLEL_DOWNLOADS = 1
         private const val SHORT_COOLDOWN_MS = 2_500L
