@@ -197,6 +197,7 @@ import com.nikhil.yt.utils.GlobalLog
 import com.nikhil.yt.utils.isTransientClosedTlsHandshake
 import com.nikhil.yt.playback.audio.AudioCacheDataSource
 import com.nikhil.yt.soundcloud.SOUNDCLOUD_MEDIA_ID_PREFIX
+import com.nikhil.yt.soundcloud.soundCloudDownloadFile
 import com.nikhil.yt.playback.audio.AudioChunkedDataSource
 import com.nikhil.yt.playback.audio.AudioCacheSource
 import com.nikhil.yt.playback.audio.AudioNetworkDiagnosticDataSource
@@ -5369,19 +5370,55 @@ class MusicService :
         return object : MediaSource.Factory {
             override fun createMediaSource(mediaItem: MediaItem): MediaSource {
                 if (mediaItem.mediaId.startsWith(SOUNDCLOUD_MEDIA_ID_PREFIX)) {
+                    /*
+                     * The queue can already contain an older online MediaItem when a
+                     * SoundCloud download finishes. Do not trust that item's URI to
+                     * decide whether playback should be offline. The downloaded file
+                     * is the source of truth.
+                     *
+                     * This also fixes restored/generic items whose URI is the internal
+                     * "soundcloud:<hash>" id: if the file exists, replace that URI
+                     * before any OkHttp-backed source sees it.
+                     */
+                    val downloadedFile =
+                        soundCloudDownloadFile(this@MusicService, mediaItem.mediaId)
+                            .takeIf { it.isFile && it.length() > 0L }
+
+                    if (downloadedFile != null) {
+                        val offlineItem =
+                            mediaItem
+                                .buildUpon()
+                                .setUri(android.net.Uri.fromFile(downloadedFile))
+                                .build()
+
+                        Timber.tag("SoundCloud").i(
+                            "offline-hit id=%s bytes=%d uriScheme=%s",
+                            mediaItem.mediaId,
+                            downloadedFile.length(),
+                            mediaItem.localConfiguration?.uri?.scheme ?: "none",
+                        )
+                        return soundCloudOfflineSource.createMediaSource(offlineItem)
+                    }
+
                     val localConfiguration = mediaItem.localConfiguration
                     val isOfflineSoundCloudItem =
                         localConfiguration?.uri?.scheme.equals("file", ignoreCase = true)
-                    return if (isOfflineSoundCloudItem) {
-                        // Completed downloads are cache-only. Never fall through
-                        // to the canonical SoundCloud webpage when offline bytes
-                        // are missing or corrupt. The host check also keeps queue
-                        // items persisted by older builds (signed sndcdn.com URL
-                        // + legacy cache key) on the streaming path after update.
-                        soundCloudOfflineSource.createMediaSource(mediaItem)
-                    } else {
-                        soundCloudStreamingSource.createMediaSource(mediaItem)
+
+                    if (isOfflineSoundCloudItem) {
+                        Timber.tag("SoundCloud").w(
+                            "offline-file-missing id=%s uri=%s",
+                            mediaItem.mediaId,
+                            localConfiguration?.uri,
+                        )
+                        return soundCloudOfflineSource.createMediaSource(mediaItem)
                     }
+
+                    Timber.tag("SoundCloud").d(
+                        "network-source id=%s uriScheme=%s",
+                        mediaItem.mediaId,
+                        localConfiguration?.uri?.scheme ?: "none",
+                    )
+                    return soundCloudStreamingSource.createMediaSource(mediaItem)
                 }
                 val uri = mediaItem.localConfiguration?.uri
                 val videoId =
