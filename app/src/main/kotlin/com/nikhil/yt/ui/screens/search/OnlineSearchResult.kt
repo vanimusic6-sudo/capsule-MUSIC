@@ -373,6 +373,7 @@ fun OnlineSearchResult(
         val showSoundCloudResults =
             showSoundCloudPreview &&
                 sourceFilter != SearchSourceFilter.YOUTUBE
+        val filteredPage = itemsPage
 
         if (searchFilter == null) {
             if (sourceFilter == SearchSourceFilter.SOUNDCLOUD) {
@@ -644,7 +645,7 @@ fun OnlineSearchResult(
             // Filtered lists are one list per content type. YouTube comes first,
             // then matching SoundCloud entities with the exact same row chrome.
             if (showYouTubeResults) {
-                if (itemsPage == null) {
+                if (filteredPage == null) {
                     item(key = "filtered-loading") {
                         ShimmerHost {
                             repeat(6) {
@@ -654,12 +655,12 @@ fun OnlineSearchResult(
                     }
                 } else {
                     items(
-                        items = itemsPage.items.distinctBy { it.id },
+                        items = filteredPage.items.distinctBy { it.id },
                         key = { "filtered_${it.id}" },
                         itemContent = ytItemContent,
                     )
 
-                    if (itemsPage.continuation != null) {
+                    if (filteredPage.continuation != null) {
                         item(key = "loading") {
                             ShimmerHost {
                                 repeat(3) {
@@ -705,7 +706,7 @@ fun OnlineSearchResult(
                 }
             }
 
-            if (itemsPage != null) {
+            if (filteredPage != null) {
                 val soundCloudEmptyForFilter =
                     when (searchFilter) {
                         FILTER_SONG ->
@@ -719,7 +720,7 @@ fun OnlineSearchResult(
                     }
 
                 if (
-                    itemsPage.items.isEmpty() &&
+                    filteredPage.items.isEmpty() &&
                     (
                         !showSoundCloudResults ||
                             soundCloudEmptyForFilter
