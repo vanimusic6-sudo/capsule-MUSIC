@@ -89,6 +89,9 @@ import com.nikhil.yt.ui.component.ChipsRow
 import com.nikhil.yt.ui.component.EmptyPlaceholder
 import com.nikhil.yt.ui.component.LocalMenuState
 import com.nikhil.yt.ui.component.YouTubeListItem
+import com.nikhil.yt.ui.component.SoundCloudUserListItem
+import com.nikhil.yt.ui.component.SoundCloudTrackListItem
+import com.nikhil.yt.ui.component.SoundCloudPlaylistListItem
 import com.nikhil.yt.ui.component.shimmer.ListItemPlaceHolder
 import com.nikhil.yt.ui.component.shimmer.ShimmerHost
 import com.nikhil.yt.ui.menu.YouTubeAlbumMenu
@@ -98,6 +101,49 @@ import com.nikhil.yt.ui.menu.YouTubeSongMenu
 import com.nikhil.yt.ui.menu.SoundCloudTrackMenu
 import com.nikhil.yt.viewmodels.OnlineSearchViewModel
 import kotlinx.coroutines.launch
+
+@Composable
+private fun SearchSectionHeader(
+    text: String,
+) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier.padding(
+            horizontal = 20.dp,
+            vertical = 12.dp,
+        ),
+    ) {
+        Box(
+            modifier = Modifier
+                .width(3.dp)
+                .height(18.dp)
+                .clip(RoundedCornerShape(2.dp))
+                .background(MaterialTheme.colorScheme.primary),
+        )
+        Spacer(Modifier.width(10.dp))
+        Text(
+            text = text,
+            style = MaterialTheme.typography.titleSmall,
+            fontWeight = FontWeight.SemiBold,
+            color = MaterialTheme.colorScheme.onSurface,
+        )
+    }
+}
+
+@Composable
+private fun SearchStatusText(
+    message: Int,
+) {
+    Text(
+        text = stringResource(message),
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        style = MaterialTheme.typography.bodySmall,
+        modifier = Modifier.padding(
+            horizontal = 20.dp,
+            vertical = 12.dp,
+        ),
+    )
+}
 
 private enum class SearchSourceFilter { ALL, YOUTUBE, SOUNDCLOUD }
 
@@ -129,8 +175,17 @@ fun OnlineSearchResult(
     val lazyListState = rememberLazyListState()
     val (showSoundCloudPreview, _) = rememberPreference(SoundCloudWebPreviewEnabledKey, false)
     val downloads by LocalDownloadUtil.current.downloads.collectAsState()
-    var selectedSoundCloudTrack by remember { mutableStateOf<SoundCloudCatalog.Track?>(null) }
     var sourceFilter by remember { mutableStateOf(SearchSourceFilter.ALL) }
+
+    val soundCloudResult = viewModel.soundCloudResult
+    val soundCloudPage =
+        (soundCloudResult as? SoundCloudCatalog.Result.Success)?.value
+
+    LaunchedEffect(showSoundCloudPreview) {
+        if (showSoundCloudPreview) {
+            viewModel.ensureSoundCloudSearch()
+        }
+    }
 
     val searchFilter by viewModel.filter.collectAsState()
     val searchSummary = viewModel.summaryPage
@@ -194,6 +249,7 @@ fun OnlineSearchResult(
                 else -> false
             },
             isPlaying = isPlaying,
+            showSourceIcon = showSoundCloudPreview,
             trailingContent = {
                 IconButton(
                     onClick = longClick,
@@ -210,7 +266,6 @@ fun OnlineSearchResult(
                     onClick = {
                         when (item) {
                             is SongItem -> {
-                                selectedSoundCloudTrack = null
                                 if (item.id == mediaMetadata?.id) {
                                     playerConnection.player.togglePlayPause()
                                 } else {
@@ -234,148 +289,449 @@ fun OnlineSearchResult(
         )
     }
 
+    val soundCloudTrackContent:
+        @Composable LazyItemScope.(SoundCloudCatalog.Track) -> Unit = { track ->
+            val mediaId = soundCloudMediaId(track.permalink)
+            SoundCloudTrackListItem(
+                track = track,
+                isActive = mediaMetadata?.id == mediaId,
+                isPlaying = isPlaying && mediaMetadata?.id == mediaId,
+                onClick = {
+                    if (mediaMetadata?.id == mediaId) {
+                        playerConnection.player.togglePlayPause()
+                    } else {
+                        SoundCloudQueue.create(
+                            title = viewModel.query,
+                            tracks = soundCloudPage?.tracks.orEmpty(),
+                            requestedStartUrl = track.permalink,
+                            downloads = downloads,
+                        )?.let(playerConnection::playQueue)
+                    }
+                },
+                onArtistClick = {
+                    navController.navigate(
+                        "soundcloud/profile?url=" + android.net.Uri.encode(it),
+                    )
+                },
+                onMoreClick = {
+                    menuState.show {
+                        SoundCloudTrackMenu(
+                            track = track,
+                            navController = navController,
+                            onDismiss = menuState::dismiss,
+                        )
+                    }
+                },
+                modifier = Modifier.animateItem(),
+            )
+        }
+
+    val soundCloudPlaylistContent:
+        @Composable LazyItemScope.(SoundCloudCatalog.Playlist) -> Unit = { playlist ->
+            SoundCloudPlaylistListItem(
+                playlist = playlist,
+                onClick = {
+                    navController.navigate(
+                        "soundcloud/playlist?url=" +
+                            android.net.Uri.encode(playlist.url),
+                    )
+                },
+                modifier = Modifier.animateItem(),
+            )
+        }
+
+    val soundCloudUserContent:
+        @Composable LazyItemScope.(SoundCloudCatalog.User) -> Unit = { user ->
+            SoundCloudUserListItem(
+                user = user,
+                followerText = stringResource(
+                    R.string.capsule_soundcloud_followers,
+                    user.followerCount.coerceAtLeast(0),
+                ),
+                onClick = {
+                    navController.navigate(
+                        "soundcloud/profile?url=" +
+                            android.net.Uri.encode(user.url),
+                    )
+                },
+                modifier = Modifier.animateItem(),
+            )
+        }
+
     LazyColumn(
         state = lazyListState,
         contentPadding =
-        LocalPlayerAwareWindowInsets.current
-            .add(WindowInsets(top = SearchFilterHeight + 8.dp))
-            .asPaddingValues(),
+            LocalPlayerAwareWindowInsets.current
+                .add(WindowInsets(top = SearchFilterHeight + 8.dp))
+                .asPaddingValues(),
     ) {
-        val soundCloudKind = when (searchFilter) {
-            null -> SoundCloudResultKind.ALL
-            FILTER_SONG -> SoundCloudResultKind.TRACKS
-            FILTER_ARTIST -> SoundCloudResultKind.USERS
-            FILTER_COMMUNITY_PLAYLIST, FILTER_FEATURED_PLAYLIST -> SoundCloudResultKind.PLAYLISTS
-            else -> null
-        }
-        val showSoundCloudResults = showSoundCloudPreview &&
-            sourceFilter != SearchSourceFilter.YOUTUBE && soundCloudKind != null
-        val showYouTubeResults = sourceFilter != SearchSourceFilter.SOUNDCLOUD
+        val showYouTubeResults =
+            sourceFilter != SearchSourceFilter.SOUNDCLOUD
+        val showSoundCloudResults =
+            showSoundCloudPreview &&
+                sourceFilter != SearchSourceFilter.YOUTUBE
 
-        if (showSoundCloudResults) {
-            item(key = "soundcloud_native_results") {
-                SoundCloudNativeResults(
-                    query = viewModel.query,
-                    kind = soundCloudKind!!,
-                    selectedUrl = selectedSoundCloudTrack?.permalink?.takeIf {
-                        mediaMetadata?.id == soundCloudMediaId(it)
-                    },
-                    playing = isPlaying,
-                    onArtistClick = { navController.navigate("soundcloud/profile?url=" + android.net.Uri.encode(it)) },
-                    onPlaylistClick = { navController.navigate("soundcloud/playlist?url=" + android.net.Uri.encode(it)) },
-                    onUserClick = { navController.navigate("soundcloud/profile?url=" + android.net.Uri.encode(it)) },
-                    onTrackMenu = { track -> menuState.show {
-                        SoundCloudTrackMenu(track, navController, menuState::dismiss)
-                    }},
-                    onTrackClick = { track, tracks ->
-                        val id=soundCloudMediaId(track.permalink)
-                        if(mediaMetadata?.id==id) playerConnection.player.togglePlayPause()
-                        else {
-                            selectedSoundCloudTrack=track
-                            SoundCloudQueue.create(
-                                title = viewModel.query,
-                                tracks = tracks,
-                                requestedStartUrl = track.permalink,
-                                downloads = downloads,
-                            )?.let(playerConnection::playQueue)
+        if (searchFilter == null) {
+            if (sourceFilter == SearchSourceFilter.SOUNDCLOUD) {
+                when (val value = soundCloudResult) {
+                    null -> {
+                        item(key = "sc-loading") {
+                            SearchStatusText(
+                                R.string.capsule_soundcloud_loading,
+                            )
                         }
                     }
-                )
-            }
-        }
-        if (sourceFilter == SearchSourceFilter.SOUNDCLOUD && soundCloudKind == null) {
-            item { EmptyPlaceholder(R.drawable.soundcloud_source, stringResource(R.string.no_results_found)) }
-        }
-        if (showYouTubeResults) {
-        if (searchFilter == null) {
-            searchSummary?.summaries?.forEachIndexed { index, summary ->
-                if (index > 0) {
-                    item(key = "divider_$index") {
-                        HorizontalDivider(
-                            modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
-                            thickness = 0.5.dp,
-                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
-                        )
+
+                    SoundCloudCatalog.Result.RateLimited -> {
+                        item(key = "sc-rate-limited") {
+                            SearchStatusText(
+                                R.string.capsule_soundcloud_rate_limited,
+                            )
+                        }
+                    }
+
+                    SoundCloudCatalog.Result.Unavailable -> {
+                        item(key = "sc-unavailable") {
+                            SearchStatusText(
+                                R.string.capsule_soundcloud_request_failed,
+                            )
+                        }
+                    }
+
+                    is SoundCloudCatalog.Result.Success -> {
+                        val page = value.value
+
+                        if (page.tracks.isNotEmpty()) {
+                            item(key = "sc-heading-tracks") {
+                                SearchSectionHeader(
+                                    stringResource(R.string.filter_songs),
+                                )
+                            }
+                            items(
+                                items = page.tracks,
+                                key = { "sc-source-track-" + it.permalink },
+                                itemContent = soundCloudTrackContent,
+                            )
+                        }
+
+                        if (page.users.isNotEmpty()) {
+                            item(key = "sc-heading-artists") {
+                                SearchSectionHeader(
+                                    stringResource(R.string.filter_artists),
+                                )
+                            }
+                            items(
+                                items = page.users,
+                                key = { "sc-source-user-" + it.url },
+                                itemContent = soundCloudUserContent,
+                            )
+                        }
+
+                        if (page.playlists.isNotEmpty()) {
+                            item(key = "sc-heading-playlists") {
+                                SearchSectionHeader(
+                                    stringResource(
+                                        R.string.capsule_soundcloud_playlists,
+                                    ),
+                                )
+                            }
+                            items(
+                                items = page.playlists,
+                                key = { "sc-source-playlist-" + it.url },
+                                itemContent = soundCloudPlaylistContent,
+                            )
+                        }
+
+                        if (
+                            page.tracks.isEmpty() &&
+                            page.users.isEmpty() &&
+                            page.playlists.isEmpty()
+                        ) {
+                            item(key = "sc-empty") {
+                                EmptyPlaceholder(
+                                    icon = R.drawable.search,
+                                    text = stringResource(
+                                        R.string.no_results_found,
+                                    ),
+                                )
+                            }
+                        }
                     }
                 }
+            } else if (showYouTubeResults) {
+                if (searchSummary == null) {
+                    item(key = "summary-loading") {
+                        ShimmerHost {
+                            repeat(8) {
+                                ListItemPlaceHolder()
+                            }
+                        }
+                    }
+                } else {
+                    val summaries = searchSummary.summaries
+                    val songSummaryIndex =
+                        summaries.indexOfFirst { summary ->
+                            summary.items.any { it is SongItem }
+                        }
+                    val artistSummaryIndex =
+                        summaries.indexOfFirst { summary ->
+                            summary.items.any { it is ArtistItem }
+                        }
+                    val playlistSummaryIndex =
+                        summaries.indexOfFirst { summary ->
+                            summary.items.any { it is PlaylistItem }
+                        }
 
-                item {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp)
+                    summaries.forEachIndexed { index, summary ->
+                        if (index > 0) {
+                            item(key = "divider_$index") {
+                                HorizontalDivider(
+                                    modifier = Modifier.padding(
+                                        horizontal = 20.dp,
+                                        vertical = 4.dp,
+                                    ),
+                                    thickness = 0.5.dp,
+                                    color =
+                                        MaterialTheme.colorScheme.outlineVariant
+                                            .copy(alpha = 0.4f),
+                                )
+                            }
+                        }
+
+                        item(key = "heading_$index") {
+                            SearchSectionHeader(summary.title)
+                        }
+
+                        items(
+                            items = summary.items,
+                            key = {
+                                "${summary.title}/${it.id}/${summary.items.indexOf(it)}"
+                            },
+                            itemContent = ytItemContent,
+                        )
+
+                        // SoundCloud has no separate block in "All". It joins
+                        // the matching YouTube section after YouTube results.
+                        if (
+                            showSoundCloudResults &&
+                            soundCloudPage != null
+                        ) {
+                            when (index) {
+                                songSummaryIndex -> {
+                                    items(
+                                        items = soundCloudPage.tracks,
+                                        key = {
+                                            "sc-all-track-" + it.permalink
+                                        },
+                                        itemContent = soundCloudTrackContent,
+                                    )
+                                }
+
+                                artistSummaryIndex -> {
+                                    items(
+                                        items = soundCloudPage.users,
+                                        key = {
+                                            "sc-all-user-" + it.url
+                                        },
+                                        itemContent = soundCloudUserContent,
+                                    )
+                                }
+
+                                playlistSummaryIndex -> {
+                                    items(
+                                        items = soundCloudPage.playlists,
+                                        key = {
+                                            "sc-all-playlist-" + it.url
+                                        },
+                                        itemContent = soundCloudPlaylistContent,
+                                    )
+                                }
+                            }
+                        }
+
+                        item(key = "summary-space_$index") {
+                            Spacer(Modifier.height(4.dp))
+                        }
+                    }
+
+                    // If YouTube did not return a section of a given type, do
+                    // not lose valid SoundCloud results. Use the same standard
+                    // section chrome rather than a SoundCloud-specific layout.
+                    if (
+                        showSoundCloudResults &&
+                        soundCloudPage != null
                     ) {
-                        Box(
-                            modifier = Modifier
-                                .width(3.dp)
-                                .height(18.dp)
-                                .clip(RoundedCornerShape(2.dp))
-                                .background(MaterialTheme.colorScheme.primary)
-                        )
-                        Spacer(Modifier.width(10.dp))
-                        Text(
-                            text = summary.title,
-                            style = MaterialTheme.typography.titleSmall,
-                            fontWeight = FontWeight.SemiBold,
-                            color = MaterialTheme.colorScheme.onSurface,
-                        )
+                        if (
+                            songSummaryIndex < 0 &&
+                            soundCloudPage.tracks.isNotEmpty()
+                        ) {
+                            item(key = "fallback-heading-tracks") {
+                                SearchSectionHeader(
+                                    stringResource(R.string.filter_songs),
+                                )
+                            }
+                            items(
+                                items = soundCloudPage.tracks,
+                                key = {
+                                    "sc-fallback-track-" + it.permalink
+                                },
+                                itemContent = soundCloudTrackContent,
+                            )
+                        }
+                        if (
+                            artistSummaryIndex < 0 &&
+                            soundCloudPage.users.isNotEmpty()
+                        ) {
+                            item(key = "fallback-heading-artists") {
+                                SearchSectionHeader(
+                                    stringResource(R.string.filter_artists),
+                                )
+                            }
+                            items(
+                                items = soundCloudPage.users,
+                                key = { "sc-fallback-user-" + it.url },
+                                itemContent = soundCloudUserContent,
+                            )
+                        }
+                        if (
+                            playlistSummaryIndex < 0 &&
+                            soundCloudPage.playlists.isNotEmpty()
+                        ) {
+                            item(key = "fallback-heading-playlists") {
+                                SearchSectionHeader(
+                                    stringResource(
+                                        R.string.capsule_soundcloud_playlists,
+                                    ),
+                                )
+                            }
+                            items(
+                                items = soundCloudPage.playlists,
+                                key = {
+                                    "sc-fallback-playlist-" + it.url
+                                },
+                                itemContent = soundCloudPlaylistContent,
+                            )
+                        }
                     }
-                }
 
-                items(
-                    items = summary.items,
-                    key = { "${summary.title}/${it.id}/${summary.items.indexOf(it)}" },
-                    itemContent = ytItemContent,
-                )
-
-                item {
-                    Spacer(Modifier.height(4.dp))
-                }
-            }
-
-            if (searchSummary?.summaries?.isEmpty() == true) {
-                item {
-                    EmptyPlaceholder(
-                        icon = R.drawable.search,
-                        text = stringResource(R.string.no_results_found),
-                    )
+                    if (
+                        summaries.isEmpty() &&
+                        (
+                            !showSoundCloudResults ||
+                                soundCloudPage == null ||
+                                (
+                                    soundCloudPage.tracks.isEmpty() &&
+                                        soundCloudPage.users.isEmpty() &&
+                                        soundCloudPage.playlists.isEmpty()
+                                )
+                        )
+                    ) {
+                        item(key = "all-empty") {
+                            EmptyPlaceholder(
+                                icon = R.drawable.search,
+                                text = stringResource(
+                                    R.string.no_results_found,
+                                ),
+                            )
+                        }
+                    }
                 }
             }
         } else {
-            items(
-                items = itemsPage?.items.orEmpty().distinctBy { it.id },
-                key = { "filtered_${it.id}" },
-                itemContent = ytItemContent,
-            )
+            // Filtered lists are one list per content type. YouTube comes first,
+            // then matching SoundCloud entities with the exact same row chrome.
+            if (showYouTubeResults) {
+                if (itemsPage == null) {
+                    item(key = "filtered-loading") {
+                        ShimmerHost {
+                            repeat(6) {
+                                ListItemPlaceHolder()
+                            }
+                        }
+                    }
+                } else {
+                    items(
+                        items = itemsPage.items.distinctBy { it.id },
+                        key = { "filtered_${it.id}" },
+                        itemContent = ytItemContent,
+                    )
 
-            if (itemsPage?.continuation != null) {
-                item(key = "loading") {
-                    ShimmerHost {
-                        repeat(3) {
-                            ListItemPlaceHolder()
+                    if (itemsPage.continuation != null) {
+                        item(key = "loading") {
+                            ShimmerHost {
+                                repeat(3) {
+                                    ListItemPlaceHolder()
+                                }
+                            }
                         }
                     }
                 }
             }
 
-            if (itemsPage?.items?.isEmpty() == true) {
-                item {
-                    EmptyPlaceholder(
-                        icon = R.drawable.search,
-                        text = stringResource(R.string.no_results_found),
-                    )
-                }
-            }
-        }
+            if (
+                showSoundCloudResults &&
+                soundCloudPage != null
+            ) {
+                when (searchFilter) {
+                    FILTER_SONG -> {
+                        items(
+                            items = soundCloudPage.tracks,
+                            key = { "sc-filter-track-" + it.permalink },
+                            itemContent = soundCloudTrackContent,
+                        )
+                    }
 
-        if (searchFilter == null && searchSummary == null || searchFilter != null && itemsPage == null) {
-            item {
-                ShimmerHost {
-                    repeat(8) {
-                        ListItemPlaceHolder()
+                    FILTER_ARTIST -> {
+                        items(
+                            items = soundCloudPage.users,
+                            key = { "sc-filter-user-" + it.url },
+                            itemContent = soundCloudUserContent,
+                        )
+                    }
+
+                    FILTER_COMMUNITY_PLAYLIST,
+                    FILTER_FEATURED_PLAYLIST -> {
+                        items(
+                            items = soundCloudPage.playlists,
+                            key = {
+                                "sc-filter-playlist-" + it.url
+                            },
+                            itemContent = soundCloudPlaylistContent,
+                        )
                     }
                 }
             }
-        }
+
+            if (itemsPage != null) {
+                val soundCloudEmptyForFilter =
+                    when (searchFilter) {
+                        FILTER_SONG ->
+                            soundCloudPage?.tracks.isNullOrEmpty()
+                        FILTER_ARTIST ->
+                            soundCloudPage?.users.isNullOrEmpty()
+                        FILTER_COMMUNITY_PLAYLIST,
+                        FILTER_FEATURED_PLAYLIST ->
+                            soundCloudPage?.playlists.isNullOrEmpty()
+                        else -> true
+                    }
+
+                if (
+                    itemsPage.items.isEmpty() &&
+                    (
+                        !showSoundCloudResults ||
+                            soundCloudEmptyForFilter
+                    )
+                ) {
+                    item(key = "filtered-empty") {
+                        EmptyPlaceholder(
+                            icon = R.drawable.search,
+                            text = stringResource(
+                                R.string.no_results_found,
+                            ),
+                        )
+                    }
+                }
+            }
         }
     }
 

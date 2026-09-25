@@ -2348,6 +2348,37 @@ class MusicService :
                     player.setMediaItem(resolvedItem, initialStatus.position)
                     player.prepare()
                     player.playWhenReady = playWhenReady
+
+                    // A SoundCloud queue used to contain only the currently
+                    // playing item until Media3 emitted a later transition.
+                    // Resolve the first look-ahead page immediately so Queue UI,
+                    // next/previous and playlist playback behave like YouTube.
+                    launch(SilentHandler) {
+                        val lookAhead =
+                            withContext(Dispatchers.IO) {
+                                queue.nextPage()
+                                    .filterExplicit(
+                                        dataStore.get(HideExplicitKey, false),
+                                    )
+                                    .filterVideo(
+                                        dataStore.get(HideVideoKey, false),
+                                    )
+                            }
+                        if (currentQueue !== queue) return@launch
+
+                        val existingIds =
+                            (0 until player.mediaItemCount)
+                                .map { player.getMediaItemAt(it).mediaId }
+                                .toHashSet()
+                        val additions =
+                            lookAhead
+                                .drop(1)
+                                .filter { it.mediaId !in existingIds }
+
+                        if (additions.isNotEmpty()) {
+                            player.addMediaItems(additions)
+                        }
+                    }
                 } else {
                     player.addMediaItems(0, initialStatus.items.subList(0, initialStatus.mediaItemIndex))
                     player.addMediaItems(
