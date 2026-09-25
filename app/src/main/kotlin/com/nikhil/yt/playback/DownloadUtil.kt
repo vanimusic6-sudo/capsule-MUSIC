@@ -36,6 +36,7 @@ import com.nikhil.yt.db.entities.SongEntity
 import com.nikhil.yt.di.DownloadCache
 import com.nikhil.yt.di.PlayerCache
 import com.nikhil.yt.innertube.YouTube
+import com.nikhil.yt.soundcloud.SOUNDCLOUD_MEDIA_ID_PREFIX
 import com.nikhil.yt.playback.audio.CapsuleAudioEngine
 import com.nikhil.yt.playback.audio.CapsulePlaybackSafety
 import com.nikhil.yt.utils.StreamClientUtils
@@ -97,6 +98,17 @@ constructor(
             .addInterceptor { chain ->
                 chain.proceed(StreamClientUtils.withFallbackHeaders(chain.request()))
             }.build()
+    }
+
+    private val soundCloudDownloadDataSourceFactory by lazy {
+        CacheDataSource.Factory().setCache(downloadCache)
+            .setUpstreamDataSourceFactory(
+                OkHttpDataSource.Factory(
+                    OkHttpClient.Builder().retryOnConnectionFailure(true)
+                        .followRedirects(true).followSslRedirects(true).build()
+                )
+            )
+            .setFlags(FLAG_IGNORE_CACHE_ON_ERROR)
     }
 
     val downloads = MutableStateFlow<Map<String, Download>>(emptyMap())
@@ -163,27 +175,36 @@ constructor(
     }
 
     private val downloaderFactory = DownloaderFactory { request ->
-        ResolvingAudioDownloader(
-            mediaId = request.id,
-            cache = downloadCache,
-            resolve = { resolveDownloadPlayback(request.id) },
-            dataSource = { playback ->
-                CacheDataSource.Factory().setCache(downloadCache)
-                    .setUpstreamDataSourceFactory(
-                        ResolvingDataSource.Factory(
-                            CacheDataSource.Factory().setCache(playerCache)
-                                .setCacheWriteDataSinkFactory(null)
-                                .setUpstreamDataSourceFactory(OkHttpDataSource.Factory(mediaOkHttpClient))
-                                .setFlags(FLAG_IGNORE_CACHE_ON_ERROR),
-                        ) { spec ->
-                            spec.buildUpon()
-                                .setKey(AudioCacheIdentity.key(request.id, playback))
-                                .setHttpRequestHeaders(spec.httpRequestHeaders + playback.streamHeaders)
-                                .build()
-                        },
-                    )
-            },
-        )
+        if (request.id.startsWith(SOUNDCLOUD_MEDIA_ID_PREFIX)) {
+            SoundCloudDownloader(
+                trackUrl = request.uri.toString(),
+                mediaId = request.id,
+                cache = downloadCache,
+                dataSourceFactory = soundCloudDownloadDataSourceFactory,
+            )
+        } else {
+            ResolvingAudioDownloader(
+                mediaId = request.id,
+                cache = downloadCache,
+                resolve = { resolveDownloadPlayback(request.id) },
+                dataSource = { playback ->
+                    CacheDataSource.Factory().setCache(downloadCache)
+                        .setUpstreamDataSourceFactory(
+                            ResolvingDataSource.Factory(
+                                CacheDataSource.Factory().setCache(playerCache)
+                                    .setCacheWriteDataSinkFactory(null)
+                                    .setUpstreamDataSourceFactory(OkHttpDataSource.Factory(mediaOkHttpClient))
+                                    .setFlags(FLAG_IGNORE_CACHE_ON_ERROR),
+                            ) { spec ->
+                                spec.buildUpon()
+                                    .setKey(AudioCacheIdentity.key(request.id, playback))
+                                    .setHttpRequestHeaders(spec.httpRequestHeaders + playback.streamHeaders)
+                                    .build()
+                            },
+                        )
+                },
+            )
+        }
     }
 
     private fun storeDownloadMetadata(mediaId: String, playbackData: CapsuleAudioEngine.PlaybackData) {

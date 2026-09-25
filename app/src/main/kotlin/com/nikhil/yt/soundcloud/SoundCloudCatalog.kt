@@ -40,10 +40,13 @@ internal object SoundCloudCatalog {
         val trackCount: Long,
     )
 
+    data class SearchContinuation(val cursor: SoundCloudNewPipe.SearchCursor)
+
     data class SearchPage(
         val tracks: List<Track>,
         val users: List<User>,
         val playlists: List<Playlist>,
+        val continuation: SearchContinuation?,
     )
 
     data class Profile(
@@ -97,6 +100,7 @@ internal object SoundCloudCatalog {
                 tracks = r.tracks.map(::track),
                 users = r.users.map { User(it.url, it.name, it.avatarUrl, it.followerCount, it.verified) },
                 playlists = r.playlists.map(::playlist),
+                continuation = r.cursor?.let(::SearchContinuation),
             )
         }
         if (loaded is Result.Success) {
@@ -107,6 +111,16 @@ internal object SoundCloudCatalog {
             )
         }
         return loaded
+    }
+
+    fun searchMore(continuation: SearchContinuation): Result<SearchPage> = capture {
+        val r = SoundCloudNewPipe.searchMore(continuation.cursor)
+        SearchPage(
+            tracks = r.tracks.map(::track),
+            users = r.users.map { User(it.url, it.name, it.avatarUrl, it.followerCount, it.verified) },
+            playlists = r.playlists.map(::playlist),
+            continuation = r.cursor?.let(::SearchContinuation),
+        )
     }
 
     fun profile(url: String): Result<Profile> = capture {

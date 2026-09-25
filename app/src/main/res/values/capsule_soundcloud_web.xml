@@ -1,24 +1,20 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="capsule_soundcloud_group">Experimental sources</string>
-    <string name="capsule_soundcloud_web_title">SoundCloud (NewPipe, test)</string>
-    <string name="capsule_soundcloud_web_description">Real SoundCloud results and playback inside Capsule via NewPipeExtractor. No API token required. Experimental: separate player; no downloads or shared queue yet.</string>
-    <string name="capsule_soundcloud_badge">SoundCloud</string>
-    <string name="capsule_soundcloud_loading">Searching SoundCloud…</string>
-    <string name="capsule_soundcloud_rate_limited">SoundCloud temporarily restricted requests. Try again later.</string>
-    <string name="capsule_soundcloud_request_failed">SoundCloud search is unavailable. Check your connection or try again later.</string>
-    <string name="capsule_soundcloud_no_results">No SoundCloud tracks found.</string>
-    <string name="capsule_soundcloud_play">Play</string>
-    <string name="capsule_soundcloud_pause">Pause</string>
-    <string name="capsule_soundcloud_playback_error">SoundCloud audio could not be played. The track may be unavailable or temporarily blocked.</string>
-
-    <string name="capsule_soundcloud_tracks">Tracks</string>
-    <string name="capsule_soundcloud_playlists">SoundCloud playlists</string>
-    <string name="capsule_soundcloud_accounts">SoundCloud accounts</string>
-    <string name="capsule_soundcloud_account_title">SoundCloud profile</string>
-    <string name="capsule_soundcloud_playlist_title">SoundCloud playlist</string>
-    <string name="capsule_soundcloud_followers">%1$d followers</string>
-    <string name="capsule_soundcloud_play_all">Play playlist</string>
-    <string name="capsule_soundcloud_playable_tracks">%1$d playable of %2$d tracks</string>
-    <string name="capsule_soundcloud_no_playable_tracks">No playable non-DRM tracks are available in this playlist.</string>
+ <string name="capsule_soundcloud_group">Experimental sources</string>
+ <string name="capsule_soundcloud_web_title">SoundCloud</string>
+ <string name="capsule_soundcloud_web_description">Native SoundCloud results, queues and downloads inside Capsule via NewPipeExtractor. No API token required.</string>
+ <string name="capsule_soundcloud_badge">SoundCloud</string>
+ <string name="capsule_source_all">All sources</string>
+ <string name="capsule_soundcloud_loading">Searching SoundCloud…</string>
+ <string name="capsule_soundcloud_rate_limited">SoundCloud temporarily restricted requests. Try again later.</string>
+ <string name="capsule_soundcloud_request_failed">SoundCloud search is unavailable. Check your connection or try again later.</string>
+ <string name="capsule_soundcloud_no_results">No SoundCloud results found.</string>
+ <string name="capsule_soundcloud_play">Play</string><string name="capsule_soundcloud_pause">Pause</string>
+ <string name="capsule_soundcloud_playback_error">SoundCloud audio could not be played.</string>
+ <string name="capsule_soundcloud_tracks">Tracks</string><string name="capsule_soundcloud_playlists">Playlists</string>
+ <string name="capsule_soundcloud_accounts">Artists</string><string name="capsule_soundcloud_account_title">Artist</string>
+ <string name="capsule_soundcloud_playlist_title">Playlist</string><string name="capsule_soundcloud_followers">%1$d followers</string>
+ <string name="capsule_soundcloud_play_all">Play playlist</string>
+ <string name="capsule_soundcloud_playable_tracks">%1$d playable of %2$d tracks</string>
+ <string name="capsule_soundcloud_no_playable_tracks">No playable non-DRM tracks are available in this playlist.</string>
 </resources>

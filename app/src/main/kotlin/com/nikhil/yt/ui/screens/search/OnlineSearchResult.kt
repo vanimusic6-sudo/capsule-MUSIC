@@ -78,6 +78,7 @@ import com.nikhil.yt.innertube.models.WatchEndpoint
 import com.nikhil.yt.innertube.models.YTItem
 import com.nikhil.yt.LocalPlayerAwareWindowInsets
 import com.nikhil.yt.LocalPlayerConnection
+import com.nikhil.yt.LocalDownloadUtil
 import com.nikhil.yt.R
 import com.nikhil.yt.constants.AppBarHeight
 import com.nikhil.yt.constants.SearchFilterHeight
@@ -94,8 +95,12 @@ import com.nikhil.yt.ui.menu.YouTubeAlbumMenu
 import com.nikhil.yt.ui.menu.YouTubeArtistMenu
 import com.nikhil.yt.ui.menu.YouTubePlaylistMenu
 import com.nikhil.yt.ui.menu.YouTubeSongMenu
+import com.nikhil.yt.ui.menu.SoundCloudTrackMenu
 import com.nikhil.yt.viewmodels.OnlineSearchViewModel
 import kotlinx.coroutines.launch
+import androidx.media3.exoplayer.offline.Download
+
+private enum class SearchSourceFilter { ALL, YOUTUBE, SOUNDCLOUD }
 
 @OptIn(ExperimentalFoundationApi::class, ExperimentalMaterial3Api::class)
 @Composable
@@ -112,12 +117,10 @@ fun OnlineSearchResult(
     val coroutineScope = rememberCoroutineScope()
     val lazyListState = rememberLazyListState()
     val (showSoundCloudPreview, _) = rememberPreference(SoundCloudWebPreviewEnabledKey, false)
-    // SoundCloud now uses the same service/player as YouTube. Only its HTTP
-    // source is isolated; all main player controls and notification remain live.
+    val downloads by LocalDownloadUtil.current.downloads.collectAsState()
+    val downloadedSoundCloudIds = downloads.filterValues { it.state == Download.STATE_COMPLETED }.keys
     var selectedSoundCloudTrack by remember { mutableStateOf<SoundCloudCatalog.Track?>(null) }
-    var soundCloudLoading by remember { mutableStateOf(false) }
-    var soundCloudPlaybackError by remember { mutableStateOf(false) }
-    val soundCloudRequest = remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
+    var sourceFilter by remember { mutableStateOf(SearchSourceFilter.ALL) }
 
     val searchFilter by viewModel.filter.collectAsState()
     val searchSummary = viewModel.summaryPage
@@ -197,12 +200,7 @@ fun OnlineSearchResult(
                     onClick = {
                         when (item) {
                             is SongItem -> {
-                                // Switching to YouTube stops the isolated SoundCloud preview
-                                // so two independent players cannot continue together.
-                                soundCloudRequest.value?.cancel()
                                 selectedSoundCloudTrack = null
-                                soundCloudLoading = false
-                                soundCloudPlaybackError = false
                                 if (item.id == mediaMetadata?.id) {
                                     playerConnection.player.togglePlayPause()
                                 } else {
@@ -230,68 +228,51 @@ fun OnlineSearchResult(
         state = lazyListState,
         contentPadding =
         LocalPlayerAwareWindowInsets.current
-            .add(WindowInsets(top = SearchFilterHeight + 8.dp))
+            .add(WindowInsets(top = SearchFilterHeight + SearchFilterHeight + 12.dp))
             .asPaddingValues(),
     ) {
-        if (showSoundCloudPreview && (searchFilter == null || searchFilter == FILTER_SONG)) {
+        val soundCloudKind = when (searchFilter) {
+            null -> SoundCloudResultKind.ALL
+            FILTER_SONG -> SoundCloudResultKind.TRACKS
+            FILTER_ARTIST -> SoundCloudResultKind.USERS
+            FILTER_COMMUNITY_PLAYLIST, FILTER_FEATURED_PLAYLIST -> SoundCloudResultKind.PLAYLISTS
+            else -> null
+        }
+        val showSoundCloudResults = showSoundCloudPreview &&
+            sourceFilter != SearchSourceFilter.YOUTUBE && soundCloudKind != null
+        val showYouTubeResults = sourceFilter != SearchSourceFilter.SOUNDCLOUD
+
+        if (showSoundCloudResults) {
             item(key = "soundcloud_native_results") {
                 SoundCloudNativeResults(
                     query = viewModel.query,
+                    kind = soundCloudKind!!,
                     selectedUrl = selectedSoundCloudTrack?.permalink?.takeIf {
-                        soundCloudLoading || mediaMetadata?.id == soundCloudMediaId(it)
+                        mediaMetadata?.id == soundCloudMediaId(it)
                     },
                     playing = isPlaying,
-                    loadingTrack = soundCloudLoading,
-                    onArtistClick = { url ->
-                        navController.navigate("soundcloud/profile?url=" + android.net.Uri.encode(url))
-                    },
-                    onPlaylistClick = { url ->
-                        navController.navigate("soundcloud/playlist?url=" + android.net.Uri.encode(url))
-                    },
-                    onUserClick = { url ->
-                        navController.navigate("soundcloud/profile?url=" + android.net.Uri.encode(url))
-                    },
-                    onTrackClick = { track, soundCloudTracks ->
-                        val mediaId = soundCloudMediaId(track.permalink)
-                        if (mediaMetadata?.id == mediaId) {
-                            playerConnection.player.togglePlayPause()
-                        } else {
-                            soundCloudRequest.value?.cancel()
-                            selectedSoundCloudTrack = track
-                            soundCloudPlaybackError = false
-                            soundCloudLoading = true
-                            soundCloudRequest.value = coroutineScope.launch {
-                                try {
-                                    val queue = SoundCloudQueue.create(
-                                        title = "SoundCloud • " + viewModel.query,
-                                        tracks = soundCloudTracks,
-                                        requestedStartUrl = track.permalink,
-                                    )
-                                    if (queue != null) {
-                                        playerConnection.playQueue(queue)
-                                    } else {
-                                        soundCloudPlaybackError = true
-                                    }
-                                } catch (failure: kotlinx.coroutines.CancellationException) {
-                                    throw failure
-                                } catch (failure: Exception) {
-                                    soundCloudPlaybackError = true
-                                } finally {
-                                    soundCloudLoading = false
-                                }
-                            }
+                    onArtistClick = { navController.navigate("soundcloud/profile?url=" + android.net.Uri.encode(it)) },
+                    onPlaylistClick = { navController.navigate("soundcloud/playlist?url=" + android.net.Uri.encode(it)) },
+                    onUserClick = { navController.navigate("soundcloud/profile?url=" + android.net.Uri.encode(it)) },
+                    onTrackMenu = { track -> menuState.show {
+                        SoundCloudTrackMenu(track, navController, menuState::dismiss)
+                    }},
+                    onTrackClick = { track, tracks ->
+                        val id=soundCloudMediaId(track.permalink)
+                        if(mediaMetadata?.id==id) playerConnection.player.togglePlayPause()
+                        else {
+                            selectedSoundCloudTrack=track
+                            SoundCloudQueue.create(viewModel.query,tracks,track.permalink,downloadedSoundCloudIds)
+                                ?.let(playerConnection::playQueue)
                         }
-                    },
+                    }
                 )
-                if (soundCloudPlaybackError) {
-                    Text(
-                        text = stringResource(R.string.capsule_soundcloud_playback_error),
-                        color = MaterialTheme.colorScheme.error,
-                        modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
-                    )
-                }
             }
         }
+        if (sourceFilter == SearchSourceFilter.SOUNDCLOUD && soundCloudKind == null) {
+            item { EmptyPlaceholder(R.drawable.soundcloud_source, stringResource(R.string.no_results_found)) }
+        }
+        if (showYouTubeResults) {
         if (searchFilter == null) {
             searchSummary?.summaries?.forEachIndexed { index, summary ->
                 if (index > 0) {
@@ -381,6 +362,7 @@ fun OnlineSearchResult(
                 }
             }
         }
+        }
     }
 
     Surface(
@@ -391,35 +373,45 @@ fun OnlineSearchResult(
             .windowInsetsPadding(WindowInsets.systemBars.only(WindowInsetsSides.Top).add(WindowInsets(top = AppBarHeight)))
             .fillMaxWidth()
     ) {
-        ChipsRow(
-            chips =
-            listOf(
-                null to stringResource(R.string.filter_all),
-                FILTER_SONG to stringResource(R.string.filter_songs),
-                FILTER_VIDEO to stringResource(R.string.filter_videos),
-                FILTER_ALBUM to stringResource(R.string.filter_albums),
-                FILTER_ARTIST to stringResource(R.string.filter_artists),
-                FILTER_COMMUNITY_PLAYLIST to stringResource(R.string.filter_community_playlists),
-                FILTER_FEATURED_PLAYLIST to stringResource(R.string.filter_featured_playlists),
-            ),
-            currentValue = searchFilter,
-            onValueUpdate = {
-                if (viewModel.filter.value != it) {
-                    viewModel.filter.value = it
-                }
-                coroutineScope.launch {
-                    lazyListState.animateScrollToItem(0)
-                }
-            },
-            icons = mapOf(
-                null to R.drawable.search,
-                FILTER_SONG to R.drawable.music_note,
-                FILTER_VIDEO to R.drawable.slow_motion_video,
-                FILTER_ALBUM to R.drawable.album,
-                FILTER_ARTIST to R.drawable.person,
-                FILTER_COMMUNITY_PLAYLIST to R.drawable.queue_music,
-                FILTER_FEATURED_PLAYLIST to R.drawable.playlist_play,
-            ),
-        )
+        Column {
+            if (showSoundCloudPreview) {
+                ChipsRow(
+                    chips = listOf(
+                        SearchSourceFilter.ALL to stringResource(R.string.capsule_source_all),
+                        SearchSourceFilter.YOUTUBE to "YouTube",
+                        SearchSourceFilter.SOUNDCLOUD to "SoundCloud",
+                    ),
+                    currentValue = sourceFilter,
+                    onValueUpdate = { sourceFilter=it; coroutineScope.launch { lazyListState.animateScrollToItem(0) } },
+                    icons = mapOf(
+                        SearchSourceFilter.ALL to R.drawable.search,
+                        SearchSourceFilter.YOUTUBE to R.drawable.youtube_source,
+                        SearchSourceFilter.SOUNDCLOUD to R.drawable.soundcloud_source,
+                    ),
+                )
+            }
+            ChipsRow(
+                chips = listOf(
+                    null to stringResource(R.string.filter_all),
+                    FILTER_SONG to stringResource(R.string.filter_songs),
+                    FILTER_VIDEO to stringResource(R.string.filter_videos),
+                    FILTER_ALBUM to stringResource(R.string.filter_albums),
+                    FILTER_ARTIST to stringResource(R.string.filter_artists),
+                    FILTER_COMMUNITY_PLAYLIST to stringResource(R.string.filter_community_playlists),
+                    FILTER_FEATURED_PLAYLIST to stringResource(R.string.filter_featured_playlists),
+                ),
+                currentValue = searchFilter,
+                onValueUpdate = {
+                    if (viewModel.filter.value != it) viewModel.filter.value = it
+                    coroutineScope.launch { lazyListState.animateScrollToItem(0) }
+                },
+                icons = mapOf(
+                    null to R.drawable.search, FILTER_SONG to R.drawable.music_note,
+                    FILTER_VIDEO to R.drawable.slow_motion_video, FILTER_ALBUM to R.drawable.album,
+                    FILTER_ARTIST to R.drawable.person, FILTER_COMMUNITY_PLAYLIST to R.drawable.queue_music,
+                    FILTER_FEATURED_PLAYLIST to R.drawable.playlist_play,
+                ),
+            )
+        }
     }
 }

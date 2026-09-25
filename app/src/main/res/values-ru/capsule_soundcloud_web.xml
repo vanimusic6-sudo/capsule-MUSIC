@@ -1,24 +1,20 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="capsule_soundcloud_group">Экспериментальные источники</string>
-    <string name="capsule_soundcloud_web_title">SoundCloud (NewPipe, тест)</string>
-    <string name="capsule_soundcloud_web_description">Настоящие результаты SoundCloud и воспроизведение прямо в Capsule через NewPipeExtractor. API-токен не нужен. Пока отдельный тестовый плеер: без общей очереди и загрузок.</string>
-    <string name="capsule_soundcloud_badge">SoundCloud</string>
-    <string name="capsule_soundcloud_loading">Ищем в SoundCloud…</string>
-    <string name="capsule_soundcloud_rate_limited">SoundCloud временно ограничил запросы. Попробуй позже.</string>
-    <string name="capsule_soundcloud_request_failed">Поиск SoundCloud сейчас недоступен. Проверь подключение или попробуй позже.</string>
-    <string name="capsule_soundcloud_no_results">В SoundCloud ничего не найдено.</string>
-    <string name="capsule_soundcloud_play">Слушать</string>
-    <string name="capsule_soundcloud_pause">Пауза</string>
-    <string name="capsule_soundcloud_playback_error">Не удалось воспроизвести аудио SoundCloud: трек недоступен или временно заблокирован.</string>
-
-    <string name="capsule_soundcloud_tracks">Треки</string>
-    <string name="capsule_soundcloud_playlists">Плейлисты SoundCloud</string>
-    <string name="capsule_soundcloud_accounts">Аккаунты SoundCloud</string>
-    <string name="capsule_soundcloud_account_title">Профиль SoundCloud</string>
-    <string name="capsule_soundcloud_playlist_title">Плейлист SoundCloud</string>
-    <string name="capsule_soundcloud_followers">Подписчики: %1$d</string>
-    <string name="capsule_soundcloud_play_all">Слушать плейлист</string>
-    <string name="capsule_soundcloud_playable_tracks">Доступно %1$d из %2$d треков</string>
-    <string name="capsule_soundcloud_no_playable_tracks">В этом плейлисте нет доступных треков без DRM-защиты.</string>
+ <string name="capsule_soundcloud_group">Экспериментальные источники</string>
+ <string name="capsule_soundcloud_web_title">SoundCloud</string>
+ <string name="capsule_soundcloud_web_description">Нативные результаты, очереди и загрузки SoundCloud внутри Capsule через NewPipeExtractor. API-токен не нужен.</string>
+ <string name="capsule_soundcloud_badge">SoundCloud</string>
+ <string name="capsule_source_all">Все источники</string>
+ <string name="capsule_soundcloud_loading">Ищем в SoundCloud…</string>
+ <string name="capsule_soundcloud_rate_limited">SoundCloud временно ограничил запросы. Попробуй позже.</string>
+ <string name="capsule_soundcloud_request_failed">Поиск SoundCloud сейчас недоступен. Проверь подключение или попробуй позже.</string>
+ <string name="capsule_soundcloud_no_results">В SoundCloud ничего не найдено.</string>
+ <string name="capsule_soundcloud_play">Слушать</string><string name="capsule_soundcloud_pause">Пауза</string>
+ <string name="capsule_soundcloud_playback_error">Не удалось воспроизвести аудио SoundCloud.</string>
+ <string name="capsule_soundcloud_tracks">Треки</string><string name="capsule_soundcloud_playlists">Плейлисты</string>
+ <string name="capsule_soundcloud_accounts">Исполнители</string><string name="capsule_soundcloud_account_title">Исполнитель</string>
+ <string name="capsule_soundcloud_playlist_title">Плейлист</string><string name="capsule_soundcloud_followers">Подписчики: %1$d</string>
+ <string name="capsule_soundcloud_play_all">Слушать плейлист</string>
+ <string name="capsule_soundcloud_playable_tracks">Доступно %1$d из %2$d треков</string>
+ <string name="capsule_soundcloud_no_playable_tracks">В этом плейлисте нет доступных треков без DRM-защиты.</string>
 </resources>

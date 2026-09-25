@@ -53,10 +53,16 @@ object SoundCloudNewPipe {
         val trackCount: Long,
     )
 
+    class SearchCursor internal constructor(
+        internal val query: String,
+        internal val page: Page,
+    )
+
     data class SearchResults(
         val tracks: List<Track>,
         val users: List<User>,
         val playlists: List<Playlist>,
+        val cursor: SearchCursor?,
     )
 
     data class Profile(
@@ -98,28 +104,44 @@ object SoundCloudNewPipe {
 
     fun searchAll(query: String): SearchResults {
         val q = query.trim().take(180)
-        if (q.isBlank()) return SearchResults(emptyList(), emptyList(), emptyList())
+        if (q.isBlank()) return SearchResults(emptyList(), emptyList(), emptyList(), null)
         NewPipeUtils.prepareSoundCloud()
         val service = NewPipe.getService("SoundCloud")
         val handler = service.searchQHFactory.fromQuery(
             q, listOf(SoundcloudSearchQueryHandlerFactory.ALL), ""
         )
-        val items = SearchInfo.getInfo(service, handler).relatedItems
-        return SearchResults(
-            tracks = items.filterIsInstance<StreamInfoItem>()
-                .mapNotNull(::toPlayableTrack)
-                .distinctBy { it.url }
-                .take(12),
-            users = items.filterIsInstance<ChannelInfoItem>()
-                .mapNotNull(::toUser)
-                .distinctBy { it.url }
-                .take(8),
-            playlists = items.filterIsInstance<PlaylistInfoItem>()
-                .mapNotNull(::toPlaylist)
-                .distinctBy { it.url }
-                .take(8),
-        )
+        val info = SearchInfo.getInfo(service, handler)
+        return searchResults(q, info.relatedItems, info.nextPage)
     }
+
+    fun searchMore(cursor: SearchCursor): SearchResults {
+        NewPipeUtils.prepareSoundCloud()
+        val service = NewPipe.getService("SoundCloud")
+        val handler = service.searchQHFactory.fromQuery(
+            cursor.query,
+            listOf(SoundcloudSearchQueryHandlerFactory.ALL),
+            "",
+        )
+        val page = SearchInfo.getMoreItems(service, handler, cursor.page)
+        return searchResults(cursor.query, page.items, page.nextPage)
+    }
+
+    private fun searchResults(
+        query: String,
+        items: List<*>,
+        nextPage: Page?,
+    ): SearchResults = SearchResults(
+        tracks = items.filterIsInstance<StreamInfoItem>()
+            .mapNotNull(::toPlayableTrack)
+            .distinctBy { it.url },
+        users = items.filterIsInstance<ChannelInfoItem>()
+            .mapNotNull(::toUser)
+            .distinctBy { it.url },
+        playlists = items.filterIsInstance<PlaylistInfoItem>()
+            .mapNotNull(::toPlaylist)
+            .distinctBy { it.url },
+        cursor = nextPage?.takeIf { Page.isValid(it) }?.let { SearchCursor(query, it) },
+    )
 
     fun profile(url: String): Profile {
         NewPipeUtils.prepareSoundCloud()
@@ -211,7 +233,13 @@ object SoundCloudNewPipe {
      * In NewPipe v0.26.5 encrypted protocols are excluded by the SoundCloud
      * extractor before AudioStream objects are returned.
      */
-    fun resolve(trackUrl: String): Stream {
+    fun resolve(trackUrl: String): Stream =
+        resolveInternal(trackUrl, progressiveOnly = false)
+
+    fun resolveProgressive(trackUrl: String): Stream =
+        resolveInternal(trackUrl, progressiveOnly = true)
+
+    private fun resolveInternal(trackUrl: String, progressiveOnly: Boolean): Stream {
         require(isSoundCloudTrackUrl(trackUrl)) { "Not a SoundCloud track URL" }
         NewPipeUtils.prepareSoundCloud()
         val info = StreamInfo.getInfo(NewPipe.getService("SoundCloud"), trackUrl)
@@ -220,7 +248,7 @@ object SoundCloudNewPipe {
             .filter { it.isUrl && it.content.startsWith("https://") }
             .filter {
                 it.deliveryMethod == DeliveryMethod.PROGRESSIVE_HTTP ||
-                    it.deliveryMethod == DeliveryMethod.HLS
+                    (!progressiveOnly && it.deliveryMethod == DeliveryMethod.HLS)
             }
             .toList()
         val selected = options.maxWithOrNull(
@@ -229,14 +257,16 @@ object SoundCloudNewPipe {
             }.thenBy { it.averageBitrate }
         )
         if (selected != null) {
-            return Stream(
-                url = selected.content,
-                isHls = selected.deliveryMethod == DeliveryMethod.HLS,
-            )
+            return Stream(selected.content, selected.deliveryMethod == DeliveryMethod.HLS)
         }
-        val fallback = info.hlsUrl
-        if (fallback.startsWith("https://")) return Stream(fallback, isHls = true)
-        throw IllegalStateException("NewPipe returned no non-DRM SoundCloud audio stream")
+        if (!progressiveOnly) {
+            val fallback = info.hlsUrl
+            if (fallback.startsWith("https://")) return Stream(fallback, true)
+        }
+        throw IllegalStateException(
+            if (progressiveOnly) "NewPipe returned no progressive SoundCloud audio stream"
+            else "NewPipe returned no non-DRM SoundCloud audio stream"
+        )
     }
 
     /**

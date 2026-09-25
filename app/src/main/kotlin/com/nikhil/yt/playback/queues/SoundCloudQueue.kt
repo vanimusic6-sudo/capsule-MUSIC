@@ -4,7 +4,10 @@ import androidx.media3.common.MediaItem
 import com.nikhil.yt.innertube.soundcloud.SoundCloudNewPipe
 import com.nikhil.yt.models.MediaMetadata
 import com.nikhil.yt.soundcloud.SoundCloudCatalog
+import com.nikhil.yt.soundcloud.soundCloudMediaId
+import com.nikhil.yt.soundcloud.toCachedSoundCloudMediaItem
 import com.nikhil.yt.soundcloud.toSoundCloudMediaItem
+import com.nikhil.yt.soundcloud.toSoundCloudMetadata
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
@@ -12,106 +15,68 @@ import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.runInterruptible
 
-/**
- * Lazy SoundCloud queue.
- *
- * Only the selected track is resolved on the critical path. The rest of the
- * metadata list is resolved in tiny pages when MusicService asks for more,
- * instead of blocking a click on 10-100 sequential extractor requests.
- */
 internal class SoundCloudQueue private constructor(
     private val queueTitle: String?,
-    private val firstItem: MediaItem,
+    private val firstTrack: SoundCloudCatalog.Track,
     private val pendingTracks: List<SoundCloudCatalog.Track>,
+    private val downloadedMediaIds: Set<String>,
 ) : Queue {
-    override val preloadItem: MediaMetadata? = null
-
+    override val preloadItem: MediaMetadata = firstTrack.toSoundCloudMetadata()
     private var nextTrackIndex = 0
-    private var pageAnchor: MediaItem = firstItem
+    private var pageAnchor: MediaItem? = null
 
-    override suspend fun getInitialStatus(): Queue.Status =
-        Queue.Status(
-            title = queueTitle,
-            items = listOf(firstItem),
-            mediaItemIndex = 0,
-            position = 0L,
-        )
+    override suspend fun getInitialStatus(): Queue.Status {
+        val firstItem = resolveTrack(firstTrack) ?: return Queue.Status(queueTitle, emptyList(), 0, 0L)
+        pageAnchor = firstItem
+        return Queue.Status(queueTitle, listOf(firstItem), 0, 0L)
+    }
 
-    override fun hasNextPage(): Boolean = nextTrackIndex < pendingTracks.size
+    override fun hasNextPage() = nextTrackIndex < pendingTracks.size
 
     override suspend fun nextPage(): List<MediaItem> {
-        if (!hasNextPage()) return listOf(pageAnchor)
-
+        val anchor = pageAnchor ?: return emptyList()
+        if (!hasNextPage()) return listOf(anchor)
         val end = (nextTrackIndex + PAGE_SIZE).coerceAtMost(pendingTracks.size)
         val batch = pendingTracks.subList(nextTrackIndex, end)
         nextTrackIndex = end
+        val resolved = coroutineScope { batch.map { async { resolveTrack(it) } }.awaitAll().filterNotNull() }
+        if (resolved.isEmpty()) return listOf(anchor)
+        return buildList { add(anchor); addAll(resolved) }.also { pageAnchor = resolved.last() }
+    }
 
-        val resolved = coroutineScope {
-            batch.map { track ->
-                async { resolveTrack(track) }
-            }.awaitAll().filterNotNull()
-        }
-
-        if (resolved.isEmpty()) {
-            // Queue.nextPage() has an overlap contract: MusicService drops item 0.
-            return listOf(pageAnchor)
-        }
-
-        return buildList(resolved.size + 1) {
-            add(pageAnchor)
-            addAll(resolved)
-        }.also {
-            pageAnchor = resolved.last()
+    private suspend fun resolveTrack(track: SoundCloudCatalog.Track): MediaItem? {
+        if (soundCloudMediaId(track.permalink) in downloadedMediaIds) return track.toCachedSoundCloudMediaItem()
+        return try {
+            runInterruptible(Dispatchers.IO) {
+                track.toSoundCloudMediaItem(SoundCloudNewPipe.resolve(track.permalink))
+            }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            null
         }
     }
 
     companion object {
-        private const val PAGE_SIZE = 3
+        private const val PAGE_SIZE = 5
 
-        suspend fun create(
+        fun create(
             title: String?,
             tracks: List<SoundCloudCatalog.Track>,
             requestedStartUrl: String?,
+            downloadedMediaIds: Set<String> = emptySet(),
         ): SoundCloudQueue? {
             val unique = tracks.distinctBy { it.permalink }
             if (unique.isEmpty()) return null
-
             val startIndex = requestedStartUrl
                 ?.let { url -> unique.indexOfFirst { it.permalink == url } }
-                ?.takeIf { it >= 0 }
-                ?: 0
-            val startTrack = unique[startIndex]
-
-            // Make the blocking extractor call actually cancellable. Rapidly
-            // choosing another track must not leave stale SoundCloud resolves
-            // occupying IO threads and bandwidth behind the new request.
-            val firstItem = resolveTrack(startTrack) ?: return null
-
-            val pending = buildList {
-                addAll(unique.drop(startIndex + 1))
-                addAll(unique.take(startIndex))
-            }
-
+                ?.takeIf { it >= 0 } ?: 0
             return SoundCloudQueue(
-                queueTitle = title,
-                firstItem = firstItem,
-                pendingTracks = pending,
+                title,
+                unique[startIndex],
+                buildList { addAll(unique.drop(startIndex + 1)); addAll(unique.take(startIndex)) },
+                downloadedMediaIds,
             )
         }
-
-        private suspend fun resolveTrack(
-            track: SoundCloudCatalog.Track,
-        ): MediaItem? =
-            try {
-                runInterruptible(Dispatchers.IO) {
-                    track.toSoundCloudMediaItem(
-                        SoundCloudNewPipe.resolve(track.permalink)
-                    )
-                }
-            } catch (cancelled: CancellationException) {
-                throw cancelled
-            } catch (_: Exception) {
-                null
-            }
     }
 }

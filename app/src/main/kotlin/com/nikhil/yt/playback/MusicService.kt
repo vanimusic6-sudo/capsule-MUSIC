@@ -1207,6 +1207,7 @@ class MusicService :
     }
 
     private var currentQueue: Queue = EmptyQueue
+    private var queueLoadJob: Job? = null
     var queueTitle: String? = null
     private val playbackPersistence by lazy(LazyThreadSafetyMode.NONE) {
         PlaybackPersistence(
@@ -2292,6 +2293,7 @@ class MusicService :
         }
         ensureScopesActive()
         suppressAutoPlayback = false
+        queueLoadJob?.cancel()
         currentQueue = queue
         queueTitle = null
         val permanentShuffle = dataStore.get(PermanentShuffleKey, false)
@@ -2303,32 +2305,42 @@ class MusicService :
         automixRuntime.seedMediaId = null
         autoAddedMediaIds.clear()
         queue.preloadItem?.let { preloadItem ->
-            player.setMediaItem(preloadItem.toMediaItem())
-            player.prepare()
-            player.playWhenReady = playWhenReady
+            if (preloadItem.id.startsWith(SOUNDCLOUD_MEDIA_ID_PREFIX)) {
+                player.playWhenReady = false
+                player.stop()
+                player.setMediaItem(preloadItem.toMediaItem())
+                currentMediaMetadata.value = preloadItem
+            } else {
+                player.setMediaItem(preloadItem.toMediaItem())
+                player.prepare()
+                player.playWhenReady = playWhenReady
+            }
         }
-        scope.launch(SilentHandler) {
+        queueLoadJob = scope.launch(SilentHandler) {
             val initialStatus =
                 withContext(Dispatchers.IO) {
                     queue.getInitialStatus().filterExplicit(dataStore.get(HideExplicitKey, false)).filterVideo(dataStore.get(HideVideoKey, false))
                 }
+            if (currentQueue !== queue) return@launch
             if (initialStatus.title != null) {
                 queueTitle = initialStatus.title
             }
             if (initialStatus.items.isEmpty()) return@launch
-            if (queue.preloadItem != null) {
-                player.addMediaItems(
-                    0,
-                    initialStatus.items.subList(0, initialStatus.mediaItemIndex)
-                )
-                player.addMediaItems(
-                    initialStatus.items.subList(
-                        initialStatus.mediaItemIndex + 1,
-                        initialStatus.items.size
+            val preload = queue.preloadItem
+            if (preload != null) {
+                if (preload.id.startsWith(SOUNDCLOUD_MEDIA_ID_PREFIX)) {
+                    val resolvedItem = initialStatus.items.getOrNull(initialStatus.mediaItemIndex)
+                        ?: return@launch
+                    if (currentQueue !== queue || player.currentMediaItem?.mediaId != preload.id) return@launch
+                    player.setMediaItem(resolvedItem, initialStatus.position)
+                    player.prepare()
+                    player.playWhenReady = playWhenReady
+                } else {
+                    player.addMediaItems(0, initialStatus.items.subList(0, initialStatus.mediaItemIndex))
+                    player.addMediaItems(
+                        initialStatus.items.subList(initialStatus.mediaItemIndex + 1, initialStatus.items.size)
                     )
-                )
-                if (player.shuffleModeEnabled) {
-                    applyCurrentFirstShuffleOrder()
+                    if (player.shuffleModeEnabled) applyCurrentFirstShuffleOrder()
                 }
             } else {
                 val items = initialStatus.items
@@ -2557,6 +2569,8 @@ class MusicService :
         suppressAutoPlayback = true
         clearAutomix()
         currentQueue = EmptyQueue
+        queueLoadJob?.cancel()
+        queueLoadJob = null
         queueTitle = null
         audioResolveCoordinator.cancelAll()
         prefetchScheduleJob?.cancel()
@@ -5260,15 +5274,20 @@ class MusicService :
         // Independent HTTP/HLS source: never pass SoundCloud's URLs through the
         // YouTube signed-URL resolver, CDN diagnostics, retry policy or caches.
         val soundCloudSource = DefaultMediaSourceFactory(
-            DefaultDataSource.Factory(
-                this,
-                OkHttpDataSource.Factory(
-                    OkHttpClient.Builder()
-                        .followRedirects(true)
-                        .followSslRedirects(true)
-                        .build(),
-                ),
-            ),
+            CacheDataSource.Factory()
+                .setCache(downloadCache)
+                .setUpstreamDataSourceFactory(
+                    DefaultDataSource.Factory(
+                        this,
+                        OkHttpDataSource.Factory(
+                            OkHttpClient.Builder()
+                                .followRedirects(true)
+                                .followSslRedirects(true)
+                                .build(),
+                        ),
+                    ),
+                )
+                .setFlags(FLAG_IGNORE_CACHE_ON_ERROR),
         )
         val dataSourceFactory = createDataSourceFactory()
         val extractorsFactory =

@@ -1,214 +1,97 @@
 package com.nikhil.yt.ui.screens.search
 
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
+import androidx.compose.foundation.layout.*
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import coil3.compose.AsyncImage
 import com.nikhil.yt.R
 import com.nikhil.yt.soundcloud.SoundCloudCatalog
+import com.nikhil.yt.ui.component.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runInterruptible
 
+internal enum class SoundCloudResultKind { ALL, TRACKS, PLAYLISTS, USERS }
+
 @Composable
 internal fun SoundCloudNativeResults(
     query: String,
+    kind: SoundCloudResultKind,
     selectedUrl: String?,
     playing: Boolean,
-    loadingTrack: Boolean,
     onTrackClick: (SoundCloudCatalog.Track, List<SoundCloudCatalog.Track>) -> Unit,
+    onTrackMenu: (SoundCloudCatalog.Track) -> Unit,
     onArtistClick: (String) -> Unit,
     onPlaylistClick: (String) -> Unit,
     onUserClick: (String) -> Unit,
 ) {
     var result by remember(query) { mutableStateOf<SoundCloudCatalog.Result<SoundCloudCatalog.SearchPage>?>(null) }
     LaunchedEffect(query) {
-        val normalized = query.trim()
-        if (normalized.isBlank()) {
-            result = SoundCloudCatalog.Result.Success(
-                SoundCloudCatalog.SearchPage(emptyList(), emptyList(), emptyList())
-            )
+        val q=query.trim()
+        if(q.isBlank()) {
+            result=SoundCloudCatalog.Result.Success(SoundCloudCatalog.SearchPage(emptyList(),emptyList(),emptyList(),null))
             return@LaunchedEffect
         }
-
-        // SearchInfo.getInfo is blocking. Without a debounce, every key stroke
-        // leaves another extractor request running even after Compose cancels
-        // the old LaunchedEffect.
-        delay(280L)
-        result = null
-        result = runInterruptible(Dispatchers.IO) {
-            SoundCloudCatalog.search(normalized)
+        delay(280)
+        val initial=runInterruptible(Dispatchers.IO){SoundCloudCatalog.search(q)}
+        result=initial
+        if(initial is SoundCloudCatalog.Result.Success) {
+            var page=initial.value
+            var next=page.continuation
+            var loaded=0
+            while(next!=null && page.tracks.size<50 && loaded<5) {
+                val request=next ?: break
+                val more=runInterruptible(Dispatchers.IO){SoundCloudCatalog.searchMore(request)}
+                if(more !is SoundCloudCatalog.Result.Success) break
+                val c=more.value
+                page=page.copy(
+                    tracks=(page.tracks+c.tracks).distinctBy{it.permalink}.take(50),
+                    users=(page.users+c.users).distinctBy{it.url}.take(20),
+                    playlists=(page.playlists+c.playlists).distinctBy{it.url}.take(20),
+                    continuation=c.continuation
+                )
+                result=SoundCloudCatalog.Result.Success(page); next=c.continuation; loaded++
+            }
         }
     }
-
-    Column(modifier = Modifier.fillMaxWidth()) {
-        SectionTitle(stringResource(R.string.capsule_soundcloud_badge))
-        when (val value = result) {
+    Column(Modifier.fillMaxWidth()) {
+        when(val v=result) {
             null -> Status(R.string.capsule_soundcloud_loading)
             SoundCloudCatalog.Result.RateLimited -> Status(R.string.capsule_soundcloud_rate_limited)
             SoundCloudCatalog.Result.Unavailable -> Status(R.string.capsule_soundcloud_request_failed)
             is SoundCloudCatalog.Result.Success -> {
-                val page = value.value
-                page.tracks.forEach { track ->
-                    val selected = track.permalink == selectedUrl
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(12.dp),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable { onTrackClick(track, page.tracks) }
-                            .padding(horizontal = 20.dp, vertical = 8.dp),
-                    ) {
-                        AsyncImage(
-                            model = track.artworkUrl,
-                            contentDescription = null,
-                            modifier = Modifier.size(52.dp).clip(RoundedCornerShape(8.dp)),
-                        )
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = track.title,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                                style = MaterialTheme.typography.bodyMedium,
-                                fontWeight = if (selected) FontWeight.Bold else FontWeight.SemiBold,
-                            )
-                            Text(
-                                text = track.artist,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.clickable(enabled = track.uploaderUrl != null) {
-                                    track.uploaderUrl?.let(onArtistClick)
-                                },
-                            )
-                        }
-                        Text(
-                            text = stringResource(R.string.capsule_soundcloud_badge),
-                            style = MaterialTheme.typography.labelSmall,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.primary,
-                        )
-                        if (selected) {
-                            Text(
-                                text = stringResource(
-                                    when {
-                                        loadingTrack -> R.string.capsule_soundcloud_loading
-                                        playing -> R.string.capsule_soundcloud_pause
-                                        else -> R.string.capsule_soundcloud_play
-                                    }
-                                ),
-                                style = MaterialTheme.typography.labelSmall,
-                            )
-                        }
-                    }
+                val p=v.value
+                if(kind==SoundCloudResultKind.ALL || kind==SoundCloudResultKind.TRACKS) {
+                    if(p.tracks.isNotEmpty()) SectionTitle(stringResource(R.string.capsule_soundcloud_tracks))
+                    p.tracks.forEach { t -> SoundCloudTrackListItem(t,t.permalink==selectedUrl,playing&&t.permalink==selectedUrl,
+                        {onTrackClick(t,p.tracks)},onArtistClick,{onTrackMenu(t)}) }
                 }
-
-                if (page.playlists.isNotEmpty()) {
-                    SectionTitle(stringResource(R.string.capsule_soundcloud_playlists))
-                    page.playlists.forEach { playlist ->
-                        Row(
-                            modifier = Modifier.fillMaxWidth()
-                                .clickable { onPlaylistClick(playlist.url) }
-                                .padding(horizontal = 20.dp, vertical = 9.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(12.dp),
-                        ) {
-                            AsyncImage(
-                                model = playlist.artworkUrl,
-                                contentDescription = null,
-                                modifier = Modifier.size(52.dp).clip(RoundedCornerShape(8.dp)),
-                            )
-                            Column(Modifier.weight(1f)) {
-                                Text(playlist.title, maxLines = 1, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.SemiBold)
-                                Text(
-                                    text = playlist.uploader,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-                            }
-                            Text(stringResource(R.string.capsule_soundcloud_badge), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
-                        }
-                    }
+                if(kind==SoundCloudResultKind.ALL || kind==SoundCloudResultKind.PLAYLISTS) {
+                    if(p.playlists.isNotEmpty()) SectionTitle(stringResource(R.string.capsule_soundcloud_playlists))
+                    p.playlists.forEach { pl -> SoundCloudPlaylistListItem(pl){onPlaylistClick(pl.url)} }
                 }
-
-                if (page.users.isNotEmpty()) {
-                    SectionTitle(stringResource(R.string.capsule_soundcloud_accounts))
-                    page.users.forEach { user ->
-                        Row(
-                            modifier = Modifier.fillMaxWidth()
-                                .clickable { onUserClick(user.url) }
-                                .padding(horizontal = 20.dp, vertical = 9.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(12.dp),
-                        ) {
-                            AsyncImage(
-                                model = user.avatarUrl,
-                                contentDescription = null,
-                                modifier = Modifier.size(48.dp).clip(RoundedCornerShape(24.dp)),
-                            )
-                            Column(Modifier.weight(1f)) {
-                                Text(user.name, maxLines = 1, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.SemiBold)
-                                Text(
-                                    text = stringResource(R.string.capsule_soundcloud_followers, user.followerCount.coerceAtLeast(0)),
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-                            }
-                            Text(stringResource(R.string.capsule_soundcloud_badge), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
-                        }
-                    }
+                if(kind==SoundCloudResultKind.ALL || kind==SoundCloudResultKind.USERS) {
+                    if(p.users.isNotEmpty()) SectionTitle(stringResource(R.string.capsule_soundcloud_accounts))
+                    p.users.forEach { u -> SoundCloudUserListItem(
+                        u,stringResource(R.string.capsule_soundcloud_followers,u.followerCount.coerceAtLeast(0))){onUserClick(u.url)} }
                 }
-
-                if (page.tracks.isEmpty() && page.playlists.isEmpty() && page.users.isEmpty()) {
-                    Status(R.string.capsule_soundcloud_no_results)
+                val empty=when(kind){
+                    SoundCloudResultKind.ALL -> p.tracks.isEmpty()&&p.playlists.isEmpty()&&p.users.isEmpty()
+                    SoundCloudResultKind.TRACKS -> p.tracks.isEmpty()
+                    SoundCloudResultKind.PLAYLISTS -> p.playlists.isEmpty()
+                    SoundCloudResultKind.USERS -> p.users.isEmpty()
                 }
+                if(empty) Status(R.string.capsule_soundcloud_no_results)
             }
         }
-        HorizontalDivider(modifier = Modifier.padding(top = 8.dp))
+        HorizontalDivider(Modifier.padding(top=8.dp))
     }
 }
-
-@Composable
-private fun SectionTitle(text: String) {
-    Text(
-        text = text,
-        color = MaterialTheme.colorScheme.primary,
-        style = MaterialTheme.typography.titleSmall,
-        fontWeight = FontWeight.Bold,
-        modifier = Modifier.padding(start = 20.dp, top = 16.dp, bottom = 6.dp),
-    )
-}
-
-@Composable
-private fun Status(message: Int) {
-    Text(
-        text = stringResource(message),
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-        style = MaterialTheme.typography.bodySmall,
-        modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp),
-    )
-}
+@Composable private fun SectionTitle(t:String)=Text(t,color=MaterialTheme.colorScheme.onSurface,
+    style=MaterialTheme.typography.titleSmall,fontWeight=FontWeight.SemiBold,
+    modifier=Modifier.padding(start=20.dp,top=14.dp,bottom=4.dp))
+@Composable private fun Status(r:Int)=Text(stringResource(r),color=MaterialTheme.colorScheme.onSurfaceVariant,
+    style=MaterialTheme.typography.bodySmall,modifier=Modifier.padding(horizontal=20.dp,vertical=12.dp))
