@@ -8,8 +8,10 @@ package com.nikhil.yt.playback
 
 import android.content.Context
 import android.net.ConnectivityManager
+import androidx.core.net.toUri
 import androidx.core.content.getSystemService
 import androidx.media3.common.C
+import androidx.media3.common.MimeTypes
 import androidx.media3.database.DatabaseProvider
 import androidx.media3.datasource.ResolvingDataSource
 import androidx.media3.datasource.cache.Cache
@@ -17,6 +19,8 @@ import androidx.media3.datasource.cache.CacheDataSource
 import androidx.media3.datasource.cache.CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR
 import androidx.media3.datasource.okhttp.OkHttpDataSource
 import androidx.media3.exoplayer.offline.Download
+import androidx.media3.exoplayer.offline.DownloadRequest
+import androidx.media3.exoplayer.offline.DownloadService
 import androidx.media3.exoplayer.offline.DefaultDownloadIndex
 import androidx.media3.exoplayer.offline.DownloaderFactory
 import com.nikhil.yt.playback.audio.CapsuleAudioRequestInterceptor
@@ -37,6 +41,10 @@ import com.nikhil.yt.di.DownloadCache
 import com.nikhil.yt.di.PlayerCache
 import com.nikhil.yt.innertube.YouTube
 import com.nikhil.yt.soundcloud.SOUNDCLOUD_MEDIA_ID_PREFIX
+import com.nikhil.yt.soundcloud.SoundCloudCatalog
+import com.nikhil.yt.soundcloud.soundCloudMediaId
+import com.nikhil.yt.soundcloud.toSoundCloudMetadata
+import com.nikhil.yt.innertube.soundcloud.SoundCloudNewPipe
 import com.nikhil.yt.playback.audio.CapsuleAudioEngine
 import com.nikhil.yt.playback.audio.CapsulePlaybackSafety
 import com.nikhil.yt.utils.StreamClientUtils
@@ -45,12 +53,14 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runInterruptible
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import okhttp3.OkHttpClient
@@ -63,7 +73,7 @@ import javax.inject.Singleton
 class DownloadUtil
 @Inject
 constructor(
-    @ApplicationContext context: Context,
+    @ApplicationContext private val context: Context,
     val database: MusicDatabase,
     val databaseProvider: DatabaseProvider,
     @DownloadCache val downloadCache: Cache,
@@ -112,6 +122,64 @@ constructor(
     }
 
     val downloads = MutableStateFlow<Map<String, Download>>(emptyMap())
+    val soundCloudPending = MutableStateFlow<Set<String>>(emptySet())
+
+    private val soundCloudDownloadScope =
+        CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
+    fun enqueueSoundCloud(
+        track: SoundCloudCatalog.Track,
+    ) {
+        val mediaId = soundCloudMediaId(track.permalink)
+        val current = downloads.value[mediaId]
+        if (
+            current?.state == Download.STATE_COMPLETED ||
+            current?.state == Download.STATE_QUEUED ||
+            current?.state == Download.STATE_DOWNLOADING
+        ) {
+            return
+        }
+
+        synchronized(soundCloudPending) {
+            if (mediaId in soundCloudPending.value) return
+            soundCloudPending.value = soundCloudPending.value + mediaId
+        }
+
+        soundCloudDownloadScope.launch {
+            try {
+                val stream = runInterruptible {
+                    SoundCloudNewPipe.resolve(track.permalink)
+                }
+
+                database.transaction {
+                    insert(track.toSoundCloudMetadata())
+                }
+
+                val requestBuilder = DownloadRequest.Builder(
+                    mediaId,
+                    stream.url.toUri(),
+                )
+                    .setData(track.title.toByteArray())
+
+                if (stream.isHls) {
+                    requestBuilder.setMimeType(MimeTypes.APPLICATION_M3U8)
+                } else {
+                    requestBuilder.setCustomCacheKey(mediaId)
+                }
+
+                DownloadService.sendAddDownload(
+                    context,
+                    ExoDownloadService::class.java,
+                    requestBuilder.build(),
+                    false,
+                )
+            } finally {
+                soundCloudPending.update { pending ->
+                    pending - mediaId
+                }
+            }
+        }
+    }
 
     private suspend fun awaitDownloadResolveWindow() {
         downloadResolveMutex.withLock {
@@ -177,9 +245,7 @@ constructor(
     private val downloaderFactory = DownloaderFactory { request ->
         if (request.id.startsWith(SOUNDCLOUD_MEDIA_ID_PREFIX)) {
             SoundCloudDownloader(
-                trackUrl = request.uri.toString(),
-                mediaId = request.id,
-                cache = downloadCache,
+                request = request,
                 dataSourceFactory = soundCloudDownloadDataSourceFactory,
             )
         } else {
@@ -272,14 +338,24 @@ constructor(
                         download: Download,
                         finalException: Exception?,
                     ) {
+                        val isSoundCloud =
+                            download.request.id.startsWith(SOUNDCLOUD_MEDIA_ID_PREFIX)
+
                         if (download.state == Download.STATE_FAILED) {
-                            CapsuleAudioEngine.invalidateCachedStreamUrls(download.request.id)
-                            if (finalException != null && CapsuleAudioEngine.isRateLimitedException(finalException)) {
-                                CapsuleAudioEngine.markRateLimitedFailure()
+                            if (!isSoundCloud) {
+                                CapsuleAudioEngine.invalidateCachedStreamUrls(download.request.id)
+                                if (
+                                    finalException != null &&
+                                    CapsuleAudioEngine.isRateLimitedException(finalException)
+                                ) {
+                                    CapsuleAudioEngine.markRateLimitedFailure()
+                                }
+                                registerThrottleSignal(finalException)
                             }
-                            registerThrottleSignal(finalException)
                         } else if (download.state == Download.STATE_COMPLETED) {
-                            clearThrottleSignal()
+                            if (!isSoundCloud) {
+                                clearThrottleSignal()
+                            }
                             database.query {
                                 getSongByIdBlocking(download.request.id)?.song?.let { song ->
                                     if (song.dateDownload == null) update(song.copy(dateDownload = LocalDateTime.now()))

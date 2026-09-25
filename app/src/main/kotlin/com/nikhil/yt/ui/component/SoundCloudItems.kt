@@ -77,14 +77,19 @@ internal fun SoundCloudTrackListItem(
     onMoreClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val download by LocalDownloadUtil.current
-        .getDownload(soundCloudMediaId(track.permalink))
+    val downloadUtil = LocalDownloadUtil.current
+    val mediaId = soundCloudMediaId(track.permalink)
+    val download by downloadUtil
+        .getDownload(mediaId)
         .collectAsState(initial = null)
+    val pendingSoundCloud by downloadUtil.soundCloudPending.collectAsState()
+    val downloadState =
+        if (mediaId in pendingSoundCloud) Download.STATE_QUEUED else download?.state
 
     ListItem(
         title = track.title,
         subtitle = {
-            SoundCloudDownloadState(download?.state)
+            SoundCloudDownloadState(downloadState)
             Text(
                 text = track.artist,
                 color = MaterialTheme.colorScheme.secondary,

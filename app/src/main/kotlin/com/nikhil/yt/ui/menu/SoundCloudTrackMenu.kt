@@ -28,13 +28,10 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.core.net.toUri
 import androidx.media3.exoplayer.offline.Download
-import androidx.media3.exoplayer.offline.DownloadRequest
 import androidx.media3.exoplayer.offline.DownloadService
 import androidx.navigation.NavController
 import coil3.compose.AsyncImage
-import com.nikhil.yt.LocalDatabase
 import com.nikhil.yt.LocalDownloadUtil
 import com.nikhil.yt.R
 import com.nikhil.yt.constants.ListThumbnailSize
@@ -42,7 +39,6 @@ import com.nikhil.yt.constants.ThumbnailCornerRadius
 import com.nikhil.yt.playback.ExoDownloadService
 import com.nikhil.yt.soundcloud.SoundCloudCatalog
 import com.nikhil.yt.soundcloud.soundCloudMediaId
-import com.nikhil.yt.soundcloud.toSoundCloudMetadata
 import com.nikhil.yt.ui.component.SoundCloudSourceIcon
 import com.nikhil.yt.ui.component.VeluneLoader
 
@@ -53,11 +49,14 @@ internal fun SoundCloudTrackMenu(
     onDismiss: () -> Unit,
 ) {
     val context = LocalContext.current
-    val database = LocalDatabase.current
+    val downloadUtil = LocalDownloadUtil.current
     val mediaId = soundCloudMediaId(track.permalink)
-    val download by LocalDownloadUtil.current
+    val download by downloadUtil
         .getDownload(mediaId)
         .collectAsState(initial = null)
+    val pendingSoundCloud by downloadUtil.soundCloudPending.collectAsState()
+    val downloadState =
+        if (mediaId in pendingSoundCloud) Download.STATE_QUEUED else download?.state
 
     LazyColumn(
         contentPadding = WindowInsets.systemBars.asPaddingValues(),
@@ -101,7 +100,7 @@ internal fun SoundCloudTrackMenu(
         }
 
         item {
-            when (download?.state) {
+            when (downloadState) {
                 Download.STATE_COMPLETED -> {
                     ListItem(
                         headlineContent = {
@@ -161,22 +160,7 @@ internal fun SoundCloudTrackMenu(
                             )
                         },
                         modifier = Modifier.clickable {
-                            database.transaction {
-                                insert(track.toSoundCloudMetadata())
-                            }
-                            val request = DownloadRequest.Builder(
-                                mediaId,
-                                track.permalink.toUri(),
-                            )
-                                .setCustomCacheKey(mediaId)
-                                .setData(track.title.toByteArray())
-                                .build()
-                            DownloadService.sendAddDownload(
-                                context,
-                                ExoDownloadService::class.java,
-                                request,
-                                false,
-                            )
+                            downloadUtil.enqueueSoundCloud(track)
                             onDismiss()
                         },
                     )

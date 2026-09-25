@@ -33,7 +33,6 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.media3.exoplayer.offline.Download
 import androidx.navigation.NavController
 import coil3.compose.AsyncImage
 import com.nikhil.yt.LocalDownloadUtil
@@ -73,9 +72,6 @@ fun SoundCloudProfileScreen(
     val downloads by LocalDownloadUtil.current.downloads.collectAsState()
     val mediaMetadata = playerConnection?.mediaMetadata?.collectAsState()?.value
     val isPlaying = playerConnection?.isPlaying?.collectAsState()?.value == true
-    val downloadedIds = downloads
-        .filterValues { it.state == Download.STATE_COMPLETED }
-        .keys
 
     LaunchedEffect(url) {
         result = runInterruptible(Dispatchers.IO) {
@@ -181,7 +177,7 @@ fun SoundCloudProfileScreen(
                                     title = profile.name,
                                     tracks = profile.tracks,
                                     requestedStartUrl = track.permalink,
-                                    downloadedMediaIds = downloadedIds,
+                                    downloads = downloads,
                                 )?.let { queue ->
                                     playerConnection?.playQueue(queue)
                                 }
@@ -238,9 +234,6 @@ fun SoundCloudPlaylistScreen(
     val downloads by LocalDownloadUtil.current.downloads.collectAsState()
     val mediaMetadata = playerConnection?.mediaMetadata?.collectAsState()?.value
     val isPlaying = playerConnection?.isPlaying?.collectAsState()?.value == true
-    val downloadedIds = downloads
-        .filterValues { it.state == Download.STATE_COMPLETED }
-        .keys
 
     LaunchedEffect(url) {
         result = null
@@ -363,7 +356,7 @@ fun SoundCloudPlaylistScreen(
                                         title = playlist.title,
                                         tracks = playlist.tracks,
                                         requestedStartUrl = null,
-                                        downloadedMediaIds = downloadedIds,
+                                        downloads = downloads,
                                     )?.let { queue ->
                                         playerConnection?.playQueue(queue)
                                     }
@@ -391,7 +384,7 @@ fun SoundCloudPlaylistScreen(
                                     title = playlist.title,
                                     tracks = playlist.tracks,
                                     requestedStartUrl = track.permalink,
-                                    downloadedMediaIds = downloadedIds,
+                                    downloads = downloads,
                                 )?.let { queue ->
                                     playerConnection?.playQueue(queue)
                                 }

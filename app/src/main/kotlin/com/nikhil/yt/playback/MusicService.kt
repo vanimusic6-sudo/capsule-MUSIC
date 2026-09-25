@@ -2306,10 +2306,13 @@ class MusicService :
         autoAddedMediaIds.clear()
         queue.preloadItem?.let { preloadItem ->
             if (preloadItem.id.startsWith(SOUNDCLOUD_MEDIA_ID_PREFIX)) {
-                player.playWhenReady = false
                 player.stop()
                 player.setMediaItem(preloadItem.toMediaItem())
                 currentMediaMetadata.value = preloadItem
+                // Match YouTube semantics: the user pressed play. While the
+                // signed SoundCloud URL is resolving the UI stays in the
+                // playing/loading state instead of looking manually paused.
+                player.playWhenReady = playWhenReady
             } else {
                 player.setMediaItem(preloadItem.toMediaItem())
                 player.prepare()
@@ -2325,7 +2328,17 @@ class MusicService :
             if (initialStatus.title != null) {
                 queueTitle = initialStatus.title
             }
-            if (initialStatus.items.isEmpty()) return@launch
+            if (initialStatus.items.isEmpty()) {
+                val failedPreload = queue.preloadItem
+                if (
+                    failedPreload?.id?.startsWith(SOUNDCLOUD_MEDIA_ID_PREFIX) == true &&
+                    currentQueue === queue &&
+                    player.currentMediaItem?.mediaId == failedPreload.id
+                ) {
+                    player.playWhenReady = false
+                }
+                return@launch
+            }
             val preload = queue.preloadItem
             if (preload != null) {
                 if (preload.id.startsWith(SOUNDCLOUD_MEDIA_ID_PREFIX)) {

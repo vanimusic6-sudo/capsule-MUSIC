@@ -12,7 +12,6 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
@@ -99,9 +98,20 @@ import com.nikhil.yt.ui.menu.YouTubeSongMenu
 import com.nikhil.yt.ui.menu.SoundCloudTrackMenu
 import com.nikhil.yt.viewmodels.OnlineSearchViewModel
 import kotlinx.coroutines.launch
-import androidx.media3.exoplayer.offline.Download
 
 private enum class SearchSourceFilter { ALL, YOUTUBE, SOUNDCLOUD }
+
+private enum class SearchChip {
+    ALL,
+    YOUTUBE,
+    SOUNDCLOUD,
+    SONGS,
+    VIDEOS,
+    ALBUMS,
+    ARTISTS,
+    COMMUNITY_PLAYLISTS,
+    FEATURED_PLAYLISTS,
+}
 
 @OptIn(ExperimentalFoundationApi::class, ExperimentalMaterial3Api::class)
 @Composable
@@ -119,7 +129,6 @@ fun OnlineSearchResult(
     val lazyListState = rememberLazyListState()
     val (showSoundCloudPreview, _) = rememberPreference(SoundCloudWebPreviewEnabledKey, false)
     val downloads by LocalDownloadUtil.current.downloads.collectAsState()
-    val downloadedSoundCloudIds = downloads.filterValues { it.state == Download.STATE_COMPLETED }.keys
     var selectedSoundCloudTrack by remember { mutableStateOf<SoundCloudCatalog.Track?>(null) }
     var sourceFilter by remember { mutableStateOf(SearchSourceFilter.ALL) }
 
@@ -229,7 +238,7 @@ fun OnlineSearchResult(
         state = lazyListState,
         contentPadding =
         LocalPlayerAwareWindowInsets.current
-            .add(WindowInsets(top = SearchFilterHeight + SearchFilterHeight + 12.dp))
+            .add(WindowInsets(top = SearchFilterHeight + 8.dp))
             .asPaddingValues(),
     ) {
         val soundCloudKind = when (searchFilter) {
@@ -263,8 +272,12 @@ fun OnlineSearchResult(
                         if(mediaMetadata?.id==id) playerConnection.player.togglePlayPause()
                         else {
                             selectedSoundCloudTrack=track
-                            SoundCloudQueue.create(viewModel.query,tracks,track.permalink,downloadedSoundCloudIds)
-                                ?.let(playerConnection::playQueue)
+                            SoundCloudQueue.create(
+                                title = viewModel.query,
+                                tracks = tracks,
+                                requestedStartUrl = track.permalink,
+                                downloads = downloads,
+                            )?.let(playerConnection::playQueue)
                         }
                     }
                 )
@@ -366,53 +379,106 @@ fun OnlineSearchResult(
         }
     }
 
+    val selectedChip = when {
+        sourceFilter == SearchSourceFilter.YOUTUBE -> SearchChip.YOUTUBE
+        sourceFilter == SearchSourceFilter.SOUNDCLOUD -> SearchChip.SOUNDCLOUD
+        searchFilter == FILTER_SONG -> SearchChip.SONGS
+        searchFilter == FILTER_VIDEO -> SearchChip.VIDEOS
+        searchFilter == FILTER_ALBUM -> SearchChip.ALBUMS
+        searchFilter == FILTER_ARTIST -> SearchChip.ARTISTS
+        searchFilter == FILTER_COMMUNITY_PLAYLIST -> SearchChip.COMMUNITY_PLAYLISTS
+        searchFilter == FILTER_FEATURED_PLAYLIST -> SearchChip.FEATURED_PLAYLISTS
+        else -> SearchChip.ALL
+    }
+
     Surface(
         color = MaterialTheme.colorScheme.surface,
         tonalElevation = 0.dp,
         shadowElevation = 4.dp,
         modifier = Modifier
-            .windowInsetsPadding(WindowInsets.systemBars.only(WindowInsetsSides.Top).add(WindowInsets(top = AppBarHeight)))
-            .fillMaxWidth()
-    ) {
-        Column {
-            if (showSoundCloudPreview) {
-                ChipsRow(
-                    chips = listOf(
-                        SearchSourceFilter.ALL to stringResource(R.string.capsule_source_all),
-                        SearchSourceFilter.YOUTUBE to "YouTube",
-                        SearchSourceFilter.SOUNDCLOUD to "SoundCloud",
-                    ),
-                    currentValue = sourceFilter,
-                    onValueUpdate = { sourceFilter=it; coroutineScope.launch { lazyListState.animateScrollToItem(0) } },
-                    icons = mapOf(
-                        SearchSourceFilter.ALL to R.drawable.search,
-                        SearchSourceFilter.YOUTUBE to R.drawable.youtube_source,
-                        SearchSourceFilter.SOUNDCLOUD to R.drawable.soundcloud_source,
-                    ),
-                )
-            }
-            ChipsRow(
-                chips = listOf(
-                    null to stringResource(R.string.filter_all),
-                    FILTER_SONG to stringResource(R.string.filter_songs),
-                    FILTER_VIDEO to stringResource(R.string.filter_videos),
-                    FILTER_ALBUM to stringResource(R.string.filter_albums),
-                    FILTER_ARTIST to stringResource(R.string.filter_artists),
-                    FILTER_COMMUNITY_PLAYLIST to stringResource(R.string.filter_community_playlists),
-                    FILTER_FEATURED_PLAYLIST to stringResource(R.string.filter_featured_playlists),
-                ),
-                currentValue = searchFilter,
-                onValueUpdate = {
-                    if (viewModel.filter.value != it) viewModel.filter.value = it
-                    coroutineScope.launch { lazyListState.animateScrollToItem(0) }
-                },
-                icons = mapOf(
-                    null to R.drawable.search, FILTER_SONG to R.drawable.music_note,
-                    FILTER_VIDEO to R.drawable.slow_motion_video, FILTER_ALBUM to R.drawable.album,
-                    FILTER_ARTIST to R.drawable.person, FILTER_COMMUNITY_PLAYLIST to R.drawable.queue_music,
-                    FILTER_FEATURED_PLAYLIST to R.drawable.playlist_play,
-                ),
+            .windowInsetsPadding(
+                WindowInsets.systemBars
+                    .only(WindowInsetsSides.Top)
+                    .add(WindowInsets(top = AppBarHeight)),
             )
-        }
+            .fillMaxWidth(),
+    ) {
+        ChipsRow(
+            chips = buildList {
+                add(SearchChip.ALL to stringResource(R.string.filter_all))
+                if (showSoundCloudPreview) {
+                    add(SearchChip.YOUTUBE to "YouTube")
+                    add(SearchChip.SOUNDCLOUD to "SoundCloud")
+                }
+                add(SearchChip.SONGS to stringResource(R.string.filter_songs))
+                add(SearchChip.VIDEOS to stringResource(R.string.filter_videos))
+                add(SearchChip.ALBUMS to stringResource(R.string.filter_albums))
+                add(SearchChip.ARTISTS to stringResource(R.string.filter_artists))
+                add(
+                    SearchChip.COMMUNITY_PLAYLISTS to
+                        stringResource(R.string.filter_community_playlists),
+                )
+                add(
+                    SearchChip.FEATURED_PLAYLISTS to
+                        stringResource(R.string.filter_featured_playlists),
+                )
+            },
+            currentValue = selectedChip,
+            onValueUpdate = { chip ->
+                when (chip) {
+                    SearchChip.ALL -> {
+                        sourceFilter = SearchSourceFilter.ALL
+                        viewModel.filter.value = null
+                    }
+                    SearchChip.YOUTUBE -> {
+                        sourceFilter = SearchSourceFilter.YOUTUBE
+                        viewModel.filter.value = null
+                    }
+                    SearchChip.SOUNDCLOUD -> {
+                        sourceFilter = SearchSourceFilter.SOUNDCLOUD
+                        viewModel.filter.value = null
+                    }
+                    SearchChip.SONGS -> {
+                        sourceFilter = SearchSourceFilter.ALL
+                        viewModel.filter.value = FILTER_SONG
+                    }
+                    SearchChip.VIDEOS -> {
+                        sourceFilter = SearchSourceFilter.ALL
+                        viewModel.filter.value = FILTER_VIDEO
+                    }
+                    SearchChip.ALBUMS -> {
+                        sourceFilter = SearchSourceFilter.ALL
+                        viewModel.filter.value = FILTER_ALBUM
+                    }
+                    SearchChip.ARTISTS -> {
+                        sourceFilter = SearchSourceFilter.ALL
+                        viewModel.filter.value = FILTER_ARTIST
+                    }
+                    SearchChip.COMMUNITY_PLAYLISTS -> {
+                        sourceFilter = SearchSourceFilter.ALL
+                        viewModel.filter.value = FILTER_COMMUNITY_PLAYLIST
+                    }
+                    SearchChip.FEATURED_PLAYLISTS -> {
+                        sourceFilter = SearchSourceFilter.ALL
+                        viewModel.filter.value = FILTER_FEATURED_PLAYLIST
+                    }
+                }
+                coroutineScope.launch {
+                    lazyListState.animateScrollToItem(0)
+                }
+            },
+            icons = mapOf(
+                SearchChip.ALL to R.drawable.search,
+                SearchChip.YOUTUBE to R.drawable.youtube_source,
+                SearchChip.SOUNDCLOUD to R.drawable.soundcloud_source,
+                SearchChip.SONGS to R.drawable.music_note,
+                SearchChip.VIDEOS to R.drawable.slow_motion_video,
+                SearchChip.ALBUMS to R.drawable.album,
+                SearchChip.ARTISTS to R.drawable.person,
+                SearchChip.COMMUNITY_PLAYLISTS to R.drawable.queue_music,
+                SearchChip.FEATURED_PLAYLISTS to R.drawable.playlist_play,
+            ),
+        )
     }
+
 }
