@@ -5371,11 +5371,22 @@ class MusicService :
         return object : MediaSource.Factory {
             override fun createMediaSource(mediaItem: MediaItem): MediaSource {
                 if (mediaItem.mediaId.startsWith(SOUNDCLOUD_MEDIA_ID_PREFIX)) {
-                    val cacheKey = mediaItem.localConfiguration?.customCacheKey
-                    return if (cacheKey == mediaItem.mediaId) {
+                    val localConfiguration = mediaItem.localConfiguration
+                    val cacheKey = localConfiguration?.customCacheKey
+                    val sourceHost = localConfiguration?.uri?.host?.lowercase()
+                    val isOfflineSoundCloudItem =
+                        cacheKey == mediaItem.mediaId &&
+                            sourceHost in setOf(
+                                "soundcloud.com",
+                                "www.soundcloud.com",
+                                "m.soundcloud.com",
+                            )
+                    return if (isOfflineSoundCloudItem) {
                         // Completed downloads are cache-only. Never fall through
                         // to the canonical SoundCloud webpage when offline bytes
-                        // are missing or corrupt.
+                        // are missing or corrupt. The host check also keeps queue
+                        // items persisted by older builds (signed sndcdn.com URL
+                        // + legacy cache key) on the streaming path after update.
                         soundCloudOfflineSource.createMediaSource(mediaItem)
                     } else {
                         soundCloudStreamingSource.createMediaSource(mediaItem)
