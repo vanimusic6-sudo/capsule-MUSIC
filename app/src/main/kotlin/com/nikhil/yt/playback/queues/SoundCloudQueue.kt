@@ -41,28 +41,29 @@ internal class SoundCloudQueue private constructor(
 
     override suspend fun nextPage(): List<MediaItem> =
         pageMutex.withLock {
-        val anchor = pageAnchor ?: return@withLock emptyList()
-        if (!hasNextPage()) return@withLock listOf(anchor)
+            val anchor = pageAnchor ?: return@withLock emptyList()
+            if (!hasNextPage()) return@withLock listOf(anchor)
 
-        val end = (nextTrackIndex + PAGE_SIZE).coerceAtMost(pendingTracks.size)
-        val batch = pendingTracks.subList(nextTrackIndex, end)
-        nextTrackIndex = end
+            val end = (nextTrackIndex + PAGE_SIZE)
+                .coerceAtMost(pendingTracks.size)
+            val batch = pendingTracks.subList(nextTrackIndex, end)
+            nextTrackIndex = end
 
-        val resolved = coroutineScope {
-            batch.map { track ->
-                async { resolveTrack(track) }
-            }.awaitAll().filterNotNull()
+            val resolved = coroutineScope {
+                batch.map { track ->
+                    async { resolveTrack(track) }
+                }.awaitAll().filterNotNull()
+            }
+
+            if (resolved.isEmpty()) return@withLock listOf(anchor)
+
+            buildList {
+                add(anchor)
+                addAll(resolved)
+            }.also {
+                pageAnchor = resolved.last()
+            }
         }
-
-        if (resolved.isEmpty()) return@withLock listOf(anchor)
-
-        return buildList {
-            add(anchor)
-            addAll(resolved)
-        }.also {
-            pageAnchor = resolved.last()
-        }
-    }
 
     private suspend fun resolveTrack(
         track: SoundCloudCatalog.Track,
