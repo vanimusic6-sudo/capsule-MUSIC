@@ -35,4 +35,12 @@ class SoundCloudNewPipeUrlTest {
         assertFalse(SoundCloudNewPipe.isSoundCloudTrackUrl("https://soundcloud.com/search/sounds?q=test"))
         assertFalse(SoundCloudNewPipe.isSoundCloudTrackUrl("https://soundcloud.com/artist/likes"))
     }
+
+    @Test fun distinguishesProfileAndPlaylistUrls() {
+        assertTrue(SoundCloudNewPipe.isSoundCloudUserUrl("https://soundcloud.com/artist"))
+        assertFalse(SoundCloudNewPipe.isSoundCloudUserUrl("https://soundcloud.com/artist/track"))
+        assertTrue(SoundCloudNewPipe.isSoundCloudPlaylistUrl("https://soundcloud.com/artist/sets/my-mixtape"))
+        assertFalse(SoundCloudNewPipe.isSoundCloudPlaylistUrl("https://soundcloud.com/artist/track"))
+        assertFalse(SoundCloudNewPipe.isSoundCloudPlaylistUrl("https://evil.example/artist/sets/mix"))
+    }
 }

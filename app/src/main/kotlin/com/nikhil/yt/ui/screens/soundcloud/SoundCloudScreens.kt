@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
@@ -119,7 +120,10 @@ fun SoundCloudProfileScreen(url: String, navController: NavController) {
                         item { SectionHeader(stringResource(R.string.capsule_soundcloud_tracks)) }
                         items(p.tracks.size, key = { "sc-profile-track-" + p.tracks[it].permalink }) { index ->
                             val track = p.tracks[index]
-                            TrackRow(track) {
+                            TrackRow(
+                                track = track,
+                                onArtistClick = { artistUrl -> navController.openSoundCloudProfile(artistUrl) },
+                                onClick = {
                                 if (!loadingPlay && playerConnection != null) {
                                     loadingPlay = true
                                     scope.launch {
@@ -128,7 +132,8 @@ fun SoundCloudProfileScreen(url: String, navController: NavController) {
                                         loadingPlay = false
                                     }
                                 }
-                            }
+                                },
+                            )
                         }
                     }
                     if (p.playlists.isNotEmpty()) {
@@ -183,7 +188,7 @@ fun SoundCloudPlaylistScreen(url: String, navController: NavController) {
                                 p.uploader,
                                 color = MaterialTheme.colorScheme.primary,
                                 modifier = Modifier.clickable(enabled = p.uploaderUrl != null) {
-                                    p.uploaderUrl?.let(navController::openSoundCloudProfile)
+                                    p.uploaderUrl?.let { artistUrl -> navController.openSoundCloudProfile(artistUrl) }
                                 }.padding(vertical = 6.dp),
                             )
                             Text(
