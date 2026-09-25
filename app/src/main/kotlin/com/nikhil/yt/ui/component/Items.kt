@@ -967,12 +967,12 @@ fun YouTubeListItem(
                         modifier = Modifier.weight(1f, fill = false),
                     )
                     if (showSourceIcon) {
-                        Spacer(Modifier.width(5.dp))
+                        Spacer(Modifier.width(4.dp))
                         Icon(
                             painter = painterResource(R.drawable.youtube_source),
                             contentDescription = "YouTube Music",
                             tint = Color.Unspecified,
-                            modifier = Modifier.size(14.dp),
+                            modifier = Modifier.size(12.dp),
                         )
                     }
                 }

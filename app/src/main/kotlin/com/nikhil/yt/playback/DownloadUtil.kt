@@ -38,7 +38,6 @@ import com.nikhil.yt.db.entities.SongEntity
 import com.nikhil.yt.di.DownloadCache
 import com.nikhil.yt.di.PlayerCache
 import com.nikhil.yt.innertube.YouTube
-import com.nikhil.yt.innertube.models.YouTubeClient
 import com.nikhil.yt.soundcloud.SOUNDCLOUD_MEDIA_ID_PREFIX
 import com.nikhil.yt.soundcloud.SoundCloudCatalog
 import com.nikhil.yt.soundcloud.soundCloudMediaId
@@ -117,8 +116,12 @@ constructor(
                     val request =
                         chain.request()
                             .newBuilder()
-                            .header("User-Agent", YouTubeClient.USER_AGENT_WEB)
+                            // Match the downloader-side headers NewPipe uses.
+                            // In particular, an explicit Accept-Encoding keeps
+                            // byte ranges/content lengths stable for cache writes.
+                            .header("User-Agent", NEWPIPE_DOWNLOAD_USER_AGENT)
                             .header("Accept", "*/*")
+                            .header("Accept-Encoding", "*")
                             .build()
                     chain.proceed(request)
                 }
@@ -129,7 +132,10 @@ constructor(
             .setUpstreamDataSourceFactory(
                 OkHttpDataSource.Factory(client),
             )
-            .setFlags(FLAG_IGNORE_CACHE_ON_ERROR)
+            // Do not use FLAG_IGNORE_CACHE_ON_ERROR for offline downloads.
+            // Bypassing the cache after a write error can consume the whole
+            // network stream without leaving a persistent offline copy.
+            .setFlags(0)
     }
 
     val downloads = MutableStateFlow<Map<String, Download>>(emptyMap())
@@ -353,7 +359,13 @@ constructor(
                             download.request.id.startsWith(SOUNDCLOUD_MEDIA_ID_PREFIX)
 
                         if (download.state == Download.STATE_FAILED) {
-                            if (!isSoundCloud) {
+                            if (isSoundCloud) {
+                                android.util.Log.w(
+                                    "SoundCloudDownload",
+                                    "DownloadManager failed id=${download.request.id}",
+                                    finalException,
+                                )
+                            } else {
                                 CapsuleAudioEngine.invalidateCachedStreamUrls(download.request.id)
                                 if (
                                     finalException != null &&
@@ -478,6 +490,8 @@ constructor(
     }
 
     companion object {
+        private const val NEWPIPE_DOWNLOAD_USER_AGENT =
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:140.0) Gecko/20100101 Firefox/140.0"
         private const val DEFAULT_MAX_PARALLEL_DOWNLOADS = 3
         private const val MIN_PARALLEL_DOWNLOADS = 1
         private const val SHORT_COOLDOWN_MS = 2_500L

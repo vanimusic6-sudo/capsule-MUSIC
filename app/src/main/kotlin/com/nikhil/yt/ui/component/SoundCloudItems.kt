@@ -3,6 +3,7 @@ package com.nikhil.yt.ui.component
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -15,11 +16,13 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.media3.exoplayer.offline.Download
 import com.nikhil.yt.LocalDownloadUtil
 import com.nikhil.yt.R
@@ -37,7 +40,7 @@ internal fun SoundCloudSourceIcon(
         painter = painterResource(R.drawable.soundcloud_source),
         contentDescription = "SoundCloud",
         tint = Color.Unspecified,
-        modifier = modifier.size(14.dp),
+        modifier = modifier.size(12.dp),
     )
 }
 
@@ -90,23 +93,30 @@ internal fun SoundCloudTrackListItem(
         title = track.title,
         subtitle = {
             SoundCloudDownloadState(downloadState)
-            Text(
-                text = track.artist,
-                color = MaterialTheme.colorScheme.secondary,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier
                     .weight(1f, fill = false)
                     .clickable(enabled = track.uploaderUrl != null) {
                         track.uploaderUrl?.let(onArtistClick)
                     },
-            )
-            Spacer(Modifier.width(5.dp))
-            SoundCloudSourceIcon()
+            ) {
+                Text(
+                    text = track.artist,
+                    color = MaterialTheme.colorScheme.secondary,
+                    fontSize = 12.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false),
+                )
+                Spacer(Modifier.width(4.dp))
+                SoundCloudSourceIcon()
+            }
             if (track.durationSeconds > 0L) {
                 Text(
                     text = " • " + makeTimeString(track.durationSeconds * 1000L),
                     color = MaterialTheme.colorScheme.secondary,
+                    fontSize = 12.sp,
                     maxLines = 1,
                 )
             }
@@ -146,19 +156,26 @@ internal fun SoundCloudPlaylistListItem(
     ListItem(
         title = playlist.title,
         subtitle = {
-            Text(
-                text = playlist.uploader,
-                color = MaterialTheme.colorScheme.secondary,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier.weight(1f, fill = false),
-            )
-            Spacer(Modifier.width(5.dp))
-            SoundCloudSourceIcon()
+            ) {
+                Text(
+                    text = playlist.uploader,
+                    color = MaterialTheme.colorScheme.secondary,
+                    fontSize = 12.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false),
+                )
+                Spacer(Modifier.width(4.dp))
+                SoundCloudSourceIcon()
+            }
             if (playlist.trackCount > 0L) {
                 Text(
                     text = " • " + playlist.trackCount,
                     color = MaterialTheme.colorScheme.secondary,
+                    fontSize = 12.sp,
                     maxLines = 1,
                 )
             }
@@ -190,15 +207,21 @@ internal fun SoundCloudUserListItem(
     ListItem(
         title = user.name,
         subtitle = {
-            Text(
-                text = followerText,
-                color = MaterialTheme.colorScheme.secondary,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier.weight(1f, fill = false),
-            )
-            Spacer(Modifier.width(5.dp))
-            SoundCloudSourceIcon()
+            ) {
+                Text(
+                    text = followerText,
+                    color = MaterialTheme.colorScheme.secondary,
+                    fontSize = 12.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false),
+                )
+                Spacer(Modifier.width(4.dp))
+                SoundCloudSourceIcon()
+            }
         },
         thumbnailContent = {
             ItemThumbnail(
