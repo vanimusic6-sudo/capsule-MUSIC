@@ -49,7 +49,7 @@ constructor(
     var summaryPage by mutableStateOf<SearchSummaryPage?>(null)
     val viewStateMap = mutableStateMapOf<String, ItemsPage?>()
 
-    var soundCloudResult by
+    internal var soundCloudResult by
         mutableStateOf<SoundCloudCatalog.Result<SoundCloudCatalog.SearchPage>?>(null)
         private set
 
