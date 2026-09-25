@@ -127,7 +127,7 @@ constructor(
     private val soundCloudDownloadScope =
         CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
-    fun enqueueSoundCloud(
+    internal fun enqueueSoundCloud(
         track: SoundCloudCatalog.Track,
     ) {
         val mediaId = soundCloudMediaId(track.permalink)
