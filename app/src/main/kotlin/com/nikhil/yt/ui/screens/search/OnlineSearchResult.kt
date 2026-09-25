@@ -179,7 +179,10 @@ fun OnlineSearchResult(
 
     val soundCloudResult = viewModel.soundCloudResult
     val soundCloudPage =
-        (soundCloudResult as? SoundCloudCatalog.Result.Success)?.value
+        (
+            soundCloudResult as?
+                SoundCloudCatalog.Result.Success<SoundCloudCatalog.SearchPage>
+        )?.value
 
     LaunchedEffect(showSoundCloudPreview) {
         if (showSoundCloudPreview) {

@@ -3,6 +3,7 @@ package com.nikhil.yt.soundcloud
 import androidx.core.net.toUri
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata.MEDIA_TYPE_MUSIC
+import androidx.media3.common.MimeTypes
 import androidx.media3.exoplayer.offline.Download
 import com.nikhil.yt.innertube.soundcloud.SoundCloudNewPipe
 import com.nikhil.yt.models.MediaMetadata
