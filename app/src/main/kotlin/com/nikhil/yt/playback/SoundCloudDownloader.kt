@@ -1,7 +1,6 @@
 package com.nikhil.yt.playback
 
 import android.content.Context
-import android.util.Log
 import androidx.media3.common.C
 import androidx.media3.exoplayer.offline.DownloadRequest
 import androidx.media3.exoplayer.offline.Downloader
@@ -14,6 +13,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.runInterruptible
+import timber.log.Timber
 import java.io.IOException
 import java.io.RandomAccessFile
 import java.net.HttpURLConnection
@@ -21,10 +21,15 @@ import java.net.URL
 import kotlin.math.min
 
 /**
- * SoundCloud downloads deliberately do NOT use Media3 cache.
+ * File-based SoundCloud downloader modelled after NewPipe/Giga.
  *
- * NewPipe resolves a progressive URL, probes the resource, and writes the bytes
- * to a real file with HTTP Range support. Capsule now follows that model too.
+ * Key details intentionally match NewPipe:
+ * - resolve a fresh progressive stream URL;
+ * - probe the resource before transfer;
+ * - prefer resumable Range requests;
+ * - use "Range: bytes=0-" even for the first fallback GET;
+ * - keep partial bytes and re-resolve on transport failures;
+ * - consider sequential fallback complete when the server reaches EOF.
  */
 internal class SoundCloudDownloader(
     private val context: Context,
@@ -41,8 +46,16 @@ internal class SoundCloudDownloader(
 
         finalFile.parentFile?.mkdirs()
 
+        Timber.tag(TAG).i(
+            "start id=%s final=%s partialBytes=%d",
+            request.id,
+            finalFile.name,
+            partFile.length(),
+        )
+
         if (finalFile.isFile && finalFile.length() > 0L) {
             val length = finalFile.length()
+            Timber.tag(TAG).i("already-complete id=%s bytes=%d", request.id, length)
             progressListener?.onProgress(length, length, 100f)
             return
         }
@@ -65,10 +78,11 @@ internal class SoundCloudDownloader(
                     throw cancelled
                 } catch (failure: Throwable) {
                     lastFailure = failure
-                    Log.w(
-                        TAG,
-                        "resolve failed id=${request.id} attempt=${attempt + 1}",
+                    Timber.tag(TAG).w(
                         failure,
+                        "resolve-failed id=%s attempt=%d",
+                        request.id,
+                        attempt + 1,
                     )
                     if (attempt == MAX_RESOLVE_ATTEMPTS - 1) {
                         throw IOException(
@@ -78,6 +92,15 @@ internal class SoundCloudDownloader(
                     }
                     return@repeat
                 }
+
+            val host = runCatching { URL(streamUrl).host }.getOrDefault("?")
+            Timber.tag(TAG).i(
+                "resolved id=%s attempt=%d host=%s partialBytes=%d",
+                request.id,
+                attempt + 1,
+                host,
+                partFile.length(),
+            )
 
             try {
                 downloadResolved(
@@ -106,21 +129,30 @@ internal class SoundCloudDownloader(
 
                 val length = finalFile.length()
                 progressListener?.onProgress(length, length, 100f)
-                Log.i(TAG, "completed id=${request.id} bytes=$length file=${finalFile.name}")
+                Timber.tag(TAG).i(
+                    "completed id=%s bytes=%d file=%s",
+                    request.id,
+                    length,
+                    finalFile.name,
+                )
                 return
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (failure: IOException) {
                 lastFailure = failure
                 cancellation.ensureActive()
-                Log.w(
-                    TAG,
-                    "transfer failed id=${request.id} attempt=${attempt + 1} partial=${partFile.length()}",
+                Timber.tag(TAG).w(
                     failure,
+                    "transfer-failed id=%s attempt=%d partialBytes=%d",
+                    request.id,
+                    attempt + 1,
+                    partFile.length(),
                 )
                 if (attempt == MAX_RESOLVE_ATTEMPTS - 1) {
                     throw failure
                 }
+                // Keep .part. A fresh NewPipe resolve gets a new signed URL and
+                // the next attempt resumes from the exact byte already stored.
             }
         }
 
@@ -132,21 +164,29 @@ internal class SoundCloudDownloader(
         partFile: java.io.File,
         progressListener: Downloader.ProgressListener?,
     ) {
-        val probe = openConnection(url, method = "HEAD")
-        val expectedLength =
-            try {
-                ensureSuccessful(probe)
-                totalLength(probe)
-            } finally {
-                probe.disconnect()
-                if (connection === probe) connection = null
-            }
+        val probe = probeResource(url)
+        val expectedLength = probe.totalLength
+
+        Timber.tag(TAG).i(
+            "probe id=%s code=%d length=%d range=%s partialBytes=%d",
+            request.id,
+            probe.statusCode,
+            expectedLength,
+            probe.supportsRanges,
+            partFile.length(),
+        )
 
         if (expectedLength == 0L) {
             throw IOException("SoundCloud CDN returned an empty resource")
         }
 
         if (expectedLength > 0L && partFile.length() > expectedLength) {
+            Timber.tag(TAG).w(
+                "partial-too-large id=%s partial=%d expected=%d; resetting",
+                request.id,
+                partFile.length(),
+                expectedLength,
+            )
             RandomAccessFile(partFile, "rw").use { it.setLength(0L) }
         }
 
@@ -155,33 +195,143 @@ internal class SoundCloudDownloader(
             return
         }
 
-        val supportsRanges =
-            if (expectedLength > 0L) {
-                val start = (expectedLength - 10L).coerceAtLeast(0L)
-                val end = expectedLength - 1L
-                val rangeProbe =
-                    openConnection(
-                        url,
-                        method = "HEAD",
-                        rangeStart = start,
-                        rangeEnd = end,
-                    )
-                try {
-                    rangeProbe.responseCode == HttpURLConnection.HTTP_PARTIAL
-                } finally {
-                    rangeProbe.disconnect()
-                    if (connection === rangeProbe) connection = null
-                }
-            } else {
-                false
+        if (probe.supportsRanges && expectedLength > 0L) {
+            downloadRanges(
+                url = url,
+                partFile = partFile,
+                expectedLength = expectedLength,
+                progressListener = progressListener,
+            )
+        } else {
+            downloadFallback(
+                url = url,
+                partFile = partFile,
+                expectedLength = expectedLength,
+                progressListener = progressListener,
+            )
+        }
+    }
+
+    private data class ProbeResult(
+        val statusCode: Int,
+        val totalLength: Long,
+        val supportsRanges: Boolean,
+    )
+
+    /**
+     * NewPipe probes with HEAD. Some SoundCloud CDN edges are less consistent
+     * for HEAD than GET, so if HEAD is rejected or has no usable length we do a
+     * one-byte GET range probe rather than failing a perfectly playable track.
+     */
+    private fun probeResource(url: String): ProbeResult {
+        var headCode = -1
+        var headLength = C.LENGTH_UNSET.toLong()
+
+        val head =
+            try {
+                openConnection(url, method = "HEAD", rangeStart = 0L, rangeEnd = 0L)
+            } catch (failure: IOException) {
+                Timber.tag(TAG).w(failure, "head-open-failed id=%s", request.id)
+                null
             }
 
-        if (!supportsRanges) {
-            downloadWhole(url, partFile, expectedLength, progressListener)
-            return
+        if (head != null) {
+            try {
+                headCode = head.responseCode
+                headLength = totalLength(head)
+                Timber.tag(TAG).d(
+                    "head id=%s code=%d contentLength=%d contentRange=%s",
+                    request.id,
+                    headCode,
+                    head.contentLengthLong,
+                    head.getHeaderField("Content-Range"),
+                )
+
+                if (headCode == HttpURLConnection.HTTP_PARTIAL && headLength > 0L) {
+                    return ProbeResult(headCode, headLength, supportsRanges = true)
+                }
+
+                if (headCode in 200..299 && headLength > 0L) {
+                    // NewPipe does a second HEAD near EOF to determine whether
+                    // byte ranges are actually honoured.
+                    val start = (headLength - 10L).coerceAtLeast(0L)
+                    val rangeHead =
+                        openConnection(
+                            url,
+                            method = "HEAD",
+                            rangeStart = start,
+                            rangeEnd = headLength,
+                        )
+                    try {
+                        val rangeCode = rangeHead.responseCode
+                        Timber.tag(TAG).d(
+                            "head-range id=%s code=%d contentRange=%s",
+                            request.id,
+                            rangeCode,
+                            rangeHead.getHeaderField("Content-Range"),
+                        )
+                        return ProbeResult(
+                            statusCode = headCode,
+                            totalLength = headLength,
+                            supportsRanges = rangeCode == HttpURLConnection.HTTP_PARTIAL,
+                        )
+                    } finally {
+                        rangeHead.disconnect()
+                        if (connection === rangeHead) connection = null
+                    }
+                }
+
+                if (headCode !in setOf(
+                        HttpURLConnection.HTTP_BAD_METHOD,
+                        HttpURLConnection.HTTP_NOT_IMPLEMENTED,
+                    ) && headCode !in 200..299
+                ) {
+                    throw HttpStatusException(headCode)
+                }
+            } finally {
+                head.disconnect()
+                if (connection === head) connection = null
+            }
         }
 
-        downloadRanges(url, partFile, expectedLength, progressListener)
+        // Robustness fallback: a tiny GET proves the actual media endpoint works
+        // and gives Content-Range even on CDNs where HEAD metadata is unreliable.
+        val getProbe =
+            openConnection(
+                url,
+                method = "GET",
+                rangeStart = 0L,
+                rangeEnd = 0L,
+            )
+        try {
+            val code = getProbe.responseCode
+            val total = totalLength(getProbe)
+            Timber.tag(TAG).d(
+                "get-range-probe id=%s code=%d total=%d contentRange=%s",
+                request.id,
+                code,
+                total,
+                getProbe.getHeaderField("Content-Range"),
+            )
+
+            if (code == HttpURLConnection.HTTP_PARTIAL) {
+                runCatching { getProbe.inputStream.read() }
+                return ProbeResult(code, total, supportsRanges = total > 0L)
+            }
+
+            if (code == HttpURLConnection.HTTP_OK) {
+                return ProbeResult(
+                    code,
+                    total.takeIf { it > 0L } ?: headLength,
+                    supportsRanges = false,
+                )
+            }
+
+            throw HttpStatusException(code)
+        } finally {
+            getProbe.disconnect()
+            if (connection === getProbe) connection = null
+        }
     }
 
     private fun downloadRanges(
@@ -205,24 +355,39 @@ internal class SoundCloudDownloader(
 
             try {
                 val code = conn.responseCode
+                Timber.tag(TAG).d(
+                    "range id=%s start=%d end=%d code=%d contentRange=%s",
+                    request.id,
+                    start,
+                    end,
+                    code,
+                    conn.getHeaderField("Content-Range"),
+                )
+
                 if (code == HttpURLConnection.HTTP_OK) {
-                    downloadWholeFromOpenConnection(
+                    // Same NewPipe fallback: server ignored Range, so restart
+                    // the current resource as a single sequential transfer.
+                    downloadFallbackFromOpenConnection(
                         conn = conn,
                         partFile = partFile,
                         expectedLength = expectedLength,
                         progressListener = progressListener,
+                        responseHonouredRange = false,
                     )
                     return
                 }
+
                 if (code == 416 && start >= expectedLength) {
                     return
                 }
+
                 if (code != HttpURLConnection.HTTP_PARTIAL) {
                     throw HttpStatusException(code)
                 }
 
                 val wanted = end - start + 1L
                 var written = 0L
+
                 RandomAccessFile(partFile, "rw").use { file ->
                     file.seek(start)
                     conn.inputStream.use { input ->
@@ -238,6 +403,7 @@ internal class SoundCloudDownloader(
                             if (read < 0) break
                             file.write(buffer, 0, read)
                             written += read
+
                             val done = start + written
                             progressListener?.onProgress(
                                 expectedLength,
@@ -249,6 +415,8 @@ internal class SoundCloudDownloader(
                 }
 
                 if (written != wanted) {
+                    // Preserve what was written, but force a fresh signed URL
+                    // before filling the missing bytes.
                     throw IOException(
                         "Short SoundCloud range: got $written of $wanted bytes",
                     )
@@ -260,20 +428,53 @@ internal class SoundCloudDownloader(
         }
     }
 
-    private fun downloadWhole(
+    /**
+     * Mirrors NewPipe's DownloadRunnableFallback:
+     * first request explicitly sends Range: bytes=0- (connection-pool
+     * workaround); if the CDN returns 200 we restart from zero; if it returns
+     * 206 we resume the .part file.
+     */
+    private fun downloadFallback(
         url: String,
         partFile: java.io.File,
         expectedLength: Long,
         progressListener: Downloader.ProgressListener?,
     ) {
-        val conn = openConnection(url, method = "GET")
+        val start = partFile.length().coerceAtLeast(0L)
+        val conn =
+            openConnection(
+                url,
+                method = "GET",
+                rangeStart = start,
+                rangeEnd = -1L,
+            )
+
         try {
-            ensureSuccessful(conn)
-            downloadWholeFromOpenConnection(
+            val code = conn.responseCode
+            Timber.tag(TAG).d(
+                "fallback id=%s start=%d code=%d contentLength=%d contentRange=%s",
+                request.id,
+                start,
+                code,
+                conn.contentLengthLong,
+                conn.getHeaderField("Content-Range"),
+            )
+
+            if (code !in 200..299 && code != 416) {
+                throw HttpStatusException(code)
+            }
+
+            if (code == 416 && start > 0L) {
+                RandomAccessFile(partFile, "rw").use { it.setLength(0L) }
+                throw IOException("SoundCloud resume range rejected with HTTP 416")
+            }
+
+            downloadFallbackFromOpenConnection(
                 conn = conn,
                 partFile = partFile,
-                expectedLength = expectedLength.takeIf { it > 0L } ?: totalLength(conn),
+                expectedLength = expectedLength,
                 progressListener = progressListener,
+                responseHonouredRange = code == HttpURLConnection.HTTP_PARTIAL,
             )
         } finally {
             conn.disconnect()
@@ -281,23 +482,30 @@ internal class SoundCloudDownloader(
         }
     }
 
-    private fun downloadWholeFromOpenConnection(
+    private fun downloadFallbackFromOpenConnection(
         conn: HttpURLConnection,
         partFile: java.io.File,
         expectedLength: Long,
         progressListener: Downloader.ProgressListener?,
+        responseHonouredRange: Boolean,
     ) {
-        RandomAccessFile(partFile, "rw").use { file ->
-            file.setLength(0L)
-            file.seek(0L)
+        val requestedStart = partFile.length().coerceAtLeast(0L)
+        val writeStart = if (responseHonouredRange) requestedStart else 0L
 
-            var written = 0L
+        RandomAccessFile(partFile, "rw").use { file ->
+            if (!responseHonouredRange) {
+                file.setLength(0L)
+            }
+            file.seek(writeStart)
+
+            var written = writeStart
             conn.inputStream.use { input ->
                 val buffer = ByteArray(BUFFER_SIZE)
                 while (true) {
                     cancellation.ensureActive()
                     val read = input.read(buffer)
                     if (read < 0) break
+
                     file.write(buffer, 0, read)
                     written += read
                     progressListener?.onProgress(
@@ -312,11 +520,23 @@ internal class SoundCloudDownloader(
                 }
             }
 
-            if (expectedLength > 0L && written != expectedLength) {
-                throw IOException(
-                    "Incomplete SoundCloud response: got $written expected $expectedLength",
-                )
+            /*
+             * Important NewPipe behaviour: EOF completes fallback mode.
+             * Do not reject a finished transfer solely because a HEAD
+             * Content-Length differs from the body length. SoundCloud CDN
+             * metadata can be inconsistent across HEAD/GET edges.
+             */
+            if (written <= 0L) {
+                throw IOException("SoundCloud fallback reached EOF without audio bytes")
             }
+
+            Timber.tag(TAG).i(
+                "fallback-eof id=%s bytes=%d expected=%d responseCode=%d",
+                request.id,
+                written,
+                expectedLength,
+                conn.responseCode,
+            )
         }
     }
 
@@ -327,6 +547,7 @@ internal class SoundCloudDownloader(
         rangeEnd: Long = -1L,
     ): HttpURLConnection {
         cancellation.ensureActive()
+
         val conn =
             (URL(url).openConnection() as HttpURLConnection).apply {
                 instanceFollowRedirects = true
@@ -335,7 +556,12 @@ internal class SoundCloudDownloader(
                 setRequestProperty("Accept", "*/*")
                 setRequestProperty("Accept-Encoding", "*")
                 connectTimeout = CONNECT_TIMEOUT_MS
-                readTimeout = READ_TIMEOUT_MS
+
+                // NewPipe doesn't install a read timeout for Giga downloads.
+                // Let cancellation/DownloadManager own the lifetime instead of
+                // aborting a valid slow CDN body after an arbitrary 45 seconds.
+                readTimeout = 0
+
                 if (rangeStart >= 0L) {
                     val range =
                         if (rangeEnd >= rangeStart) {
@@ -346,13 +572,9 @@ internal class SoundCloudDownloader(
                     setRequestProperty("Range", range)
                 }
             }
+
         connection = conn
         return conn
-    }
-
-    private fun ensureSuccessful(conn: HttpURLConnection) {
-        val code = conn.responseCode
-        if (code !in 200..299) throw HttpStatusException(code)
     }
 
     private fun totalLength(conn: HttpURLConnection): Long {
@@ -364,6 +586,7 @@ internal class SoundCloudDownloader(
                 ?.toLongOrNull()
                 ?.let { return it }
         }
+
         return conn.contentLengthLong.takeIf { it >= 0L } ?: C.LENGTH_UNSET.toLong()
     }
 
@@ -375,12 +598,14 @@ internal class SoundCloudDownloader(
         }
 
     override fun cancel() {
+        Timber.tag(TAG).i("cancel id=%s", request.id)
         cancellation.cancel()
         runCatching { connection?.disconnect() }
         connection = null
     }
 
     override fun remove() {
+        Timber.tag(TAG).i("remove id=%s", request.id)
         cancel()
         runCatching { soundCloudDownloadPartFile(context, request.id).delete() }
         runCatching { soundCloudDownloadFile(context, request.id).delete() }
@@ -396,7 +621,6 @@ internal class SoundCloudDownloader(
         const val BLOCK_SIZE = 512 * 1024L
         const val BUFFER_SIZE = 64 * 1024
         const val CONNECT_TIMEOUT_MS = 30_000
-        const val READ_TIMEOUT_MS = 45_000
         const val NEWPIPE_DOWNLOAD_USER_AGENT =
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:140.0) Gecko/20100101 Firefox/140.0"
     }

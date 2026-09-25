@@ -61,6 +61,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import okhttp3.OkHttpClient
+import timber.log.Timber
 import java.time.LocalDateTime
 import java.util.concurrent.atomic.AtomicInteger
 import javax.inject.Inject
@@ -133,6 +134,14 @@ constructor(
             if (mediaId in soundCloudPending.value) return
             soundCloudPending.value = soundCloudPending.value + mediaId
         }
+
+        Timber.tag("SoundCloudDownload").i(
+            "enqueue id=%s title=%s previousState=%s hasFile=%s",
+            mediaId,
+            track.title,
+            current?.state?.toString() ?: "none",
+            hasSoundCloudDownload(context, mediaId),
+        )
 
         // Builds before the cache split could leave ordinary playback bytes in
         // the persistent download cache under this exact id. They are not a
@@ -335,12 +344,26 @@ constructor(
                         val isSoundCloud =
                             download.request.id.startsWith(SOUNDCLOUD_MEDIA_ID_PREFIX)
 
+                        if (isSoundCloud) {
+                            Timber.tag("SoundCloudDownload").i(
+                                "manager-state id=%s state=%d stopReason=%d failureReason=%d bytes=%d percent=%.2f",
+                                download.request.id,
+                                download.state,
+                                download.stopReason,
+                                download.failureReason,
+                                download.bytesDownloaded,
+                                download.percentDownloaded,
+                            )
+                        }
+
                         if (download.state == Download.STATE_FAILED) {
                             if (isSoundCloud) {
-                                android.util.Log.w(
-                                    "SoundCloudDownload",
-                                    "DownloadManager failed id=${download.request.id}",
+                                Timber.tag("SoundCloudDownload").w(
                                     finalException,
+                                    "manager-failed id=%s bytes=%d percent=%.2f",
+                                    download.request.id,
+                                    download.bytesDownloaded,
+                                    download.percentDownloaded,
                                 )
                             } else {
                                 CapsuleAudioEngine.invalidateCachedStreamUrls(download.request.id)
