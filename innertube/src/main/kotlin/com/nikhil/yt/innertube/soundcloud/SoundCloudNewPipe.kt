@@ -4,6 +4,9 @@ import com.nikhil.yt.innertube.pages.NewPipeUtils
 import org.schabi.newpipe.extractor.Page
 import org.schabi.newpipe.extractor.NewPipe
 import org.schabi.newpipe.extractor.channel.ChannelInfo
+import org.schabi.newpipe.extractor.exceptions.ContentNotAvailableException
+import org.schabi.newpipe.extractor.exceptions.GeographicRestrictionException
+import org.schabi.newpipe.extractor.exceptions.SoundCloudGoPlusContentException
 import org.schabi.newpipe.extractor.channel.ChannelInfoItem
 import org.schabi.newpipe.extractor.channel.tabs.ChannelTabInfo
 import org.schabi.newpipe.extractor.channel.tabs.ChannelTabs
@@ -248,7 +251,27 @@ object SoundCloudNewPipe {
      * extractor before AudioStream objects are returned.
      */
     fun inspectTrack(trackUrl: String): TrackAccess {
-        val info = streamInfo(trackUrl)
+        val info =
+            try {
+                streamInfo(trackUrl)
+            } catch (_: SoundCloudGoPlusContentException) {
+                // SoundCloud policy=SNIP: Go+ protected preview/content.
+                return TrackAccess(
+                    playable = false,
+                    downloadable = false,
+                )
+            } catch (_: GeographicRestrictionException) {
+                return TrackAccess(
+                    playable = false,
+                    downloadable = false,
+                )
+            } catch (_: ContentNotAvailableException) {
+                return TrackAccess(
+                    playable = false,
+                    downloadable = false,
+                )
+            }
+
         val streams = playableAudioStreams(info)
         val fallbackHls = info.hlsUrl.takeIf { it.startsWith("https://") }
         return TrackAccess(
