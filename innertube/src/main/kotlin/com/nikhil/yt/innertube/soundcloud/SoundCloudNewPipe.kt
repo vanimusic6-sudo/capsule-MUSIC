@@ -156,8 +156,9 @@ object SoundCloudNewPipe {
             // SoundCloud playlists can contain deleted/private entries. NewPipe may
             // reject a continuation containing one; keep the already valid first
             // pages instead of turning the entire playlist into "unavailable".
+            val pageRequest = next ?: break
             val page = runCatching {
-                PlaylistInfo.getMoreItems(service, url, next)
+                PlaylistInfo.getMoreItems(service, url, pageRequest)
             }.getOrNull() ?: break
             if (page.items.isEmpty()) break
             candidates += page.items
