@@ -94,7 +94,7 @@ internal class SoundCloudDownloader(
                         if (length > 0L) {
                             bytesCached.coerceAtMost(length) * 100f / length
                         } else {
-                            C.PERCENTAGE_UNSET
+                            C.PERCENTAGE_UNSET.toFloat()
                         },
                     )
                 }
