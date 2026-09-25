@@ -6,7 +6,6 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.weight
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon as MaterialIcon
@@ -21,6 +20,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.media3.exoplayer.offline.Download
 import com.nikhil.yt.LocalDownloadUtil
 import com.nikhil.yt.R
 import com.nikhil.yt.constants.ListThumbnailSize
@@ -30,11 +30,40 @@ import com.nikhil.yt.soundcloud.soundCloudMediaId
 import com.nikhil.yt.utils.makeTimeString
 
 @Composable
-internal fun SoundCloudSourceIcon(modifier: Modifier = Modifier) {
+internal fun SoundCloudSourceIcon(
+    modifier: Modifier = Modifier,
+) {
     MaterialIcon(
-        painterResource(R.drawable.soundcloud_source), "SoundCloud",
-        tint = Color.Unspecified, modifier = modifier.size(14.dp)
+        painter = painterResource(R.drawable.soundcloud_source),
+        contentDescription = "SoundCloud",
+        tint = Color.Unspecified,
+        modifier = modifier.size(14.dp),
     )
+}
+
+@Composable
+private fun SoundCloudDownloadState(
+    state: Int?,
+) {
+    when (state) {
+        Download.STATE_COMPLETED -> {
+            MaterialIcon(
+                painter = painterResource(R.drawable.offline),
+                contentDescription = null,
+                modifier = Modifier.size(16.dp),
+            )
+            Spacer(Modifier.width(4.dp))
+        }
+
+        Download.STATE_QUEUED,
+        Download.STATE_DOWNLOADING -> {
+            VeluneLoader(
+                size = 14.dp,
+                modifier = Modifier,
+            )
+            Spacer(Modifier.width(4.dp))
+        }
+    }
 }
 
 @OptIn(ExperimentalFoundationApi::class)
@@ -49,39 +78,56 @@ internal fun SoundCloudTrackListItem(
     modifier: Modifier = Modifier,
 ) {
     val download by LocalDownloadUtil.current
-        .getDownload(soundCloudMediaId(track.permalink)).collectAsState(initial = null)
+        .getDownload(soundCloudMediaId(track.permalink))
+        .collectAsState(initial = null)
+
     ListItem(
         title = track.title,
         subtitle = {
-            Icon.Download(download?.state)
+            SoundCloudDownloadState(download?.state)
             Text(
-                track.artist, color = MaterialTheme.colorScheme.secondary,
-                maxLines = 1, overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f, false).clickable(enabled = track.uploaderUrl != null) {
-                    track.uploaderUrl?.let(onArtistClick)
-                }
+                text = track.artist,
+                color = MaterialTheme.colorScheme.secondary,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier
+                    .weight(1f, fill = false)
+                    .clickable(enabled = track.uploaderUrl != null) {
+                        track.uploaderUrl?.let(onArtistClick)
+                    },
             )
             Spacer(Modifier.width(5.dp))
             SoundCloudSourceIcon()
-            if (track.durationSeconds > 0) {
-                Text(" • " + makeTimeString(track.durationSeconds * 1000L),
-                    color = MaterialTheme.colorScheme.secondary, maxLines = 1)
+            if (track.durationSeconds > 0L) {
+                Text(
+                    text = " • " + makeTimeString(track.durationSeconds * 1000L),
+                    color = MaterialTheme.colorScheme.secondary,
+                    maxLines = 1,
+                )
             }
         },
         thumbnailContent = {
             ItemThumbnail(
-                track.artworkUrl, isActive = isActive, isPlaying = isPlaying,
+                thumbnailUrl = track.artworkUrl,
+                isActive = isActive,
+                isPlaying = isPlaying,
                 shape = RoundedCornerShape(ThumbnailCornerRadius),
-                modifier = Modifier.size(ListThumbnailSize)
+                modifier = Modifier.size(ListThumbnailSize),
             )
         },
         trailingContent = {
             IconButton(onClick = onMoreClick) {
-                MaterialIcon(painterResource(R.drawable.more_vert), null)
+                MaterialIcon(
+                    painter = painterResource(R.drawable.more_vert),
+                    contentDescription = null,
+                )
             }
         },
         isActive = isActive,
-        modifier = modifier.combinedClickable(onClick = onClick, onLongClick = onMoreClick)
+        modifier = modifier.combinedClickable(
+            onClick = onClick,
+            onLongClick = onMoreClick,
+        ),
     )
 }
 
@@ -95,19 +141,36 @@ internal fun SoundCloudPlaylistListItem(
     ListItem(
         title = playlist.title,
         subtitle = {
-            Text(playlist.uploader, color = MaterialTheme.colorScheme.secondary,
-                maxLines = 1, overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f, false))
+            Text(
+                text = playlist.uploader,
+                color = MaterialTheme.colorScheme.secondary,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f, fill = false),
+            )
             Spacer(Modifier.width(5.dp))
             SoundCloudSourceIcon()
-            if (playlist.trackCount > 0) Text(" • " + playlist.trackCount,
-                color = MaterialTheme.colorScheme.secondary)
+            if (playlist.trackCount > 0L) {
+                Text(
+                    text = " • " + playlist.trackCount,
+                    color = MaterialTheme.colorScheme.secondary,
+                    maxLines = 1,
+                )
+            }
         },
         thumbnailContent = {
-            ItemThumbnail(playlist.artworkUrl, shape = RoundedCornerShape(ThumbnailCornerRadius),
-                modifier = Modifier.size(ListThumbnailSize))
+            ItemThumbnail(
+                thumbnailUrl = playlist.artworkUrl,
+                isActive = false,
+                isPlaying = false,
+                shape = RoundedCornerShape(ThumbnailCornerRadius),
+                modifier = Modifier.size(ListThumbnailSize),
+            )
         },
-        modifier = modifier.combinedClickable(onClick = onClick, onLongClick = onClick)
+        modifier = modifier.combinedClickable(
+            onClick = onClick,
+            onLongClick = onClick,
+        ),
     )
 }
 
@@ -122,15 +185,28 @@ internal fun SoundCloudUserListItem(
     ListItem(
         title = user.name,
         subtitle = {
-            Text(followerText, color = MaterialTheme.colorScheme.secondary,
-                maxLines = 1, overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f, false))
+            Text(
+                text = followerText,
+                color = MaterialTheme.colorScheme.secondary,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f, fill = false),
+            )
             Spacer(Modifier.width(5.dp))
             SoundCloudSourceIcon()
         },
         thumbnailContent = {
-            ItemThumbnail(user.avatarUrl, shape = CircleShape, modifier = Modifier.size(ListThumbnailSize))
+            ItemThumbnail(
+                thumbnailUrl = user.avatarUrl,
+                isActive = false,
+                isPlaying = false,
+                shape = CircleShape,
+                modifier = Modifier.size(ListThumbnailSize),
+            )
         },
-        modifier = modifier.combinedClickable(onClick = onClick, onLongClick = onClick)
+        modifier = modifier.combinedClickable(
+            onClick = onClick,
+            onLongClick = onClick,
+        ),
     )
 }
