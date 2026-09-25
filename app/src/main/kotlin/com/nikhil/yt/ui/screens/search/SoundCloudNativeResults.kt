@@ -36,7 +36,7 @@ internal fun SoundCloudNativeResults(
     selectedUrl: String?,
     playing: Boolean,
     loadingTrack: Boolean,
-    onTrackClick: (SoundCloudCatalog.Track) -> Unit,
+    onTrackClick: (SoundCloudCatalog.Track, List<SoundCloudCatalog.Track>) -> Unit,
     onArtistClick: (String) -> Unit,
     onPlaylistClick: (String) -> Unit,
     onUserClick: (String) -> Unit,
@@ -62,7 +62,7 @@ internal fun SoundCloudNativeResults(
                         horizontalArrangement = Arrangement.spacedBy(12.dp),
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clickable { onTrackClick(track) }
+                            .clickable { onTrackClick(track, page.tracks) }
                             .padding(horizontal = 20.dp, vertical = 8.dp),
                     ) {
                         AsyncImage(

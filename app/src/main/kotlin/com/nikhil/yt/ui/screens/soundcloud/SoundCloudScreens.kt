@@ -38,10 +38,8 @@ import coil3.compose.AsyncImage
 import com.nikhil.yt.LocalPlayerAwareWindowInsets
 import com.nikhil.yt.LocalPlayerConnection
 import com.nikhil.yt.R
-import com.nikhil.yt.innertube.soundcloud.SoundCloudNewPipe
-import com.nikhil.yt.playback.queues.ListQueue
+import com.nikhil.yt.playback.queues.SoundCloudQueue
 import com.nikhil.yt.soundcloud.SoundCloudCatalog
-import com.nikhil.yt.soundcloud.toSoundCloudMediaItem
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -52,24 +50,6 @@ private fun NavController.openSoundCloudProfile(url: String) =
 
 private fun NavController.openSoundCloudPlaylist(url: String) =
     navigate("soundcloud/playlist?url=" + Uri.encode(url))
-
-private suspend fun buildQueue(
-    tracks: List<SoundCloudCatalog.Track>,
-    requestedStartUrl: String?,
-): Pair<List<androidx.media3.common.MediaItem>, Int> = withContext(Dispatchers.IO) {
-    val items = ArrayList<androidx.media3.common.MediaItem>()
-    var start = 0
-    tracks.forEach { track ->
-        runCatching {
-            val stream = SoundCloudNewPipe.resolve(track.permalink)
-            track.toSoundCloudMediaItem(stream)
-        }.getOrNull()?.let { item ->
-            if (track.permalink == requestedStartUrl) start = items.size
-            items += item
-        }
-    }
-    items to start.coerceIn(0, (items.size - 1).coerceAtLeast(0))
-}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -127,8 +107,12 @@ fun SoundCloudProfileScreen(url: String, navController: NavController) {
                                 if (!loadingPlay && playerConnection != null) {
                                     loadingPlay = true
                                     scope.launch {
-                                        val (items, start) = buildQueue(p.tracks, track.permalink)
-                                        if (items.isNotEmpty()) playerConnection.playQueue(ListQueue("SoundCloud • " + p.name, items, start))
+                                        val queue = SoundCloudQueue.create(
+                                            title = "SoundCloud • " + p.name,
+                                            tracks = p.tracks,
+                                            requestedStartUrl = track.permalink,
+                                        )
+                                        if (queue != null) playerConnection.playQueue(queue)
                                         loadingPlay = false
                                     }
                                 }
@@ -201,8 +185,12 @@ fun SoundCloudPlaylistScreen(url: String, navController: NavController) {
                                 onClick = {
                                     loadingPlay = true
                                     scope.launch {
-                                        val (items, start) = buildQueue(p.tracks, null)
-                                        if (items.isNotEmpty()) playerConnection?.playQueue(ListQueue(p.title, items, start))
+                                        val queue = SoundCloudQueue.create(
+                                            title = "SoundCloud • " + p.title,
+                                            tracks = p.tracks,
+                                            requestedStartUrl = null,
+                                        )
+                                        if (queue != null) playerConnection?.playQueue(queue)
                                         loadingPlay = false
                                     }
                                 },
@@ -221,8 +209,12 @@ fun SoundCloudPlaylistScreen(url: String, navController: NavController) {
                                 if (!loadingPlay && playerConnection != null) {
                                     loadingPlay = true
                                     scope.launch {
-                                        val (items, start) = buildQueue(p.tracks, track.permalink)
-                                        if (items.isNotEmpty()) playerConnection.playQueue(ListQueue(p.title, items, start))
+                                        val queue = SoundCloudQueue.create(
+                                            title = "SoundCloud • " + p.title,
+                                            tracks = p.tracks,
+                                            requestedStartUrl = track.permalink,
+                                        )
+                                        if (queue != null) playerConnection.playQueue(queue)
                                         loadingPlay = false
                                     }
                                 }

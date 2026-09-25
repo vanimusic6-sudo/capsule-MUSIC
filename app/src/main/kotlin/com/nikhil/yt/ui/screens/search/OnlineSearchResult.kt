@@ -40,13 +40,9 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
-import com.nikhil.yt.innertube.soundcloud.SoundCloudNewPipe
 import com.nikhil.yt.soundcloud.SoundCloudCatalog
 import com.nikhil.yt.soundcloud.soundCloudMediaId
-import com.nikhil.yt.soundcloud.toSoundCloudMediaItem
-import com.nikhil.yt.playback.queues.ListQueue
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
+import com.nikhil.yt.playback.queues.SoundCloudQueue
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
@@ -255,7 +251,7 @@ fun OnlineSearchResult(
                     onUserClick = { url ->
                         navController.navigate("soundcloud/profile?url=" + android.net.Uri.encode(url))
                     },
-                    onTrackClick = { track ->
+                    onTrackClick = { track, soundCloudTracks ->
                         val mediaId = soundCloudMediaId(track.permalink)
                         if (mediaMetadata?.id == mediaId) {
                             playerConnection.player.togglePlayPause()
@@ -266,13 +262,16 @@ fun OnlineSearchResult(
                             soundCloudLoading = true
                             soundCloudRequest.value = coroutineScope.launch {
                                 try {
-                                    val stream = withContext(Dispatchers.IO) {
-                                        SoundCloudNewPipe.resolve(track.permalink)
-                                    }
-                                    val item = track.toSoundCloudMediaItem(stream)
-                                    playerConnection.playQueue(
-                                        ListQueue(title = "SoundCloud", items = listOf(item))
+                                    val queue = SoundCloudQueue.create(
+                                        title = "SoundCloud • " + viewModel.query,
+                                        tracks = soundCloudTracks,
+                                        requestedStartUrl = track.permalink,
                                     )
+                                    if (queue != null) {
+                                        playerConnection.playQueue(queue)
+                                    } else {
+                                        soundCloudPlaybackError = true
+                                    }
                                 } catch (failure: kotlinx.coroutines.CancellationException) {
                                     throw failure
                                 } catch (failure: Exception) {
