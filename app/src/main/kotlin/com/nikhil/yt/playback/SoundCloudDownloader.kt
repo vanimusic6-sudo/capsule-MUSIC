@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.media3.common.C
 import androidx.media3.exoplayer.offline.DownloadRequest
 import androidx.media3.exoplayer.offline.Downloader
+import com.nikhil.yt.innertube.YouTube
 import com.nikhil.yt.innertube.soundcloud.SoundCloudNewPipe
 import com.nikhil.yt.soundcloud.soundCloudDownloadFile
 import com.nikhil.yt.soundcloud.soundCloudDownloadPartFile
@@ -45,6 +46,12 @@ internal class SoundCloudDownloader(
         val partFile = soundCloudDownloadPartFile(context, request.id)
 
         finalFile.parentFile?.mkdirs()
+
+        Timber.tag(TAG).i(
+            "route id=%s proxy=%s",
+            request.id,
+            if (YouTube.proxy == null) "direct" else "configured",
+        )
 
         Timber.tag(TAG).i(
             "start id=%s final=%s partialBytes=%d",
@@ -229,7 +236,7 @@ internal class SoundCloudDownloader(
 
         val head =
             try {
-                openConnection(url, method = "HEAD", rangeStart = 0L, rangeEnd = 0L)
+                openConnection(url, method = "HEAD", rangeStart = 0L, rangeEnd = -1L)
             } catch (failure: IOException) {
                 Timber.tag(TAG).w(failure, "head-open-failed id=%s", request.id)
                 null
@@ -246,10 +253,6 @@ internal class SoundCloudDownloader(
                     head.contentLengthLong,
                     head.getHeaderField("Content-Range"),
                 )
-
-                if (headCode == HttpURLConnection.HTTP_PARTIAL && headLength > 0L) {
-                    return ProbeResult(headCode, headLength, supportsRanges = true)
-                }
 
                 if (headCode in 200..299 && headLength > 0L) {
                     // NewPipe does a second HEAD near EOF to determine whether
@@ -548,8 +551,14 @@ internal class SoundCloudDownloader(
     ): HttpURLConnection {
         cancellation.ensureActive()
 
+        val target = URL(url)
+        val rawConnection =
+            YouTube.proxy
+                ?.let { proxy -> target.openConnection(proxy) }
+                ?: target.openConnection()
+
         val conn =
-            (URL(url).openConnection() as HttpURLConnection).apply {
+            (rawConnection as HttpURLConnection).apply {
                 instanceFollowRedirects = true
                 requestMethod = method
                 setRequestProperty("User-Agent", NEWPIPE_DOWNLOAD_USER_AGENT)
