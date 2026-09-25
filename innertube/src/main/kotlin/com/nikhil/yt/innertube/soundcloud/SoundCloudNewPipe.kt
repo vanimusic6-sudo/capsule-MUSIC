@@ -6,9 +6,6 @@ import org.schabi.newpipe.extractor.channel.ChannelInfo
 import org.schabi.newpipe.extractor.channel.ChannelInfoItem
 import org.schabi.newpipe.extractor.channel.tabs.ChannelTabInfo
 import org.schabi.newpipe.extractor.channel.tabs.ChannelTabs
-import org.schabi.newpipe.extractor.exceptions.ContentNotAvailableException
-import org.schabi.newpipe.extractor.exceptions.ExtractionException
-import org.schabi.newpipe.extractor.exceptions.ReCaptchaException
 import org.schabi.newpipe.extractor.playlist.PlaylistInfo
 import org.schabi.newpipe.extractor.playlist.PlaylistInfoItem
 import org.schabi.newpipe.extractor.search.SearchInfo
@@ -16,7 +13,6 @@ import org.schabi.newpipe.extractor.services.soundcloud.linkHandler.SoundcloudSe
 import org.schabi.newpipe.extractor.stream.DeliveryMethod
 import org.schabi.newpipe.extractor.stream.StreamInfo
 import org.schabi.newpipe.extractor.stream.StreamInfoItem
-import java.io.IOException
 import java.net.URI
 
 /**
@@ -204,25 +200,14 @@ object SoundCloudNewPipe {
     }
 
     /**
-     * Probe before UI creation. Protected/unavailable/extractor-only failures are
-     * suppressed per-track; connectivity/rate-limit failures bubble up so the UI
-     * shows a source error instead of pretending there are zero tracks.
+     * Keep discovery metadata-only. Resolving every result here turns one search,
+     * profile or playlist load into N extra StreamInfo calls and repeats the same
+     * work again when playback starts.
+     *
+     * Actual stream availability is checked lazily by SoundCloudQueue.
      */
     private fun toPlayableTrack(item: StreamInfoItem): Track? {
         val url = item.url.takeIf(::isSoundCloudTrackUrl) ?: return null
-        try {
-            resolve(url)
-        } catch (e: ReCaptchaException) {
-            throw e
-        } catch (e: IOException) {
-            throw e
-        } catch (_: ContentNotAvailableException) {
-            return null
-        } catch (_: ExtractionException) {
-            return null
-        } catch (_: IllegalStateException) {
-            return null
-        }
         val title = item.name.trim().takeIf { it.isNotBlank() } ?: return null
         return Track(
             url = url,

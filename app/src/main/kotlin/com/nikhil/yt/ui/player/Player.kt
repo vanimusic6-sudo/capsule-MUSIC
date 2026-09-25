@@ -9,6 +9,8 @@
 
 package com.nikhil.yt.ui.player
 
+import android.net.Uri
+
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.CubicBezierEasing
@@ -445,7 +447,15 @@ private fun CapsulePlayerLyricsHost(
                     onArtistSelected = { artist ->
                         artist.id?.let { artistId ->
                             onHideLyrics()
-                            navController.navigate("artist/$artistId")
+                            if (mediaMetadata.id.startsWith("soundcloud:") &&
+                                artistId.startsWith("https://soundcloud.com/")
+                            ) {
+                                navController.navigate(
+                                    "soundcloud/profile?url=" + Uri.encode(artistId)
+                                )
+                            } else {
+                                navController.navigate("artist/$artistId")
+                            }
                             playerState.collapseSoft()
                         }
                     },
@@ -477,7 +487,15 @@ private fun CapsulePlayerLyricsHost(
                 onArtistSelected = { artist ->
                     artist.id?.let { artistId ->
                         onHideLyrics()
-                        navController.navigate("artist/$artistId")
+                        if (mediaMetadata.id.startsWith("soundcloud:") &&
+                            artistId.startsWith("https://soundcloud.com/")
+                        ) {
+                            navController.navigate(
+                                "soundcloud/profile?url=" + Uri.encode(artistId)
+                            )
+                        } else {
+                            navController.navigate("artist/$artistId")
+                        }
                         playerState.collapseSoft()
                     }
                 },

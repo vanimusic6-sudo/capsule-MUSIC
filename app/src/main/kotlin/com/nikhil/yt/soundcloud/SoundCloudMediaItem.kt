@@ -24,7 +24,7 @@ internal fun SoundCloudCatalog.Track.toSoundCloudMediaItem(
     val metadata = MediaMetadata(
         id = id,
         title = title,
-        artists = listOf(MediaMetadata.Artist(id = null, name = artist)),
+        artists = listOf(MediaMetadata.Artist(id = uploaderUrl, name = artist)),
         duration = durationSeconds.coerceIn(0L, Int.MAX_VALUE.toLong()).toInt(),
         thumbnailUrl = artworkUrl,
     )
