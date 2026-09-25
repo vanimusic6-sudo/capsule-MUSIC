@@ -5,11 +5,12 @@ import com.nikhil.yt.innertube.soundcloud.SoundCloudNewPipe
 import com.nikhil.yt.models.MediaMetadata
 import com.nikhil.yt.soundcloud.SoundCloudCatalog
 import com.nikhil.yt.soundcloud.toSoundCloudMediaItem
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
-import kotlinx.coroutines.withContext
+import kotlinx.coroutines.runInterruptible
 
 /**
  * Lazy SoundCloud queue.
@@ -38,8 +39,8 @@ internal class SoundCloudQueue private constructor(
 
     override fun hasNextPage(): Boolean = nextTrackIndex < pendingTracks.size
 
-    override suspend fun nextPage(): List<MediaItem> = withContext(Dispatchers.IO) {
-        if (!hasNextPage()) return@withContext listOf(pageAnchor)
+    override suspend fun nextPage(): List<MediaItem> {
+        if (!hasNextPage()) return listOf(pageAnchor)
 
         val end = (nextTrackIndex + PAGE_SIZE).coerceAtMost(pendingTracks.size)
         val batch = pendingTracks.subList(nextTrackIndex, end)
@@ -47,22 +48,16 @@ internal class SoundCloudQueue private constructor(
 
         val resolved = coroutineScope {
             batch.map { track ->
-                async {
-                    runCatching {
-                        track.toSoundCloudMediaItem(
-                            SoundCloudNewPipe.resolve(track.permalink)
-                        )
-                    }.getOrNull()
-                }
+                async { resolveTrack(track) }
             }.awaitAll().filterNotNull()
         }
 
         if (resolved.isEmpty()) {
             // Queue.nextPage() has an overlap contract: MusicService drops item 0.
-            return@withContext listOf(pageAnchor)
+            return listOf(pageAnchor)
         }
 
-        buildList(resolved.size + 1) {
+        return buildList(resolved.size + 1) {
             add(pageAnchor)
             addAll(resolved)
         }.also {
@@ -77,9 +72,9 @@ internal class SoundCloudQueue private constructor(
             title: String?,
             tracks: List<SoundCloudCatalog.Track>,
             requestedStartUrl: String?,
-        ): SoundCloudQueue? = withContext(Dispatchers.IO) {
+        ): SoundCloudQueue? {
             val unique = tracks.distinctBy { it.permalink }
-            if (unique.isEmpty()) return@withContext null
+            if (unique.isEmpty()) return null
 
             val startIndex = requestedStartUrl
                 ?.let { url -> unique.indexOfFirst { it.permalink == url } }
@@ -87,23 +82,36 @@ internal class SoundCloudQueue private constructor(
                 ?: 0
             val startTrack = unique[startIndex]
 
-            // One blocking resolve, not the entire search/playlist.
-            val firstItem = runCatching {
-                startTrack.toSoundCloudMediaItem(
-                    SoundCloudNewPipe.resolve(startTrack.permalink)
-                )
-            }.getOrNull() ?: return@withContext null
+            // Make the blocking extractor call actually cancellable. Rapidly
+            // choosing another track must not leave stale SoundCloud resolves
+            // occupying IO threads and bandwidth behind the new request.
+            val firstItem = resolveTrack(startTrack) ?: return null
 
             val pending = buildList {
                 addAll(unique.drop(startIndex + 1))
                 addAll(unique.take(startIndex))
             }
 
-            SoundCloudQueue(
+            return SoundCloudQueue(
                 queueTitle = title,
                 firstItem = firstItem,
                 pendingTracks = pending,
             )
         }
+
+        private suspend fun resolveTrack(
+            track: SoundCloudCatalog.Track,
+        ): MediaItem? =
+            try {
+                runInterruptible(Dispatchers.IO) {
+                    track.toSoundCloudMediaItem(
+                        SoundCloudNewPipe.resolve(track.permalink)
+                    )
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                null
+            }
     }
 }
