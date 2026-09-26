@@ -402,13 +402,19 @@ internal fun CapsuleLightReorderColumn(
     }
 
     fun preferredDockPair(
-        previous: CapsuleLightBlock?,
+        neighbour: CapsuleLightBlock?,
         moving: CapsuleLightBlock,
     ): Boolean {
-        if (previous == null) return false
-        val previousIndex = CapsuleLightBaseOrder.indexOf(previous)
-        val movingIndex = CapsuleLightBaseOrder.indexOf(moving)
-        return kotlin.math.abs(previousIndex - movingIndex) == 1
+        if (neighbour == null) return false
+        if (neighbour == moving) return false
+
+        val pair = setOf(neighbour, moving)
+        return pair == setOf(CapsuleLightBlock.ARTWORK, CapsuleLightBlock.LYRIC) ||
+            pair == setOf(CapsuleLightBlock.ARTWORK, CapsuleLightBlock.METADATA) ||
+            pair == setOf(CapsuleLightBlock.LYRIC, CapsuleLightBlock.METADATA) ||
+            pair == setOf(CapsuleLightBlock.METADATA, CapsuleLightBlock.PROGRESS) ||
+            pair == setOf(CapsuleLightBlock.PROGRESS, CapsuleLightBlock.MODE_SWITCH) ||
+            pair == setOf(CapsuleLightBlock.MODE_SWITCH, CapsuleLightBlock.CONTROLS)
     }
 
     fun resolveDropPreview(
@@ -798,7 +804,10 @@ internal fun CapsuleLightReorderColumn(
                                             val currentIndex = workingOrder.indexOf(block)
                                             if (currentIndex < 0) return@detectDragGesturesAfterLongPress
 
-                                            val visualCenter = actualBounds.center + dragOffsetY
+                                            val visualCenter =
+                                                contentStart +
+                                                    contentHeight / 2f +
+                                                    dragOffsetY
                                             var targetIndex = currentIndex
 
                                             if (currentIndex > 0) {
@@ -807,14 +816,26 @@ internal fun CapsuleLightReorderColumn(
                                                     slotStart(
                                                         previous,
                                                         workingOrder,
-                                                        block,
-                                                        gapDeltaPx,
+                                                        null,
+                                                        0f,
                                                     )
-                                                val previousSize = bounds[previous]?.size
+                                                val previousBounds = bounds[previous]
+                                                val previousGapPx =
+                                                    gapPxFor(previous, effectiveGapsDp)
+                                                val previousContentHeight =
+                                                    (
+                                                        (previousBounds?.size ?: 0f) -
+                                                            previousGapPx
+                                                        ).coerceAtLeast(1f)
+                                                val previousCenter =
+                                                    previousStart?.let {
+                                                        it +
+                                                            previousGapPx +
+                                                            previousContentHeight / 2f
+                                                    }
                                                 if (
-                                                    previousStart != null &&
-                                                    previousSize != null &&
-                                                    visualCenter < previousStart + previousSize / 2f
+                                                    previousCenter != null &&
+                                                    visualCenter < previousCenter
                                                 ) {
                                                     targetIndex = currentIndex - 1
                                                 }
@@ -829,14 +850,26 @@ internal fun CapsuleLightReorderColumn(
                                                     slotStart(
                                                         next,
                                                         workingOrder,
-                                                        block,
-                                                        gapDeltaPx,
+                                                        null,
+                                                        0f,
                                                     )
-                                                val nextSize = bounds[next]?.size
+                                                val nextBounds = bounds[next]
+                                                val nextGapPx =
+                                                    gapPxFor(next, effectiveGapsDp)
+                                                val nextContentHeight =
+                                                    (
+                                                        (nextBounds?.size ?: 0f) -
+                                                            nextGapPx
+                                                        ).coerceAtLeast(1f)
+                                                val nextCenter =
+                                                    nextStart?.let {
+                                                        it +
+                                                            nextGapPx +
+                                                            nextContentHeight / 2f
+                                                    }
                                                 if (
-                                                    nextStart != null &&
-                                                    nextSize != null &&
-                                                    visualCenter > nextStart + nextSize / 2f
+                                                    nextCenter != null &&
+                                                    visualCenter > nextCenter
                                                 ) {
                                                     targetIndex = currentIndex + 1
                                                 }
