@@ -348,6 +348,23 @@ fun SettingsScreen(
                         ),
                         onClick = { navController.navigate("settings/appearance") },
                     ),
+                    PremiumSettingsItem(
+                        icon = painterResource(R.drawable.edit),
+                        title = stringResource(R.string.capsule_customize_title),
+                        subtitle = stringResource(R.string.capsule_customize_subtitle),
+                        accentColor = MaterialTheme.colorScheme.secondary,
+                        keywords = listOf(
+                            "capsule",
+                            "customize",
+                            "layout",
+                            "edit",
+                            "light",
+                            "drag",
+                            "пластилин",
+                            "под себя",
+                        ),
+                        onClick = { navController.navigate("settings/capsule_customize") },
+                    ),
                 ),
             ),
         )
