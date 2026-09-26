@@ -13,7 +13,7 @@ class CapsuleLightEditorTest {
     }
 
     @Test
-    fun baseOrderRoundTrips() {
+    fun baseContainerOrderRoundTrips() {
         assertEquals(
             CapsuleLightBaseOrder,
             decodeCapsuleLightOrder(CapsuleLightBaseOrderEncoded),
@@ -21,14 +21,15 @@ class CapsuleLightEditorTest {
     }
 
     @Test
-    fun validCustomOrderIsPreserved() {
+    fun validContainerOrderIsPreserved() {
         val custom =
-            CapsuleLightBaseOrder.toMutableList().apply {
-                remove(CapsuleLightElement.FAVORITE)
-                add(indexOf(CapsuleLightElement.PANEL_BREAK) + 1, CapsuleLightElement.FAVORITE)
-                remove(CapsuleLightElement.VIDEO)
-                add(indexOf(CapsuleLightElement.AUDIO), CapsuleLightElement.VIDEO)
-            }
+            listOf(
+                CapsuleLightBlock.METADATA,
+                CapsuleLightBlock.ARTWORK,
+                CapsuleLightBlock.CONTROLS,
+                CapsuleLightBlock.PROGRESS,
+                CapsuleLightBlock.MODE_SWITCH,
+            )
 
         assertEquals(
             custom,
@@ -37,18 +38,56 @@ class CapsuleLightEditorTest {
     }
 
     @Test
-    fun malformedOrdersFallBackToBase() {
-        val malformed =
+    fun nestedOrdersRoundTripWithoutFlatteningContainers() {
+        val metadata = CapsuleLightMetadataBaseOrder.reversed()
+        val mode =
             listOf(
-                "",
-                "ARTWORK,TITLE",
-                CapsuleLightBaseOrderEncoded.replace("MENU", "NEXT"),
-                CapsuleLightBaseOrderEncoded.replace("MENU", "UNKNOWN"),
+                CapsuleLightModeItem.AUDIO_VIDEO,
+                CapsuleLightModeItem.SHUFFLE,
+                CapsuleLightModeItem.SLEEP,
+            )
+        val av = CapsuleLightAvBaseOrder.reversed()
+        val transport =
+            listOf(
+                CapsuleLightTransportItem.MENU,
+                CapsuleLightTransportItem.NEXT,
+                CapsuleLightTransportItem.PLAY_PAUSE,
+                CapsuleLightTransportItem.PREVIOUS,
+                CapsuleLightTransportItem.REPEAT,
             )
 
-        malformed.forEach { raw ->
-            assertEquals(CapsuleLightBaseOrder, decodeCapsuleLightOrder(raw))
-        }
+        assertEquals(
+            metadata,
+            decodeCapsuleLightMetadataOrder(encodeCapsuleLightMetadataOrder(metadata)),
+        )
+        assertEquals(
+            mode,
+            decodeCapsuleLightModeOrder(encodeCapsuleLightModeOrder(mode)),
+        )
+        assertEquals(
+            av,
+            decodeCapsuleLightAvOrder(encodeCapsuleLightAvOrder(av)),
+        )
+        assertEquals(
+            transport,
+            decodeCapsuleLightTransportOrder(encodeCapsuleLightTransportOrder(transport)),
+        )
+    }
+
+    @Test
+    fun malformedOrdersFallBackToTheirOwnBase() {
+        assertEquals(
+            CapsuleLightBaseOrder,
+            decodeCapsuleLightOrder("ARTWORK,METADATA"),
+        )
+        assertEquals(
+            CapsuleLightModeBaseOrder,
+            decodeCapsuleLightModeOrder("SHUFFLE,AUDIO,VIDEO,SLEEP"),
+        )
+        assertEquals(
+            CapsuleLightTransportBaseOrder,
+            decodeCapsuleLightTransportOrder("REPEAT,PREVIOUS,NEXT,NEXT,MENU"),
+        )
     }
 
     @Test
