@@ -146,6 +146,44 @@ private fun compactPositions(
     }
 }
 
+private fun projectOrderedPositions(
+    order: List<CapsuleLightBlock>,
+    preferredPositions: Map<CapsuleLightBlock, Float>,
+    heights: Map<CapsuleLightBlock, Float>,
+    startPx: Float,
+    endPx: Float,
+    gapPx: Float,
+): Map<CapsuleLightBlock, Float>? {
+    if (order.isEmpty()) return emptyMap()
+
+    val minimumHeight =
+        order.sumOf { (heights[it] ?: return null).toDouble() }.toFloat() +
+            gapPx * (order.size - 1).coerceAtLeast(0)
+    val availableHeight = endPx - startPx
+    if (minimumHeight > availableHeight + 0.5f) return null
+
+    val maxSlack = (availableHeight - minimumHeight).coerceAtLeast(0f)
+    var cumulativeMin = 0f
+    var previousSlack = 0f
+
+    return buildMap {
+        order.forEachIndexed { index, block ->
+            val height = heights[block] ?: return null
+            val preferredTop = preferredPositions[block] ?: (startPx + cumulativeMin)
+            val preferredSlack = preferredTop - startPx - cumulativeMin
+            val slack =
+                preferredSlack
+                    .coerceIn(0f, maxSlack)
+                    .coerceAtLeast(previousSlack)
+
+            put(block, startPx + cumulativeMin + slack)
+            previousSlack = slack
+            cumulativeMin += height
+            if (index < order.lastIndex) cumulativeMin += gapPx
+        }
+    }
+}
+
 private fun normalizedStoredPositions(
     order: List<CapsuleLightBlock>,
     requested: Map<CapsuleLightBlock, Float>,
@@ -160,8 +198,9 @@ private fun normalizedStoredPositions(
             gapPx * (order.size - 1).coerceAtLeast(0)
 
     if (totalMin > canvasHeightPx + 0.5f) {
-        // The resizer is responsible for keeping this impossible state from being created.
-        // Until its parent clamps, compacting is still safer than clipping a random block.
+        // A transient oversize measurement can happen while artwork resize is being committed.
+        // Never feed an inverted range into coerceIn and never delete a block: render the compact
+        // scene until the parent clamps the artwork back into the legal budget.
         return order to compactPositions(order, heights, gapPx)
     }
 
@@ -179,43 +218,17 @@ private fun normalizedStoredPositions(
                 .thenBy { order.indexOf(it) },
         )
 
-    val out = mutableMapOf<CapsuleLightBlock, Float>()
-    var minimumTop = 0f
-    sorted.forEachIndexed { index, block ->
-        val h = heights[block] ?: 0f
-        val requestedTop = requested[block] ?: minimumTop
-        val maxTop = (canvasHeightPx - h).coerceAtLeast(0f)
-        val top = requestedTop.coerceIn(minimumTop, maxTop)
-        out[block] = top
-        minimumTop = top + h + if (index < sorted.lastIndex) gapPx else 0f
-    }
+    val projected =
+        projectOrderedPositions(
+            order = sorted,
+            preferredPositions = requested,
+            heights = heights,
+            startPx = 0f,
+            endPx = canvasHeightPx,
+            gapPx = gapPx,
+        ) ?: compactPositions(sorted, heights, gapPx)
 
-    val last = sorted.lastOrNull()
-    val overflow =
-        if (last == null) {
-            0f
-        } else {
-            ((out[last] ?: 0f) + (heights[last] ?: 0f) - canvasHeightPx)
-                .coerceAtLeast(0f)
-        }
-
-    if (overflow > 0f) {
-        var nextTop = canvasHeightPx
-        for (index in sorted.indices.reversed()) {
-            val block = sorted[index]
-            val h = heights[block] ?: 0f
-            val maxTop =
-                nextTop - h - if (index < sorted.lastIndex) gapPx else 0f
-            out[block] = minOf(out[block] ?: maxTop, maxTop)
-            nextTop = out[block] ?: 0f
-        }
-    }
-
-    if ((out[sorted.firstOrNull()] ?: 0f) < -0.5f) {
-        return order to compactPositions(order, heights, gapPx)
-    }
-
-    return sorted to out
+    return sorted to projected
 }
 
 private fun insertionOrder(
@@ -260,43 +273,143 @@ private fun solveAt(
     if (dragIndex < 0) return null
 
     val draggedHeight = heights[dragged] ?: return null
-    if (draggedTopPx < -0.5f || draggedTopPx + draggedHeight > canvasHeightPx + 0.5f) {
+    val legalRange =
+        slotTopRange(
+            dragged = dragged,
+            slotIndex = dragIndex,
+            order = order,
+            heights = heights,
+            canvasHeightPx = canvasHeightPx,
+            gapPx = gapPx,
+        ) ?: return null
+
+    if (
+        draggedTopPx < legalRange.first - 0.5f ||
+        draggedTopPx > legalRange.second + 0.5f
+    ) {
         return null
     }
 
-    val out = basePositions.toMutableMap()
-    out[dragged] = draggedTopPx
+    val exactDraggedTop =
+        draggedTopPx.coerceIn(
+            legalRange.first,
+            legalRange.second,
+        )
 
-    // Push the chain above upward only as much as needed.
-    for (index in dragIndex - 1 downTo 0) {
-        val block = order[index]
-        val next = order[index + 1]
-        val h = heights[block] ?: return null
-        val maxTop = (out[next] ?: return null) - gapPx - h
-        out[block] = minOf(basePositions[block] ?: maxTop, maxTop)
+    val above = order.subList(0, dragIndex)
+    val below = order.subList(dragIndex + 1, order.size)
+
+    val upperEnd =
+        if (above.isEmpty()) {
+            0f
+        } else {
+            exactDraggedTop - gapPx
+        }
+    val lowerStart =
+        if (below.isEmpty()) {
+            canvasHeightPx
+        } else {
+            exactDraggedTop + draggedHeight + gapPx
+        }
+
+    val upper =
+        if (above.isEmpty()) {
+            emptyMap()
+        } else {
+            projectOrderedPositions(
+                order = above,
+                preferredPositions = basePositions,
+                heights = heights,
+                startPx = 0f,
+                endPx = upperEnd,
+                gapPx = gapPx,
+            ) ?: return null
+        }
+
+    val lower =
+        if (below.isEmpty()) {
+            emptyMap()
+        } else {
+            projectOrderedPositions(
+                order = below,
+                preferredPositions = basePositions,
+                heights = heights,
+                startPx = lowerStart,
+                endPx = canvasHeightPx,
+                gapPx = gapPx,
+            ) ?: return null
+        }
+
+    return buildMap {
+        putAll(upper)
+        put(dragged, exactDraggedTop)
+        putAll(lower)
     }
+}
 
-    // Push the chain below downward only as much as needed.
-    for (index in dragIndex + 1..order.lastIndex) {
-        val block = order[index]
-        val previous = order[index - 1]
-        val previousBottom =
-            (out[previous] ?: return null) +
-                (heights[previous] ?: return null)
-        val minTop = previousBottom + gapPx
-        out[block] = maxOf(basePositions[block] ?: minTop, minTop)
-    }
+private data class LightLiveLayout(
+    val topPx: Float,
+    val positionsPx: Map<CapsuleLightBlock, Float>,
+    val order: List<CapsuleLightBlock>,
+)
 
-    val first = order.firstOrNull() ?: return out
-    val last = order.lastOrNull() ?: return out
-    val firstTop = out[first] ?: return null
-    val lastBottom =
-        (out[last] ?: return null) +
-            (heights[last] ?: return null)
+private fun resolveLiveLayout(
+    dragged: CapsuleLightBlock,
+    desiredTopPx: Float,
+    baseOrder: List<CapsuleLightBlock>,
+    basePositions: Map<CapsuleLightBlock, Float>,
+    heights: Map<CapsuleLightBlock, Float>,
+    canvasHeightPx: Float,
+    gapPx: Float,
+): LightLiveLayout? {
+    val draggedHeight = heights[dragged] ?: return null
+    val clampedDesired =
+        desiredTopPx.coerceIn(
+            0f,
+            (canvasHeightPx - draggedHeight).coerceAtLeast(0f),
+        )
+    val order =
+        insertionOrder(
+            dragged = dragged,
+            desiredTopPx = clampedDesired,
+            baseOrder = baseOrder,
+            basePositions = basePositions,
+            heights = heights,
+        )
+    val index = order.indexOf(dragged)
+    if (index < 0) return null
 
-    if (firstTop < -0.5f || lastBottom > canvasHeightPx + 0.5f) return null
+    val range =
+        slotTopRange(
+            dragged = dragged,
+            slotIndex = index,
+            order = order,
+            heights = heights,
+            canvasHeightPx = canvasHeightPx,
+            gapPx = gapPx,
+        ) ?: return null
 
-    return out
+    val liveTop =
+        clampedDesired.coerceIn(
+            range.first,
+            range.second,
+        )
+    val solved =
+        solveAt(
+            dragged = dragged,
+            draggedTopPx = liveTop,
+            order = order,
+            basePositions = basePositions,
+            heights = heights,
+            canvasHeightPx = canvasHeightPx,
+            gapPx = gapPx,
+        ) ?: return null
+
+    return LightLiveLayout(
+        topPx = liveTop,
+        positionsPx = solved,
+        order = order,
+    )
 }
 
 private data class LightDockCandidate(
@@ -666,6 +779,7 @@ internal fun CapsuleLightCanvasV2(
             mutableStateOf<Map<CapsuleLightBlock, Float>>(emptyMap())
         }
     var target by remember { mutableStateOf<LightDropTarget?>(null) }
+    var liveLayout by remember { mutableStateOf<LightLiveLayout?>(null) }
 
     val latestPositionsDp by rememberUpdatedState(positionsDp)
     val latestOrder by rememberUpdatedState(order)
@@ -720,8 +834,8 @@ internal fun CapsuleLightCanvasV2(
         }
 
     val activePositionsPx =
-        if (dragged != null && target != null) {
-            target!!.positionsPx
+        if (dragged != null && liveLayout != null) {
+            liveLayout!!.positionsPx
         } else {
             resolvedPositionsPx
         }
@@ -862,21 +976,16 @@ internal fun CapsuleLightCanvasV2(
 
                 val visualTop =
                     if (selected) {
+                        val liveTop =
+                            liveLayout?.topPx
+                                ?: desiredDraggedTop
                         val selectedTarget = target
-                        when (selectedTarget?.kind) {
-                            LightDropKind.DOCK -> {
-                                // A real magnet means exactly that: the held object settles onto
-                                // the stationary neighbour while the finger remains inside the
-                                // magnetic radius. The neighbour is never dragged toward the hand.
-                                selectedTarget.topPx
-                            }
-                            LightDropKind.CELL -> {
-                                // Keep the hand feeling direct, but give the highlighted legal cell
-                                // a small physical pull so preview and release read as one action.
-                                desiredDraggedTop * 0.82f +
-                                    selectedTarget.topPx * 0.18f
-                            }
-                            null -> desiredDraggedTop
+                        if (selectedTarget?.kind == LightDropKind.DOCK) {
+                            // A real magnet is the only thing allowed to pull the held object away
+                            // from the finger. Empty cells merely preview where release will land.
+                            selectedTarget.topPx
+                        } else {
+                            liveTop
                         }
                     } else {
                         normalTop
@@ -888,8 +997,8 @@ internal fun CapsuleLightCanvasV2(
                         animationSpec =
                             if (selected) {
                                 spring(
-                                    dampingRatio = 1f,
-                                    stiffness = Spring.StiffnessHigh,
+                                    dampingRatio = 0.92f,
+                                    stiffness = Spring.StiffnessMediumHigh,
                                 )
                             } else {
                                 spring(
@@ -963,6 +1072,17 @@ internal fun CapsuleLightCanvasV2(
                                                     currentPositions[block] ?: 0f
                                                 dragDeltaPx = 0f
 
+                                                liveLayout =
+                                                    resolveLiveLayout(
+                                                        dragged = block,
+                                                        desiredTopPx = dragOriginTopPx,
+                                                        baseOrder = resolvedOrder,
+                                                        basePositions = currentPositions,
+                                                        heights = heightsPx,
+                                                        canvasHeightPx = canvasHeightPx,
+                                                        gapPx = gapPx,
+                                                    )
+
                                                 target =
                                                     resolveTarget(
                                                         dragged = block,
@@ -991,6 +1111,17 @@ internal fun CapsuleLightCanvasV2(
                                                                 ).coerceAtLeast(0f),
                                                         )
 
+                                                liveLayout =
+                                                    resolveLiveLayout(
+                                                        dragged = block,
+                                                        desiredTopPx = desired,
+                                                        baseOrder = frozenOrder,
+                                                        basePositions = frozenPositionsPx,
+                                                        heights = heightsPx,
+                                                        canvasHeightPx = canvasHeightPx,
+                                                        gapPx = gapPx,
+                                                    )
+
                                                 target =
                                                     resolveTarget(
                                                         dragged = block,
@@ -1005,28 +1136,41 @@ internal fun CapsuleLightCanvasV2(
                                                     )
                                             },
                                             onDragEnd = {
-                                                val settled = target
-                                                if (settled != null) {
+                                                val settledTarget = target
+                                                val settledLive = liveLayout
+                                                val settledPositions =
+                                                    settledTarget?.positionsPx
+                                                        ?: settledLive?.positionsPx
+                                                val settledOrder =
+                                                    settledTarget?.order
+                                                        ?: settledLive?.order
+
+                                                if (
+                                                    settledPositions != null &&
+                                                    settledOrder != null
+                                                ) {
                                                     latestOnLayoutSettled(
-                                                        settled.positionsPx.mapValues {
+                                                        settledPositions.mapValues {
                                                             (_, value) ->
                                                             with(density) {
                                                                 value.toDp().value
                                                             }
                                                         },
-                                                        settled.order,
+                                                        settledOrder,
                                                     )
                                                 }
                                                 dragged = null
                                                 dragDeltaPx = 0f
                                                 frozenPositionsPx = emptyMap()
                                                 target = null
+                                                liveLayout = null
                                             },
                                             onDragCancel = {
                                                 dragged = null
                                                 dragDeltaPx = 0f
                                                 frozenPositionsPx = emptyMap()
                                                 target = null
+                                                liveLayout = null
                                             },
                                         )
                                     },
