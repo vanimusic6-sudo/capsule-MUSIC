@@ -394,7 +394,6 @@ private fun CapsuleSoftColumnItem(
                     translationY = if (selected) dragOffsetY else settle.value
                     scaleX = scale
                     scaleY = scale
-                    shadowElevation = if (selected) 12.dp.toPx() else 0f
                 }
     ) {
         content()
