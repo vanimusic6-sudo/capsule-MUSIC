@@ -78,18 +78,22 @@ internal fun encodeCapsuleLightOrder(order: List<CapsuleLightBlock>): String =
  */
 internal object CapsuleLightEditorProcessGuard {
     @Volatile
-    private var startedInThisProcess = false
+    private var recoveryCheckedInThisProcess = false
 
+    /**
+     * Returns true exactly once per process. A true persistent transaction bit at that moment can
+     * only belong to a process that disappeared before an edited layout proved it could render.
+     */
     @Synchronized
-    fun begin(): Boolean {
-        if (startedInThisProcess) return false
-        startedInThisProcess = true
+    fun shouldCheckRecovery(): Boolean {
+        if (recoveryCheckedInThisProcess) return false
+        recoveryCheckedInThisProcess = true
         return true
     }
 
     @Synchronized
-    fun end() {
-        startedInThisProcess = false
+    internal fun resetForTesting() {
+        recoveryCheckedInThisProcess = false
     }
 }
 
@@ -113,12 +117,14 @@ internal fun CapsuleLightReorderColumn(
     scrollState: ScrollState,
     onOrderChange: (List<CapsuleLightBlock>) -> Unit,
     onOrderSettled: (List<CapsuleLightBlock>) -> Unit,
+    onEditStarted: () -> Unit = {},
     modifier: Modifier = Modifier,
     content: @Composable (CapsuleLightBlock) -> Unit,
 ) {
     val latestOrder by rememberUpdatedState(order)
     val latestOnOrderChange by rememberUpdatedState(onOrderChange)
     val latestOnOrderSettled by rememberUpdatedState(onOrderSettled)
+    val latestOnEditStarted by rememberUpdatedState(onEditStarted)
 
     val bounds = remember { mutableStateMapOf<CapsuleLightBlock, BlockBounds>() }
     var dragged by remember { mutableStateOf<CapsuleLightBlock?>(null) }
@@ -172,6 +178,7 @@ internal fun CapsuleLightReorderColumn(
                                 Modifier.pointerInput(block) {
                                     detectDragGesturesAfterLongPress(
                                         onDragStart = {
+                                            latestOnEditStarted()
                                             dragged = block
                                             workingOrder = latestOrder
                                             dragOffsetY = 0f
