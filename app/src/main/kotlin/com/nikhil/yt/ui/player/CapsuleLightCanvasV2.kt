@@ -853,7 +853,13 @@ internal fun CapsuleLightCanvasV2(
 
     val activePositionsPx =
         when {
-            dragged != null && liveLayout != null -> liveLayout!!.positionsPx
+            // A magnetic DOCK moves the command block away from the raw finger coordinate.
+            // Dependants must therefore follow the DOCK's solved geometry too; otherwise the held
+            // block can look stationary while neighbours react to invisible finger travel.
+            dragged != null && target?.kind == LightDropKind.DOCK ->
+                target!!.positionsPx
+            dragged != null && liveLayout != null ->
+                liveLayout!!.positionsPx
             resolvedPositionsPx.isNotEmpty() -> resolvedPositionsPx
             // A saved custom scene must never flash/collapse to the origin while Compose is still
             // reporting child sizes. These provisional tops are replaced by the normalized scene
