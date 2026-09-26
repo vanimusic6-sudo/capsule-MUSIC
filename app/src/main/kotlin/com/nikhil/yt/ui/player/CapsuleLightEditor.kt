@@ -66,9 +66,13 @@ internal enum class CapsuleLightMetadataItem {
 
 internal enum class CapsuleLightModeItem {
     SHUFFLE,
+    AUDIO_VIDEO,
+    SLEEP,
+}
+
+internal enum class CapsuleLightAvItem {
     AUDIO,
     VIDEO,
-    SLEEP,
 }
 
 internal enum class CapsuleLightTransportItem {
@@ -82,11 +86,13 @@ internal enum class CapsuleLightTransportItem {
 internal val CapsuleLightBaseOrder: List<CapsuleLightBlock> = CapsuleLightBlock.entries.toList()
 internal val CapsuleLightMetadataBaseOrder: List<CapsuleLightMetadataItem> = CapsuleLightMetadataItem.entries.toList()
 internal val CapsuleLightModeBaseOrder: List<CapsuleLightModeItem> = CapsuleLightModeItem.entries.toList()
+internal val CapsuleLightAvBaseOrder: List<CapsuleLightAvItem> = CapsuleLightAvItem.entries.toList()
 internal val CapsuleLightTransportBaseOrder: List<CapsuleLightTransportItem> = CapsuleLightTransportItem.entries.toList()
 
 internal val CapsuleLightBaseOrderEncoded = encodeEnumOrder(CapsuleLightBaseOrder)
 internal val CapsuleLightMetadataBaseOrderEncoded = encodeEnumOrder(CapsuleLightMetadataBaseOrder)
 internal val CapsuleLightModeBaseOrderEncoded = encodeEnumOrder(CapsuleLightModeBaseOrder)
+internal val CapsuleLightAvBaseOrderEncoded = encodeEnumOrder(CapsuleLightAvBaseOrder)
 internal val CapsuleLightTransportBaseOrderEncoded = encodeEnumOrder(CapsuleLightTransportBaseOrder)
 
 private fun <T : Enum<T>> encodeEnumOrder(order: List<T>): String =
@@ -126,6 +132,11 @@ internal fun decodeCapsuleLightModeOrder(raw: String) =
     decodeEnumOrder(raw, CapsuleLightModeBaseOrder)
 internal fun encodeCapsuleLightModeOrder(order: List<CapsuleLightModeItem>) =
     encodeEnumOrder(decodeCapsuleLightModeOrder(encodeEnumOrder(order)))
+
+internal fun decodeCapsuleLightAvOrder(raw: String) =
+    decodeEnumOrder(raw, CapsuleLightAvBaseOrder)
+internal fun encodeCapsuleLightAvOrder(order: List<CapsuleLightAvItem>) =
+    encodeEnumOrder(decodeCapsuleLightAvOrder(encodeEnumOrder(order)))
 
 internal fun decodeCapsuleLightTransportOrder(raw: String) =
     decodeEnumOrder(raw, CapsuleLightTransportBaseOrder)
