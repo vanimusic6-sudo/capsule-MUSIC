@@ -232,8 +232,11 @@ internal fun CapsulePlayerLayout(
                                     // The v2 canvas measures every real block. Its budget is the
                                     // source of truth; the old 320dp details estimate can otherwise
                                     // reject growth even when the actual scene has free room.
+                                    val artworkFrameBudget =
+                                        (canvasMaxArtworkHeight - 8.dp)
+                                            .coerceAtLeast(artworkSide * 0.55f)
                                     (
-                                        canvasMaxArtworkHeight.value /
+                                        artworkFrameBudget.value /
                                             artworkSide.value
                                         )
                                         .coerceIn(0.55f, 1.35f)
