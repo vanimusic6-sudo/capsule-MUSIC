@@ -798,11 +798,21 @@ fun CapsulePlayerContent(
             lightBlockGaps = safe
             onLightBlockGapsEncodedChange(encodeCapsuleLightBlockGaps(safe))
         },
+        onLightGapsNormalized = { normalized ->
+            val safe =
+                CapsuleLightBaseOrder.associateWith { block ->
+                    (normalized[block] ?: 0f).coerceIn(0f, 1000f)
+                }
+            if (safe != lightBlockGaps) {
+                lightBlockGaps = safe
+                onLightBlockGapsEncodedChange(encodeCapsuleLightBlockGaps(safe))
+            }
+        },
         lightBlockContent =
             if (!useClayLayout) {
                 null
             } else {
-                { block, artworkSide ->
+                { block, artworkSide, artworkMaxHeightScale ->
                     val beginNestedEdit: () -> Unit = {
                         lightEditInProgress = true
                         onLightEditSessionActiveChange(true)
@@ -810,6 +820,29 @@ fun CapsulePlayerContent(
 
                     when (block) {
                         CapsuleLightBlock.ARTWORK -> {
+                            val safeArtworkHeightScale =
+                                lightArtworkHeightScale
+                                    .coerceIn(
+                                        0.55f,
+                                        artworkMaxHeightScale.coerceAtLeast(0.55f),
+                                    )
+
+                            LaunchedEffect(
+                                artworkMaxHeightScale,
+                                lightArtworkHeightScale,
+                                artworkResizeActive,
+                            ) {
+                                if (
+                                    !artworkResizeActive &&
+                                    kotlin.math.abs(
+                                        safeArtworkHeightScale - lightArtworkHeightScale,
+                                    ) > 0.005f
+                                ) {
+                                    lightArtworkHeightScale = safeArtworkHeightScale
+                                    onArtworkHeightScaleChange(safeArtworkHeightScale)
+                                }
+                            }
+
                             Column(
                                 modifier = Modifier.fillMaxWidth(),
                                 horizontalAlignment = Alignment.CenterHorizontally,
@@ -818,7 +851,8 @@ fun CapsulePlayerContent(
                                 CapsuleLightResizableArtwork(
                                     baseSide = artworkSide,
                                     widthScale = lightArtworkWidthScale,
-                                    heightScale = lightArtworkHeightScale,
+                                    heightScale = safeArtworkHeightScale,
+                                    maxHeightScale = artworkMaxHeightScale,
                                     // Video replaces only the media contents. The saved artwork
                                     // footprint remains in layout so every control below stays
                                     // exactly where the user put it.
