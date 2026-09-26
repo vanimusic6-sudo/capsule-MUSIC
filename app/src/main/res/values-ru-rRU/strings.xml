@@ -812,4 +812,5 @@
     <string name="capsule_customize_edit_description">Разрешить перемещение элементов удержанием на выбранном экране Capsule.</string>
     <string name="capsule_customize_reset_description">Вернуть выбранный экран к базовой раскладке Capsule и выключить редактирование.</string>
     <string name="capsule_customize_hint">Зажмите элемент и перетащите его. Элементы прилипают к магнитным слотам и мягко выталкивают соседей, а не накладываются друг на друга.</string>
+    <string name="capsule_light_lyric_placeholder">Строка текста выключена — перетащите этот слот</string>
 </resources>
