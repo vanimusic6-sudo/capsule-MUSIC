@@ -423,8 +423,13 @@ private fun resolveTarget(
                     if (candidate.preferred) preferredMagnetPx else normalMagnetPx
             }
             .minWithOrNull(
-                compareByDescending<DockCandidate> { it.preferred }
+                compareBy<DockCandidate> { candidate ->
+                    val radius =
+                        if (candidate.preferred) preferredMagnetPx else normalMagnetPx
+                    candidate.distancePx / radius.coerceAtLeast(1f)
+                }
                     .thenBy { it.distancePx }
+                    .thenByDescending { it.preferred }
                     .thenBy { it.side.ordinal },
             )
 
@@ -495,8 +500,13 @@ private fun resolveTarget(
     // even if the pointer is farther away than the normal magnetic radius.
     val fallbackDock =
         docks.minWithOrNull(
-            compareByDescending<DockCandidate> { it.preferred }
+            compareBy<DockCandidate> { candidate ->
+                val radius =
+                    if (candidate.preferred) preferredMagnetPx else normalMagnetPx
+                candidate.distancePx / radius.coerceAtLeast(1f)
+            }
                 .thenBy { it.distancePx }
+                .thenByDescending { it.preferred }
                 .thenBy { it.side.ordinal },
         )
 
