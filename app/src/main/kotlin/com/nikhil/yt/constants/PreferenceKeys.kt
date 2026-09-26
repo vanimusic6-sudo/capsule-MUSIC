@@ -431,7 +431,7 @@ val CapsuleLightLyricLineKey = booleanPreferencesKey("capsuleLightLyricLine")
 /** Enables long-press block reordering only on the Capsule Light full player. */
 val CapsuleLightEditEnabledKey = booleanPreferencesKey("capsuleLightEditEnabled")
 
-/** Comma-separated [CapsuleLightBlock] names. Kept as a string so migrations stay trivial. */
+/** Comma-separated Light container names. Kept as a string so migrations stay trivial. */
 val CapsuleLightLayoutOrderKey = stringPreferencesKey("capsuleLightLayoutOrder")
 
 /**
@@ -441,6 +441,15 @@ val CapsuleLightLayoutOrderKey = stringPreferencesKey("capsuleLightLayoutOrder")
  * before the user finished editing and the Light layout is restored to its base order.
  */
 val CapsuleLightEditSessionActiveKey = booleanPreferencesKey("capsuleLightEditSessionActive")
+
+/** Order of elements inside the original Light containers. */
+val CapsuleLightMetadataOrderKey = stringPreferencesKey("capsuleLightMetadataOrder")
+val CapsuleLightModeOrderKey = stringPreferencesKey("capsuleLightModeOrder")
+val CapsuleLightTransportOrderKey = stringPreferencesKey("capsuleLightTransportOrder")
+
+/** Relative artwork size. 1f is the untouched Light artwork. */
+val CapsuleLightArtworkWidthScaleKey = floatPreferencesKey("capsuleLightArtworkWidthScale")
+val CapsuleLightArtworkHeightScaleKey = floatPreferencesKey("capsuleLightArtworkHeightScale")
 
 /** Which Capsule screen the customization hub is editing. Only Light exists in the first release. */
 val CapsuleCustomizeTargetKey = stringPreferencesKey("capsuleCustomizeTarget")
