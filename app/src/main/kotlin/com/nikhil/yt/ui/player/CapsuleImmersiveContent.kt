@@ -687,7 +687,8 @@ fun CapsuleImmersiveContent(
                         isLoading = isLoading,
                         visible = visible,
                         color = textColor,
-                    ) { playerConnection.player.togglePlayPause() }
+                        onClick = { playerConnection.player.togglePlayPause() },
+                    )
                 },
                 onMenuClick = onMenuClick,
             )
