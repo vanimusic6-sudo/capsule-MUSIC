@@ -445,6 +445,7 @@ val CapsuleLightEditSessionActiveKey = booleanPreferencesKey("capsuleLightEditSe
 /** Order of elements inside the original Light containers. */
 val CapsuleLightMetadataOrderKey = stringPreferencesKey("capsuleLightMetadataOrder")
 val CapsuleLightModeOrderKey = stringPreferencesKey("capsuleLightModeOrder")
+val CapsuleLightAvOrderKey = stringPreferencesKey("capsuleLightAvOrder")
 val CapsuleLightTransportOrderKey = stringPreferencesKey("capsuleLightTransportOrder")
 
 /** Relative artwork size. 1f is the untouched Light artwork. */
