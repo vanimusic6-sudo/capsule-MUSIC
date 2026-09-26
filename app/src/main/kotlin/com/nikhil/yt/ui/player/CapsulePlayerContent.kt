@@ -184,29 +184,31 @@ fun CapsulePlayerContent(
         }
 
     /*
-     * Editing is intentionally transactional. A persistent session bit is armed only when the
-     * Light editor is actually rendered. If a fresh process sees that bit still armed, the previous
-     * process died before the session was finished, so we restore the factory order before drawing
-     * the custom layout again.
+     * Crash recovery is tied to an edit transaction, not to the editor toggle itself. A completed
+     * layout may stay editable across normal app restarts. Only a process that disappears while a
+     * drag/new layout is still unvalidated leaves the persistent transaction bit behind.
      */
-    LaunchedEffect(isLight, lightEditorEnabled, lightEditSessionActive) {
-        if (!lightEditorEnabled) {
-            CapsuleLightEditorProcessGuard.end()
-            if (lightEditSessionActive) onLightEditSessionActiveChange(false)
-            return@LaunchedEffect
+    var lightEditInProgress by remember { mutableStateOf(false) }
+    var lightValidationGeneration by remember { mutableStateOf(0) }
+
+    LaunchedEffect(Unit) {
+        if (
+            CapsuleLightEditorProcessGuard.shouldCheckRecovery() &&
+            lightEditSessionActive
+        ) {
+            lightOrder = CapsuleLightBaseOrder
+            onLightOrderEncodedChange(CapsuleLightBaseOrderEncoded)
+            onLightEditorEnabledChange(false)
+            onLightEditSessionActiveChange(false)
         }
+    }
 
-        if (!isLight) return@LaunchedEffect
-
-        if (CapsuleLightEditorProcessGuard.begin()) {
-            if (lightEditSessionActive) {
-                lightOrder = CapsuleLightBaseOrder
-                onLightOrderEncodedChange(CapsuleLightBaseOrderEncoded)
-                onLightEditorEnabledChange(false)
+    LaunchedEffect(lightValidationGeneration, lightEditInProgress) {
+        if (lightValidationGeneration > 0 && !lightEditInProgress) {
+            // Surviving several frames after the reordered tree was composed marks it as safe.
+            kotlinx.coroutines.delay(1_200L)
+            if (!lightEditInProgress) {
                 onLightEditSessionActiveChange(false)
-                CapsuleLightEditorProcessGuard.end()
-            } else {
-                onLightEditSessionActiveChange(true)
             }
         }
     }
@@ -642,10 +644,16 @@ fun CapsulePlayerContent(
         onLightOrderChange = { reordered ->
             lightOrder = decodeCapsuleLightOrder(encodeCapsuleLightOrder(reordered))
         },
+        onLightEditStarted = {
+            lightEditInProgress = true
+            onLightEditSessionActiveChange(true)
+        },
         onLightOrderSettled = { reordered ->
             val safeOrder = decodeCapsuleLightOrder(encodeCapsuleLightOrder(reordered))
             lightOrder = safeOrder
             onLightOrderEncodedChange(encodeCapsuleLightOrder(safeOrder))
+            lightEditInProgress = false
+            lightValidationGeneration += 1
         },
         lightBlockContent =
             if (!isLight) {
