@@ -232,6 +232,16 @@ private data class AxisBounds(
     val center: Float get() = start + size / 2f
 }
 
+internal fun lightRowCrossedBefore(
+    commandCenterPx: Float,
+    neighbourCenterPx: Float,
+): Boolean = commandCenterPx <= neighbourCenterPx + 0.5f
+
+internal fun lightRowCrossedAfter(
+    commandCenterPx: Float,
+    neighbourCenterPx: Float,
+): Boolean = commandCenterPx >= neighbourCenterPx - 0.5f
+
 private val CapsuleLightDockGap = 8.dp
 private val CapsuleLightDockThreshold = 52.dp
 private val CapsuleLightPreferredDockThreshold = 82.dp
@@ -1083,6 +1093,7 @@ internal fun <T : Enum<T>> CapsuleLightReorderRow(
     modifier: Modifier = Modifier,
     verticalAlignment: Alignment.Vertical = Alignment.CenterVertically,
     dragHandleOnly: Boolean = false,
+    dragHandleOnlyFor: ((T) -> Boolean)? = null,
     content: @Composable (T) -> Unit,
 ) {
     if (!editable) {
@@ -1145,6 +1156,7 @@ internal fun <T : Enum<T>> CapsuleLightReorderRow(
         order.forEach { item ->
             key(item) {
                 val selected = dragged == item
+                val handleOnly = dragHandleOnlyFor?.invoke(item) ?: dragHandleOnly
                 val actual = bounds[item]
                 val virtualStart = slotStart(item, workingOrder)
                 val target =
@@ -1199,7 +1211,10 @@ internal fun <T : Enum<T>> CapsuleLightReorderRow(
                                     if (
                                         previousStart != null &&
                                         previousSize != null &&
-                                        visualCenter < previousStart + previousSize / 2f
+                                        lightRowCrossedBefore(
+                                            commandCenterPx = visualCenter,
+                                            neighbourCenterPx = previousStart + previousSize / 2f,
+                                        )
                                     ) {
                                         targetIndex = index - 1
                                     }
@@ -1212,7 +1227,10 @@ internal fun <T : Enum<T>> CapsuleLightReorderRow(
                                     if (
                                         nextStart != null &&
                                         nextSize != null &&
-                                        visualCenter > nextStart + nextSize / 2f
+                                        lightRowCrossedAfter(
+                                            commandCenterPx = visualCenter,
+                                            neighbourCenterPx = nextStart + nextSize / 2f,
+                                        )
                                     ) {
                                         targetIndex = index + 1
                                     }
@@ -1259,13 +1277,13 @@ internal fun <T : Enum<T>> CapsuleLightReorderRow(
                                         else -> animatedOffset
                                     }
                             }
-                            .then(if (dragHandleOnly) Modifier else dragGesture)
+                            .then(if (handleOnly) Modifier else dragGesture)
                             .zIndex(if (selected) 4f else 0f),
                     contentAlignment = Alignment.Center,
                 ) {
                     content(item)
 
-                    if (dragHandleOnly) {
+                    if (handleOnly) {
                         Box(
                             modifier =
                                 Modifier
@@ -1293,10 +1311,13 @@ internal fun <T : Enum<T>> CapsuleLightReorderRow(
 }
 
 private enum class ArtworkResizeHandle {
+    TOP_LEFT,
+    TOP,
+    TOP_RIGHT,
     LEFT,
     RIGHT,
-    BOTTOM,
     BOTTOM_LEFT,
+    BOTTOM,
     BOTTOM_RIGHT,
 }
 
@@ -1469,10 +1490,13 @@ private fun BoxScope.CapsuleArtworkResizeHandle(
 
     val alignment =
         when (handle) {
+            ArtworkResizeHandle.TOP_LEFT -> Alignment.TopStart
+            ArtworkResizeHandle.TOP -> Alignment.TopCenter
+            ArtworkResizeHandle.TOP_RIGHT -> Alignment.TopEnd
             ArtworkResizeHandle.LEFT -> Alignment.CenterStart
             ArtworkResizeHandle.RIGHT -> Alignment.CenterEnd
-            ArtworkResizeHandle.BOTTOM -> Alignment.BottomCenter
             ArtworkResizeHandle.BOTTOM_LEFT -> Alignment.BottomStart
+            ArtworkResizeHandle.BOTTOM -> Alignment.BottomCenter
             ArtworkResizeHandle.BOTTOM_RIGHT -> Alignment.BottomEnd
         }
 
@@ -1494,6 +1518,29 @@ private fun BoxScope.CapsuleArtworkResizeHandle(
                         onDrag = { change, amount ->
                             change.consume()
                             when (handle) {
+                                ArtworkResizeHandle.TOP_LEFT -> {
+                                    w = (w - amount.x / basePx).coerceIn(0.55f, 1.08f)
+                                    h =
+                                        (h - amount.y / basePx).coerceIn(
+                                            0.55f,
+                                            latestMaxHeightScale.coerceAtLeast(0.55f),
+                                        )
+                                }
+                                ArtworkResizeHandle.TOP -> {
+                                    h =
+                                        (h - amount.y / basePx).coerceIn(
+                                            0.55f,
+                                            latestMaxHeightScale.coerceAtLeast(0.55f),
+                                        )
+                                }
+                                ArtworkResizeHandle.TOP_RIGHT -> {
+                                    w = (w + amount.x / basePx).coerceIn(0.55f, 1.08f)
+                                    h =
+                                        (h - amount.y / basePx).coerceIn(
+                                            0.55f,
+                                            latestMaxHeightScale.coerceAtLeast(0.55f),
+                                        )
+                                }
                                 ArtworkResizeHandle.LEFT -> {
                                     w = (w - amount.x / basePx).coerceIn(0.55f, 1.08f)
                                 }
