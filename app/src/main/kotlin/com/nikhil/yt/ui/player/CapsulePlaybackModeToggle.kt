@@ -148,6 +148,65 @@ fun CapsuleAudioVideoToggle(
 }
 
 @Composable
+internal fun CapsuleLightModeAtom(
+    mode: CapsulePlaybackMode,
+    state: CapsuleVideoPlaybackState,
+    textColor: Color,
+    enabled: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val videoResolving =
+        state.preferredMode == CapsulePlaybackMode.VIDEO &&
+            state.phase == CapsuleVideoPhase.RESOLVING
+    val videoUnavailable =
+        state.preferredMode == CapsulePlaybackMode.VIDEO &&
+            state.phase == CapsuleVideoPhase.UNAVAILABLE
+    val videoRequestError =
+        state.preferredMode == CapsulePlaybackMode.VIDEO &&
+            state.phase == CapsuleVideoPhase.REQUEST_ERROR
+    val videoRequestPaused =
+        videoRequestError &&
+            (state.message?.contains("paused", ignoreCase = true) == true ||
+                state.message?.contains("quota", ignoreCase = true) == true)
+    val videoSelected =
+        state.mode == CapsulePlaybackMode.VIDEO || videoResolving
+    val selected =
+        when (mode) {
+            CapsulePlaybackMode.AUDIO -> !videoSelected
+            CapsulePlaybackMode.VIDEO -> videoSelected
+        }
+
+    val isVideo = mode == CapsulePlaybackMode.VIDEO
+    CapsuleModeSegment(
+        text =
+            if (!isVideo) {
+                "audio"
+            } else {
+                when {
+                    videoRequestPaused -> "video paused"
+                    videoRequestError -> "video error"
+                    videoUnavailable -> "video n/a"
+                    else -> "video"
+                }
+            },
+        lightStyle = true,
+        shape = RoundedCornerShape(14.dp),
+        selected = selected,
+        loading = isVideo && videoResolving,
+        unavailable = isVideo && videoUnavailable,
+        requestError = isVideo && videoRequestError,
+        enabled = enabled && (!isVideo || !videoUnavailable),
+        textColor = textColor,
+        onClick = onClick,
+        modifier =
+            modifier
+                .fillMaxHeight()
+                .fillMaxWidth(),
+    )
+}
+
+@Composable
 private fun CapsuleModeSegment(
     text: String,
     shape: Shape,
