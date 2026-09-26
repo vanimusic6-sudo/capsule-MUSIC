@@ -754,6 +754,7 @@ internal fun CapsuleLightResizableArtwork(
     onEditStarted: () -> Unit,
     onResizeSettled: (widthScale: Float, heightScale: Float) -> Unit,
     modifier: Modifier = Modifier,
+    contentAlignment: Alignment = Alignment.Center,
     content: @Composable () -> Unit,
 ) {
     var selected by remember { mutableStateOf(false) }
@@ -811,7 +812,7 @@ internal fun CapsuleLightResizableArtwork(
                         Modifier
                     },
                 ),
-        contentAlignment = Alignment.Center,
+        contentAlignment = contentAlignment,
     ) {
         content()
 
