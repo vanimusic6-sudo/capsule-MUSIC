@@ -283,6 +283,7 @@ internal fun CapsuleLightFavorite(
     liked: Boolean,
     textColor: Color,
     onToggleLike: () -> Unit,
+    enabled: Boolean = true,
 ) {
     val favoriteInteraction = remember { MutableInteractionSource() }
     var userActionToken by remember { mutableIntStateOf(0) }
@@ -291,6 +292,7 @@ internal fun CapsuleLightFavorite(
             .size(48.dp)
             .clip(CircleShape)
             .clickable(
+                enabled = enabled,
                 interactionSource = favoriteInteraction,
                 indication = null,
                 role = Role.Button,
@@ -326,6 +328,7 @@ internal fun CapsuleLightControls(
     onRepeat: () -> Unit,
     orbit: @Composable () -> Unit,
     onMenuClick: (() -> Unit)? = null,
+    interactionEnabled: Boolean = true,
     order: List<CapsuleLightTransportItem> = CapsuleLightTransportBaseOrder,
     editable: Boolean = false,
     onOrderChange: (List<CapsuleLightTransportItem>) -> Unit = {},
@@ -370,7 +373,7 @@ internal fun CapsuleLightControls(
                                 else -> R.string.repeat_mode_off
                             },
                         ),
-                    enabled = enabled,
+                    enabled = enabled && interactionEnabled,
                     active = repeatMode != Player.REPEAT_MODE_OFF,
                     textColor = textColor,
                     onClick = onRepeat,
@@ -383,7 +386,7 @@ internal fun CapsuleLightControls(
                 CapsuleLightTransportIcon(
                     iconRes = R.drawable.skip_previous,
                     contentDescription = stringResource(androidx.media3.ui.R.string.exo_controls_previous_description),
-                    enabled = enabled && canSkipPrevious,
+                    enabled = enabled && interactionEnabled && canSkipPrevious,
                     active = true,
                     textColor = textColor,
                     onClick = onPrevious,
@@ -405,7 +408,7 @@ internal fun CapsuleLightControls(
                 CapsuleLightTransportIcon(
                     iconRes = R.drawable.skip_next,
                     contentDescription = stringResource(androidx.media3.ui.R.string.exo_controls_next_description),
-                    enabled = enabled && canSkipNext,
+                    enabled = enabled && interactionEnabled && canSkipNext,
                     active = true,
                     textColor = textColor,
                     onClick = onNext,
@@ -418,7 +421,7 @@ internal fun CapsuleLightControls(
                 CapsuleLightTransportIcon(
                     iconRes = R.drawable.more_vert,
                     contentDescription = stringResource(R.string.more),
-                    enabled = true,
+                    enabled = interactionEnabled,
                     active = true,
                     textColor = textColor,
                     onClick = menuAction,
