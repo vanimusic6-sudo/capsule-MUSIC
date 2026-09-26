@@ -71,9 +71,9 @@ internal fun CapsulePlayerLayout(
     modifier: Modifier = Modifier,
     onExpandQueue: () -> Unit = {},
     lightEditorEnabled: Boolean = false,
-    lightOrder: List<CapsuleLightElement> = CapsuleLightBaseOrder,
-    onLightOrderChange: (List<CapsuleLightElement>) -> Unit = {},
-    onLightOrderSettled: (List<CapsuleLightElement>) -> Unit = {},
+    lightOrder: List<CapsuleLightBlock> = CapsuleLightBaseOrder,
+    onLightOrderChange: (List<CapsuleLightBlock>) -> Unit = {},
+    onLightOrderSettled: (List<CapsuleLightBlock>) -> Unit = {},
     onLightEditStarted: () -> Unit = {},
     /**
      * Optional block renderer used by the first Capsule "clay" editor.
@@ -81,7 +81,7 @@ internal fun CapsulePlayerLayout(
      * When supplied, Light is rendered as reorderable slots instead of the fixed artwork/details
      * stack. Dense/Immersive and old call sites keep the exact legacy path below.
      */
-    lightElementContent: (@Composable (CapsuleLightElement, Dp, Boolean) -> Unit)? = null,
+    lightBlockContent: (@Composable (CapsuleLightBlock, Dp) -> Unit)? = null,
     /**
      * The sounding lyric line, or null when it is switched off.
      *
@@ -141,22 +141,22 @@ internal fun CapsulePlayerLayout(
                     }
                 }
             }
-            if (lightElementContent != null) {
+            if (lightBlockContent != null) {
                 CompositionLocalProvider(LocalCapsuleLightMenu provides onMenuClick) {
-                    CapsuleLightClayLayout(
+                    CapsuleLightReorderColumn(
                         order = lightOrder,
                         editable = lightEditorEnabled,
                         scrollState = scrollState,
                         onOrderChange = onLightOrderChange,
                         onOrderSettled = onLightOrderSettled,
                         onEditStarted = onLightEditStarted,
-                        modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp).nestedScroll(queueScroll),
-                    ) { element, insidePanel ->
+                        modifier = Modifier.fillMaxWidth().nestedScroll(queueScroll),
+                    ) { block ->
                         Box(
                             modifier = Modifier.fillMaxWidth(),
                             contentAlignment = Alignment.Center,
                         ) {
-                            lightElementContent(element, artworkSide, insidePanel)
+                            lightBlockContent(block, artworkSide)
                         }
                     }
                 }
@@ -229,73 +229,6 @@ internal fun CapsuleLightFavorite(
     }
 }
 
-@Composable
-internal fun CapsuleLightClayControlSurface(
-    textColor: Color,
-    insidePanel: Boolean,
-    modifier: Modifier = Modifier,
-    height: Dp = 72.dp,
-    content: @Composable () -> Unit,
-) {
-    val shape = RoundedCornerShape(16.dp)
-    Box(
-        modifier =
-            modifier
-                .fillMaxWidth()
-                .height(height)
-                .clip(shape)
-                .then(
-                    if (insidePanel) {
-                        Modifier
-                            .background(textColor.copy(alpha = 0.035f))
-                            .border(1.dp, textColor.copy(alpha = 0.12f), shape)
-                    } else {
-                        Modifier
-                    },
-                ),
-        contentAlignment = Alignment.Center,
-    ) {
-        content()
-    }
-}
-
-@Composable
-internal fun CapsuleLightClayIconButton(
-    iconRes: Int,
-    contentDescription: String,
-    textColor: Color,
-    enabled: Boolean,
-    active: Boolean,
-    insidePanel: Boolean,
-    onClick: () -> Unit,
-    iconSize: Int = 24,
-) {
-    CapsuleLightClayControlSurface(
-        textColor = textColor,
-        insidePanel = insidePanel,
-    ) {
-        IconButton(
-            onClick = onClick,
-            enabled = enabled,
-        ) {
-            Icon(
-                painter = painterResource(iconRes),
-                contentDescription = contentDescription,
-                tint =
-                    textColor.copy(
-                        alpha =
-                            when {
-                                !enabled -> 0.24f
-                                active -> 0.98f
-                                else -> 0.46f
-                            },
-                    ),
-                modifier = Modifier.size(iconSize.dp),
-            )
-        }
-    }
-}
-
 /** One calm transport capsule: repeat, previous, orbit, next and menu. */
 @Composable
 internal fun CapsuleLightControls(
@@ -311,12 +244,28 @@ internal fun CapsuleLightControls(
     onRepeat: () -> Unit,
     orbit: @Composable () -> Unit,
     onMenuClick: (() -> Unit)? = null,
+    order: List<CapsuleLightTransportItem> = CapsuleLightTransportBaseOrder,
+    editable: Boolean = false,
+    onOrderChange: (List<CapsuleLightTransportItem>) -> Unit = {},
+    onOrderSettled: (List<CapsuleLightTransportItem>) -> Unit = {},
+    onEditStarted: () -> Unit = {},
 ) {
     val menuAction = onMenuClick ?: LocalCapsuleLightMenu.current
     val transportSurface = textColor.copy(alpha = 0.035f)
     val transportOutline = textColor.copy(alpha = 0.16f)
 
-    Row(
+    CapsuleLightReorderRow(
+        order = order,
+        editable = editable,
+        weightFor = { item ->
+            when (item) {
+                CapsuleLightTransportItem.PLAY_PAUSE -> 1.38f
+                else -> 1f
+            }
+        },
+        onOrderChange = onOrderChange,
+        onOrderSettled = onOrderSettled,
+        onEditStarted = onEditStarted,
         modifier =
             Modifier
                 .fillMaxWidth()
@@ -326,65 +275,76 @@ internal fun CapsuleLightControls(
                 .background(transportSurface)
                 .border(1.dp, transportOutline, CapsuleLightPanelShape)
                 .padding(horizontal = 4.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        CapsuleLightTransportIcon(
-            iconRes = if (repeatMode == Player.REPEAT_MODE_ONE) R.drawable.repeat_one else R.drawable.repeat,
-            contentDescription =
-                stringResource(
-                    when (repeatMode) {
-                        Player.REPEAT_MODE_ONE -> R.string.repeat_mode_one
-                        Player.REPEAT_MODE_ALL -> R.string.repeat_mode_all
-                        else -> R.string.repeat_mode_off
-                    },
-                ),
-            enabled = enabled,
-            active = repeatMode != Player.REPEAT_MODE_OFF,
-            textColor = textColor,
-            onClick = onRepeat,
-            modifier = Modifier.weight(1f).semantics { selected = repeatMode != Player.REPEAT_MODE_OFF },
-            iconSize = 25,
-        )
+    ) { item ->
+        when (item) {
+            CapsuleLightTransportItem.REPEAT -> {
+                CapsuleLightTransportIcon(
+                    iconRes = if (repeatMode == Player.REPEAT_MODE_ONE) R.drawable.repeat_one else R.drawable.repeat,
+                    contentDescription =
+                        stringResource(
+                            when (repeatMode) {
+                                Player.REPEAT_MODE_ONE -> R.string.repeat_mode_one
+                                Player.REPEAT_MODE_ALL -> R.string.repeat_mode_all
+                                else -> R.string.repeat_mode_off
+                            },
+                        ),
+                    enabled = enabled,
+                    active = repeatMode != Player.REPEAT_MODE_OFF,
+                    textColor = textColor,
+                    onClick = onRepeat,
+                    modifier = Modifier.fillMaxWidth().semantics { selected = repeatMode != Player.REPEAT_MODE_OFF },
+                    iconSize = 25,
+                )
+            }
 
-        CapsuleLightTransportIcon(
-            iconRes = R.drawable.skip_previous,
-            contentDescription = stringResource(androidx.media3.ui.R.string.exo_controls_previous_description),
-            enabled = enabled && canSkipPrevious,
-            active = true,
-            textColor = textColor,
-            onClick = onPrevious,
-            modifier = Modifier.weight(1f),
-            iconSize = 32,
-        )
+            CapsuleLightTransportItem.PREVIOUS -> {
+                CapsuleLightTransportIcon(
+                    iconRes = R.drawable.skip_previous,
+                    contentDescription = stringResource(androidx.media3.ui.R.string.exo_controls_previous_description),
+                    enabled = enabled && canSkipPrevious,
+                    active = true,
+                    textColor = textColor,
+                    onClick = onPrevious,
+                    modifier = Modifier.fillMaxWidth(),
+                    iconSize = 32,
+                )
+            }
 
-        Box(
-            modifier = Modifier.weight(1.38f),
-            contentAlignment = Alignment.Center,
-        ) {
-            orbit()
+            CapsuleLightTransportItem.PLAY_PAUSE -> {
+                Box(
+                    modifier = Modifier.fillMaxWidth(),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    orbit()
+                }
+            }
+
+            CapsuleLightTransportItem.NEXT -> {
+                CapsuleLightTransportIcon(
+                    iconRes = R.drawable.skip_next,
+                    contentDescription = stringResource(androidx.media3.ui.R.string.exo_controls_next_description),
+                    enabled = enabled && canSkipNext,
+                    active = true,
+                    textColor = textColor,
+                    onClick = onNext,
+                    modifier = Modifier.fillMaxWidth(),
+                    iconSize = 32,
+                )
+            }
+
+            CapsuleLightTransportItem.MENU -> {
+                CapsuleLightTransportIcon(
+                    iconRes = R.drawable.more_vert,
+                    contentDescription = stringResource(R.string.more),
+                    enabled = true,
+                    active = true,
+                    textColor = textColor,
+                    onClick = menuAction,
+                    modifier = Modifier.fillMaxWidth(),
+                    iconSize = 27,
+                )
+            }
         }
-
-        CapsuleLightTransportIcon(
-            iconRes = R.drawable.skip_next,
-            contentDescription = stringResource(androidx.media3.ui.R.string.exo_controls_next_description),
-            enabled = enabled && canSkipNext,
-            active = true,
-            textColor = textColor,
-            onClick = onNext,
-            modifier = Modifier.weight(1f),
-            iconSize = 32,
-        )
-
-        CapsuleLightTransportIcon(
-            iconRes = R.drawable.more_vert,
-            contentDescription = stringResource(R.string.more),
-            enabled = true,
-            active = true,
-            textColor = textColor,
-            onClick = menuAction,
-            modifier = Modifier.weight(1f),
-            iconSize = 27,
-        )
     }
 }
 
