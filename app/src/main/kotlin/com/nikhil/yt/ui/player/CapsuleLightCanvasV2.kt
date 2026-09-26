@@ -524,7 +524,7 @@ internal fun CapsuleLightCanvasV2(
     ) -> Unit,
     onEditStarted: () -> Unit,
     modifier: Modifier = Modifier,
-    content: @Composable (CapsuleLightBlock) -> Unit,
+    content: @Composable (CapsuleLightBlock, Dp?) -> Unit,
 ) {
     val density = LocalDensity.current
     val canvasHeightPx = with(density) { viewportHeight.toPx() }
@@ -556,6 +556,27 @@ internal fun CapsuleLightCanvasV2(
     val allMeasured =
         order.isNotEmpty() &&
             order.all { (heightsPx[it] ?: 0f) > 0f }
+
+    val nonArtworkMeasured =
+        order
+            .filterNot { it == CapsuleLightBlock.ARTWORK }
+            .all { (heightsPx[it] ?: 0f) > 0f }
+    val maxArtworkHeightDp =
+        if (nonArtworkMeasured) {
+            val otherHeightPx =
+                order
+                    .filterNot { it == CapsuleLightBlock.ARTWORK }
+                    .sumOf { (heightsPx[it] ?: 0f).toDouble() }
+                    .toFloat()
+            val requiredGapsPx =
+                gapPx * (order.size - 1).coerceAtLeast(0)
+            val availablePx =
+                (canvasHeightPx - otherHeightPx - requiredGapsPx)
+                    .coerceAtLeast(0f)
+            with(density) { availablePx.toDp() }
+        } else {
+            null
+        }
 
     val requestedPositionsPx =
         positionsDp.mapValues { (_, value) ->
@@ -622,6 +643,73 @@ internal fun CapsuleLightCanvasV2(
                 if (dragged != null) frozenPositionsPx else resolvedPositionsPx
             val occupiedDragged = dragged
 
+            val guideCells =
+                remember(
+                    occupiedDragged,
+                    occupiedPositions,
+                    frozenOrder,
+                    heightsPx,
+                    canvasHeightPx,
+                    gapPx,
+                    cellStepPx,
+                ) {
+                    val moving = occupiedDragged
+                    if (moving != null && frozenPositionsPx.isNotEmpty()) {
+                        val movingHeight = heightsPx[moving] ?: 0f
+                        val maxTop =
+                            (canvasHeightPx - movingHeight).coerceAtLeast(0f)
+                        buildList {
+                            var cellTop = 0f
+                            while (cellTop <= maxTop + 0.5f) {
+                                val clear =
+                                    !overlapsExisting(
+                                        dragged = moving,
+                                        topPx = cellTop,
+                                        heightPx = movingHeight,
+                                        basePositions = frozenPositionsPx,
+                                        heights = heightsPx,
+                                        gapPx = gapPx,
+                                    )
+                                if (clear) {
+                                    val cellOrder =
+                                        insertionOrder(
+                                            dragged = moving,
+                                            desiredTopPx = cellTop,
+                                            baseOrder = frozenOrder,
+                                            basePositions = frozenPositionsPx,
+                                            heights = heightsPx,
+                                        )
+                                    val feasible =
+                                        solveAt(
+                                            dragged = moving,
+                                            draggedTopPx = cellTop,
+                                            order = cellOrder,
+                                            basePositions = frozenPositionsPx,
+                                            heights = heightsPx,
+                                            canvasHeightPx = canvasHeightPx,
+                                            gapPx = gapPx,
+                                        ) != null
+                                    if (feasible) add(cellTop)
+                                }
+                                cellTop += cellStepPx
+                            }
+                        }
+                    } else {
+                        buildList {
+                            var y = 0f
+                            while (y <= canvasHeightPx + 0.5f) {
+                                val occupied =
+                                    occupiedPositions.any { (block, top) ->
+                                        val h = heightsPx[block] ?: 0f
+                                        y >= top - gapPx && y <= top + h + gapPx
+                                    }
+                                if (!occupied) add(y)
+                                y += cellStepPx
+                            }
+                        }
+                    }
+                }
+
             val guideColor =
                 MaterialTheme.colorScheme.primary.copy(alpha = 0.13f)
 
@@ -629,24 +717,14 @@ internal fun CapsuleLightCanvasV2(
                 val halfWidth = LightCanvasGuideWidth.toPx() / 2f
                 val stroke = 3.dp.toPx()
 
-                var y = 0f
-                while (y <= size.height + 0.5f) {
-                    val occupied =
-                        occupiedPositions.any { (block, top) ->
-                            if (block == occupiedDragged) return@any false
-                            val h = heightsPx[block] ?: 0f
-                            y >= top - gapPx && y <= top + h + gapPx
-                        }
-                    if (!occupied) {
-                        drawLine(
-                            color = guideColor,
-                            start = Offset(size.width / 2f - halfWidth, y),
-                            end = Offset(size.width / 2f + halfWidth, y),
-                            strokeWidth = stroke,
-                            cap = StrokeCap.Round,
-                        )
-                    }
-                    y += cellStepPx
+                guideCells.forEach { y ->
+                    drawLine(
+                        color = guideColor,
+                        start = Offset(size.width / 2f - halfWidth, y),
+                        end = Offset(size.width / 2f + halfWidth, y),
+                        strokeWidth = stroke,
+                        cap = StrokeCap.Round,
+                    )
                 }
             }
 
@@ -756,7 +834,14 @@ internal fun CapsuleLightCanvasV2(
                             }
                             .zIndex(if (selected) 4f else 0f),
                 ) {
-                    content(block)
+                    content(
+                        block,
+                        if (block == CapsuleLightBlock.ARTWORK) {
+                            maxArtworkHeightDp
+                        } else {
+                            null
+                        },
+                    )
 
                     if (editable) {
                         Box(
