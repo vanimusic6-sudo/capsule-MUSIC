@@ -856,7 +856,7 @@ fun CapsulePlayerContent(
                                 modifier =
                                     Modifier
                                         .fillMaxWidth()
-                                        .padding(horizontal = 24.dp, top = 8.dp),
+                                        .padding(start = 24.dp, end = 24.dp, top = 8.dp),
                             ) {
                                 CapsuleLightControls(
                                     textColor = textColor,
