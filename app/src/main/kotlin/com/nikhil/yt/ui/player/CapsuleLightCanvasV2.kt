@@ -56,7 +56,6 @@ import kotlin.math.roundToInt
 private val LightCanvasDockGap = 8.dp
 private val LightCanvasRealMagnet = 58.dp
 private val LightCanvasPreferredMagnet = 92.dp
-private val LightCanvasGuideWidth = 72.dp
 
 internal val CapsuleLightCanvasPositionsBaseEncoded = ""
 
@@ -102,6 +101,7 @@ internal fun lightCanvasMeasurementsReady(
 
 private enum class LightDropKind {
     DOCK,
+    EDGE,
     CELL,
 }
 
@@ -660,6 +660,117 @@ private fun buildDockCandidates(
     }
 }
 
+private fun resolveEdgeReplacement(
+    dragged: CapsuleLightBlock,
+    commandTopPx: Float,
+    baseOrder: List<CapsuleLightBlock>,
+    basePositions: Map<CapsuleLightBlock, Float>,
+    heights: Map<CapsuleLightBlock, Float>,
+    canvasHeightPx: Float,
+    gapPx: Float,
+): LightDropTarget? {
+    val draggedHeight = heights[dragged] ?: return null
+    val fixed =
+        fixedBlocksForDrag(
+            dragged = dragged,
+            baseOrder = baseOrder,
+            basePositions = basePositions,
+        )
+    if (fixed.isEmpty()) return null
+
+    val current =
+        baseOrder.sortedWith(
+            compareBy<CapsuleLightBlock> { basePositions[it] ?: Float.MAX_VALUE }
+                .thenBy { baseOrder.indexOf(it) },
+        )
+    val currentIndex = current.indexOf(dragged)
+    if (currentIndex < 0) return null
+
+    val commandCenter = commandTopPx + draggedHeight / 2f
+    val first = fixed.first()
+    val last = fixed.last()
+    val firstTop = basePositions[first] ?: return null
+    val firstCenter = firstTop + (heights[first] ?: return null) / 2f
+    val lastTop = basePositions[last] ?: return null
+    val lastHeight = heights[last] ?: return null
+    val lastCenter = lastTop + lastHeight / 2f
+
+    if (currentIndex > 0 && commandCenter <= firstCenter + 0.5f) {
+        val edgeOrder = buildList {
+            add(dragged)
+            addAll(fixed)
+        }
+        val range =
+            slotTopRange(
+                dragged = dragged,
+                slotIndex = 0,
+                order = edgeOrder,
+                heights = heights,
+                canvasHeightPx = canvasHeightPx,
+                gapPx = gapPx,
+            ) ?: return null
+        val edgeTop = firstTop.coerceIn(range.first, range.second)
+        val solved =
+            solveAt(
+                dragged = dragged,
+                draggedTopPx = edgeTop,
+                order = edgeOrder,
+                basePositions = basePositions,
+                heights = heights,
+                canvasHeightPx = canvasHeightPx,
+                gapPx = gapPx,
+            ) ?: return null
+
+        return LightDropTarget(
+            kind = LightDropKind.EDGE,
+            topPx = edgeTop,
+            positionsPx = solved,
+            order = edgeOrder,
+            anchor = first,
+            side = LightDockSide.BEFORE,
+        )
+    }
+
+    if (currentIndex < current.lastIndex && commandCenter >= lastCenter - 0.5f) {
+        val edgeOrder = buildList {
+            addAll(fixed)
+            add(dragged)
+        }
+        val range =
+            slotTopRange(
+                dragged = dragged,
+                slotIndex = edgeOrder.lastIndex,
+                order = edgeOrder,
+                heights = heights,
+                canvasHeightPx = canvasHeightPx,
+                gapPx = gapPx,
+            ) ?: return null
+        val preferredTop = lastTop + lastHeight - draggedHeight
+        val edgeTop = preferredTop.coerceIn(range.first, range.second)
+        val solved =
+            solveAt(
+                dragged = dragged,
+                draggedTopPx = edgeTop,
+                order = edgeOrder,
+                basePositions = basePositions,
+                heights = heights,
+                canvasHeightPx = canvasHeightPx,
+                gapPx = gapPx,
+            ) ?: return null
+
+        return LightDropTarget(
+            kind = LightDropKind.EDGE,
+            topPx = edgeTop,
+            positionsPx = solved,
+            order = edgeOrder,
+            anchor = last,
+            side = LightDockSide.AFTER,
+        )
+    }
+
+    return null
+}
+
 private fun resolveTarget(
     dragged: CapsuleLightBlock,
     desiredTopPx: Float,
@@ -677,6 +788,16 @@ private fun resolveTarget(
             0f,
             (canvasHeightPx - draggedHeight).coerceAtLeast(0f),
         )
+
+    resolveEdgeReplacement(
+        dragged = dragged,
+        commandTopPx = clampedDesired,
+        baseOrder = baseOrder,
+        basePositions = basePositions,
+        heights = heights,
+        canvasHeightPx = canvasHeightPx,
+        gapPx = gapPx,
+    )?.let { return it }
 
     val docks =
         buildDockCandidates(
@@ -840,13 +961,29 @@ internal fun CapsuleLightCanvasV2(
 
     val (resolvedOrder, resolvedPositionsPx) =
         if (allMeasured) {
-            normalizedStoredPositions(
-                order = order,
-                requested = requestedPositionsPx,
-                heights = heightsPx,
-                canvasHeightPx = canvasHeightPx,
-                gapPx = gapPx,
-            )
+            if (
+                externalGestureActive &&
+                requestedPositionsPx.keys.containsAll(order)
+            ) {
+                order to (
+                    projectOrderedPositions(
+                        order = order,
+                        preferredPositions = requestedPositionsPx,
+                        heights = heightsPx,
+                        startPx = 0f,
+                        endPx = canvasHeightPx,
+                        gapPx = gapPx,
+                    ) ?: compactPositions(order, heightsPx, gapPx)
+                )
+            } else {
+                normalizedStoredPositions(
+                    order = order,
+                    requested = requestedPositionsPx,
+                    heights = heightsPx,
+                    canvasHeightPx = canvasHeightPx,
+                    gapPx = gapPx,
+                )
+            }
         } else {
             order to emptyMap()
         }
@@ -856,7 +993,8 @@ internal fun CapsuleLightCanvasV2(
             // A magnetic DOCK moves the command block away from the raw finger coordinate.
             // Dependants must therefore follow the DOCK's solved geometry too; otherwise the held
             // block can look stationary while neighbours react to invisible finger travel.
-            dragged != null && target?.kind == LightDropKind.DOCK ->
+            dragged != null &&
+                (target?.kind == LightDropKind.DOCK || target?.kind == LightDropKind.EDGE) ->
                 target!!.positionsPx
             dragged != null && liveLayout != null ->
                 liveLayout!!.positionsPx
@@ -900,7 +1038,7 @@ internal fun CapsuleLightCanvasV2(
                 } ||
                 resolvedOrder != latestOrder
 
-        if (needsWrite && latestPositionsDp.isNotEmpty()) {
+        if (needsWrite && (latestPositionsDp.isNotEmpty() || editable)) {
             latestOnLayoutSettled(normalizedDp, resolvedOrder)
         }
     }
@@ -911,84 +1049,6 @@ internal fun CapsuleLightCanvasV2(
                 .height(viewportHeight)
                 .clipToBounds(),
     ) {
-        if (editable && allMeasured) {
-            val moving = dragged
-            val guideCells =
-                remember(
-                    moving,
-                    frozenPositionsPx,
-                    frozenOrder,
-                    heightsPx,
-                    canvasHeightPx,
-                    gapPx,
-                ) {
-                    if (moving != null && frozenPositionsPx.isNotEmpty()) {
-                        buildCellTargets(
-                            dragged = moving,
-                            baseOrder = frozenOrder,
-                            basePositions = frozenPositionsPx,
-                            heights = heightsPx,
-                            canvasHeightPx = canvasHeightPx,
-                            gapPx = gapPx,
-                        )
-                            .map { it.topPx }
-                            .distinctBy { it.roundToInt() }
-                    } else {
-                        // Cells are destinations for the currently held rectangle, not a decorative
-                        // background grid. Show them only when they are real, feasible drop slots.
-                        emptyList()
-                    }
-                }
-
-            val guideColor =
-                MaterialTheme.colorScheme.primary.copy(alpha = 0.13f)
-
-            Canvas(Modifier.fillMaxSize()) {
-                val halfWidth = LightCanvasGuideWidth.toPx() / 2f
-                val stroke = 3.dp.toPx()
-
-                guideCells.forEach { y ->
-                    drawLine(
-                        color = guideColor,
-                        start = Offset(size.width / 2f - halfWidth, y),
-                        end = Offset(size.width / 2f + halfWidth, y),
-                        strokeWidth = stroke,
-                        cap = StrokeCap.Round,
-                    )
-                }
-            }
-
-            val selected = target
-            if (dragged != null && selected?.kind == LightDropKind.CELL) {
-                val selectedHeight =
-                    with(density) {
-                        (heightsPx[dragged] ?: 0f).toDp()
-                    }
-                Box(
-                    modifier =
-                        Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 18.dp)
-                            .offset {
-                                androidx.compose.ui.unit.IntOffset(
-                                    x = 0,
-                                    y = selected.topPx.roundToInt(),
-                                )
-                            }
-                            .height(selectedHeight)
-                            .zIndex(1f)
-                            .background(
-                                MaterialTheme.colorScheme.primary.copy(alpha = 0.055f),
-                                RoundedCornerShape(18.dp),
-                            )
-                            .border(
-                                1.dp,
-                                MaterialTheme.colorScheme.primary.copy(alpha = 0.62f),
-                                RoundedCornerShape(18.dp),
-                            ),
-                )
-            }
-        }
 
         // Every outer block is measured independently. Nothing receives "remaining height" from
         // a Column, so growing artwork can never compress metadata/progress/mode/controls.
@@ -1016,9 +1076,13 @@ internal fun CapsuleLightCanvasV2(
                             liveLayout?.topPx
                                 ?: desiredDraggedTop
                         val selectedTarget = target
-                        if (selectedTarget?.kind == LightDropKind.DOCK) {
-                            // A real magnet is the only thing allowed to pull the held object away
-                            // from the finger. Empty cells merely preview where release will land.
+                        if (
+                            selectedTarget?.kind == LightDropKind.DOCK ||
+                            selectedTarget?.kind == LightDropKind.EDGE
+                        ) {
+                            // DOCK snaps to a stationary neighbour; EDGE replaces the outermost
+                            // neighbour and pushes that chain inward. Both are actual command
+                            // positions, so dependants and the held block must share this top.
                             selectedTarget.topPx
                         } else {
                             liveTop
@@ -1119,10 +1183,13 @@ internal fun CapsuleLightCanvasV2(
                                                         gapPx = gapPx,
                                                     )
 
+                                                val commandTop =
+                                                    liveLayout?.topPx
+                                                        ?: dragOriginTopPx
                                                 target =
                                                     resolveTarget(
                                                         dragged = block,
-                                                        desiredTopPx = dragOriginTopPx,
+                                                        desiredTopPx = commandTop,
                                                         baseOrder = resolvedOrder,
                                                         basePositions = currentPositions,
                                                         heights = heightsPx,
@@ -1158,10 +1225,13 @@ internal fun CapsuleLightCanvasV2(
                                                         gapPx = gapPx,
                                                     )
 
+                                                val commandTop =
+                                                    liveLayout?.topPx
+                                                        ?: desired
                                                 target =
                                                     resolveTarget(
                                                         dragged = block,
-                                                        desiredTopPx = desired,
+                                                        desiredTopPx = commandTop,
                                                         baseOrder = frozenOrder,
                                                         basePositions = frozenPositionsPx,
                                                         heights = heightsPx,
