@@ -389,8 +389,11 @@ internal fun CapsuleLightReorderColumn(
                                     x = 0,
                                     y =
                                         (
-                                            if (selected) dragOffsetY
-                                            else animatedNeighbourOffset
+                                            when {
+                                                selected -> dragOffsetY
+                                                dragged == null && order == workingOrder -> 0f
+                                                else -> animatedNeighbourOffset
+                                            }
                                         ).roundToInt(),
                                 )
                             }
@@ -686,8 +689,11 @@ internal fun <T : Enum<T>> CapsuleLightReorderRow(
                                 IntOffset(
                                     x =
                                         (
-                                            if (selected) dragX
-                                            else animatedOffset
+                                            when {
+                                                selected -> dragX
+                                                dragged == null && order == workingOrder -> 0f
+                                                else -> animatedOffset
+                                            }
                                         ).roundToInt(),
                                     y = 0,
                                 )
