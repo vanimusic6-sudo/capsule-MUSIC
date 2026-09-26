@@ -835,4 +835,12 @@
     <string name="capsule_light_edit_screen_description">После включения зажмите блок на экране Light и перетащите его в другой слот. Блоки выталкивают друг друга и не могут сохраниться внахлёст.</string>
     <string name="capsule_light_reset_screen">Сбросить экран Light</string>
     <string name="capsule_light_reset_screen_description">Вернуть базовый порядок блоков Light и выключить режим редактирования.</string>
+    <string name="capsule_customize_title">Capsule под себя</string>
+    <string name="capsule_customize_subtitle">Меняйте расположение экранов Capsule, не затрагивая ядро плеера</string>
+    <string name="capsule_customize_screen_section">Экран</string>
+    <string name="capsule_customize_screen">Экран для настройки</string>
+    <string name="capsule_customize_edit_section">Редактирование</string>
+    <string name="capsule_customize_edit_description">Разрешить перемещение элементов удержанием на выбранном экране Capsule.</string>
+    <string name="capsule_customize_reset_description">Вернуть выбранный экран к базовой раскладке Capsule и выключить редактирование.</string>
+    <string name="capsule_customize_hint">Зажмите элемент и перетащите его. Элементы прилипают к магнитным слотам и мягко выталкивают соседей, а не накладываются друг на друга.</string>
 </resources>
