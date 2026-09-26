@@ -232,6 +232,7 @@ private data class AxisBounds(
 private val CapsuleLightDockGap = 8.dp
 private val CapsuleLightDockThreshold = 52.dp
 private val CapsuleLightPreferredDockThreshold = 82.dp
+private val CapsuleLightEmptyAnchorFirst = 96.dp
 private val CapsuleLightEmptyAnchorStep = 24.dp
 
 private data class CapsuleLightDropPreview(
@@ -440,6 +441,7 @@ internal fun CapsuleLightReorderColumn(
         val normalDockThresholdPx = with(density) { CapsuleLightDockThreshold.toPx() }
         val preferredDockThresholdPx =
             with(density) { CapsuleLightPreferredDockThreshold.toPx() }
+        val emptyFirstPx = with(density) { CapsuleLightEmptyAnchorFirst.toPx() }
         val emptyStepPx = with(density) { CapsuleLightEmptyAnchorStep.toPx() }
 
         val previous = settled.getOrNull(settledIndex - 1)
@@ -491,7 +493,7 @@ internal fun CapsuleLightReorderColumn(
         val snappedCellGapPx =
             kotlin.math.round(rawGapPx / emptyStepPx) * emptyStepPx
         val emptyCellFits =
-            snappedCellGapPx >= preferredDockThresholdPx &&
+            snappedCellGapPx >= emptyFirstPx &&
                 snappedCellGapPx + contentHeightPx <= availableFreePx + 0.5f
 
         val previousDockWins =
@@ -1035,15 +1037,20 @@ private fun CapsuleLightEmptyAnchorGap(
                 .fillMaxWidth()
                 .height(height),
     ) {
-        if (highlight) {
+        if (highlight && height >= CapsuleLightEmptyAnchorFirst) {
+            val first = CapsuleLightEmptyAnchorFirst.value
             val step = CapsuleLightEmptyAnchorStep.value
             val count =
-                ((height.value - 0.01f) / step)
-                    .toInt()
-                    .coerceIn(0, 12)
+                (
+                    ((height.value - first - 0.01f) / step)
+                        .toInt() +
+                        1
+                    ).coerceIn(0, 12)
 
             repeat(count) { index ->
-                val y = CapsuleLightEmptyAnchorStep * (index + 1)
+                val y =
+                    CapsuleLightEmptyAnchorFirst +
+                        CapsuleLightEmptyAnchorStep * index
                 Box(
                     modifier =
                         Modifier
