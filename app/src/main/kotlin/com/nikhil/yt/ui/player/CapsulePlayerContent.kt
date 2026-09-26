@@ -102,6 +102,7 @@ import com.nikhil.yt.constants.CapsuleLightTransportOrderKey
 import com.nikhil.yt.constants.CapsuleLightArtworkWidthScaleKey
 import com.nikhil.yt.constants.CapsuleLightArtworkHeightScaleKey
 import com.nikhil.yt.constants.CapsuleLightBlockGapsKey
+import com.nikhil.yt.constants.CapsuleLightCanvasPositionsKey
 import com.nikhil.yt.constants.LyricsSyncOffsetKey
 import com.nikhil.yt.constants.CapsulePlayerDesign
 import com.nikhil.yt.db.entities.LyricsEntity
@@ -228,6 +229,12 @@ fun CapsulePlayerContent(
             defaultValue = CapsuleLightBaseGapsEncoded,
         )
 
+    val (lightCanvasPositionsEncoded, onLightCanvasPositionsEncodedChange) =
+        rememberPreference(
+            CapsuleLightCanvasPositionsKey,
+            defaultValue = CapsuleLightCanvasPositionsBaseEncoded,
+        )
+
     var lightMetadataOrder by
         remember(lightMetadataOrderEncoded) {
             mutableStateOf(decodeCapsuleLightMetadataOrder(lightMetadataOrderEncoded))
@@ -258,6 +265,11 @@ fun CapsulePlayerContent(
             mutableStateOf(decodeCapsuleLightBlockGaps(lightBlockGapsEncoded))
         }
 
+    var lightCanvasPositions by
+        remember(lightCanvasPositionsEncoded) {
+            mutableStateOf(decodeCapsuleLightCanvasPositions(lightCanvasPositionsEncoded))
+        }
+
     val hasCustomLightLayout =
         lightOrder != CapsuleLightBaseOrder ||
             lightMetadataOrder != CapsuleLightMetadataBaseOrder ||
@@ -266,6 +278,7 @@ fun CapsulePlayerContent(
             lightTransportOrder != CapsuleLightTransportBaseOrder ||
             lightArtworkWidthScale != 1f ||
             lightArtworkHeightScale != 1f ||
+            lightCanvasPositions.isNotEmpty() ||
             lightBlockGaps.values.any { it > 0.01f }
 
     val useClayLayout = isLight && (lightEditorEnabled || hasCustomLightLayout)
@@ -292,6 +305,7 @@ fun CapsulePlayerContent(
             lightArtworkWidthScale = 1f
             lightArtworkHeightScale = 1f
             lightBlockGaps = CapsuleLightBaseGaps
+            lightCanvasPositions = emptyMap()
 
             onLightOrderEncodedChange(CapsuleLightBaseOrderEncoded)
             onLightMetadataOrderEncodedChange(CapsuleLightMetadataBaseOrderEncoded)
@@ -301,6 +315,7 @@ fun CapsulePlayerContent(
             onArtworkWidthScaleChange(1f)
             onArtworkHeightScaleChange(1f)
             onLightBlockGapsEncodedChange(CapsuleLightBaseGapsEncoded)
+            onLightCanvasPositionsEncodedChange(CapsuleLightCanvasPositionsBaseEncoded)
             onLightEditorEnabledChange(false)
             onLightEditSessionActiveChange(false)
         }
@@ -773,6 +788,7 @@ fun CapsulePlayerContent(
                 },
         lightEditorEnabled = useClayLayout && lightEditorEnabled,
         lightOrder = lightOrder,
+        lightCanvasPositionsDp = lightCanvasPositions,
         lightGapsDp = lightBlockGaps,
         onLightOrderChange = { reordered ->
             lightOrder = decodeCapsuleLightOrder(encodeCapsuleLightOrder(reordered))
@@ -786,6 +802,30 @@ fun CapsulePlayerContent(
             val safeOrder = decodeCapsuleLightOrder(encodeCapsuleLightOrder(reordered))
             lightOrder = safeOrder
             onLightOrderEncodedChange(encodeCapsuleLightOrder(safeOrder))
+            lightEditInProgress = false
+            lightValidationGeneration += 1
+        },
+        onLightCanvasSettled = { positions, reordered ->
+            val safeOrder = decodeCapsuleLightOrder(encodeCapsuleLightOrder(reordered))
+            val safePositions =
+                positions
+                    .filterKeys { it in CapsuleLightBaseOrder }
+                    .mapValues { (_, value) -> value.coerceAtLeast(0f) }
+
+            lightOrder = safeOrder
+            lightCanvasPositions = safePositions
+            onLightOrderEncodedChange(encodeCapsuleLightOrder(safeOrder))
+            onLightCanvasPositionsEncodedChange(
+                encodeCapsuleLightCanvasPositions(safePositions),
+            )
+
+            // v2 is position based. Once it has committed a valid scene, retire the old
+            // outer-gap state so it can never influence custom-mode detection again.
+            if (lightBlockGaps.values.any { it > 0.01f }) {
+                lightBlockGaps = CapsuleLightBaseGaps
+                onLightBlockGapsEncodedChange(CapsuleLightBaseGapsEncoded)
+            }
+
             lightEditInProgress = false
             lightValidationGeneration += 1
         },
