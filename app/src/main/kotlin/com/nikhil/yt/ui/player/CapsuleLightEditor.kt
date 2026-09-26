@@ -10,9 +10,9 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -372,7 +372,7 @@ internal fun <T : Enum<T>> CapsuleLightReorderRow(
     modifier: Modifier = Modifier,
     verticalAlignment: Alignment.Vertical = Alignment.CenterVertically,
     dragHandleOnly: Boolean = false,
-    content: @Composable RowScope.(T) -> Unit,
+    content: @Composable (T) -> Unit,
 ) {
     val latestOrder by rememberUpdatedState(order)
     val latestOnOrderChange by rememberUpdatedState(onOrderChange)
@@ -625,7 +625,7 @@ internal fun CapsuleLightResizableArtwork(
 }
 
 @Composable
-private fun CapsuleArtworkResizeHandle(
+private fun BoxScope.CapsuleArtworkResizeHandle(
     handle: ArtworkResizeHandle,
     baseSide: Dp,
     widthScale: Float,
