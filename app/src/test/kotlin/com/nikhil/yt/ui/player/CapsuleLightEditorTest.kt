@@ -109,6 +109,21 @@ class CapsuleLightEditorTest {
     }
 
     @Test
+    fun blockGapsRoundTripAndClamp() {
+        val custom =
+            CapsuleLightBaseGaps.toMutableMap().apply {
+                this[CapsuleLightBlock.METADATA] = 42.5f
+                this[CapsuleLightBlock.CONTROLS] = 240f
+            }
+
+        val decoded = decodeCapsuleLightBlockGaps(encodeCapsuleLightBlockGaps(custom))
+
+        assertEquals(42.5f, decoded[CapsuleLightBlock.METADATA] ?: -1f, 0.01f)
+        assertEquals(180f, decoded[CapsuleLightBlock.CONTROLS] ?: -1f, 0.01f)
+        assertEquals(0f, decoded[CapsuleLightBlock.ARTWORK] ?: -1f, 0.01f)
+    }
+
+    @Test
     fun processGuardChecksRecoveryOnlyOncePerProcess() {
         assertTrue(CapsuleLightEditorProcessGuard.shouldCheckRecovery())
         assertFalse(CapsuleLightEditorProcessGuard.shouldCheckRecovery())
