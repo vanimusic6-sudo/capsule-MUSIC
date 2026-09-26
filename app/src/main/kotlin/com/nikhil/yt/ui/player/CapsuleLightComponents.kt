@@ -229,6 +229,72 @@ internal fun CapsuleLightFavorite(
     }
 }
 
+@Composable
+internal fun CapsuleLightClayControlSurface(
+    textColor: Color,
+    insidePanel: Boolean,
+    modifier: Modifier = Modifier,
+    content: @Composable () -> Unit,
+) {
+    val shape = RoundedCornerShape(16.dp)
+    Box(
+        modifier =
+            modifier
+                .fillMaxWidth()
+                .height(72.dp)
+                .clip(shape)
+                .then(
+                    if (insidePanel) {
+                        Modifier
+                            .background(textColor.copy(alpha = 0.035f))
+                            .border(1.dp, textColor.copy(alpha = 0.12f), shape)
+                    } else {
+                        Modifier
+                    },
+                ),
+        contentAlignment = Alignment.Center,
+    ) {
+        content()
+    }
+}
+
+@Composable
+internal fun CapsuleLightClayIconButton(
+    iconRes: Int,
+    contentDescription: String,
+    textColor: Color,
+    enabled: Boolean,
+    active: Boolean,
+    insidePanel: Boolean,
+    onClick: () -> Unit,
+    iconSize: Int = 24,
+) {
+    CapsuleLightClayControlSurface(
+        textColor = textColor,
+        insidePanel = insidePanel,
+    ) {
+        IconButton(
+            onClick = onClick,
+            enabled = enabled,
+        ) {
+            Icon(
+                painter = painterResource(iconRes),
+                contentDescription = contentDescription,
+                tint =
+                    textColor.copy(
+                        alpha =
+                            when {
+                                !enabled -> 0.24f
+                                active -> 0.98f
+                                else -> 0.46f
+                            },
+                    ),
+                modifier = Modifier.size(iconSize.dp),
+            )
+        }
+    }
+}
+
 /** One calm transport capsule: repeat, previous, orbit, next and menu. */
 @Composable
 internal fun CapsuleLightControls(
