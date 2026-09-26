@@ -48,6 +48,11 @@ fun CapsuleAudioVideoToggle(
     onVideoClick: () -> Unit,
     modifier: Modifier = Modifier,
     lightStyle: Boolean = false,
+    lightOrder: List<CapsuleLightAvItem> = CapsuleLightAvBaseOrder,
+    lightEditable: Boolean = false,
+    onLightOrderChange: (List<CapsuleLightAvItem>) -> Unit = {},
+    onLightOrderSettled: (List<CapsuleLightAvItem>) -> Unit = {},
+    onLightEditStarted: () -> Unit = {},
 ) {
     /*
      * Capsule Light draws this switch directly above the transport panel, so it
@@ -85,126 +90,114 @@ fun CapsuleAudioVideoToggle(
         state.mode == CapsulePlaybackMode.VIDEO || videoResolving
     val audioSelected = !videoSelected
 
-    Row(
-        modifier =
-            (if (lightStyle) modifier else modifier.width(190.dp))
-                .height(if (lightStyle) CapsuleLightToggleHeight else 36.dp)
-                .clip(shape)
-                .background(textColor.copy(alpha = if (lightStyle) 0.035f else 0.018f))
-                .then(
-                    if (lightStyle) {
-                        Modifier
-                    } else {
-                        Modifier.border(1.dp, textColor.copy(alpha = 0.18f), shape)
-                    },
-                )
-                .padding(
-                    if (lightStyle) CapsuleLightToggleInset else 0.dp,
-                ),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        CapsuleModeSegment(
-            text = if (lightStyle) "audio" else "AUDIO",
-            lightStyle = lightStyle,
-            shape = segmentShape,
-            selected = audioSelected,
-            loading = false,
-            unavailable = false,
-            requestError = false,
-            enabled = enabled,
-            textColor = textColor,
-            onClick = onAudioClick,
-            modifier = Modifier.weight(1f),
-        )
+    if (lightStyle) {
+        CapsuleLightReorderRow(
+            order = lightOrder,
+            editable = lightEditable,
+            weightFor = { 1f },
+            onOrderChange = onLightOrderChange,
+            onOrderSettled = onLightOrderSettled,
+            onEditStarted = onLightEditStarted,
+            modifier =
+                modifier
+                    .height(CapsuleLightToggleHeight)
+                    .clip(shape)
+                    .background(textColor.copy(alpha = 0.035f))
+                    .padding(CapsuleLightToggleInset),
+        ) { item ->
+            when (item) {
+                CapsuleLightAvItem.AUDIO -> {
+                    CapsuleModeSegment(
+                        text = "audio",
+                        lightStyle = true,
+                        shape = segmentShape,
+                        selected = audioSelected,
+                        loading = false,
+                        unavailable = false,
+                        requestError = false,
+                        enabled = enabled,
+                        textColor = textColor,
+                        onClick = onAudioClick,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
 
-        if (!lightStyle) {
+                CapsuleLightAvItem.VIDEO -> {
+                    CapsuleModeSegment(
+                        lightStyle = true,
+                        shape = segmentShape,
+                        text =
+                            when {
+                                videoRequestPaused -> "VIDEO PAUSED"
+                                videoRequestError -> "VIDEO ERROR"
+                                videoUnavailable -> "VIDEO N/A"
+                                else -> "video"
+                            },
+                        selected = videoSelected,
+                        loading = videoResolving,
+                        unavailable = videoUnavailable,
+                        requestError = videoRequestError,
+                        enabled = enabled && !videoUnavailable,
+                        textColor = textColor,
+                        onClick = onVideoClick,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+            }
+        }
+    } else {
+        Row(
+            modifier =
+                modifier
+                    .width(190.dp)
+                    .height(36.dp)
+                    .clip(shape)
+                    .background(textColor.copy(alpha = 0.018f))
+                    .border(1.dp, textColor.copy(alpha = 0.18f), shape),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            CapsuleModeSegment(
+                text = "AUDIO",
+                lightStyle = false,
+                shape = segmentShape,
+                selected = audioSelected,
+                loading = false,
+                unavailable = false,
+                requestError = false,
+                enabled = enabled,
+                textColor = textColor,
+                onClick = onAudioClick,
+                modifier = Modifier.weight(1f),
+            )
+
             Box(
                 Modifier
                     .width(1.dp)
                     .height(18.dp)
                     .background(textColor.copy(alpha = 0.16f)),
             )
-        }
 
-        CapsuleModeSegment(
-            lightStyle = lightStyle,
-            shape = segmentShape,
-            text =
-                when {
-                    videoRequestPaused -> "VIDEO PAUSED"
-                    videoRequestError -> "VIDEO ERROR"
-                    videoUnavailable -> "VIDEO N/A"
-                    else -> if (lightStyle) "video" else "VIDEO"
-                },
-            selected = videoSelected,
-            loading = videoResolving,
-            unavailable = videoUnavailable,
-            requestError = videoRequestError,
-            enabled = enabled && !videoUnavailable,
-            textColor = textColor,
-            onClick = onVideoClick,
-            modifier = Modifier.weight(1f),
-        )
+            CapsuleModeSegment(
+                lightStyle = false,
+                shape = segmentShape,
+                text =
+                    when {
+                        videoRequestPaused -> "VIDEO PAUSED"
+                        videoRequestError -> "VIDEO ERROR"
+                        videoUnavailable -> "VIDEO N/A"
+                        else -> "VIDEO"
+                    },
+                selected = videoSelected,
+                loading = videoResolving,
+                unavailable = videoUnavailable,
+                requestError = videoRequestError,
+                enabled = enabled && !videoUnavailable,
+                textColor = textColor,
+                onClick = onVideoClick,
+                modifier = Modifier.weight(1f),
+            )
+        }
     }
-}
-
-@Composable
-internal fun CapsuleLightModeAtom(
-    mode: CapsulePlaybackMode,
-    state: CapsuleVideoPlaybackState,
-    textColor: Color,
-    enabled: Boolean,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    val videoResolving =
-        state.preferredMode == CapsulePlaybackMode.VIDEO &&
-            state.phase == CapsuleVideoPhase.RESOLVING
-    val videoUnavailable =
-        state.preferredMode == CapsulePlaybackMode.VIDEO &&
-            state.phase == CapsuleVideoPhase.UNAVAILABLE
-    val videoRequestError =
-        state.preferredMode == CapsulePlaybackMode.VIDEO &&
-            state.phase == CapsuleVideoPhase.REQUEST_ERROR
-    val videoRequestPaused =
-        videoRequestError &&
-            (state.message?.contains("paused", ignoreCase = true) == true ||
-                state.message?.contains("quota", ignoreCase = true) == true)
-    val videoSelected =
-        state.mode == CapsulePlaybackMode.VIDEO || videoResolving
-    val selected =
-        when (mode) {
-            CapsulePlaybackMode.AUDIO -> !videoSelected
-            CapsulePlaybackMode.VIDEO -> videoSelected
-        }
-
-    val isVideo = mode == CapsulePlaybackMode.VIDEO
-    CapsuleModeSegment(
-        text =
-            if (!isVideo) {
-                "audio"
-            } else {
-                when {
-                    videoRequestPaused -> "video paused"
-                    videoRequestError -> "video error"
-                    videoUnavailable -> "video n/a"
-                    else -> "video"
-                }
-            },
-        lightStyle = true,
-        shape = RoundedCornerShape(14.dp),
-        selected = selected,
-        loading = isVideo && videoResolving,
-        unavailable = isVideo && videoUnavailable,
-        requestError = isVideo && videoRequestError,
-        enabled = enabled && (!isVideo || !videoUnavailable),
-        textColor = textColor,
-        onClick = onClick,
-        modifier =
-            modifier
-                .fillMaxHeight()
-                .fillMaxWidth(),
-    )
 }
 
 @Composable
