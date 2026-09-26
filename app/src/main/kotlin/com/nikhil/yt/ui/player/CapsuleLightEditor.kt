@@ -1027,6 +1027,7 @@ internal fun CapsuleLightReorderColumn(
         }
     }
 }
+}
 
 @Composable
 private fun CapsuleLightEmptyAnchorGap(
