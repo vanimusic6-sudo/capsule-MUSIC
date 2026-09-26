@@ -763,6 +763,7 @@ internal fun CapsuleLightCanvasV2(
         order: List<CapsuleLightBlock>,
     ) -> Unit,
     onEditStarted: () -> Unit,
+    externalGestureActive: Boolean = false,
     modifier: Modifier = Modifier,
     content: @Composable (CapsuleLightBlock, Dp?) -> Unit,
 ) {
@@ -850,8 +851,16 @@ internal fun CapsuleLightCanvasV2(
         resolvedOrder,
         resolvedPositionsPx,
         dragged,
+        externalGestureActive,
     ) {
-        if (!allMeasured || dragged != null || resolvedPositionsPx.isEmpty()) return@LaunchedEffect
+        if (
+            !allMeasured ||
+            dragged != null ||
+            externalGestureActive ||
+            resolvedPositionsPx.isEmpty()
+        ) {
+            return@LaunchedEffect
+        }
 
         val normalizedDp =
             resolvedPositionsPx.mapValues { (_, value) ->
