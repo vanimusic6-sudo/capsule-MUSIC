@@ -25,6 +25,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableFloatStateOf
@@ -946,9 +947,11 @@ internal fun CapsuleLightCanvasV2(
     val latestOnLayoutSettled by rememberUpdatedState(onLayoutSettled)
     val latestOnEditStarted by rememberUpdatedState(onEditStarted)
 
-    val heightsPx =
-        remember(bounds.toMap()) {
-            bounds.mapValues { it.value.heightPx }
+    val heightsPx by
+        remember {
+            derivedStateOf {
+                bounds.mapValues { (_, value) -> value.heightPx }
+            }
         }
     // "Measured" means Compose has reported a size, not that the size is positive.
     // Optional blocks (most notably LYRIC when the feature is disabled outside edit mode)
@@ -983,38 +986,51 @@ internal fun CapsuleLightCanvasV2(
         }
 
     val requestedPositionsPx =
-        positionsDp.mapValues { (_, value) ->
-            with(density) { value.dp.toPx() }
+        remember(positionsDp, density.density) {
+            positionsDp.mapValues { (_, value) ->
+                with(density) { value.dp.toPx() }
+            }
         }
 
-    val (resolvedOrder, resolvedPositionsPx) =
-        if (allMeasured) {
-            if (
-                externalGestureActive &&
-                requestedPositionsPx.keys.containsAll(order)
-            ) {
-                order to (
-                    projectOrderedPositions(
+    val resolvedLayout =
+        remember(
+            allMeasured,
+            order,
+            requestedPositionsPx,
+            heightsPx,
+            canvasHeightPx,
+            gapPx,
+            externalGestureActive,
+        ) {
+            if (allMeasured) {
+                if (
+                    externalGestureActive &&
+                    requestedPositionsPx.keys.containsAll(order)
+                ) {
+                    order to (
+                        projectOrderedPositions(
+                            order = order,
+                            preferredPositions = requestedPositionsPx,
+                            heights = heightsPx,
+                            startPx = 0f,
+                            endPx = canvasHeightPx,
+                            gapPx = gapPx,
+                        ) ?: compactPositions(order, heightsPx, gapPx)
+                    )
+                } else {
+                    normalizedStoredPositions(
                         order = order,
-                        preferredPositions = requestedPositionsPx,
+                        requested = requestedPositionsPx,
                         heights = heightsPx,
-                        startPx = 0f,
-                        endPx = canvasHeightPx,
+                        canvasHeightPx = canvasHeightPx,
                         gapPx = gapPx,
-                    ) ?: compactPositions(order, heightsPx, gapPx)
-                )
+                    )
+                }
             } else {
-                normalizedStoredPositions(
-                    order = order,
-                    requested = requestedPositionsPx,
-                    heights = heightsPx,
-                    canvasHeightPx = canvasHeightPx,
-                    gapPx = gapPx,
-                )
+                order to emptyMap()
             }
-        } else {
-            order to emptyMap()
         }
+    val (resolvedOrder, resolvedPositionsPx) = resolvedLayout
 
     val activePositionsPx =
         when {
