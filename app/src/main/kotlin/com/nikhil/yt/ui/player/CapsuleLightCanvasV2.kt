@@ -156,32 +156,35 @@ private fun projectOrderedPositions(
 ): Map<CapsuleLightBlock, Float>? {
     if (order.isEmpty()) return emptyMap()
 
-    val minimumHeight =
-        order.sumOf { (heights[it] ?: return null).toDouble() }.toFloat() +
-            gapPx * (order.size - 1).coerceAtLeast(0)
+    var minimumHeight = gapPx * (order.size - 1).coerceAtLeast(0)
+    order.forEach { block ->
+        minimumHeight += heights[block] ?: return null
+    }
+
     val availableHeight = endPx - startPx
     if (minimumHeight > availableHeight + 0.5f) return null
 
     val maxSlack = (availableHeight - minimumHeight).coerceAtLeast(0f)
     var cumulativeMin = 0f
     var previousSlack = 0f
+    val result = linkedMapOf<CapsuleLightBlock, Float>()
 
-    return buildMap {
-        order.forEachIndexed { index, block ->
-            val height = heights[block] ?: return null
-            val preferredTop = preferredPositions[block] ?: (startPx + cumulativeMin)
-            val preferredSlack = preferredTop - startPx - cumulativeMin
-            val slack =
-                preferredSlack
-                    .coerceIn(0f, maxSlack)
-                    .coerceAtLeast(previousSlack)
+    order.forEachIndexed { index, block ->
+        val height = heights[block] ?: return null
+        val preferredTop = preferredPositions[block] ?: (startPx + cumulativeMin)
+        val preferredSlack = preferredTop - startPx - cumulativeMin
+        val slack =
+            preferredSlack
+                .coerceIn(0f, maxSlack)
+                .coerceAtLeast(previousSlack)
 
-            put(block, startPx + cumulativeMin + slack)
-            previousSlack = slack
-            cumulativeMin += height
-            if (index < order.lastIndex) cumulativeMin += gapPx
-        }
+        result[block] = startPx + cumulativeMin + slack
+        previousSlack = slack
+        cumulativeMin += height
+        if (index < order.lastIndex) cumulativeMin += gapPx
     }
+
+    return result
 }
 
 private fun normalizedStoredPositions(
@@ -998,7 +1001,7 @@ internal fun CapsuleLightCanvasV2(
                             if (selected) {
                                 spring(
                                     dampingRatio = 0.92f,
-                                    stiffness = Spring.StiffnessMediumHigh,
+                                    stiffness = Spring.StiffnessMedium,
                                 )
                             } else {
                                 spring(
