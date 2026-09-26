@@ -26,6 +26,7 @@ class CapsuleLightEditorTest {
             listOf(
                 CapsuleLightBlock.METADATA,
                 CapsuleLightBlock.ARTWORK,
+                CapsuleLightBlock.LYRIC,
                 CapsuleLightBlock.CONTROLS,
                 CapsuleLightBlock.PROGRESS,
                 CapsuleLightBlock.MODE_SWITCH,
@@ -34,6 +35,23 @@ class CapsuleLightEditorTest {
         assertEquals(
             custom,
             decodeCapsuleLightOrder(encodeCapsuleLightOrder(custom)),
+        )
+    }
+
+    @Test
+    fun legacyFiveBlockOrderKeepsUserOrderAndAddsLyricAfterArtwork() {
+        val legacy = "METADATA,ARTWORK,CONTROLS,PROGRESS,MODE_SWITCH"
+
+        assertEquals(
+            listOf(
+                CapsuleLightBlock.METADATA,
+                CapsuleLightBlock.ARTWORK,
+                CapsuleLightBlock.LYRIC,
+                CapsuleLightBlock.CONTROLS,
+                CapsuleLightBlock.PROGRESS,
+                CapsuleLightBlock.MODE_SWITCH,
+            ),
+            decodeCapsuleLightOrder(legacy),
         )
     }
 
