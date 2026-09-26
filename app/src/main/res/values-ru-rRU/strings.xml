@@ -800,4 +800,8 @@
     <string name="token_copied">Токен скопирован</string>
     <string name="no_visitor_data">Данные посетителя недоступны. Извлечь токен невозможно.</string>
     <string name="extracting_from_url">Извлечение токена</string>
+    <string name="capsule_light_edit_screen">Редактировать экран Light</string>
+    <string name="capsule_light_edit_screen_description">После включения зажмите блок на экране Light и перетащите его в другой слот. Блоки выталкивают друг друга и не могут сохраниться внахлёст.</string>
+    <string name="capsule_light_reset_screen">Сбросить экран Light</string>
+    <string name="capsule_light_reset_screen_description">Вернуть базовый порядок блоков Light и выключить режим редактирования.</string>
 </resources>
