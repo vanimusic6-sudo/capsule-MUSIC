@@ -893,4 +893,8 @@ Velune will only extract your token, and everything else is stored locally.</str
     <string name="enable_netease">NetEase Cloud Music</string>
     <string name="enable_netease_description">A very large catalogue. Line-timed, and often the only source that has the track at all.</string>
     <string name="lyrics_provider_netease_description">Huge catalogue, line timing. The one that answers when nobody else does.</string>
+    <string name="capsule_light_edit_screen">Edit Light screen</string>
+    <string name="capsule_light_edit_screen_description">When enabled, long-press a block in Light and drag it to another slot. Blocks push each other; free overlap is disabled.</string>
+    <string name="capsule_light_reset_screen">Reset Light screen</string>
+    <string name="capsule_light_reset_screen_description">Restore the base Light block order and turn editing off.</string>
 </resources>
