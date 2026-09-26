@@ -905,4 +905,5 @@ Velune will only extract your token, and everything else is stored locally.</str
     <string name="capsule_customize_edit_description">Allow long-press dragging on the selected Capsule screen.</string>
     <string name="capsule_customize_reset_description">Restore the selected screen to the base Capsule layout and turn editing off.</string>
     <string name="capsule_customize_hint">Long-press an element, then drag it. Elements snap into magnetic slots and push neighbours out of the way instead of overlapping.</string>
+    <string name="capsule_light_lyric_placeholder">Lyric line is off — drag this placeholder</string>
 </resources>
