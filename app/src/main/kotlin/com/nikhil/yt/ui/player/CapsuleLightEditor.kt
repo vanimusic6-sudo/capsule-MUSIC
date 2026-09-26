@@ -346,15 +346,30 @@ internal fun CapsuleLightReorderColumn(
                     )
                     .coerceAtLeast(0f)
 
+            val dockGapPx = with(density) { CapsuleLightDockGap.toPx() }
+            val dockThresholdPx = with(density) { CapsuleLightDockThreshold.toPx() }
+            val cellStepPx = with(density) { CapsuleLightEmptyAnchorStep.toPx() }
+
             buildMap {
-                latestOrder.forEach { block ->
-                    val requestedPx =
+                latestOrder.forEachIndexed { index, block ->
+                    val rawRequestedPx =
                         with(density) {
                             ((gapsDp[block] ?: 0f).coerceAtLeast(0f)).dp.toPx()
                         }
-                    val acceptedPx = requestedPx.coerceAtMost(remainingGapPx)
+                    val canonicalRequestedPx =
+                        when {
+                            rawRequestedPx <= 0.5f -> 0f
+                            index == 0 && rawRequestedPx <= dockThresholdPx -> 0f
+                            rawRequestedPx <= dockThresholdPx -> dockGapPx
+                            else ->
+                                kotlin.math.round(rawRequestedPx / cellStepPx) *
+                                    cellStepPx
+                        }
+                    val acceptedPx =
+                        canonicalRequestedPx.coerceAtMost(remainingGapPx)
                     put(block, acceptedPx / density.density)
-                    remainingGapPx = (remainingGapPx - acceptedPx).coerceAtLeast(0f)
+                    remainingGapPx =
+                        (remainingGapPx - acceptedPx).coerceAtLeast(0f)
                 }
             }
         }
@@ -916,6 +931,32 @@ internal fun CapsuleLightReorderColumn(
             }
         }
 
+        if (allBlocksMeasured) {
+            val committedEndPx =
+                order.sumOf { item ->
+                    (
+                        gapPxFor(item, effectiveGapsDp) +
+                            contentHeightFor(item)
+                        ).toDouble()
+                }.toFloat()
+            val trailingPx =
+                (viewportHeightPx - committedEndPx).coerceAtLeast(0f)
+            if (trailingPx > 0.5f) {
+                CapsuleLightEmptyAnchorGap(
+                    height = with(density) { trailingPx.toDp() },
+                    highlight =
+                        trailingPx >=
+                            with(density) { CapsuleLightDockThreshold.toPx() },
+                    modifier =
+                        Modifier
+                            .fillMaxWidth()
+                            .graphicsLayer {
+                                translationY = committedEndPx
+                            },
+                )
+            }
+        }
+
         val preview = dropPreview
         if (dragged != null && preview?.usesEmptyCell == true) {
             val previewHeight =
@@ -953,10 +994,11 @@ internal fun CapsuleLightReorderColumn(
 private fun CapsuleLightEmptyAnchorGap(
     height: Dp,
     highlight: Boolean,
+    modifier: Modifier = Modifier,
 ) {
     Box(
         modifier =
-            Modifier
+            modifier
                 .fillMaxWidth()
                 .height(height),
     ) {
