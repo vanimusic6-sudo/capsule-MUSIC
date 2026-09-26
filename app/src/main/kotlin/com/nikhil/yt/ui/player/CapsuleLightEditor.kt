@@ -321,7 +321,7 @@ internal fun CapsuleLightReorderColumn(
                         latestOrder.sumOf { block ->
                             val rawGapPx =
                                 with(density) {
-                                    ((effectiveGapsDp[block] ?: 0f).coerceAtLeast(0f)).dp.toPx()
+                                    ((gapsDp[block] ?: 0f).coerceAtLeast(0f)).dp.toPx()
                                 }
                             ((bounds[block]?.size ?: 0f) - rawGapPx)
                                 .coerceAtLeast(0f)
@@ -348,7 +348,7 @@ internal fun CapsuleLightReorderColumn(
             allBlocksMeasured &&
             latestOrder.any { block ->
                 kotlin.math.abs(
-                    (effectiveGapsDp[block] ?: 0f) - (effectiveGapsDp[block] ?: 0f),
+                    (effectiveGapsDp[block] ?: 0f) - (gapsDp[block] ?: 0f),
                 ) > 0.05f
             }
         ) {
