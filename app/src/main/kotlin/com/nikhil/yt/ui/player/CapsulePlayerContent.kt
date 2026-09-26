@@ -798,6 +798,14 @@ fun CapsulePlayerContent(
             lightBlockGaps = safe
             onLightBlockGapsEncodedChange(encodeCapsuleLightBlockGaps(safe))
         },
+        onLightGapsSettled = { settled ->
+            val safe =
+                CapsuleLightBaseOrder.associateWith { block ->
+                    (settled[block] ?: 0f).coerceIn(0f, 1000f)
+                }
+            lightBlockGaps = safe
+            onLightBlockGapsEncodedChange(encodeCapsuleLightBlockGaps(safe))
+        },
         onLightGapsNormalized = { normalized ->
             val safe =
                 CapsuleLightBaseOrder.associateWith { block ->
