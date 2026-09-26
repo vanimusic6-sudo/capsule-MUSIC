@@ -124,6 +124,35 @@ class CapsuleLightEditorTest {
     }
 
     @Test
+    fun rowSwapThresholdIsSymmetricAtClampedEdge() {
+        assertTrue(
+            lightRowCrossedBefore(
+                commandCenterPx = 100f,
+                neighbourCenterPx = 100f,
+            ),
+        )
+        assertTrue(
+            lightRowCrossedAfter(
+                commandCenterPx = 100f,
+                neighbourCenterPx = 100f,
+            ),
+        )
+
+        assertFalse(
+            lightRowCrossedBefore(
+                commandCenterPx = 101f,
+                neighbourCenterPx = 100f,
+            ),
+        )
+        assertFalse(
+            lightRowCrossedAfter(
+                commandCenterPx = 99f,
+                neighbourCenterPx = 100f,
+            ),
+        )
+    }
+
+    @Test
     fun zeroHeightOptionalBlockStillCountsAsMeasured() {
         val measured =
             CapsuleLightBaseOrder.associateWith { block ->
