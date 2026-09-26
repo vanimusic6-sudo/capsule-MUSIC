@@ -124,6 +124,42 @@ class CapsuleLightEditorTest {
     }
 
     @Test
+    fun outerBlocksCanReplaceBothEdgeSlots() {
+        assertEquals(
+            LightEdgeReplacement.TOP,
+            chooseLightEdgeReplacement(
+                currentIndex = 3,
+                lastIndex = 5,
+                commandCenterPx = 80f,
+                firstCenterPx = 80f,
+                lastCenterPx = 900f,
+            ),
+        )
+
+        assertEquals(
+            LightEdgeReplacement.BOTTOM,
+            chooseLightEdgeReplacement(
+                currentIndex = 2,
+                lastIndex = 5,
+                commandCenterPx = 900f,
+                firstCenterPx = 80f,
+                lastCenterPx = 900f,
+            ),
+        )
+
+        assertEquals(
+            null,
+            chooseLightEdgeReplacement(
+                currentIndex = 0,
+                lastIndex = 5,
+                commandCenterPx = 20f,
+                firstCenterPx = 80f,
+                lastCenterPx = 900f,
+            ),
+        )
+    }
+
+    @Test
     fun topArtworkResizeMovesOriginOppositeToBottomResize() {
         // Pulling a TOP handle downward shrinks the artwork and moves its top downward,
         // preserving the old bottom edge.
