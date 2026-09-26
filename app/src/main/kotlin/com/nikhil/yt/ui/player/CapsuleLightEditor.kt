@@ -1,6 +1,5 @@
 package com.nikhil.yt.ui.player
 
-import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
@@ -16,6 +15,9 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.verticalScroll
@@ -30,7 +32,6 @@ import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -39,12 +40,12 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInParent
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.launch
-import kotlin.math.abs
+import kotlin.math.roundToInt
 
 /**
  * Capsule Light editor v3: hierarchy, not a flat grid.
@@ -203,25 +204,54 @@ private data class AxisBounds(
 }
 
 /**
- * Outer Light containers. The little grip is only visible while edit mode is enabled, so nested
- * controls can own long-press without fighting the parent gesture.
+ * Outer Light containers.
+ *
+ * While a drag is active the real composition order never changes. Neighbours only receive a
+ * placement offset toward their virtual target slots. The real order is committed on ACTION_UP.
+ * This avoids the one-frame "old slot/new slot" flash that happens when relayout wins the race
+ * against a post-layout compensation animation.
+ *
+ * [gapsDp] is the free vertical space owned by each block. Dragging a block without crossing
+ * another block changes that space, so the user can move a container lower instead of being
+ * limited to swaps.
  */
 @Composable
 internal fun CapsuleLightReorderColumn(
     order: List<CapsuleLightBlock>,
     editable: Boolean,
     scrollState: ScrollState,
+    gapsDp: Map<CapsuleLightBlock, Float> = emptyMap(),
     onOrderChange: (List<CapsuleLightBlock>) -> Unit,
     onOrderSettled: (List<CapsuleLightBlock>) -> Unit,
+    onGapSettled: (CapsuleLightBlock, Float) -> Unit = { _, _ -> },
     onEditStarted: () -> Unit = {},
     externalGestureActive: Boolean = false,
     modifier: Modifier = Modifier,
     content: @Composable (CapsuleLightBlock) -> Unit,
 ) {
+    if (!editable) {
+        Column(
+            modifier =
+                modifier.verticalScroll(
+                    state = scrollState,
+                    enabled = !externalGestureActive,
+                ),
+        ) {
+            order.forEach { block ->
+                val gap = (gapsDp[block] ?: 0f).coerceIn(0f, 180f)
+                if (gap > 0f) Spacer(Modifier.height(gap.dp))
+                key(block) { content(block) }
+            }
+        }
+        return
+    }
+
     val latestOrder by rememberUpdatedState(order)
     val latestOnOrderChange by rememberUpdatedState(onOrderChange)
     val latestOnOrderSettled by rememberUpdatedState(onOrderSettled)
+    val latestOnGapSettled by rememberUpdatedState(onGapSettled)
     val latestOnEditStarted by rememberUpdatedState(onEditStarted)
+    val density = LocalDensity.current
 
     val bounds = remember { mutableStateMapOf<CapsuleLightBlock, AxisBounds>() }
     var dragged by remember { mutableStateOf<CapsuleLightBlock?>(null) }
@@ -232,6 +262,51 @@ internal fun CapsuleLightReorderColumn(
         if (dragged == null) workingOrder = order
     }
 
+    fun slotStart(
+        item: CapsuleLightBlock,
+        virtualOrder: List<CapsuleLightBlock>,
+        draggedItem: CapsuleLightBlock?,
+        gapDeltaPx: Float,
+    ): Float? {
+        val first =
+            latestOrder
+                .firstNotNullOfOrNull { bounds[it]?.start }
+                ?: return null
+        var cursor = first
+        virtualOrder.forEach { candidate ->
+            if (candidate == item) return cursor
+            val measured = bounds[candidate]?.size ?: return null
+            cursor += measured
+            if (candidate == draggedItem) cursor += gapDeltaPx
+        }
+        return null
+    }
+
+    val draggedBounds = dragged?.let(bounds::get)
+    val draggedTargetStart =
+        dragged?.let { item ->
+            slotStart(
+                item = item,
+                virtualOrder = workingOrder,
+                draggedItem = null,
+                gapDeltaPx = 0f,
+            )
+        }
+    val currentGapPx =
+        dragged?.let { item ->
+            with(density) {
+                ((gapsDp[item] ?: 0f).coerceIn(0f, 180f)).dp.toPx()
+            }
+        } ?: 0f
+    val maxGapPx = with(density) { 180.dp.toPx() }
+    val gapDeltaPx =
+        if (draggedBounds != null && draggedTargetStart != null) {
+            val residual = draggedBounds.start + dragOffsetY - draggedTargetStart
+            (currentGapPx + residual).coerceIn(0f, maxGapPx) - currentGapPx
+        } else {
+            0f
+        }
+
     Column(
         modifier =
             modifier.verticalScroll(
@@ -239,98 +314,170 @@ internal fun CapsuleLightReorderColumn(
                 enabled = dragged == null && !externalGestureActive,
             ),
     ) {
+        // Important: render the committed order, not workingOrder.
         order.forEach { block ->
             key(block) {
+                val gap = (gapsDp[block] ?: 0f).coerceIn(0f, 180f)
                 val selected = dragged == block
-                CapsuleSoftColumnItem(
-                    id = block,
-                    selected = selected,
-                    dragOffsetY = dragOffsetY,
-                    bounds = bounds,
-                    onSelectedBaseShift = { dragOffsetY += it },
-                ) {
-                    Box(Modifier.fillMaxWidth()) {
-                        content(block)
+                val actual = bounds[block]
+                val virtualStart =
+                    slotStart(
+                        item = block,
+                        virtualOrder = workingOrder,
+                        draggedItem = dragged,
+                        gapDeltaPx = gapDeltaPx,
+                    )
+                val neighbourTarget =
+                    if (!selected && actual != null && virtualStart != null) {
+                        virtualStart - actual.start
+                    } else {
+                        0f
+                    }
+                val animatedNeighbourOffset by
+                    animateFloatAsState(
+                        targetValue = neighbourTarget,
+                        animationSpec =
+                            spring(
+                                dampingRatio = 0.88f,
+                                stiffness = Spring.StiffnessMediumLow,
+                            ),
+                        label = "capsuleOuterPush",
+                    )
 
-                        if (editable) {
-                            Box(
-                                modifier =
-                                    Modifier
-                                        .align(Alignment.TopCenter)
-                                        .width(52.dp)
-                                        .height(20.dp)
-                                        .pointerInput(block) {
-                                            detectDragGesturesAfterLongPress(
-                                                onDragStart = {
-                                                    latestOnEditStarted()
-                                                    workingOrder = latestOrder
-                                                    dragged = block
-                                                    dragOffsetY = 0f
-                                                },
-                                                onDrag = { change, amount ->
-                                                    change.consume()
-                                                    dragOffsetY += amount.y
+                if (gap > 0f) Spacer(Modifier.height(gap.dp))
 
-                                                    val currentIndex = workingOrder.indexOf(block)
-                                                    val currentBounds = bounds[block]
-                                                    if (currentIndex < 0 || currentBounds == null) {
-                                                        return@detectDragGesturesAfterLongPress
-                                                    }
-
-                                                    val center = currentBounds.center + dragOffsetY
-                                                    var target = currentIndex
-
-                                                    if (currentIndex > 0) {
-                                                        val previous = workingOrder[currentIndex - 1]
-                                                        val previousCenter = bounds[previous]?.center
-                                                        if (previousCenter != null && center < previousCenter) {
-                                                            target = currentIndex - 1
-                                                        }
-                                                    }
-
-                                                    if (target == currentIndex && currentIndex < workingOrder.lastIndex) {
-                                                        val next = workingOrder[currentIndex + 1]
-                                                        val nextCenter = bounds[next]?.center
-                                                        if (nextCenter != null && center > nextCenter) {
-                                                            target = currentIndex + 1
-                                                        }
-                                                    }
-
-                                                    if (target != currentIndex) {
-                                                        val moved = workingOrder.toMutableList()
-                                                        moved.removeAt(currentIndex)
-                                                        moved.add(target, block)
-                                                        workingOrder = moved
-                                                        latestOnOrderChange(moved)
-                                                    }
-                                                },
-                                                onDragEnd = {
-                                                    val settled = workingOrder
-                                                    dragged = null
-                                                    dragOffsetY = 0f
-                                                    latestOnOrderSettled(settled)
-                                                },
-                                                onDragCancel = {
-                                                    dragged = null
-                                                    dragOffsetY = 0f
-                                                    latestOnOrderChange(workingOrder)
-                                                    latestOnOrderSettled(workingOrder)
-                                                },
-                                            )
-                                        },
-                                contentAlignment = Alignment.TopCenter,
-                            ) {
-                                Box(
-                                    Modifier
-                                        .width(28.dp)
-                                        .height(4.dp)
-                                        .background(
-                                            MaterialTheme.colorScheme.onSurface.copy(alpha = 0.20f),
-                                            RoundedCornerShape(100.dp),
-                                        ),
+                Box(
+                    modifier =
+                        Modifier
+                            .fillMaxWidth()
+                            .onGloballyPositioned { coordinates ->
+                                bounds[block] =
+                                    AxisBounds(
+                                        start = coordinates.positionInParent().y - with(density) { gap.dp.toPx() },
+                                        size = coordinates.size.height.toFloat() + with(density) { gap.dp.toPx() },
+                                    )
+                            }
+                            .offset {
+                                IntOffset(
+                                    x = 0,
+                                    y =
+                                        (
+                                            if (selected) dragOffsetY
+                                            else animatedNeighbourOffset
+                                        ).roundToInt(),
                                 )
                             }
-                        }
+                            .zIndex(if (selected) 4f else 0f),
+                ) {
+                    content(block)
+
+                    Box(
+                        modifier =
+                            Modifier
+                                .align(Alignment.TopCenter)
+                                .width(52.dp)
+                                .height(20.dp)
+                                .pointerInput(block) {
+                                    detectDragGesturesAfterLongPress(
+                                        onDragStart = {
+                                            latestOnEditStarted()
+                                            workingOrder = latestOrder
+                                            dragged = block
+                                            dragOffsetY = 0f
+                                        },
+                                        onDrag = { change, amount ->
+                                            change.consume()
+                                            dragOffsetY += amount.y
+
+                                            val actualBounds = bounds[block]
+                                                ?: return@detectDragGesturesAfterLongPress
+                                            val currentIndex = workingOrder.indexOf(block)
+                                            if (currentIndex < 0) return@detectDragGesturesAfterLongPress
+
+                                            val visualCenter = actualBounds.center + dragOffsetY
+                                            var targetIndex = currentIndex
+
+                                            if (currentIndex > 0) {
+                                                val previous = workingOrder[currentIndex - 1]
+                                                val previousStart =
+                                                    slotStart(
+                                                        previous,
+                                                        workingOrder,
+                                                        block,
+                                                        gapDeltaPx,
+                                                    )
+                                                val previousSize = bounds[previous]?.size
+                                                if (
+                                                    previousStart != null &&
+                                                    previousSize != null &&
+                                                    visualCenter < previousStart + previousSize / 2f
+                                                ) {
+                                                    targetIndex = currentIndex - 1
+                                                }
+                                            }
+
+                                            if (
+                                                targetIndex == currentIndex &&
+                                                currentIndex < workingOrder.lastIndex
+                                            ) {
+                                                val next = workingOrder[currentIndex + 1]
+                                                val nextStart =
+                                                    slotStart(
+                                                        next,
+                                                        workingOrder,
+                                                        block,
+                                                        gapDeltaPx,
+                                                    )
+                                                val nextSize = bounds[next]?.size
+                                                if (
+                                                    nextStart != null &&
+                                                    nextSize != null &&
+                                                    visualCenter > nextStart + nextSize / 2f
+                                                ) {
+                                                    targetIndex = currentIndex + 1
+                                                }
+                                            }
+
+                                            if (targetIndex != currentIndex) {
+                                                val moved = workingOrder.toMutableList()
+                                                moved.removeAt(currentIndex)
+                                                moved.add(targetIndex, block)
+                                                workingOrder = moved
+                                            }
+                                        },
+                                        onDragEnd = {
+                                            val settled = workingOrder
+                                            val finalGapDp =
+                                                ((currentGapPx + gapDeltaPx) / density.density)
+                                                    .coerceIn(0f, 180f)
+
+                                            // Commit all state in the same input frame. Since every
+                                            // neighbour is already visually at its future slot,
+                                            // the physical relayout is invisible.
+                                            latestOnGapSettled(block, finalGapDp)
+                                            latestOnOrderChange(settled)
+                                            latestOnOrderSettled(settled)
+                                            dragged = null
+                                            dragOffsetY = 0f
+                                        },
+                                        onDragCancel = {
+                                            dragged = null
+                                            dragOffsetY = 0f
+                                            workingOrder = latestOrder
+                                        },
+                                    )
+                                },
+                        contentAlignment = Alignment.TopCenter,
+                    ) {
+                        Box(
+                            Modifier
+                                .width(28.dp)
+                                .height(4.dp)
+                                .background(
+                                    MaterialTheme.colorScheme.onSurface.copy(alpha = 0.20f),
+                                    RoundedCornerShape(100.dp),
+                                ),
+                        )
                     }
                 }
             }
@@ -338,71 +485,9 @@ internal fun CapsuleLightReorderColumn(
     }
 }
 
-@Composable
-private fun CapsuleSoftColumnItem(
-    id: CapsuleLightBlock,
-    selected: Boolean,
-    dragOffsetY: Float,
-    bounds: MutableMap<CapsuleLightBlock, AxisBounds>,
-    onSelectedBaseShift: (Float) -> Unit,
-    content: @Composable () -> Unit,
-) {
-    val scope = rememberCoroutineScope()
-    val settle = remember(id) { Animatable(0f) }
-    var settleJob by remember(id) { mutableStateOf<Job?>(null) }
-    var lastBase by remember(id) { mutableFloatStateOf(Float.NaN) }
-    val scale by
-        animateFloatAsState(
-            targetValue = if (selected) 1.012f else 1f,
-            animationSpec = spring(dampingRatio = 0.86f, stiffness = Spring.StiffnessMediumLow),
-            label = "capsuleBlockLift",
-        )
-
-    Box(
-        modifier =
-            Modifier
-                .fillMaxWidth()
-                .onGloballyPositioned { coordinates ->
-                    val next = coordinates.positionInParent().y
-                    bounds[id] = AxisBounds(next, coordinates.size.height.toFloat())
-                    if (!lastBase.isNaN() && lastBase != next) {
-                        val delta = lastBase - next
-                        if (selected) {
-                            onSelectedBaseShift(delta)
-                        } else if (abs(delta) >= 8f) {
-                            // A reorder moves a block by tens/hundreds of px. Tiny changes are
-                            // normal remeasurement (lyrics/resize) and must follow the finger
-                            // directly instead of spawning overlapping springs.
-                            settleJob?.cancel()
-                            settleJob =
-                                scope.launch {
-                                    settle.snapTo(settle.value + delta)
-                                    settle.animateTo(
-                                        0f,
-                                        spring(
-                                            dampingRatio = 0.84f,
-                                            stiffness = Spring.StiffnessMediumLow,
-                                        ),
-                                    )
-                                }
-                        }
-                    }
-                    lastBase = next
-                }
-                .zIndex(if (selected) 3f else 0f)
-                .graphicsLayer {
-                    translationY = if (selected) dragOffsetY else settle.value
-                    scaleX = scale
-                    scaleY = scale
-                }
-    ) {
-        content()
-    }
-}
-
 /**
- * Reorders controls only inside their own visual container. No child background, border or shell
- * is introduced here; the caller keeps drawing the original Light panel.
+ * Same no-flash strategy for controls inside a native Light container. During a drag the Row's
+ * real child order stays untouched; only placement offsets animate. Commit happens on release.
  */
 @Composable
 internal fun <T : Enum<T>> CapsuleLightReorderRow(
@@ -417,6 +502,25 @@ internal fun <T : Enum<T>> CapsuleLightReorderRow(
     dragHandleOnly: Boolean = false,
     content: @Composable (T) -> Unit,
 ) {
+    if (!editable) {
+        Row(
+            modifier = modifier,
+            verticalAlignment = verticalAlignment,
+        ) {
+            order.forEach { item ->
+                key(item) {
+                    Box(
+                        modifier = Modifier.weight(weightFor(item)),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        content(item)
+                    }
+                }
+            }
+        }
+        return
+    }
+
     val latestOrder by rememberUpdatedState(order)
     val latestOnOrderChange by rememberUpdatedState(onOrderChange)
     val latestOnOrderSettled by rememberUpdatedState(onOrderSettled)
@@ -431,87 +535,113 @@ internal fun <T : Enum<T>> CapsuleLightReorderRow(
         if (dragged == null) workingOrder = order
     }
 
+    fun slotStart(item: T, virtualOrder: List<T>): Float? {
+        val first =
+            latestOrder
+                .firstNotNullOfOrNull { bounds[it]?.start }
+                ?: return null
+        var cursor = first
+        virtualOrder.forEach { candidate ->
+            if (candidate == item) return cursor
+            cursor += bounds[candidate]?.size ?: return null
+        }
+        return null
+    }
+
     Row(
         modifier = modifier,
         verticalAlignment = verticalAlignment,
     ) {
+        // Render committed order; workingOrder is only the virtual destination map.
         order.forEach { item ->
             key(item) {
                 val selected = dragged == item
-                val scope = rememberCoroutineScope()
-                val settle = remember(item) { Animatable(0f) }
-                var settleJob by remember(item) { mutableStateOf<Job?>(null) }
-                var lastBase by remember(item) { mutableFloatStateOf(Float.NaN) }
-                val scale by
+                val actual = bounds[item]
+                val virtualStart = slotStart(item, workingOrder)
+                val target =
+                    if (!selected && actual != null && virtualStart != null) {
+                        virtualStart - actual.start
+                    } else {
+                        0f
+                    }
+                val animatedOffset by
                     animateFloatAsState(
-                        targetValue = if (selected) 1.022f else 1f,
-                        animationSpec = spring(dampingRatio = 0.86f, stiffness = Spring.StiffnessMediumLow),
-                        label = "capsuleInnerLift",
+                        targetValue = target,
+                        animationSpec =
+                            spring(
+                                dampingRatio = 0.88f,
+                                stiffness = Spring.StiffnessMediumLow,
+                            ),
+                        label = "capsuleInnerPush",
                     )
 
                 val dragGesture =
-                    if (!editable) {
-                        Modifier
-                    } else {
-                        Modifier.pointerInput(item) {
-                            detectDragGesturesAfterLongPress(
-                                onDragStart = {
-                                    latestOnEditStarted()
-                                    workingOrder = latestOrder
-                                    dragged = item
-                                    dragX = 0f
-                                },
-                                onDrag = { change, amount ->
-                                    change.consume()
-                                    dragX += amount.x
+                    Modifier.pointerInput(item) {
+                        detectDragGesturesAfterLongPress(
+                            onDragStart = {
+                                latestOnEditStarted()
+                                workingOrder = latestOrder
+                                dragged = item
+                                dragX = 0f
+                            },
+                            onDrag = { change, amount ->
+                                change.consume()
+                                dragX += amount.x
 
-                                    val index = workingOrder.indexOf(item)
-                                    val itemBounds = bounds[item]
-                                    if (index < 0 || itemBounds == null) {
-                                        return@detectDragGesturesAfterLongPress
+                                val actualBounds =
+                                    bounds[item] ?: return@detectDragGesturesAfterLongPress
+                                val index = workingOrder.indexOf(item)
+                                if (index < 0) return@detectDragGesturesAfterLongPress
+
+                                val visualCenter = actualBounds.center + dragX
+                                var targetIndex = index
+
+                                if (index > 0) {
+                                    val previous = workingOrder[index - 1]
+                                    val previousStart = slotStart(previous, workingOrder)
+                                    val previousSize = bounds[previous]?.size
+                                    if (
+                                        previousStart != null &&
+                                        previousSize != null &&
+                                        visualCenter < previousStart + previousSize / 2f
+                                    ) {
+                                        targetIndex = index - 1
                                     }
+                                }
 
-                                    val center = itemBounds.center + dragX
-                                    var target = index
-
-                                    if (index > 0) {
-                                        val previous = workingOrder[index - 1]
-                                        val previousCenter = bounds[previous]?.center
-                                        if (previousCenter != null && center < previousCenter) {
-                                            target = index - 1
-                                        }
+                                if (targetIndex == index && index < workingOrder.lastIndex) {
+                                    val next = workingOrder[index + 1]
+                                    val nextStart = slotStart(next, workingOrder)
+                                    val nextSize = bounds[next]?.size
+                                    if (
+                                        nextStart != null &&
+                                        nextSize != null &&
+                                        visualCenter > nextStart + nextSize / 2f
+                                    ) {
+                                        targetIndex = index + 1
                                     }
+                                }
 
-                                    if (target == index && index < workingOrder.lastIndex) {
-                                        val next = workingOrder[index + 1]
-                                        val nextCenter = bounds[next]?.center
-                                        if (nextCenter != null && center > nextCenter) {
-                                            target = index + 1
-                                        }
-                                    }
-
-                                    if (target != index) {
-                                        val moved = workingOrder.toMutableList()
-                                        moved.removeAt(index)
-                                        moved.add(target, item)
-                                        workingOrder = moved
-                                        latestOnOrderChange(moved)
-                                    }
-                                },
-                                onDragEnd = {
-                                    val settledOrder = workingOrder
-                                    dragged = null
-                                    dragX = 0f
-                                    latestOnOrderSettled(settledOrder)
-                                },
-                                onDragCancel = {
-                                    dragged = null
-                                    dragX = 0f
-                                    latestOnOrderChange(workingOrder)
-                                    latestOnOrderSettled(workingOrder)
-                                },
-                            )
-                        }
+                                if (targetIndex != index) {
+                                    val moved = workingOrder.toMutableList()
+                                    moved.removeAt(index)
+                                    moved.add(targetIndex, item)
+                                    workingOrder = moved
+                                }
+                            },
+                            onDragEnd = {
+                                val settled = workingOrder
+                                latestOnOrderChange(settled)
+                                latestOnOrderSettled(settled)
+                                dragged = null
+                                dragX = 0f
+                            },
+                            onDragCancel = {
+                                dragged = null
+                                dragX = 0f
+                                workingOrder = latestOrder
+                            },
+                        )
                     }
 
                 Box(
@@ -519,41 +649,29 @@ internal fun <T : Enum<T>> CapsuleLightReorderRow(
                         Modifier
                             .weight(weightFor(item))
                             .onGloballyPositioned { coordinates ->
-                                val next = coordinates.positionInParent().x
-                                bounds[item] = AxisBounds(next, coordinates.size.width.toFloat())
-                                if (!lastBase.isNaN() && lastBase != next) {
-                                    val delta = lastBase - next
-                                    if (selected) {
-                                        dragX += delta
-                                    } else if (abs(delta) >= 4f) {
-                                        settleJob?.cancel()
-                                        settleJob =
-                                            scope.launch {
-                                                settle.snapTo(settle.value + delta)
-                                                settle.animateTo(
-                                                    0f,
-                                                    spring(
-                                                        dampingRatio = 0.84f,
-                                                        stiffness = Spring.StiffnessMediumLow,
-                                                    ),
-                                                )
-                                            }
-                                    }
-                                }
-                                lastBase = next
+                                bounds[item] =
+                                    AxisBounds(
+                                        start = coordinates.positionInParent().x,
+                                        size = coordinates.size.width.toFloat(),
+                                    )
+                            }
+                            .offset {
+                                IntOffset(
+                                    x =
+                                        (
+                                            if (selected) dragX
+                                            else animatedOffset
+                                        ).roundToInt(),
+                                    y = 0,
+                                )
                             }
                             .then(if (dragHandleOnly) Modifier else dragGesture)
-                            .zIndex(if (selected) 4f else 0f)
-                            .graphicsLayer {
-                                translationX = if (selected) dragX else settle.value
-                                scaleX = scale
-                                scaleY = scale
-                            },
+                            .zIndex(if (selected) 4f else 0f),
                     contentAlignment = Alignment.Center,
                 ) {
                     content(item)
 
-                    if (editable && dragHandleOnly) {
+                    if (dragHandleOnly) {
                         Box(
                             modifier =
                                 Modifier
