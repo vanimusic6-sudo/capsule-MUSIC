@@ -95,6 +95,12 @@ import com.nikhil.yt.constants.CapsuleLightLyricLineKey
 import com.nikhil.yt.constants.CapsuleLightEditEnabledKey
 import com.nikhil.yt.constants.CapsuleLightEditSessionActiveKey
 import com.nikhil.yt.constants.CapsuleLightLayoutOrderKey
+import com.nikhil.yt.constants.CapsuleLightMetadataOrderKey
+import com.nikhil.yt.constants.CapsuleLightModeOrderKey
+import com.nikhil.yt.constants.CapsuleLightAvOrderKey
+import com.nikhil.yt.constants.CapsuleLightTransportOrderKey
+import com.nikhil.yt.constants.CapsuleLightArtworkWidthScaleKey
+import com.nikhil.yt.constants.CapsuleLightArtworkHeightScaleKey
 import com.nikhil.yt.constants.LyricsSyncOffsetKey
 import com.nikhil.yt.constants.CapsulePlayerDesign
 import com.nikhil.yt.db.entities.LyricsEntity
@@ -183,10 +189,72 @@ fun CapsulePlayerContent(
             mutableStateOf(decodeCapsuleLightOrder(lightOrderEncoded))
         }
 
-    // Keep the untouched Light pixel-identical until editing is enabled or a custom order exists.
-    val useClayLayout =
-        isLight &&
-            (lightEditorEnabled || lightOrder != CapsuleLightBaseOrder)
+    val (lightMetadataOrderEncoded, onLightMetadataOrderEncodedChange) =
+        rememberPreference(
+            CapsuleLightMetadataOrderKey,
+            defaultValue = CapsuleLightMetadataBaseOrderEncoded,
+        )
+    val (lightModeOrderEncoded, onLightModeOrderEncodedChange) =
+        rememberPreference(
+            CapsuleLightModeOrderKey,
+            defaultValue = CapsuleLightModeBaseOrderEncoded,
+        )
+    val (lightAvOrderEncoded, onLightAvOrderEncodedChange) =
+        rememberPreference(
+            CapsuleLightAvOrderKey,
+            defaultValue = CapsuleLightAvBaseOrderEncoded,
+        )
+    val (lightTransportOrderEncoded, onLightTransportOrderEncodedChange) =
+        rememberPreference(
+            CapsuleLightTransportOrderKey,
+            defaultValue = CapsuleLightTransportBaseOrderEncoded,
+        )
+    val (savedArtworkWidthScale, onArtworkWidthScaleChange) =
+        rememberPreference(
+            CapsuleLightArtworkWidthScaleKey,
+            defaultValue = 1f,
+        )
+    val (savedArtworkHeightScale, onArtworkHeightScaleChange) =
+        rememberPreference(
+            CapsuleLightArtworkHeightScaleKey,
+            defaultValue = 1f,
+        )
+
+    var lightMetadataOrder by
+        remember(lightMetadataOrderEncoded) {
+            mutableStateOf(decodeCapsuleLightMetadataOrder(lightMetadataOrderEncoded))
+        }
+    var lightModeOrder by
+        remember(lightModeOrderEncoded) {
+            mutableStateOf(decodeCapsuleLightModeOrder(lightModeOrderEncoded))
+        }
+    var lightAvOrder by
+        remember(lightAvOrderEncoded) {
+            mutableStateOf(decodeCapsuleLightAvOrder(lightAvOrderEncoded))
+        }
+    var lightTransportOrder by
+        remember(lightTransportOrderEncoded) {
+            mutableStateOf(decodeCapsuleLightTransportOrder(lightTransportOrderEncoded))
+        }
+    var lightArtworkWidthScale by
+        remember(savedArtworkWidthScale) {
+            mutableFloatStateOf(savedArtworkWidthScale.coerceIn(0.55f, 1.08f))
+        }
+    var lightArtworkHeightScale by
+        remember(savedArtworkHeightScale) {
+            mutableFloatStateOf(savedArtworkHeightScale.coerceIn(0.55f, 1.35f))
+        }
+
+    val hasCustomLightLayout =
+        lightOrder != CapsuleLightBaseOrder ||
+            lightMetadataOrder != CapsuleLightMetadataBaseOrder ||
+            lightModeOrder != CapsuleLightModeBaseOrder ||
+            lightAvOrder != CapsuleLightAvBaseOrder ||
+            lightTransportOrder != CapsuleLightTransportBaseOrder ||
+            lightArtworkWidthScale != 1f ||
+            lightArtworkHeightScale != 1f
+
+    val useClayLayout = isLight && (lightEditorEnabled || hasCustomLightLayout)
 
     /*
      * Crash recovery is tied to an edit transaction, not to the editor toggle itself. A completed
@@ -202,7 +270,20 @@ fun CapsulePlayerContent(
             lightEditSessionActive
         ) {
             lightOrder = CapsuleLightBaseOrder
+            lightMetadataOrder = CapsuleLightMetadataBaseOrder
+            lightModeOrder = CapsuleLightModeBaseOrder
+            lightAvOrder = CapsuleLightAvBaseOrder
+            lightTransportOrder = CapsuleLightTransportBaseOrder
+            lightArtworkWidthScale = 1f
+            lightArtworkHeightScale = 1f
+
             onLightOrderEncodedChange(CapsuleLightBaseOrderEncoded)
+            onLightMetadataOrderEncodedChange(CapsuleLightMetadataBaseOrderEncoded)
+            onLightModeOrderEncodedChange(CapsuleLightModeBaseOrderEncoded)
+            onLightAvOrderEncodedChange(CapsuleLightAvBaseOrderEncoded)
+            onLightTransportOrderEncodedChange(CapsuleLightTransportBaseOrderEncoded)
+            onArtworkWidthScaleChange(1f)
+            onArtworkHeightScaleChange(1f)
             onLightEditorEnabledChange(false)
             onLightEditSessionActiveChange(false)
         }
@@ -435,9 +516,16 @@ fun CapsulePlayerContent(
                 Box(
                     modifier =
                         Modifier
-                            .fillMaxWidth()
-                            .aspectRatio(
-                                if (isCapsuleVideoPlaying) 16f / 9f else 1f,
+                            .then(
+                                if (useClayLayout) {
+                                    Modifier.fillMaxSize()
+                                } else {
+                                    Modifier
+                                        .fillMaxWidth()
+                                        .aspectRatio(
+                                            if (isCapsuleVideoPlaying) 16f / 9f else 1f,
+                                        )
+                                },
                             )
                             .offset(
                                 y = if (isCapsuleVideoPlaying || isLight) 0.dp else (-5).dp,
@@ -660,34 +748,50 @@ fun CapsulePlayerContent(
             lightEditInProgress = false
             lightValidationGeneration += 1
         },
-        lightElementContent =
+        lightBlockContent =
             if (!useClayLayout) {
                 null
             } else {
-                { element, artworkSide, insidePanel ->
-                    when (element) {
-                        CapsuleLightElement.ARTWORK -> {
+                { block, artworkSide ->
+                    val beginNestedEdit: () -> Unit = {
+                        lightEditInProgress = true
+                        onLightEditSessionActiveChange(true)
+                    }
+
+                    when (block) {
+                        CapsuleLightBlock.ARTWORK -> {
                             Column(
                                 modifier = Modifier.fillMaxWidth(),
                                 horizontalAlignment = Alignment.CenterHorizontally,
                             ) {
                                 Spacer(Modifier.height(8.dp))
-                                Box(
-                                    Modifier.size(artworkSide),
-                                    contentAlignment = Alignment.Center,
+                                CapsuleLightResizableArtwork(
+                                    baseSide = artworkSide,
+                                    widthScale = lightArtworkWidthScale,
+                                    heightScale = lightArtworkHeightScale,
+                                    editable = lightEditorEnabled,
+                                    onEditStarted = beginNestedEdit,
+                                    onResizePreview = { widthScale, heightScale ->
+                                        lightArtworkWidthScale = widthScale
+                                        lightArtworkHeightScale = heightScale
+                                    },
+                                    onResizeSettled = { widthScale, heightScale ->
+                                        lightArtworkWidthScale = widthScale
+                                        lightArtworkHeightScale = heightScale
+                                        onArtworkWidthScaleChange(widthScale)
+                                        onArtworkHeightScaleChange(heightScale)
+                                        lightEditInProgress = false
+                                        lightValidationGeneration += 1
+                                    },
                                 ) {
                                     artworkContent()
                                 }
-                            }
-                        }
 
-                        CapsuleLightElement.LYRIC -> {
-                            if (lyricLineEnabled) {
-                                Box(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    contentAlignment = Alignment.Center,
-                                ) {
-                                    Box(Modifier.width(artworkSide)) {
+                                if (!lyricLineEnabled) {
+                                    Spacer(Modifier.height(20.dp))
+                                } else {
+                                    Spacer(Modifier.height(8.dp))
+                                    Box(Modifier.width(artworkSide * lightArtworkWidthScale)) {
                                         CapsuleLightLyricLine(
                                             line =
                                                 capsuleLightLyricLineAt(
@@ -697,284 +801,313 @@ fun CapsulePlayerContent(
                                             textColor = textColor,
                                         )
                                     }
+                                    Spacer(Modifier.height(10.dp))
                                 }
-                            } else {
-                                Spacer(Modifier.height(1.dp))
                             }
                         }
 
-                        CapsuleLightElement.TITLE -> {
-                            Text(
-                                text = mediaMetadata.title,
-                                color = textColor,
-                                fontSize = 24.sp,
-                                lineHeight = 29.sp,
-                                fontWeight = FontWeight.SemiBold,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                                modifier =
-                                    Modifier
-                                        .fillMaxWidth()
-                                        .clipToBounds()
-                                        .padding(start = 2.dp, end = 6.dp),
-                            )
-                        }
-
-                        CapsuleLightElement.FAVORITE -> {
-                            CapsuleLightClayControlSurface(
-                                textColor = textColor,
-                                insidePanel = insidePanel,
-                                height = 56.dp,
-                            ) {
-                                CapsuleLightFavorite(
-                                    liked = liked,
-                                    textColor = textColor,
-                                    onToggleLike = onToggleLike,
-                                )
-                            }
-                        }
-
-                        CapsuleLightElement.ARTIST -> {
-                            Row(
-                                modifier =
-                                    Modifier
-                                        .fillMaxWidth()
-                                        .padding(horizontal = 2.dp, vertical = 2.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                            ) {
-                                if (mediaMetadata.explicit) {
-                                    ExplicitBadge(color = secondaryText)
-                                    Spacer(Modifier.width(5.dp))
-                                }
-
-                                Text(
-                                    text = mediaMetadata.artists.joinToString { it.name },
-                                    color = secondaryText,
-                                    fontSize = 17.sp,
-                                    lineHeight = 21.sp,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                    modifier =
-                                        Modifier
-                                            .weight(1f, fill = false)
-                                            .clip(RoundedCornerShape(8.dp))
-                                            .clickable(enabled = navigableArtists.isNotEmpty()) {
-                                                handleArtistClick()
-                                            }
-                                            .padding(vertical = 2.dp),
-                                )
-                            }
-                        }
-
-                        CapsuleLightElement.PROGRESS -> {
-                            CapsuleThinSlider(
-                                value = displayPosition.toFloat(),
-                                valueRange = 0f..safeDuration.coerceAtLeast(1L).toFloat(),
-                                enabled = canSeek && safeDuration > 0L,
-                                activeColor = textColor.copy(alpha = 0.96f),
-                                inactiveColor = textColor.copy(alpha = 0.24f),
-                                onValueChange = { onSeekPreview(it.toLong()) },
-                                onValueChangeFinished = onSeekFinished,
-                                trackHeight = 2.dp,
-                                thumbRadius = 3.dp,
-                                modifier = Modifier.fillMaxWidth().height(28.dp),
-                            )
-                        }
-
-                        CapsuleLightElement.TIMES -> {
-                            Row(
-                                modifier =
-                                    Modifier
-                                        .fillMaxWidth()
-                                        .padding(horizontal = 2.dp),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                            ) {
-                                Text(
-                                    text = makeTimeString(displayPosition),
-                                    color = secondaryText,
-                                    fontFamily = FontFamily.SansSerif,
-                                    fontSize = 12.sp,
-                                )
-                                Text(
-                                    text = if (safeDuration > 0L) makeTimeString(safeDuration) else "",
-                                    color = secondaryText,
-                                    fontFamily = FontFamily.SansSerif,
-                                    fontSize = 12.sp,
-                                )
-                            }
-                        }
-
-                        CapsuleLightElement.SHUFFLE -> {
-                            CapsuleLightClayIconButton(
-                                iconRes = R.drawable.shuffle,
-                                contentDescription = stringResource(R.string.shuffle),
-                                textColor = textColor,
-                                enabled = !isListenTogetherGuest,
-                                active = shuffleEnabled,
-                                insidePanel = insidePanel,
-                                iconSize = 21,
-                                onClick = {
-                                    playerConnection.player.shuffleModeEnabled = !shuffleEnabled
+                        CapsuleLightBlock.METADATA -> {
+                            CapsuleLightReorderRow(
+                                order = lightMetadataOrder,
+                                editable = lightEditorEnabled,
+                                weightFor = { item ->
+                                    when (item) {
+                                        CapsuleLightMetadataItem.TEXT -> 5f
+                                        CapsuleLightMetadataItem.FAVORITE -> 1f
+                                    }
                                 },
-                            )
-                        }
-
-                        CapsuleLightElement.AUDIO -> {
-                            CapsuleLightClayControlSurface(
-                                textColor = textColor,
-                                insidePanel = insidePanel,
-                                height = 56.dp,
-                            ) {
-                                CapsuleLightModeAtom(
-                                    mode = CapsulePlaybackMode.AUDIO,
-                                    state = videoPlaybackState,
-                                    textColor = textColor,
-                                    enabled = !isListenTogetherGuest,
-                                    onClick = {
-                                        playerConnection.service.setCapsulePlaybackMode(
-                                            CapsulePlaybackMode.AUDIO,
+                                onOrderChange = { reordered ->
+                                    lightMetadataOrder =
+                                        decodeCapsuleLightMetadataOrder(
+                                            encodeCapsuleLightMetadataOrder(reordered),
                                         )
-                                    },
-                                )
+                                },
+                                onOrderSettled = { reordered ->
+                                    val safe =
+                                        decodeCapsuleLightMetadataOrder(
+                                            encodeCapsuleLightMetadataOrder(reordered),
+                                        )
+                                    lightMetadataOrder = safe
+                                    onLightMetadataOrderEncodedChange(
+                                        encodeCapsuleLightMetadataOrder(safe),
+                                    )
+                                    lightEditInProgress = false
+                                    lightValidationGeneration += 1
+                                },
+                                onEditStarted = beginNestedEdit,
+                                modifier =
+                                    Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 24.dp),
+                            ) { item ->
+                                when (item) {
+                                    CapsuleLightMetadataItem.TEXT -> {
+                                        Column(
+                                            modifier =
+                                                Modifier
+                                                    .fillMaxWidth()
+                                                    .clipToBounds()
+                                                    .padding(end = 10.dp),
+                                        ) {
+                                            Text(
+                                                text = mediaMetadata.title,
+                                                color = textColor,
+                                                fontSize = 24.sp,
+                                                lineHeight = 29.sp,
+                                                fontWeight = FontWeight.SemiBold,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis,
+                                                modifier = Modifier.fillMaxWidth(),
+                                            )
+
+                                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                                if (mediaMetadata.explicit) {
+                                                    ExplicitBadge(color = secondaryText)
+                                                    Spacer(Modifier.width(5.dp))
+                                                }
+
+                                                Text(
+                                                    text = mediaMetadata.artists.joinToString { it.name },
+                                                    color = secondaryText,
+                                                    fontSize = 17.sp,
+                                                    lineHeight = 21.sp,
+                                                    maxLines = 1,
+                                                    overflow = TextOverflow.Ellipsis,
+                                                    modifier =
+                                                        Modifier
+                                                            .weight(1f, fill = false)
+                                                            .clip(RoundedCornerShape(8.dp))
+                                                            .clickable(enabled = navigableArtists.isNotEmpty()) {
+                                                                handleArtistClick()
+                                                            }
+                                                            .padding(vertical = 2.dp),
+                                                )
+                                            }
+                                        }
+                                    }
+
+                                    CapsuleLightMetadataItem.FAVORITE -> {
+                                        CapsuleLightFavorite(
+                                            liked = liked,
+                                            textColor = textColor,
+                                            onToggleLike = onToggleLike,
+                                        )
+                                    }
+                                }
                             }
                         }
 
-                        CapsuleLightElement.VIDEO -> {
-                            CapsuleLightClayControlSurface(
-                                textColor = textColor,
-                                insidePanel = insidePanel,
-                                height = 56.dp,
+                        CapsuleLightBlock.PROGRESS -> {
+                            Column(
+                                modifier =
+                                    Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 24.dp, vertical = 7.dp),
                             ) {
-                                CapsuleLightModeAtom(
-                                    mode = CapsulePlaybackMode.VIDEO,
-                                    state = videoPlaybackState,
-                                    textColor = textColor,
-                                    enabled = !isListenTogetherGuest,
-                                    onClick = {
-                                        playerConnection.service.setCapsulePlaybackMode(
-                                            CapsulePlaybackMode.VIDEO,
-                                        )
-                                    },
+                                CapsuleThinSlider(
+                                    value = displayPosition.toFloat(),
+                                    valueRange = 0f..safeDuration.coerceAtLeast(1L).toFloat(),
+                                    enabled = canSeek && safeDuration > 0L,
+                                    activeColor = textColor.copy(alpha = 0.96f),
+                                    inactiveColor = textColor.copy(alpha = 0.24f),
+                                    onValueChange = { onSeekPreview(it.toLong()) },
+                                    onValueChangeFinished = onSeekFinished,
+                                    trackHeight = 2.dp,
+                                    thumbRadius = 3.dp,
+                                    modifier = Modifier.fillMaxWidth().height(28.dp),
                                 )
+
+                                Row(
+                                    modifier = Modifier.fillMaxWidth().padding(horizontal = 2.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                ) {
+                                    Text(
+                                        text = makeTimeString(displayPosition),
+                                        color = secondaryText,
+                                        fontFamily = FontFamily.SansSerif,
+                                        fontSize = 12.sp,
+                                    )
+                                    Text(
+                                        text = if (safeDuration > 0L) makeTimeString(safeDuration) else "",
+                                        color = secondaryText,
+                                        fontFamily = FontFamily.SansSerif,
+                                        fontSize = 12.sp,
+                                    )
+                                }
                             }
                         }
 
-                        CapsuleLightElement.SLEEP -> {
-                            CapsuleLightClayIconButton(
-                                iconRes = R.drawable.bedtime,
-                                contentDescription = stringResource(R.string.sleep_timer),
-                                textColor = textColor,
-                                enabled = !isListenTogetherGuest,
-                                active = sleepTimerEnabled,
-                                insidePanel = insidePanel,
-                                iconSize = 21,
-                                onClick = { showSleepTimerDialog = true },
-                            )
+                        CapsuleLightBlock.MODE_SWITCH -> {
+                            CapsuleLightReorderRow(
+                                order = lightModeOrder,
+                                editable = lightEditorEnabled,
+                                weightFor = { item ->
+                                    when (item) {
+                                        CapsuleLightModeItem.SHUFFLE -> 1f
+                                        CapsuleLightModeItem.AUDIO_VIDEO -> 4.5f
+                                        CapsuleLightModeItem.SLEEP -> 1f
+                                    }
+                                },
+                                onOrderChange = { reordered ->
+                                    lightModeOrder =
+                                        decodeCapsuleLightModeOrder(
+                                            encodeCapsuleLightModeOrder(reordered),
+                                        )
+                                },
+                                onOrderSettled = { reordered ->
+                                    val safe =
+                                        decodeCapsuleLightModeOrder(
+                                            encodeCapsuleLightModeOrder(reordered),
+                                        )
+                                    lightModeOrder = safe
+                                    onLightModeOrderEncodedChange(
+                                        encodeCapsuleLightModeOrder(safe),
+                                    )
+                                    lightEditInProgress = false
+                                    lightValidationGeneration += 1
+                                },
+                                onEditStarted = beginNestedEdit,
+                                dragHandleOnly = true,
+                                modifier =
+                                    Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 24.dp, vertical = 6.dp),
+                            ) { item ->
+                                when (item) {
+                                    CapsuleLightModeItem.SHUFFLE -> {
+                                        androidx.compose.material3.IconButton(
+                                            onClick = {
+                                                playerConnection.player.shuffleModeEnabled = !shuffleEnabled
+                                            },
+                                            enabled = !isListenTogetherGuest,
+                                            modifier = Modifier.fillMaxWidth(),
+                                        ) {
+                                            Icon(
+                                                painterResource(R.drawable.shuffle),
+                                                stringResource(R.string.shuffle),
+                                                tint =
+                                                    textColor.copy(
+                                                        alpha = if (shuffleEnabled) 1f else 0.5f,
+                                                    ),
+                                                modifier = Modifier.size(21.dp),
+                                            )
+                                        }
+                                    }
+
+                                    CapsuleLightModeItem.AUDIO_VIDEO -> {
+                                        CapsuleAudioVideoToggle(
+                                            lightStyle = true,
+                                            state = videoPlaybackState,
+                                            textColor = textColor,
+                                            enabled = !isListenTogetherGuest,
+                                            onAudioClick = {
+                                                playerConnection.service.setCapsulePlaybackMode(
+                                                    CapsulePlaybackMode.AUDIO,
+                                                )
+                                            },
+                                            onVideoClick = {
+                                                playerConnection.service.setCapsulePlaybackMode(
+                                                    CapsulePlaybackMode.VIDEO,
+                                                )
+                                            },
+                                            modifier = Modifier.fillMaxWidth(),
+                                            lightOrder = lightAvOrder,
+                                            lightEditable = lightEditorEnabled,
+                                            onLightOrderChange = { reordered ->
+                                                lightAvOrder =
+                                                    decodeCapsuleLightAvOrder(
+                                                        encodeCapsuleLightAvOrder(reordered),
+                                                    )
+                                            },
+                                            onLightOrderSettled = { reordered ->
+                                                val safe =
+                                                    decodeCapsuleLightAvOrder(
+                                                        encodeCapsuleLightAvOrder(reordered),
+                                                    )
+                                                lightAvOrder = safe
+                                                onLightAvOrderEncodedChange(
+                                                    encodeCapsuleLightAvOrder(safe),
+                                                )
+                                                lightEditInProgress = false
+                                                lightValidationGeneration += 1
+                                            },
+                                            onLightEditStarted = beginNestedEdit,
+                                        )
+                                    }
+
+                                    CapsuleLightModeItem.SLEEP -> {
+                                        androidx.compose.material3.IconButton(
+                                            onClick = { showSleepTimerDialog = true },
+                                            enabled = !isListenTogetherGuest,
+                                            modifier = Modifier.fillMaxWidth(),
+                                        ) {
+                                            Icon(
+                                                painterResource(R.drawable.bedtime),
+                                                stringResource(R.string.sleep_timer),
+                                                tint =
+                                                    textColor.copy(
+                                                        alpha = if (sleepTimerEnabled) 1f else 0.5f,
+                                                    ),
+                                                modifier = Modifier.size(21.dp),
+                                            )
+                                        }
+                                    }
+                                }
+                            }
                         }
 
-                        CapsuleLightElement.PANEL_BREAK -> {
+                        CapsuleLightBlock.CONTROLS -> {
                             Box(
                                 modifier =
                                     Modifier
                                         .fillMaxWidth()
-                                        .height(if (lightEditorEnabled) 10.dp else 2.dp)
-                                        .then(
-                                            if (lightEditorEnabled) {
-                                                Modifier.background(
-                                                    textColor.copy(alpha = 0.10f),
-                                                    RoundedCornerShape(2.dp),
-                                                )
-                                            } else {
-                                                Modifier
-                                            },
-                                        ),
-                            )
-                        }
-
-                        CapsuleLightElement.REPEAT -> {
-                            CapsuleLightClayIconButton(
-                                iconRes =
-                                    if (repeatMode == Player.REPEAT_MODE_ONE) {
-                                        R.drawable.repeat_one
-                                    } else {
-                                        R.drawable.repeat
-                                    },
-                                contentDescription =
-                                    stringResource(
-                                        when (repeatMode) {
-                                            Player.REPEAT_MODE_ONE -> R.string.repeat_mode_one
-                                            Player.REPEAT_MODE_ALL -> R.string.repeat_mode_all
-                                            else -> R.string.repeat_mode_off
-                                        },
-                                    ),
-                                textColor = textColor,
-                                enabled = !isListenTogetherGuest,
-                                active = repeatMode != Player.REPEAT_MODE_OFF,
-                                insidePanel = insidePanel,
-                                iconSize = 25,
-                                onClick = { playerConnection.player.toggleRepeatMode() },
-                            )
-                        }
-
-                        CapsuleLightElement.PREVIOUS -> {
-                            CapsuleLightClayIconButton(
-                                iconRes = R.drawable.skip_previous,
-                                contentDescription =
-                                    stringResource(
-                                        androidx.media3.ui.R.string.exo_controls_previous_description,
-                                    ),
-                                textColor = textColor,
-                                enabled = canSkipPrevious && !isListenTogetherGuest,
-                                active = true,
-                                insidePanel = insidePanel,
-                                iconSize = 30,
-                                onClick = playerConnection::seekToPrevious,
-                            )
-                        }
-
-                        CapsuleLightElement.PLAY_PAUSE -> {
-                            CapsuleLightClayControlSurface(
-                                textColor = textColor,
-                                insidePanel = insidePanel,
-                                height = 84.dp,
+                                        .padding(start = 24.dp, end = 24.dp, top = 8.dp),
                             ) {
-                                CapsuleOrbitButton(
-                                    isPlaying = isPlaying,
-                                    isLoading = isLoading,
-                                    visible = visible,
-                                    color = textColor,
-                                    onClick = onPlayPause,
+                                CapsuleLightControls(
+                                    textColor = textColor,
+                                    shuffleEnabled = shuffleEnabled,
+                                    repeatMode = repeatMode,
+                                    enabled = !isListenTogetherGuest,
+                                    canSkipPrevious = canSkipPrevious,
+                                    canSkipNext = canSkipNext,
+                                    onShuffle = {
+                                        playerConnection.player.shuffleModeEnabled = !shuffleEnabled
+                                    },
+                                    onPrevious = playerConnection::seekToPrevious,
+                                    onNext = playerConnection::seekToNext,
+                                    onRepeat = { playerConnection.player.toggleRepeatMode() },
+                                    orbit = {
+                                        CapsuleOrbitButton(
+                                            isPlaying,
+                                            isLoading,
+                                            visible,
+                                            textColor,
+                                            onPlayPause,
+                                        )
+                                    },
+                                    order = lightTransportOrder,
+                                    editable = lightEditorEnabled,
+                                    onOrderChange = { reordered ->
+                                        lightTransportOrder =
+                                            decodeCapsuleLightTransportOrder(
+                                                encodeCapsuleLightTransportOrder(reordered),
+                                            )
+                                    },
+                                    onOrderSettled = { reordered ->
+                                        val safe =
+                                            decodeCapsuleLightTransportOrder(
+                                                encodeCapsuleLightTransportOrder(reordered),
+                                            )
+                                        lightTransportOrder = safe
+                                        onLightTransportOrderEncodedChange(
+                                            encodeCapsuleLightTransportOrder(safe),
+                                        )
+                                        lightEditInProgress = false
+                                        lightValidationGeneration += 1
+                                    },
+                                    onEditStarted = beginNestedEdit,
                                 )
                             }
-                        }
-
-                        CapsuleLightElement.NEXT -> {
-                            CapsuleLightClayIconButton(
-                                iconRes = R.drawable.skip_next,
-                                contentDescription =
-                                    stringResource(
-                                        androidx.media3.ui.R.string.exo_controls_next_description,
-                                    ),
-                                textColor = textColor,
-                                enabled = canSkipNext && !isListenTogetherGuest,
-                                active = true,
-                                insidePanel = insidePanel,
-                                iconSize = 30,
-                                onClick = playerConnection::seekToNext,
-                            )
-                        }
-
-                        CapsuleLightElement.MENU -> {
-                            CapsuleLightClayIconButton(
-                                iconRes = R.drawable.more_vert,
-                                contentDescription = stringResource(R.string.more),
-                                textColor = textColor,
-                                enabled = true,
-                                active = true,
-                                insidePanel = insidePanel,
-                                iconSize = 26,
-                                onClick = onMenuClick,
-                            )
                         }
                     }
                 }
