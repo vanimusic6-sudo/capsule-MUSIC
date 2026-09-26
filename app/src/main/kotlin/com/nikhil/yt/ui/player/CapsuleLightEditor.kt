@@ -115,14 +115,14 @@ internal fun decodeCapsuleLightBlockGaps(raw: String): Map<CapsuleLightBlock, Fl
         val block = runCatching { CapsuleLightBlock.valueOf(parts[0].trim()) }.getOrNull()
             ?: return@forEach
         val value = parts[1].trim().toFloatOrNull() ?: return@forEach
-        parsed[block] = value.coerceIn(0f, 180f)
+        parsed[block] = value.coerceIn(0f, 1000f)
     }
     return parsed
 }
 
 internal fun encodeCapsuleLightBlockGaps(gaps: Map<CapsuleLightBlock, Float>): String =
     CapsuleLightBaseOrder.joinToString(",") { block ->
-        val value = (gaps[block] ?: 0f).coerceIn(0f, 180f)
+        val value = (gaps[block] ?: 0f).coerceIn(0f, 1000f)
         "${block.name}=${"%.2f".format(java.util.Locale.US, value)}"
     }
 
