@@ -124,6 +124,32 @@ class CapsuleLightEditorTest {
     }
 
     @Test
+    fun topArtworkResizeMovesOriginOppositeToBottomResize() {
+        // Pulling a TOP handle downward shrinks the artwork and moves its top downward,
+        // preserving the old bottom edge.
+        assertEquals(
+            60f,
+            artworkTopEdgeShiftDp(
+                startHeightScale = 1f,
+                currentHeightScale = 0.8f,
+                baseSideDp = 300f,
+            ),
+            0.001f,
+        )
+
+        // Pulling upward grows from the top, so the ARTWORK origin moves upward.
+        assertEquals(
+            -60f,
+            artworkTopEdgeShiftDp(
+                startHeightScale = 1f,
+                currentHeightScale = 1.2f,
+                baseSideDp = 300f,
+            ),
+            0.001f,
+        )
+    }
+
+    @Test
     fun rowSwapThresholdIsSymmetricAtClampedEdge() {
         assertTrue(
             lightRowCrossedBefore(
