@@ -423,16 +423,16 @@ internal fun CapsuleLightReorderColumn(
 
         val previous = settled.getOrNull(settledIndex - 1)
         val next = settled.getOrNull(settledIndex + 1)
-        val realDockGapPx = if (settledIndex == 0) 0f else dockGapPx
-        val realDockTopPx = baseTopPx + realDockGapPx
-        val dockThresholdPx =
+        val previousDockGapPx = if (settledIndex == 0) 0f else dockGapPx
+        val previousDockTopPx = baseTopPx + previousDockGapPx
+        val previousThresholdPx =
             if (preferredDockPair(previous, block)) {
                 preferredDockThresholdPx
             } else {
                 normalDockThresholdPx
             }
-        val distanceToRealDock =
-            kotlin.math.abs(desiredTopPx - realDockTopPx)
+        val previousDistance =
+            kotlin.math.abs(desiredTopPx - previousDockTopPx)
 
         val availableFreePx =
             if (next != null) {
@@ -441,6 +441,31 @@ internal fun CapsuleLightReorderColumn(
                 (viewportHeightPx - baseTopPx).coerceAtLeast(0f)
             }
 
+        // If there is already real free space before the next element, the moving element may
+        // dock to the next element's upper edge as well. This is a real-component target, not an
+        // empty-cell target, so it has the same priority advantage.
+        val nextDockGapPx =
+            if (next != null) {
+                (
+                    availableFreePx -
+                        contentHeightPx -
+                        dockGapPx
+                    ).coerceAtLeast(0f)
+            } else {
+                null
+            }
+        val nextDockTopPx =
+            nextDockGapPx?.let { baseTopPx + it }
+        val nextThresholdPx =
+            if (preferredDockPair(next, block)) {
+                preferredDockThresholdPx
+            } else {
+                normalDockThresholdPx
+            }
+        val nextDistance =
+            nextDockTopPx?.let { kotlin.math.abs(desiredTopPx - it) }
+                ?: Float.POSITIVE_INFINITY
+
         val rawGapPx = (desiredTopPx - baseTopPx).coerceAtLeast(0f)
         val snappedCellGapPx =
             kotlin.math.round(rawGapPx / emptyStepPx) * emptyStepPx
@@ -448,15 +473,25 @@ internal fun CapsuleLightReorderColumn(
             snappedCellGapPx >= preferredDockThresholdPx &&
                 snappedCellGapPx + contentHeightPx <= availableFreePx + 0.5f
 
-        // Real components always win while they are within their magnetic radius.
-        // Empty cells are only eligible in genuinely open space.
+        val previousDockWins =
+            previousDistance <= previousThresholdPx &&
+                previousDistance <= nextDistance
+        val nextDockWins =
+            nextDockTopPx != null &&
+                nextDistance <= nextThresholdPx &&
+                nextDistance < previousDistance
+
+        // A real neighbour wins first. Only when neither real edge is close enough may the
+        // selected empty cell become the destination.
         val usesEmptyCell =
-            distanceToRealDock > dockThresholdPx && emptyCellFits
+            !previousDockWins && !nextDockWins && emptyCellFits
         val anchoredGapPx =
-            if (usesEmptyCell) {
-                snappedCellGapPx
-            } else {
-                realDockGapPx
+            when {
+                previousDockWins -> previousDockGapPx
+                nextDockWins -> nextDockGapPx ?: previousDockGapPx
+                usesEmptyCell -> snappedCellGapPx
+                previousDistance <= nextDistance -> previousDockGapPx
+                else -> nextDockGapPx ?: previousDockGapPx
             }
 
         if (next != null) {
