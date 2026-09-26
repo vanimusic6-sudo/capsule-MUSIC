@@ -124,6 +124,28 @@ class CapsuleLightEditorTest {
     }
 
     @Test
+    fun zeroHeightOptionalBlockStillCountsAsMeasured() {
+        val measured =
+            CapsuleLightBaseOrder.associateWith { block ->
+                if (block == CapsuleLightBlock.LYRIC) 0f else 100f
+            }
+
+        assertTrue(
+            lightCanvasMeasurementsReady(
+                order = CapsuleLightBaseOrder,
+                measuredHeightsPx = measured,
+            ),
+        )
+
+        assertFalse(
+            lightCanvasMeasurementsReady(
+                order = CapsuleLightBaseOrder,
+                measuredHeightsPx = measured - CapsuleLightBlock.LYRIC,
+            ),
+        )
+    }
+
+    @Test
     fun crowdedCanvasPositionsAreProjectedWithoutInvertedRange() {
         val order = CapsuleLightBaseOrder
         val heights =
