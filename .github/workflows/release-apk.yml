@@ -2,9 +2,16 @@ name: Release APK
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - next/capsule-clay
 
 permissions:
   contents: read
+
+concurrency:
+  group: capsule-release-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   release:
