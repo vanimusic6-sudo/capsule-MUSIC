@@ -713,12 +713,6 @@ internal fun CapsuleLightReorderColumn(
                                                 }
 
                                             latestOnGapsSettled(finalGaps)
-                                            // Keep the old single-gap callback for compatibility,
-                                            // but it now receives the already-normalized value.
-                                            latestOnGapSettled(
-                                                block,
-                                                finalGaps[block] ?: 0f,
-                                            )
                                             latestOnOrderChange(settled)
                                             latestOnOrderSettled(settled)
                                             dragged = null
