@@ -75,6 +75,7 @@ internal fun CapsulePlayerLayout(
     onLightOrderChange: (List<CapsuleLightBlock>) -> Unit = {},
     onLightOrderSettled: (List<CapsuleLightBlock>) -> Unit = {},
     onLightEditStarted: () -> Unit = {},
+    lightInteractionActive: Boolean = false,
     /**
      * Optional block renderer used by the first Capsule "clay" editor.
      *
@@ -162,6 +163,7 @@ internal fun CapsulePlayerLayout(
                         onOrderChange = onLightOrderChange,
                         onOrderSettled = onLightOrderSettled,
                         onEditStarted = onLightEditStarted,
+                        externalGestureActive = lightInteractionActive,
                         modifier = Modifier.fillMaxWidth().nestedScroll(queueScroll),
                     ) { block ->
                         Box(
