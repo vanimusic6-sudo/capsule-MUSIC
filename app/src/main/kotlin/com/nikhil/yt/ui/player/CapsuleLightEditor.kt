@@ -731,18 +731,13 @@ internal fun CapsuleLightReorderColumn(
                                         size = coordinates.size.height.toFloat() + with(density) { gap.dp.toPx() },
                                     )
                             }
-                            .offset {
-                                IntOffset(
-                                    x = 0,
-                                    y =
-                                        (
-                                            when {
-                                                selected -> selectedVisualOffset
-                                                dragged == null && order == workingOrder -> 0f
-                                                else -> animatedNeighbourOffset
-                                            }
-                                        ).roundToInt(),
-                                )
+                            .graphicsLayer {
+                                translationY =
+                                    when {
+                                        selected -> selectedVisualOffset
+                                        dragged == null && order == workingOrder -> 0f
+                                        else -> animatedNeighbourOffset
+                                    }
                             }
                             .zIndex(if (selected) 4f else 0f),
                 ) {
@@ -1174,18 +1169,13 @@ internal fun <T : Enum<T>> CapsuleLightReorderRow(
                                         size = coordinates.size.width.toFloat(),
                                     )
                             }
-                            .offset {
-                                IntOffset(
-                                    x =
-                                        (
-                                            when {
-                                                selected -> dragX
-                                                dragged == null && order == workingOrder -> 0f
-                                                else -> animatedOffset
-                                            }
-                                        ).roundToInt(),
-                                    y = 0,
-                                )
+                            .graphicsLayer {
+                                translationX =
+                                    when {
+                                        selected -> dragX
+                                        dragged == null && order == workingOrder -> 0f
+                                        else -> animatedOffset
+                                    }
                             }
                             .then(if (dragHandleOnly) Modifier else dragGesture)
                             .zIndex(if (selected) 4f else 0f),
