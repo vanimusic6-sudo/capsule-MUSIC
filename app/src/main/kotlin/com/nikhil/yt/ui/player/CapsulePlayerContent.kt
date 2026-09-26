@@ -101,6 +101,7 @@ import com.nikhil.yt.constants.CapsuleLightAvOrderKey
 import com.nikhil.yt.constants.CapsuleLightTransportOrderKey
 import com.nikhil.yt.constants.CapsuleLightArtworkWidthScaleKey
 import com.nikhil.yt.constants.CapsuleLightArtworkHeightScaleKey
+import com.nikhil.yt.constants.CapsuleLightBlockGapsKey
 import com.nikhil.yt.constants.LyricsSyncOffsetKey
 import com.nikhil.yt.constants.CapsulePlayerDesign
 import com.nikhil.yt.db.entities.LyricsEntity
@@ -120,6 +121,7 @@ import com.nikhil.yt.utils.makeTimeString
 import com.nikhil.yt.ui.menu.clampOffset
 import com.nikhil.yt.utils.rememberPreference
 import kotlinx.coroutines.isActive
+import kotlin.math.abs
 import kotlin.math.cos
 import kotlin.math.sin
 
@@ -220,6 +222,12 @@ fun CapsulePlayerContent(
             defaultValue = 1f,
         )
 
+    val (lightBlockGapsEncoded, onLightBlockGapsEncodedChange) =
+        rememberPreference(
+            CapsuleLightBlockGapsKey,
+            defaultValue = CapsuleLightBaseGapsEncoded,
+        )
+
     var lightMetadataOrder by
         remember(lightMetadataOrderEncoded) {
             mutableStateOf(decodeCapsuleLightMetadataOrder(lightMetadataOrderEncoded))
@@ -245,6 +253,11 @@ fun CapsulePlayerContent(
             mutableFloatStateOf(savedArtworkHeightScale.coerceIn(0.55f, 1.35f))
         }
 
+    var lightBlockGaps by
+        remember(lightBlockGapsEncoded) {
+            mutableStateOf(decodeCapsuleLightBlockGaps(lightBlockGapsEncoded))
+        }
+
     val hasCustomLightLayout =
         lightOrder != CapsuleLightBaseOrder ||
             lightMetadataOrder != CapsuleLightMetadataBaseOrder ||
@@ -252,7 +265,8 @@ fun CapsulePlayerContent(
             lightAvOrder != CapsuleLightAvBaseOrder ||
             lightTransportOrder != CapsuleLightTransportBaseOrder ||
             lightArtworkWidthScale != 1f ||
-            lightArtworkHeightScale != 1f
+            lightArtworkHeightScale != 1f ||
+            lightBlockGaps.values.any { it > 0.01f }
 
     val useClayLayout = isLight && (lightEditorEnabled || hasCustomLightLayout)
 
@@ -276,6 +290,7 @@ fun CapsulePlayerContent(
             lightTransportOrder = CapsuleLightTransportBaseOrder
             lightArtworkWidthScale = 1f
             lightArtworkHeightScale = 1f
+            lightBlockGaps = CapsuleLightBaseGaps
 
             onLightOrderEncodedChange(CapsuleLightBaseOrderEncoded)
             onLightMetadataOrderEncodedChange(CapsuleLightMetadataBaseOrderEncoded)
@@ -284,6 +299,7 @@ fun CapsulePlayerContent(
             onLightTransportOrderEncodedChange(CapsuleLightTransportBaseOrderEncoded)
             onArtworkWidthScaleChange(1f)
             onArtworkHeightScaleChange(1f)
+            onLightBlockGapsEncodedChange(CapsuleLightBaseGapsEncoded)
             onLightEditorEnabledChange(false)
             onLightEditSessionActiveChange(false)
         }
@@ -517,7 +533,7 @@ fun CapsulePlayerContent(
                     modifier =
                         Modifier
                             .then(
-                                if (useClayLayout) {
+                                if (useClayLayout && !isCapsuleVideoPlaying) {
                                     Modifier.fillMaxSize()
                                 } else {
                                     Modifier
@@ -602,7 +618,18 @@ fun CapsulePlayerContent(
                             },
                             contentDescription = mediaMetadata.title,
                             contentScale =
-                                if (cropAlbumArt) {
+                                if (
+                                    cropAlbumArt ||
+                                    (
+                                        useClayLayout &&
+                                            (
+                                                abs(lightArtworkWidthScale - 1f) > 0.01f ||
+                                                    abs(lightArtworkHeightScale - 1f) > 0.01f
+                                            )
+                                    )
+                                ) {
+                                    // Once the user reshapes the artwork frame, the image follows
+                                    // that frame by cropping instead of leaving Fit letterboxing.
                                     ContentScale.Crop
                                 } else {
                                     ContentScale.Fit
@@ -734,6 +761,7 @@ fun CapsulePlayerContent(
                 },
         lightEditorEnabled = useClayLayout && lightEditorEnabled,
         lightOrder = lightOrder,
+        lightGapsDp = lightBlockGaps,
         onLightOrderChange = { reordered ->
             lightOrder = decodeCapsuleLightOrder(encodeCapsuleLightOrder(reordered))
         },
@@ -748,6 +776,15 @@ fun CapsulePlayerContent(
             onLightOrderEncodedChange(encodeCapsuleLightOrder(safeOrder))
             lightEditInProgress = false
             lightValidationGeneration += 1
+        },
+        onLightGapSettled = { block, gapDp ->
+            val safe =
+                lightBlockGaps
+                    .toMutableMap()
+                    .apply { this[block] = gapDp.coerceIn(0f, 180f) }
+                    .toMap()
+            lightBlockGaps = safe
+            onLightBlockGapsEncodedChange(encodeCapsuleLightBlockGaps(safe))
         },
         lightBlockContent =
             if (!useClayLayout) {
@@ -766,26 +803,38 @@ fun CapsulePlayerContent(
                                 horizontalAlignment = Alignment.CenterHorizontally,
                             ) {
                                 Spacer(Modifier.height(8.dp))
-                                CapsuleLightResizableArtwork(
-                                    baseSide = artworkSide,
-                                    widthScale = lightArtworkWidthScale,
-                                    heightScale = lightArtworkHeightScale,
-                                    editable = lightEditorEnabled,
-                                    onEditStarted = beginNestedEdit,
-                                    onResizePreview = { widthScale, heightScale ->
-                                        lightArtworkWidthScale = widthScale
-                                        lightArtworkHeightScale = heightScale
-                                    },
-                                    onResizeSettled = { widthScale, heightScale ->
-                                        lightArtworkWidthScale = widthScale
-                                        lightArtworkHeightScale = heightScale
-                                        onArtworkWidthScaleChange(widthScale)
-                                        onArtworkHeightScaleChange(heightScale)
-                                        lightEditInProgress = false
-                                        lightValidationGeneration += 1
-                                    },
-                                ) {
-                                    artworkContent()
+                                if (isCapsuleVideoPlaying) {
+                                    // Video is not album artwork. Its geometry must remain the
+                                    // legacy Light geometry even when the saved artwork frame is
+                                    // wide/tall from a previous audio edit.
+                                    Box(
+                                        modifier = Modifier.size(artworkSide),
+                                        contentAlignment = Alignment.Center,
+                                    ) {
+                                        artworkContent()
+                                    }
+                                } else {
+                                    CapsuleLightResizableArtwork(
+                                        baseSide = artworkSide,
+                                        widthScale = lightArtworkWidthScale,
+                                        heightScale = lightArtworkHeightScale,
+                                        editable = lightEditorEnabled,
+                                        onEditStarted = beginNestedEdit,
+                                        onResizePreview = { widthScale, heightScale ->
+                                            lightArtworkWidthScale = widthScale
+                                            lightArtworkHeightScale = heightScale
+                                        },
+                                        onResizeSettled = { widthScale, heightScale ->
+                                            lightArtworkWidthScale = widthScale
+                                            lightArtworkHeightScale = heightScale
+                                            onArtworkWidthScaleChange(widthScale)
+                                            onArtworkHeightScaleChange(heightScale)
+                                            lightEditInProgress = false
+                                            lightValidationGeneration += 1
+                                        },
+                                    ) {
+                                        artworkContent()
+                                    }
                                 }
 
                                 // Outside edit mode keep the untouched Light spacing when the lyric
