@@ -124,6 +124,57 @@ class CapsuleLightEditorTest {
     }
 
     @Test
+    fun crowdedCanvasPositionsAreProjectedWithoutInvertedRange() {
+        val order = CapsuleLightBaseOrder
+        val heights =
+            mapOf(
+                CapsuleLightBlock.ARTWORK to 500f,
+                CapsuleLightBlock.LYRIC to 96f,
+                CapsuleLightBlock.METADATA to 214f,
+                CapsuleLightBlock.PROGRESS to 82f,
+                CapsuleLightBlock.MODE_SWITCH to 110f,
+                CapsuleLightBlock.CONTROLS to 188f,
+            )
+        val canvasHeight = 2016f
+        val gap = 24f
+
+        // This deliberately crowds the first stored item against the bottom. The old normalizer
+        // clamped it near maxTop, then advanced minimumTop past the next block's maxTop and crashed
+        // in coerceIn(minimumTop, maxTop).
+        val requested =
+            order.mapIndexed { index, block ->
+                block to (1600f + index * 20f)
+            }.toMap()
+
+        val (resolvedOrder, positions) =
+            normalizedStoredPositions(
+                order = order,
+                requested = requested,
+                heights = heights,
+                canvasHeightPx = canvasHeight,
+                gapPx = gap,
+            )
+
+        assertEquals(order, resolvedOrder)
+        assertEquals(order.toSet(), positions.keys)
+
+        resolvedOrder.forEachIndexed { index, block ->
+            val top = positions.getValue(block)
+            val bottom = top + heights.getValue(block)
+            assertTrue(top >= -0.001f)
+            assertTrue(bottom <= canvasHeight + 0.001f)
+
+            if (index < resolvedOrder.lastIndex) {
+                val next = resolvedOrder[index + 1]
+                assertTrue(
+                    bottom + gap <=
+                        positions.getValue(next) + 0.001f,
+                )
+            }
+        }
+    }
+
+    @Test
     fun processGuardChecksRecoveryOnlyOncePerProcess() {
         assertTrue(CapsuleLightEditorProcessGuard.shouldCheckRecovery())
         assertFalse(CapsuleLightEditorProcessGuard.shouldCheckRecovery())
