@@ -54,7 +54,6 @@ import kotlin.math.round
 import kotlin.math.roundToInt
 
 private val LightCanvasDockGap = 8.dp
-private val LightCanvasCellStep = 24.dp
 private val LightCanvasRealMagnet = 58.dp
 private val LightCanvasPreferredMagnet = 92.dp
 private val LightCanvasGuideWidth = 72.dp
@@ -300,23 +299,243 @@ private fun solveAt(
     return out
 }
 
-private fun overlapsExisting(
+private data class LightDockCandidate(
+    val topPx: Float,
+    val distancePx: Float,
+    val anchor: CapsuleLightBlock,
+    val side: LightDockSide,
+    val preferred: Boolean,
+    val solved: Map<CapsuleLightBlock, Float>,
+    val order: List<CapsuleLightBlock>,
+)
+
+/**
+ * Frozen real blocks, always sorted by their actual on-canvas position.
+ *
+ * A drag never invents a "gap index" from pointer coordinates. Every CELL below is an insertion
+ * slot between two real rectangles (plus the top/bottom edge slots), so preview and drop share the
+ * exact same finite set of legal destinations.
+ */
+private fun fixedBlocksForDrag(
     dragged: CapsuleLightBlock,
-    topPx: Float,
-    heightPx: Float,
+    baseOrder: List<CapsuleLightBlock>,
+    basePositions: Map<CapsuleLightBlock, Float>,
+): List<CapsuleLightBlock> =
+    baseOrder
+        .filterNot { it == dragged }
+        .sortedWith(
+            compareBy<CapsuleLightBlock> { basePositions[it] ?: Float.MAX_VALUE }
+                .thenBy { baseOrder.indexOf(it) },
+        )
+
+/**
+ * Returns the legal top range for [dragged] when it occupies [slotIndex] in [order].
+ *
+ * The range comes from the amount of real rectangle space that must remain above and below the
+ * dragged block. It does not shrink any neighbour and it does not allow a rectangle to leave the
+ * canvas.
+ */
+private fun slotTopRange(
+    dragged: CapsuleLightBlock,
+    slotIndex: Int,
+    order: List<CapsuleLightBlock>,
+    heights: Map<CapsuleLightBlock, Float>,
+    canvasHeightPx: Float,
+    gapPx: Float,
+): Pair<Float, Float>? {
+    val draggedHeight = heights[dragged] ?: return null
+    if (slotIndex !in order.indices || order[slotIndex] != dragged) return null
+
+    var requiredAbove = 0f
+    for (index in 0 until slotIndex) {
+        requiredAbove += heights[order[index]] ?: return null
+        requiredAbove += gapPx
+    }
+
+    var requiredBelow = 0f
+    for (index in slotIndex + 1..order.lastIndex) {
+        requiredBelow += gapPx
+        requiredBelow += heights[order[index]] ?: return null
+    }
+
+    val minTop = requiredAbove
+    val maxTop = canvasHeightPx - draggedHeight - requiredBelow
+    return if (minTop <= maxTop + 0.5f) {
+        minTop to maxTop.coerceAtLeast(minTop)
+    } else {
+        null
+    }
+}
+
+/**
+ * Builds the actual empty-position cells for the held block.
+ *
+ * There is exactly one CELL per insertion slot. The cell is placed in the visual middle of the
+ * frozen gap when that gap is already open; when the gap is too small, the cell is clamped into the
+ * legal range and [solveAt] moves only the neighbours that must make room. This is what makes the
+ * highlighted preview identical to the eventual release result.
+ */
+private fun buildCellTargets(
+    dragged: CapsuleLightBlock,
+    baseOrder: List<CapsuleLightBlock>,
     basePositions: Map<CapsuleLightBlock, Float>,
     heights: Map<CapsuleLightBlock, Float>,
+    canvasHeightPx: Float,
     gapPx: Float,
-): Boolean =
-    basePositions.any { (block, otherTop) ->
-        if (block == dragged) return@any false
-        val otherHeight = heights[block] ?: 0f
-        val aTop = topPx - gapPx
-        val aBottom = topPx + heightPx + gapPx
-        val bTop = otherTop
-        val bBottom = otherTop + otherHeight
-        aTop < bBottom && aBottom > bTop
+): List<LightDropTarget> {
+    val draggedHeight = heights[dragged] ?: return emptyList()
+    val fixed =
+        fixedBlocksForDrag(
+            dragged = dragged,
+            baseOrder = baseOrder,
+            basePositions = basePositions,
+        )
+
+    return buildList {
+        for (slotIndex in 0..fixed.size) {
+            val order =
+                fixed.toMutableList().apply {
+                    add(slotIndex, dragged)
+                }
+            val range =
+                slotTopRange(
+                    dragged = dragged,
+                    slotIndex = slotIndex,
+                    order = order,
+                    heights = heights,
+                    canvasHeightPx = canvasHeightPx,
+                    gapPx = gapPx,
+                ) ?: continue
+
+            val previous = fixed.getOrNull(slotIndex - 1)
+            val next = fixed.getOrNull(slotIndex)
+
+            val afterPrevious =
+                previous?.let { block ->
+                    (basePositions[block] ?: 0f) +
+                        (heights[block] ?: 0f) +
+                        gapPx
+                } ?: 0f
+            val beforeNext =
+                next?.let { block ->
+                    (basePositions[block] ?: canvasHeightPx) -
+                        gapPx -
+                        draggedHeight
+                } ?: (canvasHeightPx - draggedHeight)
+
+            val preferredTop =
+                when {
+                    previous == null -> 0f
+                    next == null -> (canvasHeightPx - draggedHeight).coerceAtLeast(0f)
+                    else -> (afterPrevious + beforeNext) / 2f
+                }
+
+            val cellTop =
+                preferredTop.coerceIn(
+                    range.first,
+                    range.second,
+                )
+            val solved =
+                solveAt(
+                    dragged = dragged,
+                    draggedTopPx = cellTop,
+                    order = order,
+                    basePositions = basePositions,
+                    heights = heights,
+                    canvasHeightPx = canvasHeightPx,
+                    gapPx = gapPx,
+                ) ?: continue
+
+            add(
+                LightDropTarget(
+                    kind = LightDropKind.CELL,
+                    topPx = cellTop,
+                    positionsPx = solved,
+                    order = order,
+                ),
+            )
+        }
     }
+}
+
+/**
+ * Real-neighbour magnets are generated from every stationary block, not only whichever neighbour
+ * happens to be inferred from the pointer's current insertion order.
+ *
+ * The anchor itself stays at its frozen position. If room has to be created, [solveAt] moves the
+ * other chain instead. This makes the held object snap to the stationary object, never vice versa.
+ */
+private fun buildDockCandidates(
+    dragged: CapsuleLightBlock,
+    desiredTopPx: Float,
+    baseOrder: List<CapsuleLightBlock>,
+    basePositions: Map<CapsuleLightBlock, Float>,
+    heights: Map<CapsuleLightBlock, Float>,
+    canvasHeightPx: Float,
+    gapPx: Float,
+): List<LightDockCandidate> {
+    val draggedHeight = heights[dragged] ?: return emptyList()
+    val fixed =
+        fixedBlocksForDrag(
+            dragged = dragged,
+            baseOrder = baseOrder,
+            basePositions = basePositions,
+        )
+
+    return buildList {
+        fixed.forEachIndexed { anchorIndex, anchor ->
+            val anchorTop = basePositions[anchor] ?: return@forEachIndexed
+            val anchorHeight = heights[anchor] ?: return@forEachIndexed
+
+            fun addCandidate(
+                side: LightDockSide,
+                insertionIndex: Int,
+                topPx: Float,
+            ) {
+                val order =
+                    fixed.toMutableList().apply {
+                        add(insertionIndex, dragged)
+                    }
+                val solved =
+                    solveAt(
+                        dragged = dragged,
+                        draggedTopPx = topPx,
+                        order = order,
+                        basePositions = basePositions,
+                        heights = heights,
+                        canvasHeightPx = canvasHeightPx,
+                        gapPx = gapPx,
+                    ) ?: return
+
+                // Docking is allowed only if the advertised real neighbour truly remains fixed.
+                if (abs((solved[anchor] ?: anchorTop) - anchorTop) > 0.75f) return
+
+                add(
+                    LightDockCandidate(
+                        topPx = topPx,
+                        distancePx = abs(desiredTopPx - topPx),
+                        anchor = anchor,
+                        side = side,
+                        preferred = preferredPair(anchor, dragged),
+                        solved = solved,
+                        order = order,
+                    ),
+                )
+            }
+
+            addCandidate(
+                side = LightDockSide.BEFORE,
+                insertionIndex = anchorIndex,
+                topPx = anchorTop - gapPx - draggedHeight,
+            )
+            addCandidate(
+                side = LightDockSide.AFTER,
+                insertionIndex = anchorIndex + 1,
+                topPx = anchorTop + anchorHeight + gapPx,
+            )
+        }
+    }
+}
 
 private fun resolveTarget(
     dragged: CapsuleLightBlock,
@@ -326,7 +545,6 @@ private fun resolveTarget(
     heights: Map<CapsuleLightBlock, Float>,
     canvasHeightPx: Float,
     gapPx: Float,
-    cellStepPx: Float,
     normalMagnetPx: Float,
     preferredMagnetPx: Float,
 ): LightDropTarget? {
@@ -336,86 +554,21 @@ private fun resolveTarget(
             0f,
             (canvasHeightPx - draggedHeight).coerceAtLeast(0f),
         )
-    val order =
-        insertionOrder(
+
+    val docks =
+        buildDockCandidates(
             dragged = dragged,
             desiredTopPx = clampedDesired,
             baseOrder = baseOrder,
             basePositions = basePositions,
             heights = heights,
+            canvasHeightPx = canvasHeightPx,
+            gapPx = gapPx,
         )
-    val index = order.indexOf(dragged)
-    if (index < 0) return null
 
-    data class DockCandidate(
-        val topPx: Float,
-        val distancePx: Float,
-        val anchor: CapsuleLightBlock,
-        val side: LightDockSide,
-        val preferred: Boolean,
-        val solved: Map<CapsuleLightBlock, Float>,
-    )
-
-    val docks = mutableListOf<DockCandidate>()
-
-    val previous = order.getOrNull(index - 1)
-    if (previous != null) {
-        val top =
-            (basePositions[previous] ?: 0f) +
-                (heights[previous] ?: 0f) +
-                gapPx
-        val solved =
-            solveAt(
-                dragged = dragged,
-                draggedTopPx = top,
-                order = order,
-                basePositions = basePositions,
-                heights = heights,
-                canvasHeightPx = canvasHeightPx,
-                gapPx = gapPx,
-            )
-        if (solved != null) {
-            docks +=
-                DockCandidate(
-                    topPx = top,
-                    distancePx = abs(clampedDesired - top),
-                    anchor = previous,
-                    side = LightDockSide.AFTER,
-                    preferred = preferredPair(previous, dragged),
-                    solved = solved,
-                )
-        }
-    }
-
-    val next = order.getOrNull(index + 1)
-    if (next != null) {
-        val top =
-            (basePositions[next] ?: 0f) -
-                gapPx -
-                draggedHeight
-        val solved =
-            solveAt(
-                dragged = dragged,
-                draggedTopPx = top,
-                order = order,
-                basePositions = basePositions,
-                heights = heights,
-                canvasHeightPx = canvasHeightPx,
-                gapPx = gapPx,
-            )
-        if (solved != null) {
-            docks +=
-                DockCandidate(
-                    topPx = top,
-                    distancePx = abs(clampedDesired - top),
-                    anchor = next,
-                    side = LightDockSide.BEFORE,
-                    preferred = preferredPair(next, dragged),
-                    solved = solved,
-                )
-        }
-    }
-
+    // A real neighbour always wins while the held rectangle is inside that neighbour's magnetic
+    // radius. Preferred semantic pairs merely get a larger radius; they do not override a much
+    // closer physical neighbour.
     val winningDock =
         docks
             .filter { candidate ->
@@ -423,7 +576,7 @@ private fun resolveTarget(
                     if (candidate.preferred) preferredMagnetPx else normalMagnetPx
             }
             .minWithOrNull(
-                compareBy<DockCandidate> { candidate ->
+                compareBy<LightDockCandidate> { candidate ->
                     val radius =
                         if (candidate.preferred) preferredMagnetPx else normalMagnetPx
                     candidate.distancePx / radius.coerceAtLeast(1f)
@@ -438,69 +591,30 @@ private fun resolveTarget(
             kind = LightDropKind.DOCK,
             topPx = winningDock.topPx,
             positionsPx = winningDock.solved,
-            order = order,
+            order = winningDock.order,
             anchor = winningDock.anchor,
             side = winningDock.side,
         )
     }
 
-    // Empty cells only exist where the dragged rectangle is actually empty in the frozen scene.
-    // The highlighted cell therefore cannot promise a landing that later displaces/overwrites a
-    // real component.
-    val maxTop = (canvasHeightPx - draggedHeight).coerceAtLeast(0f)
-    val cellCandidates = mutableListOf<LightDropTarget>()
-    var cellTop = 0f
-    while (cellTop <= maxTop + 0.5f) {
-        if (
-            !overlapsExisting(
-                dragged = dragged,
-                topPx = cellTop,
-                heightPx = draggedHeight,
-                basePositions = basePositions,
-                heights = heights,
-                gapPx = gapPx,
-            )
-        ) {
-            val cellOrder =
-                insertionOrder(
-                    dragged = dragged,
-                    desiredTopPx = cellTop,
-                    baseOrder = baseOrder,
-                    basePositions = basePositions,
-                    heights = heights,
-                )
-            val solved =
-                solveAt(
-                    dragged = dragged,
-                    draggedTopPx = cellTop,
-                    order = cellOrder,
-                    basePositions = basePositions,
-                    heights = heights,
-                    canvasHeightPx = canvasHeightPx,
-                    gapPx = gapPx,
-                )
-            if (solved != null) {
-                cellCandidates +=
-                    LightDropTarget(
-                        kind = LightDropKind.CELL,
-                        topPx = cellTop,
-                        positionsPx = solved,
-                        order = cellOrder,
-                    )
-            }
-        }
-        cellTop += cellStepPx
-    }
-
+    val cells =
+        buildCellTargets(
+            dragged = dragged,
+            baseOrder = baseOrder,
+            basePositions = basePositions,
+            heights = heights,
+            canvasHeightPx = canvasHeightPx,
+            gapPx = gapPx,
+        )
     val winningCell =
-        cellCandidates.minByOrNull { abs(clampedDesired - it.topPx) }
+        cells.minByOrNull { abs(clampedDesired - it.topPx) }
     if (winningCell != null) return winningCell
 
-    // No free cell exists. A feasible real neighbour is safer than clipping or shrinking a block,
-    // even if the pointer is farther away than the normal magnetic radius.
+    // An impossible geometry never clips, shrinks or deletes another element. If a valid CELL does
+    // not exist, keep the nearest feasible real dock; if even that does not exist, reject the move.
     val fallbackDock =
         docks.minWithOrNull(
-            compareBy<DockCandidate> { candidate ->
+            compareBy<LightDockCandidate> { candidate ->
                 val radius =
                     if (candidate.preferred) preferredMagnetPx else normalMagnetPx
                 candidate.distancePx / radius.coerceAtLeast(1f)
@@ -515,7 +629,7 @@ private fun resolveTarget(
             kind = LightDropKind.DOCK,
             topPx = it.topPx,
             positionsPx = it.solved,
-            order = order,
+            order = it.order,
             anchor = it.anchor,
             side = it.side,
         )
@@ -539,7 +653,6 @@ internal fun CapsuleLightCanvasV2(
     val density = LocalDensity.current
     val canvasHeightPx = with(density) { viewportHeight.toPx() }
     val gapPx = with(density) { LightCanvasDockGap.toPx() }
-    val cellStepPx = with(density) { LightCanvasCellStep.toPx() }
     val normalMagnetPx = with(density) { LightCanvasRealMagnet.toPx() }
     val preferredMagnetPx = with(density) { LightCanvasPreferredMagnet.toPx() }
 
@@ -649,74 +762,31 @@ internal fun CapsuleLightCanvasV2(
                 .clipToBounds(),
     ) {
         if (editable && allMeasured) {
-            val occupiedPositions =
-                if (dragged != null) frozenPositionsPx else resolvedPositionsPx
-            val occupiedDragged = dragged
-
+            val moving = dragged
             val guideCells =
                 remember(
-                    occupiedDragged,
-                    occupiedPositions,
+                    moving,
+                    frozenPositionsPx,
                     frozenOrder,
                     heightsPx,
                     canvasHeightPx,
                     gapPx,
-                    cellStepPx,
                 ) {
-                    val moving = occupiedDragged
                     if (moving != null && frozenPositionsPx.isNotEmpty()) {
-                        val movingHeight = heightsPx[moving] ?: 0f
-                        val maxTop =
-                            (canvasHeightPx - movingHeight).coerceAtLeast(0f)
-                        buildList {
-                            var cellTop = 0f
-                            while (cellTop <= maxTop + 0.5f) {
-                                val clear =
-                                    !overlapsExisting(
-                                        dragged = moving,
-                                        topPx = cellTop,
-                                        heightPx = movingHeight,
-                                        basePositions = frozenPositionsPx,
-                                        heights = heightsPx,
-                                        gapPx = gapPx,
-                                    )
-                                if (clear) {
-                                    val cellOrder =
-                                        insertionOrder(
-                                            dragged = moving,
-                                            desiredTopPx = cellTop,
-                                            baseOrder = frozenOrder,
-                                            basePositions = frozenPositionsPx,
-                                            heights = heightsPx,
-                                        )
-                                    val feasible =
-                                        solveAt(
-                                            dragged = moving,
-                                            draggedTopPx = cellTop,
-                                            order = cellOrder,
-                                            basePositions = frozenPositionsPx,
-                                            heights = heightsPx,
-                                            canvasHeightPx = canvasHeightPx,
-                                            gapPx = gapPx,
-                                        ) != null
-                                    if (feasible) add(cellTop)
-                                }
-                                cellTop += cellStepPx
-                            }
-                        }
+                        buildCellTargets(
+                            dragged = moving,
+                            baseOrder = frozenOrder,
+                            basePositions = frozenPositionsPx,
+                            heights = heightsPx,
+                            canvasHeightPx = canvasHeightPx,
+                            gapPx = gapPx,
+                        )
+                            .map { it.topPx }
+                            .distinctBy { it.roundToInt() }
                     } else {
-                        buildList {
-                            var y = 0f
-                            while (y <= canvasHeightPx + 0.5f) {
-                                val occupied =
-                                    occupiedPositions.any { (block, top) ->
-                                        val h = heightsPx[block] ?: 0f
-                                        y >= top - gapPx && y <= top + h + gapPx
-                                    }
-                                if (!occupied) add(y)
-                                y += cellStepPx
-                            }
-                        }
+                        // Cells are destinations for the currently held rectangle, not a decorative
+                        // background grid. Show them only when they are real, feasible drop slots.
+                        emptyList()
                     }
                 }
 
@@ -793,13 +863,20 @@ internal fun CapsuleLightCanvasV2(
                 val visualTop =
                     if (selected) {
                         val selectedTarget = target
-                        if (selectedTarget?.kind == LightDropKind.DOCK) {
-                            // The held object moves toward the fixed neighbour. The neighbour only
-                            // moves if the collision solver genuinely needs to make room.
-                            desiredDraggedTop * 0.28f +
-                                selectedTarget.topPx * 0.72f
-                        } else {
-                            desiredDraggedTop
+                        when (selectedTarget?.kind) {
+                            LightDropKind.DOCK -> {
+                                // A real magnet means exactly that: the held object settles onto
+                                // the stationary neighbour while the finger remains inside the
+                                // magnetic radius. The neighbour is never dragged toward the hand.
+                                selectedTarget.topPx
+                            }
+                            LightDropKind.CELL -> {
+                                // Keep the hand feeling direct, but give the highlighted legal cell
+                                // a small physical pull so preview and release read as one action.
+                                desiredDraggedTop * 0.82f +
+                                    selectedTarget.topPx * 0.18f
+                            }
+                            null -> desiredDraggedTop
                         }
                     } else {
                         normalTop
@@ -860,7 +937,14 @@ internal fun CapsuleLightCanvasV2(
                                     .align(Alignment.TopCenter)
                                     .width(56.dp)
                                     .height(22.dp)
-                                    .pointerInput(block, allMeasured) {
+                                    .pointerInput(
+                                        block,
+                                        allMeasured,
+                                        resolvedOrder,
+                                        resolvedPositionsPx,
+                                        heightsPx,
+                                        canvasHeightPx,
+                                    ) {
                                         if (!allMeasured) return@pointerInput
 
                                         detectDragGesturesAfterLongPress(
@@ -888,7 +972,6 @@ internal fun CapsuleLightCanvasV2(
                                                         heights = heightsPx,
                                                         canvasHeightPx = canvasHeightPx,
                                                         gapPx = gapPx,
-                                                        cellStepPx = cellStepPx,
                                                         normalMagnetPx = normalMagnetPx,
                                                         preferredMagnetPx = preferredMagnetPx,
                                                     )
@@ -917,7 +1000,6 @@ internal fun CapsuleLightCanvasV2(
                                                         heights = heightsPx,
                                                         canvasHeightPx = canvasHeightPx,
                                                         gapPx = gapPx,
-                                                        cellStepPx = cellStepPx,
                                                         normalMagnetPx = normalMagnetPx,
                                                         preferredMagnetPx = preferredMagnetPx,
                                                     )
