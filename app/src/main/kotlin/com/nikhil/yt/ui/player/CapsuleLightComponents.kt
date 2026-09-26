@@ -405,9 +405,6 @@ internal fun CapsuleLightControls(
         onOrderChange = onOrderChange,
         onOrderSettled = onOrderSettled,
         onEditStarted = onEditStarted,
-        dragHandleOnlyFor = { item ->
-            item == CapsuleLightTransportItem.PLAY_PAUSE
-        },
         modifier =
             Modifier
                 .fillMaxWidth()
