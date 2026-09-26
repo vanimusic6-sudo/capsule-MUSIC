@@ -876,6 +876,7 @@ internal fun CapsuleLightResizableArtwork(
     baseSide: Dp,
     widthScale: Float,
     heightScale: Float,
+    maxHeightScale: Float = 1.35f,
     editable: Boolean,
     onEditStarted: () -> Unit,
     onResizeSettled: (widthScale: Float, heightScale: Float) -> Unit,
@@ -889,15 +890,24 @@ internal fun CapsuleLightResizableArtwork(
         mutableFloatStateOf(widthScale.coerceIn(0.55f, 1.08f))
     }
     var currentHeight by remember {
-        mutableFloatStateOf(heightScale.coerceIn(0.55f, 1.35f))
+        mutableFloatStateOf(
+            heightScale.coerceIn(
+                0.55f,
+                maxHeightScale.coerceAtLeast(0.55f),
+            ),
+        )
     }
 
     // External persisted state may change after reset/reload, but never replace the live state
     // object while a resize gesture is running.
-    LaunchedEffect(widthScale, heightScale) {
+    LaunchedEffect(widthScale, heightScale, maxHeightScale) {
         if (!resizing) {
             currentWidth = widthScale.coerceIn(0.55f, 1.08f)
-            currentHeight = heightScale.coerceIn(0.55f, 1.35f)
+            currentHeight =
+                heightScale.coerceIn(
+                    0.55f,
+                    maxHeightScale.coerceAtLeast(0.55f),
+                )
         }
     }
 
@@ -949,6 +959,7 @@ internal fun CapsuleLightResizableArtwork(
                     baseSide = baseSide,
                     widthScale = currentWidth,
                     heightScale = currentHeight,
+                    maxHeightScale = maxHeightScale,
                     onEditStarted = {
                         resizing = true
                         onEditStarted()
@@ -974,6 +985,7 @@ private fun BoxScope.CapsuleArtworkResizeHandle(
     baseSide: Dp,
     widthScale: Float,
     heightScale: Float,
+    maxHeightScale: Float,
     onEditStarted: () -> Unit,
     onResize: (Float, Float) -> Unit,
     onResizeSettled: () -> Unit,
@@ -1015,15 +1027,27 @@ private fun BoxScope.CapsuleArtworkResizeHandle(
                                     w = (w + amount.x / basePx).coerceIn(0.55f, 1.08f)
                                 }
                                 ArtworkResizeHandle.BOTTOM -> {
-                                    h = (h + amount.y / basePx).coerceIn(0.55f, 1.35f)
+                                    h =
+                                        (h + amount.y / basePx).coerceIn(
+                                            0.55f,
+                                            maxHeightScale.coerceAtLeast(0.55f),
+                                        )
                                 }
                                 ArtworkResizeHandle.BOTTOM_LEFT -> {
                                     w = (w - amount.x / basePx).coerceIn(0.55f, 1.08f)
-                                    h = (h + amount.y / basePx).coerceIn(0.55f, 1.35f)
+                                    h =
+                                        (h + amount.y / basePx).coerceIn(
+                                            0.55f,
+                                            maxHeightScale.coerceAtLeast(0.55f),
+                                        )
                                 }
                                 ArtworkResizeHandle.BOTTOM_RIGHT -> {
                                     w = (w + amount.x / basePx).coerceIn(0.55f, 1.08f)
-                                    h = (h + amount.y / basePx).coerceIn(0.55f, 1.35f)
+                                    h =
+                                        (h + amount.y / basePx).coerceIn(
+                                            0.55f,
+                                            maxHeightScale.coerceAtLeast(0.55f),
+                                        )
                                 }
                             }
                             onResize(w, h)
