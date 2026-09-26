@@ -423,6 +423,26 @@ private data class LightDockCandidate(
     val order: List<CapsuleLightBlock>,
 )
 
+internal enum class LightEdgeReplacement {
+    TOP,
+    BOTTOM,
+}
+
+internal fun chooseLightEdgeReplacement(
+    currentIndex: Int,
+    lastIndex: Int,
+    commandCenterPx: Float,
+    firstCenterPx: Float,
+    lastCenterPx: Float,
+): LightEdgeReplacement? =
+    when {
+        currentIndex > 0 && commandCenterPx <= firstCenterPx + 0.5f ->
+            LightEdgeReplacement.TOP
+        currentIndex < lastIndex && commandCenterPx >= lastCenterPx - 0.5f ->
+            LightEdgeReplacement.BOTTOM
+        else -> null
+    }
+
 /**
  * Frozen real blocks, always sorted by their actual on-canvas position.
  *
@@ -686,7 +706,16 @@ private fun resolveEdgeReplacement(
     val lastHeight = heights[last] ?: return null
     val lastCenter = lastTop + lastHeight / 2f
 
-    if (currentIndex > 0 && commandCenter <= firstCenter + 0.5f) {
+    val edge =
+        chooseLightEdgeReplacement(
+            currentIndex = currentIndex,
+            lastIndex = current.lastIndex,
+            commandCenterPx = commandCenter,
+            firstCenterPx = firstCenter,
+            lastCenterPx = lastCenter,
+        )
+
+    if (edge == LightEdgeReplacement.TOP) {
         val edgeOrder = buildList {
             add(dragged)
             addAll(fixed)
@@ -722,7 +751,7 @@ private fun resolveEdgeReplacement(
         )
     }
 
-    if (currentIndex < current.lastIndex && commandCenter >= lastCenter - 0.5f) {
+    if (edge == LightEdgeReplacement.BOTTOM) {
         val edgeOrder = buildList {
             addAll(fixed)
             add(dragged)
