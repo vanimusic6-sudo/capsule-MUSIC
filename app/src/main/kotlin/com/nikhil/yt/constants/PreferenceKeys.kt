@@ -428,6 +428,19 @@ val HistoryDuration = floatPreferencesKey("historyDuration")
 val PlayerBackgroundStyleKey = stringPreferencesKey("playerBackgroundStyle")
 val CapsulePlayerDesignKey = stringPreferencesKey("capsulePlayerDesign")
 val CapsuleLightLyricLineKey = booleanPreferencesKey("capsuleLightLyricLine")
+/** Enables long-press block reordering only on the Capsule Light full player. */
+val CapsuleLightEditEnabledKey = booleanPreferencesKey("capsuleLightEditEnabled")
+
+/** Comma-separated [CapsuleLightBlock] names. Kept as a string so migrations stay trivial. */
+val CapsuleLightLayoutOrderKey = stringPreferencesKey("capsuleLightLayoutOrder")
+
+/**
+ * Persistent crash guard for an unfinished editing session.
+ *
+ * If a fresh process sees this bit while the editor is still enabled, the previous process ended
+ * before the user finished editing and the Light layout is restored to its base order.
+ */
+val CapsuleLightEditSessionActiveKey = booleanPreferencesKey("capsuleLightEditSessionActive")
 
 /**
  * False until the welcome flow has been finished or skipped once.
