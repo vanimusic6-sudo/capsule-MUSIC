@@ -89,7 +89,6 @@ import com.nikhil.yt.ui.component.SwitchPreference
 import com.nikhil.yt.ui.theme.CapsuleBottomBarEnabledKey
 import com.nikhil.yt.ui.theme.CapsuleThemeEnabledKey
 import com.nikhil.yt.ui.player.CapsuleLightBaseOrderEncoded
-import com.nikhil.yt.ui.player.CapsuleLightEditorProcessGuard
 import com.nikhil.yt.ui.utils.backToMain
 import com.nikhil.yt.utils.rememberEnumPreference
 import com.nikhil.yt.utils.rememberPreference
@@ -811,7 +810,6 @@ fun AppearanceSettings(
                         onLightEditorEnabledChange(enabled)
                         if (!enabled) {
                             onLightEditSessionActiveChange(false)
-                            CapsuleLightEditorProcessGuard.end()
                         }
                     },
                 )
@@ -826,7 +824,6 @@ fun AppearanceSettings(
                         if (lightEditSessionActive) {
                             onLightEditSessionActiveChange(false)
                         }
-                        CapsuleLightEditorProcessGuard.end()
                     },
                 )
             }
