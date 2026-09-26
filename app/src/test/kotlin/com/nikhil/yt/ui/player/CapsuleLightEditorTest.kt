@@ -186,30 +186,39 @@ class CapsuleLightEditorTest {
     }
 
     @Test
-    fun rowSwapThresholdIsSymmetricAtClampedEdge() {
+    fun rowSwapThresholdUsesCommandEdgesSoWideItemsCanReplaceNarrowEdges() {
         assertTrue(
             lightRowCrossedBefore(
-                commandCenterPx = 100f,
+                commandStartPx = 100f,
                 neighbourCenterPx = 100f,
             ),
         )
         assertTrue(
             lightRowCrossedAfter(
-                commandCenterPx = 100f,
+                commandEndPx = 100f,
                 neighbourCenterPx = 100f,
             ),
         )
 
         assertFalse(
             lightRowCrossedBefore(
-                commandCenterPx = 101f,
+                commandStartPx = 101f,
                 neighbourCenterPx = 100f,
             ),
         )
         assertFalse(
             lightRowCrossedAfter(
-                commandCenterPx = 99f,
+                commandEndPx = 99f,
                 neighbourCenterPx = 100f,
+            ),
+        )
+
+        // A wide AUDIO/VIDEO command can reach the right edge with its trailing edge even when
+        // its center can never reach the tiny SLEEP item's center.
+        assertTrue(
+            lightRowCrossedAfter(
+                commandEndPx = 620f,
+                neighbourCenterPx = 600f,
             ),
         )
     }
