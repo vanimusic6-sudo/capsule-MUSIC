@@ -33,6 +33,8 @@ import androidx.compose.material3.IconButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -199,8 +201,13 @@ internal fun CapsuleLightFavorite(
     liked: Boolean,
     textColor: Color,
     onToggleLike: () -> Unit,
+internal fun CapsuleLightFavorite(
+    liked: Boolean,
+    textColor: Color,
+    onToggleLike: () -> Unit,
 ) {
     val favoriteInteraction = remember { MutableInteractionSource() }
+    var userActionToken by remember { mutableIntStateOf(0) }
     Box(
         modifier = Modifier
             .size(48.dp)
@@ -209,7 +216,10 @@ internal fun CapsuleLightFavorite(
                 interactionSource = favoriteInteraction,
                 indication = null,
                 role = Role.Button,
-                onClick = onToggleLike,
+                onClick = {
+                    userActionToken += 1
+                    onToggleLike()
+                },
             ),
         contentAlignment = Alignment.Center,
     ) {
@@ -218,6 +228,7 @@ internal fun CapsuleLightFavorite(
             interactionSource = favoriteInteraction,
             tint = if (liked) CapsuleFavoriteColors.selected(textColor) else textColor.copy(alpha = 0.72f),
             modifier = Modifier.size(28.dp),
+            userActionToken = userActionToken,
         )
     }
 }
