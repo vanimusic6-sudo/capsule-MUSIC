@@ -43,7 +43,9 @@ import androidx.compose.ui.layout.positionInParent
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
+import kotlin.math.abs
 
 /**
  * Capsule Light editor v3: hierarchy, not a flat grid.
@@ -53,6 +55,7 @@ import kotlinx.coroutines.launch
  */
 internal enum class CapsuleLightBlock {
     ARTWORK,
+    LYRIC,
     METADATA,
     PROGRESS,
     MODE_SWITCH,
@@ -119,7 +122,40 @@ private inline fun <reified T : Enum<T>> decodeEnumOrder(
     }
 }
 
-internal fun decodeCapsuleLightOrder(raw: String) = decodeEnumOrder(raw, CapsuleLightBaseOrder)
+internal fun decodeCapsuleLightOrder(raw: String): List<CapsuleLightBlock> {
+    if (raw.isBlank()) return CapsuleLightBaseOrder
+
+    val parsed =
+        raw.split(',')
+            .mapNotNull { token ->
+                runCatching { CapsuleLightBlock.valueOf(token.trim()) }.getOrNull()
+            }
+
+    if (
+        parsed.size == CapsuleLightBaseOrder.size &&
+        parsed.distinct().size == CapsuleLightBaseOrder.size &&
+        parsed.toSet() == CapsuleLightBaseOrder.toSet()
+    ) {
+        return parsed
+    }
+
+    // v1 had five outer containers and kept the lyric line inside ARTWORK.
+    // Preserve the user's old container order and insert the new LYRIC container next to artwork.
+    val legacyBase = CapsuleLightBaseOrder.filterNot { it == CapsuleLightBlock.LYRIC }
+    if (
+        parsed.size == legacyBase.size &&
+        parsed.distinct().size == legacyBase.size &&
+        parsed.toSet() == legacyBase.toSet()
+    ) {
+        val migrated = parsed.toMutableList()
+        val artworkIndex = migrated.indexOf(CapsuleLightBlock.ARTWORK)
+        migrated.add((artworkIndex + 1).coerceAtMost(migrated.size), CapsuleLightBlock.LYRIC)
+        return migrated
+    }
+
+    return CapsuleLightBaseOrder
+}
+
 internal fun encodeCapsuleLightOrder(order: List<CapsuleLightBlock>) =
     encodeEnumOrder(decodeCapsuleLightOrder(encodeEnumOrder(order)))
 
@@ -313,11 +349,12 @@ private fun CapsuleSoftColumnItem(
 ) {
     val scope = rememberCoroutineScope()
     val settle = remember(id) { Animatable(0f) }
+    var settleJob by remember(id) { mutableStateOf<Job?>(null) }
     var lastBase by remember(id) { mutableFloatStateOf(Float.NaN) }
     val scale by
         animateFloatAsState(
-            targetValue = if (selected) 1.018f else 1f,
-            animationSpec = spring(dampingRatio = 0.72f, stiffness = Spring.StiffnessMediumLow),
+            targetValue = if (selected) 1.012f else 1f,
+            animationSpec = spring(dampingRatio = 0.86f, stiffness = Spring.StiffnessMediumLow),
             label = "capsuleBlockLift",
         )
 
@@ -332,14 +369,22 @@ private fun CapsuleSoftColumnItem(
                         val delta = lastBase - next
                         if (selected) {
                             onSelectedBaseShift(delta)
-                        } else {
-                            scope.launch {
-                                settle.snapTo(settle.value + delta)
-                                settle.animateTo(
-                                    0f,
-                                    spring(dampingRatio = 0.72f, stiffness = Spring.StiffnessLow),
-                                )
-                            }
+                        } else if (abs(delta) >= 8f) {
+                            // A reorder moves a block by tens/hundreds of px. Tiny changes are
+                            // normal remeasurement (lyrics/resize) and must follow the finger
+                            // directly instead of spawning overlapping springs.
+                            settleJob?.cancel()
+                            settleJob =
+                                scope.launch {
+                                    settle.snapTo(settle.value + delta)
+                                    settle.animateTo(
+                                        0f,
+                                        spring(
+                                            dampingRatio = 0.84f,
+                                            stiffness = Spring.StiffnessMediumLow,
+                                        ),
+                                    )
+                                }
                         }
                     }
                     lastBase = next
@@ -351,7 +396,7 @@ private fun CapsuleSoftColumnItem(
                     scaleY = scale
                     shadowElevation = if (selected) 12.dp.toPx() else 0f
                 }
-                .alpha(if (selected) 1f else 0.995f),
+                ,
     ) {
         content()
     }
@@ -397,11 +442,12 @@ internal fun <T : Enum<T>> CapsuleLightReorderRow(
                 val selected = dragged == item
                 val scope = rememberCoroutineScope()
                 val settle = remember(item) { Animatable(0f) }
+                var settleJob by remember(item) { mutableStateOf<Job?>(null) }
                 var lastBase by remember(item) { mutableFloatStateOf(Float.NaN) }
                 val scale by
                     animateFloatAsState(
-                        targetValue = if (selected) 1.035f else 1f,
-                        animationSpec = spring(dampingRatio = 0.70f, stiffness = Spring.StiffnessMediumLow),
+                        targetValue = if (selected) 1.022f else 1f,
+                        animationSpec = spring(dampingRatio = 0.86f, stiffness = Spring.StiffnessMediumLow),
                         label = "capsuleInnerLift",
                     )
 
@@ -481,17 +527,19 @@ internal fun <T : Enum<T>> CapsuleLightReorderRow(
                                     val delta = lastBase - next
                                     if (selected) {
                                         dragX += delta
-                                    } else {
-                                        scope.launch {
-                                            settle.snapTo(settle.value + delta)
-                                            settle.animateTo(
-                                                0f,
-                                                spring(
-                                                    dampingRatio = 0.70f,
-                                                    stiffness = Spring.StiffnessLow,
-                                                ),
-                                            )
-                                        }
+                                    } else if (abs(delta) >= 4f) {
+                                        settleJob?.cancel()
+                                        settleJob =
+                                            scope.launch {
+                                                settle.snapTo(settle.value + delta)
+                                                settle.animateTo(
+                                                    0f,
+                                                    spring(
+                                                        dampingRatio = 0.84f,
+                                                        stiffness = Spring.StiffnessMediumLow,
+                                                    ),
+                                                )
+                                            }
                                     }
                                 }
                                 lastBase = next
@@ -648,7 +696,7 @@ private fun BoxScope.CapsuleArtworkResizeHandle(
             Modifier
                 .align(alignment)
                 .size(34.dp)
-                .pointerInput(handle, baseSide, widthScale, heightScale) {
+                .pointerInput(handle, baseSide) {
                     var w = widthScale
                     var h = heightScale
                     val basePx = baseSide.toPx().coerceAtLeast(1f)
