@@ -93,6 +93,13 @@ internal fun encodeCapsuleLightCanvasPositions(
         }
         .joinToString(",")
 
+internal fun lightCanvasMeasurementsReady(
+    order: List<CapsuleLightBlock>,
+    measuredHeightsPx: Map<CapsuleLightBlock, Float>,
+): Boolean =
+    order.isNotEmpty() &&
+        order.all { measuredHeightsPx.containsKey(it) }
+
 private enum class LightDropKind {
     DOCK,
     CELL,
@@ -799,13 +806,16 @@ internal fun CapsuleLightCanvasV2(
     // legitimately measure to 0 px. Treating 0 as "not measured" used to disable the entire
     // position engine and collapse every block to Y=0 after leaving the editor.
     val allMeasured =
-        order.isNotEmpty() &&
-            order.all { bounds.containsKey(it) }
+        lightCanvasMeasurementsReady(
+            order = order,
+            measuredHeightsPx = heightsPx,
+        )
 
     val nonArtworkMeasured =
-        order
-            .filterNot { it == CapsuleLightBlock.ARTWORK }
-            .all { bounds.containsKey(it) }
+        lightCanvasMeasurementsReady(
+            order = order.filterNot { it == CapsuleLightBlock.ARTWORK },
+            measuredHeightsPx = heightsPx,
+        )
     val maxArtworkHeightDp =
         if (nonArtworkMeasured) {
             val otherHeightPx =
