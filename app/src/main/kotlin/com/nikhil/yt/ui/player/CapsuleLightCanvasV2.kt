@@ -187,7 +187,7 @@ private fun projectOrderedPositions(
     return result
 }
 
-private fun normalizedStoredPositions(
+internal fun normalizedStoredPositions(
     order: List<CapsuleLightBlock>,
     requested: Map<CapsuleLightBlock, Float>,
     heights: Map<CapsuleLightBlock, Float>,
