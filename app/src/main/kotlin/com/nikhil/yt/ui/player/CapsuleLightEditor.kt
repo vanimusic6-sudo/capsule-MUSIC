@@ -35,6 +35,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
@@ -248,6 +249,7 @@ internal fun CapsuleLightReorderColumn(
     editable: Boolean,
     scrollState: ScrollState,
     gapsDp: Map<CapsuleLightBlock, Float> = emptyMap(),
+    viewportHeight: Dp,
     onOrderChange: (List<CapsuleLightBlock>) -> Unit,
     onOrderSettled: (List<CapsuleLightBlock>) -> Unit,
     onGapSettled: (CapsuleLightBlock, Float) -> Unit = { _, _ -> },
@@ -259,13 +261,15 @@ internal fun CapsuleLightReorderColumn(
     if (!editable) {
         Column(
             modifier =
-                modifier.verticalScroll(
-                    state = scrollState,
-                    enabled = !externalGestureActive,
-                ),
+                modifier
+                    .clipToBounds()
+                    .verticalScroll(
+                        state = scrollState,
+                        enabled = !externalGestureActive,
+                    ),
         ) {
             order.forEach { block ->
-                val gap = (gapsDp[block] ?: 0f).coerceIn(0f, 180f)
+                val gap = (gapsDp[block] ?: 0f).coerceAtLeast(0f)
                 if (gap > 0f) Spacer(Modifier.height(gap.dp))
                 key(block) { content(block) }
             }
@@ -322,10 +326,22 @@ internal fun CapsuleLightReorderColumn(
     val currentGapPx =
         dragged?.let { item ->
             with(density) {
-                ((gapsDp[item] ?: 0f).coerceIn(0f, 180f)).dp.toPx()
+                ((gapsDp[item] ?: 0f).coerceAtLeast(0f)).dp.toPx()
             }
         } ?: 0f
-    val maxGapPx = with(density) { 180.dp.toPx() }
+    val viewportHeightPx = with(density) { viewportHeight.toPx() }
+    val measuredTotalHeightPx =
+        latestOrder.sumOf { block ->
+            (bounds[block]?.size ?: 0f).toDouble()
+        }.toFloat()
+    val maxGapPx =
+        if (measuredTotalHeightPx > 0f) {
+            val heightWithoutCurrentGap = (measuredTotalHeightPx - currentGapPx).coerceAtLeast(0f)
+            (viewportHeightPx - heightWithoutCurrentGap)
+                .coerceAtLeast(currentGapPx.coerceAtLeast(0f))
+        } else {
+            viewportHeightPx.coerceAtLeast(0f)
+        }
     val gapDeltaPx =
         if (draggedBounds != null && draggedTargetStart != null) {
             val residual = draggedBounds.start + dragOffsetY - draggedTargetStart
@@ -336,15 +352,17 @@ internal fun CapsuleLightReorderColumn(
 
     Column(
         modifier =
-            modifier.verticalScroll(
-                state = scrollState,
-                enabled = dragged == null && !externalGestureActive,
-            ),
+            modifier
+                .clipToBounds()
+                .verticalScroll(
+                    state = scrollState,
+                    enabled = dragged == null && !externalGestureActive,
+                ),
     ) {
         // Important: render the committed order, not workingOrder.
         order.forEach { block ->
             key(block) {
-                val gap = (gapsDp[block] ?: 0f).coerceIn(0f, 180f)
+                val gap = (gapsDp[block] ?: 0f).coerceAtLeast(0f)
                 val selected = dragged == block
                 val actual = bounds[block]
                 val virtualStart =
@@ -417,10 +435,26 @@ internal fun CapsuleLightReorderColumn(
                                         },
                                         onDrag = { change, amount ->
                                             change.consume()
-                                            dragOffsetY += amount.y
 
                                             val actualBounds = bounds[block]
                                                 ?: return@detectDragGesturesAfterLongPress
+                                            val gapPx =
+                                                with(density) {
+                                                    ((gapsDp[block] ?: 0f).coerceAtLeast(0f)).dp.toPx()
+                                                }
+                                            val contentStart = actualBounds.start + gapPx
+                                            val contentHeight =
+                                                (actualBounds.size - gapPx).coerceAtLeast(1f)
+                                            val topInViewport = contentStart - scrollState.value
+                                            val minOffset = -topInViewport
+                                            val maxOffset =
+                                                (viewportHeightPx - contentHeight - topInViewport)
+                                                    .coerceAtLeast(minOffset)
+
+                                            dragOffsetY =
+                                                (dragOffsetY + amount.y)
+                                                    .coerceIn(minOffset, maxOffset)
+
                                             val currentIndex = workingOrder.indexOf(block)
                                             if (currentIndex < 0) return@detectDragGesturesAfterLongPress
 
@@ -479,7 +513,7 @@ internal fun CapsuleLightReorderColumn(
                                             val settled = workingOrder
                                             val finalGapDp =
                                                 ((currentGapPx + gapDeltaPx) / density.density)
-                                                    .coerceIn(0f, 180f)
+                                                    .coerceAtLeast(0f)
 
                                             // Commit all state in the same input frame. Since every
                                             // neighbour is already visually at its future slot,
@@ -559,6 +593,7 @@ internal fun <T : Enum<T>> CapsuleLightReorderRow(
     val bounds = remember { mutableStateMapOf<T, AxisBounds>() }
     var dragged by remember { mutableStateOf<T?>(null) }
     var dragX by remember { mutableFloatStateOf(0f) }
+    var rowWidthPx by remember { mutableFloatStateOf(0f) }
     var workingOrder by remember { mutableStateOf(order) }
 
     LaunchedEffect(order, dragged) {
@@ -579,7 +614,12 @@ internal fun <T : Enum<T>> CapsuleLightReorderRow(
     }
 
     Row(
-        modifier = modifier,
+        modifier =
+            modifier
+                .clipToBounds()
+                .onGloballyPositioned { coordinates ->
+                    rowWidthPx = coordinates.size.width.toFloat()
+                },
         verticalAlignment = verticalAlignment,
     ) {
         // Render committed order; workingOrder is only the virtual destination map.
@@ -616,10 +656,17 @@ internal fun <T : Enum<T>> CapsuleLightReorderRow(
                             },
                             onDrag = { change, amount ->
                                 change.consume()
-                                dragX += amount.x
 
                                 val actualBounds =
                                     bounds[item] ?: return@detectDragGesturesAfterLongPress
+                                val minOffset = -actualBounds.start
+                                val maxOffset =
+                                    (rowWidthPx - actualBounds.start - actualBounds.size)
+                                        .coerceAtLeast(minOffset)
+                                dragX =
+                                    (dragX + amount.x)
+                                        .coerceIn(minOffset, maxOffset)
+
                                 val index = workingOrder.indexOf(item)
                                 if (index < 0) return@detectDragGesturesAfterLongPress
 
@@ -768,7 +815,7 @@ internal fun CapsuleLightResizableArtwork(
 
     // External persisted state may change after reset/reload, but never replace the live state
     // object while a resize gesture is running.
-    LaunchedEffect(widthScale, heightScale, resizing) {
+    LaunchedEffect(widthScale, heightScale) {
         if (!resizing) {
             currentWidth = widthScale.coerceIn(0.55f, 1.08f)
             currentHeight = heightScale.coerceIn(0.55f, 1.35f)
