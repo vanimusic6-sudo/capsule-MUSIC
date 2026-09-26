@@ -242,6 +242,13 @@ internal fun lightRowCrossedAfter(
     neighbourCenterPx: Float,
 ): Boolean = commandCenterPx >= neighbourCenterPx - 0.5f
 
+internal fun artworkTopEdgeShiftDp(
+    startHeightScale: Float,
+    currentHeightScale: Float,
+    baseSideDp: Float,
+): Float =
+    (startHeightScale - currentHeightScale) * baseSideDp
+
 private val CapsuleLightDockGap = 8.dp
 private val CapsuleLightDockThreshold = 52.dp
 private val CapsuleLightPreferredDockThreshold = 82.dp
@@ -1584,7 +1591,11 @@ private fun BoxScope.CapsuleArtworkResizeHandle(
                                 // Keep the artwork's bottom edge stationary. Shrinking from the top
                                 // moves ARTWORK down; growing from the top moves it up.
                                 onTopEdgeShiftDp(
-                                    (startHeightScale - h) * baseSide.value,
+                                    artworkTopEdgeShiftDp(
+                                        startHeightScale = startHeightScale,
+                                        currentHeightScale = h,
+                                        baseSideDp = baseSide.value,
+                                    ),
                                 )
                             }
                             onResize(w, h)
