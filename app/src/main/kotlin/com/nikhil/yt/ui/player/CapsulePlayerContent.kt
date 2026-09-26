@@ -571,7 +571,7 @@ fun CapsulePlayerContent(
                                 },
                             )
                             .clickable(
-                                enabled = !isCapsuleVideoPlaying,
+                                enabled = !isCapsuleVideoPlaying && !(isLight && lightEditorEnabled),
                                 onClick = onArtworkClick,
                             ),
                     contentAlignment = Alignment.Center,
@@ -793,7 +793,7 @@ fun CapsulePlayerContent(
             val safe =
                 lightBlockGaps
                     .toMutableMap()
-                    .apply { this[block] = gapDp.coerceIn(0f, 180f) }
+                    .apply { this[block] = gapDp.coerceIn(0f, 1000f) }
                     .toMap()
             lightBlockGaps = safe
             onLightBlockGapsEncodedChange(encodeCapsuleLightBlockGaps(safe))
@@ -989,7 +989,11 @@ fun CapsulePlayerContent(
                                                         Modifier
                                                             .weight(1f, fill = false)
                                                             .clip(RoundedCornerShape(8.dp))
-                                                            .clickable(enabled = navigableArtists.isNotEmpty()) {
+                                                            .clickable(
+                                                                enabled =
+                                                                    navigableArtists.isNotEmpty() &&
+                                                                        !lightEditorEnabled,
+                                                            ) {
                                                                 handleArtistClick()
                                                             }
                                                             .padding(vertical = 2.dp),
@@ -1003,6 +1007,7 @@ fun CapsulePlayerContent(
                                             liked = liked,
                                             textColor = textColor,
                                             onToggleLike = onToggleLike,
+                                            enabled = !lightEditorEnabled,
                                         )
                                     }
                                 }
@@ -1019,7 +1024,7 @@ fun CapsulePlayerContent(
                                 CapsuleThinSlider(
                                     value = displayPosition.toFloat(),
                                     valueRange = 0f..safeDuration.coerceAtLeast(1L).toFloat(),
-                                    enabled = canSeek && safeDuration > 0L,
+                                    enabled = canSeek && safeDuration > 0L && !lightEditorEnabled,
                                     activeColor = textColor.copy(alpha = 0.96f),
                                     inactiveColor = textColor.copy(alpha = 0.24f),
                                     onValueChange = { onSeekPreview(it.toLong()) },
@@ -1091,7 +1096,7 @@ fun CapsulePlayerContent(
                                             onClick = {
                                                 playerConnection.player.shuffleModeEnabled = !shuffleEnabled
                                             },
-                                            enabled = !isListenTogetherGuest,
+                                            enabled = !isListenTogetherGuest && !lightEditorEnabled,
                                             modifier = Modifier.fillMaxWidth(),
                                         ) {
                                             Icon(
@@ -1111,7 +1116,7 @@ fun CapsulePlayerContent(
                                             lightStyle = true,
                                             state = videoPlaybackState,
                                             textColor = textColor,
-                                            enabled = !isListenTogetherGuest,
+                                            enabled = !isListenTogetherGuest && !lightEditorEnabled,
                                             onAudioClick = {
                                                 playerConnection.service.setCapsulePlaybackMode(
                                                     CapsulePlaybackMode.AUDIO,
@@ -1150,7 +1155,7 @@ fun CapsulePlayerContent(
                                     CapsuleLightModeItem.SLEEP -> {
                                         androidx.compose.material3.IconButton(
                                             onClick = { showSleepTimerDialog = true },
-                                            enabled = !isListenTogetherGuest,
+                                            enabled = !isListenTogetherGuest && !lightEditorEnabled,
                                             modifier = Modifier.fillMaxWidth(),
                                         ) {
                                             Icon(
@@ -1195,8 +1200,10 @@ fun CapsulePlayerContent(
                                             visible,
                                             textColor,
                                             onPlayPause,
+                                            enabled = !lightEditorEnabled,
                                         )
                                     },
+                                    interactionEnabled = !lightEditorEnabled,
                                     order = lightTransportOrder,
                                     editable = lightEditorEnabled,
                                     onOrderChange = { reordered ->
@@ -2176,6 +2183,7 @@ internal fun CapsuleOrbitButton(
     visible: Boolean,
     color: Color,
     onClick: () -> Unit,
+    enabled: Boolean = true,
 ) {
     val rotation =
         remember {
@@ -2252,6 +2260,7 @@ internal fun CapsuleOrbitButton(
                 // No paused-state disc: the orbit is the play/pause button in
                 // Super, Light and Immersive, so the three designs stay aligned.
                 .clickable(
+                    enabled = enabled,
                     onClick =
                         onClick,
                 ),
