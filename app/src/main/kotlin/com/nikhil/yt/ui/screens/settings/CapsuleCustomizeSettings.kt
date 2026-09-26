@@ -38,6 +38,7 @@ import com.nikhil.yt.constants.CapsuleLightTransportOrderKey
 import com.nikhil.yt.constants.CapsuleLightArtworkWidthScaleKey
 import com.nikhil.yt.constants.CapsuleLightArtworkHeightScaleKey
 import com.nikhil.yt.constants.CapsuleLightBlockGapsKey
+import com.nikhil.yt.constants.CapsuleLightCanvasPositionsKey
 import com.nikhil.yt.ui.component.EnumListPreference
 import com.nikhil.yt.ui.component.IconButton
 import com.nikhil.yt.ui.component.PreferenceEntry
@@ -45,6 +46,7 @@ import com.nikhil.yt.ui.component.PreferenceGroupTitle
 import com.nikhil.yt.ui.component.SwitchPreference
 import com.nikhil.yt.ui.player.CapsuleLightBaseOrderEncoded
 import com.nikhil.yt.ui.player.CapsuleLightBaseGapsEncoded
+import com.nikhil.yt.ui.player.CapsuleLightCanvasPositionsBaseEncoded
 import com.nikhil.yt.ui.player.CapsuleLightMetadataBaseOrderEncoded
 import com.nikhil.yt.ui.player.CapsuleLightModeBaseOrderEncoded
 import com.nikhil.yt.ui.player.CapsuleLightAvBaseOrderEncoded
@@ -112,6 +114,11 @@ fun CapsuleCustomizeSettings(
         rememberPreference(
             CapsuleLightBlockGapsKey,
             defaultValue = CapsuleLightBaseGapsEncoded,
+        )
+    val (_, onCanvasPositionsChange) =
+        rememberPreference(
+            CapsuleLightCanvasPositionsKey,
+            defaultValue = CapsuleLightCanvasPositionsBaseEncoded,
         )
 
     Column(
@@ -194,6 +201,7 @@ fun CapsuleCustomizeSettings(
                 onArtworkWidthScaleChange(1f)
                 onArtworkHeightScaleChange(1f)
                 onBlockGapsChange(CapsuleLightBaseGapsEncoded)
+                onCanvasPositionsChange(CapsuleLightCanvasPositionsBaseEncoded)
                 onEditEnabledChange(false)
                 onEditSessionActiveChange(false)
             },
