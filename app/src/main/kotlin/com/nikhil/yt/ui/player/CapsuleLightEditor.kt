@@ -222,12 +222,17 @@ internal fun CapsuleLightClayLayout(
 
                         if (target != null) {
                             val (targetElement, targetBounds) = target
+                            val hitPadding =
+                                maxOf(targetBounds.rect.width, targetBounds.rect.height) * 0.22f
                             val expanded =
-                                targetBounds.rect.inflate(
-                                    maxOf(targetBounds.rect.width, targetBounds.rect.height) * 0.22f,
+                                Rect(
+                                    left = targetBounds.rect.left - hitPadding,
+                                    top = targetBounds.rect.top - hitPadding,
+                                    right = targetBounds.rect.right + hitPadding,
+                                    bottom = targetBounds.rect.bottom + hitPadding,
                                 )
 
-                            if (draggedCenter in expanded) {
+                            if (expanded.contains(draggedCenter)) {
                                 val from = workingOrder.indexOf(element)
                                 var to = workingOrder.indexOf(targetElement)
 
