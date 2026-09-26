@@ -1166,7 +1166,9 @@ fun CapsulePlayerContent(
                                     lightValidationGeneration += 1
                                 },
                                 onEditStarted = beginNestedEdit,
-                                dragHandleOnly = true,
+                                dragHandleOnlyFor = { item ->
+                                    item == CapsuleLightModeItem.AUDIO_VIDEO
+                                },
                                 modifier =
                                     Modifier
                                         .fillMaxWidth()
@@ -1282,7 +1284,9 @@ fun CapsulePlayerContent(
                                             visible,
                                             textColor,
                                             onPlayPause,
-                                            enabled = !lightEditorEnabled,
+                                            // Transport editing disables the surrounding actions,
+                                            // but play/pause remains an emergency action.
+                                            enabled = !isListenTogetherGuest,
                                         )
                                     },
                                     interactionEnabled = !lightEditorEnabled,
