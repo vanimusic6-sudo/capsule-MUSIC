@@ -40,6 +40,9 @@ import androidx.navigation.NavController
 import com.nikhil.yt.LocalPlayerAwareWindowInsets
 import com.nikhil.yt.R
 import com.nikhil.yt.constants.CapsuleLightLyricLineKey
+import com.nikhil.yt.constants.CapsuleLightEditEnabledKey
+import com.nikhil.yt.constants.CapsuleLightEditSessionActiveKey
+import com.nikhil.yt.constants.CapsuleLightLayoutOrderKey
 import com.nikhil.yt.constants.CapsulePlayerDesign
 import com.nikhil.yt.constants.CapsulePlayerDesignKey
 import com.nikhil.yt.constants.ChipSortTypeKey
@@ -85,6 +88,8 @@ import com.nikhil.yt.ui.component.PreferenceGroupTitle
 import com.nikhil.yt.ui.component.SwitchPreference
 import com.nikhil.yt.ui.theme.CapsuleBottomBarEnabledKey
 import com.nikhil.yt.ui.theme.CapsuleThemeEnabledKey
+import com.nikhil.yt.ui.player.CapsuleLightBaseOrderEncoded
+import com.nikhil.yt.ui.player.CapsuleLightEditorProcessGuard
 import com.nikhil.yt.ui.utils.backToMain
 import com.nikhil.yt.utils.rememberEnumPreference
 import com.nikhil.yt.utils.rememberPreference
@@ -105,6 +110,22 @@ fun AppearanceSettings(
         rememberPreference(
             CapsuleLightLyricLineKey,
             defaultValue = true,
+        )
+
+    val (lightEditorEnabled, onLightEditorEnabledChange) =
+        rememberPreference(
+            CapsuleLightEditEnabledKey,
+            defaultValue = false,
+        )
+    val (_, onLightLayoutOrderChange) =
+        rememberPreference(
+            CapsuleLightLayoutOrderKey,
+            defaultValue = CapsuleLightBaseOrderEncoded,
+        )
+    val (lightEditSessionActive, onLightEditSessionActiveChange) =
+        rememberPreference(
+            CapsuleLightEditSessionActiveKey,
+            defaultValue = false,
         )
     /*
      * =========================
@@ -770,15 +791,45 @@ fun AppearanceSettings(
             },
         )
 
-        // Only Capsule Light draws the sounding line, so the switch follows the design.
+        // Light-only controls: lyrics plus the first slot-based "clay" editor.
         AnimatedVisibility(visible = playerDesign == CapsulePlayerDesign.LIGHT) {
-            SwitchPreference(
-                title = { Text(stringResource(R.string.capsule_light_lyric_line)) },
-                description = stringResource(R.string.capsule_light_lyric_line_description),
-                icon = { Icon(painterResource(R.drawable.lyrics), contentDescription = null) },
-                checked = lyricLineEnabled,
-                onCheckedChange = onLyricLineEnabledChange,
-            )
+            Column {
+                SwitchPreference(
+                    title = { Text(stringResource(R.string.capsule_light_lyric_line)) },
+                    description = stringResource(R.string.capsule_light_lyric_line_description),
+                    icon = { Icon(painterResource(R.drawable.lyrics), contentDescription = null) },
+                    checked = lyricLineEnabled,
+                    onCheckedChange = onLyricLineEnabledChange,
+                )
+
+                SwitchPreference(
+                    title = { Text(stringResource(R.string.capsule_light_edit_screen)) },
+                    description = stringResource(R.string.capsule_light_edit_screen_description),
+                    icon = { Icon(painterResource(R.drawable.edit), contentDescription = null) },
+                    checked = lightEditorEnabled,
+                    onCheckedChange = { enabled ->
+                        onLightEditorEnabledChange(enabled)
+                        if (!enabled) {
+                            onLightEditSessionActiveChange(false)
+                            CapsuleLightEditorProcessGuard.end()
+                        }
+                    },
+                )
+
+                PreferenceEntry(
+                    title = { Text(stringResource(R.string.capsule_light_reset_screen)) },
+                    description = stringResource(R.string.capsule_light_reset_screen_description),
+                    icon = { Icon(painterResource(R.drawable.restore), contentDescription = null) },
+                    onClick = {
+                        onLightLayoutOrderChange(CapsuleLightBaseOrderEncoded)
+                        onLightEditorEnabledChange(false)
+                        if (lightEditSessionActive) {
+                            onLightEditSessionActiveChange(false)
+                        }
+                        CapsuleLightEditorProcessGuard.end()
+                    },
+                )
+            }
         }
 
         EnumListPreference(
