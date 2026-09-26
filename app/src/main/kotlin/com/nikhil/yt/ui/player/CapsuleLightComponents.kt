@@ -83,6 +83,7 @@ internal fun CapsulePlayerLayout(
     onLightOrderChange: (List<CapsuleLightBlock>) -> Unit = {},
     onLightOrderSettled: (List<CapsuleLightBlock>) -> Unit = {},
     onLightGapSettled: (CapsuleLightBlock, Float) -> Unit = { _, _ -> },
+    onLightGapsNormalized: (Map<CapsuleLightBlock, Float>) -> Unit = {},
     onLightEditStarted: () -> Unit = {},
     lightInteractionActive: Boolean = false,
     /**
@@ -91,7 +92,7 @@ internal fun CapsulePlayerLayout(
      * When supplied, Light is rendered as reorderable slots instead of the fixed artwork/details
      * stack. Dense/Immersive and old call sites keep the exact legacy path below.
      */
-    lightBlockContent: (@Composable (CapsuleLightBlock, Dp) -> Unit)? = null,
+    lightBlockContent: (@Composable (CapsuleLightBlock, Dp, Float) -> Unit)? = null,
     /**
      * The sounding lyric line, or null when it is switched off.
      *
@@ -109,12 +110,43 @@ internal fun CapsulePlayerLayout(
             // The details column also carries the sounding lyric line above it, when it is on.
             val lyricSpace = if (lyricLine != null) CapsuleLightLyricLineHeight else 0.dp
             val detailsSpace = (320.dp + lyricSpace) * fontScale
-            // Square. Both ends are clamped, so a short or fontScale-heavy window can never ask
-            // for a negative or unbounded card.
+            val customCanvasHeight =
+                if (lightBlockContent != null) {
+                    (maxHeight - CapsuleLightQueueDockHeight).coerceAtLeast(0.dp)
+                } else {
+                    maxHeight
+                }
+            val artworkVerticalBudget =
+                (customCanvasHeight - detailsSpace)
+                    .coerceAtLeast(120.dp)
+
+            // The editable Light must fit inside a real fixed canvas. On short screens the card is
+            // allowed to start smaller than legacy Light's old 160dp floor rather than forcing the
+            // whole player to become scrollable.
             val artworkSide = minOf(
                 (maxWidth - 48.dp).coerceAtLeast(120.dp),
-                (maxHeight - detailsSpace).coerceIn(160.dp, 360.dp),
+                if (lightBlockContent != null) {
+                    artworkVerticalBudget.coerceIn(120.dp, 360.dp)
+                } else {
+                    (maxHeight - detailsSpace).coerceIn(160.dp, 360.dp)
+                },
             )
+
+            val requestedGapSpace =
+                lightGapsDp.values
+                    .sum()
+                    .coerceAtLeast(0f)
+                    .dp
+            val artworkHeightBudgetAfterGaps =
+                (customCanvasHeight - detailsSpace - requestedGapSpace)
+                    .coerceAtLeast(artworkSide * 0.55f)
+            val artworkMaxHeightScale =
+                if (artworkSide.value > 0f) {
+                    (artworkHeightBudgetAfterGaps.value / artworkSide.value)
+                        .coerceIn(0.55f, 1.35f)
+                } else {
+                    1f
+                }
             val scrollState = rememberScrollState()
             val openQueue by rememberUpdatedState(onExpandQueue)
             val queueThreshold = with(LocalDensity.current) { 64.dp.toPx() }
@@ -179,12 +211,12 @@ internal fun CapsulePlayerLayout(
                         CapsuleLightReorderColumn(
                             order = lightOrder,
                             editable = lightEditorEnabled,
-                            scrollState = scrollState,
                             gapsDp = lightGapsDp,
                             viewportHeight = editableHeight,
                             onOrderChange = onLightOrderChange,
                             onOrderSettled = onLightOrderSettled,
                             onGapSettled = onLightGapSettled,
+                            onGapsNormalized = onLightGapsNormalized,
                             onEditStarted = onLightEditStarted,
                             externalGestureActive = lightInteractionActive,
                             modifier =
@@ -198,7 +230,7 @@ internal fun CapsulePlayerLayout(
                                 modifier = Modifier.fillMaxWidth(),
                                 contentAlignment = Alignment.Center,
                             ) {
-                                lightBlockContent(block, artworkSide)
+                                lightBlockContent(block, artworkSide, artworkMaxHeightScale)
                             }
                         }
 
