@@ -79,9 +79,14 @@ internal fun CapsulePlayerLayout(
     onExpandQueue: () -> Unit = {},
     lightEditorEnabled: Boolean = false,
     lightOrder: List<CapsuleLightBlock> = CapsuleLightBaseOrder,
+    lightCanvasPositionsDp: Map<CapsuleLightBlock, Float> = emptyMap(),
     lightGapsDp: Map<CapsuleLightBlock, Float> = CapsuleLightBaseGaps,
     onLightOrderChange: (List<CapsuleLightBlock>) -> Unit = {},
     onLightOrderSettled: (List<CapsuleLightBlock>) -> Unit = {},
+    onLightCanvasSettled: (
+        Map<CapsuleLightBlock, Float>,
+        List<CapsuleLightBlock>,
+    ) -> Unit = { _, _ -> },
     onLightGapSettled: (CapsuleLightBlock, Float) -> Unit = { _, _ -> },
     onLightGapsSettled: (Map<CapsuleLightBlock, Float>) -> Unit = {},
     onLightGapsNormalized: (Map<CapsuleLightBlock, Float>) -> Unit = {},
@@ -133,13 +138,8 @@ internal fun CapsulePlayerLayout(
                 },
             )
 
-            val requestedGapSpace =
-                lightGapsDp.values
-                    .sum()
-                    .coerceAtLeast(0f)
-                    .dp
             val artworkHeightBudgetAfterGaps =
-                (customCanvasHeight - detailsSpace - requestedGapSpace)
+                (customCanvasHeight - detailsSpace)
                     .coerceAtLeast(artworkSide * 0.55f)
             val artworkMaxHeightScale =
                 if (artworkSide.value > 0f) {
@@ -209,24 +209,18 @@ internal fun CapsulePlayerLayout(
                                 .height(maxHeight)
                                 .clipToBounds(),
                     ) {
-                        CapsuleLightReorderColumn(
+                        CapsuleLightCanvasV2(
                             order = lightOrder,
+                            positionsDp = lightCanvasPositionsDp,
                             editable = lightEditorEnabled,
-                            gapsDp = lightGapsDp,
                             viewportHeight = editableHeight,
-                            onOrderChange = onLightOrderChange,
-                            onOrderSettled = onLightOrderSettled,
-                            onGapSettled = onLightGapSettled,
-                            onGapsSettled = onLightGapsSettled,
-                            onGapsNormalized = onLightGapsNormalized,
+                            onLayoutSettled = onLightCanvasSettled,
                             onEditStarted = onLightEditStarted,
-                            externalGestureActive = lightInteractionActive,
                             modifier =
                                 Modifier
                                     .fillMaxWidth()
                                     .height(editableHeight)
-                                    .clipToBounds()
-                                    .nestedScroll(queueScroll),
+                                    .clipToBounds(),
                         ) { block ->
                             Box(
                                 modifier = Modifier.fillMaxWidth(),
