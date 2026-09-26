@@ -216,6 +216,7 @@ internal fun CapsulePlayerLayout(
                             viewportHeight = editableHeight,
                             onLayoutSettled = onLightCanvasSettled,
                             onEditStarted = onLightEditStarted,
+                            externalGestureActive = lightInteractionActive,
                             modifier =
                                 Modifier
                                     .fillMaxWidth()
@@ -228,13 +229,14 @@ internal fun CapsulePlayerLayout(
                                     canvasMaxArtworkHeight != null &&
                                     artworkSide.value > 0f
                                 ) {
-                                    minOf(
-                                        artworkMaxHeightScale,
-                                        (
-                                            canvasMaxArtworkHeight.value /
-                                                artworkSide.value
-                                            ).coerceAtLeast(0.55f),
-                                    )
+                                    // The v2 canvas measures every real block. Its budget is the
+                                    // source of truth; the old 320dp details estimate can otherwise
+                                    // reject growth even when the actual scene has free room.
+                                    (
+                                        canvasMaxArtworkHeight.value /
+                                            artworkSide.value
+                                        )
+                                        .coerceIn(0.55f, 1.35f)
                                 } else {
                                     artworkMaxHeightScale
                                 }
