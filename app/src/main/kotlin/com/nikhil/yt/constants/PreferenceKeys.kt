@@ -442,6 +442,13 @@ val CapsuleLightLayoutOrderKey = stringPreferencesKey("capsuleLightLayoutOrder")
  */
 val CapsuleLightEditSessionActiveKey = booleanPreferencesKey("capsuleLightEditSessionActive")
 
+/** Which Capsule screen the customization hub is editing. Only Light exists in the first release. */
+val CapsuleCustomizeTargetKey = stringPreferencesKey("capsuleCustomizeTarget")
+
+enum class CapsuleCustomizeTarget {
+    LIGHT,
+}
+
 /**
  * False until the welcome flow has been finished or skipped once.
  *
