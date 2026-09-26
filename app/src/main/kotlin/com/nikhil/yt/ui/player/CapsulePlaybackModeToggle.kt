@@ -40,7 +40,7 @@ import com.nikhil.yt.playback.video.CapsuleVideoPhase
 import com.nikhil.yt.playback.video.CapsuleVideoPlaybackState
 
 @Composable
-fun CapsuleAudioVideoToggle(
+internal fun CapsuleAudioVideoToggle(
     state: CapsuleVideoPlaybackState,
     textColor: Color,
     enabled: Boolean,
