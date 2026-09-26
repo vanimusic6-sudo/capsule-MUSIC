@@ -623,9 +623,10 @@ internal fun CapsuleLightCanvasV2(
                 if (dragged != null) frozenPositionsPx else resolvedPositionsPx
             val occupiedDragged = dragged
 
+            val guideColor =
+                MaterialTheme.colorScheme.primary.copy(alpha = 0.13f)
+
             Canvas(Modifier.fillMaxSize()) {
-                val guideColor =
-                    MaterialTheme.colorScheme.primary.copy(alpha = 0.13f)
                 val halfWidth = LightCanvasGuideWidth.toPx() / 2f
                 val stroke = 3.dp.toPx()
 
