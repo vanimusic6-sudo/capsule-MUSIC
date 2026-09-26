@@ -334,7 +334,7 @@ internal fun CapsuleLightReorderColumn(
                 latestOrder.forEach { block ->
                     val requestedPx =
                         with(density) {
-                            ((effectiveGapsDp[block] ?: 0f).coerceAtLeast(0f)).dp.toPx()
+                            ((gapsDp[block] ?: 0f).coerceAtLeast(0f)).dp.toPx()
                         }
                     val acceptedPx = requestedPx.coerceAtMost(remainingGapPx)
                     put(block, acceptedPx / density.density)
