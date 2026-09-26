@@ -39,6 +39,7 @@ import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -60,6 +61,12 @@ internal val CapsuleLightPanelShape = RoundedCornerShape(CapsuleLightPanelRadius
 /** The AUDIO/VIDEO switch shares the transport panel's shell, so it shares its geometry. */
 internal val CapsuleLightToggleHeight = 48.dp
 internal val CapsuleLightToggleInset = 4.dp
+
+/**
+ * Fixed system zone at the bottom of Light. It belongs to queue navigation, not to the user's
+ * editable canvas, so clay elements may never occupy or cross it.
+ */
+internal val CapsuleLightQueueDockHeight = 30.dp
 
 /** Both designs host the same artwork, metadata and playback actions. */
 @Composable
@@ -157,25 +164,54 @@ internal fun CapsulePlayerLayout(
                 }
             }
             if (lightBlockContent != null) {
+                val editableHeight =
+                    (maxHeight - CapsuleLightQueueDockHeight)
+                        .coerceAtLeast(0.dp)
+
                 CompositionLocalProvider(LocalCapsuleLightMenu provides onMenuClick) {
-                    CapsuleLightReorderColumn(
-                        order = lightOrder,
-                        editable = lightEditorEnabled,
-                        scrollState = scrollState,
-                        gapsDp = lightGapsDp,
-                        onOrderChange = onLightOrderChange,
-                        onOrderSettled = onLightOrderSettled,
-                        onGapSettled = onLightGapSettled,
-                        onEditStarted = onLightEditStarted,
-                        externalGestureActive = lightInteractionActive,
-                        modifier = Modifier.fillMaxWidth().nestedScroll(queueScroll),
-                    ) { block ->
-                        Box(
-                            modifier = Modifier.fillMaxWidth(),
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            lightBlockContent(block, artworkSide)
+                    Box(
+                        modifier =
+                            Modifier
+                                .fillMaxWidth()
+                                .height(maxHeight)
+                                .clipToBounds(),
+                    ) {
+                        CapsuleLightReorderColumn(
+                            order = lightOrder,
+                            editable = lightEditorEnabled,
+                            scrollState = scrollState,
+                            gapsDp = lightGapsDp,
+                            viewportHeight = editableHeight,
+                            onOrderChange = onLightOrderChange,
+                            onOrderSettled = onLightOrderSettled,
+                            onGapSettled = onLightGapSettled,
+                            onEditStarted = onLightEditStarted,
+                            externalGestureActive = lightInteractionActive,
+                            modifier =
+                                Modifier
+                                    .fillMaxWidth()
+                                    .height(editableHeight)
+                                    .clipToBounds()
+                                    .nestedScroll(queueScroll),
+                        ) { block ->
+                            Box(
+                                modifier = Modifier.fillMaxWidth(),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                lightBlockContent(block, artworkSide)
+                            }
                         }
+
+                        CapsuleLightQueueDock(
+                            textColor = textColor,
+                            enabled = !lightEditorEnabled,
+                            onExpandQueue = onExpandQueue,
+                            modifier =
+                                Modifier
+                                    .align(Alignment.BottomCenter)
+                                    .fillMaxWidth()
+                                    .height(CapsuleLightQueueDockHeight),
+                        )
                     }
                 }
             } else {
@@ -211,6 +247,34 @@ internal fun CapsulePlayerLayout(
             ) { artwork() }
             details()
         }
+    }
+}
+
+@Composable
+private fun CapsuleLightQueueDock(
+    textColor: Color,
+    enabled: Boolean,
+    onExpandQueue: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Box(
+        modifier = modifier,
+        contentAlignment = Alignment.Center,
+    ) {
+        Box(
+            modifier =
+                Modifier
+                    .width(44.dp)
+                    .height(4.dp)
+                    .clip(CircleShape)
+                    .background(textColor.copy(alpha = 0.22f))
+                    .clickable(
+                        enabled = enabled,
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                        onClick = onExpandQueue,
+                    ),
+        )
     }
 }
 
