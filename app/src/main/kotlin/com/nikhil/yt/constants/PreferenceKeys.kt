@@ -451,6 +451,8 @@ val CapsuleLightTransportOrderKey = stringPreferencesKey("capsuleLightTransportO
 /** Relative artwork size. 1f is the untouched Light artwork. */
 val CapsuleLightArtworkWidthScaleKey = floatPreferencesKey("capsuleLightArtworkWidthScale")
 val CapsuleLightArtworkHeightScaleKey = floatPreferencesKey("capsuleLightArtworkHeightScale")
+/** Per-container free vertical spacing for the Light clay editor. */
+val CapsuleLightBlockGapsKey = stringPreferencesKey("capsuleLightBlockGaps")
 
 /** Which Capsule screen the customization hub is editing. Only Light exists in the first release. */
 val CapsuleCustomizeTargetKey = stringPreferencesKey("capsuleCustomizeTarget")
