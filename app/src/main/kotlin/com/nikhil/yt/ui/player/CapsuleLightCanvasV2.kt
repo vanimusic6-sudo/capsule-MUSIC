@@ -794,14 +794,18 @@ internal fun CapsuleLightCanvasV2(
         remember(bounds.toMap()) {
             bounds.mapValues { it.value.heightPx }
         }
+    // "Measured" means Compose has reported a size, not that the size is positive.
+    // Optional blocks (most notably LYRIC when the feature is disabled outside edit mode)
+    // legitimately measure to 0 px. Treating 0 as "not measured" used to disable the entire
+    // position engine and collapse every block to Y=0 after leaving the editor.
     val allMeasured =
         order.isNotEmpty() &&
-            order.all { (heightsPx[it] ?: 0f) > 0f }
+            order.all { bounds.containsKey(it) }
 
     val nonArtworkMeasured =
         order
             .filterNot { it == CapsuleLightBlock.ARTWORK }
-            .all { (heightsPx[it] ?: 0f) > 0f }
+            .all { bounds.containsKey(it) }
     val maxArtworkHeightDp =
         if (nonArtworkMeasured) {
             val otherHeightPx =
@@ -838,10 +842,14 @@ internal fun CapsuleLightCanvasV2(
         }
 
     val activePositionsPx =
-        if (dragged != null && liveLayout != null) {
-            liveLayout!!.positionsPx
-        } else {
-            resolvedPositionsPx
+        when {
+            dragged != null && liveLayout != null -> liveLayout!!.positionsPx
+            resolvedPositionsPx.isNotEmpty() -> resolvedPositionsPx
+            // A saved custom scene must never flash/collapse to the origin while Compose is still
+            // reporting child sizes. These provisional tops are replaced by the normalized scene
+            // as soon as every child (including legitimate 0-height children) has been measured.
+            requestedPositionsPx.isNotEmpty() -> requestedPositionsPx
+            else -> emptyMap()
         }
 
     // A persisted layout from another screen height or an older editor is normalized once. This
