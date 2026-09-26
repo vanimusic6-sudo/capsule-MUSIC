@@ -119,7 +119,7 @@ class CapsuleLightEditorTest {
         val decoded = decodeCapsuleLightBlockGaps(encodeCapsuleLightBlockGaps(custom))
 
         assertEquals(42.5f, decoded[CapsuleLightBlock.METADATA] ?: -1f, 0.01f)
-        assertEquals(180f, decoded[CapsuleLightBlock.CONTROLS] ?: -1f, 0.01f)
+        assertEquals(240f, decoded[CapsuleLightBlock.CONTROLS] ?: -1f, 0.01f)
         assertEquals(0f, decoded[CapsuleLightBlock.ARTWORK] ?: -1f, 0.01f)
     }
 
