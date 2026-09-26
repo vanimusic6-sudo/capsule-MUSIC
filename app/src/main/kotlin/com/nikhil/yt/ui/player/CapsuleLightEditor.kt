@@ -229,6 +229,10 @@ private data class AxisBounds(
     val center: Float get() = start + size / 2f
 }
 
+private val CapsuleLightDockGap = 8.dp
+private val CapsuleLightDockThreshold = 52.dp
+private val CapsuleLightEmptyAnchorStep = 24.dp
+
 /**
  * Outer Light containers.
  *
@@ -431,7 +435,12 @@ internal fun CapsuleLightReorderColumn(
                         label = "capsuleOuterPush",
                     )
 
-                if (gap > 0f) Spacer(Modifier.height(gap.dp))
+                if (gap > 0f) {
+                    CapsuleLightEmptyAnchorGap(
+                        height = gap.dp,
+                        highlight = gap.dp >= CapsuleLightDockThreshold,
+                    )
+                }
 
                 Box(
                     modifier =
@@ -606,12 +615,38 @@ internal fun CapsuleLightReorderColumn(
                                                 }
                                             }
 
-                                            var anchoredGapPx =
+                                            val rawGapPx =
                                                 (desiredTopPx - baseTopPx)
                                                     .coerceAtLeast(0f)
-                                            val gridPx = with(density) { 8.dp.toPx() }
-                                            anchoredGapPx =
-                                                kotlin.math.round(anchoredGapPx / gridPx) * gridPx
+                                            val dockGapPx =
+                                                with(density) { CapsuleLightDockGap.toPx() }
+                                            val dockThresholdPx =
+                                                with(density) { CapsuleLightDockThreshold.toPx() }
+                                            val emptyStepPx =
+                                                with(density) { CapsuleLightEmptyAnchorStep.toPx() }
+
+                                            // Real neighbours are the stronger magnet. If the drop
+                                            // is close enough to the previous real block, collapse
+                                            // the free region to the canonical 8dp dock.
+                                            var anchoredGapPx =
+                                                if (
+                                                    settledIndex == 0 &&
+                                                    rawGapPx <= dockThresholdPx
+                                                ) {
+                                                    0f
+                                                } else if (
+                                                    settledIndex > 0 &&
+                                                    rawGapPx <= dockThresholdPx
+                                                ) {
+                                                    dockGapPx
+                                                } else {
+                                                    // Only when the block is genuinely far from a
+                                                    // neighbour do the visible empty-slot anchors
+                                                    // become eligible. Visual and physical grids
+                                                    // are intentionally the same 24dp step.
+                                                    kotlin.math.round(rawGapPx / emptyStepPx) *
+                                                        emptyStepPx
+                                                }
 
                                             val nextBlock =
                                                 settled.getOrNull(settledIndex + 1)
@@ -622,14 +657,29 @@ internal fun CapsuleLightReorderColumn(
                                                 // Dropping inside an existing empty region splits
                                                 // that region instead of duplicating it.
                                                 if (anchoredGapPx < oldNextGapPx) {
-                                                    val remainder =
+                                                    var remainder =
                                                         (
                                                             oldNextGapPx -
                                                                 anchoredGapPx -
                                                                 contentHeightPx
                                                             ).coerceAtLeast(0f)
+
+                                                    // The next real element also wins over an empty
+                                                    // anchor whenever it is close enough.
+                                                    if (remainder <= dockThresholdPx) {
+                                                        remainder = dockGapPx
+                                                    } else {
+                                                        remainder =
+                                                            kotlin.math.round(
+                                                                remainder / emptyStepPx,
+                                                            ) * emptyStepPx
+                                                    }
+
                                                     requested[nextBlock] =
                                                         remainder / density.density
+                                                } else if (oldNextGapPx <= dockThresholdPx) {
+                                                    requested[nextBlock] =
+                                                        dockGapPx / density.density
                                                 }
                                             }
 
@@ -739,6 +789,44 @@ internal fun CapsuleLightReorderColumn(
                     }
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun CapsuleLightEmptyAnchorGap(
+    height: Dp,
+    highlight: Boolean,
+) {
+    if (!highlight) {
+        Spacer(Modifier.height(height))
+        return
+    }
+
+    val anchorCount =
+        (height.value / CapsuleLightEmptyAnchorStep.value)
+            .toInt()
+            .coerceIn(1, 6)
+
+    Column(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .height(height),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = androidx.compose.foundation.layout.Arrangement.SpaceEvenly,
+    ) {
+        repeat(anchorCount) {
+            Box(
+                modifier =
+                    Modifier
+                        .width(74.dp)
+                        .height(4.dp)
+                        .background(
+                            MaterialTheme.colorScheme.primary.copy(alpha = 0.20f),
+                            RoundedCornerShape(100.dp),
+                        ),
+            )
         }
     }
 }
