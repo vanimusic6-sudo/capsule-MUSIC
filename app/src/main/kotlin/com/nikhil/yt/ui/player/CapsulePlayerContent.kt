@@ -92,6 +92,9 @@ import androidx.media3.ui.PlayerView
 import coil3.compose.AsyncImage
 import com.nikhil.yt.R
 import com.nikhil.yt.constants.CapsuleLightLyricLineKey
+import com.nikhil.yt.constants.CapsuleLightEditEnabledKey
+import com.nikhil.yt.constants.CapsuleLightEditSessionActiveKey
+import com.nikhil.yt.constants.CapsuleLightLayoutOrderKey
 import com.nikhil.yt.constants.LyricsSyncOffsetKey
 import com.nikhil.yt.constants.CapsulePlayerDesign
 import com.nikhil.yt.db.entities.LyricsEntity
@@ -158,6 +161,56 @@ fun CapsulePlayerContent(
     val onScreen = appIsOnScreen()
     val visible = open && onScreen
     val isLight = design == CapsulePlayerDesign.LIGHT
+
+    val (lightEditorEnabled, onLightEditorEnabledChange) =
+        rememberPreference(
+            CapsuleLightEditEnabledKey,
+            defaultValue = false,
+        )
+    val (lightOrderEncoded, onLightOrderEncodedChange) =
+        rememberPreference(
+            CapsuleLightLayoutOrderKey,
+            defaultValue = CapsuleLightBaseOrderEncoded,
+        )
+    val (lightEditSessionActive, onLightEditSessionActiveChange) =
+        rememberPreference(
+            CapsuleLightEditSessionActiveKey,
+            defaultValue = false,
+        )
+
+    var lightOrder by
+        remember(lightOrderEncoded) {
+            mutableStateOf(decodeCapsuleLightOrder(lightOrderEncoded))
+        }
+
+    /*
+     * Editing is intentionally transactional. A persistent session bit is armed only when the
+     * Light editor is actually rendered. If a fresh process sees that bit still armed, the previous
+     * process died before the session was finished, so we restore the factory order before drawing
+     * the custom layout again.
+     */
+    LaunchedEffect(isLight, lightEditorEnabled, lightEditSessionActive) {
+        if (!lightEditorEnabled) {
+            CapsuleLightEditorProcessGuard.end()
+            if (lightEditSessionActive) onLightEditSessionActiveChange(false)
+            return@LaunchedEffect
+        }
+
+        if (!isLight) return@LaunchedEffect
+
+        if (CapsuleLightEditorProcessGuard.begin()) {
+            if (lightEditSessionActive) {
+                lightOrder = CapsuleLightBaseOrder
+                onLightOrderEncodedChange(CapsuleLightBaseOrderEncoded)
+                onLightEditorEnabledChange(false)
+                onLightEditSessionActiveChange(false)
+                CapsuleLightEditorProcessGuard.end()
+            } else {
+                onLightEditSessionActiveChange(true)
+            }
+        }
+    }
+
     val shuffleEnabled by playerConnection.shuffleModeEnabled.collectAsState()
     val isPlaying by
         playerConnection.isPlaying.collectAsState()
@@ -357,6 +410,115 @@ fun CapsulePlayerContent(
         }
     }
 
+    val artworkContent: @Composable () -> Unit = {
+            val mediaShape =
+                if (isCapsuleVideoPlaying) {
+                    RoundedCornerShape(28.dp)
+                } else {
+                    if (isLight) RoundedCornerShape(16.dp) else CapsuleArtworkShape
+                }
+            val currentPlaybackError = playbackError
+
+            if (currentPlaybackError != null) {
+                PlaybackError(
+                    error = currentPlaybackError,
+                    retry = playerConnection.service::retryCurrentFromFreshStream,
+                )
+            } else {
+                Box(
+                    modifier =
+                        Modifier
+                            .fillMaxWidth()
+                            .aspectRatio(
+                                if (isCapsuleVideoPlaying) 16f / 9f else 1f,
+                            )
+                            .offset(
+                                y = if (isCapsuleVideoPlaying || isLight) 0.dp else (-5).dp,
+                            )
+                            .clip(mediaShape)
+                            .border(
+                                1.dp,
+                                if (isLight) Color.Transparent else outline,
+                                mediaShape,
+                            )
+                            .background(
+                                if (isCapsuleVideoPlaying) {
+                                    Color.Black
+                                } else {
+                                    textColor.copy(alpha = 0.045f)
+                                },
+                            )
+                            .clickable(
+                                enabled = !isCapsuleVideoPlaying,
+                                onClick = onArtworkClick,
+                            ),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    if (isCapsuleVideoPlaying) {
+                        AndroidView(
+                            factory = { viewContext ->
+                                PlayerView(viewContext).apply {
+                                    player = playerConnection.player
+                                    useController = false
+
+                                    /*
+                                     * Capsule already shows its own VIDEO loading
+                                     * state in the player controls, so Media3's
+                                     * built-in buffering spinner is deliberately
+                                     * disabled to avoid a second indicator over
+                                     * the video surface.
+                                     */
+                                    setShowBuffering(PlayerView.SHOW_BUFFERING_NEVER)
+
+                                    /*
+                                     * Fill the entire Capsule video frame while
+                                     * preserving the source aspect ratio.
+                                     * ZOOM crops only the overflowing edges instead
+                                     * of stretching the image or leaving letterbox
+                                     * gaps above/below.
+                                     */
+                                    resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM
+
+                                    setShutterBackgroundColor(android.graphics.Color.BLACK)
+                                    keepScreenOn = true
+                                }
+                            },
+                            update = { playerView ->
+                                if (playerView.player !== playerConnection.player) {
+                                    playerView.player = playerConnection.player
+                                }
+                            },
+                            modifier = Modifier.fillMaxSize(),
+                        )
+                    } else if (hideArtwork) {
+                        Icon(
+                            painter = painterResource(R.drawable.album),
+                            contentDescription = mediaMetadata.title,
+                            tint = secondaryText,
+                            modifier = Modifier.size(72.dp),
+                        )
+                    } else {
+                        AsyncImage(
+                            model = mediaMetadata.thumbnailUrl?.let { artwork ->
+                                // YouTube's =w540 URL rewrite corrupts SoundCloud CDN URLs
+                                // with query parameters; their full-size art is selected at search.
+                                if (mediaMetadata.id.startsWith("soundcloud:")) artwork
+                                else artwork.toHighResThumbnail()
+                            },
+                            contentDescription = mediaMetadata.title,
+                            contentScale =
+                                if (cropAlbumArt) {
+                                    ContentScale.Crop
+                                } else {
+                                    ContentScale.Fit
+                                },
+                            modifier = Modifier.fillMaxSize(),
+                        )
+                    }
+                }
+            }
+    }
+
     CapsulePlayerLayout(
         design = design,
         textColor = textColor,
@@ -470,114 +632,248 @@ fun CapsulePlayerContent(
                         },
                     )
                 },
-        artwork = {
-            val mediaShape =
-                if (isCapsuleVideoPlaying) {
-                    RoundedCornerShape(28.dp)
-                } else {
-                    if (isLight) RoundedCornerShape(16.dp) else CapsuleArtworkShape
-                }
-            val currentPlaybackError = playbackError
-
-            if (currentPlaybackError != null) {
-                PlaybackError(
-                    error = currentPlaybackError,
-                    retry = playerConnection.service::retryCurrentFromFreshStream,
-                )
+        lightEditorEnabled = isLight && lightEditorEnabled,
+        lightOrder = lightOrder,
+        onLightOrderChange = { reordered ->
+            lightOrder = decodeCapsuleLightOrder(encodeCapsuleLightOrder(reordered))
+        },
+        onLightOrderSettled = { reordered ->
+            val safeOrder = decodeCapsuleLightOrder(encodeCapsuleLightOrder(reordered))
+            lightOrder = safeOrder
+            onLightOrderEncodedChange(encodeCapsuleLightOrder(safeOrder))
+        },
+        lightBlockContent =
+            if (!isLight) {
+                null
             } else {
-                Box(
-                    modifier =
-                        Modifier
-                            .fillMaxWidth()
-                            .aspectRatio(
-                                if (isCapsuleVideoPlaying) 16f / 9f else 1f,
-                            )
-                            .offset(
-                                y = if (isCapsuleVideoPlaying || isLight) 0.dp else (-5).dp,
-                            )
-                            .clip(mediaShape)
-                            .border(
-                                1.dp,
-                                if (isLight) Color.Transparent else outline,
-                                mediaShape,
-                            )
-                            .background(
-                                if (isCapsuleVideoPlaying) {
-                                    Color.Black
-                                } else {
-                                    textColor.copy(alpha = 0.045f)
-                                },
-                            )
-                            .clickable(
-                                enabled = !isCapsuleVideoPlaying,
-                                onClick = onArtworkClick,
-                            ),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    if (isCapsuleVideoPlaying) {
-                        AndroidView(
-                            factory = { viewContext ->
-                                PlayerView(viewContext).apply {
-                                    player = playerConnection.player
-                                    useController = false
-
-                                    /*
-                                     * Capsule already shows its own VIDEO loading
-                                     * state in the player controls, so Media3's
-                                     * built-in buffering spinner is deliberately
-                                     * disabled to avoid a second indicator over
-                                     * the video surface.
-                                     */
-                                    setShowBuffering(PlayerView.SHOW_BUFFERING_NEVER)
-
-                                    /*
-                                     * Fill the entire Capsule video frame while
-                                     * preserving the source aspect ratio.
-                                     * ZOOM crops only the overflowing edges instead
-                                     * of stretching the image or leaving letterbox
-                                     * gaps above/below.
-                                     */
-                                    resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM
-
-                                    setShutterBackgroundColor(android.graphics.Color.BLACK)
-                                    keepScreenOn = true
+                { block, artworkSide ->
+                    when (block) {
+                        CapsuleLightBlock.ARTWORK -> {
+                            Column(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                            ) {
+                                Spacer(Modifier.height(8.dp))
+                                Box(
+                                    Modifier.size(artworkSide),
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    artworkContent()
                                 }
-                            },
-                            update = { playerView ->
-                                if (playerView.player !== playerConnection.player) {
-                                    playerView.player = playerConnection.player
-                                }
-                            },
-                            modifier = Modifier.fillMaxSize(),
-                        )
-                    } else if (hideArtwork) {
-                        Icon(
-                            painter = painterResource(R.drawable.album),
-                            contentDescription = mediaMetadata.title,
-                            tint = secondaryText,
-                            modifier = Modifier.size(72.dp),
-                        )
-                    } else {
-                        AsyncImage(
-                            model = mediaMetadata.thumbnailUrl?.let { artwork ->
-                                // YouTube's =w540 URL rewrite corrupts SoundCloud CDN URLs
-                                // with query parameters; their full-size art is selected at search.
-                                if (mediaMetadata.id.startsWith("soundcloud:")) artwork
-                                else artwork.toHighResThumbnail()
-                            },
-                            contentDescription = mediaMetadata.title,
-                            contentScale =
-                                if (cropAlbumArt) {
-                                    ContentScale.Crop
+
+                                if (!lyricLineEnabled) {
+                                    Spacer(Modifier.height(20.dp))
                                 } else {
-                                    ContentScale.Fit
-                                },
-                            modifier = Modifier.fillMaxSize(),
-                        )
+                                    Spacer(Modifier.height(8.dp))
+                                    Box(Modifier.width(artworkSide)) {
+                                        CapsuleLightLyricLine(
+                                            line =
+                                                capsuleLightLyricLineAt(
+                                                    syncedLyricLines,
+                                                    displayPosition + clampOffset(lyricSyncOffsetMs),
+                                                ),
+                                            textColor = textColor,
+                                        )
+                                    }
+                                    Spacer(Modifier.height(10.dp))
+                                }
+                            }
+                        }
+
+                        CapsuleLightBlock.METADATA -> {
+                            Row(
+                                modifier =
+                                    Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 24.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Column(
+                                    modifier =
+                                        Modifier
+                                            .weight(1f)
+                                            .clipToBounds()
+                                            .padding(end = 10.dp),
+                                ) {
+                                    Text(
+                                        text = mediaMetadata.title,
+                                        color = textColor,
+                                        fontSize = 24.sp,
+                                        lineHeight = 29.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                        modifier = Modifier.fillMaxWidth(),
+                                    )
+
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        if (mediaMetadata.explicit) {
+                                            ExplicitBadge(color = secondaryText)
+                                            Spacer(Modifier.width(5.dp))
+                                        }
+
+                                        Text(
+                                            text = mediaMetadata.artists.joinToString { it.name },
+                                            color = secondaryText,
+                                            fontSize = 17.sp,
+                                            lineHeight = 21.sp,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis,
+                                            modifier =
+                                                Modifier
+                                                    .weight(1f, fill = false)
+                                                    .clip(RoundedCornerShape(8.dp))
+                                                    .clickable(enabled = navigableArtists.isNotEmpty()) {
+                                                        handleArtistClick()
+                                                    }
+                                                    .padding(vertical = 2.dp),
+                                        )
+                                    }
+                                }
+
+                                CapsuleLightFavorite(liked, textColor, onToggleLike)
+                            }
+                        }
+
+                        CapsuleLightBlock.PROGRESS -> {
+                            Column(
+                                modifier =
+                                    Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 24.dp, vertical = 7.dp),
+                            ) {
+                                CapsuleThinSlider(
+                                    value = displayPosition.toFloat(),
+                                    valueRange = 0f..safeDuration.coerceAtLeast(1L).toFloat(),
+                                    enabled = canSeek && safeDuration > 0L,
+                                    activeColor = textColor.copy(alpha = 0.96f),
+                                    inactiveColor = textColor.copy(alpha = 0.24f),
+                                    onValueChange = { onSeekPreview(it.toLong()) },
+                                    onValueChangeFinished = onSeekFinished,
+                                    trackHeight = 2.dp,
+                                    thumbRadius = 3.dp,
+                                    modifier = Modifier.fillMaxWidth().height(28.dp),
+                                )
+
+                                Row(
+                                    modifier = Modifier.fillMaxWidth().padding(horizontal = 2.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                ) {
+                                    Text(
+                                        text = makeTimeString(displayPosition),
+                                        color = secondaryText,
+                                        fontFamily = FontFamily.SansSerif,
+                                        fontSize = 12.sp,
+                                    )
+                                    Text(
+                                        text = if (safeDuration > 0L) makeTimeString(safeDuration) else "",
+                                        color = secondaryText,
+                                        fontFamily = FontFamily.SansSerif,
+                                        fontSize = 12.sp,
+                                    )
+                                }
+                            }
+                        }
+
+                        CapsuleLightBlock.MODE_SWITCH -> {
+                            Row(
+                                modifier =
+                                    Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 24.dp, vertical = 6.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.Center,
+                            ) {
+                                androidx.compose.material3.IconButton(
+                                    onClick = {
+                                        playerConnection.player.shuffleModeEnabled = !shuffleEnabled
+                                    },
+                                    enabled = !isListenTogetherGuest,
+                                    modifier = Modifier.size(48.dp),
+                                ) {
+                                    Icon(
+                                        painterResource(R.drawable.shuffle),
+                                        stringResource(R.string.shuffle),
+                                        tint =
+                                            textColor.copy(
+                                                alpha = if (shuffleEnabled) 1f else 0.5f,
+                                            ),
+                                        modifier = Modifier.size(21.dp),
+                                    )
+                                }
+
+                                CapsuleAudioVideoToggle(
+                                    lightStyle = true,
+                                    state = videoPlaybackState,
+                                    textColor = textColor,
+                                    enabled = !isListenTogetherGuest,
+                                    onAudioClick = {
+                                        playerConnection.service.setCapsulePlaybackMode(
+                                            CapsulePlaybackMode.AUDIO,
+                                        )
+                                    },
+                                    onVideoClick = {
+                                        playerConnection.service.setCapsulePlaybackMode(
+                                            CapsulePlaybackMode.VIDEO,
+                                        )
+                                    },
+                                    modifier = Modifier.weight(1f),
+                                )
+
+                                androidx.compose.material3.IconButton(
+                                    onClick = { showSleepTimerDialog = true },
+                                    enabled = !isListenTogetherGuest,
+                                    modifier = Modifier.size(48.dp),
+                                ) {
+                                    Icon(
+                                        painterResource(R.drawable.bedtime),
+                                        stringResource(R.string.sleep_timer),
+                                        tint =
+                                            textColor.copy(
+                                                alpha = if (sleepTimerEnabled) 1f else 0.5f,
+                                            ),
+                                        modifier = Modifier.size(21.dp),
+                                    )
+                                }
+                            }
+                        }
+
+                        CapsuleLightBlock.CONTROLS -> {
+                            Box(
+                                modifier =
+                                    Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 24.dp, top = 8.dp),
+                            ) {
+                                CapsuleLightControls(
+                                    textColor = textColor,
+                                    shuffleEnabled = shuffleEnabled,
+                                    repeatMode = repeatMode,
+                                    enabled = !isListenTogetherGuest,
+                                    canSkipPrevious = canSkipPrevious,
+                                    canSkipNext = canSkipNext,
+                                    onShuffle = {
+                                        playerConnection.player.shuffleModeEnabled = !shuffleEnabled
+                                    },
+                                    onPrevious = playerConnection::seekToPrevious,
+                                    onNext = playerConnection::seekToNext,
+                                    onRepeat = { playerConnection.player.toggleRepeatMode() },
+                                    orbit = {
+                                        CapsuleOrbitButton(
+                                            isPlaying,
+                                            isLoading,
+                                            visible,
+                                            textColor,
+                                            onPlayPause,
+                                        )
+                                    },
+                                )
+                            }
+                        }
                     }
                 }
-            }
-        },
+            },
+        artwork = artworkContent,
         details = {
             Column(
                 modifier =
