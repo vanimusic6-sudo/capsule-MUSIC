@@ -787,22 +787,63 @@ fun CapsulePlayerContent(
                                     artworkContent()
                                 }
 
-                                if (!lyricLineEnabled) {
+                                // Outside edit mode keep the untouched Light spacing when the lyric
+                                // feature is off. In edit mode the invisible lyric gets its own
+                                // movable placeholder below (or wherever the user moved it).
+                                if (!lyricLineEnabled && !lightEditorEnabled) {
                                     Spacer(Modifier.height(20.dp))
-                                } else {
-                                    Spacer(Modifier.height(8.dp))
-                                    Box(Modifier.width(artworkSide * lightArtworkWidthScale)) {
-                                        CapsuleLightLyricLine(
-                                            line =
-                                                capsuleLightLyricLineAt(
-                                                    syncedLyricLines,
-                                                    displayPosition + clampOffset(lyricSyncOffsetMs),
+                                }
+                            }
+                        }
+
+                        CapsuleLightBlock.LYRIC -> {
+                            when {
+                                lyricLineEnabled -> {
+                                    Column(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalAlignment = Alignment.CenterHorizontally,
+                                    ) {
+                                        Spacer(Modifier.height(8.dp))
+                                        Box(Modifier.width(artworkSide * lightArtworkWidthScale)) {
+                                            CapsuleLightLyricLine(
+                                                line =
+                                                    capsuleLightLyricLineAt(
+                                                        syncedLyricLines,
+                                                        displayPosition + clampOffset(lyricSyncOffsetMs),
+                                                    ),
+                                                textColor = textColor,
+                                            )
+                                        }
+                                        Spacer(Modifier.height(10.dp))
+                                    }
+                                }
+
+                                lightEditorEnabled -> {
+                                    // The feature may be switched off, but its position still
+                                    // exists in the editor so the user can move it before enabling.
+                                    Box(
+                                        modifier =
+                                            Modifier
+                                                .fillMaxWidth()
+                                                .padding(horizontal = 24.dp, vertical = 5.dp)
+                                                .height(30.dp)
+                                                .border(
+                                                    1.dp,
+                                                    textColor.copy(alpha = 0.14f),
+                                                    RoundedCornerShape(12.dp),
                                                 ),
-                                            textColor = textColor,
+                                        contentAlignment = Alignment.Center,
+                                    ) {
+                                        Text(
+                                            text = stringResource(R.string.capsule_light_lyric_placeholder),
+                                            color = textColor.copy(alpha = 0.42f),
+                                            fontSize = 12.sp,
+                                            maxLines = 1,
                                         )
                                     }
-                                    Spacer(Modifier.height(10.dp))
                                 }
+
+                                else -> Unit
                             }
                         }
 
