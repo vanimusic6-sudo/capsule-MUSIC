@@ -346,8 +346,12 @@ fun CapsulePlayerContent(
             videoPlaybackState.phase == CapsuleVideoPhase.PLAYING
 
     LaunchedEffect(isCapsuleVideoPlaying) {
-        if (isCapsuleVideoPlaying) {
+        if (isCapsuleVideoPlaying && artworkResizeActive) {
+            // Switching mode cancels an in-flight artwork resize transaction. The last committed
+            // artwork size remains authoritative; VIDEO must never leave a stale edit lock behind.
             artworkResizeActive = false
+            lightEditInProgress = false
+            lightValidationGeneration += 1
         }
     }
 
