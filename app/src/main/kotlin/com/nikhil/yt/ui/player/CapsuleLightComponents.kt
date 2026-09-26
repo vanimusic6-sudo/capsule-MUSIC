@@ -69,9 +69,9 @@ internal fun CapsulePlayerLayout(
     modifier: Modifier = Modifier,
     onExpandQueue: () -> Unit = {},
     lightEditorEnabled: Boolean = false,
-    lightOrder: List<CapsuleLightBlock> = CapsuleLightBaseOrder,
-    onLightOrderChange: (List<CapsuleLightBlock>) -> Unit = {},
-    onLightOrderSettled: (List<CapsuleLightBlock>) -> Unit = {},
+    lightOrder: List<CapsuleLightElement> = CapsuleLightBaseOrder,
+    onLightOrderChange: (List<CapsuleLightElement>) -> Unit = {},
+    onLightOrderSettled: (List<CapsuleLightElement>) -> Unit = {},
     onLightEditStarted: () -> Unit = {},
     /**
      * Optional block renderer used by the first Capsule "clay" editor.
@@ -79,7 +79,7 @@ internal fun CapsulePlayerLayout(
      * When supplied, Light is rendered as reorderable slots instead of the fixed artwork/details
      * stack. Dense/Immersive and old call sites keep the exact legacy path below.
      */
-    lightBlockContent: (@Composable (CapsuleLightBlock, Dp) -> Unit)? = null,
+    lightElementContent: (@Composable (CapsuleLightElement, Dp, Boolean) -> Unit)? = null,
     /**
      * The sounding lyric line, or null when it is switched off.
      *
@@ -139,9 +139,9 @@ internal fun CapsulePlayerLayout(
                     }
                 }
             }
-            if (lightBlockContent != null) {
+            if (lightElementContent != null) {
                 CompositionLocalProvider(LocalCapsuleLightMenu provides onMenuClick) {
-                    CapsuleLightReorderColumn(
+                    CapsuleLightClayLayout(
                         order = lightOrder,
                         editable = lightEditorEnabled,
                         scrollState = scrollState,
@@ -149,12 +149,12 @@ internal fun CapsulePlayerLayout(
                         onOrderSettled = onLightOrderSettled,
                         onEditStarted = onLightEditStarted,
                         modifier = Modifier.fillMaxWidth().nestedScroll(queueScroll),
-                    ) { block ->
+                    ) { element, insidePanel ->
                         Box(
                             modifier = Modifier.fillMaxWidth(),
                             contentAlignment = Alignment.Center,
                         ) {
-                            lightBlockContent(block, artworkSide)
+                            lightElementContent(element, artworkSide, insidePanel)
                         }
                     }
                 }
