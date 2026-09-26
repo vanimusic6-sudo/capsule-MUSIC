@@ -277,6 +277,7 @@ fun CapsulePlayerContent(
      */
     var lightEditInProgress by remember { mutableStateOf(false) }
     var lightValidationGeneration by remember { mutableStateOf(0) }
+    var artworkResizeActive by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
         if (
@@ -343,6 +344,12 @@ fun CapsulePlayerContent(
     val isCapsuleVideoPlaying =
         videoPlaybackState.mode == CapsulePlaybackMode.VIDEO &&
             videoPlaybackState.phase == CapsuleVideoPhase.PLAYING
+
+    LaunchedEffect(isCapsuleVideoPlaying) {
+        if (isCapsuleVideoPlaying) {
+            artworkResizeActive = false
+        }
+    }
 
     val isListenTogetherGuest =
         (togetherState as? TogetherSessionState.Joined)
@@ -623,7 +630,8 @@ fun CapsulePlayerContent(
                                     (
                                         useClayLayout &&
                                             (
-                                                abs(lightArtworkWidthScale - 1f) > 0.01f ||
+                                                artworkResizeActive ||
+                                                    abs(lightArtworkWidthScale - 1f) > 0.01f ||
                                                     abs(lightArtworkHeightScale - 1f) > 0.01f
                                             )
                                     )
@@ -803,36 +811,45 @@ fun CapsulePlayerContent(
                                 horizontalAlignment = Alignment.CenterHorizontally,
                             ) {
                                 Spacer(Modifier.height(8.dp))
-                                if (isCapsuleVideoPlaying) {
-                                    // Video is not album artwork. Its geometry must remain the
-                                    // legacy Light geometry even when the saved artwork frame is
-                                    // wide/tall from a previous audio edit.
-                                    Box(
-                                        modifier = Modifier.size(artworkSide),
-                                        contentAlignment = Alignment.Center,
-                                    ) {
-                                        artworkContent()
-                                    }
-                                } else {
-                                    CapsuleLightResizableArtwork(
-                                        baseSide = artworkSide,
-                                        widthScale = lightArtworkWidthScale,
-                                        heightScale = lightArtworkHeightScale,
-                                        editable = lightEditorEnabled,
-                                        onEditStarted = beginNestedEdit,
-                                        onResizePreview = { widthScale, heightScale ->
-                                            lightArtworkWidthScale = widthScale
-                                            lightArtworkHeightScale = heightScale
+                                CapsuleLightResizableArtwork(
+                                    baseSide = artworkSide,
+                                    widthScale = lightArtworkWidthScale,
+                                    heightScale = lightArtworkHeightScale,
+                                    // Video replaces only the media contents. The saved artwork
+                                    // footprint remains in layout so every control below stays
+                                    // exactly where the user put it.
+                                    editable = lightEditorEnabled && !isCapsuleVideoPlaying,
+                                    contentAlignment =
+                                        if (isCapsuleVideoPlaying) {
+                                            Alignment.TopCenter
+                                        } else {
+                                            Alignment.Center
                                         },
-                                        onResizeSettled = { widthScale, heightScale ->
-                                            lightArtworkWidthScale = widthScale
-                                            lightArtworkHeightScale = heightScale
-                                            onArtworkWidthScaleChange(widthScale)
-                                            onArtworkHeightScaleChange(heightScale)
-                                            lightEditInProgress = false
-                                            lightValidationGeneration += 1
-                                        },
-                                    ) {
+                                    onEditStarted = {
+                                        artworkResizeActive = true
+                                        beginNestedEdit()
+                                    },
+                                    onResizeSettled = { widthScale, heightScale ->
+                                        lightArtworkWidthScale = widthScale
+                                        lightArtworkHeightScale = heightScale
+                                        onArtworkWidthScaleChange(widthScale)
+                                        onArtworkHeightScaleChange(heightScale)
+                                        artworkResizeActive = false
+                                        lightEditInProgress = false
+                                        lightValidationGeneration += 1
+                                    },
+                                ) {
+                                    if (isCapsuleVideoPlaying) {
+                                        // Fixed legacy video viewport anchored independently from
+                                        // the user's artwork shape. Only the media inside ARTWORK
+                                        // changes; the rest of the Light layout does not relayout.
+                                        Box(
+                                            modifier = Modifier.size(artworkSide),
+                                            contentAlignment = Alignment.Center,
+                                        ) {
+                                            artworkContent()
+                                        }
+                                    } else {
                                         artworkContent()
                                     }
                                 }
