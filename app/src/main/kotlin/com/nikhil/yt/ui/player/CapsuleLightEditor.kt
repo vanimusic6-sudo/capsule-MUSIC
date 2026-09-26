@@ -250,6 +250,7 @@ internal fun CapsuleLightReorderColumn(
     onOrderChange: (List<CapsuleLightBlock>) -> Unit,
     onOrderSettled: (List<CapsuleLightBlock>) -> Unit,
     onGapSettled: (CapsuleLightBlock, Float) -> Unit = { _, _ -> },
+    onGapsSettled: (Map<CapsuleLightBlock, Float>) -> Unit = {},
     onGapsNormalized: (Map<CapsuleLightBlock, Float>) -> Unit = {},
     onEditStarted: () -> Unit = {},
     externalGestureActive: Boolean = false,
@@ -276,6 +277,7 @@ internal fun CapsuleLightReorderColumn(
     val latestOnOrderChange by rememberUpdatedState(onOrderChange)
     val latestOnOrderSettled by rememberUpdatedState(onOrderSettled)
     val latestOnGapSettled by rememberUpdatedState(onGapSettled)
+    val latestOnGapsSettled by rememberUpdatedState(onGapsSettled)
     val latestOnGapsNormalized by rememberUpdatedState(onGapsNormalized)
     val latestOnEditStarted by rememberUpdatedState(onEditStarted)
     val density = LocalDensity.current
@@ -551,10 +553,6 @@ internal fun CapsuleLightReorderColumn(
                                         },
                                         onDragEnd = {
                                             val settled = workingOrder
-                                            val rawGapPx =
-                                                (currentGapPx + gapDeltaPx)
-                                                    .coerceIn(0f, maxGapPx)
-
                                             val actualBounds = bounds[block]
                                             val currentGapForBlockPx =
                                                 with(density) {
@@ -565,39 +563,162 @@ internal fun CapsuleLightReorderColumn(
                                                 (
                                                     (actualBounds?.size ?: 0f) -
                                                         currentGapForBlockPx
-                                                    ).coerceAtLeast(0f)
-                                            val contentTopPx =
-                                                (actualBounds?.start ?: 0f) +
-                                                    currentGapForBlockPx +
-                                                    dragOffsetY
-                                            val distanceToBottomPx =
-                                                viewportHeightPx -
-                                                    (contentTopPx + contentHeightPx)
-                                            val bottomMagnetPx = with(density) { 28.dp.toPx() }
-                                            val gridPx = with(density) { 8.dp.toPx() }
+                                                    ).coerceAtLeast(1f)
+                                            val desiredTopPx =
+                                                (
+                                                    (actualBounds?.start ?: 0f) +
+                                                        currentGapForBlockPx +
+                                                        dragOffsetY
+                                                    ).coerceIn(
+                                                        0f,
+                                                        (viewportHeightPx - contentHeightPx)
+                                                            .coerceAtLeast(0f),
+                                                    )
 
-                                            val anchoredGapPx =
-                                                if (
-                                                    settled.lastOrNull() == block &&
-                                                    kotlin.math.abs(distanceToBottomPx) <= bottomMagnetPx
-                                                ) {
-                                                    (rawGapPx + distanceToBottomPx)
-                                                        .coerceIn(0f, maxGapPx)
-                                                } else {
-                                                    (
-                                                        kotlin.math.round(rawGapPx / gridPx) *
-                                                            gridPx
-                                                        ).coerceIn(0f, maxGapPx)
+                                            fun gapPxFor(
+                                                item: CapsuleLightBlock,
+                                                source: Map<CapsuleLightBlock, Float>,
+                                            ): Float =
+                                                with(density) {
+                                                    ((source[item] ?: 0f)
+                                                        .coerceAtLeast(0f)).dp.toPx()
                                                 }
 
-                                            val finalGapDp =
-                                                (anchoredGapPx / density.density)
+                                            fun contentHeightFor(item: CapsuleLightBlock): Float {
+                                                val measured = bounds[item]?.size ?: 0f
+                                                val gap = gapPxFor(item, effectiveGapsDp)
+                                                return (measured - gap).coerceAtLeast(0f)
+                                            }
+
+                                            // Free space is not owned by a single block anymore.
+                                            // Rebuild the gaps around the drop point, splitting the
+                                            // empty region before the next block when necessary.
+                                            val requested = effectiveGapsDp.toMutableMap()
+                                            requested[block] = 0f
+
+                                            val settledIndex = settled.indexOf(block)
+                                            var baseTopPx = 0f
+                                            if (settledIndex > 0) {
+                                                for (index in 0 until settledIndex) {
+                                                    val item = settled[index]
+                                                    baseTopPx += gapPxFor(item, requested)
+                                                    baseTopPx += contentHeightFor(item)
+                                                }
+                                            }
+
+                                            var anchoredGapPx =
+                                                (desiredTopPx - baseTopPx)
+                                                    .coerceAtLeast(0f)
+                                            val gridPx = with(density) { 8.dp.toPx() }
+                                            anchoredGapPx =
+                                                kotlin.math.round(anchoredGapPx / gridPx) * gridPx
+
+                                            val nextBlock =
+                                                settled.getOrNull(settledIndex + 1)
+                                            if (nextBlock != null) {
+                                                val oldNextGapPx =
+                                                    gapPxFor(nextBlock, effectiveGapsDp)
+
+                                                // Dropping inside an existing empty region splits
+                                                // that region instead of duplicating it.
+                                                if (anchoredGapPx < oldNextGapPx) {
+                                                    val remainder =
+                                                        (
+                                                            oldNextGapPx -
+                                                                anchoredGapPx -
+                                                                contentHeightPx
+                                                            ).coerceAtLeast(0f)
+                                                    requested[nextBlock] =
+                                                        remainder / density.density
+                                                }
+                                            }
+
+                                            requested[block] =
+                                                anchoredGapPx / density.density
+
+                                            // Give the block being moved first claim on free
+                                            // vertical space. That makes an empty-space/bottom
+                                            // anchor stable instead of being eaten by older gaps.
+                                            val totalContentPx =
+                                                settled.sumOf { item ->
+                                                    contentHeightFor(item).toDouble()
+                                                }.toFloat()
+                                            var remainingFreePx =
+                                                (viewportHeightPx - totalContentPx)
                                                     .coerceAtLeast(0f)
 
-                                            // Commit all state in the same input frame. Since every
-                                            // neighbour is already visually at its future slot,
-                                            // the physical relayout is invisible.
-                                            latestOnGapSettled(block, finalGapDp)
+                                            val normalized =
+                                                requested.toMutableMap().apply {
+                                                    val movedRequestedPx =
+                                                        gapPxFor(block, requested)
+                                                            .coerceAtMost(remainingFreePx)
+                                                    this[block] =
+                                                        movedRequestedPx / density.density
+                                                    remainingFreePx =
+                                                        (remainingFreePx - movedRequestedPx)
+                                                            .coerceAtLeast(0f)
+
+                                                    settled.forEach { item ->
+                                                        if (item == block) return@forEach
+                                                        val requestedPx =
+                                                            gapPxFor(item, requested)
+                                                        val acceptedPx =
+                                                            requestedPx.coerceAtMost(remainingFreePx)
+                                                        this[item] =
+                                                            acceptedPx / density.density
+                                                        remainingFreePx =
+                                                            (remainingFreePx - acceptedPx)
+                                                                .coerceAtLeast(0f)
+                                                    }
+                                                }.toMap()
+
+                                            // If this is the last block and the user releases near
+                                            // the bottom wall, spend any remaining free space on
+                                            // its own gap so it locks directly above Queue.
+                                            val finalGaps =
+                                                if (settled.lastOrNull() == block) {
+                                                    val movedGapPx =
+                                                        gapPxFor(block, normalized)
+                                                    val otherGapPx =
+                                                        settled
+                                                            .filterNot { it == block }
+                                                            .sumOf { item ->
+                                                                gapPxFor(item, normalized).toDouble()
+                                                            }.toFloat()
+                                                    val maxMovedGapPx =
+                                                        (
+                                                            viewportHeightPx -
+                                                                totalContentPx -
+                                                                otherGapPx
+                                                            ).coerceAtLeast(0f)
+                                                    val distanceToBottomPx =
+                                                        viewportHeightPx -
+                                                            (desiredTopPx + contentHeightPx)
+                                                    val bottomMagnetPx =
+                                                        with(density) { 36.dp.toPx() }
+
+                                                    if (
+                                                        kotlin.math.abs(distanceToBottomPx) <=
+                                                            bottomMagnetPx
+                                                    ) {
+                                                        normalized.toMutableMap().apply {
+                                                            this[block] =
+                                                                maxMovedGapPx / density.density
+                                                        }.toMap()
+                                                    } else {
+                                                        normalized
+                                                    }
+                                                } else {
+                                                    normalized
+                                                }
+
+                                            latestOnGapsSettled(finalGaps)
+                                            // Keep the old single-gap callback for compatibility,
+                                            // but it now receives the already-normalized value.
+                                            latestOnGapSettled(
+                                                block,
+                                                finalGaps[block] ?: 0f,
+                                            )
                                             latestOnOrderChange(settled)
                                             latestOnOrderSettled(settled)
                                             dragged = null
@@ -886,6 +1007,7 @@ internal fun CapsuleLightResizableArtwork(
 ) {
     var selected by remember { mutableStateOf(false) }
     var resizing by remember { mutableStateOf(false) }
+    var pendingCommit by remember { mutableStateOf<Pair<Float, Float>?>(null) }
     var currentWidth by remember {
         mutableFloatStateOf(widthScale.coerceIn(0.55f, 1.08f))
     }
@@ -901,20 +1023,35 @@ internal fun CapsuleLightResizableArtwork(
     // External persisted state may change after reset/reload, but never replace the live state
     // object while a resize gesture is running.
     LaunchedEffect(widthScale, heightScale, maxHeightScale) {
-        if (!resizing) {
-            currentWidth = widthScale.coerceIn(0.55f, 1.08f)
-            currentHeight =
-                heightScale.coerceIn(
-                    0.55f,
-                    maxHeightScale.coerceAtLeast(0.55f),
-                )
+        if (resizing) return@LaunchedEffect
+
+        val pending = pendingCommit
+        if (pending != null) {
+            val widthArrived =
+                kotlin.math.abs(widthScale - pending.first) <= 0.005f
+            val heightArrived =
+                kotlin.math.abs(heightScale - pending.second) <= 0.005f
+            if (widthArrived && heightArrived) {
+                pendingCommit = null
+            }
+            // Until the parent catches up, keep the exact local frame that the
+            // finger produced. Never flash back through the previous saved size.
+            return@LaunchedEffect
         }
+
+        currentWidth = widthScale.coerceIn(0.55f, 1.08f)
+        currentHeight =
+            heightScale.coerceIn(
+                0.55f,
+                maxHeightScale.coerceAtLeast(0.55f),
+            )
     }
 
     LaunchedEffect(editable) {
         if (!editable) {
             selected = false
             resizing = false
+            pendingCommit = null
         }
     }
 
@@ -970,8 +1107,13 @@ internal fun CapsuleLightResizableArtwork(
                         currentHeight = h
                     },
                     onResizeSettled = {
+                        val finalWidth = currentWidth
+                        val finalHeight = currentHeight
+                        pendingCommit = finalWidth to finalHeight
+                        // Parent commit first; only then release the local gesture
+                        // latch. This removes the one-frame rollback on fast shrink.
+                        onResizeSettled(finalWidth, finalHeight)
                         resizing = false
-                        onResizeSettled(currentWidth, currentHeight)
                     },
                 )
             }
