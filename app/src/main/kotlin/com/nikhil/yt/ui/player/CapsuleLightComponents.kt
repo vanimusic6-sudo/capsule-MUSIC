@@ -110,7 +110,7 @@ internal fun CapsulePlayerLayout(
             val queueThreshold = with(LocalDensity.current) { 64.dp.toPx() }
             // A downward pull past the top keeps Capsule's existing queue gesture.
             // Scrolling back through the controls must not open the queue.
-            val queueScroll = remember(scrollState, queueThreshold) {
+            val queueScroll = remember(scrollState, queueThreshold, lightEditorEnabled) {
                 object : NestedScrollConnection {
                     var pulled = 0f
                     var opened = false
@@ -120,6 +120,13 @@ internal fun CapsulePlayerLayout(
                         available: Offset,
                         source: NestedScrollSource,
                     ): Offset {
+                        // Editing owns every drag gesture, including artwork resize handles.
+                        // The queue pull must be completely dormant or it steals downward resize.
+                        if (lightEditorEnabled) {
+                            pulled = 0f
+                            opened = false
+                            return Offset.Zero
+                        }
                         if (source != NestedScrollSource.UserInput) return Offset.Zero
                         if (available.y > 0f && scrollState.value == 0) {
                             pulled += available.y
@@ -134,6 +141,11 @@ internal fun CapsulePlayerLayout(
                     }
 
                     override suspend fun onPreFling(available: Velocity): Velocity {
+                        if (lightEditorEnabled) {
+                            pulled = 0f
+                            opened = false
+                            return Velocity.Zero
+                        }
                         val wasPulling = pulled > 0f || opened
                         pulled = 0f
                         opened = false
