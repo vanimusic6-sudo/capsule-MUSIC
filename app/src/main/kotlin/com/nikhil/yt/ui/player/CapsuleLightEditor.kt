@@ -214,6 +214,7 @@ internal fun CapsuleLightReorderColumn(
     onOrderChange: (List<CapsuleLightBlock>) -> Unit,
     onOrderSettled: (List<CapsuleLightBlock>) -> Unit,
     onEditStarted: () -> Unit = {},
+    externalGestureActive: Boolean = false,
     modifier: Modifier = Modifier,
     content: @Composable (CapsuleLightBlock) -> Unit,
 ) {
@@ -235,7 +236,7 @@ internal fun CapsuleLightReorderColumn(
         modifier =
             modifier.verticalScroll(
                 state = scrollState,
-                enabled = dragged == null,
+                enabled = dragged == null && !externalGestureActive,
             ),
     ) {
         order.forEach { block ->
