@@ -221,12 +221,33 @@ internal fun CapsulePlayerLayout(
                                     .fillMaxWidth()
                                     .height(editableHeight)
                                     .clipToBounds(),
-                        ) { block ->
+                        ) { block, canvasMaxArtworkHeight ->
+                            val effectiveArtworkMaxScale =
+                                if (
+                                    block == CapsuleLightBlock.ARTWORK &&
+                                    canvasMaxArtworkHeight != null &&
+                                    artworkSide.value > 0f
+                                ) {
+                                    minOf(
+                                        artworkMaxHeightScale,
+                                        (
+                                            canvasMaxArtworkHeight.value /
+                                                artworkSide.value
+                                            ).coerceAtLeast(0.55f),
+                                    )
+                                } else {
+                                    artworkMaxHeightScale
+                                }
+
                             Box(
                                 modifier = Modifier.fillMaxWidth(),
                                 contentAlignment = Alignment.Center,
                             ) {
-                                lightBlockContent(block, artworkSide, artworkMaxHeightScale)
+                                lightBlockContent(
+                                    block,
+                                    artworkSide,
+                                    effectiveArtworkMaxScale,
+                                )
                             }
                         }
 
