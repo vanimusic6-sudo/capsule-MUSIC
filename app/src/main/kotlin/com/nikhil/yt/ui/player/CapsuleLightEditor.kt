@@ -371,6 +371,7 @@ internal fun <T : Enum<T>> CapsuleLightReorderRow(
     onEditStarted: () -> Unit,
     modifier: Modifier = Modifier,
     verticalAlignment: Alignment.Vertical = Alignment.CenterVertically,
+    dragHandleOnly: Boolean = false,
     content: @Composable RowScope.(T) -> Unit,
 ) {
     val latestOrder by rememberUpdatedState(order)
@@ -404,6 +405,71 @@ internal fun <T : Enum<T>> CapsuleLightReorderRow(
                         label = "capsuleInnerLift",
                     )
 
+                val dragGesture =
+                    if (!editable) {
+                        Modifier
+                    } else {
+                        Modifier.pointerInput(item) {
+                            detectDragGesturesAfterLongPress(
+                                onDragStart = {
+                                    latestOnEditStarted()
+                                    workingOrder = latestOrder
+                                    dragged = item
+                                    dragX = 0f
+                                },
+                                onDrag = { change, amount ->
+                                    change.consume()
+                                    dragX += amount.x
+
+                                    val index = workingOrder.indexOf(item)
+                                    val itemBounds = bounds[item]
+                                    if (index < 0 || itemBounds == null) {
+                                        return@detectDragGesturesAfterLongPress
+                                    }
+
+                                    val center = itemBounds.center + dragX
+                                    var target = index
+
+                                    if (index > 0) {
+                                        val previous = workingOrder[index - 1]
+                                        val previousCenter = bounds[previous]?.center
+                                        if (previousCenter != null && center < previousCenter) {
+                                            target = index - 1
+                                        }
+                                    }
+
+                                    if (target == index && index < workingOrder.lastIndex) {
+                                        val next = workingOrder[index + 1]
+                                        val nextCenter = bounds[next]?.center
+                                        if (nextCenter != null && center > nextCenter) {
+                                            target = index + 1
+                                        }
+                                    }
+
+                                    if (target != index) {
+                                        val moved = workingOrder.toMutableList()
+                                        moved.removeAt(index)
+                                        moved.add(target, item)
+                                        workingOrder = moved
+                                        latestOnOrderChange(moved)
+                                    }
+                                },
+                                onDragEnd = {
+                                    val settledOrder = workingOrder
+                                    dragged = null
+                                    dragX = 0f
+                                    latestOnOrderSettled(settledOrder)
+                                },
+                                onDragCancel = {
+                                    dragged = null
+                                    dragX = 0f
+                                    latestOnOrderChange(workingOrder)
+                                    latestOnOrderSettled(workingOrder)
+                                },
+                            )
+                        }
+                    }
+
                 Box(
                     modifier =
                         Modifier
@@ -430,71 +496,7 @@ internal fun <T : Enum<T>> CapsuleLightReorderRow(
                                 }
                                 lastBase = next
                             }
-                            .then(
-                                if (!editable) {
-                                    Modifier
-                                } else {
-                                    Modifier.pointerInput(item) {
-                                        detectDragGesturesAfterLongPress(
-                                            onDragStart = {
-                                                latestOnEditStarted()
-                                                workingOrder = latestOrder
-                                                dragged = item
-                                                dragX = 0f
-                                            },
-                                            onDrag = { change, amount ->
-                                                change.consume()
-                                                dragX += amount.x
-
-                                                val index = workingOrder.indexOf(item)
-                                                val itemBounds = bounds[item]
-                                                if (index < 0 || itemBounds == null) {
-                                                    return@detectDragGesturesAfterLongPress
-                                                }
-
-                                                val center = itemBounds.center + dragX
-                                                var target = index
-
-                                                if (index > 0) {
-                                                    val previous = workingOrder[index - 1]
-                                                    val previousCenter = bounds[previous]?.center
-                                                    if (previousCenter != null && center < previousCenter) {
-                                                        target = index - 1
-                                                    }
-                                                }
-
-                                                if (target == index && index < workingOrder.lastIndex) {
-                                                    val next = workingOrder[index + 1]
-                                                    val nextCenter = bounds[next]?.center
-                                                    if (nextCenter != null && center > nextCenter) {
-                                                        target = index + 1
-                                                    }
-                                                }
-
-                                                if (target != index) {
-                                                    val moved = workingOrder.toMutableList()
-                                                    moved.removeAt(index)
-                                                    moved.add(target, item)
-                                                    workingOrder = moved
-                                                    latestOnOrderChange(moved)
-                                                }
-                                            },
-                                            onDragEnd = {
-                                                val settledOrder = workingOrder
-                                                dragged = null
-                                                dragX = 0f
-                                                latestOnOrderSettled(settledOrder)
-                                            },
-                                            onDragCancel = {
-                                                dragged = null
-                                                dragX = 0f
-                                                latestOnOrderChange(workingOrder)
-                                                latestOnOrderSettled(workingOrder)
-                                            },
-                                        )
-                                    }
-                                },
-                            )
+                            .then(if (dragHandleOnly) Modifier else dragGesture)
                             .zIndex(if (selected) 4f else 0f)
                             .graphicsLayer {
                                 translationX = if (selected) dragX else settle.value
@@ -504,6 +506,28 @@ internal fun <T : Enum<T>> CapsuleLightReorderRow(
                     contentAlignment = Alignment.Center,
                 ) {
                     content(item)
+
+                    if (editable && dragHandleOnly) {
+                        Box(
+                            modifier =
+                                Modifier
+                                    .align(Alignment.TopCenter)
+                                    .width(34.dp)
+                                    .height(16.dp)
+                                    .then(dragGesture),
+                            contentAlignment = Alignment.TopCenter,
+                        ) {
+                            Box(
+                                Modifier
+                                    .width(18.dp)
+                                    .height(3.dp)
+                                    .background(
+                                        MaterialTheme.colorScheme.onSurface.copy(alpha = 0.20f),
+                                        RoundedCornerShape(100.dp),
+                                    ),
+                            )
+                        }
+                    }
                 }
             }
         }
@@ -557,7 +581,6 @@ internal fun CapsuleLightResizableArtwork(
                             detectDragGesturesAfterLongPress(
                                 onDragStart = {
                                     selected = true
-                                    onEditStarted()
                                 },
                                 onDrag = { change, _ -> change.consume() },
                             )
