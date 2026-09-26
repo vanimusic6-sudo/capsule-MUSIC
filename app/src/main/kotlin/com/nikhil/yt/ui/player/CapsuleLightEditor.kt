@@ -3,7 +3,6 @@ package com.nikhil.yt.ui.player
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
-import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectDragGestures
@@ -20,7 +19,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
@@ -247,12 +245,12 @@ private data class AxisBounds(
 internal fun CapsuleLightReorderColumn(
     order: List<CapsuleLightBlock>,
     editable: Boolean,
-    scrollState: ScrollState,
     gapsDp: Map<CapsuleLightBlock, Float> = emptyMap(),
     viewportHeight: Dp,
     onOrderChange: (List<CapsuleLightBlock>) -> Unit,
     onOrderSettled: (List<CapsuleLightBlock>) -> Unit,
     onGapSettled: (CapsuleLightBlock, Float) -> Unit = { _, _ -> },
+    onGapsNormalized: (Map<CapsuleLightBlock, Float>) -> Unit = {},
     onEditStarted: () -> Unit = {},
     externalGestureActive: Boolean = false,
     modifier: Modifier = Modifier,
@@ -262,11 +260,8 @@ internal fun CapsuleLightReorderColumn(
         Column(
             modifier =
                 modifier
-                    .clipToBounds()
-                    .verticalScroll(
-                        state = scrollState,
-                        enabled = !externalGestureActive,
-                    ),
+                    .height(viewportHeight)
+                    .clipToBounds(),
         ) {
             order.forEach { block ->
                 val gap = (gapsDp[block] ?: 0f).coerceAtLeast(0f)
@@ -281,6 +276,7 @@ internal fun CapsuleLightReorderColumn(
     val latestOnOrderChange by rememberUpdatedState(onOrderChange)
     val latestOnOrderSettled by rememberUpdatedState(onOrderSettled)
     val latestOnGapSettled by rememberUpdatedState(onGapSettled)
+    val latestOnGapsNormalized by rememberUpdatedState(onGapsNormalized)
     val latestOnEditStarted by rememberUpdatedState(onEditStarted)
     val density = LocalDensity.current
 
@@ -313,6 +309,53 @@ internal fun CapsuleLightReorderColumn(
         return null
     }
 
+    val viewportHeightPx = with(density) { viewportHeight.toPx() }
+    val allBlocksMeasured = latestOrder.all { bounds[it] != null }
+    val effectiveGapsDp =
+        if (!allBlocksMeasured) {
+            gapsDp
+        } else {
+            var remainingGapPx =
+                (
+                    viewportHeightPx -
+                        latestOrder.sumOf { block ->
+                            val rawGapPx =
+                                with(density) {
+                                    ((effectiveGapsDp[block] ?: 0f).coerceAtLeast(0f)).dp.toPx()
+                                }
+                            ((bounds[block]?.size ?: 0f) - rawGapPx)
+                                .coerceAtLeast(0f)
+                                .toDouble()
+                        }.toFloat()
+                    )
+                    .coerceAtLeast(0f)
+
+            buildMap {
+                latestOrder.forEach { block ->
+                    val requestedPx =
+                        with(density) {
+                            ((effectiveGapsDp[block] ?: 0f).coerceAtLeast(0f)).dp.toPx()
+                        }
+                    val acceptedPx = requestedPx.coerceAtMost(remainingGapPx)
+                    put(block, acceptedPx / density.density)
+                    remainingGapPx = (remainingGapPx - acceptedPx).coerceAtLeast(0f)
+                }
+            }
+        }
+
+    LaunchedEffect(effectiveGapsDp, gapsDp, allBlocksMeasured) {
+        if (
+            allBlocksMeasured &&
+            latestOrder.any { block ->
+                kotlin.math.abs(
+                    (effectiveGapsDp[block] ?: 0f) - (effectiveGapsDp[block] ?: 0f),
+                ) > 0.05f
+            }
+        ) {
+            latestOnGapsNormalized(effectiveGapsDp)
+        }
+    }
+
     val draggedBounds = dragged?.let(bounds::get)
     val draggedTargetStart =
         dragged?.let { item ->
@@ -326,17 +369,17 @@ internal fun CapsuleLightReorderColumn(
     val currentGapPx =
         dragged?.let { item ->
             with(density) {
-                ((gapsDp[item] ?: 0f).coerceAtLeast(0f)).dp.toPx()
+                ((effectiveGapsDp[item] ?: 0f).coerceAtLeast(0f)).dp.toPx()
             }
         } ?: 0f
-    val viewportHeightPx = with(density) { viewportHeight.toPx() }
     val measuredTotalHeightPx =
         latestOrder.sumOf { block ->
             (bounds[block]?.size ?: 0f).toDouble()
         }.toFloat()
     val maxGapPx =
         if (measuredTotalHeightPx > 0f) {
-            val heightWithoutCurrentGap = (measuredTotalHeightPx - currentGapPx).coerceAtLeast(0f)
+            val heightWithoutCurrentGap =
+                (measuredTotalHeightPx - currentGapPx).coerceAtLeast(0f)
             (viewportHeightPx - heightWithoutCurrentGap)
                 .coerceAtLeast(currentGapPx.coerceAtLeast(0f))
         } else {
@@ -353,16 +396,13 @@ internal fun CapsuleLightReorderColumn(
     Column(
         modifier =
             modifier
-                .clipToBounds()
-                .verticalScroll(
-                    state = scrollState,
-                    enabled = dragged == null && !externalGestureActive,
-                ),
+                .height(viewportHeight)
+                .clipToBounds(),
     ) {
         // Important: render the committed order, not workingOrder.
         order.forEach { block ->
             key(block) {
-                val gap = (gapsDp[block] ?: 0f).coerceAtLeast(0f)
+                val gap = (effectiveGapsDp[block] ?: 0f).coerceAtLeast(0f)
                 val selected = dragged == block
                 val actual = bounds[block]
                 val virtualStart =
@@ -440,12 +480,12 @@ internal fun CapsuleLightReorderColumn(
                                                 ?: return@detectDragGesturesAfterLongPress
                                             val gapPx =
                                                 with(density) {
-                                                    ((gapsDp[block] ?: 0f).coerceAtLeast(0f)).dp.toPx()
+                                                    ((effectiveGapsDp[block] ?: 0f).coerceAtLeast(0f)).dp.toPx()
                                                 }
                                             val contentStart = actualBounds.start + gapPx
                                             val contentHeight =
                                                 (actualBounds.size - gapPx).coerceAtLeast(1f)
-                                            val topInViewport = contentStart - scrollState.value
+                                            val topInViewport = contentStart
                                             val minOffset = -topInViewport
                                             val maxOffset =
                                                 (viewportHeightPx - contentHeight - topInViewport)
@@ -511,8 +551,47 @@ internal fun CapsuleLightReorderColumn(
                                         },
                                         onDragEnd = {
                                             val settled = workingOrder
+                                            val rawGapPx =
+                                                (currentGapPx + gapDeltaPx)
+                                                    .coerceIn(0f, maxGapPx)
+
+                                            val actualBounds = bounds[block]
+                                            val currentGapForBlockPx =
+                                                with(density) {
+                                                    ((effectiveGapsDp[block] ?: 0f)
+                                                        .coerceAtLeast(0f)).dp.toPx()
+                                                }
+                                            val contentHeightPx =
+                                                (
+                                                    (actualBounds?.size ?: 0f) -
+                                                        currentGapForBlockPx
+                                                    ).coerceAtLeast(0f)
+                                            val contentTopPx =
+                                                (actualBounds?.start ?: 0f) +
+                                                    currentGapForBlockPx +
+                                                    dragOffsetY
+                                            val distanceToBottomPx =
+                                                viewportHeightPx -
+                                                    (contentTopPx + contentHeightPx)
+                                            val bottomMagnetPx = with(density) { 28.dp.toPx() }
+                                            val gridPx = with(density) { 8.dp.toPx() }
+
+                                            val anchoredGapPx =
+                                                if (
+                                                    settled.lastOrNull() == block &&
+                                                    kotlin.math.abs(distanceToBottomPx) <= bottomMagnetPx
+                                                ) {
+                                                    (rawGapPx + distanceToBottomPx)
+                                                        .coerceIn(0f, maxGapPx)
+                                                } else {
+                                                    (
+                                                        kotlin.math.round(rawGapPx / gridPx) *
+                                                            gridPx
+                                                        ).coerceIn(0f, maxGapPx)
+                                                }
+
                                             val finalGapDp =
-                                                ((currentGapPx + gapDeltaPx) / density.density)
+                                                (anchoredGapPx / density.density)
                                                     .coerceAtLeast(0f)
 
                                             // Commit all state in the same input frame. Since every
