@@ -65,6 +65,7 @@ import com.nikhil.yt.ui.screens.settings.BackupAndRestore
 import com.nikhil.yt.ui.screens.settings.VeluneSettingsScreen
 import com.nikhil.yt.ui.screens.settings.VeluneAccountSettingsScreen
 import com.nikhil.yt.ui.screens.settings.ChangelogScreen
+import com.nikhil.yt.ui.screens.settings.CapsuleCustomizeSettings
 import com.nikhil.yt.ui.screens.settings.ContentSettings
 import com.nikhil.yt.ui.screens.settings.DarkMode
 import com.nikhil.yt.ui.screens.settings.DiscordLoginScreen
@@ -295,6 +296,9 @@ fun NavGraphBuilder.navigationBuilder(
     }
     routeComposable("settings/appearance") {
         AppearanceSettings(navController, scrollBehavior)
+    }
+    routeComposable("settings/capsule_customize") {
+        CapsuleCustomizeSettings(navController)
     }
     routeComposable("settings/appearance/palette_picker") {
         PalettePickerScreen(navController)
