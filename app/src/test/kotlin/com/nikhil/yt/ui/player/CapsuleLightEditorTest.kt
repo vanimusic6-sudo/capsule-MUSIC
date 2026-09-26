@@ -9,7 +9,7 @@ import org.junit.Test
 class CapsuleLightEditorTest {
     @After
     fun tearDown() {
-        CapsuleLightEditorProcessGuard.end()
+        CapsuleLightEditorProcessGuard.resetForTesting()
     }
 
     @Test
@@ -53,12 +53,12 @@ class CapsuleLightEditorTest {
     }
 
     @Test
-    fun processGuardOnlyBeginsOnceUntilEnded() {
-        assertTrue(CapsuleLightEditorProcessGuard.begin())
-        assertFalse(CapsuleLightEditorProcessGuard.begin())
+    fun processGuardChecksRecoveryOnlyOncePerProcess() {
+        assertTrue(CapsuleLightEditorProcessGuard.shouldCheckRecovery())
+        assertFalse(CapsuleLightEditorProcessGuard.shouldCheckRecovery())
 
-        CapsuleLightEditorProcessGuard.end()
+        CapsuleLightEditorProcessGuard.resetForTesting()
 
-        assertTrue(CapsuleLightEditorProcessGuard.begin())
+        assertTrue(CapsuleLightEditorProcessGuard.shouldCheckRecovery())
     }
 }
