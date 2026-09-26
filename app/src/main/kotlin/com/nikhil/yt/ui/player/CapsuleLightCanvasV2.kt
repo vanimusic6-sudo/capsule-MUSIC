@@ -17,13 +17,13 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
@@ -43,8 +43,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.ui.layout.positionInParent
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -683,196 +682,188 @@ internal fun CapsuleLightCanvasV2(
             }
         }
 
-        // The Column gives every block its natural, unconstrained height on the very first frame.
-        // Positioning is then purely a render translation from that safe compact base, so no block
-        // can be compressed by "remaining height" constraints.
-        Column(
-            modifier =
-                Modifier
-                    .fillMaxWidth()
-                    .clipToBounds(),
-        ) {
-            order.forEach { block ->
-                key(block) {
-                    val selected = dragged == block
-                    val bound = bounds[block]
-                    val baseTop = bound?.baseTopPx ?: 0f
-                    val normalTop =
-                        activePositionsPx[block] ?: baseTop
+        // Every outer block is measured independently. Nothing receives "remaining height" from
+        // a Column, so growing artwork can never compress metadata/progress/mode/controls.
+        order.forEach { block ->
+            key(block) {
+                val selected = dragged == block
+                val normalTop =
+                    activePositionsPx[block] ?: 0f
 
-                    val desiredDraggedTop =
-                        if (selected) {
-                            val h = heightsPx[block] ?: 0f
-                            (dragOriginTopPx + dragDeltaPx)
-                                .coerceIn(
-                                    0f,
-                                    (canvasHeightPx - h).coerceAtLeast(0f),
+                val desiredDraggedTop =
+                    if (selected) {
+                        val h = heightsPx[block] ?: 0f
+                        (dragOriginTopPx + dragDeltaPx)
+                            .coerceIn(
+                                0f,
+                                (canvasHeightPx - h).coerceAtLeast(0f),
+                            )
+                    } else {
+                        normalTop
+                    }
+
+                val visualTop =
+                    if (selected) {
+                        val selectedTarget = target
+                        if (selectedTarget?.kind == LightDropKind.DOCK) {
+                            // The held object moves toward the fixed neighbour. The neighbour only
+                            // moves if the collision solver genuinely needs to make room.
+                            desiredDraggedTop * 0.28f +
+                                selectedTarget.topPx * 0.72f
+                        } else {
+                            desiredDraggedTop
+                        }
+                    } else {
+                        normalTop
+                    }
+
+                val animatedTop by
+                    animateFloatAsState(
+                        targetValue = visualTop,
+                        animationSpec =
+                            if (selected) {
+                                spring(
+                                    dampingRatio = 1f,
+                                    stiffness = Spring.StiffnessHigh,
                                 )
-                        } else {
-                            normalTop
-                        }
-
-                    val visualTop =
-                        if (selected) {
-                            val selectedTarget = target
-                            if (selectedTarget?.kind == LightDropKind.DOCK) {
-                                // Magnet the object under the finger toward the fixed neighbour.
-                                desiredDraggedTop * 0.28f +
-                                    selectedTarget.topPx * 0.72f
                             } else {
-                                // Empty cell is previewed separately. The held object remains
-                                // attached to the finger until release.
-                                desiredDraggedTop
-                            }
-                        } else {
-                            normalTop
-                        }
+                                spring(
+                                    dampingRatio = 0.86f,
+                                    stiffness = Spring.StiffnessMediumLow,
+                                )
+                            },
+                        label = "CapsuleLightCanvasV2_${block.name}",
+                    )
 
-                    val animatedTop by
-                        animateFloatAsState(
-                            targetValue = visualTop,
-                            animationSpec =
-                                if (selected) {
-                                    spring(
-                                        dampingRatio = 1f,
-                                        stiffness = Spring.StiffnessHigh,
-                                    )
-                                } else {
-                                    spring(
-                                        dampingRatio = 0.86f,
-                                        stiffness = Spring.StiffnessMediumLow,
-                                    )
-                                },
-                            label = "CapsuleLightCanvasV2_${block.name}",
-                        )
-
-                    Box(
-                        modifier =
-                            Modifier
-                                .fillMaxWidth()
-                                .onGloballyPositioned { coordinates ->
+                Box(
+                    modifier =
+                        Modifier
+                            .fillMaxWidth()
+                            .wrapContentHeight(unbounded = true)
+                            .onSizeChanged { size ->
+                                val nextHeight = size.height.toFloat()
+                                val previous = bounds[block]?.heightPx
+                                if (previous == null || abs(previous - nextHeight) > 0.5f) {
                                     bounds[block] =
                                         LightBounds(
-                                            baseTopPx = coordinates.positionInParent().y,
-                                            heightPx = coordinates.size.height.toFloat(),
+                                            baseTopPx = 0f,
+                                            heightPx = nextHeight,
                                         )
                                 }
-                                .graphicsLayer {
-                                    translationY = animatedTop - baseTop
-                                }
-                                .zIndex(if (selected) 4f else 0f),
-                    ) {
-                        content(block)
-
-                        if (editable) {
-                            Box(
-                                modifier =
-                                    Modifier
-                                        .align(Alignment.TopCenter)
-                                        .width(56.dp)
-                                        .height(22.dp)
-                                        .pointerInput(block, allMeasured) {
-                                            if (!allMeasured) return@pointerInput
-
-                                            detectDragGesturesAfterLongPress(
-                                                onDragStart = {
-                                                    val currentPositions =
-                                                        resolvedPositionsPx
-                                                    if (currentPositions.isEmpty()) {
-                                                        return@detectDragGesturesAfterLongPress
-                                                    }
-
-                                                    latestOnEditStarted()
-                                                    dragged = block
-                                                    frozenOrder = resolvedOrder
-                                                    frozenPositionsPx = currentPositions
-                                                    dragOriginTopPx =
-                                                        currentPositions[block]
-                                                            ?: 0f
-                                                    dragDeltaPx = 0f
-
-                                                    target =
-                                                        resolveTarget(
-                                                            dragged = block,
-                                                            desiredTopPx = dragOriginTopPx,
-                                                            baseOrder = resolvedOrder,
-                                                            basePositions = currentPositions,
-                                                            heights = heightsPx,
-                                                            canvasHeightPx = canvasHeightPx,
-                                                            gapPx = gapPx,
-                                                            cellStepPx = cellStepPx,
-                                                            normalMagnetPx = normalMagnetPx,
-                                                            preferredMagnetPx = preferredMagnetPx,
-                                                        )
-                                                },
-                                                onDrag = { change, amount ->
-                                                    change.consume()
-                                                    dragDeltaPx += amount.y
-
-                                                    val h = heightsPx[block] ?: 0f
-                                                    val desired =
-                                                        (dragOriginTopPx + dragDeltaPx)
-                                                            .coerceIn(
-                                                                0f,
-                                                                (
-                                                                    canvasHeightPx -
-                                                                        h
-                                                                    ).coerceAtLeast(0f),
-                                                            )
-
-                                                    target =
-                                                        resolveTarget(
-                                                            dragged = block,
-                                                            desiredTopPx = desired,
-                                                            baseOrder = frozenOrder,
-                                                            basePositions = frozenPositionsPx,
-                                                            heights = heightsPx,
-                                                            canvasHeightPx = canvasHeightPx,
-                                                            gapPx = gapPx,
-                                                            cellStepPx = cellStepPx,
-                                                            normalMagnetPx = normalMagnetPx,
-                                                            preferredMagnetPx = preferredMagnetPx,
-                                                        )
-                                                },
-                                                onDragEnd = {
-                                                    val settled =
-                                                        target
-                                                    if (settled != null) {
-                                                        latestOnLayoutSettled(
-                                                            settled.positionsPx.mapValues {
-                                                                (_, value) ->
-                                                                with(density) {
-                                                                    value.toDp().value
-                                                                }
-                                                            },
-                                                            settled.order,
-                                                        )
-                                                    }
-                                                    dragged = null
-                                                    dragDeltaPx = 0f
-                                                    frozenPositionsPx = emptyMap()
-                                                    target = null
-                                                },
-                                                onDragCancel = {
-                                                    dragged = null
-                                                    dragDeltaPx = 0f
-                                                    frozenPositionsPx = emptyMap()
-                                                    target = null
-                                                },
-                                            )
-                                        },
-                                contentAlignment = Alignment.TopCenter,
-                            ) {
-                                Box(
-                                    Modifier
-                                        .width(30.dp)
-                                        .height(4.dp)
-                                        .background(
-                                            MaterialTheme.colorScheme.onSurface.copy(alpha = 0.20f),
-                                            RoundedCornerShape(100.dp),
-                                        ),
-                                )
                             }
+                            .graphicsLayer {
+                                translationY = animatedTop
+                            }
+                            .zIndex(if (selected) 4f else 0f),
+                ) {
+                    content(block)
+
+                    if (editable) {
+                        Box(
+                            modifier =
+                                Modifier
+                                    .align(Alignment.TopCenter)
+                                    .width(56.dp)
+                                    .height(22.dp)
+                                    .pointerInput(block, allMeasured) {
+                                        if (!allMeasured) return@pointerInput
+
+                                        detectDragGesturesAfterLongPress(
+                                            onDragStart = {
+                                                val currentPositions =
+                                                    resolvedPositionsPx
+                                                if (currentPositions.isEmpty()) {
+                                                    return@detectDragGesturesAfterLongPress
+                                                }
+
+                                                latestOnEditStarted()
+                                                dragged = block
+                                                frozenOrder = resolvedOrder
+                                                frozenPositionsPx = currentPositions
+                                                dragOriginTopPx =
+                                                    currentPositions[block] ?: 0f
+                                                dragDeltaPx = 0f
+
+                                                target =
+                                                    resolveTarget(
+                                                        dragged = block,
+                                                        desiredTopPx = dragOriginTopPx,
+                                                        baseOrder = resolvedOrder,
+                                                        basePositions = currentPositions,
+                                                        heights = heightsPx,
+                                                        canvasHeightPx = canvasHeightPx,
+                                                        gapPx = gapPx,
+                                                        cellStepPx = cellStepPx,
+                                                        normalMagnetPx = normalMagnetPx,
+                                                        preferredMagnetPx = preferredMagnetPx,
+                                                    )
+                                            },
+                                            onDrag = { change, amount ->
+                                                change.consume()
+                                                dragDeltaPx += amount.y
+
+                                                val h = heightsPx[block] ?: 0f
+                                                val desired =
+                                                    (dragOriginTopPx + dragDeltaPx)
+                                                        .coerceIn(
+                                                            0f,
+                                                            (
+                                                                canvasHeightPx -
+                                                                    h
+                                                                ).coerceAtLeast(0f),
+                                                        )
+
+                                                target =
+                                                    resolveTarget(
+                                                        dragged = block,
+                                                        desiredTopPx = desired,
+                                                        baseOrder = frozenOrder,
+                                                        basePositions = frozenPositionsPx,
+                                                        heights = heightsPx,
+                                                        canvasHeightPx = canvasHeightPx,
+                                                        gapPx = gapPx,
+                                                        cellStepPx = cellStepPx,
+                                                        normalMagnetPx = normalMagnetPx,
+                                                        preferredMagnetPx = preferredMagnetPx,
+                                                    )
+                                            },
+                                            onDragEnd = {
+                                                val settled = target
+                                                if (settled != null) {
+                                                    latestOnLayoutSettled(
+                                                        settled.positionsPx.mapValues {
+                                                            (_, value) ->
+                                                            with(density) {
+                                                                value.toDp().value
+                                                            }
+                                                        },
+                                                        settled.order,
+                                                    )
+                                                }
+                                                dragged = null
+                                                dragDeltaPx = 0f
+                                                frozenPositionsPx = emptyMap()
+                                                target = null
+                                            },
+                                            onDragCancel = {
+                                                dragged = null
+                                                dragDeltaPx = 0f
+                                                frozenPositionsPx = emptyMap()
+                                                target = null
+                                            },
+                                        )
+                                    },
+                            contentAlignment = Alignment.TopCenter,
+                        ) {
+                            Box(
+                                Modifier
+                                    .width(30.dp)
+                                    .height(4.dp)
+                                    .background(
+                                        MaterialTheme.colorScheme.onSurface.copy(alpha = 0.20f),
+                                        RoundedCornerShape(100.dp),
+                                    ),
+                            )
                         }
                     }
                 }
