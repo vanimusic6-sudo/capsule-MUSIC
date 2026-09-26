@@ -23,13 +23,12 @@ class CapsuleLightEditorTest {
     @Test
     fun validCustomOrderIsPreserved() {
         val custom =
-            listOf(
-                CapsuleLightBlock.METADATA,
-                CapsuleLightBlock.ARTWORK,
-                CapsuleLightBlock.CONTROLS,
-                CapsuleLightBlock.PROGRESS,
-                CapsuleLightBlock.MODE_SWITCH,
-            )
+            CapsuleLightBaseOrder.toMutableList().apply {
+                remove(CapsuleLightElement.FAVORITE)
+                add(indexOf(CapsuleLightElement.PANEL_BREAK) + 1, CapsuleLightElement.FAVORITE)
+                remove(CapsuleLightElement.VIDEO)
+                add(indexOf(CapsuleLightElement.AUDIO), CapsuleLightElement.VIDEO)
+            }
 
         assertEquals(
             custom,
@@ -42,9 +41,9 @@ class CapsuleLightEditorTest {
         val malformed =
             listOf(
                 "",
-                "ARTWORK,METADATA",
-                "ARTWORK,METADATA,PROGRESS,MODE_SWITCH,MODE_SWITCH",
-                "ARTWORK,METADATA,PROGRESS,MODE_SWITCH,UNKNOWN",
+                "ARTWORK,TITLE",
+                CapsuleLightBaseOrderEncoded.replace("MENU", "NEXT"),
+                CapsuleLightBaseOrderEncoded.replace("MENU", "UNKNOWN"),
             )
 
         malformed.forEach { raw ->
