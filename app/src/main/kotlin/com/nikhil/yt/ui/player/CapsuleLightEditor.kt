@@ -752,17 +752,33 @@ internal fun CapsuleLightResizableArtwork(
     heightScale: Float,
     editable: Boolean,
     onEditStarted: () -> Unit,
-    onResizePreview: (widthScale: Float, heightScale: Float) -> Unit,
     onResizeSettled: (widthScale: Float, heightScale: Float) -> Unit,
     modifier: Modifier = Modifier,
     content: @Composable () -> Unit,
 ) {
     var selected by remember { mutableStateOf(false) }
-    var currentWidth by remember(widthScale) { mutableFloatStateOf(widthScale.coerceIn(0.55f, 1.08f)) }
-    var currentHeight by remember(heightScale) { mutableFloatStateOf(heightScale.coerceIn(0.55f, 1.35f)) }
+    var resizing by remember { mutableStateOf(false) }
+    var currentWidth by remember {
+        mutableFloatStateOf(widthScale.coerceIn(0.55f, 1.08f))
+    }
+    var currentHeight by remember {
+        mutableFloatStateOf(heightScale.coerceIn(0.55f, 1.35f))
+    }
+
+    // External persisted state may change after reset/reload, but never replace the live state
+    // object while a resize gesture is running.
+    LaunchedEffect(widthScale, heightScale, resizing) {
+        if (!resizing) {
+            currentWidth = widthScale.coerceIn(0.55f, 1.08f)
+            currentHeight = heightScale.coerceIn(0.55f, 1.35f)
+        }
+    }
 
     LaunchedEffect(editable) {
-        if (!editable) selected = false
+        if (!editable) {
+            selected = false
+            resizing = false
+        }
     }
 
     Box(
@@ -806,13 +822,17 @@ internal fun CapsuleLightResizableArtwork(
                     baseSide = baseSide,
                     widthScale = currentWidth,
                     heightScale = currentHeight,
-                    onEditStarted = onEditStarted,
+                    onEditStarted = {
+                        resizing = true
+                        onEditStarted()
+                    },
                     onResize = { w, h ->
+                        // Local-only preview: no DataStore/parent-state writes per pointer sample.
                         currentWidth = w
                         currentHeight = h
-                        onResizePreview(w, h)
                     },
                     onResizeSettled = {
+                        resizing = false
                         onResizeSettled(currentWidth, currentHeight)
                     },
                 )
