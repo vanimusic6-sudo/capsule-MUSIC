@@ -233,14 +233,14 @@ private data class AxisBounds(
 }
 
 internal fun lightRowCrossedBefore(
-    commandCenterPx: Float,
+    commandStartPx: Float,
     neighbourCenterPx: Float,
-): Boolean = commandCenterPx <= neighbourCenterPx + 0.5f
+): Boolean = commandStartPx <= neighbourCenterPx + 0.5f
 
 internal fun lightRowCrossedAfter(
-    commandCenterPx: Float,
+    commandEndPx: Float,
     neighbourCenterPx: Float,
-): Boolean = commandCenterPx >= neighbourCenterPx - 0.5f
+): Boolean = commandEndPx >= neighbourCenterPx - 0.5f
 
 internal fun artworkTopEdgeShiftDp(
     startHeightScale: Float,
@@ -1208,7 +1208,8 @@ internal fun <T : Enum<T>> CapsuleLightReorderRow(
                                 val index = workingOrder.indexOf(item)
                                 if (index < 0) return@detectDragGesturesAfterLongPress
 
-                                val visualCenter = actualBounds.center + dragX
+                                val visualStart = actualBounds.start + dragX
+                                val visualEnd = visualStart + actualBounds.size
                                 var targetIndex = index
 
                                 if (index > 0) {
@@ -1219,7 +1220,7 @@ internal fun <T : Enum<T>> CapsuleLightReorderRow(
                                         previousStart != null &&
                                         previousSize != null &&
                                         lightRowCrossedBefore(
-                                            commandCenterPx = visualCenter,
+                                            commandStartPx = visualStart,
                                             neighbourCenterPx = previousStart + previousSize / 2f,
                                         )
                                     ) {
@@ -1235,7 +1236,7 @@ internal fun <T : Enum<T>> CapsuleLightReorderRow(
                                         nextStart != null &&
                                         nextSize != null &&
                                         lightRowCrossedAfter(
-                                            commandCenterPx = visualCenter,
+                                            commandEndPx = visualEnd,
                                             neighbourCenterPx = nextStart + nextSize / 2f,
                                         )
                                     ) {
