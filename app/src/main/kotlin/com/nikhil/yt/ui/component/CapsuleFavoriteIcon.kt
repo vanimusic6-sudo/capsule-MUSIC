@@ -41,6 +41,7 @@ internal fun CapsuleFavoriteIcon(
     tint: Color,
     modifier: Modifier = Modifier,
     interactionSource: InteractionSource? = null,
+    userActionToken: Int = 0,
 ) {
     val pressed = interactionSource?.collectIsPressedAsState()?.value == true
     val press by animateFloatAsState(
@@ -62,6 +63,19 @@ internal fun CapsuleFavoriteIcon(
             delay(900)
             userInteractionPending = false
         }
+    }
+
+    /*
+     * Reorder/edit containers are allowed to observe the pointer stream around this button. In
+     * that case Compose may not deliver a PressInteraction reliably enough for the heart to infer
+     * that the coming database change belongs to this tap. The owner can therefore arm the same
+     * animation explicitly with a monotonically increasing token.
+     */
+    LaunchedEffect(userActionToken) {
+        if (userActionToken == 0) return@LaunchedEffect
+        userInteractionPending = true
+        delay(2_500)
+        userInteractionPending = false
     }
 
     LaunchedEffect(liked) {
