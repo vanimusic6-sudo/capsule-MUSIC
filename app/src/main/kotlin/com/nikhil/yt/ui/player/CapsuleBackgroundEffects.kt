@@ -47,6 +47,20 @@ internal enum class CapsuleBackgroundEffect {
     CAPSULE_GLOW,
 }
 
+internal fun capsuleBackgroundNeedsClock(effect: CapsuleBackgroundEffect): Boolean =
+    when (effect) {
+        CapsuleBackgroundEffect.COLOR_FLOW,
+        CapsuleBackgroundEffect.CAPSULE_STAR,
+        CapsuleBackgroundEffect.NEBULA,
+        -> true
+
+        CapsuleBackgroundEffect.MATTE_GRADIENT,
+        CapsuleBackgroundEffect.TONAL_WASH,
+        CapsuleBackgroundEffect.AMBIENT_GLOW,
+        CapsuleBackgroundEffect.CAPSULE_GLOW,
+        -> false
+    }
+
 /*
  * These are decorative clocks, and a decorative clock's frame rate is a battery setting.
  *
@@ -107,7 +121,11 @@ internal fun CapsuleProceduralBackground(
         }
     val motionEnabled = LocalCapsuleBackgroundMotionEnabled.current
     val time =
-        if (animated && motionEnabled) {
+        if (
+            animated &&
+            motionEnabled &&
+            capsuleBackgroundNeedsClock(effect)
+        ) {
             rememberCapsuleAnimationTime(compact = compact)
         } else {
             null
