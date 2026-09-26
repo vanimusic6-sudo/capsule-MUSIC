@@ -897,4 +897,12 @@ Velune will only extract your token, and everything else is stored locally.</str
     <string name="capsule_light_edit_screen_description">When enabled, long-press a block in Light and drag it to another slot. Blocks push each other; free overlap is disabled.</string>
     <string name="capsule_light_reset_screen">Reset Light screen</string>
     <string name="capsule_light_reset_screen_description">Restore the base Light block order and turn editing off.</string>
+    <string name="capsule_customize_title">Capsule your way</string>
+    <string name="capsule_customize_subtitle">Rearrange Capsule screens without touching the player core</string>
+    <string name="capsule_customize_screen_section">Screen</string>
+    <string name="capsule_customize_screen">Screen to customize</string>
+    <string name="capsule_customize_edit_section">Editing</string>
+    <string name="capsule_customize_edit_description">Allow long-press dragging on the selected Capsule screen.</string>
+    <string name="capsule_customize_reset_description">Restore the selected screen to Capsule's base layout and turn editing off.</string>
+    <string name="capsule_customize_hint">Long-press an element, then drag it. Elements snap into magnetic slots and push neighbours out of the way instead of overlapping.</string>
 </resources>
