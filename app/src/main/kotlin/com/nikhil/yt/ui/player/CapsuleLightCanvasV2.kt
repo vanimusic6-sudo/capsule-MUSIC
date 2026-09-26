@@ -12,9 +12,11 @@ package com.nikhil.yt.ui.player
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.width
@@ -34,6 +36,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
@@ -47,6 +51,7 @@ import kotlin.math.abs
 private val LightCanvasDockGap = 8.dp
 private val LightCanvasRealMagnet = 58.dp
 private val LightCanvasPreferredMagnet = 92.dp
+private val LightCanvasGuideWidth = 72.dp
 
 internal val CapsuleLightCanvasPositionsBaseEncoded = ""
 
@@ -1069,6 +1074,53 @@ internal fun CapsuleLightCanvasV2(
                 .height(viewportHeight)
                 .clipToBounds(),
     ) {
+        if (editable && allMeasured) {
+            val moving = dragged
+            val guideCells =
+                remember(
+                    moving,
+                    frozenPositionsPx,
+                    frozenOrder,
+                    heightsPx,
+                    canvasHeightPx,
+                    gapPx,
+                ) {
+                    if (moving != null && frozenPositionsPx.isNotEmpty()) {
+                        buildCellTargets(
+                            dragged = moving,
+                            baseOrder = frozenOrder,
+                            basePositions = frozenPositionsPx,
+                            heights = heightsPx,
+                            canvasHeightPx = canvasHeightPx,
+                            gapPx = gapPx,
+                        )
+                            .map { it.topPx }
+                            .distinctBy { it.toInt() }
+                    } else {
+                        emptyList()
+                    }
+                }
+
+            if (guideCells.isNotEmpty()) {
+                val guideColor =
+                    MaterialTheme.colorScheme.primary.copy(alpha = 0.13f)
+
+                Canvas(Modifier.fillMaxSize()) {
+                    val halfWidth = LightCanvasGuideWidth.toPx() / 2f
+                    val stroke = 3.dp.toPx()
+
+                    guideCells.forEach { y ->
+                        drawLine(
+                            color = guideColor,
+                            start = Offset(size.width / 2f - halfWidth, y),
+                            end = Offset(size.width / 2f + halfWidth, y),
+                            strokeWidth = stroke,
+                            cap = StrokeCap.Round,
+                        )
+                    }
+                }
+            }
+        }
 
         // Every outer block is measured independently. Nothing receives "remaining height" from
         // a Column, so growing artwork can never compress metadata/progress/mode/controls.
