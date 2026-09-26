@@ -3,6 +3,7 @@ package com.nikhil.yt.ui.player
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectDragGestures
@@ -34,7 +35,9 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onGloballyPositioned
@@ -1031,39 +1034,35 @@ private fun CapsuleLightEmptyAnchorGap(
     highlight: Boolean,
     modifier: Modifier = Modifier,
 ) {
-    Box(
+    val guideColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.14f)
+
+    Canvas(
         modifier =
             modifier
                 .fillMaxWidth()
                 .height(height),
     ) {
-        if (highlight && height >= CapsuleLightEmptyAnchorFirst) {
-            val first = CapsuleLightEmptyAnchorFirst.value
-            val step = CapsuleLightEmptyAnchorStep.value
-            val count =
-                (
-                    ((height.value - first - 0.01f) / step)
-                        .toInt() +
-                        1
-                    ).coerceIn(0, 12)
+        if (!highlight || height < CapsuleLightEmptyAnchorFirst) {
+            return@Canvas
+        }
 
-            repeat(count) { index ->
-                val y =
-                    CapsuleLightEmptyAnchorFirst +
-                        CapsuleLightEmptyAnchorStep * index
-                Box(
-                    modifier =
-                        Modifier
-                            .align(Alignment.TopCenter)
-                            .offset(y = y)
-                            .width(70.dp)
-                            .height(3.dp)
-                            .background(
-                                MaterialTheme.colorScheme.primary.copy(alpha = 0.14f),
-                                RoundedCornerShape(100.dp),
-                            ),
-                )
-            }
+        val firstPx = CapsuleLightEmptyAnchorFirst.toPx()
+        val stepPx = CapsuleLightEmptyAnchorStep.toPx()
+        val halfWidth = 35.dp.toPx()
+        val stroke = 3.dp.toPx()
+
+        var y = firstPx
+        var count = 0
+        while (y < size.height - 0.5f && count < 12) {
+            drawLine(
+                color = guideColor,
+                start = Offset(size.width / 2f - halfWidth, y),
+                end = Offset(size.width / 2f + halfWidth, y),
+                strokeWidth = stroke,
+                cap = StrokeCap.Round,
+            )
+            y += stepPx
+            count += 1
         }
     }
 }
