@@ -831,6 +831,9 @@ private fun BoxScope.CapsuleArtworkResizeHandle(
     onResize: (Float, Float) -> Unit,
     onResizeSettled: () -> Unit,
 ) {
+    val latestWidthScale by rememberUpdatedState(widthScale)
+    val latestHeightScale by rememberUpdatedState(heightScale)
+
     val alignment =
         when (handle) {
             ArtworkResizeHandle.LEFT -> Alignment.CenterStart
@@ -846,11 +849,15 @@ private fun BoxScope.CapsuleArtworkResizeHandle(
                 .align(alignment)
                 .size(34.dp)
                 .pointerInput(handle, baseSide) {
-                    var w = widthScale
-                    var h = heightScale
+                    var w = latestWidthScale
+                    var h = latestHeightScale
                     val basePx = baseSide.toPx().coerceAtLeast(1f)
                     detectDragGestures(
-                        onDragStart = { onEditStarted() },
+                        onDragStart = {
+                            w = latestWidthScale
+                            h = latestHeightScale
+                            onEditStarted()
+                        },
                         onDrag = { change, amount ->
                             change.consume()
                             when (handle) {
