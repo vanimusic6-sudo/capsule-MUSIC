@@ -35,7 +35,6 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onGloballyPositioned
@@ -396,7 +395,6 @@ private fun CapsuleSoftColumnItem(
                     scaleY = scale
                     shadowElevation = if (selected) 12.dp.toPx() else 0f
                 }
-                ,
     ) {
         content()
     }
