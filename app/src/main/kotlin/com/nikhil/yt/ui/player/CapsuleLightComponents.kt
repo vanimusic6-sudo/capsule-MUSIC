@@ -150,7 +150,7 @@ internal fun CapsulePlayerLayout(
                         onOrderChange = onLightOrderChange,
                         onOrderSettled = onLightOrderSettled,
                         onEditStarted = onLightEditStarted,
-                        modifier = Modifier.fillMaxWidth().nestedScroll(queueScroll),
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp).nestedScroll(queueScroll),
                     ) { element, insidePanel ->
                         Box(
                             modifier = Modifier.fillMaxWidth(),
@@ -234,6 +234,7 @@ internal fun CapsuleLightClayControlSurface(
     textColor: Color,
     insidePanel: Boolean,
     modifier: Modifier = Modifier,
+    height: Dp = 72.dp,
     content: @Composable () -> Unit,
 ) {
     val shape = RoundedCornerShape(16.dp)
@@ -241,7 +242,7 @@ internal fun CapsuleLightClayControlSurface(
         modifier =
             modifier
                 .fillMaxWidth()
-                .height(72.dp)
+                .height(height)
                 .clip(shape)
                 .then(
                     if (insidePanel) {
