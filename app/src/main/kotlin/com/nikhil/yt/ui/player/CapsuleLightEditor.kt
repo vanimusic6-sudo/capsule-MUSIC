@@ -232,18 +232,19 @@ internal fun CapsuleLightClayLayout(
                                 var to = workingOrder.indexOf(targetElement)
 
                                 if (from >= 0 && to >= 0 && from != to) {
+                                    val movingForward = from < to
                                     val moved = workingOrder.toMutableList()
                                     moved.removeAt(from)
 
-                                    // Removing an earlier element shifts the insertion index by one.
-                                    if (from < to) to -= 1
-
-                                    if (targetElement == CapsuleLightElement.PANEL_BREAK) {
-                                        val belowBreak = draggedCenter.y > targetBounds.center.y
-                                        to =
+                                    to =
+                                        if (targetElement == CapsuleLightElement.PANEL_BREAK) {
+                                            val belowBreak = draggedCenter.y > targetBounds.center.y
                                             moved.indexOf(CapsuleLightElement.PANEL_BREAK) +
                                                 if (belowBreak) 1 else 0
-                                    }
+                                        } else {
+                                            val targetAfterRemoval = moved.indexOf(targetElement)
+                                            targetAfterRemoval + if (movingForward) 1 else 0
+                                        }
 
                                     to = to.coerceIn(0, moved.size)
                                     moved.add(to, element)
