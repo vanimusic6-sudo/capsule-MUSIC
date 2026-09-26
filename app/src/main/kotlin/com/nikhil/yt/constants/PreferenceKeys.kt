@@ -453,6 +453,8 @@ val CapsuleLightArtworkWidthScaleKey = floatPreferencesKey("capsuleLightArtworkW
 val CapsuleLightArtworkHeightScaleKey = floatPreferencesKey("capsuleLightArtworkHeightScale")
 /** Per-container free vertical spacing for the Light clay editor. */
 val CapsuleLightBlockGapsKey = stringPreferencesKey("capsuleLightBlockGaps")
+/** Position-based v2 canvas. Distinct key so the old gap editor cannot corrupt it. */
+val CapsuleLightCanvasPositionsKey = stringPreferencesKey("capsuleLightCanvasPositionsV2")
 
 /** Which Capsule screen the customization hub is editing. Only Light exists in the first release. */
 val CapsuleCustomizeTargetKey = stringPreferencesKey("capsuleCustomizeTarget")
