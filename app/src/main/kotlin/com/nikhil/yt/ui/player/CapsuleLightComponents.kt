@@ -201,10 +201,6 @@ internal fun CapsuleLightFavorite(
     liked: Boolean,
     textColor: Color,
     onToggleLike: () -> Unit,
-internal fun CapsuleLightFavorite(
-    liked: Boolean,
-    textColor: Color,
-    onToggleLike: () -> Unit,
 ) {
     val favoriteInteraction = remember { MutableInteractionSource() }
     var userActionToken by remember { mutableIntStateOf(0) }
