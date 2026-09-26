@@ -291,6 +291,10 @@ fun CapsulePlayerContent(
     var lightEditInProgress by remember { mutableStateOf(false) }
     var lightValidationGeneration by remember { mutableStateOf(0) }
     var artworkResizeActive by remember { mutableStateOf(false) }
+    var artworkResizeBasePositions by
+        remember {
+            mutableStateOf<Map<CapsuleLightBlock, Float>?>(null)
+        }
 
     LaunchedEffect(Unit) {
         if (
@@ -365,6 +369,7 @@ fun CapsulePlayerContent(
             // Switching mode cancels an in-flight artwork resize transaction. The last committed
             // artwork size remains authoritative; VIDEO must never leave a stale edit lock behind.
             artworkResizeActive = false
+            artworkResizeBasePositions = null
             lightEditInProgress = false
             lightValidationGeneration += 1
         }
@@ -912,8 +917,40 @@ fun CapsulePlayerContent(
                                             Alignment.Center
                                         },
                                     onEditStarted = {
+                                        artworkResizeBasePositions =
+                                            lightCanvasPositions
+                                                .takeIf {
+                                                    it.containsKey(CapsuleLightBlock.ARTWORK)
+                                                }
                                         artworkResizeActive = true
                                         beginNestedEdit()
+                                    },
+                                    onTopEdgeShiftDp = { shiftDp ->
+                                        val base =
+                                            artworkResizeBasePositions
+                                                ?: lightCanvasPositions
+                                                    .takeIf {
+                                                        it.containsKey(
+                                                            CapsuleLightBlock.ARTWORK,
+                                                        )
+                                                    }
+                                                    ?.also {
+                                                        artworkResizeBasePositions = it
+                                                    }
+                                        val baseTop =
+                                            base?.get(CapsuleLightBlock.ARTWORK)
+                                        if (base != null && baseTop != null) {
+                                            lightCanvasPositions =
+                                                base.toMutableMap()
+                                                    .apply {
+                                                        this[
+                                                            CapsuleLightBlock.ARTWORK
+                                                        ] =
+                                                            (baseTop + shiftDp)
+                                                                .coerceAtLeast(0f)
+                                                    }
+                                                    .toMap()
+                                        }
                                     },
                                     onResizeSettled = { widthScale, heightScale ->
                                         lightArtworkWidthScale = widthScale
@@ -921,6 +958,7 @@ fun CapsulePlayerContent(
                                         onArtworkWidthScaleChange(widthScale)
                                         onArtworkHeightScaleChange(heightScale)
                                         artworkResizeActive = false
+                                        artworkResizeBasePositions = null
                                         lightEditInProgress = false
                                         lightValidationGeneration += 1
                                     },
