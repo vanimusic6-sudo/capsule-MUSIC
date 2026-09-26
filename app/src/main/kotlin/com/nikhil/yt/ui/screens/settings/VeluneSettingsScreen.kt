@@ -90,6 +90,14 @@ fun VeluneSettingsScreen(
                 )
             }
 
+            item(key = "capsule_customize") {
+                SettingsItemScreenshotStyle(
+                    icon = painterResource(R.drawable.edit),
+                    title = stringResource(R.string.capsule_customize_title),
+                    onClick = { navController.navigate("settings/capsule_customize") }
+                )
+            }
+
             item(key = "account") {
                 if (isLoggedIn) {
                     SettingsItemAccountStyle(
