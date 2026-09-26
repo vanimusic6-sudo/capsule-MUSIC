@@ -6,6 +6,7 @@ on:
     branches:
       - main
       - cleanup/capsule-player-only
+      - next/capsule-clay
 
 permissions:
   contents: read
