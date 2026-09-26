@@ -98,6 +98,33 @@ internal val CapsuleLightModeBaseOrderEncoded = encodeEnumOrder(CapsuleLightMode
 internal val CapsuleLightAvBaseOrderEncoded = encodeEnumOrder(CapsuleLightAvBaseOrder)
 internal val CapsuleLightTransportBaseOrderEncoded = encodeEnumOrder(CapsuleLightTransportBaseOrder)
 
+internal val CapsuleLightBaseGaps: Map<CapsuleLightBlock, Float> =
+    CapsuleLightBaseOrder.associateWith { 0f }
+
+internal val CapsuleLightBaseGapsEncoded: String =
+    CapsuleLightBaseOrder.joinToString(",") { "${it.name}=0" }
+
+internal fun decodeCapsuleLightBlockGaps(raw: String): Map<CapsuleLightBlock, Float> {
+    if (raw.isBlank()) return CapsuleLightBaseGaps
+
+    val parsed = CapsuleLightBaseGaps.toMutableMap()
+    raw.split(',').forEach { token ->
+        val parts = token.split('=', limit = 2)
+        if (parts.size != 2) return@forEach
+        val block = runCatching { CapsuleLightBlock.valueOf(parts[0].trim()) }.getOrNull()
+            ?: return@forEach
+        val value = parts[1].trim().toFloatOrNull() ?: return@forEach
+        parsed[block] = value.coerceIn(0f, 180f)
+    }
+    return parsed
+}
+
+internal fun encodeCapsuleLightBlockGaps(gaps: Map<CapsuleLightBlock, Float>): String =
+    CapsuleLightBaseOrder.joinToString(",") { block ->
+        val value = (gaps[block] ?: 0f).coerceIn(0f, 180f)
+        "${block.name}=${"%.2f".format(java.util.Locale.US, value)}"
+    }
+
 private fun <T : Enum<T>> encodeEnumOrder(order: List<T>): String =
     order.joinToString(",") { it.name }
 
