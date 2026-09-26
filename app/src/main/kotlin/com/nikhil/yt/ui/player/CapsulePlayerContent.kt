@@ -295,6 +295,7 @@ fun CapsulePlayerContent(
         remember {
             mutableStateOf<Map<CapsuleLightBlock, Float>?>(null)
         }
+    var artworkTransientTopShiftDp by remember { mutableFloatStateOf(0f) }
 
     LaunchedEffect(Unit) {
         if (
@@ -370,6 +371,7 @@ fun CapsulePlayerContent(
             // artwork size remains authoritative; VIDEO must never leave a stale edit lock behind.
             artworkResizeActive = false
             artworkResizeBasePositions = null
+            artworkTransientTopShiftDp = 0f
             lightEditInProgress = false
             lightValidationGeneration += 1
         }
@@ -803,6 +805,7 @@ fun CapsulePlayerContent(
             onLightEditSessionActiveChange(true)
         },
         lightInteractionActive = lightEditInProgress,
+        lightArtworkTransientTopShiftDp = artworkTransientTopShiftDp,
         onLightOrderSettled = { reordered ->
             val safeOrder = decodeCapsuleLightOrder(encodeCapsuleLightOrder(reordered))
             lightOrder = safeOrder
@@ -922,43 +925,65 @@ fun CapsulePlayerContent(
                                                 .takeIf {
                                                     it.containsKey(CapsuleLightBlock.ARTWORK)
                                                 }
+                                        artworkTransientTopShiftDp = 0f
                                         artworkResizeActive = true
                                         beginNestedEdit()
                                     },
                                     onTopEdgeShiftDp = { shiftDp ->
+                                        val baseTop =
+                                            artworkResizeBasePositions
+                                                ?.get(CapsuleLightBlock.ARTWORK)
+                                                ?: lightCanvasPositions[
+                                                    CapsuleLightBlock.ARTWORK
+                                                ]
+                                        artworkTransientTopShiftDp =
+                                            if (baseTop != null) {
+                                                shiftDp.coerceAtLeast(-baseTop)
+                                            } else {
+                                                0f
+                                            }
+                                    },
+                                    onResizeSettled = { widthScale, heightScale ->
                                         val base =
                                             artworkResizeBasePositions
                                                 ?: lightCanvasPositions
-                                                    .takeIf {
-                                                        it.containsKey(
-                                                            CapsuleLightBlock.ARTWORK,
-                                                        )
-                                                    }
-                                                    ?.also {
-                                                        artworkResizeBasePositions = it
-                                                    }
                                         val baseTop =
-                                            base?.get(CapsuleLightBlock.ARTWORK)
-                                        if (base != null && baseTop != null) {
-                                            lightCanvasPositions =
+                                            base[CapsuleLightBlock.ARTWORK]
+                                        val committedPositions =
+                                            if (
+                                                baseTop != null &&
+                                                artworkTransientTopShiftDp != 0f
+                                            ) {
                                                 base.toMutableMap()
                                                     .apply {
                                                         this[
                                                             CapsuleLightBlock.ARTWORK
                                                         ] =
-                                                            (baseTop + shiftDp)
+                                                            (baseTop +
+                                                                artworkTransientTopShiftDp)
                                                                 .coerceAtLeast(0f)
                                                     }
                                                     .toMap()
-                                        }
-                                    },
-                                    onResizeSettled = { widthScale, heightScale ->
+                                            } else {
+                                                base
+                                            }
+
                                         lightArtworkWidthScale = widthScale
                                         lightArtworkHeightScale = heightScale
+                                        lightCanvasPositions = committedPositions
                                         onArtworkWidthScaleChange(widthScale)
                                         onArtworkHeightScaleChange(heightScale)
+                                        if (committedPositions.isNotEmpty()) {
+                                            onLightCanvasPositionsEncodedChange(
+                                                encodeCapsuleLightCanvasPositions(
+                                                    committedPositions,
+                                                ),
+                                            )
+                                        }
+
                                         artworkResizeActive = false
                                         artworkResizeBasePositions = null
+                                        artworkTransientTopShiftDp = 0f
                                         lightEditInProgress = false
                                         lightValidationGeneration += 1
                                     },
