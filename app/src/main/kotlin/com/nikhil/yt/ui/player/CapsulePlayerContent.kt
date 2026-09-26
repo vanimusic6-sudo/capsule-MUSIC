@@ -568,7 +568,12 @@ fun CapsulePlayerContent(
                 .pointerInput(
                     onExpandQueue,
                     swipeThresholdPx,
+                    isLight,
+                    lightEditorEnabled,
                 ) {
+                    // Reordering owns vertical drags while the Light editor is active.
+                    if (isLight && lightEditorEnabled) return@pointerInput
+
                     var accumulated =
                         0f
 
