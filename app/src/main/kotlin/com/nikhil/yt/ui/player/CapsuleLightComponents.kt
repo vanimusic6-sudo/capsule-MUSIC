@@ -43,6 +43,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.media3.common.Player
 import com.nikhil.yt.R
@@ -67,6 +68,17 @@ internal fun CapsulePlayerLayout(
     onMenuClick: () -> Unit,
     modifier: Modifier = Modifier,
     onExpandQueue: () -> Unit = {},
+    lightEditorEnabled: Boolean = false,
+    lightOrder: List<CapsuleLightBlock> = CapsuleLightBaseOrder,
+    onLightOrderChange: (List<CapsuleLightBlock>) -> Unit = {},
+    onLightOrderSettled: (List<CapsuleLightBlock>) -> Unit = {},
+    /**
+     * Optional block renderer used by the first Capsule "clay" editor.
+     *
+     * When supplied, Light is rendered as reorderable slots instead of the fixed artwork/details
+     * stack. Dense/Immersive and old call sites keep the exact legacy path below.
+     */
+    lightBlockContent: (@Composable (CapsuleLightBlock, Dp) -> Unit)? = null,
     /**
      * The sounding lyric line, or null when it is switched off.
      *
@@ -126,26 +138,46 @@ internal fun CapsulePlayerLayout(
                     }
                 }
             }
-            Column(
-                modifier = Modifier.fillMaxWidth().nestedScroll(queueScroll)
-                    .verticalScroll(scrollState, enabled = scrollState.maxValue > 0),
-                horizontalAlignment = Alignment.CenterHorizontally,
-            ) {
-                Spacer(Modifier.height(8.dp))
-                Box(Modifier.size(artworkSide), contentAlignment = Alignment.Center) { artwork() }
-                if (lyricLine == null) {
-                    Spacer(Modifier.height(20.dp))
-                } else {
-                    /*
-                     * The line is held to the card's width and starts at the card's leading edge,
-                     * so its first character lines up with the artwork rather than floating in the
-                     * middle of a wider column.
-                     */
-                    Spacer(Modifier.height(8.dp))
-                    Box(Modifier.width(artworkSide)) { lyricLine() }
-                    Spacer(Modifier.height(10.dp))
+            if (lightBlockContent != null) {
+                CompositionLocalProvider(LocalCapsuleLightMenu provides onMenuClick) {
+                    CapsuleLightReorderColumn(
+                        order = lightOrder,
+                        editable = lightEditorEnabled,
+                        scrollState = scrollState,
+                        onOrderChange = onLightOrderChange,
+                        onOrderSettled = onLightOrderSettled,
+                        modifier = Modifier.fillMaxWidth().nestedScroll(queueScroll),
+                    ) { block ->
+                        Box(
+                            modifier = Modifier.fillMaxWidth(),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            lightBlockContent(block, artworkSide)
+                        }
+                    }
                 }
-                CompositionLocalProvider(LocalCapsuleLightMenu provides onMenuClick) { details() }
+            } else {
+                Column(
+                    modifier = Modifier.fillMaxWidth().nestedScroll(queueScroll)
+                        .verticalScroll(scrollState, enabled = scrollState.maxValue > 0),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
+                    Spacer(Modifier.height(8.dp))
+                    Box(Modifier.size(artworkSide), contentAlignment = Alignment.Center) { artwork() }
+                    if (lyricLine == null) {
+                        Spacer(Modifier.height(20.dp))
+                    } else {
+                        /*
+                         * The line is held to the card's width and starts at the card's leading edge,
+                         * so its first character lines up with the artwork rather than floating in the
+                         * middle of a wider column.
+                         */
+                        Spacer(Modifier.height(8.dp))
+                        Box(Modifier.width(artworkSide)) { lyricLine() }
+                        Spacer(Modifier.height(10.dp))
+                    }
+                    CompositionLocalProvider(LocalCapsuleLightMenu provides onMenuClick) { details() }
+                }
             }
         }
     } else {
