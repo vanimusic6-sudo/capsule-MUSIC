@@ -1,7 +1,9 @@
 package com.nikhil.yt.ui
 
 import com.nikhil.yt.ui.player.CONSTELLATION_PERIOD_MS
+import com.nikhil.yt.ui.player.CapsuleBackgroundEffect
 import com.nikhil.yt.ui.player.capsuleBackgroundAngle
+import com.nikhil.yt.ui.player.capsuleBackgroundNeedsClock
 import com.nikhil.yt.ui.player.capsuleConstellation
 import com.nikhil.yt.ui.player.capsuleStarDrift
 import com.nikhil.yt.ui.player.constellationBlend
@@ -10,6 +12,16 @@ import org.junit.Test
 import kotlin.math.abs
 
 class CapsuleBackgroundMotionTest {
+    @Test fun onlyTimeDependentBackgroundsKeepAFrameClockAlive() {
+        assertFalse(capsuleBackgroundNeedsClock(CapsuleBackgroundEffect.MATTE_GRADIENT))
+        assertFalse(capsuleBackgroundNeedsClock(CapsuleBackgroundEffect.TONAL_WASH))
+        assertFalse(capsuleBackgroundNeedsClock(CapsuleBackgroundEffect.AMBIENT_GLOW))
+        assertFalse(capsuleBackgroundNeedsClock(CapsuleBackgroundEffect.CAPSULE_GLOW))
+        assertTrue(capsuleBackgroundNeedsClock(CapsuleBackgroundEffect.COLOR_FLOW))
+        assertTrue(capsuleBackgroundNeedsClock(CapsuleBackgroundEffect.CAPSULE_STAR))
+        assertTrue(capsuleBackgroundNeedsClock(CapsuleBackgroundEffect.NEBULA))
+    }
+
     @Test fun wavesAndStarDriftDoNotJumpAtTheOldThirtySixSecondReset() {
         for (time in listOf(36_000L, 72_000L, 86_400_000L)) {
             val before = capsuleBackgroundAngle(time - 1)
