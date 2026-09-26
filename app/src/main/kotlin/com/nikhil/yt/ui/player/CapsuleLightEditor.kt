@@ -1341,15 +1341,32 @@ internal fun CapsuleLightResizableArtwork(
 
         val pending = pendingCommit
         if (pending != null) {
+            val acceptedWidth = pending.first.coerceIn(0.55f, 1.08f)
+            val acceptedHeight =
+                pending.second.coerceIn(
+                    0.55f,
+                    maxHeightScale.coerceAtLeast(0.55f),
+                )
             val widthArrived =
-                kotlin.math.abs(widthScale - pending.first) <= 0.005f
+                kotlin.math.abs(widthScale - acceptedWidth) <= 0.005f
             val heightArrived =
-                kotlin.math.abs(heightScale - pending.second) <= 0.005f
+                kotlin.math.abs(heightScale - acceptedHeight) <= 0.005f
             if (widthArrived && heightArrived) {
+                currentWidth = acceptedWidth
+                currentHeight = acceptedHeight
                 pendingCommit = null
+            } else if (
+                acceptedWidth != pending.first ||
+                acceptedHeight != pending.second
+            ) {
+                // The constraint canvas tightened the legal artwork size while the parent was
+                // committing. Follow the accepted value without ever flashing through the old one.
+                currentWidth = acceptedWidth
+                currentHeight = acceptedHeight
+                pendingCommit = acceptedWidth to acceptedHeight
             }
-            // Until the parent catches up, keep the exact local frame that the
-            // finger produced. Never flash back through the previous saved size.
+            // Until the parent catches up, keep the exact accepted local frame that the finger
+            // produced. Never flash back through the previous saved size.
             return@LaunchedEffect
         }
 
@@ -1448,6 +1465,7 @@ private fun BoxScope.CapsuleArtworkResizeHandle(
 ) {
     val latestWidthScale by rememberUpdatedState(widthScale)
     val latestHeightScale by rememberUpdatedState(heightScale)
+    val latestMaxHeightScale by rememberUpdatedState(maxHeightScale)
 
     val alignment =
         when (handle) {
@@ -1486,7 +1504,7 @@ private fun BoxScope.CapsuleArtworkResizeHandle(
                                     h =
                                         (h + amount.y / basePx).coerceIn(
                                             0.55f,
-                                            maxHeightScale.coerceAtLeast(0.55f),
+                                            latestMaxHeightScale.coerceAtLeast(0.55f),
                                         )
                                 }
                                 ArtworkResizeHandle.BOTTOM_LEFT -> {
@@ -1494,7 +1512,7 @@ private fun BoxScope.CapsuleArtworkResizeHandle(
                                     h =
                                         (h + amount.y / basePx).coerceIn(
                                             0.55f,
-                                            maxHeightScale.coerceAtLeast(0.55f),
+                                            latestMaxHeightScale.coerceAtLeast(0.55f),
                                         )
                                 }
                                 ArtworkResizeHandle.BOTTOM_RIGHT -> {
@@ -1502,7 +1520,7 @@ private fun BoxScope.CapsuleArtworkResizeHandle(
                                     h =
                                         (h + amount.y / basePx).coerceIn(
                                             0.55f,
-                                            maxHeightScale.coerceAtLeast(0.55f),
+                                            latestMaxHeightScale.coerceAtLeast(0.55f),
                                         )
                                 }
                             }
