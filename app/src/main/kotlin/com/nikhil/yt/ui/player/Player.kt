@@ -66,7 +66,7 @@ internal fun capsulePlayerDesignForOrientation(
     isLandscape: Boolean,
 ): CapsulePlayerDesign =
     if (isLandscape) {
-        CapsulePlayerDesign.SUPER
+        CapsulePlayerDesign.LIGHT
     } else {
         selected
     }
@@ -93,10 +93,9 @@ fun BottomSheetPlayer(
     val isLandscape =
         configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
 
-    // The custom Capsule layouts are portrait-authored. In landscape use the stable Dense
-    // baseline without changing the saved preference. Most importantly, LIGHT's position canvas
-    // is not composed at all in landscape, so a short/wide viewport can never normalize and save
-    // over the user's portrait scene.
+    // Custom Capsule layouts are portrait-authored. Landscape always presents the original
+    // fixed Light layout without changing the saved preference. CapsulePlayerContent deliberately
+    // keeps CanvasV2 out of landscape, so the short/wide viewport cannot rewrite portrait state.
     val effectivePlayerDesign =
         capsulePlayerDesignForOrientation(
             selected = playerDesign,
