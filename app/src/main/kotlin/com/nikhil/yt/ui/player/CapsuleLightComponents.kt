@@ -70,6 +70,29 @@ internal fun capsuleLightBaseArtworkWidth(maxWidth: Dp): Dp =
     (maxWidth - CapsuleLightTransportEdgeInset * 2)
         .coerceAtLeast(120.dp)
 
+internal data class CapsuleLightEdgeInsets(
+    val start: Dp,
+    val end: Dp,
+)
+
+internal fun capsuleLightAvOuterInsets(
+    order: List<CapsuleLightModeItem>,
+): CapsuleLightEdgeInsets =
+    CapsuleLightEdgeInsets(
+        start =
+            if (order.firstOrNull() == CapsuleLightModeItem.AUDIO_VIDEO) {
+                CapsuleLightPanelOuterInset
+            } else {
+                0.dp
+            },
+        end =
+            if (order.lastOrNull() == CapsuleLightModeItem.AUDIO_VIDEO) {
+                CapsuleLightPanelOuterInset
+            } else {
+                0.dp
+            },
+    )
+
 /** The AUDIO/VIDEO switch shares the transport panel's shell, so it shares its geometry. */
 internal val CapsuleLightToggleHeight = 48.dp
 internal val CapsuleLightToggleInset = 4.dp
