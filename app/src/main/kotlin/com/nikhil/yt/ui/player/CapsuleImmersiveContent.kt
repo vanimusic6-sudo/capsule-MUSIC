@@ -133,34 +133,36 @@ internal fun immersiveFadeProfile(
 
     return if (landscape) {
         ImmersiveFadeProfile(
-            start = 0.32f - 0.08f * boosted - 0.03f * hard - 0.01f * extreme,
-            firstStop = 0.52f - 0.07f * boosted - 0.03f * hard - 0.01f * extreme,
+            // Tiny extra push only after the difficulty threshold. Keep enough artwork texture
+            // visible that the dissolve still reads as a gradient rather than a grey blanket.
+            start = 0.32f - 0.09f * boosted - 0.035f * hard - 0.01f * extreme,
+            firstStop = 0.52f - 0.08f * boosted - 0.035f * hard - 0.01f * extreme,
             firstAlpha =
-                (0.15f + 0.10f * boosted + 0.05f * hard + 0.02f * extreme)
+                (0.15f + 0.11f * boosted + 0.055f * hard + 0.02f * extreme)
                     .coerceIn(0f, 1f),
-            secondStop = 0.70f - 0.06f * boosted - 0.03f * hard - 0.01f * extreme,
+            secondStop = 0.70f - 0.07f * boosted - 0.035f * hard - 0.01f * extreme,
             secondAlpha =
-                (0.46f + 0.14f * boosted + 0.06f * hard + 0.02f * extreme)
+                (0.46f + 0.15f * boosted + 0.065f * hard + 0.025f * extreme)
                     .coerceIn(0f, 1f),
-            thirdStop = 0.87f - 0.04f * boosted - 0.02f * hard,
+            thirdStop = 0.87f - 0.045f * boosted - 0.025f * hard,
             thirdAlpha =
-                (0.80f + 0.10f * boosted + 0.03f * hard)
+                (0.80f + 0.105f * boosted + 0.04f * hard)
                     .coerceIn(0f, 1f),
         )
     } else {
         ImmersiveFadeProfile(
-            start = 0.42f - 0.12f * boosted - 0.04f * hard - 0.015f * extreme,
-            firstStop = 0.60f - 0.10f * boosted - 0.04f * hard - 0.015f * extreme,
+            start = 0.42f - 0.13f * boosted - 0.05f * hard - 0.015f * extreme,
+            firstStop = 0.60f - 0.11f * boosted - 0.05f * hard - 0.015f * extreme,
             firstAlpha =
-                (0.15f + 0.12f * boosted + 0.06f * hard + 0.025f * extreme)
+                (0.15f + 0.13f * boosted + 0.065f * hard + 0.025f * extreme)
                     .coerceIn(0f, 1f),
-            secondStop = 0.74f - 0.08f * boosted - 0.04f * hard - 0.015f * extreme,
+            secondStop = 0.74f - 0.09f * boosted - 0.05f * hard - 0.015f * extreme,
             secondAlpha =
-                (0.46f + 0.18f * boosted + 0.07f * hard + 0.025f * extreme)
+                (0.46f + 0.19f * boosted + 0.075f * hard + 0.025f * extreme)
                     .coerceIn(0f, 1f),
-            thirdStop = 0.89f - 0.05f * boosted - 0.02f * hard,
+            thirdStop = 0.89f - 0.055f * boosted - 0.025f * hard,
             thirdAlpha =
-                (0.80f + 0.12f * boosted + 0.04f * hard)
+                (0.80f + 0.13f * boosted + 0.045f * hard)
                     .coerceIn(0f, 1f),
         )
     }
