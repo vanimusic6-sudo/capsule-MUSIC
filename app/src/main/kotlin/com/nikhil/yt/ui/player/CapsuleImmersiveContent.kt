@@ -1069,7 +1069,7 @@ fun CapsuleImmersiveContent(
                     .align(Alignment.BottomCenter)
                     .fillMaxWidth()
                     .padding(bottom = bottomPadding + ImmersiveQueueRailLift)
-                    .height(34.dp)
+                    .height(ImmersiveQueueRailTouchHeight)
                     .clickable(
                         interactionSource = remember { MutableInteractionSource() },
                         indication = null,
