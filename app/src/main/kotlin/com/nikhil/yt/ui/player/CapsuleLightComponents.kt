@@ -93,7 +93,6 @@ internal fun CapsulePlayerLayout(
     onLightEditStarted: () -> Unit = {},
     lightInteractionActive: Boolean = false,
     lightArtworkResizeActive: Boolean = false,
-    lightArtworkResizeTopOverrideDp: Float? = null,
     /**
      * Optional block renderer used by the first Capsule "clay" editor.
      *
@@ -220,7 +219,6 @@ internal fun CapsulePlayerLayout(
                             onEditStarted = onLightEditStarted,
                             externalGestureActive = lightInteractionActive,
                             artworkResizeActive = lightArtworkResizeActive,
-                            artworkResizeTopOverrideDp = lightArtworkResizeTopOverrideDp,
                             modifier =
                                 Modifier
                                     .fillMaxWidth()
