@@ -169,7 +169,37 @@ class CapsuleLightEditorTest {
     }
 
     @Test
-    fun artworkResizeKeepsItsAnchorAndDoesNotPullUnrelatedBlocks() {
+    fun artworkResizeKeepsTheCardCenterFixed() {
+        val baseTop = 200f
+        val baseSide = 300f
+
+        val shrunkTop =
+            centeredArtworkTopDp(
+                baseTopDp = baseTop,
+                baseHeightScale = 1f,
+                currentHeightScale = 0.8f,
+                baseSideDp = baseSide,
+            )
+        val grownTop =
+            centeredArtworkTopDp(
+                baseTopDp = baseTop,
+                baseHeightScale = 1f,
+                currentHeightScale = 1.2f,
+                baseSideDp = baseSide,
+            )
+
+        val baseCenter = baseTop + baseSide / 2f
+        val shrunkCenter = shrunkTop + (baseSide * 0.8f) / 2f
+        val grownCenter = grownTop + (baseSide * 1.2f) / 2f
+
+        assertEquals(230f, shrunkTop, 0.001f)
+        assertEquals(170f, grownTop, 0.001f)
+        assertEquals(baseCenter, shrunkCenter, 0.001f)
+        assertEquals(baseCenter, grownCenter, 0.001f)
+    }
+
+    @Test
+    fun centeredArtworkResizeOnlyPushesBlocksItActuallyTouches() {
         val order =
             listOf(
                 CapsuleLightBlock.METADATA,
@@ -180,45 +210,31 @@ class CapsuleLightEditorTest {
         val positions =
             mapOf(
                 CapsuleLightBlock.METADATA to 20f,
-                CapsuleLightBlock.ARTWORK to 200f,
+                CapsuleLightBlock.ARTWORK to 170f,
                 CapsuleLightBlock.MODE_SWITCH to 650f,
                 CapsuleLightBlock.CONTROLS to 850f,
             )
-        val shrinkHeights =
+        val heights =
             mapOf(
                 CapsuleLightBlock.METADATA to 80f,
-                CapsuleLightBlock.ARTWORK to 200f,
+                CapsuleLightBlock.ARTWORK to 500f,
                 CapsuleLightBlock.MODE_SWITCH to 100f,
                 CapsuleLightBlock.CONTROLS to 120f,
             )
 
-        val shrunk =
+        val projected =
             projectArtworkResizePositions(
                 order = order,
                 preferredPositions = positions,
-                heights = shrinkHeights,
-                canvasHeightPx = 1100f,
-                gapPx = 8f,
-            )!!
-
-        assertEquals(200f, shrunk.getValue(CapsuleLightBlock.ARTWORK), 0.001f)
-        assertEquals(650f, shrunk.getValue(CapsuleLightBlock.MODE_SWITCH), 0.001f)
-        assertEquals(850f, shrunk.getValue(CapsuleLightBlock.CONTROLS), 0.001f)
-
-        val growHeights =
-            shrinkHeights + (CapsuleLightBlock.ARTWORK to 500f)
-        val grown =
-            projectArtworkResizePositions(
-                order = order,
-                preferredPositions = positions,
-                heights = growHeights,
+                heights = heights,
                 canvasHeightPx = 1200f,
                 gapPx = 8f,
             )!!
 
-        assertEquals(200f, grown.getValue(CapsuleLightBlock.ARTWORK), 0.001f)
-        assertEquals(708f, grown.getValue(CapsuleLightBlock.MODE_SWITCH), 0.001f)
-        assertEquals(850f, grown.getValue(CapsuleLightBlock.CONTROLS), 0.001f)
+        assertEquals(170f, projected.getValue(CapsuleLightBlock.ARTWORK), 0.001f)
+        assertEquals(678f, projected.getValue(CapsuleLightBlock.MODE_SWITCH), 0.001f)
+        assertEquals(850f, projected.getValue(CapsuleLightBlock.CONTROLS), 0.001f)
+        assertEquals(20f, projected.getValue(CapsuleLightBlock.METADATA), 0.001f)
     }
 
     @Test
