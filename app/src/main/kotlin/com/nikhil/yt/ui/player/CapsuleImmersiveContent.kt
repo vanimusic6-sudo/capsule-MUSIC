@@ -148,14 +148,23 @@ internal fun immersiveEditorHeight(
     totalHeight: Dp,
     artworkHeight: Dp,
     bottomPadding: Dp,
-): Dp =
-    (
+): Dp {
+    // The queue rail's 34dp box is only its touch target. Reserving that whole box made the
+    // editor stop well above the visible 5dp rail, clipping the transport capsule and leaving the
+    // solver without enough room to perform EDGE/reflow. Stop immediately above the *visible*
+    // rail instead: half the hit box reaches its centre, half the rail height reaches its top.
+    val visibleRailTopFromBottom =
+        bottomPadding +
+            ImmersiveQueueRailLift +
+            ImmersiveQueueRailTouchHeight / 2f +
+            ImmersiveQueueRailHeight / 2f
+
+    return (
         totalHeight -
             artworkHeight -
-            bottomPadding -
-            ImmersiveQueueRailLift -
-            ImmersiveQueueRailTouchHeight
+            visibleRailTopFromBottom
         ).coerceAtLeast(0.dp)
+}
 
 /**
  * A player where the cover is the screen.
