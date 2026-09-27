@@ -14,6 +14,29 @@ private val Floor: Dp = immersiveArtworkHeight(0.dp)
 private val Ceiling: Dp = immersiveArtworkHeight(100_000.dp)
 
 class CapsuleImmersiveContentTest {
+    @Test
+    fun `difficult artwork strengthens only the dissolve profile`() {
+        val calm = immersiveFadeProfile(bottomTexture = 0f, landscape = false)
+        val hard = immersiveFadeProfile(bottomTexture = 1f, landscape = false)
+
+        // Calm artwork must remain exactly on the 179b28e profile.
+        assertEquals(0.44f, calm.start, 0.0001f)
+        assertEquals(0.62f, calm.firstStop, 0.0001f)
+        assertEquals(0.12f, calm.firstAlpha, 0.0001f)
+        assertEquals(0.76f, calm.secondStop, 0.0001f)
+        assertEquals(0.42f, calm.secondAlpha, 0.0001f)
+        assertEquals(0.90f, calm.thirdStop, 0.0001f)
+        assertEquals(0.76f, calm.thirdAlpha, 0.0001f)
+
+        // A difficult lower edge gets a substantially earlier and denser fade.
+        assertTrue(hard.start < calm.start)
+        assertTrue(hard.firstStop < calm.firstStop)
+        assertTrue(hard.firstAlpha > calm.firstAlpha)
+        assertTrue(hard.secondAlpha > calm.secondAlpha)
+        assertTrue(hard.thirdAlpha > calm.thirdAlpha)
+    }
+
+
     @org.junit.Test
     fun editorWorkspaceStopsAtArtworkAndQueueRail() {
         val total = 851.dp
