@@ -144,6 +144,19 @@ private val ImmersiveQueueRailTouchHeight = 34.dp
 internal fun immersiveArtworkHeight(available: Dp): Dp =
     (available * ImmersiveArtworkFraction).coerceIn(ImmersiveArtworkMin, ImmersiveArtworkMax)
 
+internal fun immersiveEditorHeight(
+    totalHeight: Dp,
+    artworkHeight: Dp,
+    bottomPadding: Dp,
+): Dp =
+    (
+        totalHeight -
+            artworkHeight -
+            bottomPadding -
+            ImmersiveQueueRailLift -
+            ImmersiveQueueRailTouchHeight
+        ).coerceAtLeast(0.dp)
+
 /**
  * A player where the cover is the screen.
  *
@@ -594,11 +607,12 @@ fun CapsuleImmersiveContent(
          * Reuse the exact Light v2 solver for the four familiar blocks. This is one positioning
          * engine across Capsule rather than a second approximation of magnets/reflow.
          */
-        val editorBottomInset =
-            bottomPadding + ImmersiveQueueRailLift + ImmersiveQueueRailTouchHeight
         val editorHeight =
-            (maxHeight - artworkHeight - editorBottomInset)
-                .coerceAtLeast(0.dp)
+            immersiveEditorHeight(
+                totalHeight = maxHeight,
+                artworkHeight = artworkHeight,
+                bottomPadding = bottomPadding,
+            )
 
         LaunchedEffect(immersiveEditEnabled) {
             if (!immersiveEditEnabled) {
