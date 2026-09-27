@@ -90,6 +90,14 @@ internal enum class CapsuleLightTransportItem {
 }
 
 internal val CapsuleLightBaseOrder: List<CapsuleLightBlock> = CapsuleLightBlock.entries.toList()
+
+internal val CapsuleImmersiveBaseOrder: List<CapsuleLightBlock> =
+    listOf(
+        CapsuleLightBlock.METADATA,
+        CapsuleLightBlock.PROGRESS,
+        CapsuleLightBlock.MODE_SWITCH,
+        CapsuleLightBlock.CONTROLS,
+    )
 internal val CapsuleLightMetadataBaseOrder: List<CapsuleLightMetadataItem> = CapsuleLightMetadataItem.entries.toList()
 internal val CapsuleLightModeBaseOrder: List<CapsuleLightModeItem> = CapsuleLightModeItem.entries.toList()
 internal val CapsuleLightAvBaseOrder: List<CapsuleLightAvItem> = CapsuleLightAvItem.entries.toList()
@@ -97,6 +105,7 @@ internal val CapsuleLightTransportBaseOrder: List<CapsuleLightTransportItem> = C
 internal val CapsuleLightDisabledLyricSlotHeight = 40.dp
 
 internal val CapsuleLightBaseOrderEncoded = encodeEnumOrder(CapsuleLightBaseOrder)
+internal val CapsuleImmersiveBaseOrderEncoded = encodeEnumOrder(CapsuleImmersiveBaseOrder)
 internal val CapsuleLightMetadataBaseOrderEncoded = encodeEnumOrder(CapsuleLightMetadataBaseOrder)
 internal val CapsuleLightModeBaseOrderEncoded = encodeEnumOrder(CapsuleLightModeBaseOrder)
 internal val CapsuleLightAvBaseOrderEncoded = encodeEnumOrder(CapsuleLightAvBaseOrder)
@@ -189,6 +198,12 @@ internal fun decodeCapsuleLightOrder(raw: String): List<CapsuleLightBlock> {
 
 internal fun encodeCapsuleLightOrder(order: List<CapsuleLightBlock>) =
     encodeEnumOrder(decodeCapsuleLightOrder(encodeEnumOrder(order)))
+
+internal fun decodeCapsuleImmersiveOrder(raw: String): List<CapsuleLightBlock> =
+    decodeEnumOrder(raw, CapsuleImmersiveBaseOrder)
+
+internal fun encodeCapsuleImmersiveOrder(order: List<CapsuleLightBlock>): String =
+    encodeEnumOrder(decodeCapsuleImmersiveOrder(encodeEnumOrder(order)))
 
 internal fun decodeCapsuleLightMetadataOrder(raw: String) =
     decodeEnumOrder(raw, CapsuleLightMetadataBaseOrder)
