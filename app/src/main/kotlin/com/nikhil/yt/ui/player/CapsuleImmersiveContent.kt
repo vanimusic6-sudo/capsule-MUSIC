@@ -1064,6 +1064,7 @@ fun CapsuleImmersiveContent(
                     .clickable(
                         interactionSource = remember { MutableInteractionSource() },
                         indication = null,
+                        enabled = !immersiveEditEnabled,
                         onClick = onExpandQueue,
                     ),
             contentAlignment = Alignment.Center,
