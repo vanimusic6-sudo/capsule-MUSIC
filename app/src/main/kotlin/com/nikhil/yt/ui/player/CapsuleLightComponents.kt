@@ -58,6 +58,9 @@ private val LocalCapsuleLightMenu = staticCompositionLocalOf<() -> Unit> { {} }
 internal val CapsuleLightPanelRadius = 18.dp
 internal val CapsuleLightPanelShape = RoundedCornerShape(CapsuleLightPanelRadius)
 
+/** Visible left/right edge shared by the artwork and the transport capsule in portrait Light. */
+internal val CapsuleLightTransportEdgeInset = 28.dp
+
 /** The AUDIO/VIDEO switch shares the transport panel's shell, so it shares its geometry. */
 internal val CapsuleLightToggleHeight = 48.dp
 internal val CapsuleLightToggleInset = 4.dp
@@ -99,7 +102,7 @@ internal fun CapsulePlayerLayout(
      * When supplied, Light is rendered as reorderable slots instead of the fixed artwork/details
      * stack. Dense/Immersive and old call sites keep the exact legacy path below.
      */
-    lightBlockContent: (@Composable (CapsuleLightBlock, Dp, Float) -> Unit)? = null,
+    lightBlockContent: (@Composable (CapsuleLightBlock, Dp, Dp, Float) -> Unit)? = null,
     /**
      * The sounding lyric line, or null when it is switched off.
      *
@@ -138,6 +141,12 @@ internal fun CapsulePlayerLayout(
                     (maxHeight - detailsSpace).coerceIn(160.dp, 360.dp)
                 },
             )
+
+            // Width aligns exactly with the visible transport capsule edges. Height deliberately
+            // keeps the old artworkSide so this request changes no vertical geometry.
+            val artworkBaseWidth =
+                (maxWidth - CapsuleLightTransportEdgeInset * 2)
+                    .coerceAtLeast(120.dp)
 
             val artworkHeightBudgetAfterGaps =
                 (customCanvasHeight - detailsSpace)
@@ -252,6 +261,7 @@ internal fun CapsulePlayerLayout(
                             ) {
                                 lightBlockContent(
                                     block,
+                                    artworkBaseWidth,
                                     artworkSide,
                                     effectiveArtworkMaxScale,
                                 )
