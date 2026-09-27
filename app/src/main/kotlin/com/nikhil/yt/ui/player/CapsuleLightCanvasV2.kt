@@ -191,6 +191,57 @@ private fun projectOrderedPositions(
     return result
 }
 
+internal fun projectArtworkResizePositions(
+    order: List<CapsuleLightBlock>,
+    preferredPositions: Map<CapsuleLightBlock, Float>,
+    heights: Map<CapsuleLightBlock, Float>,
+    canvasHeightPx: Float,
+    gapPx: Float,
+): Map<CapsuleLightBlock, Float>? {
+    val artworkIndex = order.indexOf(CapsuleLightBlock.ARTWORK)
+    if (artworkIndex < 0) return null
+    if (!preferredPositions.keys.containsAll(order) || !heights.keys.containsAll(order)) return null
+
+    val artworkTop = preferredPositions[CapsuleLightBlock.ARTWORK] ?: return null
+    val artworkHeight = heights[CapsuleLightBlock.ARTWORK] ?: return null
+    if (artworkTop < -0.5f) return null
+
+    val above = order.take(artworkIndex)
+    val below = order.drop(artworkIndex + 1)
+
+    val upper =
+        if (above.isEmpty()) {
+            emptyMap()
+        } else {
+            projectOrderedPositions(
+                order = above,
+                preferredPositions = preferredPositions,
+                heights = heights,
+                startPx = 0f,
+                endPx = artworkTop - gapPx,
+                gapPx = gapPx,
+            ) ?: return null
+        }
+
+    val result = linkedMapOf<CapsuleLightBlock, Float>()
+    result.putAll(upper)
+    result[CapsuleLightBlock.ARTWORK] = artworkTop
+
+    var cursor = artworkTop + artworkHeight
+    below.forEach { block ->
+        cursor += gapPx
+        val preferredTop = preferredPositions[block] ?: return null
+        val top = maxOf(preferredTop, cursor)
+        val height = heights[block] ?: return null
+        if (top + height > canvasHeightPx + 0.5f) return null
+        result[block] = top
+        cursor = top + height
+    }
+
+    if (below.isEmpty() && artworkTop + artworkHeight > canvasHeightPx + 0.5f) return null
+    return result
+}
+
 internal fun normalizedStoredPositions(
     order: List<CapsuleLightBlock>,
     requested: Map<CapsuleLightBlock, Float>,
@@ -998,6 +1049,7 @@ internal fun CapsuleLightCanvasV2(
     ) -> Unit,
     onEditStarted: () -> Unit,
     externalGestureActive: Boolean = false,
+    artworkResizeActive: Boolean = false,
     modifier: Modifier = Modifier,
     content: @Composable (CapsuleLightBlock, Dp?) -> Unit,
 ) {
@@ -1054,10 +1106,36 @@ internal fun CapsuleLightCanvasV2(
                     .toFloat()
             val requiredGapsPx =
                 gapPx * (order.size - 1).coerceAtLeast(0)
-            val availablePx =
+            val globalAvailablePx =
                 (canvasHeightPx - otherHeightPx - requiredGapsPx)
                     .coerceAtLeast(0f)
-            with(density) { availablePx.toDp() }
+
+            val artworkIndex = order.indexOf(CapsuleLightBlock.ARTWORK)
+            val storedArtworkTopPx =
+                positionsDp[CapsuleLightBlock.ARTWORK]?.let { value ->
+                    with(density) { value.dp.toPx() }
+                }
+            val anchoredAvailablePx =
+                if (artworkIndex >= 0 && storedArtworkTopPx != null) {
+                    val blocksBelow = order.drop(artworkIndex + 1)
+                    val belowHeightPx =
+                        blocksBelow
+                            .sumOf { (heightsPx[it] ?: 0f).toDouble() }
+                            .toFloat()
+                    val belowGapsPx = gapPx * blocksBelow.size
+                    (
+                        canvasHeightPx -
+                            storedArtworkTopPx -
+                            belowHeightPx -
+                            belowGapsPx
+                        ).coerceAtLeast(0f)
+                } else {
+                    globalAvailablePx
+                }
+
+            with(density) {
+                minOf(globalAvailablePx, anchoredAvailablePx).toDp()
+            }
         } else {
             null
         }
@@ -1078,30 +1156,53 @@ internal fun CapsuleLightCanvasV2(
             canvasHeightPx,
             gapPx,
             externalGestureActive,
+            artworkResizeActive,
         ) {
             if (allMeasured) {
-                if (
+                when {
+                    artworkResizeActive &&
+                        requestedPositionsPx.keys.containsAll(order) -> {
+                        order to (
+                            projectArtworkResizePositions(
+                                order = order,
+                                preferredPositions = requestedPositionsPx,
+                                heights = heightsPx,
+                                canvasHeightPx = canvasHeightPx,
+                                gapPx = gapPx,
+                            ) ?: projectOrderedPositions(
+                                order = order,
+                                preferredPositions = requestedPositionsPx,
+                                heights = heightsPx,
+                                startPx = 0f,
+                                endPx = canvasHeightPx,
+                                gapPx = gapPx,
+                            ) ?: compactPositions(order, heightsPx, gapPx)
+                        )
+                    }
+
                     externalGestureActive &&
-                    requestedPositionsPx.keys.containsAll(order)
-                ) {
-                    order to (
-                        projectOrderedPositions(
+                        requestedPositionsPx.keys.containsAll(order) -> {
+                        order to (
+                            projectOrderedPositions(
+                                order = order,
+                                preferredPositions = requestedPositionsPx,
+                                heights = heightsPx,
+                                startPx = 0f,
+                                endPx = canvasHeightPx,
+                                gapPx = gapPx,
+                            ) ?: compactPositions(order, heightsPx, gapPx)
+                        )
+                    }
+
+                    else -> {
+                        normalizedStoredPositions(
                             order = order,
-                            preferredPositions = requestedPositionsPx,
+                            requested = requestedPositionsPx,
                             heights = heightsPx,
-                            startPx = 0f,
-                            endPx = canvasHeightPx,
+                            canvasHeightPx = canvasHeightPx,
                             gapPx = gapPx,
-                        ) ?: compactPositions(order, heightsPx, gapPx)
-                    )
-                } else {
-                    normalizedStoredPositions(
-                        order = order,
-                        requested = requestedPositionsPx,
-                        heights = heightsPx,
-                        canvasHeightPx = canvasHeightPx,
-                        gapPx = gapPx,
-                    )
+                        )
+                    }
                 }
             } else {
                 order to emptyMap()
