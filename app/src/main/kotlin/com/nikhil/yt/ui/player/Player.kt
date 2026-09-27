@@ -444,9 +444,17 @@ private fun CapsulePlayerLyricsHost(
                     .fillMaxSize()
                     .graphicsLayer {
                         val reaction = lyricsMotion.value.coerceIn(0f, 1f)
-                        translationY = -2.75f * reaction
-                        scaleX = 1f - 0.00070f * reaction
-                        scaleY = 1f - 0.00100f * reaction
+                        if (design == CapsulePlayerDesign.IMMERSIVE) {
+                            // Full-bleed artwork cannot tolerate a sub-pixel shrink: the first
+                            // lyrics frame used to expose a thin bright raster seam at its edge.
+                            translationY = 0f
+                            scaleX = 1f
+                            scaleY = 1f
+                        } else {
+                            translationY = -2.75f * reaction
+                            scaleX = 1f - 0.00070f * reaction
+                            scaleY = 1f - 0.00100f * reaction
+                        }
                         transformOrigin = TransformOrigin(0.5f, 0.5f)
                     },
         ) {
