@@ -856,7 +856,7 @@ fun CapsulePlayerContent(
             if (!useClayLayout) {
                 null
             } else {
-                { block, artworkSide, artworkMaxHeightScale ->
+                { block, artworkBaseWidth, artworkBaseHeight, artworkMaxHeightScale ->
                     val beginNestedEdit: () -> Unit = {
                         lightEditInProgress = true
                         onLightEditSessionActiveChange(true)
@@ -893,7 +893,8 @@ fun CapsulePlayerContent(
                             ) {
                                 Spacer(Modifier.height(8.dp))
                                 CapsuleLightResizableArtwork(
-                                    baseSide = artworkSide,
+                                    baseWidth = artworkBaseWidth,
+                                    baseHeight = artworkBaseHeight,
                                     widthScale = lightArtworkWidthScale,
                                     heightScale = safeArtworkHeightScale,
                                     maxHeightScale = artworkMaxHeightScale,
@@ -927,7 +928,10 @@ fun CapsulePlayerContent(
                                         // the user's artwork shape. Only the media inside ARTWORK
                                         // changes; the rest of the Light layout does not relayout.
                                         Box(
-                                            modifier = Modifier.size(artworkSide),
+                                            modifier =
+                                                Modifier
+                                                    .width(artworkBaseWidth)
+                                                    .height(artworkBaseHeight),
                                             contentAlignment = Alignment.Center,
                                         ) {
                                             artworkContent()
@@ -948,7 +952,7 @@ fun CapsulePlayerContent(
                                         horizontalAlignment = Alignment.CenterHorizontally,
                                     ) {
                                         Spacer(Modifier.height(8.dp))
-                                        Box(Modifier.width(artworkSide * lightArtworkWidthScale)) {
+                                        Box(Modifier.width(artworkBaseWidth * lightArtworkWidthScale)) {
                                             CapsuleLightLyricLine(
                                                 line =
                                                     capsuleLightLyricLineAt(
@@ -1258,7 +1262,11 @@ fun CapsulePlayerContent(
                                 modifier =
                                     Modifier
                                         .fillMaxWidth()
-                                        .padding(start = 24.dp, end = 24.dp, top = 8.dp),
+                                        .padding(
+                                            start = CapsuleLightBlockHorizontalInset,
+                                            end = CapsuleLightBlockHorizontalInset,
+                                            top = 8.dp,
+                                        ),
                             ) {
                                 CapsuleLightControls(
                                     textColor = textColor,
