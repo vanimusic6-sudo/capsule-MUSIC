@@ -1169,9 +1169,6 @@ fun CapsulePlayerContent(
                                     lightValidationGeneration += 1
                                 },
                                 onEditStarted = beginNestedEdit,
-                                dragHandleOnlyFor = { item ->
-                                    item == CapsuleLightModeItem.AUDIO_VIDEO
-                                },
                                 modifier =
                                     Modifier
                                         .fillMaxWidth()
