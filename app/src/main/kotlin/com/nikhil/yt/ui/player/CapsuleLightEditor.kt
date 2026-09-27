@@ -8,6 +8,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
@@ -1094,6 +1095,7 @@ internal fun <T : Enum<T>> CapsuleLightReorderRow(
     verticalAlignment: Alignment.Vertical = Alignment.CenterVertically,
     dragHandleOnly: Boolean = false,
     dragHandleOnlyFor: ((T) -> Boolean)? = null,
+    longPressToDrag: Boolean = true,
     content: @Composable (T) -> Unit,
 ) {
     if (!editable) {
@@ -1176,87 +1178,107 @@ internal fun <T : Enum<T>> CapsuleLightReorderRow(
                         label = "capsuleInnerPush",
                     )
 
+                fun beginDrag() {
+                    latestOnEditStarted()
+                    workingOrder = latestOrder
+                    dragged = item
+                    dragX = 0f
+                }
+
+                fun dragBy(amountX: Float) {
+                    val actualBounds = bounds[item] ?: return
+                    val minOffset = -actualBounds.start
+                    val maxOffset =
+                        (rowWidthPx - actualBounds.start - actualBounds.size)
+                            .coerceAtLeast(minOffset)
+                    dragX =
+                        (dragX + amountX)
+                            .coerceIn(minOffset, maxOffset)
+
+                    val index = workingOrder.indexOf(item)
+                    if (index < 0) return
+
+                    val visualStart = actualBounds.start + dragX
+                    val visualEnd = visualStart + actualBounds.size
+                    var targetIndex = index
+
+                    if (index > 0) {
+                        val previous = workingOrder[index - 1]
+                        val previousStart = slotStart(previous, workingOrder)
+                        val previousSize = bounds[previous]?.size
+                        if (
+                            previousStart != null &&
+                            previousSize != null &&
+                            lightRowCrossedBefore(
+                                commandStartPx = visualStart,
+                                neighbourCenterPx = previousStart + previousSize / 2f,
+                            )
+                        ) {
+                            targetIndex = index - 1
+                        }
+                    }
+
+                    if (targetIndex == index && index < workingOrder.lastIndex) {
+                        val next = workingOrder[index + 1]
+                        val nextStart = slotStart(next, workingOrder)
+                        val nextSize = bounds[next]?.size
+                        if (
+                            nextStart != null &&
+                            nextSize != null &&
+                            lightRowCrossedAfter(
+                                commandEndPx = visualEnd,
+                                neighbourCenterPx = nextStart + nextSize / 2f,
+                            )
+                        ) {
+                            targetIndex = index + 1
+                        }
+                    }
+
+                    if (targetIndex != index) {
+                        val moved = workingOrder.toMutableList()
+                        moved.removeAt(index)
+                        moved.add(targetIndex, item)
+                        workingOrder = moved
+                    }
+                }
+
+                fun finishDrag() {
+                    val settled = workingOrder
+                    latestOnOrderChange(settled)
+                    latestOnOrderSettled(settled)
+                    dragged = null
+                    dragX = 0f
+                }
+
+                fun cancelDrag() {
+                    dragged = null
+                    dragX = 0f
+                    workingOrder = latestOrder
+                }
+
                 val dragGesture =
-                    Modifier.pointerInput(item) {
-                        detectDragGesturesAfterLongPress(
-                            onDragStart = {
-                                latestOnEditStarted()
-                                workingOrder = latestOrder
-                                dragged = item
-                                dragX = 0f
-                            },
-                            onDrag = { change, amount ->
-                                change.consume()
-
-                                val actualBounds =
-                                    bounds[item] ?: return@detectDragGesturesAfterLongPress
-                                val minOffset = -actualBounds.start
-                                val maxOffset =
-                                    (rowWidthPx - actualBounds.start - actualBounds.size)
-                                        .coerceAtLeast(minOffset)
-                                dragX =
-                                    (dragX + amount.x)
-                                        .coerceIn(minOffset, maxOffset)
-
-                                val index = workingOrder.indexOf(item)
-                                if (index < 0) return@detectDragGesturesAfterLongPress
-
-                                val visualStart = actualBounds.start + dragX
-                                val visualEnd = visualStart + actualBounds.size
-                                var targetIndex = index
-
-                                if (index > 0) {
-                                    val previous = workingOrder[index - 1]
-                                    val previousStart = slotStart(previous, workingOrder)
-                                    val previousSize = bounds[previous]?.size
-                                    if (
-                                        previousStart != null &&
-                                        previousSize != null &&
-                                        lightRowCrossedBefore(
-                                            commandStartPx = visualStart,
-                                            neighbourCenterPx = previousStart + previousSize / 2f,
-                                        )
-                                    ) {
-                                        targetIndex = index - 1
-                                    }
-                                }
-
-                                if (targetIndex == index && index < workingOrder.lastIndex) {
-                                    val next = workingOrder[index + 1]
-                                    val nextStart = slotStart(next, workingOrder)
-                                    val nextSize = bounds[next]?.size
-                                    if (
-                                        nextStart != null &&
-                                        nextSize != null &&
-                                        lightRowCrossedAfter(
-                                            commandEndPx = visualEnd,
-                                            neighbourCenterPx = nextStart + nextSize / 2f,
-                                        )
-                                    ) {
-                                        targetIndex = index + 1
-                                    }
-                                }
-
-                                if (targetIndex != index) {
-                                    val moved = workingOrder.toMutableList()
-                                    moved.removeAt(index)
-                                    moved.add(targetIndex, item)
-                                    workingOrder = moved
-                                }
-                            },
-                            onDragEnd = {
-                                val settled = workingOrder
-                                latestOnOrderChange(settled)
-                                latestOnOrderSettled(settled)
-                                dragged = null
-                                dragX = 0f
-                            },
-                            onDragCancel = {
-                                dragged = null
-                                dragX = 0f
-                                workingOrder = latestOrder
-                            },
-                        )
+                    Modifier.pointerInput(item, longPressToDrag) {
+                        if (longPressToDrag) {
+                            detectDragGesturesAfterLongPress(
+                                onDragStart = { beginDrag() },
+                                onDrag = { change, amount ->
+                                    change.consume()
+                                    dragBy(amount.x)
+                                },
+                                onDragEnd = { finishDrag() },
+                                onDragCancel = { cancelDrag() },
+                            )
+                        } else {
+                            detectHorizontalDragGestures(
+                                onDragStart = { beginDrag() },
+                                onHorizontalDrag = { change, amount ->
+                                    change.consume()
+                                    dragBy(amount)
+                                },
+                                onDragEnd = { finishDrag() },
+                                onDragCancel = { cancelDrag() },
+                            )
+                        }
                     }
 
                 Box(
