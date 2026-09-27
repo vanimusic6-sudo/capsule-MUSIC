@@ -238,6 +238,29 @@ internal fun normalizedStoredPositions(
     return sorted to projected
 }
 
+internal fun lightVerticalCrossedBefore(
+    commandTopPx: Float,
+    commandHeightPx: Float,
+    neighbourTopPx: Float,
+    neighbourHeightPx: Float,
+): Boolean {
+    val overlapNeeded = minOf(commandHeightPx, neighbourHeightPx) / 2f
+    return commandTopPx <=
+        neighbourTopPx + neighbourHeightPx - overlapNeeded + 0.5f
+}
+
+internal fun lightVerticalCrossedAfter(
+    commandTopPx: Float,
+    commandHeightPx: Float,
+    neighbourTopPx: Float,
+    neighbourHeightPx: Float,
+): Boolean {
+    val commandBottomPx = commandTopPx + commandHeightPx
+    val overlapNeeded = minOf(commandHeightPx, neighbourHeightPx) / 2f
+    return commandBottomPx >=
+        neighbourTopPx + overlapNeeded - 0.5f
+}
+
 private fun insertionOrder(
     dragged: CapsuleLightBlock,
     desiredTopPx: Float,
@@ -245,21 +268,60 @@ private fun insertionOrder(
     basePositions: Map<CapsuleLightBlock, Float>,
     heights: Map<CapsuleLightBlock, Float>,
 ): List<CapsuleLightBlock> {
-    val draggedCenter = desiredTopPx + (heights[dragged] ?: 0f) / 2f
-    val others =
-        baseOrder
-            .filterNot { it == dragged }
-            .sortedBy { basePositions[it] ?: 0f }
+    val draggedHeight = heights[dragged] ?: return baseOrder
+    val current =
+        baseOrder.sortedWith(
+            compareBy<CapsuleLightBlock> { basePositions[it] ?: Float.MAX_VALUE }
+                .thenBy { baseOrder.indexOf(it) },
+        )
+    val currentIndex = current.indexOf(dragged)
+    if (currentIndex < 0) return current
 
-    val index =
-        others.indexOfFirst { other ->
-            val center =
-                (basePositions[other] ?: 0f) +
-                    (heights[other] ?: 0f) / 2f
-            draggedCenter < center
-        }.let { if (it < 0) others.size else it }
+    val originTop = basePositions[dragged] ?: desiredTopPx
+    var targetIndex = currentIndex
 
-    return others.toMutableList().apply { add(index, dragged) }
+    if (desiredTopPx < originTop - 0.5f) {
+        while (targetIndex > 0) {
+            val neighbour = current[targetIndex - 1]
+            val neighbourTop = basePositions[neighbour] ?: break
+            val neighbourHeight = heights[neighbour] ?: break
+            if (
+                !lightVerticalCrossedBefore(
+                    commandTopPx = desiredTopPx,
+                    commandHeightPx = draggedHeight,
+                    neighbourTopPx = neighbourTop,
+                    neighbourHeightPx = neighbourHeight,
+                )
+            ) {
+                break
+            }
+            targetIndex -= 1
+        }
+    } else if (desiredTopPx > originTop + 0.5f) {
+        while (targetIndex < current.lastIndex) {
+            val neighbour = current[targetIndex + 1]
+            val neighbourTop = basePositions[neighbour] ?: break
+            val neighbourHeight = heights[neighbour] ?: break
+            if (
+                !lightVerticalCrossedAfter(
+                    commandTopPx = desiredTopPx,
+                    commandHeightPx = draggedHeight,
+                    neighbourTopPx = neighbourTop,
+                    neighbourHeightPx = neighbourHeight,
+                )
+            ) {
+                break
+            }
+            targetIndex += 1
+        }
+    }
+
+    if (targetIndex == currentIndex) return current
+
+    return current.toMutableList().apply {
+        removeAt(currentIndex)
+        add(targetIndex, dragged)
+    }
 }
 
 /**
@@ -437,17 +499,35 @@ internal enum class LightEdgeReplacement {
 internal fun chooseLightEdgeReplacement(
     currentIndex: Int,
     lastIndex: Int,
-    commandCenterPx: Float,
-    firstCenterPx: Float,
-    lastCenterPx: Float,
+    commandTopPx: Float,
+    commandHeightPx: Float,
+    firstTopPx: Float,
+    firstHeightPx: Float,
+    lastTopPx: Float,
+    lastHeightPx: Float,
 ): LightEdgeReplacement? =
     when {
-        currentIndex > 0 && commandCenterPx <= firstCenterPx + 0.5f ->
+        currentIndex > 0 &&
+            lightVerticalCrossedBefore(
+                commandTopPx = commandTopPx,
+                commandHeightPx = commandHeightPx,
+                neighbourTopPx = firstTopPx,
+                neighbourHeightPx = firstHeightPx,
+            ) ->
             LightEdgeReplacement.TOP
-        currentIndex < lastIndex && commandCenterPx >= lastCenterPx - 0.5f ->
+
+        currentIndex < lastIndex &&
+            lightVerticalCrossedAfter(
+                commandTopPx = commandTopPx,
+                commandHeightPx = commandHeightPx,
+                neighbourTopPx = lastTopPx,
+                neighbourHeightPx = lastHeightPx,
+            ) ->
             LightEdgeReplacement.BOTTOM
+
         else -> null
     }
+
 
 /**
  * Frozen real blocks, always sorted by their actual on-canvas position.
@@ -703,22 +783,23 @@ private fun resolveEdgeReplacement(
     val currentIndex = current.indexOf(dragged)
     if (currentIndex < 0) return null
 
-    val commandCenter = commandTopPx + draggedHeight / 2f
     val first = fixed.first()
     val last = fixed.last()
     val firstTop = basePositions[first] ?: return null
-    val firstCenter = firstTop + (heights[first] ?: return null) / 2f
+    val firstHeight = heights[first] ?: return null
     val lastTop = basePositions[last] ?: return null
     val lastHeight = heights[last] ?: return null
-    val lastCenter = lastTop + lastHeight / 2f
 
     val edge =
         chooseLightEdgeReplacement(
             currentIndex = currentIndex,
             lastIndex = current.lastIndex,
-            commandCenterPx = commandCenter,
-            firstCenterPx = firstCenter,
-            lastCenterPx = lastCenter,
+            commandTopPx = commandTopPx,
+            commandHeightPx = draggedHeight,
+            firstTopPx = firstTop,
+            firstHeightPx = firstHeight,
+            lastTopPx = lastTop,
+            lastHeightPx = lastHeight,
         )
 
     if (edge == LightEdgeReplacement.TOP) {
