@@ -124,40 +124,43 @@ internal fun immersiveFadeProfile(
     landscape: Boolean,
 ): ImmersiveFadeProfile {
     val texture = bottomTexture.coerceIn(0f, 1f)
-    val hard = texture * texture
-    val extreme = hard * texture
+
+    // Keep the current calm profile untouched. Extra strength starts only after the lower crop is
+    // genuinely difficult; this avoids turning medium-detail artwork into a flat grey blanket.
+    val boosted = ((texture - 0.45f) / 0.55f).coerceIn(0f, 1f)
+    val hard = boosted * boosted
+    val extreme = hard * boosted
 
     return if (landscape) {
         ImmersiveFadeProfile(
-            // Keep the stronger calm baseline, but use the previous difficulty boost.
-            start = 0.32f - 0.14f * texture - 0.06f * hard - 0.02f * extreme,
-            firstStop = 0.52f - 0.10f * texture - 0.05f * hard - 0.02f * extreme,
+            start = 0.32f - 0.08f * boosted - 0.03f * hard - 0.01f * extreme,
+            firstStop = 0.52f - 0.07f * boosted - 0.03f * hard - 0.01f * extreme,
             firstAlpha =
-                (0.15f + 0.18f * texture + 0.10f * hard + 0.04f * extreme)
+                (0.15f + 0.10f * boosted + 0.05f * hard + 0.02f * extreme)
                     .coerceIn(0f, 1f),
-            secondStop = 0.70f - 0.08f * texture - 0.05f * hard - 0.02f * extreme,
+            secondStop = 0.70f - 0.06f * boosted - 0.03f * hard - 0.01f * extreme,
             secondAlpha =
-                (0.46f + 0.26f * texture + 0.12f * hard + 0.05f * extreme)
+                (0.46f + 0.14f * boosted + 0.06f * hard + 0.02f * extreme)
                     .coerceIn(0f, 1f),
-            thirdStop = 0.87f - 0.05f * texture - 0.03f * hard - 0.01f * extreme,
+            thirdStop = 0.87f - 0.04f * boosted - 0.02f * hard,
             thirdAlpha =
-                (0.80f + 0.20f * texture + 0.06f * hard + 0.02f * extreme)
+                (0.80f + 0.10f * boosted + 0.03f * hard)
                     .coerceIn(0f, 1f),
         )
     } else {
         ImmersiveFadeProfile(
-            start = (ImmersiveFadeStart - 0.02f) - 0.22f * texture - 0.08f * hard - 0.03f * extreme,
-            firstStop = 0.60f - 0.15f * texture - 0.06f * hard - 0.02f * extreme,
+            start = 0.42f - 0.12f * boosted - 0.04f * hard - 0.015f * extreme,
+            firstStop = 0.60f - 0.10f * boosted - 0.04f * hard - 0.015f * extreme,
             firstAlpha =
-                (0.15f + 0.22f * texture + 0.11f * hard + 0.05f * extreme)
+                (0.15f + 0.12f * boosted + 0.06f * hard + 0.025f * extreme)
                     .coerceIn(0f, 1f),
-            secondStop = 0.74f - 0.12f * texture - 0.06f * hard - 0.02f * extreme,
+            secondStop = 0.74f - 0.08f * boosted - 0.04f * hard - 0.015f * extreme,
             secondAlpha =
-                (0.46f + 0.30f * texture + 0.13f * hard + 0.05f * extreme)
+                (0.46f + 0.18f * boosted + 0.07f * hard + 0.025f * extreme)
                     .coerceIn(0f, 1f),
-            thirdStop = 0.89f - 0.07f * texture - 0.03f * hard - 0.01f * extreme,
+            thirdStop = 0.89f - 0.05f * boosted - 0.02f * hard,
             thirdAlpha =
-                (0.80f + 0.22f * texture + 0.07f * hard + 0.02f * extreme)
+                (0.80f + 0.12f * boosted + 0.04f * hard)
                     .coerceIn(0f, 1f),
         )
     }
