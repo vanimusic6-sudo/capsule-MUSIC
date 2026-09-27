@@ -62,11 +62,16 @@ internal fun CapsuleAudioVideoToggle(
      * band of shell around the segment on every corner. A segment rounded to
      * some unrelated radius is what reads as visual noise next to the panel.
      */
-    val shape = if (lightStyle) CapsuleLightPanelShape else RoundedCornerShape(10.dp)
+    val shape =
+        if (lightStyle) {
+            RoundedCornerShape(CapsuleLightToggleRadius)
+        } else {
+            RoundedCornerShape(10.dp)
+        }
     val segmentShape =
         if (lightStyle) {
             RoundedCornerShape(
-                (CapsuleLightPanelRadius - CapsuleLightToggleInset).coerceAtLeast(0.dp),
+                (CapsuleLightToggleRadius - CapsuleLightToggleInset).coerceAtLeast(0.dp),
             )
         } else {
             RoundedCornerShape(10.dp)
