@@ -219,23 +219,22 @@ internal fun normalizedStoredPositions(
         return order to compactPositions(order, heights, gapPx)
     }
 
-    val sorted =
-        order.sortedWith(
-            compareBy<CapsuleLightBlock> { requested[it] ?: Float.MAX_VALUE }
-                .thenBy { order.indexOf(it) },
-        )
-
+    // Order is authoritative. Positions describe spacing only.
+    //
+    // Re-inferring order from saved top coordinates is unsafe when one block is being resized:
+    // its new height can temporarily project old coordinates across another block and make a
+    // completely unrelated MODE_SWITCH jump to the end of the scene.
     val projected =
         projectOrderedPositions(
-            order = sorted,
+            order = order,
             preferredPositions = requested,
             heights = heights,
             startPx = 0f,
             endPx = canvasHeightPx,
             gapPx = gapPx,
-        ) ?: compactPositions(sorted, heights, gapPx)
+        ) ?: compactPositions(order, heights, gapPx)
 
-    return sorted to projected
+    return order to projected
 }
 
 internal fun lightVerticalCrossedBefore(
