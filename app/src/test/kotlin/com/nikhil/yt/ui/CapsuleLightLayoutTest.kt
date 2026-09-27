@@ -41,7 +41,6 @@ import com.nikhil.yt.ui.player.CapsuleLightLyricLineHeight
 import com.nikhil.yt.ui.player.CapsuleLightToggleHeight
 import com.nikhil.yt.ui.player.CapsuleLightToggleRadius
 import com.nikhil.yt.ui.player.CapsuleLightPanelRadius
-import com.nikhil.yt.ui.player.CapsuleLightTransportHeight
 import com.nikhil.yt.ui.player.CapsuleLightToggleInset
 import com.nikhil.yt.ui.player.CapsulePlayerLayout
 import com.nikhil.yt.ui.player.CapsuleLightBlock
@@ -62,12 +61,13 @@ import org.robolectric.annotation.Config
 class CapsuleLightLayoutTest {
     @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
 
-    @Test fun audioVideoToggleKeepsTransportCapsuleCurvatureProfile() {
-        val transportRatio =
-            CapsuleLightPanelRadius.value / CapsuleLightTransportHeight.value
-        val toggleRatio =
-            CapsuleLightToggleRadius.value / CapsuleLightToggleHeight.value
-        assertEquals(transportRatio, toggleRatio, 0.0001f)
+    @Test fun audioVideoToggleUsesSoftIntermediateCurvature() {
+        // Shorter Light toggle: softer than the proportional ~10dp version, but still clearly
+        // less pill-like than the old 18dp shell.
+        assertEquals(15.dp, CapsuleLightToggleRadius)
+        assertEquals(12.dp, CapsuleLightToggleSegmentRadius)
+        assertTrue(CapsuleLightToggleRadius < CapsuleLightPanelRadius)
+        assertTrue(CapsuleLightToggleRadius > 10.dp)
     }
 
     @Test fun baseLightArtworkMatchesTransportWidthWithoutChangingLegacyHeight() {
