@@ -70,6 +70,13 @@ import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 import coil3.compose.AsyncImage
 import com.nikhil.yt.R
+import com.nikhil.yt.constants.CapsuleImmersiveAvOrderKey
+import com.nikhil.yt.constants.CapsuleImmersiveCanvasPositionsKey
+import com.nikhil.yt.constants.CapsuleImmersiveEditEnabledKey
+import com.nikhil.yt.constants.CapsuleImmersiveLayoutOrderKey
+import com.nikhil.yt.constants.CapsuleImmersiveMetadataOrderKey
+import com.nikhil.yt.constants.CapsuleImmersiveModeOrderKey
+import com.nikhil.yt.constants.CapsuleImmersiveTransportOrderKey
 import com.nikhil.yt.extensions.togglePlayPause
 import com.nikhil.yt.extensions.toggleRepeatMode
 import com.nikhil.yt.models.MediaMetadata
@@ -79,6 +86,7 @@ import com.nikhil.yt.playback.video.CapsuleVideoPhase
 import com.nikhil.yt.ui.component.CapsuleFavoriteColors
 import com.nikhil.yt.ui.component.CapsuleFavoriteIcon
 import com.nikhil.yt.utils.makeTimeString
+import com.nikhil.yt.utils.rememberPreference
 
 /**
  * The outgoing fade is a SINGLE operation for a displayed frame, regardless of how
@@ -124,6 +132,7 @@ private val ImmersiveQueueRailHeight = 5.dp
 
 /** How far the rail sits off the foot of the sheet, rather than against it. */
 private val ImmersiveQueueRailLift = 44.dp
+private val ImmersiveQueueRailTouchHeight = 34.dp
 
 /**
  * How tall the cover is in a sheet of this height.
@@ -293,6 +302,72 @@ fun CapsuleImmersiveContent(
 
     val safeDuration = durationMs.coerceAtLeast(0L)
     val shownPosition = (sliderPosition ?: positionMs).coerceIn(0L, safeDuration)
+
+    val (immersiveEditEnabled, _) =
+        rememberPreference(
+            CapsuleImmersiveEditEnabledKey,
+            defaultValue = false,
+        )
+    val (immersiveOrderEncoded, onImmersiveOrderEncodedChange) =
+        rememberPreference(
+            CapsuleImmersiveLayoutOrderKey,
+            defaultValue = CapsuleImmersiveBaseOrderEncoded,
+        )
+    val (immersivePositionsEncoded, onImmersivePositionsEncodedChange) =
+        rememberPreference(
+            CapsuleImmersiveCanvasPositionsKey,
+            defaultValue = CapsuleLightCanvasPositionsBaseEncoded,
+        )
+    val (immersiveMetadataOrderEncoded, onImmersiveMetadataOrderEncodedChange) =
+        rememberPreference(
+            CapsuleImmersiveMetadataOrderKey,
+            defaultValue = CapsuleLightMetadataBaseOrderEncoded,
+        )
+    val (immersiveModeOrderEncoded, onImmersiveModeOrderEncodedChange) =
+        rememberPreference(
+            CapsuleImmersiveModeOrderKey,
+            defaultValue = CapsuleLightModeBaseOrderEncoded,
+        )
+    val (immersiveAvOrderEncoded, onImmersiveAvOrderEncodedChange) =
+        rememberPreference(
+            CapsuleImmersiveAvOrderKey,
+            defaultValue = CapsuleLightAvBaseOrderEncoded,
+        )
+    val (immersiveTransportOrderEncoded, onImmersiveTransportOrderEncodedChange) =
+        rememberPreference(
+            CapsuleImmersiveTransportOrderKey,
+            defaultValue = CapsuleLightTransportBaseOrderEncoded,
+        )
+
+    var immersiveOrder by
+        remember(immersiveOrderEncoded) {
+            mutableStateOf(decodeCapsuleImmersiveOrder(immersiveOrderEncoded))
+        }
+    var immersivePositions by
+        remember(immersivePositionsEncoded) {
+            mutableStateOf(decodeCapsuleLightCanvasPositions(immersivePositionsEncoded))
+        }
+    var immersiveMetadataOrder by
+        remember(immersiveMetadataOrderEncoded) {
+            mutableStateOf(
+                decodeCapsuleLightMetadataOrder(immersiveMetadataOrderEncoded),
+            )
+        }
+    var immersiveModeOrder by
+        remember(immersiveModeOrderEncoded) {
+            mutableStateOf(decodeCapsuleLightModeOrder(immersiveModeOrderEncoded))
+        }
+    var immersiveAvOrder by
+        remember(immersiveAvOrderEncoded) {
+            mutableStateOf(decodeCapsuleLightAvOrder(immersiveAvOrderEncoded))
+        }
+    var immersiveTransportOrder by
+        remember(immersiveTransportOrderEncoded) {
+            mutableStateOf(
+                decodeCapsuleLightTransportOrder(immersiveTransportOrderEncoded),
+            )
+        }
+    var immersiveNestedEditActive by remember { mutableStateOf(false) }
 
     BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
         // The artwork region stays at the same height for both audio and video.
