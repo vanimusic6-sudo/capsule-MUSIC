@@ -28,6 +28,8 @@ import com.nikhil.yt.LocalPlayerAwareWindowInsets
 import com.nikhil.yt.R
 import com.nikhil.yt.constants.CapsuleCustomizeTarget
 import com.nikhil.yt.constants.CapsuleCustomizeTargetKey
+import com.nikhil.yt.constants.CapsulePlayerDesign
+import com.nikhil.yt.constants.CapsulePlayerDesignKey
 import com.nikhil.yt.constants.CapsuleLightEditEnabledKey
 import com.nikhil.yt.constants.CapsuleLightEditSessionActiveKey
 import com.nikhil.yt.constants.CapsuleLightLayoutOrderKey
@@ -46,7 +48,6 @@ import com.nikhil.yt.constants.CapsuleImmersiveMetadataOrderKey
 import com.nikhil.yt.constants.CapsuleImmersiveModeOrderKey
 import com.nikhil.yt.constants.CapsuleImmersiveAvOrderKey
 import com.nikhil.yt.constants.CapsuleImmersiveTransportOrderKey
-import com.nikhil.yt.ui.component.EnumListPreference
 import com.nikhil.yt.ui.component.IconButton
 import com.nikhil.yt.ui.component.PreferenceEntry
 import com.nikhil.yt.ui.component.PreferenceGroupTitle
@@ -68,10 +69,15 @@ import com.nikhil.yt.utils.rememberPreference
 fun CapsuleCustomizeSettings(
     navController: NavController,
 ) {
-    val (target, onTargetChange) =
+    val (latchedTarget, onLatchedTargetChange) =
         rememberEnumPreference(
             CapsuleCustomizeTargetKey,
             defaultValue = CapsuleCustomizeTarget.LIGHT,
+        )
+    val (playerDesign, _) =
+        rememberEnumPreference(
+            CapsulePlayerDesignKey,
+            defaultValue = CapsulePlayerDesign.SUPER,
         )
     val (lightEditEnabled, onLightEditEnabledChange) =
         rememberPreference(
@@ -84,11 +90,25 @@ fun CapsuleCustomizeSettings(
             defaultValue = false,
         )
 
-    val editEnabled =
-        when (target) {
-            CapsuleCustomizeTarget.LIGHT -> lightEditEnabled
-            CapsuleCustomizeTarget.IMMERSIVE -> immersiveEditEnabled
+    val currentSupportedTarget =
+        when (playerDesign) {
+            CapsulePlayerDesign.LIGHT -> CapsuleCustomizeTarget.LIGHT
+            CapsulePlayerDesign.IMMERSIVE -> CapsuleCustomizeTarget.IMMERSIVE
+            CapsulePlayerDesign.SUPER -> null
         }
+
+    // Once editing is enabled, keep editing the design that was active at that exact moment.
+    // Changing the player design elsewhere must not silently move an active edit session.
+    val activeTarget =
+        when {
+            lightEditEnabled && immersiveEditEnabled -> latchedTarget
+            lightEditEnabled -> CapsuleCustomizeTarget.LIGHT
+            immersiveEditEnabled -> CapsuleCustomizeTarget.IMMERSIVE
+            else -> null
+        }
+    val effectiveTarget = activeTarget ?: currentSupportedTarget
+    val editEnabled = activeTarget != null
+    val editAvailable = activeTarget != null || currentSupportedTarget != null
     val (_, onLayoutOrderChange) =
         rememberPreference(
             CapsuleLightLayoutOrderKey,
@@ -190,41 +210,19 @@ fun CapsuleCustomizeSettings(
         )
 
         PreferenceGroupTitle(
-            title = stringResource(R.string.capsule_customize_screen_section),
-        )
-
-        EnumListPreference(
-            title = { Text(stringResource(R.string.capsule_customize_screen)) },
-            icon = {
-                Icon(
-                    painterResource(R.drawable.grid_view),
-                    contentDescription = null,
-                )
-            },
-            selectedValue = target,
-            onValueSelected = onTargetChange,
-            valueText = {
-                when (it) {
-                    CapsuleCustomizeTarget.LIGHT ->
-                        stringResource(R.string.capsule_player_light)
-                    CapsuleCustomizeTarget.IMMERSIVE ->
-                        stringResource(R.string.capsule_player_immersive)
-                }
-            },
-        )
-
-        PreferenceGroupTitle(
             title = stringResource(R.string.capsule_customize_edit_section),
         )
 
         SwitchPreference(
             title = {
                 Text(
-                    when (target) {
+                    when (effectiveTarget) {
                         CapsuleCustomizeTarget.LIGHT ->
                             stringResource(R.string.capsule_light_edit_screen)
                         CapsuleCustomizeTarget.IMMERSIVE ->
                             stringResource(R.string.capsule_immersive_edit_screen)
+                        null ->
+                            stringResource(R.string.capsule_customize_edit_section)
                     },
                 )
             },
@@ -236,16 +234,23 @@ fun CapsuleCustomizeSettings(
                 )
             },
             checked = editEnabled,
+            isEnabled = editAvailable,
             onCheckedChange = { enabled ->
-                when (target) {
-                    CapsuleCustomizeTarget.LIGHT -> {
-                        onLightEditEnabledChange(enabled)
-                        if (!enabled) {
+                if (!enabled) {
+                    // Off means no structural editor is active, regardless of legacy state.
+                    onLightEditEnabledChange(false)
+                    onImmersiveEditEnabledChange(false)
+                    onEditSessionActiveChange(false)
+                } else {
+                    currentSupportedTarget?.let { target ->
+                        onLatchedTargetChange(target)
+                        // Exactly one editor may own the gesture system.
+                        onLightEditEnabledChange(target == CapsuleCustomizeTarget.LIGHT)
+                        onImmersiveEditEnabledChange(target == CapsuleCustomizeTarget.IMMERSIVE)
+                        if (target != CapsuleCustomizeTarget.LIGHT) {
                             onEditSessionActiveChange(false)
                         }
                     }
-                    CapsuleCustomizeTarget.IMMERSIVE ->
-                        onImmersiveEditEnabledChange(enabled)
                 }
             },
         )
@@ -253,11 +258,13 @@ fun CapsuleCustomizeSettings(
         PreferenceEntry(
             title = {
                 Text(
-                    when (target) {
+                    when (effectiveTarget) {
                         CapsuleCustomizeTarget.LIGHT ->
                             stringResource(R.string.capsule_light_reset_screen)
                         CapsuleCustomizeTarget.IMMERSIVE ->
                             stringResource(R.string.capsule_immersive_reset_screen)
+                        null ->
+                            stringResource(R.string.capsule_customize_edit_section)
                     },
                 )
             },
@@ -268,8 +275,9 @@ fun CapsuleCustomizeSettings(
                     contentDescription = null,
                 )
             },
+            isEnabled = effectiveTarget != null,
             onClick = {
-                when (target) {
+                when (effectiveTarget) {
                     CapsuleCustomizeTarget.LIGHT -> {
                         onLayoutOrderChange(CapsuleLightBaseOrderEncoded)
                         onMetadataOrderChange(CapsuleLightMetadataBaseOrderEncoded)
@@ -298,6 +306,7 @@ fun CapsuleCustomizeSettings(
                         )
                         onImmersiveEditEnabledChange(false)
                     }
+                    null -> Unit
                 }
             },
         )
