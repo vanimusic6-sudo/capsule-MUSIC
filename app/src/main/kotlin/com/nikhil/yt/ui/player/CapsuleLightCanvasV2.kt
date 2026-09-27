@@ -1599,6 +1599,12 @@ internal fun CapsuleLightCanvasV2(
                         ) {
                             Box(
                                 Modifier
+                                    // The 22dp gesture target stays easy to grab, but the visible
+                                    // rail itself belongs in the 8dp dock gap, not on top of text,
+                                    // sliders or the transport shell.
+                                    .graphicsLayer {
+                                        translationY = -6.dp.toPx()
+                                    }
                                     .width(30.dp)
                                     .height(4.dp)
                                     .background(
