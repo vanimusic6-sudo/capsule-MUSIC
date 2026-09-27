@@ -125,45 +125,64 @@ internal fun immersiveFadeProfile(
 ): ImmersiveFadeProfile {
     val texture = bottomTexture.coerceIn(0f, 1f)
 
-    // Keep the current calm profile untouched. Extra strength starts only after the lower crop is
-    // genuinely difficult; this avoids turning medium-detail artwork into a flat grey blanket.
-    val boosted = ((texture - 0.45f) / 0.55f).coerceIn(0f, 1f)
-    val hard = boosted * boosted
-    val extreme = hard * boosted
+    // Keep the current calm profile EXACTLY as-is. Only genuinely difficult lower crops leave it.
+    // Above the threshold, smoothly approach the hard endpoint that worked well in a9ef7ff.
+    val rawBoost = ((texture - 0.45f) / 0.55f).coerceIn(0f, 1f)
+    val boost = rawBoost * rawBoost * (3f - 2f * rawBoost) // smoothstep: no visible kink at 0.45
 
     return if (landscape) {
+        val calmStart = 0.32f
+        val calmFirstStop = 0.52f
+        val calmFirstAlpha = 0.15f
+        val calmSecondStop = 0.70f
+        val calmSecondAlpha = 0.46f
+        val calmThirdStop = 0.87f
+        val calmThirdAlpha = 0.80f
+
+        // Exact texture=1 endpoint from a9ef7ff.
+        val hardStart = 0.12f
+        val hardFirstStop = 0.37f
+        val hardFirstAlpha = 0.44f
+        val hardSecondStop = 0.57f
+        val hardSecondAlpha = 0.85f
+        val hardThirdStop = 0.79f
+        val hardThirdAlpha = 1f
+
         ImmersiveFadeProfile(
-            // Tiny extra push only after the difficulty threshold. Keep enough artwork texture
-            // visible that the dissolve still reads as a gradient rather than a grey blanket.
-            start = 0.32f - 0.09f * boosted - 0.035f * hard - 0.01f * extreme,
-            firstStop = 0.52f - 0.08f * boosted - 0.035f * hard - 0.01f * extreme,
-            firstAlpha =
-                (0.15f + 0.11f * boosted + 0.055f * hard + 0.02f * extreme)
-                    .coerceIn(0f, 1f),
-            secondStop = 0.70f - 0.07f * boosted - 0.035f * hard - 0.01f * extreme,
-            secondAlpha =
-                (0.46f + 0.15f * boosted + 0.065f * hard + 0.025f * extreme)
-                    .coerceIn(0f, 1f),
-            thirdStop = 0.87f - 0.045f * boosted - 0.025f * hard,
-            thirdAlpha =
-                (0.80f + 0.105f * boosted + 0.04f * hard)
-                    .coerceIn(0f, 1f),
+            start = calmStart + (hardStart - calmStart) * boost,
+            firstStop = calmFirstStop + (hardFirstStop - calmFirstStop) * boost,
+            firstAlpha = calmFirstAlpha + (hardFirstAlpha - calmFirstAlpha) * boost,
+            secondStop = calmSecondStop + (hardSecondStop - calmSecondStop) * boost,
+            secondAlpha = calmSecondAlpha + (hardSecondAlpha - calmSecondAlpha) * boost,
+            thirdStop = calmThirdStop + (hardThirdStop - calmThirdStop) * boost,
+            thirdAlpha = calmThirdAlpha + (hardThirdAlpha - calmThirdAlpha) * boost,
         )
     } else {
+        val calmStart = 0.42f
+        val calmFirstStop = 0.60f
+        val calmFirstAlpha = 0.15f
+        val calmSecondStop = 0.74f
+        val calmSecondAlpha = 0.46f
+        val calmThirdStop = 0.89f
+        val calmThirdAlpha = 0.80f
+
+        // Exact texture=1 endpoint from a9ef7ff.
+        val hardStart = 0.11f
+        val hardFirstStop = 0.39f
+        val hardFirstAlpha = 0.50f
+        val hardSecondStop = 0.56f
+        val hardSecondAlpha = 0.90f
+        val hardThirdStop = 0.79f
+        val hardThirdAlpha = 1f
+
         ImmersiveFadeProfile(
-            start = 0.42f - 0.13f * boosted - 0.05f * hard - 0.015f * extreme,
-            firstStop = 0.60f - 0.11f * boosted - 0.05f * hard - 0.015f * extreme,
-            firstAlpha =
-                (0.15f + 0.13f * boosted + 0.065f * hard + 0.025f * extreme)
-                    .coerceIn(0f, 1f),
-            secondStop = 0.74f - 0.09f * boosted - 0.05f * hard - 0.015f * extreme,
-            secondAlpha =
-                (0.46f + 0.19f * boosted + 0.075f * hard + 0.025f * extreme)
-                    .coerceIn(0f, 1f),
-            thirdStop = 0.89f - 0.055f * boosted - 0.025f * hard,
-            thirdAlpha =
-                (0.80f + 0.13f * boosted + 0.045f * hard)
-                    .coerceIn(0f, 1f),
+            start = calmStart + (hardStart - calmStart) * boost,
+            firstStop = calmFirstStop + (hardFirstStop - calmFirstStop) * boost,
+            firstAlpha = calmFirstAlpha + (hardFirstAlpha - calmFirstAlpha) * boost,
+            secondStop = calmSecondStop + (hardSecondStop - calmSecondStop) * boost,
+            secondAlpha = calmSecondAlpha + (hardSecondAlpha - calmSecondAlpha) * boost,
+            thirdStop = calmThirdStop + (hardThirdStop - calmThirdStop) * boost,
+            thirdAlpha = calmThirdAlpha + (hardThirdAlpha - calmThirdAlpha) * boost,
         )
     }
 }
