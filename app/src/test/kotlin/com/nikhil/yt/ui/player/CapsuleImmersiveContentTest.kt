@@ -34,6 +34,16 @@ class CapsuleImmersiveContentTest {
         assertTrue(hard.firstAlpha > calm.firstAlpha)
         assertTrue(hard.secondAlpha > calm.secondAlpha)
         assertTrue(hard.thirdAlpha > calm.thirdAlpha)
+
+        // The stronger profile must still be safe for Color.copy(alpha = ...).
+        assertTrue(hard.firstAlpha in 0f..1f)
+        assertTrue(hard.secondAlpha in 0f..1f)
+        assertTrue(hard.thirdAlpha in 0f..1f)
+
+        // Hard portrait artwork now gets a clearly stronger dissolve than the first pass.
+        assertTrue(hard.start <= 0.12f)
+        assertTrue(hard.secondAlpha >= 0.89f)
+        assertEquals(1f, hard.thirdAlpha, 0.0001f)
     }
 
 
