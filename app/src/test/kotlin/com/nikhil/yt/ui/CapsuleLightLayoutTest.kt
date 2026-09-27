@@ -41,6 +41,8 @@ import com.nikhil.yt.ui.player.CapsuleLightLyricLineHeight
 import com.nikhil.yt.ui.player.CapsuleLightToggleHeight
 import com.nikhil.yt.ui.player.CapsuleLightToggleInset
 import com.nikhil.yt.ui.player.CapsulePlayerLayout
+import com.nikhil.yt.ui.player.CapsuleLightBlock
+import com.nikhil.yt.ui.player.capsuleLightBaseArtworkWidth
 import com.nikhil.yt.ui.player.capsulePlayerDesignForOrientation
 import com.nikhil.yt.ui.player.capsuleLightLyricLineAt
 import com.nikhil.yt.ui.player.capsuleLightLyricLines
@@ -56,6 +58,40 @@ import org.robolectric.annotation.Config
 @Config(sdk = [35], application = Application::class, qualifiers = "w393dp-h851dp-xhdpi")
 class CapsuleLightLayoutTest {
     @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
+
+    @Test fun baseLightArtworkMatchesTransportWidthWithoutChangingLegacyHeight() {
+        assertEquals(337.dp, capsuleLightBaseArtworkWidth(393.dp))
+
+        var baseWidth: androidx.compose.ui.unit.Dp? = null
+        var baseHeight: androidx.compose.ui.unit.Dp? = null
+
+        compose.setContent {
+            MaterialTheme {
+                CapsulePlayerLayout(
+                    design = CapsulePlayerDesign.LIGHT,
+                    textColor = Color.White,
+                    onCollapse = {},
+                    onMenuClick = {},
+                    modifier = Modifier.size(393.dp, 851.dp),
+                    lightBlockContent = { block, width, height, _ ->
+                        if (block == CapsuleLightBlock.ARTWORK) {
+                            baseWidth = width
+                            baseHeight = height
+                        }
+                        Box(Modifier.fillMaxWidth().height(1.dp))
+                    },
+                    artwork = {},
+                    details = {},
+                )
+            }
+        }
+
+        compose.runOnIdle {
+            assertEquals(337.dp, baseWidth)
+            // This is the pre-change artworkSide on the same 393x851 layout.
+            assertEquals(345.dp, baseHeight)
+        }
+    }
 
     @Test fun landscapeAlwaysUsesLegacyLightWithoutChangingPortraitChoice() {
         for (selected in CapsulePlayerDesign.entries) {
