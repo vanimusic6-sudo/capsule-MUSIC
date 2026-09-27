@@ -459,7 +459,7 @@ val CapsuleLightCanvasPositionsKey = stringPreferencesKey("capsuleLightCanvasPos
 /** Immersive editor state is intentionally independent from Light. */
 val CapsuleImmersiveEditEnabledKey = booleanPreferencesKey("capsuleImmersiveEditEnabled")
 val CapsuleImmersiveLayoutOrderKey = stringPreferencesKey("capsuleImmersiveLayoutOrder")
-val CapsuleImmersiveCanvasPositionsKey = stringPreferencesKey("capsuleImmersiveCanvasPositionsV1")
+val CapsuleImmersiveCanvasPositionsKey = stringPreferencesKey("capsuleImmersiveCanvasPositionsV2")
 val CapsuleImmersiveMetadataOrderKey = stringPreferencesKey("capsuleImmersiveMetadataOrder")
 val CapsuleImmersiveModeOrderKey = stringPreferencesKey("capsuleImmersiveModeOrder")
 val CapsuleImmersiveAvOrderKey = stringPreferencesKey("capsuleImmersiveAvOrder")
