@@ -251,7 +251,16 @@ fun CapsuleCustomizeSettings(
         )
 
         PreferenceEntry(
-            title = { Text(stringResource(R.string.capsule_light_reset_screen)) },
+            title = {
+                Text(
+                    when (target) {
+                        CapsuleCustomizeTarget.LIGHT ->
+                            stringResource(R.string.capsule_light_reset_screen)
+                        CapsuleCustomizeTarget.IMMERSIVE ->
+                            stringResource(R.string.capsule_immersive_reset_screen)
+                    },
+                )
+            },
             description = stringResource(R.string.capsule_customize_reset_description),
             icon = {
                 Icon(
