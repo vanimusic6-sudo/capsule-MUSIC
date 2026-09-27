@@ -242,13 +242,6 @@ internal fun lightRowCrossedAfter(
     neighbourCenterPx: Float,
 ): Boolean = commandEndPx >= neighbourCenterPx - 0.5f
 
-internal fun artworkTopEdgeShiftDp(
-    startHeightScale: Float,
-    currentHeightScale: Float,
-    baseSideDp: Float,
-): Float =
-    (startHeightScale - currentHeightScale) * baseSideDp
-
 private val CapsuleLightDockGap = 8.dp
 private val CapsuleLightDockThreshold = 52.dp
 private val CapsuleLightPreferredDockThreshold = 82.dp
@@ -1343,7 +1336,6 @@ internal fun CapsuleLightResizableArtwork(
     maxHeightScale: Float = 1.35f,
     editable: Boolean,
     onEditStarted: () -> Unit,
-    onTopEdgeShiftDp: (Float) -> Unit = {},
     onResizeSettled: (widthScale: Float, heightScale: Float) -> Unit,
     modifier: Modifier = Modifier,
     contentAlignment: Alignment = Alignment.Center,
@@ -1462,7 +1454,6 @@ internal fun CapsuleLightResizableArtwork(
                         resizing = true
                         onEditStarted()
                     },
-                    onTopEdgeShiftDp = onTopEdgeShiftDp,
                     onResize = { w, h ->
                         // Local-only preview: no DataStore/parent-state writes per pointer sample.
                         currentWidth = w
@@ -1491,7 +1482,6 @@ private fun BoxScope.CapsuleArtworkResizeHandle(
     heightScale: Float,
     maxHeightScale: Float,
     onEditStarted: () -> Unit,
-    onTopEdgeShiftDp: (Float) -> Unit,
     onResize: (Float, Float) -> Unit,
     onResizeSettled: () -> Unit,
 ) {
@@ -1519,17 +1509,11 @@ private fun BoxScope.CapsuleArtworkResizeHandle(
                 .pointerInput(handle, baseSide) {
                     var w = latestWidthScale
                     var h = latestHeightScale
-                    var startHeightScale = latestHeightScale
                     val basePx = baseSide.toPx().coerceAtLeast(1f)
-                    val topAnchored =
-                        handle == ArtworkResizeHandle.TOP_LEFT ||
-                            handle == ArtworkResizeHandle.TOP ||
-                            handle == ArtworkResizeHandle.TOP_RIGHT
                     detectDragGestures(
                         onDragStart = {
                             w = latestWidthScale
                             h = latestHeightScale
-                            startHeightScale = h
                             onEditStarted()
                         },
                         onDrag = { change, amount ->
@@ -1587,17 +1571,6 @@ private fun BoxScope.CapsuleArtworkResizeHandle(
                                             latestMaxHeightScale.coerceAtLeast(0.55f),
                                         )
                                 }
-                            }
-                            if (topAnchored) {
-                                // Keep the artwork's bottom edge stationary. Shrinking from the top
-                                // moves ARTWORK down; growing from the top moves it up.
-                                onTopEdgeShiftDp(
-                                    artworkTopEdgeShiftDp(
-                                        startHeightScale = startHeightScale,
-                                        currentHeightScale = h,
-                                        baseSideDp = baseSide.value,
-                                    ),
-                                )
                             }
                             onResize(w, h)
                         },
