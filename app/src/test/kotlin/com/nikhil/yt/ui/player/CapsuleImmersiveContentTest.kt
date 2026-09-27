@@ -14,6 +14,30 @@ private val Floor: Dp = immersiveArtworkHeight(0.dp)
 private val Ceiling: Dp = immersiveArtworkHeight(100_000.dp)
 
 class CapsuleImmersiveContentTest {
+    @org.junit.Test
+    fun editorWorkspaceStopsAtArtworkAndQueueRail() {
+        val total = 851.dp
+        val artwork = immersiveArtworkHeight(total)
+        val workspace =
+            immersiveEditorHeight(
+                totalHeight = total,
+                artworkHeight = artwork,
+                bottomPadding = 0.dp,
+            )
+
+        org.junit.Assert.assertEquals(305.dp, workspace)
+
+        // Very short windows clamp instead of producing a negative canvas.
+        org.junit.Assert.assertEquals(
+            0.dp,
+            immersiveEditorHeight(
+                totalHeight = 240.dp,
+                artworkHeight = 200.dp,
+                bottomPadding = 0.dp,
+            ),
+        )
+    }
+
     @Test
     fun `rapid skips keep one outgoing fade active instead of restarting per incoming track`() {
         val originalFrame = "track-A|cover-A"
