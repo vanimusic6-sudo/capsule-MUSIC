@@ -39,6 +39,9 @@ import com.nikhil.yt.ui.player.CapsuleLightControls
 import com.nikhil.yt.ui.player.CapsuleLightLyricLine
 import com.nikhil.yt.ui.player.CapsuleLightLyricLineHeight
 import com.nikhil.yt.ui.player.CapsuleLightToggleHeight
+import com.nikhil.yt.ui.player.CapsuleLightToggleRadius
+import com.nikhil.yt.ui.player.CapsuleLightPanelRadius
+import com.nikhil.yt.ui.player.CapsuleLightTransportHeight
 import com.nikhil.yt.ui.player.CapsuleLightToggleInset
 import com.nikhil.yt.ui.player.CapsulePlayerLayout
 import com.nikhil.yt.ui.player.CapsuleLightBlock
@@ -58,6 +61,14 @@ import org.robolectric.annotation.Config
 @Config(sdk = [35], application = Application::class, qualifiers = "w393dp-h851dp-xhdpi")
 class CapsuleLightLayoutTest {
     @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
+
+    @Test fun audioVideoToggleKeepsTransportCapsuleCurvatureProfile() {
+        val transportRatio =
+            CapsuleLightPanelRadius.value / CapsuleLightTransportHeight.value
+        val toggleRatio =
+            CapsuleLightToggleRadius.value / CapsuleLightToggleHeight.value
+        assertEquals(transportRatio, toggleRatio, 0.0001f)
+    }
 
     @Test fun baseLightArtworkMatchesTransportWidthWithoutChangingLegacyHeight() {
         assertEquals(337.dp, capsuleLightBaseArtworkWidth(393.dp))
