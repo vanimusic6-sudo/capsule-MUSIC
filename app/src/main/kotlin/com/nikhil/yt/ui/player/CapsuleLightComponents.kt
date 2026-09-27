@@ -92,6 +92,7 @@ internal fun CapsulePlayerLayout(
     onLightGapsNormalized: (Map<CapsuleLightBlock, Float>) -> Unit = {},
     onLightEditStarted: () -> Unit = {},
     lightInteractionActive: Boolean = false,
+    lightArtworkResizeActive: Boolean = false,
     /**
      * Optional block renderer used by the first Capsule "clay" editor.
      *
@@ -217,6 +218,7 @@ internal fun CapsulePlayerLayout(
                             onLayoutSettled = onLightCanvasSettled,
                             onEditStarted = onLightEditStarted,
                             externalGestureActive = lightInteractionActive,
+                            artworkResizeActive = lightArtworkResizeActive,
                             modifier =
                                 Modifier
                                     .fillMaxWidth()
