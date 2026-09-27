@@ -98,6 +98,9 @@ internal fun CapsuleAudioVideoToggle(
             onOrderChange = onLightOrderChange,
             onOrderSettled = onLightOrderSettled,
             onEditStarted = onLightEditStarted,
+            // A quick horizontal drag swaps AUDIO/VIDEO internally. A stationary long press
+            // bubbles to the parent MODE row and moves the whole toggle.
+            longPressToDrag = false,
             modifier =
                 modifier
                     .height(CapsuleLightToggleHeight)
