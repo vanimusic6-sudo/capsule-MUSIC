@@ -106,6 +106,7 @@ internal fun CapsulePlayerLayout(
     onLightGapsSettled: (Map<CapsuleLightBlock, Float>) -> Unit = {},
     onLightGapsNormalized: (Map<CapsuleLightBlock, Float>) -> Unit = {},
     onLightEditStarted: () -> Unit = {},
+    onLightArtworkSelectionDismiss: () -> Unit = {},
     lightInteractionActive: Boolean = false,
     lightArtworkResizeActive: Boolean = false,
     /**
@@ -237,6 +238,7 @@ internal fun CapsulePlayerLayout(
                             viewportHeight = editableHeight,
                             onLayoutSettled = onLightCanvasSettled,
                             onEditStarted = onLightEditStarted,
+                            onArtworkSelectionDismiss = onLightArtworkSelectionDismiss,
                             externalGestureActive = lightInteractionActive,
                             artworkResizeActive = lightArtworkResizeActive,
                             modifier =
