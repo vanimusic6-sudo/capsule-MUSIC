@@ -456,11 +456,21 @@ val CapsuleLightBlockGapsKey = stringPreferencesKey("capsuleLightBlockGaps")
 /** Position-based v2 canvas. Distinct key so the old gap editor cannot corrupt it. */
 val CapsuleLightCanvasPositionsKey = stringPreferencesKey("capsuleLightCanvasPositionsV2")
 
-/** Which Capsule screen the customization hub is editing. Only Light exists in the first release. */
+/** Immersive editor state is intentionally independent from Light. */
+val CapsuleImmersiveEditEnabledKey = booleanPreferencesKey("capsuleImmersiveEditEnabled")
+val CapsuleImmersiveLayoutOrderKey = stringPreferencesKey("capsuleImmersiveLayoutOrder")
+val CapsuleImmersiveCanvasPositionsKey = stringPreferencesKey("capsuleImmersiveCanvasPositionsV1")
+val CapsuleImmersiveMetadataOrderKey = stringPreferencesKey("capsuleImmersiveMetadataOrder")
+val CapsuleImmersiveModeOrderKey = stringPreferencesKey("capsuleImmersiveModeOrder")
+val CapsuleImmersiveAvOrderKey = stringPreferencesKey("capsuleImmersiveAvOrder")
+val CapsuleImmersiveTransportOrderKey = stringPreferencesKey("capsuleImmersiveTransportOrder")
+
+/** Which Capsule screen the customization hub is editing. */
 val CapsuleCustomizeTargetKey = stringPreferencesKey("capsuleCustomizeTarget")
 
 enum class CapsuleCustomizeTarget {
     LIGHT,
+    IMMERSIVE,
 }
 
 /**
