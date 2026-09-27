@@ -19,14 +19,14 @@ class CapsuleImmersiveContentTest {
         val calm = immersiveFadeProfile(bottomTexture = 0f, landscape = false)
         val hard = immersiveFadeProfile(bottomTexture = 1f, landscape = false)
 
-        // Calm artwork must remain exactly on the 179b28e profile.
-        assertEquals(0.44f, calm.start, 0.0001f)
-        assertEquals(0.62f, calm.firstStop, 0.0001f)
-        assertEquals(0.12f, calm.firstAlpha, 0.0001f)
-        assertEquals(0.76f, calm.secondStop, 0.0001f)
-        assertEquals(0.42f, calm.secondAlpha, 0.0001f)
-        assertEquals(0.90f, calm.thirdStop, 0.0001f)
-        assertEquals(0.76f, calm.thirdAlpha, 0.0001f)
+        // Calm artwork is now intentionally a little stronger than the 179b28e profile.
+        assertEquals(0.42f, calm.start, 0.0001f)
+        assertEquals(0.60f, calm.firstStop, 0.0001f)
+        assertEquals(0.15f, calm.firstAlpha, 0.0001f)
+        assertEquals(0.74f, calm.secondStop, 0.0001f)
+        assertEquals(0.46f, calm.secondAlpha, 0.0001f)
+        assertEquals(0.89f, calm.thirdStop, 0.0001f)
+        assertEquals(0.80f, calm.thirdAlpha, 0.0001f)
 
         // A difficult lower edge gets a substantially earlier and denser fade.
         assertTrue(hard.start < calm.start)
