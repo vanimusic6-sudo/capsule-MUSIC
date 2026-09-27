@@ -94,6 +94,7 @@ internal val CapsuleLightMetadataBaseOrder: List<CapsuleLightMetadataItem> = Cap
 internal val CapsuleLightModeBaseOrder: List<CapsuleLightModeItem> = CapsuleLightModeItem.entries.toList()
 internal val CapsuleLightAvBaseOrder: List<CapsuleLightAvItem> = CapsuleLightAvItem.entries.toList()
 internal val CapsuleLightTransportBaseOrder: List<CapsuleLightTransportItem> = CapsuleLightTransportItem.entries.toList()
+internal val CapsuleLightDisabledLyricSlotHeight = 40.dp
 
 internal val CapsuleLightBaseOrderEncoded = encodeEnumOrder(CapsuleLightBaseOrder)
 internal val CapsuleLightMetadataBaseOrderEncoded = encodeEnumOrder(CapsuleLightMetadataBaseOrder)
