@@ -1260,6 +1260,7 @@ internal fun CapsuleLightCanvasV2(
     // never writes during drag.
     LaunchedEffect(
         allMeasured,
+        layoutFitsCanvas,
         resolvedOrder,
         resolvedPositionsPx,
         dragged,
