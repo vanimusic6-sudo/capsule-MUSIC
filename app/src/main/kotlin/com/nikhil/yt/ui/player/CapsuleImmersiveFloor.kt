@@ -26,6 +26,7 @@ import com.nikhil.yt.models.MediaMetadata
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlin.math.abs
 
 internal val IMMERSIVE_NEUTRAL_COLOR = Color(0xFF262626)
 private const val ARTWORK_SAMPLE_SIZE = 256
@@ -35,6 +36,7 @@ internal data class ImmersiveArtworkTone(
     val edge: Color = IMMERSIVE_NEUTRAL_COLOR,
     val landscape: Boolean = false,
     val accent: Color = IMMERSIVE_NEUTRAL_COLOR,
+    val bottomTexture: Float = 0f,
     val displayUrl: String? = null,
     // A thumbnail URL alone does not imply the dimensions and background are prepared.
     // The player must not render the raw 16:9 preview while this is false.
@@ -136,11 +138,13 @@ internal fun rememberImmersiveEdgeColor(
                 // exists at the point where the picture meets the controls.
                 val background = image.immersiveBottomBackground(artworkAspect)
                     .comfortableImmersiveColor()
+                val bottomTexture = image.immersiveBottomTexture(artworkAspect)
                 ImmersiveArtworkTone(
                     edge = background,
-                    // Keep one hue from the sampled background, rather than blending in a
-                    // second subject colour (which created dirty green/brown gradients).
+                    // Keep colour extraction EXACTLY as before. Texture only controls how
+                    // strongly the existing edge colour dissolves over difficult artwork.
                     accent = lerp(background, Color.Black, 0.10f),
+                    bottomTexture = bottomTexture,
                     landscape = landscape,
                     displayUrl = url,
                     ready = true,
@@ -240,6 +244,82 @@ internal fun Bitmap.immersiveBottomBackground(artworkAspect: Float): Color {
         green = (gSums[dominant] / n).toInt(),
         blue = (bSums[dominant] / n).toInt(),
     )
+}
+
+/**
+ * Cheap difficulty score for the lower visible crop.
+ *
+ * This does NOT choose or modify colour. It only measures local luminance changes so dense
+ * line-art, text, checker patterns and hard black/white edges can receive a longer dissolve.
+ * The bitmap is already the same small 256px sample used for Immersive colour extraction.
+ */
+internal fun Bitmap.immersiveBottomTexture(artworkAspect: Float): Float {
+    if (width <= 1 || height <= 1) return 0f
+
+    val targetAspect = artworkAspect.coerceIn(0.55f, 2.2f)
+    val naturalAspect = width.toFloat() / height
+    val visibleWidth =
+        if (naturalAspect > targetAspect) {
+            (height * targetAspect).toInt()
+        } else {
+            width
+        }
+    val visibleHeight =
+        if (naturalAspect < targetAspect) {
+            (width / targetAspect).toInt()
+        } else {
+            height
+        }
+
+    val x0 = ((width - visibleWidth) / 2).coerceAtLeast(0)
+    val y0 = ((height - visibleHeight) / 2).coerceAtLeast(0)
+    val w = visibleWidth.coerceAtLeast(1)
+    val h = visibleHeight.coerceAtLeast(1)
+
+    val top = (y0 + h * 0.68f).toInt().coerceIn(0, height - 1)
+    val bottom = (y0 + h * 0.96f).toInt().coerceIn(top + 1, height)
+    val stepX = (w / 96).coerceAtLeast(1)
+    val stepY = ((bottom - top) / 42).coerceAtLeast(1)
+
+    var totalDifference = 0f
+    var comparisons = 0
+    var previousRow = FloatArray(0)
+    var rowIndex = 0
+
+    for (y in top until bottom step stepY) {
+        val row = ArrayList<Float>()
+        var previous: Float? = null
+
+        for (x in x0 until (x0 + w).coerceAtMost(width) step stepX) {
+            val argb = getPixel(x, y)
+            val r = (argb shr 16 and 0xFF).toFloat()
+            val g = (argb shr 8 and 0xFF).toFloat()
+            val b = (argb and 0xFF).toFloat()
+            val luminance = 0.2126f * r + 0.7152f * g + 0.0722f * b
+
+            previous?.let {
+                totalDifference += abs(luminance - it)
+                comparisons += 1
+            }
+
+            val column = row.size
+            if (rowIndex > 0 && column < previousRow.size) {
+                totalDifference += abs(luminance - previousRow[column])
+                comparisons += 1
+            }
+
+            row += luminance
+            previous = luminance
+        }
+
+        previousRow = row.toFloatArray()
+        rowIndex += 1
+    }
+
+    if (comparisons == 0) return 0f
+
+    return ((totalDifference / comparisons) / 72f)
+        .coerceIn(0f, 1f)
 }
 
 /** Keep greys grey: increasing the saturation of a neutral background tinted white art. */
