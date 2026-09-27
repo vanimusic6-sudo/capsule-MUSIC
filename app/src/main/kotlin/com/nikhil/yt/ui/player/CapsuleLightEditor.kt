@@ -1356,6 +1356,7 @@ internal fun CapsuleLightResizableArtwork(
     heightScale: Float,
     maxHeightScale: Float = 1.35f,
     editable: Boolean,
+    selectionResetToken: Int = 0,
     onEditStarted: () -> Unit,
     onResizeSettled: (widthScale: Float, heightScale: Float) -> Unit,
     modifier: Modifier = Modifier,
@@ -1421,11 +1422,13 @@ internal fun CapsuleLightResizableArtwork(
             )
     }
 
-    LaunchedEffect(editable) {
-        if (!editable) {
+    LaunchedEffect(editable, selectionResetToken) {
+        if (!editable || selectionResetToken > 0) {
             selected = false
-            resizing = false
-            pendingCommit = null
+            if (!editable) {
+                resizing = false
+                pendingCommit = null
+            }
         }
     }
 
