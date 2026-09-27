@@ -9,6 +9,7 @@
 
 package com.nikhil.yt.ui.player
 
+import android.content.res.Configuration
 import android.net.Uri
 
 import androidx.activity.compose.BackHandler
@@ -36,6 +37,7 @@ import androidx.compose.ui.graphics.Color
 import com.nikhil.yt.ui.motion.CapsuleMotion
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.media3.common.C
@@ -59,6 +61,16 @@ import com.nikhil.yt.utils.rememberEnumPreference
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 
+internal fun capsulePlayerDesignForOrientation(
+    selected: CapsulePlayerDesign,
+    isLandscape: Boolean,
+): CapsulePlayerDesign =
+    if (isLandscape) {
+        CapsulePlayerDesign.SUPER
+    } else {
+        selected
+    }
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun BottomSheetPlayer(
@@ -77,6 +89,19 @@ fun BottomSheetPlayer(
     }
 
     val playerDesign by rememberEnumPreference(CapsulePlayerDesignKey, CapsulePlayerDesign.SUPER)
+    val configuration = LocalConfiguration.current
+    val isLandscape =
+        configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+
+    // The custom Capsule layouts are portrait-authored. In landscape use the stable Dense
+    // baseline without changing the saved preference. Most importantly, LIGHT's position canvas
+    // is not composed at all in landscape, so a short/wide viewport can never normalize and save
+    // over the user's portrait scene.
+    val effectivePlayerDesign =
+        capsulePlayerDesignForOrientation(
+            selected = playerDesign,
+            isLandscape = isLandscape,
+        )
 
     val playerBackground by
         rememberEnumPreference(
@@ -251,7 +276,7 @@ fun BottomSheetPlayer(
              * Immersion paints its own floor from the artwork, and a chosen backdrop behind it
              * would be a second picture competing with the cover.
              */
-            if (!state.isCollapsed && playerDesign != CapsulePlayerDesign.IMMERSIVE) {
+            if (!state.isCollapsed && effectivePlayerDesign != CapsulePlayerDesign.IMMERSIVE) {
                 PlayerBackground(
                     playerBackground = playerBackground,
                     gradientColors = gradientColors,
@@ -260,7 +285,7 @@ fun BottomSheetPlayer(
 
             enrichedMetadata?.let { metadata ->
                 CapsulePlayerLyricsHost(
-                    design = playerDesign,
+                    design = effectivePlayerDesign,
                     showLyrics = showInlineLyrics,
                     mediaMetadata = metadata,
                     sliderPosition = sliderPosition,
