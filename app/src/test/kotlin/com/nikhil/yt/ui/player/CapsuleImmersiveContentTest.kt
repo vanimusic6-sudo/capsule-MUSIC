@@ -15,11 +15,12 @@ private val Ceiling: Dp = immersiveArtworkHeight(100_000.dp)
 
 class CapsuleImmersiveContentTest {
     @Test
-    fun `difficult artwork strengthens only the dissolve profile`() {
+    fun `difficult artwork only boosts fade after threshold`() {
         val calm = immersiveFadeProfile(bottomTexture = 0f, landscape = false)
+        val medium = immersiveFadeProfile(bottomTexture = 0.35f, landscape = false)
         val hard = immersiveFadeProfile(bottomTexture = 1f, landscape = false)
 
-        // Calm artwork is now intentionally a little stronger than the 179b28e profile.
+        // Keep the current calm profile exactly as-is.
         assertEquals(0.42f, calm.start, 0.0001f)
         assertEquals(0.60f, calm.firstStop, 0.0001f)
         assertEquals(0.15f, calm.firstAlpha, 0.0001f)
@@ -28,22 +29,22 @@ class CapsuleImmersiveContentTest {
         assertEquals(0.89f, calm.thirdStop, 0.0001f)
         assertEquals(0.80f, calm.thirdAlpha, 0.0001f)
 
-        // A difficult lower edge gets a substantially earlier and denser fade.
+        // Medium-detail artwork below the threshold must not be flattened by the adaptive boost.
+        assertEquals(calm.start, medium.start, 0.0001f)
+        assertEquals(calm.firstAlpha, medium.firstAlpha, 0.0001f)
+        assertEquals(calm.secondAlpha, medium.secondAlpha, 0.0001f)
+        assertEquals(calm.thirdAlpha, medium.thirdAlpha, 0.0001f)
+
+        // A genuinely difficult lower edge still gets an earlier and denser fade.
         assertTrue(hard.start < calm.start)
         assertTrue(hard.firstStop < calm.firstStop)
         assertTrue(hard.firstAlpha > calm.firstAlpha)
         assertTrue(hard.secondAlpha > calm.secondAlpha)
         assertTrue(hard.thirdAlpha > calm.thirdAlpha)
 
-        // The stronger profile must still be safe for Color.copy(alpha = ...).
         assertTrue(hard.firstAlpha in 0f..1f)
         assertTrue(hard.secondAlpha in 0f..1f)
         assertTrue(hard.thirdAlpha in 0f..1f)
-
-        // Hard portrait artwork now gets a clearly stronger dissolve than the first pass.
-        assertTrue(hard.start <= 0.12f)
-        assertTrue(hard.secondAlpha >= 0.89f)
-        assertEquals(1f, hard.thirdAlpha, 0.0001f)
     }
 
 
