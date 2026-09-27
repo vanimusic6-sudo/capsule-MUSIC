@@ -56,6 +56,7 @@ private val LocalCapsuleLightMenu = staticCompositionLocalOf<() -> Unit> { {} }
 
 /** Soft corners for Capsule Light's low-contrast controls. */
 internal val CapsuleLightPanelRadius = 18.dp
+internal val CapsuleLightTransportHeight = 84.dp
 internal val CapsuleLightPanelShape = RoundedCornerShape(CapsuleLightPanelRadius)
 
 internal val CapsuleLightBlockHorizontalInset = 24.dp
@@ -72,6 +73,9 @@ internal fun capsuleLightBaseArtworkWidth(maxWidth: Dp): Dp =
 /** The AUDIO/VIDEO switch shares the transport panel's shell, so it shares its geometry. */
 internal val CapsuleLightToggleHeight = 48.dp
 internal val CapsuleLightToggleInset = 4.dp
+internal val CapsuleLightToggleRadius =
+    CapsuleLightPanelRadius *
+        (CapsuleLightToggleHeight.value / CapsuleLightTransportHeight.value)
 
 /**
  * Fixed system zone at the bottom of Light. It belongs to queue navigation, not to the user's
@@ -428,7 +432,7 @@ internal fun CapsuleLightControls(
             Modifier
                 .fillMaxWidth()
                 .padding(horizontal = CapsuleLightPanelOuterInset)
-                .height(84.dp)
+                .height(CapsuleLightTransportHeight)
                 .clip(CapsuleLightPanelShape)
                 .background(transportSurface)
                 .border(1.dp, transportOutline, CapsuleLightPanelShape)
