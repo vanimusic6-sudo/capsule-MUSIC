@@ -15,6 +15,7 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import com.nikhil.yt.ui.component.CapsuleFavoriteColors
 import android.content.Context
 import android.content.Intent
+import android.content.res.Configuration
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.animateFloatAsState
@@ -75,6 +76,7 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.res.stringResource
@@ -170,6 +172,8 @@ fun CapsulePlayerContent(
     val onScreen = appIsOnScreen()
     val visible = open && onScreen
     val isLight = design == CapsulePlayerDesign.LIGHT
+    val isLandscape =
+        LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
 
     val (lightEditorEnabled, onLightEditorEnabledChange) =
         rememberPreference(
@@ -270,9 +274,9 @@ fun CapsulePlayerContent(
             mutableStateOf(decodeCapsuleLightCanvasPositions(lightCanvasPositionsEncoded))
         }
 
-    // Light has exactly one geometry now. Editing only enables handles/drag gestures; it must
-    // never switch the player onto a different layout.
-    val useClayLayout = isLight
+    // Portrait Light uses the v2 canvas. Landscape intentionally falls back to the untouched
+    // fixed Light stack until a dedicated horizontal composition is designed.
+    val useClayLayout = isLight && !isLandscape
 
     /*
      * Crash recovery is tied to an edit transaction, not to the editor toggle itself. A completed
@@ -282,10 +286,6 @@ fun CapsulePlayerContent(
     var lightEditInProgress by remember { mutableStateOf(false) }
     var lightValidationGeneration by remember { mutableStateOf(0) }
     var artworkResizeActive by remember { mutableStateOf(false) }
-    var artworkResizeBaseTopDp by remember { mutableStateOf<Float?>(null) }
-    var artworkResizeBaseHeightScale by remember { mutableFloatStateOf(1f) }
-    var artworkResizeBaseSideDp by remember { mutableFloatStateOf(0f) }
-    var artworkResizePreviewTopDp by remember { mutableStateOf<Float?>(null) }
 
     LaunchedEffect(Unit) {
         if (
@@ -360,8 +360,6 @@ fun CapsulePlayerContent(
             // Switching mode cancels an in-flight artwork resize transaction. The last committed
             // artwork size remains authoritative; VIDEO must never leave a stale edit lock behind.
             artworkResizeActive = false
-            artworkResizeBaseTopDp = null
-            artworkResizePreviewTopDp = null
             lightEditInProgress = false
             lightValidationGeneration += 1
         }
@@ -796,7 +794,6 @@ fun CapsulePlayerContent(
         },
         lightInteractionActive = lightEditInProgress,
         lightArtworkResizeActive = artworkResizeActive,
-        lightArtworkResizeTopOverrideDp = artworkResizePreviewTopDp,
         onLightOrderSettled = { reordered ->
             val safeOrder = decodeCapsuleLightOrder(encodeCapsuleLightOrder(reordered))
             lightOrder = safeOrder
@@ -911,65 +908,16 @@ fun CapsulePlayerContent(
                                             Alignment.Center
                                         },
                                     onEditStarted = {
-                                        val baseTop =
-                                            lightCanvasPositions[
-                                                CapsuleLightBlock.ARTWORK
-                                            ] ?: 0f
-                                        artworkResizeBaseTopDp = baseTop
-                                        artworkResizeBaseHeightScale =
-                                            safeArtworkHeightScale
-                                        artworkResizeBaseSideDp = artworkSide.value
-                                        artworkResizePreviewTopDp = baseTop
                                         artworkResizeActive = true
                                         beginNestedEdit()
                                     },
-                                    onResizePreview = { _, heightScale ->
-                                        val baseTop = artworkResizeBaseTopDp
-                                        if (baseTop != null) {
-                                            artworkResizePreviewTopDp =
-                                                centeredArtworkTopDp(
-                                                    baseTopDp = baseTop,
-                                                    baseHeightScale =
-                                                        artworkResizeBaseHeightScale,
-                                                    currentHeightScale = heightScale,
-                                                    baseSideDp = artworkResizeBaseSideDp,
-                                                )
-                                        }
-                                    },
                                     onResizeSettled = { widthScale, heightScale ->
-                                        val committedTop =
-                                            artworkResizePreviewTopDp
-                                                ?: artworkResizeBaseTopDp
-                                        val committedPositions =
-                                            if (committedTop != null) {
-                                                lightCanvasPositions
-                                                    .toMutableMap()
-                                                    .apply {
-                                                        this[
-                                                            CapsuleLightBlock.ARTWORK
-                                                        ] = committedTop.coerceAtLeast(0f)
-                                                    }
-                                                    .toMap()
-                                            } else {
-                                                lightCanvasPositions
-                                            }
-
                                         lightArtworkWidthScale = widthScale
                                         lightArtworkHeightScale = heightScale
-                                        lightCanvasPositions = committedPositions
                                         onArtworkWidthScaleChange(widthScale)
                                         onArtworkHeightScaleChange(heightScale)
-                                        if (committedPositions.isNotEmpty()) {
-                                            onLightCanvasPositionsEncodedChange(
-                                                encodeCapsuleLightCanvasPositions(
-                                                    committedPositions,
-                                                ),
-                                            )
-                                        }
 
                                         artworkResizeActive = false
-                                        artworkResizeBaseTopDp = null
-                                        artworkResizePreviewTopDp = null
                                         lightEditInProgress = false
                                         lightValidationGeneration += 1
                                     },
