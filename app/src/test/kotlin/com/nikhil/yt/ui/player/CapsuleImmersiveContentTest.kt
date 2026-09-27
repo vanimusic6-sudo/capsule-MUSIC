@@ -35,22 +35,14 @@ class CapsuleImmersiveContentTest {
         assertEquals(calm.secondAlpha, medium.secondAlpha, 0.0001f)
         assertEquals(calm.thirdAlpha, medium.thirdAlpha, 0.0001f)
 
-        // A genuinely difficult lower edge still gets an earlier and denser fade.
-        assertTrue(hard.start < calm.start)
-        assertTrue(hard.firstStop < calm.firstStop)
-        assertTrue(hard.firstAlpha > calm.firstAlpha)
-        assertTrue(hard.secondAlpha > calm.secondAlpha)
-        assertTrue(hard.thirdAlpha > calm.thirdAlpha)
-
-        assertTrue(hard.firstAlpha in 0f..1f)
-        assertTrue(hard.secondAlpha in 0f..1f)
-        assertTrue(hard.thirdAlpha in 0f..1f)
-
-        // Guard the visual line we already crossed once: difficult artwork may be stronger,
-        // but it must still leave visible texture instead of becoming a flat floor.
-        assertTrue(hard.start >= 0.22f)
-        assertTrue(hard.secondAlpha < 0.80f)
-        assertTrue(hard.thirdAlpha < 1f)
+        // Fully difficult artwork reaches the known-good hard endpoint from a9ef7ff.
+        assertEquals(0.11f, hard.start, 0.0001f)
+        assertEquals(0.39f, hard.firstStop, 0.0001f)
+        assertEquals(0.50f, hard.firstAlpha, 0.0001f)
+        assertEquals(0.56f, hard.secondStop, 0.0001f)
+        assertEquals(0.90f, hard.secondAlpha, 0.0001f)
+        assertEquals(0.79f, hard.thirdStop, 0.0001f)
+        assertEquals(1f, hard.thirdAlpha, 0.0001f)
     }
 
 
