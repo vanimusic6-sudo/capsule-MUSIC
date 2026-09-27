@@ -136,6 +136,16 @@ private fun preferredPair(
         pair == setOf(CapsuleLightBlock.MODE_SWITCH, CapsuleLightBlock.CONTROLS)
 }
 
+internal fun lightCanvasMinimumHeightPx(
+    order: List<CapsuleLightBlock>,
+    heights: Map<CapsuleLightBlock, Float>,
+    gapPx: Float,
+): Float? {
+    if (!heights.keys.containsAll(order)) return null
+    return order.sumOf { (heights[it] ?: 0f).toDouble() }.toFloat() +
+        gapPx * (order.size - 1).coerceAtLeast(0)
+}
+
 private fun compactPositions(
     order: List<CapsuleLightBlock>,
     heights: Map<CapsuleLightBlock, Float>,
@@ -1096,6 +1106,20 @@ internal fun CapsuleLightCanvasV2(
             measuredHeightsPx = heightsPx,
         )
 
+    val minimumLayoutHeightPx =
+        if (allMeasured) {
+            lightCanvasMinimumHeightPx(
+                order = order,
+                heights = heightsPx,
+                gapPx = gapPx,
+            )
+        } else {
+            null
+        }
+    val layoutFitsCanvas =
+        minimumLayoutHeightPx == null ||
+            minimumLayoutHeightPx <= canvasHeightPx + 0.5f
+
     val nonArtworkMeasured =
         lightCanvasMeasurementsReady(
             order = order.filterNot { it == CapsuleLightBlock.ARTWORK },
@@ -1243,6 +1267,7 @@ internal fun CapsuleLightCanvasV2(
     ) {
         if (
             !allMeasured ||
+            !layoutFitsCanvas ||
             dragged != null ||
             externalGestureActive ||
             resolvedPositionsPx.isEmpty()
