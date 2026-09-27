@@ -41,6 +41,7 @@ import com.nikhil.yt.ui.player.CapsuleLightLyricLineHeight
 import com.nikhil.yt.ui.player.CapsuleLightToggleHeight
 import com.nikhil.yt.ui.player.CapsuleLightToggleInset
 import com.nikhil.yt.ui.player.CapsulePlayerLayout
+import com.nikhil.yt.ui.player.capsulePlayerDesignForOrientation
 import com.nikhil.yt.ui.player.capsuleLightLyricLineAt
 import com.nikhil.yt.ui.player.capsuleLightLyricLines
 import org.junit.Assert.*
@@ -55,6 +56,25 @@ import org.robolectric.annotation.Config
 @Config(sdk = [35], application = Application::class, qualifiers = "w393dp-h851dp-xhdpi")
 class CapsuleLightLayoutTest {
     @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
+
+    @Test fun landscapeAlwaysUsesStableDensePlayerWithoutChangingPortraitChoice() {
+        for (selected in CapsulePlayerDesign.entries) {
+            assertEquals(
+                CapsulePlayerDesign.SUPER,
+                capsulePlayerDesignForOrientation(
+                    selected = selected,
+                    isLandscape = true,
+                ),
+            )
+            assertEquals(
+                selected,
+                capsulePlayerDesignForOrientation(
+                    selected = selected,
+                    isLandscape = false,
+                ),
+            )
+        }
+    }
 
     @Test fun lightIsCoverFirstAndHasNoTopHeaderButtons() {
         var design by mutableStateOf(CapsulePlayerDesign.SUPER)
