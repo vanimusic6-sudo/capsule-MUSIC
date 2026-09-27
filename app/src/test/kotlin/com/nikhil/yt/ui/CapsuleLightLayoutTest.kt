@@ -57,10 +57,10 @@ import org.robolectric.annotation.Config
 class CapsuleLightLayoutTest {
     @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
 
-    @Test fun landscapeAlwaysUsesStableDensePlayerWithoutChangingPortraitChoice() {
+    @Test fun landscapeAlwaysUsesLegacyLightWithoutChangingPortraitChoice() {
         for (selected in CapsulePlayerDesign.entries) {
             assertEquals(
-                CapsulePlayerDesign.SUPER,
+                CapsulePlayerDesign.LIGHT,
                 capsulePlayerDesignForOrientation(
                     selected = selected,
                     isLandscape = true,
