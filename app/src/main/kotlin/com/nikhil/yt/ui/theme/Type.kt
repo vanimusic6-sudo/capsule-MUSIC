@@ -10,11 +10,9 @@ package com.nikhil.yt.ui.theme
 
 import androidx.compose.material3.Typography
 import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
-import com.nikhil.yt.R
 
 // TODO: Define or import actual M3 Expressive font families if needed.
 // For now, using default FontFamily as a placeholder.
@@ -132,7 +130,18 @@ private fun buildTypography(fontFamily: FontFamily) =
         )
     )
 
-private val AppFontFamily = FontFamily(Font(R.font.poppins))
+/*
+ * Poppins used to be installed as the font family for the entire app. That file is only one
+ * bundled face and is not a safe universal layout font for every script. On Cyrillic metadata
+ * Android has to fall back to another typeface inside the same Text, so glyph widths/baselines
+ * change when "Use system font" is toggled and fixed player layouts visibly reflow.
+ *
+ * Keep the app-font mode distinct from the OEM default, but use Android's complete generic
+ * sans-serif family as the layout font. It has the platform fallback chain for Cyrillic and other
+ * scripts, all requested weights, and stable metrics. Decorative/brand faces can still be used
+ * explicitly where typography is not part of layout geometry.
+ */
+private val AppFontFamily = FontFamily.SansSerif
 val AppTypography = buildTypography(AppFontFamily)
 val SystemTypography = buildTypography(FontFamily.Default)
 
