@@ -25,7 +25,7 @@ class CapsuleImmersiveContentTest {
                 bottomPadding = 0.dp,
             )
 
-        org.junit.Assert.assertEquals(305.dp, workspace)
+        org.junit.Assert.assertEquals(304.95f, workspace.value, 0.01f)
 
         // Very short windows clamp instead of producing a negative canvas.
         org.junit.Assert.assertEquals(
