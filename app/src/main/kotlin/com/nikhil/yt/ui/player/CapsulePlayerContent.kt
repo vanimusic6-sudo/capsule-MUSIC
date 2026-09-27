@@ -798,6 +798,7 @@ fun CapsulePlayerContent(
             onLightEditSessionActiveChange(true)
         },
         lightInteractionActive = lightEditInProgress,
+        lightArtworkResizeActive = artworkResizeActive,
         onLightOrderSettled = { reordered ->
             val safeOrder = decodeCapsuleLightOrder(encodeCapsuleLightOrder(reordered))
             lightOrder = safeOrder
