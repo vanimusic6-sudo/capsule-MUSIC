@@ -140,7 +140,7 @@ internal fun rememberImmersiveEdgeColor(
                     edge = background,
                     // Keep one hue from the sampled background, rather than blending in a
                     // second subject colour (which created dirty green/brown gradients).
-                    accent = lerp(background, Color.Black, 0.18f),
+                    accent = lerp(background, Color.Black, 0.10f),
                     landscape = landscape,
                     displayUrl = url,
                     ready = true,
@@ -203,10 +203,10 @@ internal fun Bitmap.immersiveBottomBackground(artworkAspect: Float): Color {
     val h = visibleHeight.coerceAtLeast(1)
     // Analyse the lower part of the *image* before our overlay hides it. The very last
     // rows of a YouTube thumbnail may be baked-in black letterboxing or a logo.
-    val top = (y0 + h * 0.62f).toInt().coerceIn(0, height - 1)
-    val bottom = (y0 + h * 0.88f).toInt().coerceIn(top + 1, height)
+    val top = (y0 + h * 0.72f).toInt().coerceIn(0, height - 1)
+    val bottom = (y0 + h * 0.95f).toInt().coerceIn(top + 1, height)
     val stepX = (w / 112).coerceAtLeast(1)
-    val stepY = ((bottom - top) / 45).coerceAtLeast(1)
+    val stepY = ((bottom - top) / 52).coerceAtLeast(1)
     // Small quantised bins group a textured background without combining distinct hues.
     val counts = IntArray(512)
     val rSums = LongArray(512)
