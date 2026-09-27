@@ -897,6 +897,7 @@ Velune will only extract your token, and everything else is stored locally.</str
     <string name="capsule_immersive_edit_screen">Edit Immersion screen</string>
     <string name="capsule_light_edit_screen_description">When enabled, long-press a block in Light and drag it to another slot. Blocks push each other; free overlap is disabled.</string>
     <string name="capsule_light_reset_screen">Reset Light screen</string>
+    <string name="capsule_immersive_reset_screen">Reset Immersion screen</string>
     <string name="capsule_light_reset_screen_description">Restore the base Light block order and turn editing off.</string>
     <string name="capsule_customize_title">Capsule your way</string>
     <string name="capsule_customize_subtitle">Rearrange Capsule screens without touching the player core</string>
