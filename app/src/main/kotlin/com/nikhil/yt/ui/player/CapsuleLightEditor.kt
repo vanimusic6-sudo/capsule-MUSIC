@@ -1350,7 +1350,8 @@ private enum class ArtworkResizeHandle {
  */
 @Composable
 internal fun CapsuleLightResizableArtwork(
-    baseSide: Dp,
+    baseWidth: Dp,
+    baseHeight: Dp,
     widthScale: Float,
     heightScale: Float,
     maxHeightScale: Float = 1.35f,
@@ -1431,8 +1432,8 @@ internal fun CapsuleLightResizableArtwork(
     Box(
         modifier =
             modifier
-                .width(baseSide * currentWidth)
-                .height(baseSide * currentHeight)
+                .width(baseWidth * currentWidth)
+                .height(baseHeight * currentHeight)
                 .then(
                     if (!editable) {
                         Modifier
@@ -1466,7 +1467,8 @@ internal fun CapsuleLightResizableArtwork(
             ArtworkResizeHandle.entries.forEach { handle ->
                 CapsuleArtworkResizeHandle(
                     handle = handle,
-                    baseSide = baseSide,
+                    baseWidth = baseWidth,
+                    baseHeight = baseHeight,
                     widthScale = currentWidth,
                     heightScale = currentHeight,
                     maxHeightScale = maxHeightScale,
@@ -1496,7 +1498,8 @@ internal fun CapsuleLightResizableArtwork(
 @Composable
 private fun BoxScope.CapsuleArtworkResizeHandle(
     handle: ArtworkResizeHandle,
-    baseSide: Dp,
+    baseWidth: Dp,
+    baseHeight: Dp,
     widthScale: Float,
     heightScale: Float,
     maxHeightScale: Float,
@@ -1522,10 +1525,11 @@ private fun BoxScope.CapsuleArtworkResizeHandle(
             Modifier
                 .align(alignment)
                 .size(34.dp)
-                .pointerInput(handle, baseSide) {
+                .pointerInput(handle, baseWidth, baseHeight) {
                     var w = latestWidthScale
                     var h = latestHeightScale
-                    val basePx = baseSide.toPx().coerceAtLeast(1f)
+                    val baseWidthPx = baseWidth.toPx().coerceAtLeast(1f)
+                    val baseHeightPx = baseHeight.toPx().coerceAtLeast(1f)
                     detectDragGestures(
                         onDragStart = {
                             w = latestWidthScale
@@ -1536,30 +1540,30 @@ private fun BoxScope.CapsuleArtworkResizeHandle(
                             change.consume()
                             when (handle) {
                                 ArtworkResizeHandle.LEFT -> {
-                                    w = (w - amount.x / basePx).coerceIn(0.55f, 1.08f)
+                                    w = (w - amount.x / baseWidthPx).coerceIn(0.55f, 1.08f)
                                 }
                                 ArtworkResizeHandle.RIGHT -> {
-                                    w = (w + amount.x / basePx).coerceIn(0.55f, 1.08f)
+                                    w = (w + amount.x / baseWidthPx).coerceIn(0.55f, 1.08f)
                                 }
                                 ArtworkResizeHandle.BOTTOM -> {
                                     h =
-                                        (h + amount.y / basePx).coerceIn(
+                                        (h + amount.y / baseHeightPx).coerceIn(
                                             0.55f,
                                             latestMaxHeightScale.coerceAtLeast(0.55f),
                                         )
                                 }
                                 ArtworkResizeHandle.BOTTOM_LEFT -> {
-                                    w = (w - amount.x / basePx).coerceIn(0.55f, 1.08f)
+                                    w = (w - amount.x / baseWidthPx).coerceIn(0.55f, 1.08f)
                                     h =
-                                        (h + amount.y / basePx).coerceIn(
+                                        (h + amount.y / baseHeightPx).coerceIn(
                                             0.55f,
                                             latestMaxHeightScale.coerceAtLeast(0.55f),
                                         )
                                 }
                                 ArtworkResizeHandle.BOTTOM_RIGHT -> {
-                                    w = (w + amount.x / basePx).coerceIn(0.55f, 1.08f)
+                                    w = (w + amount.x / baseWidthPx).coerceIn(0.55f, 1.08f)
                                     h =
-                                        (h + amount.y / basePx).coerceIn(
+                                        (h + amount.y / baseHeightPx).coerceIn(
                                             0.55f,
                                             latestMaxHeightScale.coerceAtLeast(0.55f),
                                         )
