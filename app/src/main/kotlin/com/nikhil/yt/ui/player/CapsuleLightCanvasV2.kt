@@ -15,6 +15,7 @@ import androidx.compose.animation.core.spring
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -1048,6 +1049,7 @@ internal fun CapsuleLightCanvasV2(
         order: List<CapsuleLightBlock>,
     ) -> Unit,
     onEditStarted: () -> Unit,
+    onArtworkSelectionDismiss: () -> Unit = {},
     externalGestureActive: Boolean = false,
     artworkResizeActive: Boolean = false,
     modifier: Modifier = Modifier,
@@ -1075,6 +1077,8 @@ internal fun CapsuleLightCanvasV2(
     val latestOrder by rememberUpdatedState(order)
     val latestOnLayoutSettled by rememberUpdatedState(onLayoutSettled)
     val latestOnEditStarted by rememberUpdatedState(onEditStarted)
+    val latestOnArtworkSelectionDismiss by
+        rememberUpdatedState(onArtworkSelectionDismiss)
 
     val heightsPx by
         remember {
@@ -1271,6 +1275,19 @@ internal fun CapsuleLightCanvasV2(
                 .height(viewportHeight)
                 .clipToBounds(),
     ) {
+        if (editable) {
+            // Behind every real block: only genuine empty-space taps reach this layer.
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .pointerInput(Unit) {
+                        detectTapGestures {
+                            latestOnArtworkSelectionDismiss()
+                        }
+                    },
+            )
+        }
+
         if (editable && allMeasured) {
             val moving = dragged
             val guideCells =
@@ -1433,6 +1450,9 @@ internal fun CapsuleLightCanvasV2(
                                                     return@detectDragGesturesAfterLongPress
                                                 }
 
+                                                if (block != CapsuleLightBlock.ARTWORK) {
+                                                    latestOnArtworkSelectionDismiss()
+                                                }
                                                 latestOnEditStarted()
                                                 dragged = block
                                                 frozenOrder = resolvedOrder
