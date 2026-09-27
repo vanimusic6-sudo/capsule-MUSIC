@@ -1050,7 +1050,6 @@ internal fun CapsuleLightCanvasV2(
     onEditStarted: () -> Unit,
     externalGestureActive: Boolean = false,
     artworkResizeActive: Boolean = false,
-    artworkResizeTopOverrideDp: Float? = null,
     modifier: Modifier = Modifier,
     content: @Composable (CapsuleLightBlock, Dp?) -> Unit,
 ) {
@@ -1112,51 +1111,30 @@ internal fun CapsuleLightCanvasV2(
                     .coerceAtLeast(0f)
 
             val artworkIndex = order.indexOf(CapsuleLightBlock.ARTWORK)
-            val artworkHeightPx = heightsPx[CapsuleLightBlock.ARTWORK]
-            val artworkTopPx =
-                (
-                    artworkResizeTopOverrideDp
-                        ?: positionsDp[CapsuleLightBlock.ARTWORK]
-                    )?.let { value ->
+            val storedArtworkTopPx =
+                positionsDp[CapsuleLightBlock.ARTWORK]?.let { value ->
                     with(density) { value.dp.toPx() }
                 }
-
-            val centeredAvailablePx =
-                if (
-                    artworkIndex >= 0 &&
-                    artworkHeightPx != null &&
-                    artworkTopPx != null
-                ) {
-                    val centerPx = artworkTopPx + artworkHeightPx / 2f
-
-                    val blocksAbove = order.take(artworkIndex)
-                    val requiredAbovePx =
-                        blocksAbove
-                            .sumOf { (heightsPx[it] ?: 0f).toDouble() }
-                            .toFloat() +
-                            gapPx * blocksAbove.size
-
+            val anchoredAvailablePx =
+                if (artworkIndex >= 0 && storedArtworkTopPx != null) {
                     val blocksBelow = order.drop(artworkIndex + 1)
-                    val requiredBelowPx =
+                    val belowHeightPx =
                         blocksBelow
                             .sumOf { (heightsPx[it] ?: 0f).toDouble() }
-                            .toFloat() +
-                            gapPx * blocksBelow.size
-
-                    val upperRadius =
-                        (centerPx - requiredAbovePx)
-                            .coerceAtLeast(0f)
-                    val lowerRadius =
-                        (canvasHeightPx - requiredBelowPx - centerPx)
-                            .coerceAtLeast(0f)
-
-                    2f * minOf(upperRadius, lowerRadius)
+                            .toFloat()
+                    val belowGapsPx = gapPx * blocksBelow.size
+                    (
+                        canvasHeightPx -
+                            storedArtworkTopPx -
+                            belowHeightPx -
+                            belowGapsPx
+                        ).coerceAtLeast(0f)
                 } else {
                     globalAvailablePx
                 }
 
             with(density) {
-                minOf(globalAvailablePx, centeredAvailablePx).toDp()
+                minOf(globalAvailablePx, anchoredAvailablePx).toDp()
             }
         } else {
             null
@@ -1179,37 +1157,21 @@ internal fun CapsuleLightCanvasV2(
             gapPx,
             externalGestureActive,
             artworkResizeActive,
-            artworkResizeTopOverrideDp,
         ) {
             if (allMeasured) {
                 when {
                     artworkResizeActive &&
                         requestedPositionsPx.keys.containsAll(order) -> {
-                        val resizePositions =
-                            if (artworkResizeTopOverrideDp != null) {
-                                requestedPositionsPx
-                                    .toMutableMap()
-                                    .apply {
-                                        this[CapsuleLightBlock.ARTWORK] =
-                                            with(density) {
-                                                artworkResizeTopOverrideDp.dp.toPx()
-                                            }
-                                    }
-                                    .toMap()
-                            } else {
-                                requestedPositionsPx
-                            }
-
                         order to (
                             projectArtworkResizePositions(
                                 order = order,
-                                preferredPositions = resizePositions,
+                                preferredPositions = requestedPositionsPx,
                                 heights = heightsPx,
                                 canvasHeightPx = canvasHeightPx,
                                 gapPx = gapPx,
                             ) ?: projectOrderedPositions(
                                 order = order,
-                                preferredPositions = resizePositions,
+                                preferredPositions = requestedPositionsPx,
                                 heights = heightsPx,
                                 startPx = 0f,
                                 endPx = canvasHeightPx,
