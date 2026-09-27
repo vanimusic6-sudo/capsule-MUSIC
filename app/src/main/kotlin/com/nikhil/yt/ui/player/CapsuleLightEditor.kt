@@ -243,6 +243,17 @@ internal fun lightRowCrossedAfter(
     neighbourCenterPx: Float,
 ): Boolean = commandEndPx >= neighbourCenterPx - 0.5f
 
+internal fun centeredArtworkTopDp(
+    baseTopDp: Float,
+    baseHeightScale: Float,
+    currentHeightScale: Float,
+    baseSideDp: Float,
+): Float =
+    baseTopDp +
+        (baseHeightScale - currentHeightScale) *
+        baseSideDp /
+        2f
+
 private val CapsuleLightDockGap = 8.dp
 private val CapsuleLightDockThreshold = 52.dp
 private val CapsuleLightPreferredDockThreshold = 82.dp
@@ -1358,6 +1369,7 @@ internal fun CapsuleLightResizableArtwork(
     maxHeightScale: Float = 1.35f,
     editable: Boolean,
     onEditStarted: () -> Unit,
+    onResizePreview: (widthScale: Float, heightScale: Float) -> Unit = { _, _ -> },
     onResizeSettled: (widthScale: Float, heightScale: Float) -> Unit,
     modifier: Modifier = Modifier,
     contentAlignment: Alignment = Alignment.Center,
@@ -1477,9 +1489,11 @@ internal fun CapsuleLightResizableArtwork(
                         onEditStarted()
                     },
                     onResize = { w, h ->
-                        // Local-only preview: no DataStore/parent-state writes per pointer sample.
+                        // The local frame stays immediate. The parent receives only two floats so
+                        // CanvasV2 can keep the artwork centre fixed without writing DataStore.
                         currentWidth = w
                         currentHeight = h
+                        onResizePreview(w, h)
                     },
                     onResizeSettled = {
                         val finalWidth = currentWidth
