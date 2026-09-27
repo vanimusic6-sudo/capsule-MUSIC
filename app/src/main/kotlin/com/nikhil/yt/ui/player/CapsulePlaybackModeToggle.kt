@@ -55,10 +55,9 @@ internal fun CapsuleAudioVideoToggle(
     onLightEditStarted: () -> Unit = {},
 ) {
     /*
-     * Capsule Light draws this switch next to the transport capsule. The switch
-     * is shorter, so reusing the transport's absolute 18dp radius makes it read
-     * like a pill. Keep the same radius/height proportion instead; the selected
-     * segment remains concentric with the shell.
+     * The Light switch needs the same soft family as the transport capsule without copying
+     * either extreme: 18dp is too pill-like at 48dp height, while a proportional ~10dp radius
+     * leaves an obvious straight wall. The tuned shell/segment pair keeps the silhouette light.
      */
     val shape =
         if (lightStyle) {
@@ -68,9 +67,7 @@ internal fun CapsuleAudioVideoToggle(
         }
     val segmentShape =
         if (lightStyle) {
-            RoundedCornerShape(
-                (CapsuleLightToggleRadius - CapsuleLightToggleInset).coerceAtLeast(0.dp),
-            )
+            RoundedCornerShape(CapsuleLightToggleSegmentRadius)
         } else {
             RoundedCornerShape(10.dp)
         }
