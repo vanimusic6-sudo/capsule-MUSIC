@@ -270,18 +270,9 @@ fun CapsulePlayerContent(
             mutableStateOf(decodeCapsuleLightCanvasPositions(lightCanvasPositionsEncoded))
         }
 
-    val hasCustomLightLayout =
-        lightOrder != CapsuleLightBaseOrder ||
-            lightMetadataOrder != CapsuleLightMetadataBaseOrder ||
-            lightModeOrder != CapsuleLightModeBaseOrder ||
-            lightAvOrder != CapsuleLightAvBaseOrder ||
-            lightTransportOrder != CapsuleLightTransportBaseOrder ||
-            lightArtworkWidthScale != 1f ||
-            lightArtworkHeightScale != 1f ||
-            lightCanvasPositions.isNotEmpty() ||
-            lightBlockGaps.values.any { it > 0.01f }
-
-    val useClayLayout = isLight && (lightEditorEnabled || hasCustomLightLayout)
+    // Light has exactly one geometry now. Editing only enables handles/drag gestures; it must
+    // never switch the player onto a different layout.
+    val useClayLayout = isLight
 
     /*
      * Crash recovery is tied to an edit transaction, not to the editor toggle itself. A completed
@@ -291,6 +282,10 @@ fun CapsulePlayerContent(
     var lightEditInProgress by remember { mutableStateOf(false) }
     var lightValidationGeneration by remember { mutableStateOf(0) }
     var artworkResizeActive by remember { mutableStateOf(false) }
+    var artworkResizeBaseTopDp by remember { mutableStateOf<Float?>(null) }
+    var artworkResizeBaseHeightScale by remember { mutableFloatStateOf(1f) }
+    var artworkResizeBaseSideDp by remember { mutableFloatStateOf(0f) }
+    var artworkResizePreviewTopDp by remember { mutableStateOf<Float?>(null) }
 
     LaunchedEffect(Unit) {
         if (
@@ -365,6 +360,8 @@ fun CapsulePlayerContent(
             // Switching mode cancels an in-flight artwork resize transaction. The last committed
             // artwork size remains authoritative; VIDEO must never leave a stale edit lock behind.
             artworkResizeActive = false
+            artworkResizeBaseTopDp = null
+            artworkResizePreviewTopDp = null
             lightEditInProgress = false
             lightValidationGeneration += 1
         }
@@ -799,6 +796,7 @@ fun CapsulePlayerContent(
         },
         lightInteractionActive = lightEditInProgress,
         lightArtworkResizeActive = artworkResizeActive,
+        lightArtworkResizeTopOverrideDp = artworkResizePreviewTopDp,
         onLightOrderSettled = { reordered ->
             val safeOrder = decodeCapsuleLightOrder(encodeCapsuleLightOrder(reordered))
             lightOrder = safeOrder
@@ -913,18 +911,65 @@ fun CapsulePlayerContent(
                                             Alignment.Center
                                         },
                                     onEditStarted = {
+                                        val baseTop =
+                                            lightCanvasPositions[
+                                                CapsuleLightBlock.ARTWORK
+                                            ] ?: 0f
+                                        artworkResizeBaseTopDp = baseTop
+                                        artworkResizeBaseHeightScale =
+                                            lightArtworkHeightScale
+                                        artworkResizeBaseSideDp = artworkSide.value
+                                        artworkResizePreviewTopDp = baseTop
                                         artworkResizeActive = true
                                         beginNestedEdit()
                                     },
+                                    onResizePreview = { _, heightScale ->
+                                        val baseTop = artworkResizeBaseTopDp
+                                        if (baseTop != null) {
+                                            artworkResizePreviewTopDp =
+                                                centeredArtworkTopDp(
+                                                    baseTopDp = baseTop,
+                                                    baseHeightScale =
+                                                        artworkResizeBaseHeightScale,
+                                                    currentHeightScale = heightScale,
+                                                    baseSideDp = artworkResizeBaseSideDp,
+                                                )
+                                        }
+                                    },
                                     onResizeSettled = { widthScale, heightScale ->
-                                        // Resizing is shape-only. The ARTWORK block keeps the exact
-                                        // same canvas origin regardless of which handle is used.
+                                        val committedTop =
+                                            artworkResizePreviewTopDp
+                                                ?: artworkResizeBaseTopDp
+                                        val committedPositions =
+                                            if (committedTop != null) {
+                                                lightCanvasPositions
+                                                    .toMutableMap()
+                                                    .apply {
+                                                        this[
+                                                            CapsuleLightBlock.ARTWORK
+                                                        ] = committedTop.coerceAtLeast(0f)
+                                                    }
+                                                    .toMap()
+                                            } else {
+                                                lightCanvasPositions
+                                            }
+
                                         lightArtworkWidthScale = widthScale
                                         lightArtworkHeightScale = heightScale
+                                        lightCanvasPositions = committedPositions
                                         onArtworkWidthScaleChange(widthScale)
                                         onArtworkHeightScaleChange(heightScale)
+                                        if (committedPositions.isNotEmpty()) {
+                                            onLightCanvasPositionsEncodedChange(
+                                                encodeCapsuleLightCanvasPositions(
+                                                    committedPositions,
+                                                ),
+                                            )
+                                        }
 
                                         artworkResizeActive = false
+                                        artworkResizeBaseTopDp = null
+                                        artworkResizePreviewTopDp = null
                                         lightEditInProgress = false
                                         lightValidationGeneration += 1
                                     },
@@ -944,12 +989,6 @@ fun CapsulePlayerContent(
                                     }
                                 }
 
-                                // Outside edit mode keep the untouched Light spacing when the lyric
-                                // feature is off. In edit mode the invisible lyric gets its own
-                                // movable placeholder below (or wherever the user moved it).
-                                if (!lyricLineEnabled && !lightEditorEnabled) {
-                                    Spacer(Modifier.height(20.dp))
-                                }
                             }
                         }
 
@@ -1000,7 +1039,15 @@ fun CapsulePlayerContent(
                                     }
                                 }
 
-                                else -> Unit
+                                else -> {
+                                    // Same geometry as the editor placeholder, only invisible.
+                                    // Toggling "Edit" must not move any real Light block.
+                                    Spacer(
+                                        Modifier
+                                            .fillMaxWidth()
+                                            .height(40.dp),
+                                    )
+                                }
                             }
                         }
 
