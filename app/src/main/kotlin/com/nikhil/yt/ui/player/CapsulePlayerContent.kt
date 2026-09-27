@@ -1021,8 +1021,8 @@ fun CapsulePlayerContent(
                                         modifier =
                                             Modifier
                                                 .fillMaxWidth()
+                                                .height(CapsuleLightDisabledLyricSlotHeight)
                                                 .padding(horizontal = 24.dp, vertical = 5.dp)
-                                                .height(30.dp)
                                                 .border(
                                                     1.dp,
                                                     textColor.copy(alpha = 0.14f),
@@ -1045,7 +1045,7 @@ fun CapsulePlayerContent(
                                     Spacer(
                                         Modifier
                                             .fillMaxWidth()
-                                            .height(40.dp),
+                                            .height(CapsuleLightDisabledLyricSlotHeight),
                                     )
                                 }
                             }
