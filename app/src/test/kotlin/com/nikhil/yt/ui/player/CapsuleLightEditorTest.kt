@@ -124,15 +124,18 @@ class CapsuleLightEditorTest {
     }
 
     @Test
-    fun outerBlocksCanReplaceBothEdgeSlots() {
+    fun smallOuterBlockCanDisplaceLargeModeSwitchAtEitherEdge() {
         assertEquals(
             LightEdgeReplacement.TOP,
             chooseLightEdgeReplacement(
                 currentIndex = 3,
                 lastIndex = 5,
-                commandCenterPx = 80f,
-                firstCenterPx = 80f,
-                lastCenterPx = 900f,
+                commandTopPx = 55f,
+                commandHeightPx = 50f,
+                firstTopPx = 0f,
+                firstHeightPx = 140f,
+                lastTopPx = 900f,
+                lastHeightPx = 140f,
             ),
         )
 
@@ -141,9 +144,12 @@ class CapsuleLightEditorTest {
             chooseLightEdgeReplacement(
                 currentIndex = 2,
                 lastIndex = 5,
-                commandCenterPx = 900f,
-                firstCenterPx = 80f,
-                lastCenterPx = 900f,
+                commandTopPx = 995f,
+                commandHeightPx = 50f,
+                firstTopPx = 0f,
+                firstHeightPx = 140f,
+                lastTopPx = 900f,
+                lastHeightPx = 140f,
             ),
         )
 
@@ -152,37 +158,100 @@ class CapsuleLightEditorTest {
             chooseLightEdgeReplacement(
                 currentIndex = 0,
                 lastIndex = 5,
-                commandCenterPx = 20f,
-                firstCenterPx = 80f,
-                lastCenterPx = 900f,
+                commandTopPx = 0f,
+                commandHeightPx = 50f,
+                firstTopPx = 0f,
+                firstHeightPx = 140f,
+                lastTopPx = 900f,
+                lastHeightPx = 140f,
             ),
         )
     }
 
     @Test
-    fun topArtworkResizeMovesOriginOppositeToBottomResize() {
-        // Pulling a TOP handle downward shrinks the artwork and moves its top downward,
-        // preserving the old bottom edge.
-        assertEquals(
-            60f,
-            artworkTopEdgeShiftDp(
-                startHeightScale = 1f,
-                currentHeightScale = 0.8f,
-                baseSideDp = 300f,
-            ),
-            0.001f,
-        )
+    fun artworkResizeKeepsItsAnchorAndDoesNotPullUnrelatedBlocks() {
+        val order =
+            listOf(
+                CapsuleLightBlock.METADATA,
+                CapsuleLightBlock.ARTWORK,
+                CapsuleLightBlock.MODE_SWITCH,
+                CapsuleLightBlock.CONTROLS,
+            )
+        val positions =
+            mapOf(
+                CapsuleLightBlock.METADATA to 20f,
+                CapsuleLightBlock.ARTWORK to 200f,
+                CapsuleLightBlock.MODE_SWITCH to 650f,
+                CapsuleLightBlock.CONTROLS to 850f,
+            )
+        val shrinkHeights =
+            mapOf(
+                CapsuleLightBlock.METADATA to 80f,
+                CapsuleLightBlock.ARTWORK to 200f,
+                CapsuleLightBlock.MODE_SWITCH to 100f,
+                CapsuleLightBlock.CONTROLS to 120f,
+            )
 
-        // Pulling upward grows from the top, so the ARTWORK origin moves upward.
-        assertEquals(
-            -60f,
-            artworkTopEdgeShiftDp(
-                startHeightScale = 1f,
-                currentHeightScale = 1.2f,
-                baseSideDp = 300f,
-            ),
-            0.001f,
-        )
+        val shrunk =
+            projectArtworkResizePositions(
+                order = order,
+                preferredPositions = positions,
+                heights = shrinkHeights,
+                canvasHeightPx = 1100f,
+                gapPx = 8f,
+            )!!
+
+        assertEquals(200f, shrunk.getValue(CapsuleLightBlock.ARTWORK), 0.001f)
+        assertEquals(650f, shrunk.getValue(CapsuleLightBlock.MODE_SWITCH), 0.001f)
+        assertEquals(850f, shrunk.getValue(CapsuleLightBlock.CONTROLS), 0.001f)
+
+        val growHeights =
+            shrinkHeights + (CapsuleLightBlock.ARTWORK to 500f)
+        val grown =
+            projectArtworkResizePositions(
+                order = order,
+                preferredPositions = positions,
+                heights = growHeights,
+                canvasHeightPx = 1200f,
+                gapPx = 8f,
+            )!!
+
+        assertEquals(200f, grown.getValue(CapsuleLightBlock.ARTWORK), 0.001f)
+        assertEquals(708f, grown.getValue(CapsuleLightBlock.MODE_SWITCH), 0.001f)
+        assertEquals(850f, grown.getValue(CapsuleLightBlock.CONTROLS), 0.001f)
+    }
+
+    @Test
+    fun storedCoordinatesNeverOverrideCanonicalBlockOrder() {
+        val order =
+            listOf(
+                CapsuleLightBlock.MODE_SWITCH,
+                CapsuleLightBlock.ARTWORK,
+                CapsuleLightBlock.CONTROLS,
+            )
+        val heights =
+            mapOf(
+                CapsuleLightBlock.MODE_SWITCH to 100f,
+                CapsuleLightBlock.ARTWORK to 300f,
+                CapsuleLightBlock.CONTROLS to 120f,
+            )
+        val scrambledCoordinates =
+            mapOf(
+                CapsuleLightBlock.MODE_SWITCH to 900f,
+                CapsuleLightBlock.ARTWORK to 100f,
+                CapsuleLightBlock.CONTROLS to 500f,
+            )
+
+        val (resolvedOrder, _) =
+            normalizedStoredPositions(
+                order = order,
+                requested = scrambledCoordinates,
+                heights = heights,
+                canvasHeightPx = 1200f,
+                gapPx = 8f,
+            )
+
+        assertEquals(order, resolvedOrder)
     }
 
     @Test
