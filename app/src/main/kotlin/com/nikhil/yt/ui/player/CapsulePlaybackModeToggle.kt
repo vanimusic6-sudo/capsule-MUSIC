@@ -55,12 +55,10 @@ internal fun CapsuleAudioVideoToggle(
     onLightEditStarted: () -> Unit = {},
 ) {
     /*
-     * Capsule Light draws this switch directly above the transport panel, so it
-     * has to carry the panel's corner arc exactly, and the selected segment has
-     * to be concentric with it: an inner radius of
-     * CapsuleLightPanelRadius - CapsuleLightToggleInset leaves a constant-width
-     * band of shell around the segment on every corner. A segment rounded to
-     * some unrelated radius is what reads as visual noise next to the panel.
+     * Capsule Light draws this switch next to the transport capsule. The switch
+     * is shorter, so reusing the transport's absolute 18dp radius makes it read
+     * like a pill. Keep the same radius/height proportion instead; the selected
+     * segment remains concentric with the shell.
      */
     val shape =
         if (lightStyle) {
