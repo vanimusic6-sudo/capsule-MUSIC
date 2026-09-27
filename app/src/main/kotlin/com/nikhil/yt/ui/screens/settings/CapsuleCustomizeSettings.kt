@@ -39,6 +39,13 @@ import com.nikhil.yt.constants.CapsuleLightArtworkWidthScaleKey
 import com.nikhil.yt.constants.CapsuleLightArtworkHeightScaleKey
 import com.nikhil.yt.constants.CapsuleLightBlockGapsKey
 import com.nikhil.yt.constants.CapsuleLightCanvasPositionsKey
+import com.nikhil.yt.constants.CapsuleImmersiveEditEnabledKey
+import com.nikhil.yt.constants.CapsuleImmersiveLayoutOrderKey
+import com.nikhil.yt.constants.CapsuleImmersiveCanvasPositionsKey
+import com.nikhil.yt.constants.CapsuleImmersiveMetadataOrderKey
+import com.nikhil.yt.constants.CapsuleImmersiveModeOrderKey
+import com.nikhil.yt.constants.CapsuleImmersiveAvOrderKey
+import com.nikhil.yt.constants.CapsuleImmersiveTransportOrderKey
 import com.nikhil.yt.ui.component.EnumListPreference
 import com.nikhil.yt.ui.component.IconButton
 import com.nikhil.yt.ui.component.PreferenceEntry
@@ -51,6 +58,7 @@ import com.nikhil.yt.ui.player.CapsuleLightMetadataBaseOrderEncoded
 import com.nikhil.yt.ui.player.CapsuleLightModeBaseOrderEncoded
 import com.nikhil.yt.ui.player.CapsuleLightAvBaseOrderEncoded
 import com.nikhil.yt.ui.player.CapsuleLightTransportBaseOrderEncoded
+import com.nikhil.yt.ui.player.CapsuleImmersiveBaseOrderEncoded
 import com.nikhil.yt.ui.utils.backToMain
 import com.nikhil.yt.utils.rememberEnumPreference
 import com.nikhil.yt.utils.rememberPreference
@@ -65,11 +73,22 @@ fun CapsuleCustomizeSettings(
             CapsuleCustomizeTargetKey,
             defaultValue = CapsuleCustomizeTarget.LIGHT,
         )
-    val (editEnabled, onEditEnabledChange) =
+    val (lightEditEnabled, onLightEditEnabledChange) =
         rememberPreference(
             CapsuleLightEditEnabledKey,
             defaultValue = false,
         )
+    val (immersiveEditEnabled, onImmersiveEditEnabledChange) =
+        rememberPreference(
+            CapsuleImmersiveEditEnabledKey,
+            defaultValue = false,
+        )
+
+    val editEnabled =
+        when (target) {
+            CapsuleCustomizeTarget.LIGHT -> lightEditEnabled
+            CapsuleCustomizeTarget.IMMERSIVE -> immersiveEditEnabled
+        }
     val (_, onLayoutOrderChange) =
         rememberPreference(
             CapsuleLightLayoutOrderKey,
@@ -121,6 +140,37 @@ fun CapsuleCustomizeSettings(
             defaultValue = CapsuleLightCanvasPositionsBaseEncoded,
         )
 
+    val (_, onImmersiveLayoutOrderChange) =
+        rememberPreference(
+            CapsuleImmersiveLayoutOrderKey,
+            defaultValue = CapsuleImmersiveBaseOrderEncoded,
+        )
+    val (_, onImmersiveCanvasPositionsChange) =
+        rememberPreference(
+            CapsuleImmersiveCanvasPositionsKey,
+            defaultValue = CapsuleLightCanvasPositionsBaseEncoded,
+        )
+    val (_, onImmersiveMetadataOrderChange) =
+        rememberPreference(
+            CapsuleImmersiveMetadataOrderKey,
+            defaultValue = CapsuleLightMetadataBaseOrderEncoded,
+        )
+    val (_, onImmersiveModeOrderChange) =
+        rememberPreference(
+            CapsuleImmersiveModeOrderKey,
+            defaultValue = CapsuleLightModeBaseOrderEncoded,
+        )
+    val (_, onImmersiveAvOrderChange) =
+        rememberPreference(
+            CapsuleImmersiveAvOrderKey,
+            defaultValue = CapsuleLightAvBaseOrderEncoded,
+        )
+    val (_, onImmersiveTransportOrderChange) =
+        rememberPreference(
+            CapsuleImmersiveTransportOrderKey,
+            defaultValue = CapsuleLightTransportBaseOrderEncoded,
+        )
+
     Column(
         Modifier
             .windowInsetsPadding(
@@ -157,6 +207,8 @@ fun CapsuleCustomizeSettings(
                 when (it) {
                     CapsuleCustomizeTarget.LIGHT ->
                         stringResource(R.string.capsule_player_light)
+                    CapsuleCustomizeTarget.IMMERSIVE ->
+                        stringResource(R.string.capsule_player_immersive)
                 }
             },
         )
@@ -166,7 +218,16 @@ fun CapsuleCustomizeSettings(
         )
 
         SwitchPreference(
-            title = { Text(stringResource(R.string.capsule_light_edit_screen)) },
+            title = {
+                Text(
+                    when (target) {
+                        CapsuleCustomizeTarget.LIGHT ->
+                            stringResource(R.string.capsule_light_edit_screen)
+                        CapsuleCustomizeTarget.IMMERSIVE ->
+                            stringResource(R.string.capsule_immersive_edit_screen)
+                    },
+                )
+            },
             description = stringResource(R.string.capsule_customize_edit_description),
             icon = {
                 Icon(
@@ -176,9 +237,15 @@ fun CapsuleCustomizeSettings(
             },
             checked = editEnabled,
             onCheckedChange = { enabled ->
-                onEditEnabledChange(enabled)
-                if (!enabled) {
-                    onEditSessionActiveChange(false)
+                when (target) {
+                    CapsuleCustomizeTarget.LIGHT -> {
+                        onLightEditEnabledChange(enabled)
+                        if (!enabled) {
+                            onEditSessionActiveChange(false)
+                        }
+                    }
+                    CapsuleCustomizeTarget.IMMERSIVE ->
+                        onImmersiveEditEnabledChange(enabled)
                 }
             },
         )
@@ -193,17 +260,36 @@ fun CapsuleCustomizeSettings(
                 )
             },
             onClick = {
-                onLayoutOrderChange(CapsuleLightBaseOrderEncoded)
-                onMetadataOrderChange(CapsuleLightMetadataBaseOrderEncoded)
-                onModeOrderChange(CapsuleLightModeBaseOrderEncoded)
-                onAvOrderChange(CapsuleLightAvBaseOrderEncoded)
-                onTransportOrderChange(CapsuleLightTransportBaseOrderEncoded)
-                onArtworkWidthScaleChange(1f)
-                onArtworkHeightScaleChange(1f)
-                onBlockGapsChange(CapsuleLightBaseGapsEncoded)
-                onCanvasPositionsChange(CapsuleLightCanvasPositionsBaseEncoded)
-                onEditEnabledChange(false)
-                onEditSessionActiveChange(false)
+                when (target) {
+                    CapsuleCustomizeTarget.LIGHT -> {
+                        onLayoutOrderChange(CapsuleLightBaseOrderEncoded)
+                        onMetadataOrderChange(CapsuleLightMetadataBaseOrderEncoded)
+                        onModeOrderChange(CapsuleLightModeBaseOrderEncoded)
+                        onAvOrderChange(CapsuleLightAvBaseOrderEncoded)
+                        onTransportOrderChange(CapsuleLightTransportBaseOrderEncoded)
+                        onArtworkWidthScaleChange(1f)
+                        onArtworkHeightScaleChange(1f)
+                        onBlockGapsChange(CapsuleLightBaseGapsEncoded)
+                        onCanvasPositionsChange(CapsuleLightCanvasPositionsBaseEncoded)
+                        onLightEditEnabledChange(false)
+                        onEditSessionActiveChange(false)
+                    }
+                    CapsuleCustomizeTarget.IMMERSIVE -> {
+                        onImmersiveLayoutOrderChange(CapsuleImmersiveBaseOrderEncoded)
+                        onImmersiveCanvasPositionsChange(
+                            CapsuleLightCanvasPositionsBaseEncoded,
+                        )
+                        onImmersiveMetadataOrderChange(
+                            CapsuleLightMetadataBaseOrderEncoded,
+                        )
+                        onImmersiveModeOrderChange(CapsuleLightModeBaseOrderEncoded)
+                        onImmersiveAvOrderChange(CapsuleLightAvBaseOrderEncoded)
+                        onImmersiveTransportOrderChange(
+                            CapsuleLightTransportBaseOrderEncoded,
+                        )
+                        onImmersiveEditEnabledChange(false)
+                    }
+                }
             },
         )
 
