@@ -58,8 +58,16 @@ private val LocalCapsuleLightMenu = staticCompositionLocalOf<() -> Unit> { {} }
 internal val CapsuleLightPanelRadius = 18.dp
 internal val CapsuleLightPanelShape = RoundedCornerShape(CapsuleLightPanelRadius)
 
+internal val CapsuleLightBlockHorizontalInset = 24.dp
+internal val CapsuleLightPanelOuterInset = 4.dp
+
 /** Visible left/right edge shared by the artwork and the transport capsule in portrait Light. */
-internal val CapsuleLightTransportEdgeInset = 28.dp
+internal val CapsuleLightTransportEdgeInset =
+    CapsuleLightBlockHorizontalInset + CapsuleLightPanelOuterInset
+
+internal fun capsuleLightBaseArtworkWidth(maxWidth: Dp): Dp =
+    (maxWidth - CapsuleLightTransportEdgeInset * 2)
+        .coerceAtLeast(120.dp)
 
 /** The AUDIO/VIDEO switch shares the transport panel's shell, so it shares its geometry. */
 internal val CapsuleLightToggleHeight = 48.dp
@@ -145,8 +153,7 @@ internal fun CapsulePlayerLayout(
             // Width aligns exactly with the visible transport capsule edges. Height deliberately
             // keeps the old artworkSide so this request changes no vertical geometry.
             val artworkBaseWidth =
-                (maxWidth - CapsuleLightTransportEdgeInset * 2)
-                    .coerceAtLeast(120.dp)
+                capsuleLightBaseArtworkWidth(maxWidth)
 
             val artworkHeightBudgetAfterGaps =
                 (customCanvasHeight - detailsSpace)
@@ -420,7 +427,7 @@ internal fun CapsuleLightControls(
         modifier =
             Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 4.dp)
+                .padding(horizontal = CapsuleLightPanelOuterInset)
                 .height(84.dp)
                 .clip(CapsuleLightPanelShape)
                 .background(transportSurface)
