@@ -917,7 +917,7 @@ fun CapsulePlayerContent(
                                             ] ?: 0f
                                         artworkResizeBaseTopDp = baseTop
                                         artworkResizeBaseHeightScale =
-                                            lightArtworkHeightScale
+                                            safeArtworkHeightScale
                                         artworkResizeBaseSideDp = artworkSide.value
                                         artworkResizePreviewTopDp = baseTop
                                         artworkResizeActive = true
