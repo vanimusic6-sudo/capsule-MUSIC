@@ -44,6 +44,8 @@ import com.nikhil.yt.ui.player.CapsuleLightPanelRadius
 import com.nikhil.yt.ui.player.CapsuleLightToggleInset
 import com.nikhil.yt.ui.player.CapsulePlayerLayout
 import com.nikhil.yt.ui.player.CapsuleLightBlock
+import com.nikhil.yt.ui.player.CapsuleLightModeItem
+import com.nikhil.yt.ui.player.capsuleLightAvOuterInsets
 import com.nikhil.yt.ui.player.capsuleLightBaseArtworkWidth
 import com.nikhil.yt.ui.player.capsulePlayerDesignForOrientation
 import com.nikhil.yt.ui.player.capsuleLightLyricLineAt
@@ -60,6 +62,41 @@ import org.robolectric.annotation.Config
 @Config(sdk = [35], application = Application::class, qualifiers = "w393dp-h851dp-xhdpi")
 class CapsuleLightLayoutTest {
     @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
+
+    @Test fun edgeAvToggleSharesTransportOuterLine() {
+        val left =
+            capsuleLightAvOuterInsets(
+                listOf(
+                    CapsuleLightModeItem.AUDIO_VIDEO,
+                    CapsuleLightModeItem.SHUFFLE,
+                    CapsuleLightModeItem.SLEEP,
+                ),
+            )
+        assertEquals(4.dp, left.start)
+        assertEquals(0.dp, left.end)
+
+        val right =
+            capsuleLightAvOuterInsets(
+                listOf(
+                    CapsuleLightModeItem.SHUFFLE,
+                    CapsuleLightModeItem.SLEEP,
+                    CapsuleLightModeItem.AUDIO_VIDEO,
+                ),
+            )
+        assertEquals(0.dp, right.start)
+        assertEquals(4.dp, right.end)
+
+        val middle =
+            capsuleLightAvOuterInsets(
+                listOf(
+                    CapsuleLightModeItem.SHUFFLE,
+                    CapsuleLightModeItem.AUDIO_VIDEO,
+                    CapsuleLightModeItem.SLEEP,
+                ),
+            )
+        assertEquals(0.dp, middle.start)
+        assertEquals(0.dp, middle.end)
+    }
 
     @Test fun audioVideoToggleUsesSoftIntermediateCurvature() {
         // Shorter Light toggle: softer than the proportional ~10dp version, but still clearly
