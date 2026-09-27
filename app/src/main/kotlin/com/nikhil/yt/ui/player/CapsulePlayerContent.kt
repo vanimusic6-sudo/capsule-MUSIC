@@ -286,6 +286,7 @@ fun CapsulePlayerContent(
     var lightEditInProgress by remember { mutableStateOf(false) }
     var lightValidationGeneration by remember { mutableStateOf(0) }
     var artworkResizeActive by remember { mutableStateOf(false) }
+    var artworkSelectionResetToken by remember { mutableStateOf(0) }
 
     LaunchedEffect(Unit) {
         if (
@@ -792,6 +793,9 @@ fun CapsulePlayerContent(
             lightEditInProgress = true
             onLightEditSessionActiveChange(true)
         },
+        onLightArtworkSelectionDismiss = {
+            artworkSelectionResetToken += 1
+        },
         lightInteractionActive = lightEditInProgress,
         lightArtworkResizeActive = artworkResizeActive,
         onLightOrderSettled = { reordered ->
@@ -858,6 +862,9 @@ fun CapsulePlayerContent(
             } else {
                 { block, artworkBaseWidth, artworkBaseHeight, artworkMaxHeightScale ->
                     val beginNestedEdit: () -> Unit = {
+                        if (block != CapsuleLightBlock.ARTWORK) {
+                            artworkSelectionResetToken += 1
+                        }
                         lightEditInProgress = true
                         onLightEditSessionActiveChange(true)
                     }
@@ -902,6 +909,7 @@ fun CapsulePlayerContent(
                                     // footprint remains in layout so every control below stays
                                     // exactly where the user put it.
                                     editable = lightEditorEnabled && !isCapsuleVideoPlaying,
+                                    selectionResetToken = artworkSelectionResetToken,
                                     contentAlignment =
                                         if (isCapsuleVideoPlaying) {
                                             Alignment.TopCenter
