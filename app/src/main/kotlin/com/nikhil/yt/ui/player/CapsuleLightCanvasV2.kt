@@ -918,7 +918,6 @@ internal fun CapsuleLightCanvasV2(
     ) -> Unit,
     onEditStarted: () -> Unit,
     externalGestureActive: Boolean = false,
-    transientArtworkTopShiftDp: Float = 0f,
     modifier: Modifier = Modifier,
     content: @Composable (CapsuleLightBlock, Dp?) -> Unit,
 ) {
@@ -927,8 +926,6 @@ internal fun CapsuleLightCanvasV2(
     val gapPx = with(density) { LightCanvasDockGap.toPx() }
     val normalMagnetPx = with(density) { LightCanvasRealMagnet.toPx() }
     val preferredMagnetPx = with(density) { LightCanvasPreferredMagnet.toPx() }
-    val transientArtworkTopShiftPx =
-        with(density) { transientArtworkTopShiftDp.dp.toPx() }
 
     val bounds = remember { mutableStateMapOf<CapsuleLightBlock, LightBounds>() }
     var dragged by remember { mutableStateOf<CapsuleLightBlock?>(null) }
@@ -1146,18 +1143,8 @@ internal fun CapsuleLightCanvasV2(
         order.forEach { block ->
             key(block) {
                 val selected = dragged == block
-                val baseTop =
-                    activePositionsPx[block] ?: 0f
                 val normalTop =
-                    if (
-                        block == CapsuleLightBlock.ARTWORK &&
-                        externalGestureActive &&
-                        transientArtworkTopShiftPx != 0f
-                    ) {
-                        (baseTop + transientArtworkTopShiftPx).coerceAtLeast(0f)
-                    } else {
-                        baseTop
-                    }
+                    activePositionsPx[block] ?: 0f
 
                 val desiredDraggedTop =
                     if (selected) {
