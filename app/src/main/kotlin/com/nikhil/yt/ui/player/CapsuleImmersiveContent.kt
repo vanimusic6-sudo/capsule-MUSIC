@@ -106,7 +106,48 @@ private data class ImmersiveGradientFrame(
     val floor: Color,
     val imageUrl: String,
     val landscape: Boolean,
+    val bottomTexture: Float,
 )
+
+internal data class ImmersiveFadeProfile(
+    val start: Float,
+    val firstStop: Float,
+    val firstAlpha: Float,
+    val secondStop: Float,
+    val secondAlpha: Float,
+    val thirdStop: Float,
+    val thirdAlpha: Float,
+)
+
+internal fun immersiveFadeProfile(
+    bottomTexture: Float,
+    landscape: Boolean,
+): ImmersiveFadeProfile {
+    val texture = bottomTexture.coerceIn(0f, 1f)
+    val hard = texture * texture
+
+    return if (landscape) {
+        ImmersiveFadeProfile(
+            start = 0.34f - 0.10f * texture - 0.04f * hard,
+            firstStop = 0.54f - 0.07f * texture - 0.03f * hard,
+            firstAlpha = 0.12f + 0.14f * texture + 0.08f * hard,
+            secondStop = 0.72f - 0.05f * texture - 0.03f * hard,
+            secondAlpha = 0.42f + 0.20f * texture + 0.10f * hard,
+            thirdStop = 0.88f - 0.03f * texture - 0.02f * hard,
+            thirdAlpha = 0.76f + 0.16f * texture + 0.05f * hard,
+        )
+    } else {
+        ImmersiveFadeProfile(
+            start = ImmersiveFadeStart - 0.16f * texture - 0.05f * hard,
+            firstStop = 0.62f - 0.10f * texture - 0.04f * hard,
+            firstAlpha = 0.12f + 0.16f * texture + 0.08f * hard,
+            secondStop = 0.76f - 0.08f * texture - 0.04f * hard,
+            secondAlpha = 0.42f + 0.24f * texture + 0.10f * hard,
+            thirdStop = 0.90f - 0.05f * texture - 0.02f * hard,
+            thirdAlpha = 0.76f + 0.18f * texture + 0.05f * hard,
+        )
+    }
+}
 
 /** How much of the sheet the cover takes before it starts to go. */
 private const val ImmersiveArtworkFraction = 0.55f
@@ -453,6 +494,7 @@ fun CapsuleImmersiveContent(
             coverAndGradientReady,
             edge,
             floor,
+            artworkTone.bottomTexture,
             artworkTone.displayUrl,
             visible,
             fadingOldFrame,
@@ -466,6 +508,7 @@ fun CapsuleImmersiveContent(
                     floor = floor,
                     imageUrl = readyUrl,
                     landscape = artworkTone.landscape,
+                    bottomTexture = artworkTone.bottomTexture,
                 )
             }
             // Also handles reopening the sheet while its previous fade-out was being
@@ -552,14 +595,24 @@ fun CapsuleImmersiveContent(
                         modifier = Modifier
                             .fillMaxSize()
                             .background(
-                                Brush.verticalGradient(
-                                    0f to Color.Transparent,
-                                    (if (frame.landscape) 0.34f else ImmersiveFadeStart) to Color.Transparent,
-                                    (if (frame.landscape) 0.54f else 0.62f) to frame.edge.copy(alpha = 0.12f),
-                                    (if (frame.landscape) 0.72f else 0.76f) to frame.edge.copy(alpha = 0.42f),
-                                    (if (frame.landscape) 0.88f else 0.90f) to frame.edge.copy(alpha = 0.76f),
-                                    1f to frame.edge,
-                                ),
+                                run {
+                                    val fade =
+                                        immersiveFadeProfile(
+                                            bottomTexture = frame.bottomTexture,
+                                            landscape = frame.landscape,
+                                        )
+                                    Brush.verticalGradient(
+                                        0f to Color.Transparent,
+                                        fade.start to Color.Transparent,
+                                        fade.firstStop to
+                                            frame.edge.copy(alpha = fade.firstAlpha),
+                                        fade.secondStop to
+                                            frame.edge.copy(alpha = fade.secondAlpha),
+                                        fade.thirdStop to
+                                            frame.edge.copy(alpha = fade.thirdAlpha),
+                                        1f to frame.edge,
+                                    )
+                                },
                             ),
                     )
                 }
