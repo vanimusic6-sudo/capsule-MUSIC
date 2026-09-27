@@ -119,7 +119,7 @@ private const val ImmersiveArtworkFraction = 0.55f
  * softer dissolve, which is what the design was asking for in the first place — the picture does
  * not end anywhere, it stops being there.
  */
-private const val ImmersiveFadeStart = 0.52f
+private const val ImmersiveFadeStart = 0.44f
 
 /** Smallest cover that still reads as one; largest that still leaves the controls their room. */
 private val ImmersiveArtworkMin = 200.dp
@@ -482,7 +482,7 @@ fun CapsuleImmersiveContent(
          * that line and nowhere else, so the stop is computed rather than guessed.
          */
         val seam = (artworkHeight / maxHeight).coerceIn(0.05f, 0.95f)
-        val settled = (seam + 0.34f).coerceAtMost(1f)
+        val settled = (seam + 0.44f).coerceAtMost(1f)
 
         val frame = shownGradient
         val pageBackground = Brush.verticalGradient(
@@ -554,10 +554,10 @@ fun CapsuleImmersiveContent(
                             .background(
                                 Brush.verticalGradient(
                                     0f to Color.Transparent,
-                                    (if (frame.landscape) 0.38f else ImmersiveFadeStart) to Color.Transparent,
-                                    (if (frame.landscape) 0.61f else 0.70f) to frame.edge.copy(alpha = 0.28f),
-                                    (if (frame.landscape) 0.83f else 0.86f) to frame.edge.copy(alpha = 0.83f),
-                                    (if (frame.landscape) 0.95f else 0.96f) to frame.edge,
+                                    (if (frame.landscape) 0.34f else ImmersiveFadeStart) to Color.Transparent,
+                                    (if (frame.landscape) 0.54f else 0.62f) to frame.edge.copy(alpha = 0.12f),
+                                    (if (frame.landscape) 0.72f else 0.76f) to frame.edge.copy(alpha = 0.42f),
+                                    (if (frame.landscape) 0.88f else 0.90f) to frame.edge.copy(alpha = 0.76f),
                                     1f to frame.edge,
                                 ),
                             ),
