@@ -125,26 +125,39 @@ internal fun immersiveFadeProfile(
 ): ImmersiveFadeProfile {
     val texture = bottomTexture.coerceIn(0f, 1f)
     val hard = texture * texture
+    val extreme = hard * texture
 
     return if (landscape) {
         ImmersiveFadeProfile(
-            start = 0.34f - 0.10f * texture - 0.04f * hard,
-            firstStop = 0.54f - 0.07f * texture - 0.03f * hard,
-            firstAlpha = 0.12f + 0.14f * texture + 0.08f * hard,
-            secondStop = 0.72f - 0.05f * texture - 0.03f * hard,
-            secondAlpha = 0.42f + 0.20f * texture + 0.10f * hard,
-            thirdStop = 0.88f - 0.03f * texture - 0.02f * hard,
-            thirdAlpha = 0.76f + 0.16f * texture + 0.05f * hard,
+            start = 0.34f - 0.14f * texture - 0.06f * hard - 0.02f * extreme,
+            firstStop = 0.54f - 0.10f * texture - 0.05f * hard - 0.02f * extreme,
+            firstAlpha =
+                (0.12f + 0.18f * texture + 0.10f * hard + 0.04f * extreme)
+                    .coerceIn(0f, 1f),
+            secondStop = 0.72f - 0.08f * texture - 0.05f * hard - 0.02f * extreme,
+            secondAlpha =
+                (0.42f + 0.26f * texture + 0.12f * hard + 0.05f * extreme)
+                    .coerceIn(0f, 1f),
+            thirdStop = 0.88f - 0.05f * texture - 0.03f * hard - 0.01f * extreme,
+            thirdAlpha =
+                (0.76f + 0.20f * texture + 0.06f * hard + 0.02f * extreme)
+                    .coerceIn(0f, 1f),
         )
     } else {
         ImmersiveFadeProfile(
-            start = ImmersiveFadeStart - 0.16f * texture - 0.05f * hard,
-            firstStop = 0.62f - 0.10f * texture - 0.04f * hard,
-            firstAlpha = 0.12f + 0.16f * texture + 0.08f * hard,
-            secondStop = 0.76f - 0.08f * texture - 0.04f * hard,
-            secondAlpha = 0.42f + 0.24f * texture + 0.10f * hard,
-            thirdStop = 0.90f - 0.05f * texture - 0.02f * hard,
-            thirdAlpha = 0.76f + 0.18f * texture + 0.05f * hard,
+            start = ImmersiveFadeStart - 0.22f * texture - 0.08f * hard - 0.03f * extreme,
+            firstStop = 0.62f - 0.15f * texture - 0.06f * hard - 0.02f * extreme,
+            firstAlpha =
+                (0.12f + 0.22f * texture + 0.11f * hard + 0.05f * extreme)
+                    .coerceIn(0f, 1f),
+            secondStop = 0.76f - 0.12f * texture - 0.06f * hard - 0.02f * extreme,
+            secondAlpha =
+                (0.42f + 0.30f * texture + 0.13f * hard + 0.05f * extreme)
+                    .coerceIn(0f, 1f),
+            thirdStop = 0.90f - 0.07f * texture - 0.03f * hard - 0.01f * extreme,
+            thirdAlpha =
+                (0.76f + 0.22f * texture + 0.07f * hard + 0.02f * extreme)
+                    .coerceIn(0f, 1f),
         )
     }
 }
