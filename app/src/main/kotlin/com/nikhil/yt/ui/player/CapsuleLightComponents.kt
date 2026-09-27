@@ -73,9 +73,16 @@ internal fun capsuleLightBaseArtworkWidth(maxWidth: Dp): Dp =
 /** The AUDIO/VIDEO switch shares the transport panel's shell, so it shares its geometry. */
 internal val CapsuleLightToggleHeight = 48.dp
 internal val CapsuleLightToggleInset = 4.dp
-internal val CapsuleLightToggleRadius =
-    CapsuleLightPanelRadius *
-        (CapsuleLightToggleHeight.value / CapsuleLightTransportHeight.value)
+
+/*
+ * The switch is shorter than the 84dp transport capsule. Scaling its 18dp corner radius
+ * proportionally makes the long side visually flat/square (~10dp), while reusing 18dp makes it
+ * read as a pill. These radii deliberately sit between those extremes: the shell keeps a short
+ * calm side and the selected segment follows it concentrically without becoming a button-shaped
+ * rectangle.
+ */
+internal val CapsuleLightToggleRadius = 15.dp
+internal val CapsuleLightToggleSegmentRadius = 12.dp
 
 /**
  * Fixed system zone at the bottom of Light. It belongs to queue navigation, not to the user's
