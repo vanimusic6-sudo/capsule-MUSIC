@@ -215,16 +215,7 @@ fun CapsuleCustomizeSettings(
 
         SwitchPreference(
             title = {
-                Text(
-                    when (effectiveTarget) {
-                        CapsuleCustomizeTarget.LIGHT ->
-                            stringResource(R.string.capsule_light_edit_screen)
-                        CapsuleCustomizeTarget.IMMERSIVE ->
-                            stringResource(R.string.capsule_immersive_edit_screen)
-                        null ->
-                            stringResource(R.string.capsule_customize_edit_section)
-                    },
-                )
+                Text(stringResource(R.string.capsule_customize_edit_toggle))
             },
             description = stringResource(R.string.capsule_customize_edit_description),
             icon = {
@@ -257,16 +248,7 @@ fun CapsuleCustomizeSettings(
 
         PreferenceEntry(
             title = {
-                Text(
-                    when (effectiveTarget) {
-                        CapsuleCustomizeTarget.LIGHT ->
-                            stringResource(R.string.capsule_light_reset_screen)
-                        CapsuleCustomizeTarget.IMMERSIVE ->
-                            stringResource(R.string.capsule_immersive_reset_screen)
-                        null ->
-                            stringResource(R.string.capsule_customize_edit_section)
-                    },
-                )
+                Text(stringResource(R.string.reset))
             },
             description = stringResource(R.string.capsule_customize_reset_description),
             icon = {
