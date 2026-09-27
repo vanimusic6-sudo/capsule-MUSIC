@@ -1204,6 +1204,8 @@ fun CapsulePlayerContent(
                                     }
 
                                     CapsuleLightModeItem.AUDIO_VIDEO -> {
+                                        val edgeInsets =
+                                            capsuleLightAvOuterInsets(lightModeOrder)
                                         CapsuleAudioVideoToggle(
                                             lightStyle = true,
                                             state = videoPlaybackState,
@@ -1219,7 +1221,13 @@ fun CapsulePlayerContent(
                                                     CapsulePlaybackMode.VIDEO,
                                                 )
                                             },
-                                            modifier = Modifier.fillMaxWidth(),
+                                            modifier =
+                                                Modifier
+                                                    .fillMaxWidth()
+                                                    .padding(
+                                                        start = edgeInsets.start,
+                                                        end = edgeInsets.end,
+                                                    ),
                                             lightOrder = lightAvOrder,
                                             lightEditable = lightEditorEnabled,
                                             onLightOrderChange = { reordered ->
