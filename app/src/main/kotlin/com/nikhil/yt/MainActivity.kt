@@ -903,10 +903,28 @@ class MainActivity : ComponentActivity() {
                                 !playerBottomSheetState.isDismissed
 
                     var yearInMusicSavedPlayerAnchor by rememberSaveable { mutableIntStateOf(-1) }
+                    var immersiveStatusBarRequested by remember { mutableStateOf(false) }
+                    val onImmersiveStatusBarRequest: (Boolean) -> Unit =
+                        remember {
+                            { hidden ->
+                                immersiveStatusBarRequested = hidden
+                            }
+                        }
 
-                    LaunchedEffect(isYearInMusicScreen) {
+                    /*
+                     * One owner for status-bar visibility.
+                     *
+                     * Year in Music and Capsule Immersive used to call hide/show independently.
+                     * That leaves a race on Activity restore: Immersive can inherit an already
+                     * hidden bar and then decide there is nothing to restore when the player closes.
+                     * Keep the requests separate, but let the Activity be the only code that talks
+                     * to WindowInsetsController.
+                     */
+                    LaunchedEffect(isYearInMusicScreen, immersiveStatusBarRequested) {
                         val controller = WindowCompat.getInsetsController(window, window.decorView)
-                        if (isYearInMusicScreen) {
+                        val shouldHideStatusBar =
+                            isYearInMusicScreen || immersiveStatusBarRequested
+                        if (shouldHideStatusBar) {
                             controller.systemBarsBehavior =
                                 WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
                             controller.hide(WindowInsetsCompat.Type.statusBars())
@@ -1244,6 +1262,7 @@ class MainActivity : ComponentActivity() {
                         LocalBottomSheetPageState provides bottomSheetPageState,
                         LocalMenuState provides menuState,
                         LocalCapsuleDockVisible provides capsuleDockActuallyVisible,
+                        LocalImmersiveStatusBarRequest provides onImmersiveStatusBarRequest,
                     ) {
                         Row {
                             AnimatedVisibility(useRail && shouldShowNavigationBar) {
@@ -1947,5 +1966,7 @@ val LocalPlayerConnection =
     staticCompositionLocalOf<PlayerConnection?> { error("No PlayerConnection provided") }
 val LocalPlayerAwareWindowInsets =
     compositionLocalOf<WindowInsets> { error("No WindowInsets provided") }
+val LocalImmersiveStatusBarRequest =
+    staticCompositionLocalOf<(Boolean) -> Unit> { { } }
 val LocalDownloadUtil = staticCompositionLocalOf<DownloadUtil> { error("No DownloadUtil provided") }
 val LocalSyncUtils = staticCompositionLocalOf<SyncUtils> { error("No SyncUtils provided") }
