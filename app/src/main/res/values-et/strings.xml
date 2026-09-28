@@ -327,4 +327,6 @@
     <string name="palette_royal_purple">Kuninglik purpur</string>
     <string name="palette_lavender_dream">Lavendel</string>
     <string name="palette_grape_purple">Viinamari</string>
+    <string name="latest_release">Viimane väljalase</string>
+    <string name="artist_release_metadata">Album • %1$d</string>
 </resources>
