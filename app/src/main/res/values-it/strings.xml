@@ -622,4 +622,6 @@
     <string name="next">Avanti</string>
     <string name="next_song">Canzone successiva</string>
     <string name="allow">Consenti</string>
+    <string name="latest_release">Ultima uscita</string>
+    <string name="artist_release_metadata">Album • %1$d</string>
 </resources>
