@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -33,7 +34,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.systemBars
+import androidx.compose.foundation.layout.systemBarsIgnoringVisibility
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CornerSize
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -88,6 +89,7 @@ import com.nikhil.yt.constants.AppBarHeight
 import kotlin.math.max
 import com.nikhil.yt.ui.motion.CapsuleStandardEasing
 
+@OptIn(ExperimentalLayoutApi::class)
 @ExperimentalMaterial3Api
 @Composable
 fun TopSearch(
@@ -106,7 +108,10 @@ fun TopSearch(
         containerColor = MaterialTheme.colorScheme.surfaceContainerLow
     ),
     tonalElevation: Dp = SearchBarDefaults.TonalElevation,
-    windowInsets: WindowInsets = WindowInsets.systemBars,
+    // Search belongs to the app window, not to the current visibility of Android's status bar.
+    // Immersive hides that bar during player travel; reserving its physical inset keeps the
+    // search header completely stationary underneath the moving player.
+    windowInsets: WindowInsets = WindowInsets.systemBarsIgnoringVisibility,
     interactionSource: MutableInteractionSource = remember { MutableInteractionSource() },
     focusRequester: FocusRequester = remember { FocusRequester() },
     content: @Composable ColumnScope.() -> Unit,
