@@ -53,6 +53,11 @@ val EnableNetEaseKey = booleanPreferencesKey("enableNetEase")
  * on knowingly rather than something that is simply on.
  */
 val EnablePaxsenixKey = booleanPreferencesKey("enablePaxsenix")
+val EnablePaxsenixAppleMusicKey = booleanPreferencesKey("enablePaxsenixAppleMusic")
+val EnablePaxsenixSpotifyKey = booleanPreferencesKey("enablePaxsenixSpotify")
+val EnablePaxsenixMusixmatchKey = booleanPreferencesKey("enablePaxsenixMusixmatch")
+val EnablePaxsenixNetEaseKey = booleanPreferencesKey("enablePaxsenixNetEase")
+val EnablePaxsenixYouTubeKey = booleanPreferencesKey("enablePaxsenixYouTube")
 val EnableMusixmatchKey = booleanPreferencesKey("enableMusixmatch")
 val HideExplicitKey = booleanPreferencesKey("hideExplicit")
 val HideVideoKey = booleanPreferencesKey("hideVideo")
