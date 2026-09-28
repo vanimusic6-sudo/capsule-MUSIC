@@ -1,7 +1,5 @@
 package com.nikhil.yt.ui.component
 
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.only
@@ -13,7 +11,6 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
@@ -24,7 +21,6 @@ import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.nikhil.yt.R
-import com.nikhil.yt.ui.motion.CapsuleStandardEasing
 
 internal val ArtistToolbarCompactHeight = 64.dp
 internal val ArtistToolbarArtworkHeight = 96.dp
@@ -43,11 +39,6 @@ internal fun ArtistToolbar(
     modifier: Modifier = Modifier,
 ) {
     val foreground = if (overArtwork) Color.White else StandardChrome.text
-    val artworkFraction by animateFloatAsState(
-        targetValue = if (overArtwork) 1f else 0f,
-        animationSpec = tween(200, easing = CapsuleStandardEasing),
-        label = "artistToolbarCollapse",
-    )
     val buttonColors = IconButtonDefaults.iconButtonColors(
         containerColor = Color.Transparent,
         contentColor = foreground,
@@ -63,9 +54,9 @@ internal fun ArtistToolbar(
         windowInsets = WindowInsets.safeDrawing.only(
             WindowInsetsSides.Horizontal + WindowInsetsSides.Top,
         ),
-        expandedHeight =
-            ArtistToolbarCompactHeight +
-                (ArtistToolbarArtworkHeight - ArtistToolbarCompactHeight) * artworkFraction,
+        // The bar is permanently pinned. Only its surface/title visibility changes as the
+        // portrait passes underneath; its geometry never grows or collapses.
+        expandedHeight = ArtistToolbarCompactHeight,
         title = {
             Text(
                 name,
