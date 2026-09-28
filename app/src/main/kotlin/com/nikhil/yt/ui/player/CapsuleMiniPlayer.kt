@@ -954,12 +954,9 @@ private fun CapsuleSubscribeButton(
 
     val subscribeLabel =
         stringResource(if (isSubscribed) R.string.subscribed else R.string.subscribe)
-    val subscribeTint =
-        if (isSubscribed) {
-            LocalContentColor.current
-        } else {
-            LocalContentColor.current.copy(alpha = 0.65f)
-        }
+    // Keep + / × in the same neutral family as the heart contour. A touch more
+    // opacity keeps it legible without the subscribed × flashing brighter than the like icon.
+    val subscribeTint = LocalContentColor.current.copy(alpha = 0.74f)
 
     Box(
         contentAlignment =
@@ -1026,6 +1023,12 @@ private fun CapsuleSubscribeButton(
             tint = subscribeTint,
             modifier = Modifier.size(if (standardStyle) 26.dp else 20.dp),
             glyphScale = 1.45f,
+            // An axis-aligned + reads much larger than the same strokes rotated into ×.
+            // Reserve separate spans so both states feel the same optical size as the heart.
+            plusSpanScale = 0.84f,
+            crossSpanScale = 0.99f,
+            strokeScale = 0.78f,
+            flattenAlpha = true,
         )
     }
 }
