@@ -54,11 +54,36 @@ class LyricsUiRegressionTest {
     }
 
     @Test
-    fun `lyrics menu system bars follow player design`() {
-        val player = source("com/nikhil/yt/ui/player/Player.kt")
+    fun `lyrics menu does not own or reapply Android system bars`() {
+        val activity = source("com/nikhil/yt/MainActivity.kt")
         val screen = source("com/nikhil/yt/ui/player/LyricsScreen.kt")
-        assertTrue(player.contains("hideStatusBar = design == CapsulePlayerDesign.IMMERSIVE"))
-        assertTrue(screen.contains("requestLyricsStatusBarHidden(hideStatusBar)"))
+        val menu = source("com/nikhil/yt/ui/menu/LyricsMenu.kt")
+        assertFalse(activity.contains("LocalLyricsStatusBarRequest"))
+        assertFalse(screen.contains("requestLyricsStatusBarHidden"))
+        assertFalse(menu.contains("keepStatusBarHidden"))
+    }
+
+    @Test
+    fun `initial lyrics focus waits for a real current line`() {
+        val lyrics = source("com/nikhil/yt/ui/component/Lyrics.kt")
+        assertTrue(lyrics.contains("if (currentLineIndex < 0) return@LaunchedEffect"))
+        assertTrue(lyrics.contains("performSmoothPageScroll(currentLineIndex, isSeek = true)"))
+    }
+
+    @Test
+    fun `tapping a lyric leaves free scroll and restores follow mode`() {
+        val lyrics = source("com/nikhil/yt/ui/component/Lyrics.kt")
+        assertTrue(lyrics.contains("isManualScrolling = false"))
+        assertTrue(lyrics.contains("deferredCurrentLineIndex = index"))
+        assertTrue(lyrics.contains("playerConnection.player.seekTo(item.time)"))
+    }
+
+    @Test
+    fun `apple lyrics reserve smaller metrics and only render grow to old base`() {
+        val lyrics = source("com/nikhil/yt/ui/component/Lyrics.kt")
+        assertTrue(lyrics.contains("appleLayoutFontSize = lyricsTextSize.sp * 0.96f"))
+        assertTrue(lyrics.contains("1f / 0.96f"))
+        assertTrue(lyrics.contains("appleMusicStyle"))
     }
 
     @Test
