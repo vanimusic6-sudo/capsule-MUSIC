@@ -73,10 +73,10 @@ fun ContentSettings(
     val (proxyType, onProxyTypeChange) = rememberEnumPreference(key = ProxyTypeKey, defaultValue = Proxy.Type.HTTP)
     val (proxyUrl, onProxyUrlChange) = rememberPreference(key = ProxyUrlKey, defaultValue = "host:port")
     val (streamBypassProxy, onStreamBypassProxyChange) = rememberPreference(key = StreamBypassProxyKey, defaultValue = false)
-    val (enableLrclib, onEnableLrclibChange) = rememberPreference(key = EnableLrcLibKey, defaultValue = true)
     val (enableBetterLyrics, onEnableBetterLyricsChange) = rememberPreference(key = EnableBetterLyricsKey, defaultValue = true)
     val (enableLyricsPlus, onEnableLyricsPlusChange) = rememberPreference(key = EnableLyricsPlusKey, defaultValue = true)
     val (enablePaxsenix, onEnablePaxsenixChange) = rememberPreference(key = EnablePaxsenixKey, defaultValue = false)
+    val (enableMusixmatch, onEnableMusixmatchChange) = rememberPreference(key = EnableMusixmatchKey, defaultValue = true)
     val (enableNetEase, onEnableNetEaseChange) = rememberPreference(key = EnableNetEaseKey, defaultValue = true)
     val (rawLyricsProviderOrder, onLyricsProviderOrderChange) =
         rememberPreference(key = LyricsProviderOrderKey, defaultValue = "")
@@ -233,12 +233,6 @@ fun ContentSettings(
 
         PreferenceGroupTitle(title = stringResource(R.string.lyrics))
         SwitchPreference(
-            title = { Text(stringResource(R.string.enable_lrclib)) },
-            icon = { Icon(painterResource(R.drawable.lyrics), null) },
-            checked = enableLrclib,
-            onCheckedChange = onEnableLrclibChange,
-        )
-        SwitchPreference(
             title = { Text(stringResource(R.string.enable_betterlyrics)) },
             icon = { Icon(painterResource(R.drawable.lyrics), null) },
             checked = enableBetterLyrics,
@@ -257,6 +251,13 @@ fun ContentSettings(
             icon = { Icon(painterResource(R.drawable.lyrics), null) },
             checked = enablePaxsenix,
             onCheckedChange = onEnablePaxsenixChange,
+        )
+        SwitchPreference(
+            title = { Text(stringResource(R.string.enable_musixmatch)) },
+            description = stringResource(R.string.enable_musixmatch_description),
+            icon = { Icon(painterResource(R.drawable.lyrics), null) },
+            checked = enableMusixmatch,
+            onCheckedChange = onEnableMusixmatchChange,
         )
         SwitchPreference(
             title = { Text(stringResource(R.string.enable_netease)) },
