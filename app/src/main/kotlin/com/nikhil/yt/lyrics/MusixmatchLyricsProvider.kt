@@ -20,16 +20,21 @@ import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.doubleOrNull
 import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.longOrNull
 import kotlin.math.abs
+import kotlin.math.roundToLong
 
 /**
- * Direct Musixmatch fallback using the same anonymous desktop guest flow the public web client uses.
+ * Direct Musixmatch fallback using the anonymous desktop guest flow.
  *
- * This stays separate from Paxsenix on purpose: when the relay is down, Musixmatch can still answer
- * directly. No user account or cookie is read from the device.
+ * The important bit is that the subtitle is never trusted on its own. Musixmatch can return a
+ * technically valid payload for the wrong match, an exhausted guest token, or an obfuscated filler
+ * body. We first verify matcher.track.get against the requested title/artist/duration, prefer
+ * richsync for that exact commontrack_id, then accept line LRC only after sanity checks.
  */
 object MusixmatchLyricsProvider : LyricsProvider {
     override val name = "Musixmatch"
@@ -75,21 +80,45 @@ object MusixmatchLyricsProvider : LyricsProvider {
         duration: Int,
     ): Result<String> =
         runCatchingCancellable {
-            if (title.isBlank()) throw NoLyricsFromProvider("Musixmatch needs a title")
-            val token = guestToken()
+            if (title.isBlank() || artist.isBlank()) {
+                throw NoLyricsFromProvider("Musixmatch needs a title and an artist")
+            }
 
-            fetchRichLyrics(token, title, artist, album, duration)
-                ?: fetchLrcFallback(token, title, artist, duration)
-                ?: throw NoLyricsFromProvider("Musixmatch returned no usable lyrics")
+            var forceNewToken = false
+            repeat(2) {
+                val token = guestToken(force = forceNewToken)
+                when (val result = fetchMatchedLyrics(token, title, artist, album, duration)) {
+                    is FetchResult.Lyrics -> return@runCatchingCancellable result.value
+                    FetchResult.TokenExpired -> {
+                        invalidateToken()
+                        forceNewToken = true
+                    }
+                    FetchResult.Miss -> {
+                        throw NoLyricsFromProvider("Musixmatch returned no trusted lyrics")
+                    }
+                }
+            }
+
+            throw NoLyricsFromProvider("Musixmatch guest token was rejected")
         }
 
-    private suspend fun guestToken(): String {
+    private sealed interface FetchResult {
+        data class Lyrics(val value: String) : FetchResult
+        data object TokenExpired : FetchResult
+        data object Miss : FetchResult
+    }
+
+    private suspend fun guestToken(force: Boolean = false): String {
         val now = System.currentTimeMillis()
-        cachedToken?.takeIf { now < tokenExpiresAtMs }?.let { return it }
+        if (!force) {
+            cachedToken?.takeIf { now < tokenExpiresAtMs }?.let { return it }
+        }
 
         return tokenMutex.withLock {
             val insideNow = System.currentTimeMillis()
-            cachedToken?.takeIf { insideNow < tokenExpiresAtMs }?.let { return@withLock it }
+            if (!force) {
+                cachedToken?.takeIf { insideNow < tokenExpiresAtMs }?.let { return@withLock it }
+            }
 
             val response =
                 client.get("$BASE/token.get") {
@@ -100,12 +129,16 @@ object MusixmatchLyricsProvider : LyricsProvider {
                 throw NoLyricsFromProvider("Musixmatch token HTTP ${response.status.value}")
             }
 
-            val root = json.parseToJsonElement(response.bodyAsText())
+            val root =
+                runCatching { json.parseToJsonElement(response.bodyAsText()) }.getOrNull()
+                    ?: throw NoLyricsFromProvider("Musixmatch token response was not JSON")
+
             val token =
-                root.path("message", "body", "user_token")
+                root.deepFind("user_token")
                     ?.asString()
-                    ?.takeIf(String::isNotBlank)
-                    ?: throw NoLyricsFromProvider("Musixmatch did not issue a guest token")
+                    ?.trim()
+                    ?.takeIf { it.isNotBlank() && !it.startsWith("UpgradeOnly") }
+                    ?: throw NoLyricsFromProvider("Musixmatch did not issue a usable guest token")
 
             cachedToken = token
             tokenExpiresAtMs = insideNow + TOKEN_TTL_MS
@@ -113,190 +146,265 @@ object MusixmatchLyricsProvider : LyricsProvider {
         }
     }
 
-    private suspend fun fetchRichLyrics(
+    private fun invalidateToken() {
+        cachedToken = null
+        tokenExpiresAtMs = 0L
+    }
+
+    private suspend fun fetchMatchedLyrics(
         token: String,
         title: String,
         artist: String,
         album: String?,
         duration: Int,
-    ): String? {
+    ): FetchResult {
         val response =
             client.get("$BASE/macro.subtitles.get") {
                 commonHeaders()
                 parameter("format", "json")
                 parameter("namespace", "lyrics_richsynched")
-                parameter("subtitle_format", "mxm")
+                parameter("subtitle_format", "lrc")
                 parameter("app_id", APP_ID)
                 parameter("usertoken", token)
-                parameter("q_album", album.orEmpty())
-                parameter("q_artist", artist)
-                parameter("q_artists", artist)
                 parameter("q_track", title)
-                if (duration > 0) {
-                    parameter("q_duration", duration)
-                    parameter("f_subtitle_length", duration)
-                }
+                parameter("q_artist", artist)
+                parameter("q_album", album.orEmpty())
+                if (duration > 0) parameter("q_duration", duration)
             }
-        if (!response.status.isSuccess()) return null
 
-        val root = runCatching { json.parseToJsonElement(response.bodyAsText()) }.getOrNull() ?: return null
-        val subtitleBody =
-            root.path(
-                "message",
-                "body",
-                "macro_calls",
-                "track.subtitles.get",
-                "message",
-                "body",
-                "subtitle_list",
-            )
-                ?.let { it as? JsonArray }
-                ?.firstOrNull()
-                ?.path("subtitle", "subtitle_body")
+        if (!response.status.isSuccess()) {
+            return if (response.status.value == 401) FetchResult.TokenExpired else FetchResult.Miss
+        }
+
+        val raw = response.bodyAsText()
+        if (raw.trimStart().startsWith("<")) return FetchResult.Miss
+
+        val root = runCatching { json.parseToJsonElement(raw) }.getOrNull() ?: return FetchResult.Miss
+        val apiStatus = root.deepFind("status_code")?.asLong()?.toInt()
+        if (apiStatus == 401) return FetchResult.TokenExpired
+        if (apiStatus != null && apiStatus !in 200..299) return FetchResult.Miss
+
+        val matcherCall = root.deepFind("matcher.track.get") ?: return FetchResult.Miss
+        val track = matcherCall.deepFind("track") as? JsonObject ?: return FetchResult.Miss
+        if (!isTrustedMatch(track, title, artist, duration)) return FetchResult.Miss
+        if (track["instrumental"]?.asBoolean() == true) return FetchResult.Miss
+
+        val commonTrackId = track["commontrack_id"]?.asLong() ?: 0L
+        val hasRichSync = track["has_richsync"]?.asLong() == 1L
+        if (hasRichSync && commonTrackId > 0L) {
+            fetchRichSync(token, commonTrackId, duration)?.let {
+                return FetchResult.Lyrics(it)
+            }
+        }
+
+        val subtitle =
+            root.deepFind("subtitle_body")
                 ?.asString()
                 ?.trim()
-                .orEmpty()
+                ?.takeIf { it.contains('[') && it.isNotBlank() }
+                ?: return FetchResult.Miss
 
-        if (subtitleBody.isBlank()) return null
-        if (subtitleBody.startsWith("[")) {
-            richBodyToLrc(subtitleBody)?.let { return it }
-        }
-        return subtitleBody.takeIf(String::isNotBlank)
+        return validateLyrics(subtitle, duration)
+            ?.let(FetchResult::Lyrics)
+            ?: FetchResult.Miss
     }
 
-    private suspend fun fetchLrcFallback(
+    private suspend fun fetchRichSync(
         token: String,
-        title: String,
-        artist: String,
+        commonTrackId: Long,
         duration: Int,
     ): String? {
-        val search =
-            client.get("$BASE/macro.search") {
-                commonHeaders()
-                parameter("app_id", APP_ID)
-                parameter("page_size", 5)
-                parameter("page", 1)
-                parameter("s_track_rating", "desc")
-                parameter("quorum_factor", "1.0")
-                parameter("q", "$title $artist".trim())
-                parameter("usertoken", token)
-            }
-        if (!search.status.isSuccess()) return null
-
-        val root = runCatching { json.parseToJsonElement(search.bodyAsText()) }.getOrNull() ?: return null
-        val tracks =
-            root.path("message", "body", "macro_result_list", "track_list") as? JsonArray
-                ?: return null
-
-        val wantedDurationMs = duration.coerceAtLeast(0) * 1_000L
-        val best =
-            tracks
-                .mapNotNull { item ->
-                    val track = item.path("track") as? JsonObject ?: return@mapNotNull null
-                    val id = track["track_id"]?.asLong() ?: return@mapNotNull null
-                    val name = track["track_name"]?.asString().orEmpty()
-                    val foundArtist = track["artist_name"]?.asString().orEmpty()
-                    val durationMs =
-                        track["track_length"]?.asLong()?.let { seconds ->
-                            if (seconds > 10_000L) seconds else seconds * 1_000L
-                        } ?: 0L
-                    val score =
-                        matchScore(
-                            foundTitle = name,
-                            foundArtist = foundArtist,
-                            foundDurationMs = durationMs,
-                            title = title,
-                            artist = artist,
-                            durationMs = wantedDurationMs,
-                        )
-                    Triple(id, score, durationMs)
-                }
-                .maxByOrNull { it.second }
-                ?.takeIf { it.second > 0 }
-                ?: return null
-
         val response =
-            client.get("$BASE/track.subtitle.get") {
+            client.get("$BASE/track.richsync.get") {
                 commonHeaders()
                 parameter("app_id", APP_ID)
-                parameter("subtitle_format", "lrc")
-                parameter("track_id", best.first)
                 parameter("usertoken", token)
+                parameter("commontrack_id", commonTrackId)
             }
         if (!response.status.isSuccess()) return null
 
-        val subtitleRoot = runCatching { json.parseToJsonElement(response.bodyAsText()) }.getOrNull() ?: return null
-        return subtitleRoot
-            .path("message", "body", "subtitle", "subtitle_body")
-            ?.asString()
-            ?.trim()
-            ?.takeIf(String::isNotBlank)
+        val raw = response.bodyAsText()
+        if (raw.trimStart().startsWith("<")) return null
+        val root = runCatching { json.parseToJsonElement(raw) }.getOrNull() ?: return null
+        val body = root.deepFind("richsync_body")?.asString()?.takeIf(String::isNotBlank) ?: return null
+        val enhanced = richSyncToEnhancedLrc(body) ?: return null
+        return validateLyrics(enhanced, duration)
     }
 
-    private fun richBodyToLrc(body: String): String? {
-        val array = runCatching { json.parseToJsonElement(body) as? JsonArray }.getOrNull() ?: return null
-        val lines =
-            array.mapNotNull { item ->
-                val obj = item as? JsonObject ?: return@mapNotNull null
-                val text = obj["text"]?.asString()?.ifBlank { "♪" } ?: return@mapNotNull null
-                val time = obj["time"] as? JsonObject ?: return@mapNotNull null
-                val minutes = time["minutes"]?.asLong() ?: 0L
-                val seconds = time["seconds"]?.asLong() ?: 0L
-                val hundredths = time["hundredths"]?.asLong() ?: 0L
-                "[%02d:%02d.%02d]%s".format(minutes, seconds, hundredths, text)
-            }
-        return lines.joinToString("\n").takeIf(String::isNotBlank)
-    }
-
-    private fun matchScore(
-        foundTitle: String,
-        foundArtist: String,
-        foundDurationMs: Long,
+    private fun isTrustedMatch(
+        track: JsonObject,
         title: String,
         artist: String,
-        durationMs: Long,
-    ): Int {
-        var score = 0
-        score +=
-            when {
-                foundTitle.equals(title, ignoreCase = true) -> 40
-                foundTitle.contains(title, ignoreCase = true) ||
-                    title.contains(foundTitle, ignoreCase = true) -> 20
-                else -> 0
+        durationSeconds: Int,
+    ): Boolean {
+        val foundTitle = track["track_name"]?.asString().orEmpty()
+        val foundArtist = track["artist_name"]?.asString().orEmpty()
+        val foundDuration = track["track_length"]?.asLong()?.toInt() ?: 0
+
+        val wantedTitle = normalize(title)
+        val wantedArtist = normalize(artist)
+        val gotTitle = normalize(foundTitle)
+        val gotArtist = normalize(foundArtist)
+
+        val titleOk =
+            gotTitle == wantedTitle ||
+                gotTitle.contains(wantedTitle) ||
+                wantedTitle.contains(gotTitle)
+        val artistOk =
+            gotArtist == wantedArtist ||
+                gotArtist.contains(wantedArtist) ||
+                wantedArtist.contains(gotArtist)
+
+        val durationGap =
+            if (durationSeconds > 0 && foundDuration > 0) {
+                abs(durationSeconds - foundDuration)
+            } else {
+                Int.MAX_VALUE
             }
-        if (artist.isNotBlank()) {
-            score +=
-                when {
-                    foundArtist.equals(artist, ignoreCase = true) -> 30
-                    foundArtist.contains(artist, ignoreCase = true) ||
-                        artist.contains(foundArtist, ignoreCase = true) -> 12
-                    else -> 0
-                }
+
+        return (titleOk && artistOk) ||
+            (durationGap <= 4 && (titleOk || artistOk))
+    }
+
+    private fun normalize(value: String): String =
+        value
+            .lowercase()
+            .replace(Regex("""\([^)]*\)|\[[^]]*]"""), " ")
+            .replace(Regex("""[^\p{L}\p{N}]+"""), " ")
+            .trim()
+            .replace(Regex("""\s+"""), " ")
+
+    private fun richSyncToEnhancedLrc(body: String): String? {
+        val lines = runCatching { json.parseToJsonElement(body) as? JsonArray }.getOrNull() ?: return null
+        val result =
+            lines.mapNotNull { element ->
+                val line = element as? JsonObject ?: return@mapNotNull null
+                val lineStartSeconds = line["ts"]?.asDouble() ?: return@mapNotNull null
+                val chunks = line["l"] as? JsonArray ?: return@mapNotNull null
+                val fallback = line["x"]?.asString().orEmpty()
+
+                val words =
+                    buildString {
+                        chunks.forEach { chunkElement ->
+                            val chunk = chunkElement as? JsonObject ?: return@forEach
+                            val text = chunk["c"]?.asString().orEmpty()
+                            if (text.isEmpty()) return@forEach
+                            val offsetSeconds = chunk["o"]?.asDouble() ?: 0.0
+                            append(angleStamp(((lineStartSeconds + offsetSeconds) * 1000.0).roundToLong()))
+                            append(text)
+                        }
+                    }.ifBlank { fallback }
+
+                if (words.isBlank()) return@mapNotNull null
+                squareStamp((lineStartSeconds * 1000.0).roundToLong()) + words
+            }
+
+        return result.joinToString("\n").takeIf(String::isNotBlank)
+    }
+
+    private fun validateLyrics(
+        lyrics: String,
+        durationSeconds: Int,
+    ): String? {
+        val normalized = lyrics.trim()
+        if (normalized.isBlank()) return null
+        if (isLikelySyntheticPlaceholder(normalized)) return null
+
+        if (durationSeconds > 0) {
+            val lastTimestamp = LRC_LINE_REGEX.findAll(normalized).mapNotNull { it.timestampMs() }.maxOrNull()
+            if (lastTimestamp != null && lastTimestamp > durationSeconds * 1_000L + 15_000L) {
+                return null
+            }
         }
-        if (durationMs > 0L && foundDurationMs > 0L) {
-            score +=
-                when (abs(durationMs - foundDurationMs)) {
-                    in 0L..2_500L -> 30
-                    in 2_501L..6_000L -> 15
-                    in 6_001L..10_000L -> 5
-                    else -> -20
-                }
-        }
-        return score
+        return normalized
+    }
+
+    /**
+     * Musixmatch occasionally answers anonymous clients with a syntactically valid but artificial
+     * LRC body: hundreds of three-word pseudo-language lines at a perfectly fixed cadence. It must
+     * be treated as a miss, otherwise it outranks every real provider simply because it parses.
+     */
+    internal fun isLikelySyntheticPlaceholder(lyrics: String): Boolean {
+        val parsed =
+            lyrics
+                .lineSequence()
+                .mapNotNull { line ->
+                    val match = LRC_LINE_REGEX.matchEntire(line.trim()) ?: return@mapNotNull null
+                    val timestamp = match.timestampMs() ?: return@mapNotNull null
+                    val text = match.groupValues[4].trim()
+                    timestamp to text
+                }.toList()
+
+        if (parsed.size < 40) return false
+
+        val gaps = parsed.zipWithNext { a, b -> b.first - a.first }
+        val regularFourSecondRatio =
+            if (gaps.isEmpty()) 0f else gaps.count { abs(it - 4_000L) <= 30L }.toFloat() / gaps.size
+        val pseudoWordRatio =
+            parsed.count { (_, text) ->
+                val words = text.split(Regex("""\s+""")).filter(String::isNotBlank)
+                words.size in 2..4 &&
+                    words.all { word -> word.length in 2..8 && word.all(Char::isLetter) }
+            }.toFloat() / parsed.size
+        val punctuationRatio =
+            parsed.count { (_, text) -> text.any { !it.isLetterOrDigit() && !it.isWhitespace() } }
+                .toFloat() / parsed.size
+
+        return regularFourSecondRatio >= 0.90f &&
+            pseudoWordRatio >= 0.85f &&
+            punctuationRatio <= 0.05f
+    }
+
+    private fun squareStamp(millis: Long): String = stamp(millis, '[', ']')
+
+    private fun angleStamp(millis: Long): String = stamp(millis, '<', '>')
+
+    private fun stamp(
+        millis: Long,
+        open: Char,
+        close: Char,
+    ): String {
+        val safe = millis.coerceAtLeast(0L)
+        val minutes = safe / 60_000L
+        val seconds = (safe / 1_000L) % 60L
+        val hundredths = (safe % 1_000L) / 10L
+        return "%c%02d:%02d.%02d%c".format(open, minutes, seconds, hundredths, close)
+    }
+
+    private fun MatchResult.timestampMs(): Long? {
+        val minutes = groupValues[1].toLongOrNull() ?: return null
+        val seconds = groupValues[2].toLongOrNull() ?: return null
+        val fraction = groupValues[3]
+        val millis =
+            when (fraction.length) {
+                1 -> fraction.toLongOrNull()?.times(100L)
+                2 -> fraction.toLongOrNull()?.times(10L)
+                else -> fraction.take(3).padEnd(3, '0').toLongOrNull()
+            } ?: return null
+        return minutes * 60_000L + seconds * 1_000L + millis
     }
 
     private fun io.ktor.client.request.HttpRequestBuilder.commonHeaders() {
-        header("User-Agent", "Mozilla/5.0 Capsule-MUSIC")
+        header(
+            "User-Agent",
+            "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 " +
+                "(KHTML, like Gecko) Musixmatch/0.19.4 Chrome/58.0.3029.110 Electron/1.7.6 Safari/537.36",
+        )
         header("Accept", "application/json, text/plain, */*")
+        header("Accept-Language", "en-US,en;q=0.9")
         header("Cookie", "AWSELBCORS=0; AWSELB=0;")
     }
 
-    private fun JsonElement.path(vararg keys: String): JsonElement? {
-        var current: JsonElement = this
-        for (key in keys) {
-            current = (current as? JsonObject)?.get(key) ?: return null
+    private fun JsonElement.deepFind(key: String): JsonElement? {
+        when (this) {
+            is JsonObject -> {
+                this[key]?.let { return it }
+                values.forEach { child -> child.deepFind(key)?.let { return it } }
+            }
+            is JsonArray -> forEach { child -> child.deepFind(key)?.let { return it } }
+            else -> Unit
         }
-        return current
+        return null
     }
 
     private fun JsonElement.asString(): String? =
@@ -304,4 +412,13 @@ object MusixmatchLyricsProvider : LyricsProvider {
 
     private fun JsonElement.asLong(): Long? =
         (this as? JsonPrimitive)?.longOrNull
+
+    private fun JsonElement.asDouble(): Double? =
+        (this as? JsonPrimitive)?.doubleOrNull
+
+    private fun JsonElement.asBoolean(): Boolean? =
+        (this as? JsonPrimitive)?.booleanOrNull
+
+    private val LRC_LINE_REGEX =
+        Regex("""^\[(\d{1,3}):(\d{2})[.:](\d{1,3})](.*)$""")
 }
