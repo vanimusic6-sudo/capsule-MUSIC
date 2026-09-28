@@ -62,6 +62,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -133,6 +134,15 @@ import com.nikhil.yt.ui.motion.CapsuleEnterEasing
 
 const val ActiveBoxAlpha = 0.6f
 
+internal data class SongListVisuals(
+    val rowHeight: Dp = ListItemHeight,
+    val thumbnailSize: Dp = ListThumbnailSize,
+    val thumbnailCornerRadius: Dp = ThumbnailCornerRadius,
+)
+
+internal val LocalSongListVisuals =
+    staticCompositionLocalOf { SongListVisuals() }
+
 @Composable
 inline fun ListItem(
     modifier: Modifier = Modifier,
@@ -140,12 +150,13 @@ inline fun ListItem(
     noinline subtitle: (@Composable RowScope.() -> Unit)? = null,
     thumbnailContent: @Composable () -> Unit,
     trailingContent: @Composable RowScope.() -> Unit = {},
-    isActive: Boolean = false
+    isActive: Boolean = false,
+    itemHeight: Dp = ListItemHeight,
 ) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = modifier
-            .height(ListItemHeight)
+            .height(itemHeight)
             .padding(horizontal = 8.dp)
             .then(if (isActive) Modifier.clip(RoundedCornerShape(8.dp)).background(MaterialTheme.colorScheme.secondaryContainer) else Modifier)
     ) {
@@ -298,6 +309,7 @@ fun SongListItem(
     trailingContent: @Composable RowScope.() -> Unit = {},
 ) {
     val swipeEnabled by rememberPreference(SwipeToSongKey, defaultValue = false)
+    val visuals = LocalSongListVisuals.current
 
     val content: @Composable () -> Unit = {
         ListItem(
@@ -315,13 +327,14 @@ fun SongListItem(
                     isSelected = isSelected,
                     isActive = isActive,
                     isPlaying = isPlaying,
-                    shape = RoundedCornerShape(ThumbnailCornerRadius),
-                    modifier = Modifier.size(ListThumbnailSize)
+                    shape = RoundedCornerShape(visuals.thumbnailCornerRadius),
+                    modifier = Modifier.size(visuals.thumbnailSize)
                 )
             },
             trailingContent = trailingContent,
             modifier = modifier,
-            isActive = isActive
+            isActive = isActive,
+            itemHeight = visuals.rowHeight,
         )
     }
 
@@ -934,6 +947,7 @@ fun YouTubeListItem(
     },
 ) {
     val swipeEnabled by rememberPreference(SwipeToSongKey, defaultValue = false)
+    val visuals = LocalSongListVisuals.current
 
     val content: @Composable () -> Unit = {
         ListItem(
@@ -993,13 +1007,19 @@ fun YouTubeListItem(
                     isSelected = isSelected,
                     isActive = isActive,
                     isPlaying = isPlaying,
-                    shape = if (item is ArtistItem) CircleShape else RoundedCornerShape(ThumbnailCornerRadius),
-                    modifier = Modifier.size(ListThumbnailSize)
+                    shape =
+                        if (item is ArtistItem) {
+                            CircleShape
+                        } else {
+                            RoundedCornerShape(visuals.thumbnailCornerRadius)
+                        },
+                    modifier = Modifier.size(visuals.thumbnailSize)
                 )
             },
             trailingContent = trailingContent,
             modifier = modifier,
-            isActive = isActive
+            isActive = isActive,
+            itemHeight = visuals.rowHeight,
         )
     }
 
