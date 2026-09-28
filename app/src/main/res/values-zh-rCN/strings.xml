@@ -587,4 +587,6 @@
     <string name="size_used">%s已使用</string>
     <string name="change_playlist_cover">更改播放列表封面</string>
     <string name="remove_playlist_cover">移除封面</string>
+    <string name="latest_release">最新发行</string>
+    <string name="artist_release_metadata">专辑 • %1$d</string>
 </resources>
