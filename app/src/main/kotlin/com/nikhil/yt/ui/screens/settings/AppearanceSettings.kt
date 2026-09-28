@@ -1194,6 +1194,11 @@ fun AppearanceSettings(
                         stringResource(
                             R.string.apple_music_style,
                         )
+
+                    LyricsAnimationStyle.ARCHIVE_TUNE ->
+                        stringResource(
+                            R.string.archive_tune_style,
+                        )
                 }
             },
         )
