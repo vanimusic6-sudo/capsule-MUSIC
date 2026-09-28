@@ -12,15 +12,20 @@ import org.junit.Test
  * search screen visibly follows the phone chrome up and then jumps back down on player close.
  */
 class SearchBarInsetTest {
-    private fun searchBarSource(): String {
+    private fun source(vararg relativePaths: String): String {
         val candidates =
-            listOf(
-                File("src/main/kotlin/com/nikhil/yt/ui/component/SearchBar.kt"),
-                File("app/src/main/kotlin/com/nikhil/yt/ui/component/SearchBar.kt"),
-            )
+            relativePaths.flatMap { relative ->
+                listOf(
+                    File("src/main/kotlin/$relative"),
+                    File("app/src/main/kotlin/$relative"),
+                )
+            }
         return candidates.firstOrNull(File::isFile)?.readText()
-            ?: error("Could not find SearchBar.kt")
+            ?: error("Could not find any of: ${relativePaths.joinToString()}")
     }
+
+    private fun searchBarSource(): String =
+        source("com/nikhil/yt/ui/component/SearchBar.kt")
 
     @Test
     fun `top search ignores temporary system bar visibility changes`() {
@@ -30,6 +35,20 @@ class SearchBarInsetTest {
             "TopSearch must reserve the physical system-bar inset even while Immersive hides it",
             source.contains(
                 "windowInsets: WindowInsets = WindowInsets.systemBarsIgnoringVisibility",
+            ),
+        )
+    }
+
+    @Test
+    fun `search result filters ignore temporary system bar visibility changes`() {
+        val source =
+            source("com/nikhil/yt/ui/screens/search/OnlineSearchResult.kt")
+
+        assertTrue(
+            "SoundCloud/artist/video chips must stay at a fixed physical top inset",
+            source.contains(
+                "WindowInsets.systemBarsIgnoringVisibility" +
+                    "\n                    .only(WindowInsetsSides.Top)",
             ),
         )
     }
