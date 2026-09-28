@@ -187,7 +187,7 @@ object MusixmatchLyricsProvider : LyricsProvider {
         val matcherCall = root.deepFind("matcher.track.get") ?: return FetchResult.Miss
         val track = matcherCall.deepFind("track") as? JsonObject ?: return FetchResult.Miss
         if (!isTrustedMatch(track, title, artist, duration)) return FetchResult.Miss
-        if (track["instrumental"]?.asBoolean() == true) return FetchResult.Miss
+        if (track["instrumental"]?.asBoolean() == true || track["instrumental"]?.asLong() == 1L) return FetchResult.Miss
 
         val commonTrackId = track["commontrack_id"]?.asLong() ?: 0L
         val hasRichSync = track["has_richsync"]?.asLong() == 1L
@@ -205,7 +205,7 @@ object MusixmatchLyricsProvider : LyricsProvider {
                 ?: return FetchResult.Miss
 
         return validateLyrics(subtitle, duration)
-            ?.let(FetchResult::Lyrics)
+            ?.let { FetchResult.Lyrics(it) }
             ?: FetchResult.Miss
     }
 
