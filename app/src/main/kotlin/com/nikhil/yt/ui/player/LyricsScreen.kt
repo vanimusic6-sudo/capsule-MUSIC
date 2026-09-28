@@ -40,15 +40,18 @@ import kotlinx.coroutines.withContext
 fun LyricsScreen(
     mediaMetadata: MediaMetadata,
     onBackClick: () -> Unit,
+    hideStatusBar: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
     val playerConnection = LocalPlayerConnection.current ?: return
     val requestLyricsStatusBarHidden = LocalLyricsStatusBarRequest.current
 
-    DisposableEffect(requestLyricsStatusBarHidden) {
-        requestLyricsStatusBarHidden(true)
+    DisposableEffect(requestLyricsStatusBarHidden, hideStatusBar) {
+        requestLyricsStatusBarHidden(hideStatusBar)
         onDispose {
-            requestLyricsStatusBarHidden(false)
+            if (hideStatusBar) {
+                requestLyricsStatusBarHidden(false)
+            }
         }
     }
     val player = playerConnection.player
@@ -90,6 +93,11 @@ fun LyricsScreen(
         durationMs = duration,
         onClose = onBackClick,
         onMenuClick = {
+            if (hideStatusBar) {
+                // ModalBottomSheet may ask the window to expose system chrome. Reassert the
+                // Immersive contract right before mounting the sheet.
+                requestLyricsStatusBarHidden(true)
+            }
             menuState.show {
                 LyricsMenu(
                     lyricsProvider = { currentLyrics },
