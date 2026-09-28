@@ -19,35 +19,37 @@ class LyricsProviderOrderTest {
     }
 
     @Test fun aStoredOrderIsKept() {
-        val stored = "YOUTUBE,BETTER_LYRICS,LRCLIB"
+        val stored = "YOUTUBE,BETTER_LYRICS,MUSIXMATCH"
         val resolved = LyricsProviderOrder.resolve(stored)
-        assertEquals(listOf("YOUTUBE", "BETTER_LYRICS", "LRCLIB"), resolved.take(3))
+        assertEquals(listOf("YOUTUBE", "BETTER_LYRICS", "MUSIXMATCH"), resolved.take(3))
     }
 
     /**
-     * The two YouTube sources have to stay at the back of the default order.
-     *
-     * They are the ones that nearly always return *something*, so anything ranked below them is
-     * never reached — a default that put either above a real lyrics source would quietly turn the
-     * others off for everyone who never opens this setting.
+     * Plain YouTube metadata has to stay last: it nearly always returns *something*, so anything
+     * below it would effectively never be reached.
      */
-    @Test fun theFallbacksAreLastByDefault() {
+    @Test fun theFallbackIsLastByDefault() {
         val defaults = LyricsProviderOrder.supportedProviders
-        val lastTwo = defaults.takeLast(2)
-        assertEquals(listOf("YOUTUBE_SUBTITLE", "YOUTUBE"), lastTwo)
+        assertEquals("YOUTUBE", defaults.last())
     }
 
     @Test fun theNewProvidersAreReachable() {
         val defaults = LyricsProviderOrder.supportedProviders
         assertTrue("LyricsPlus must be in the order", "LYRICS_PLUS" in defaults)
         assertTrue("Paxsenix must be in the order", "PAXSENIX" in defaults)
+        assertTrue("Musixmatch must be in the order", "MUSIXMATCH" in defaults)
     }
 
-    /** SimpMusic and KuGou were removed; their ids must not survive in anybody's stored order. */
+    /** Removed providers must not survive in anybody's stored order after an upgrade. */
     @Test fun providersThatNoLongerExistAreDropped() {
-        val resolved = LyricsProviderOrder.resolve("SIMPMUSIC,KUGOU,BETTER_LYRICS,LRCLIB")
+        val resolved =
+            LyricsProviderOrder.resolve(
+                "SIMPMUSIC,KUGOU,LRCLIB,YOUTUBE_SUBTITLE,BETTER_LYRICS",
+            )
         assertTrue("a removed provider came back: $resolved", "KUGOU" !in resolved)
         assertTrue("a removed provider came back: $resolved", "SIMPMUSIC" !in resolved)
+        assertTrue("a removed provider came back: $resolved", "LRCLIB" !in resolved)
+        assertTrue("a removed provider came back: $resolved", "YOUTUBE_SUBTITLE" !in resolved)
         assertEquals("BETTER_LYRICS", resolved.first())
     }
 
@@ -64,8 +66,8 @@ class LyricsProviderOrderTest {
 
     @Test fun duplicatesAndWhitespaceAndCaseAreTolerated() {
         assertEquals(
-            listOf("LRCLIB", "BETTER_LYRICS"),
-            LyricsProviderOrder.resolve(" lrclib , LRCLIB,better_lyrics ").take(2),
+            listOf("PAXSENIX", "BETTER_LYRICS"),
+            LyricsProviderOrder.resolve(" paxsenix , PAXSENIX,better_lyrics ").take(2),
         )
     }
 
