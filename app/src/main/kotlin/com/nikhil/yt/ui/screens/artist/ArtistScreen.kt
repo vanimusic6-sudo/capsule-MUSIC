@@ -133,6 +133,17 @@ private val ArtistTrackArtworkSize = 56.dp
 private val ArtistTrackArtworkCornerRadius = 10.dp
 private val ArtistLatestReleaseArtworkSize = 112.dp
 
+internal fun artistToolbarOverArtwork(
+    firstVisibleItemIndex: Int,
+    firstVisibleItemScrollOffsetPx: Int,
+    artworkHeightPx: Int,
+    toolbarBottomPx: Int,
+): Boolean {
+    if (firstVisibleItemIndex != 0) return false
+    val collapseAtPx = (artworkHeightPx - toolbarBottomPx).coerceAtLeast(0)
+    return firstVisibleItemScrollOffsetPx < collapseAtPx
+}
+
 @OptIn(ExperimentalFoundationApi::class, ExperimentalMaterial3Api::class)
 @Composable
 fun ArtistScreen(
@@ -217,8 +228,12 @@ fun ArtistScreen(
                         with(density) {
                             (systemBarsTopPadding + ArtistToolbarArtworkHeight).roundToPx()
                         }
-                    val collapseAtPx = (artworkHeightPx - toolbarBottomPx).coerceAtLeast(0)
-                    lazyListState.firstVisibleItemScrollOffset < collapseAtPx
+                    artistToolbarOverArtwork(
+                        firstVisibleItemIndex = lazyListState.firstVisibleItemIndex,
+                        firstVisibleItemScrollOffsetPx = lazyListState.firstVisibleItemScrollOffset,
+                        artworkHeightPx = artworkHeightPx,
+                        toolbarBottomPx = toolbarBottomPx,
+                    )
                 }
             }
         }
