@@ -16,6 +16,7 @@ import com.nikhil.yt.constants.PlayerBackgroundStyle
 fun PlayerBackground(
     playerBackground: PlayerBackgroundStyle,
     gradientColors: List<Color>,
+    animated: Boolean = true,
 ) {
     val modifier = Modifier.fillMaxSize()
 
@@ -59,6 +60,7 @@ fun PlayerBackground(
                 effect = CapsuleBackgroundEffect.COLOR_FLOW,
                 colors = gradientColors,
                 modifier = modifier,
+                animated = animated,
             )
 
         PlayerBackgroundStyle.CAPSULE_STAR ->
@@ -66,6 +68,7 @@ fun PlayerBackground(
                 effect = CapsuleBackgroundEffect.CAPSULE_STAR,
                 colors = gradientColors,
                 modifier = modifier,
+                animated = animated,
             )
 
         PlayerBackgroundStyle.NEBULA ->
@@ -73,6 +76,7 @@ fun PlayerBackground(
                 effect = CapsuleBackgroundEffect.NEBULA,
                 colors = gradientColors,
                 modifier = modifier,
+                animated = animated,
             )
     }
 }
