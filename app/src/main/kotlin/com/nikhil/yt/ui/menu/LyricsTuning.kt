@@ -111,7 +111,7 @@ internal fun LyricsTuning() {
                                     LyricsPosition.CENTER -> R.string.center
                                     LyricsPosition.RIGHT -> R.string.right
                                 },
-                            ),
+                            ).replaceFirstChar { it.lowercase() },
                         color =
                             if (selected) {
                                 MaterialTheme.colorScheme.onPrimaryContainer
@@ -125,58 +125,63 @@ internal fun LyricsTuning() {
 
         Spacer(Modifier.height(20.dp))
 
-        Row(
+        Column(
             modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
+            horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = stringResource(R.string.lyrics_sync_offset),
-                    style = MaterialTheme.typography.labelLarge,
-                    color = MaterialTheme.colorScheme.secondary,
-                )
-                Text(
-                    text = stringResource(R.string.lyrics_sync_offset_hint),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.outline,
-                )
-            }
-
-            FilledTonalIconButton(
-                onClick = { onOffsetChange(clampOffset(offsetMs - OFFSET_STEP_MS)) },
-                enabled = offsetMs > -OFFSET_LIMIT_MS,
-            ) {
-                Icon(
-                    painter = painterResource(R.drawable.remove),
-                    contentDescription = null,
-                    modifier = Modifier.size(20.dp),
-                )
-            }
-
             Text(
-                text = stringResource(R.string.lyrics_sync_offset_value, offsetMs / 1000f),
-                style = MaterialTheme.typography.titleMedium,
+                text = stringResource(R.string.lyrics_sync_offset),
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.secondary,
                 textAlign = TextAlign.Center,
-                modifier = Modifier.padding(horizontal = 10.dp).widthIn(min = 56.dp),
             )
 
-            FilledTonalIconButton(
-                onClick = { onOffsetChange(clampOffset(offsetMs + OFFSET_STEP_MS)) },
-                enabled = offsetMs < OFFSET_LIMIT_MS,
-            ) {
-                Icon(
-                    painter = painterResource(R.drawable.add),
-                    contentDescription = null,
-                    modifier = Modifier.size(20.dp),
-                )
-            }
-        }
+            Spacer(Modifier.height(10.dp))
 
-        if (offsetMs != 0) {
             Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.End,
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.Center,
             ) {
+                FilledTonalIconButton(
+                    onClick = { onOffsetChange(clampOffset(offsetMs - OFFSET_STEP_MS)) },
+                    enabled = offsetMs > -OFFSET_LIMIT_MS,
+                ) {
+                    Icon(
+                        painter = painterResource(R.drawable.remove),
+                        contentDescription = null,
+                        modifier = Modifier.size(20.dp),
+                    )
+                }
+
+                Text(
+                    text = stringResource(R.string.lyrics_sync_offset_value, offsetMs / 1000f),
+                    style = MaterialTheme.typography.titleMedium,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.padding(horizontal = 14.dp).widthIn(min = 72.dp),
+                )
+
+                FilledTonalIconButton(
+                    onClick = { onOffsetChange(clampOffset(offsetMs + OFFSET_STEP_MS)) },
+                    enabled = offsetMs < OFFSET_LIMIT_MS,
+                ) {
+                    Icon(
+                        painter = painterResource(R.drawable.add),
+                        contentDescription = null,
+                        modifier = Modifier.size(20.dp),
+                    )
+                }
+            }
+
+            Spacer(Modifier.height(8.dp))
+
+            Text(
+                text = stringResource(R.string.lyrics_sync_offset_hint),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.outline,
+                textAlign = TextAlign.Center,
+            )
+
+            if (offsetMs != 0) {
                 TextButton(onClick = { onOffsetChange(0) }) {
                     Text(stringResource(R.string.reset))
                 }
