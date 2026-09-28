@@ -31,6 +31,7 @@ internal fun CapsuleSubscribeIcon(
     crossSpanScale: Float = 1f,
     strokeScale: Float = 1f,
     flattenAlpha: Boolean = false,
+    keepOpticalFootprint: Boolean = false,
 ) {
     val mountedAt = remember { SystemClock.uptimeMillis() }
     val progress = remember {
@@ -74,8 +75,18 @@ internal fun CapsuleSubscribeIcon(
         val safeGlyphScale = glyphScale.coerceIn(0.75f, 1.45f)
         val safePlusSpan = plusSpanScale.coerceIn(0.65f, 1.25f)
         val safeCrossSpan = crossSpanScale.coerceIn(0.65f, 1.25f)
+        val rotationProgress = progress.value.coerceIn(0f, 1f)
         val stateSpanScale =
-            safePlusSpan + (safeCrossSpan - safePlusSpan) * progress.value.coerceIn(0f, 1f)
+            if (keepOpticalFootprint) {
+                // A '+' reaches the box edges directly; after a 45° rotation the same arms
+                // project by cos(45°). Compensate continuously so the glyph does not visually
+                // swell halfway through + -> ×.
+                val angle = rotationProgress * (Math.PI / 4.0)
+                (safePlusSpan / kotlin.math.cos(angle).toFloat())
+                    .coerceIn(minOf(safePlusSpan, safeCrossSpan), maxOf(safePlusSpan, safeCrossSpan))
+            } else {
+                safePlusSpan + (safeCrossSpan - safePlusSpan) * rotationProgress
+            }
         val halfSpan = 6.8f * safeGlyphScale * stateSpanScale
         val stroke =
             2.15f * unit *
