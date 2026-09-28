@@ -174,13 +174,7 @@ fun HomeScreen(
         modifier =
             Modifier
                 .fillMaxSize()
-                .background(
-                    if (capsuleDock) {
-                        MaterialTheme.colorScheme.surface
-                    } else {
-                        StandardChrome.background
-                    },
-                ),
+                .background(StandardChrome.background),
     ) {
         /*
          * Match ArchiveTune's restrained Home backdrop: one short tonal wash that dissolves into
