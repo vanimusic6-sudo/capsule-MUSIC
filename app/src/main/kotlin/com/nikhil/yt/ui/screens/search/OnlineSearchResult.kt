@@ -101,6 +101,8 @@ import com.nikhil.yt.ui.menu.SoundCloudTrackMenu
 import com.nikhil.yt.viewmodels.OnlineSearchViewModel
 import kotlinx.coroutines.launch
 
+private val SearchTrackThumbnailSize = 56.dp
+
 @Composable
 private fun SearchSectionHeader(
     text: String,
@@ -258,6 +260,7 @@ fun OnlineSearchResult(
             },
             isPlaying = isPlaying,
             showSourceIcon = false,
+            thumbnailSizeOverride = if (item is SongItem) SearchTrackThumbnailSize else null,
             trailingContent = {
                 IconButton(
                     onClick = longClick,
@@ -330,6 +333,7 @@ fun OnlineSearchResult(
                         )
                     }
                 },
+                thumbnailSize = SearchTrackThumbnailSize,
                 modifier = Modifier.animateItem(),
             )
         }
