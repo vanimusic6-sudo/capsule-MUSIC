@@ -1060,6 +1060,8 @@ fun Lyrics(
 
                     val archiveTuneStyle =
                         lyricsAnimationStyle == LyricsAnimationStyle.ARCHIVE_TUNE
+                    val appleMusicStyle =
+                        lyricsAnimationStyle == LyricsAnimationStyle.APPLE
                     val targetAlpha = when {
                         !isSynced || (isSelectionModeActive && isSelected) -> 1f
                         isManualScrolling && archiveTuneStyle -> when {
@@ -1098,15 +1100,20 @@ fun Lyrics(
                     )
 
                     val targetScale =
-                        if (
+                        when {
                             archiveTuneStyle &&
-                            isSynced &&
-                            index != displayedCurrentLineIndex &&
-                            !isManualScrolling
-                        ) {
-                            0.95f
-                        } else {
-                            1f
+                                isSynced &&
+                                index != displayedCurrentLineIndex &&
+                                !isManualScrolling ->
+                                0.95f
+
+                            appleMusicStyle &&
+                                isSynced &&
+                                index == displayedCurrentLineIndex &&
+                                !isManualScrolling ->
+                                1f / 0.96f
+
+                            else -> 1f
                         }
 
                     val animatedScale by animateFloatAsState(
@@ -1259,6 +1266,7 @@ fun Lyrics(
                         val hasRomanization = remember(romanizedText) { romanizedText != null }
 
                         val effectiveAnimationStyle = lyricsAnimationStyle
+                        val appleLayoutFontSize = lyricsTextSize.sp * 0.96f
 
                         val reduceMotionDuringScroll =
                             isSelectionModeActive || isManualScrolling
@@ -1494,17 +1502,6 @@ fun Lyrics(
                                 )
                             }
                         } else if (hasWordTimings && item.words != null && effectiveAnimationStyle == LyricsAnimationStyle.APPLE) {
-                            if (!isActiveLine || reduceMotionDuringScroll) {
-                                Text(
-                                    text = item.text,
-                                    fontSize = lyricsTextSize.sp,
-                                    color = lineColor,
-                                    textAlign = alignment,
-                                    fontWeight = FontWeight.Bold,
-                                    lineHeight = (lyricsTextSize * lyricsLineSpacing).sp
-                                )
-                            } else {
-
                             val styledText = buildAnnotatedString {
                                 item.words.forEachIndexed { wordIndex, word ->
                                     val wordStartMs = (word.startTime * 1000).toLong()
@@ -1544,7 +1541,7 @@ fun Lyrics(
                                         style = SpanStyle(
                                             color = wordColor,
                                             fontWeight = wordWeight,
-                                            fontSize = if (word.isBackground) lyricsTextSize.sp * 0.7f else TextUnit.Unspecified
+                                            fontSize = if (word.isBackground) appleLayoutFontSize * 0.7f else TextUnit.Unspecified
                                         )
                                     ) {
                                         append(word.text)
@@ -1558,11 +1555,10 @@ fun Lyrics(
 
                             Text(
                                 text = styledText,
-                                fontSize = lyricsTextSize.sp,
+                                fontSize = appleLayoutFontSize,
                                 textAlign = alignment,
                                 lineHeight = (lyricsTextSize * lyricsLineSpacing).sp
                             )
-                            }
                         } else if (hasWordTimings && item.words != null && effectiveAnimationStyle == LyricsAnimationStyle.FADE) {
                             if (!isActiveLine || reduceMotionDuringScroll) {
                                 Text(
@@ -1927,7 +1923,7 @@ fun Lyrics(
 
                             Text(
                                 text = styledText,
-                                fontSize = lyricsTextSize.sp,
+                                fontSize = appleLayoutFontSize,
                                 textAlign = alignment,
                                 lineHeight = (lyricsTextSize * lyricsLineSpacing).sp
                             )
@@ -2022,25 +2018,11 @@ fun Lyrics(
                             )
                         } else if (isActiveLine && effectiveAnimationStyle == LyricsAnimationStyle.APPLE && !reduceMotionDuringScroll) {
 
-                            val popInScale = remember { Animatable(0.96f) }
-
-                            LaunchedEffect(index) {
-
-                                popInScale.snapTo(0.96f)
-                                popInScale.animateTo(
-                                    targetValue = 1f,
-                                    animationSpec = spring(
-                                        dampingRatio = Spring.DampingRatioNoBouncy,
-                                        stiffness = Spring.StiffnessLow
-                                    )
-                                )
-                            }
-
                             val styledText = if (item.words != null) {
                                 buildAnnotatedString {
                                     item.words.forEachIndexed { idx, word ->
                                         if (word.isBackground) {
-                                            withStyle(SpanStyle(fontSize = lyricsTextSize.sp * 0.7f)) {
+                                            withStyle(SpanStyle(fontSize = appleLayoutFontSize * 0.7f)) {
                                                 append(word.text)
                                             }
                                         } else {
