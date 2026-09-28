@@ -31,8 +31,6 @@ val CapsuleThemeEnabledKey =
 val CapsuleBottomBarEnabledKey =
     booleanPreferencesKey("capsuleBottomBarEnabled")
 
-private val CapsuleBackground = Color(0xFF101010)
-private val CapsuleSurface = Color(0xFF101010)
 private val CapsuleSurfaceDim = Color(0xFF0C0C0C)
 private val CapsuleSurfaceBright = Color(0xFF242424)
 
@@ -78,11 +76,13 @@ private val CapsuleOnErrorContainer = Color(0xFFFFDADA)
 fun ColorScheme.capsule(
     pureBlack: Boolean = false,
 ): ColorScheme {
+    // ArchiveTune lets the active Material neutral palette own the page background.
+    // Keep Capsule's accent/control language, but stop pinning every screen to #101010.
     val capsuleBackground =
-        if (pureBlack) Color.Black else CapsuleBackground
+        if (pureBlack) Color.Black else background
 
     val capsuleSurface =
-        if (pureBlack) Color.Black else CapsuleSurface
+        if (pureBlack) Color.Black else surface
 
     return copy(
         primary = CapsulePrimary,
