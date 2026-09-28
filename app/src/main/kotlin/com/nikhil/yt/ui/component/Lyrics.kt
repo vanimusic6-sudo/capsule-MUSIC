@@ -1081,8 +1081,6 @@ fun Lyrics(
 
                     val archiveTuneStyle =
                         lyricsAnimationStyle == LyricsAnimationStyle.ARCHIVE_TUNE
-                    val appleMusicStyle =
-                        lyricsAnimationStyle == LyricsAnimationStyle.APPLE
                     val targetAlpha = when {
                         !isSynced || (isSelectionModeActive && isSelected) -> 1f
                         isManualScrolling && archiveTuneStyle -> when {
