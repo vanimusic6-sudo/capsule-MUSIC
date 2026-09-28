@@ -26,8 +26,6 @@ import androidx.compose.ui.unit.sp
 import androidx.media3.exoplayer.offline.Download
 import com.nikhil.yt.LocalDownloadUtil
 import com.nikhil.yt.R
-import com.nikhil.yt.constants.ListThumbnailSize
-import com.nikhil.yt.constants.ThumbnailCornerRadius
 import com.nikhil.yt.soundcloud.SoundCloudCatalog
 import com.nikhil.yt.soundcloud.soundCloudMediaId
 import com.nikhil.yt.utils.makeTimeString
