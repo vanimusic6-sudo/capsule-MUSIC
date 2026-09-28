@@ -89,5 +89,31 @@ class LyricsUiRegressionTest {
         assertTrue(tuning.contains(".replaceFirstChar { it.lowercase() }"))
         assertTrue(tuning.contains("horizontalArrangement = Arrangement.Center"))
         assertTrue(tuning.contains("textAlign = TextAlign.Center"))
+        assertFalse(tuning.contains("LyricsBackgroundStyle"))
+    }
+
+    @Test
+    fun `lyrics controls inherit the selected background instead of opaque black`() {
+        val content = source("com/nikhil/yt/ui/player/CapsuleLyricsContent.kt")
+        assertFalse(content.contains("Color(0xFF171717)"))
+        assertTrue(content.contains("CapsuleLyricsText.copy(alpha = 0.025f)"))
+        assertTrue(content.contains(".background(\n                        lyricsPanelColor"))
+    }
+
+    @Test
+    fun `archive tune words reserve smaller stable metrics and never grow beyond old base`() {
+        val lyrics = source("com/nikhil/yt/ui/component/Lyrics.kt")
+        assertTrue(lyrics.contains("archiveTuneFontSize = lyricsTextSize.sp * 0.96f"))
+        assertTrue(lyrics.contains("((1f / 0.96f) - 1f) * wave"))
+        assertTrue(lyrics.contains("if (hasWordTimings && item.words != null)"))
+        assertFalse(lyrics.contains("FontWeight.ExtraBold"))
+    }
+
+    @Test
+    fun `lyrics animation clock is bounded below display refresh rate`() {
+        val lyrics = source("com/nikhil/yt/ui/component/Lyrics.kt")
+        assertFalse(lyrics.contains("withFrameNanos"))
+        assertTrue(lyrics.contains("delay(33L)"))
+        assertTrue(lyrics.contains("delay(150L)"))
     }
 }
