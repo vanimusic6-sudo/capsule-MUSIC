@@ -138,7 +138,8 @@ class LyricsUiRegressionTest {
     fun `lyrics animation clock is bounded below display refresh rate`() {
         val lyrics = source("com/nikhil/yt/ui/component/Lyrics.kt")
         assertFalse(lyrics.contains("withFrameNanos"))
-        assertTrue(lyrics.contains("delay(33L)"))
-        assertTrue(lyrics.contains("delay(150L)"))
+        assertTrue(lyrics.contains("delay(40L)"))
+        assertTrue(lyrics.contains("delay(100L)"))
+        assertTrue(lyrics.contains("delay(250L)"))
     }
 }
