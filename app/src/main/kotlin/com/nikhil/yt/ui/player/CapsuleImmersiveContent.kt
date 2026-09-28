@@ -187,6 +187,19 @@ internal fun immersiveFadeProfile(
     }
 }
 
+/**
+ * Display-only shaping for the cover -> player dissolve.
+ *
+ * The sampled artwork colour is left untouched. The seam is only nudged toward the already
+ * existing darker floor so the lower fade has more depth, while the upper haze is barely lighter
+ * to keep the transition smoky instead of reading as a hard dark band.
+ */
+internal fun immersiveSeamColor(edge: Color, floor: Color): Color =
+    lerp(edge, floor, 0.45f)
+
+internal fun immersiveUpperHazeColor(edge: Color): Color =
+    lerp(edge, Color.White, 0.055f)
+
 /** How much of the sheet the cover takes before it starts to go. */
 private const val ImmersiveArtworkFraction = 0.55f
 
@@ -566,11 +579,14 @@ fun CapsuleImmersiveContent(
         val settled = (seam + 0.44f).coerceAtMost(1f)
 
         val frame = shownGradient
+        val pageEdge = frame?.edge ?: IMMERSIVE_NEUTRAL_COLOR
+        val pageFloor = frame?.floor ?: IMMERSIVE_NEUTRAL_COLOR
+        val seamColor = immersiveSeamColor(pageEdge, pageFloor)
         val pageBackground = Brush.verticalGradient(
-            0f to (frame?.edge ?: IMMERSIVE_NEUTRAL_COLOR),
-            seam to (frame?.edge ?: IMMERSIVE_NEUTRAL_COLOR),
-            settled to (frame?.floor ?: IMMERSIVE_NEUTRAL_COLOR),
-            1f to (frame?.floor ?: IMMERSIVE_NEUTRAL_COLOR),
+            0f to seamColor,
+            seam to seamColor,
+            settled to pageFloor,
+            1f to pageFloor,
         )
 
         // Preload the NEXT image invisibly. Coil must finish decoding this exact URL
@@ -639,16 +655,23 @@ fun CapsuleImmersiveContent(
                                             bottomTexture = frame.bottomTexture,
                                             landscape = frame.landscape,
                                         )
+                                    val upperHaze =
+                                        immersiveUpperHazeColor(frame.edge)
+                                    val middleTone =
+                                        lerp(frame.edge, seamColor, 0.22f)
                                     Brush.verticalGradient(
                                         0f to Color.Transparent,
                                         fade.start to Color.Transparent,
                                         fade.firstStop to
-                                            frame.edge.copy(alpha = fade.firstAlpha),
+                                            upperHaze.copy(
+                                                alpha = (fade.firstAlpha * 0.86f)
+                                                    .coerceIn(0f, 1f),
+                                            ),
                                         fade.secondStop to
-                                            frame.edge.copy(alpha = fade.secondAlpha),
+                                            middleTone.copy(alpha = fade.secondAlpha),
                                         fade.thirdStop to
-                                            frame.edge.copy(alpha = fade.thirdAlpha),
-                                        1f to frame.edge,
+                                            seamColor.copy(alpha = fade.thirdAlpha),
+                                        1f to seamColor,
                                     )
                                 },
                             ),
