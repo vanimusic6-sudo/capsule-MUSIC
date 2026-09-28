@@ -36,7 +36,7 @@ import com.nikhil.yt.R
 /** Neutral chrome for the standard layout, independent of Capsule Dock artwork. */
 object StandardChrome {
     val isDark: Boolean @Composable get() = MaterialTheme.colorScheme.surface.luminance() < 0.5f
-    val background: Color @Composable get() = MaterialTheme.colorScheme.background
+    val background: Color @Composable get() = if (isDark) Color(0xFF141414) else Color(0xFFFAFAFA)
     val panel: Color @Composable get() = if (isDark) Color(0xFF1C1C1C) else Color(0xFFF0F0F0)
     val selected: Color @Composable get() = if (isDark) Color(0xFF272727) else Color(0xFFDEDEDE)
     val text: Color @Composable get() = if (isDark) Color(0xFFF3F3F3) else Color(0xFF171717)
