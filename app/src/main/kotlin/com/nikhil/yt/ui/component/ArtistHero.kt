@@ -52,6 +52,12 @@ import coil3.compose.AsyncImage
 import androidx.compose.ui.layout.ContentScale
 import com.nikhil.yt.R
 
+internal val ArtistHeroMaxWidth = 450.dp
+internal const val ArtistHeroArtworkHeightFactor = 1.36f
+
+internal fun artistHeroArtworkHeight(availableWidth: Dp): Dp =
+    availableWidth.coerceAtMost(ArtistHeroMaxWidth) * ArtistHeroArtworkHeightFactor
+
 /** Reference composition: large photograph, low title and two rows of existing Capsule actions. */
 @Composable
 internal fun ArtistHeroLayout(
@@ -65,9 +71,9 @@ internal fun ArtistHeroLayout(
     BoxWithConstraints(modifier.fillMaxWidth().background(background)) {
         // Keep the reference's bottom-aligned actions, lowered by 16 dp.
         // Artwork itself reaches the physical top edge; only overlay content respects safe insets.
-        val referenceWidth = maxWidth.coerceAtMost(450.dp)
+        val referenceWidth = maxWidth.coerceAtMost(ArtistHeroMaxWidth)
         val heroHeight = referenceWidth * 1.69f + 16.dp
-        Box(Modifier.fillMaxWidth().height(referenceWidth * 1.36f)) {
+        Box(Modifier.fillMaxWidth().height(artistHeroArtworkHeight(maxWidth))) {
             Box(Modifier.fillMaxSize()) { artwork() }
             // No dark veil across the forehead of the artist image. The toolbar remains
             // inset for touch safety; only the photo itself reaches the physical top edge.
