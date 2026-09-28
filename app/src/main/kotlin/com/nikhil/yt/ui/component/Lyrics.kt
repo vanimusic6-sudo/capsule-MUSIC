@@ -24,8 +24,6 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.PlatformTextStyle
-import androidx.compose.ui.text.style.LineHeightStyle
 import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.AnnotatedString
@@ -203,15 +201,6 @@ import com.nikhil.yt.ui.motion.CapsuleStandardEasing
 
 private val AppleMusicEasing = CubicBezierEasing(0.25f, 0.1f, 0.25f, 1.0f)
 private val SmoothDecelerateEasing = CubicBezierEasing(0.0f, 0.0f, 0.2f, 1.0f)
-
-// Animated lyric glyphs can extend a fraction beyond Android's tight font metrics.
-// Keep the font's real top/bottom padding and never trim custom line height so letters
-// such as Cyrillic п/р/б remain whole while a line or word is being scaled.
-private val LyricsSafePlatformTextStyle = PlatformTextStyle(includeFontPadding = true)
-private val LyricsSafeLineHeightStyle = LineHeightStyle(
-    alignment = LineHeightStyle.Alignment.Center,
-    trim = LineHeightStyle.Trim.None,
-)
 
 private fun isRtlText(text: String): Boolean {
     for (ch in text) {
@@ -1245,7 +1234,6 @@ fun Lyrics(
                         )
                         .alpha(animatedAlpha)
                         .graphicsLayer {
-                            clip = false
                             scaleX = animatedScale
                             scaleY = animatedScale
                             if (animatedBlur > 0.1f && distance > 2) {
@@ -1261,12 +1249,7 @@ fun Lyrics(
 
                     CompositionLocalProvider(LocalLayoutDirection provides lineLayoutDirection) {
                         CompositionLocalProvider(
-                            LocalTextStyle provides
-                                LocalTextStyle.current.copy(
-                                    fontFamily = lyricsFontFamily,
-                                    platformStyle = LyricsSafePlatformTextStyle,
-                                    lineHeightStyle = LyricsSafeLineHeightStyle,
-                                )
+                            LocalTextStyle provides LocalTextStyle.current.copy(fontFamily = lyricsFontFamily)
                         ) {
                             Column(
                                 modifier = itemModifier,
