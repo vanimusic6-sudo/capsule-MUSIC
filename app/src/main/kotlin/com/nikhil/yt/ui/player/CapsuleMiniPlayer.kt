@@ -500,6 +500,7 @@ fun CapsuleMiniPlayer(
             style = miniPlayerBackground,
             pureBlack = pureBlack,
             colors = miniArtworkColors,
+            animated = isPlaying && playbackState == Player.STATE_READY,
             modifier =
                 Modifier
                     .fillMaxWidth()
