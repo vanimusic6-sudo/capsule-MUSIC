@@ -787,4 +787,6 @@ Velune se contente d\'extraire votre jeton ; toutes les autres données sont sto
     <string name="token_copied">Token copied to clipboard</string>
     <string name="no_visitor_data">No visitor data available. Tokens cannot be generated.</string>
     <string name="extracting_from_url">Extracting tokens from URL…</string>
+    <string name="latest_release">Dernière sortie</string>
+    <string name="artist_release_metadata">Album • %1$d</string>
 </resources>
