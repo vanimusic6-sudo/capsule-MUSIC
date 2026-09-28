@@ -11,7 +11,6 @@ package com.nikhil.yt.ui.player
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -23,7 +22,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.media3.common.C
 import com.nikhil.yt.LocalDatabase
-import com.nikhil.yt.LocalLyricsStatusBarRequest
 import com.nikhil.yt.LocalPlayerConnection
 import com.nikhil.yt.db.entities.LyricsEntity
 import com.nikhil.yt.models.MediaMetadata
@@ -40,22 +38,9 @@ import kotlinx.coroutines.withContext
 fun LyricsScreen(
     mediaMetadata: MediaMetadata,
     onBackClick: () -> Unit,
-    hideStatusBar: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
     val playerConnection = LocalPlayerConnection.current ?: return
-    val requestLyricsStatusBarHidden = LocalLyricsStatusBarRequest.current
-
-    DisposableEffect(requestLyricsStatusBarHidden, hideStatusBar) {
-        if (hideStatusBar) {
-            requestLyricsStatusBarHidden(true)
-        }
-        onDispose {
-            if (hideStatusBar) {
-                requestLyricsStatusBarHidden(false)
-            }
-        }
-    }
     val player = playerConnection.player
     val context = LocalContext.current
     val database = LocalDatabase.current
@@ -95,15 +80,11 @@ fun LyricsScreen(
         durationMs = duration,
         onClose = onBackClick,
         onMenuClick = {
-            // Reassert the desired state before mounting the sheet: Immersive stays hidden,
-            // every other player design explicitly restores normal Android chrome.
-            requestLyricsStatusBarHidden(hideStatusBar)
             menuState.show {
                 LyricsMenu(
                     lyricsProvider = { currentLyrics },
                     mediaMetadataProvider = { mediaMetadata },
                     onDismiss = menuState::dismiss,
-                    keepStatusBarHidden = hideStatusBar,
                 )
             }
         },
