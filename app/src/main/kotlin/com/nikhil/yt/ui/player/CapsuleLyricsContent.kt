@@ -17,6 +17,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -29,7 +30,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.systemBars
+import androidx.compose.foundation.layout.systemBarsIgnoringVisibility
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -90,7 +91,7 @@ private val CapsuleLyricsPanelShape =
     RoundedCornerShape(24.dp)
 
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun CapsuleLyricsContent(
     mediaMetadata: MediaMetadata,
@@ -183,7 +184,7 @@ fun CapsuleLyricsContent(
                     CapsuleLyricsBackground,
                 )
                 .windowInsetsPadding(
-                    WindowInsets.systemBars.only(
+                    WindowInsets.systemBarsIgnoringVisibility.only(
                         WindowInsetsSides.Top +
                             WindowInsetsSides.Horizontal +
                             WindowInsetsSides.Bottom,
