@@ -915,6 +915,47 @@ fun MediaMetadataListItem(
     )
 }
 
+@Composable
+private fun DefaultYouTubeItemBadges(item: YTItem) {
+    val database = LocalDatabase.current
+
+    when (item) {
+        is SongItem -> {
+            val song by database.song(item.id).collectAsState(initial = null)
+            if (song?.song?.liked == true) {
+                Icon.Favorite()
+            }
+            if (item.explicit) {
+                Icon.Explicit()
+            }
+            if (song?.song?.inLibrary != null) {
+                Icon.Library()
+            }
+            val download by
+                LocalDownloadUtil.current
+                    .getDownload(item.id)
+                    .collectAsState(initial = null)
+            Icon.Download(download?.state)
+        }
+
+        is AlbumItem -> {
+            val album by database.album(item.id).collectAsState(initial = null)
+            if (album?.album?.bookmarkedAt != null) {
+                Icon.Favorite()
+            }
+            if (item.explicit) {
+                Icon.Explicit()
+            }
+        }
+
+        else -> {
+            if (item.explicit) {
+                Icon.Explicit()
+            }
+        }
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun YouTubeListItem(
@@ -929,23 +970,7 @@ fun YouTubeListItem(
     showSourceIcon: Boolean = false,
     trailingContent: @Composable RowScope.() -> Unit = {},
     badges: @Composable RowScope.() -> Unit = {
-        val database = LocalDatabase.current
-        val song by database.song(item.id).collectAsState(initial = null)
-        val album by database.album(item.id).collectAsState(initial = null)
-
-        if ((item is SongItem && song?.song?.liked == true) ||
-            (item is AlbumItem && album?.album?.bookmarkedAt != null)
-        ) {
-            Icon.Favorite()
-        }
-        if (item.explicit) Icon.Explicit()
-        if (item is SongItem && song?.song?.inLibrary != null) {
-            Icon.Library()
-        }
-        if (item is SongItem) {
-            val downloads by LocalDownloadUtil.current.downloads.collectAsState()
-            Icon.Download(downloads[item.id]?.state)
-        }
+        DefaultYouTubeItemBadges(item)
     },
 ) {
     val swipeEnabled by rememberPreference(SwipeToSongKey, defaultValue = false)
@@ -1043,21 +1068,7 @@ fun YouTubeGridItem(
     modifier: Modifier = Modifier,
     coroutineScope: CoroutineScope? = null,
     badges: @Composable RowScope.() -> Unit = {
-        val database = LocalDatabase.current
-        val song by database.song(item.id).collectAsState(initial = null)
-        val album by database.album(item.id).collectAsState(initial = null)
-
-        if (item is SongItem && song?.song?.liked == true ||
-            item is AlbumItem && album?.album?.bookmarkedAt != null
-        ) {
-            Icon.Favorite()
-        }
-        if (item.explicit) Icon.Explicit()
-        if (item is SongItem && song?.song?.inLibrary != null) Icon.Library()
-        if (item is SongItem) {
-            val downloads by LocalDownloadUtil.current.downloads.collectAsState()
-            Icon.Download(downloads[item.id]?.state)
-        }
+        DefaultYouTubeItemBadges(item)
     },
     thumbnailRatio: Float = if (item is SongItem) 16f / 9 else 1f,
     isActive: Boolean = false,
