@@ -39,6 +39,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import com.nikhil.yt.soundcloud.SoundCloudCatalog
@@ -87,6 +88,8 @@ import com.nikhil.yt.playback.queues.YouTubeQueue
 import com.nikhil.yt.ui.component.ChipsRow
 import com.nikhil.yt.ui.component.EmptyPlaceholder
 import com.nikhil.yt.ui.component.LocalMenuState
+import com.nikhil.yt.ui.component.LocalSongListVisuals
+import com.nikhil.yt.ui.component.SongListVisuals
 import com.nikhil.yt.ui.component.YouTubeListItem
 import com.nikhil.yt.ui.component.SoundCloudUserListItem
 import com.nikhil.yt.ui.component.SoundCloudTrackListItem
@@ -101,7 +104,12 @@ import com.nikhil.yt.ui.menu.SoundCloudTrackMenu
 import com.nikhil.yt.viewmodels.OnlineSearchViewModel
 import kotlinx.coroutines.launch
 
-private val SearchTrackThumbnailSize = 56.dp
+private val ArchiveSearchListVisuals =
+    SongListVisuals(
+        rowHeight = 72.dp,
+        thumbnailSize = 56.dp,
+        thumbnailCornerRadius = 10.dp,
+    )
 
 @Composable
 private fun SearchSectionHeader(
@@ -260,7 +268,6 @@ fun OnlineSearchResult(
             },
             isPlaying = isPlaying,
             showSourceIcon = false,
-            thumbnailSizeOverride = if (item is SongItem) SearchTrackThumbnailSize else null,
             trailingContent = {
                 IconButton(
                     onClick = longClick,
@@ -333,7 +340,6 @@ fun OnlineSearchResult(
                         )
                     }
                 },
-                thumbnailSize = SearchTrackThumbnailSize,
                 modifier = Modifier.animateItem(),
             )
         }
@@ -370,8 +376,9 @@ fun OnlineSearchResult(
             )
         }
 
-    LazyColumn(
-        state = lazyListState,
+    CompositionLocalProvider(LocalSongListVisuals provides ArchiveSearchListVisuals) {
+        LazyColumn(
+            state = lazyListState,
         contentPadding =
             LocalPlayerAwareWindowInsets.current
                 .add(WindowInsets(top = SearchFilterHeight + 8.dp))
@@ -744,6 +751,7 @@ fun OnlineSearchResult(
                     }
                 }
             }
+        }
         }
     }
 
