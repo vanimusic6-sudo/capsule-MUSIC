@@ -45,7 +45,7 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.systemBars
+import androidx.compose.foundation.layout.systemBarsIgnoringVisibility
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.CircleShape
@@ -694,9 +694,10 @@ fun CapsulePlayerContent(
         modifier =
             Modifier
                 .fillMaxSize()
-                // Both layouts respect the status bar and gesture-navigation insets.
+                // Keep the player in exactly the same geometry while Immersive temporarily
+                // hides the status bar; visibility itself must not become a layout signal.
                 .windowInsetsPadding(
-                    WindowInsets.systemBars.only(
+                    WindowInsets.systemBarsIgnoringVisibility.only(
                         WindowInsetsSides.Top +
                             WindowInsetsSides.Horizontal +
                             WindowInsetsSides.Bottom,
