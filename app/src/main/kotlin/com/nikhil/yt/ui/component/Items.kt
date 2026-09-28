@@ -968,7 +968,6 @@ fun YouTubeListItem(
     isPlaying: Boolean = false,
     isSwipeable: Boolean = true,
     showSourceIcon: Boolean = false,
-    thumbnailSizeOverride: Dp? = null,
     trailingContent: @Composable RowScope.() -> Unit = {},
     badges: @Composable RowScope.() -> Unit = {
         DefaultYouTubeItemBadges(item)
@@ -1041,7 +1040,7 @@ fun YouTubeListItem(
                         } else {
                             RoundedCornerShape(visuals.thumbnailCornerRadius)
                         },
-                    modifier = Modifier.size(thumbnailSizeOverride ?: visuals.thumbnailSize)
+                    modifier = Modifier.size(visuals.thumbnailSize)
                 )
             },
             trailingContent = trailingContent,
