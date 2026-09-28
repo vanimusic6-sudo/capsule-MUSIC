@@ -84,6 +84,33 @@ private data class AppleTrack(
     val durationMs: Long?,
 )
 
+@Serializable
+internal data class PaxsenixProviderStats(
+    val hits: Int = 0,
+    val errors: Int = 0,
+    val success_rate: String = "0%",
+)
+
+@Serializable
+internal data class PaxsenixRequestLogEntry(
+    val timestamp: String = "",
+    val endpoint: String = "",
+    val provider: String = "",
+    val success: Boolean = false,
+    val response_time_ms: Double = 0.0,
+)
+
+@Serializable
+internal data class PaxsenixStats(
+    val uptime_seconds: Double = 0.0,
+    val total_requests: Int = 0,
+    val successful_requests: Int = 0,
+    val failed_requests: Int = 0,
+    val overall_success_rate: String = "0%",
+    val providers: Map<String, PaxsenixProviderStats> = emptyMap(),
+    val request_log: List<PaxsenixRequestLogEntry> = emptyList(),
+)
+
 /**
  * Apple Music's catalogue has the lyrics; paxsenix.org relays them.
  *
@@ -184,7 +211,7 @@ object PaxsenixLyricsProvider : LyricsProvider {
         }
     }
 
-    private suspend fun fetchAppleMusic(
+    internal suspend fun fetchAppleMusic(
         title: String,
         artist: String,
         album: String?,
@@ -337,7 +364,7 @@ object PaxsenixLyricsProvider : LyricsProvider {
         val durationMs: Long,
     )
 
-    private suspend fun fetchSpotify(
+    internal suspend fun fetchSpotify(
         title: String,
         artist: String,
         duration: Int,
@@ -360,7 +387,7 @@ object PaxsenixLyricsProvider : LyricsProvider {
         return parseRelayLyrics(response.bodyAsText())
     }
 
-    private suspend fun fetchNetEase(
+    internal suspend fun fetchNetEase(
         title: String,
         artist: String,
         duration: Int,
@@ -384,7 +411,7 @@ object PaxsenixLyricsProvider : LyricsProvider {
         return parseRelayLyrics(response.bodyAsText())
     }
 
-    private suspend fun fetchPaxsenixMusixmatch(
+    internal suspend fun fetchPaxsenixMusixmatch(
         title: String,
         artist: String,
         duration: Int,
@@ -406,6 +433,38 @@ object PaxsenixLyricsProvider : LyricsProvider {
         }
         return null
     }
+
+    internal suspend fun fetchYouTube(
+        title: String,
+        artist: String,
+        duration: Int,
+    ): String? {
+        val track =
+            searchRelayTrack(
+                path = "youtube/search",
+                title = title,
+                artist = artist,
+                durationMs = duration.coerceAtLeast(0) * 1_000L,
+            ) ?: return null
+
+        val response =
+            runCatchingCancellable {
+                client.get("$RELAY/youtube/lyrics") {
+                    parameter("id", track.id)
+                }
+            }.getOrNull() ?: return null
+        if (!response.status.isSuccess()) return null
+        return parseRelayLyrics(response.bodyAsText())
+    }
+
+    internal suspend fun getStats(): Result<PaxsenixStats> =
+        runCatchingCancellable {
+            val response = client.get("$RELAY/api/stats")
+            if (!response.status.isSuccess()) {
+                error("Paxsenix stats HTTP ${response.status.value}")
+            }
+            response.body<PaxsenixStats>()
+        }
 
     private suspend fun searchRelayTrack(
         path: String,
