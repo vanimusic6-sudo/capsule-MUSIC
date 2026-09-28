@@ -36,7 +36,11 @@ private fun lyricsProviderTitle(providerId: String): String =
     when (providerId) {
         LyricsProviderOrder.LYRICS_PLUS -> "LyricsPlus"
         LyricsProviderOrder.BETTER_LYRICS -> "BetterLyrics"
-        LyricsProviderOrder.PAXSENIX -> "Paxsenix"
+        LyricsProviderOrder.PAXSENIX_APPLE_MUSIC -> "Paxsenix: Apple Music"
+        LyricsProviderOrder.PAXSENIX_SPOTIFY -> "Paxsenix: Spotify"
+        LyricsProviderOrder.PAXSENIX_MUSIXMATCH -> "Paxsenix: Musixmatch"
+        LyricsProviderOrder.PAXSENIX_NETEASE -> "Paxsenix: NetEase"
+        LyricsProviderOrder.PAXSENIX_YOUTUBE -> "Paxsenix: YouTube"
         LyricsProviderOrder.MUSIXMATCH -> "Musixmatch"
         LyricsProviderOrder.NETEASE -> "NetEase"
         LyricsProviderOrder.YOUTUBE -> stringResource(R.string.lyrics_provider_youtube)
@@ -48,7 +52,11 @@ private fun lyricsProviderDescription(providerId: String): String =
     when (providerId) {
         LyricsProviderOrder.LYRICS_PLUS -> stringResource(R.string.lyrics_provider_lyricsplus_description)
         LyricsProviderOrder.BETTER_LYRICS -> stringResource(R.string.lyrics_provider_betterlyrics_description)
-        LyricsProviderOrder.PAXSENIX -> stringResource(R.string.lyrics_provider_paxsenix_description)
+        LyricsProviderOrder.PAXSENIX_APPLE_MUSIC -> stringResource(R.string.lyrics_provider_paxsenix_apple_description)
+        LyricsProviderOrder.PAXSENIX_SPOTIFY -> stringResource(R.string.lyrics_provider_paxsenix_spotify_description)
+        LyricsProviderOrder.PAXSENIX_MUSIXMATCH -> stringResource(R.string.lyrics_provider_paxsenix_musixmatch_description)
+        LyricsProviderOrder.PAXSENIX_NETEASE -> stringResource(R.string.lyrics_provider_paxsenix_netease_description)
+        LyricsProviderOrder.PAXSENIX_YOUTUBE -> stringResource(R.string.lyrics_provider_paxsenix_youtube_description)
         LyricsProviderOrder.MUSIXMATCH -> stringResource(R.string.lyrics_provider_musixmatch_description)
         LyricsProviderOrder.NETEASE -> stringResource(R.string.lyrics_provider_netease_description)
         LyricsProviderOrder.YOUTUBE -> stringResource(R.string.lyrics_provider_youtube_description)
