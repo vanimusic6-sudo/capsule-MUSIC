@@ -47,7 +47,9 @@ fun LyricsScreen(
     val requestLyricsStatusBarHidden = LocalLyricsStatusBarRequest.current
 
     DisposableEffect(requestLyricsStatusBarHidden, hideStatusBar) {
-        requestLyricsStatusBarHidden(hideStatusBar)
+        if (hideStatusBar) {
+            requestLyricsStatusBarHidden(true)
+        }
         onDispose {
             if (hideStatusBar) {
                 requestLyricsStatusBarHidden(false)
