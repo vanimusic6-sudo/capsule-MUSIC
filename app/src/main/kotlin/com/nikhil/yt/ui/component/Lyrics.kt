@@ -429,6 +429,8 @@ private fun ArchiveTuneWord(
     fontSize: TextUnit,
     textColor: Color,
     isBackground: Boolean,
+    lineFocus: Float,
+    motionEnabled: Boolean,
     modifier: Modifier = Modifier,
 ) {
     val duration = (endTime - startTime).coerceAtLeast(1L)
@@ -440,25 +442,54 @@ private fun ArchiveTuneWord(
             currentTime <= startTime -> 0f
             else -> ((currentTime - startTime).toFloat() / duration).coerceIn(0f, 1f)
         }
+    val safeLineFocus = lineFocus.coerceIn(0f, 1f)
     val wave = sin(progress * Math.PI).toFloat()
-    // Measure at the real maximum glyph size and animate only inside those bounds.
-    // Scaling a 96% Text layer above 1x can crop tight glyph edges on Android GPUs
-    // (especially visible on Cyrillic п/р/б), even when the parent itself is not clipped.
-    val scale = if (isActive) 0.96f + 0.04f * wave else 0.96f
-    val targetLift = if (isActive) -3.5f * wave else 0f
+    // The word is always measured at its maximum size, so FlowRow never needs to reflow when
+    // focus moves to this line. Only the already-reserved visual layer moves from 96% -> 100%.
+    val scaleTarget =
+        if (motionEnabled && isActive) {
+            (0.96f + 0.04f * wave * safeLineFocus).coerceIn(0.96f, 1f)
+        } else {
+            0.96f
+        }
+    val scale by animateFloatAsState(
+        targetValue = scaleTarget,
+        animationSpec = tween(
+            durationMillis = if (motionEnabled && isActive) 110 else 180,
+            easing = AppleMusicEasing,
+        ),
+        label = "archiveTuneWordScale",
+    )
+    val targetLift =
+        if (motionEnabled && isActive) {
+            -3.2f * wave * safeLineFocus
+        } else {
+            0f
+        }
     val lift by animateFloatAsState(
         targetValue = targetLift,
         animationSpec = tween(
-            durationMillis = if (isActive) 45 else 260,
-            easing = CapsuleStandardEasing,
+            durationMillis = if (motionEnabled && isActive) 120 else 220,
+            easing = AppleMusicEasing,
         ),
         label = "archiveTuneWordLift",
     )
     val glowProgress = (progress * 2f).coerceAtMost(1f)
-    val glowAlpha = if (isActive) glowProgress * 0.38f else 0f
-    val glowRadius = if (isActive) glowProgress * 10f else 0f
+    val glowAlpha =
+        if (motionEnabled && isActive) {
+            glowProgress * 0.38f * safeLineFocus
+        } else {
+            0f
+        }
+    val glowRadius = if (glowAlpha > 0f) glowProgress * 10f else 0f
     val effectiveFontSize = if (isBackground) fontSize * 0.82f else fontSize
-    val baseAlpha = if (isBackground) 0.22f else 0.30f
+    // As focus arrives, the subdued line smoothly trades its diffuse light for the word reveal.
+    val restingAlpha = if (isBackground) 0.54f else 0.70f
+    val focusedBaseAlpha = if (isBackground) 0.22f else 0.30f
+    val baseAlpha =
+        restingAlpha + (focusedBaseAlpha - restingAlpha) * safeLineFocus
+    val revealAlpha =
+        safeLineFocus * if (isBackground) 0.78f else 1f
     val fontWeight = FontWeight.Bold
 
     Box(
@@ -481,7 +512,7 @@ private fun ArchiveTuneWord(
             Text(
                 text = text,
                 fontSize = effectiveFontSize,
-                color = textColor.copy(alpha = if (isBackground) 0.78f else 1f),
+                color = textColor.copy(alpha = revealAlpha),
                 fontWeight = fontWeight,
                 style =
                     LocalTextStyle.current.copy(
@@ -1113,23 +1144,33 @@ fun Lyrics(
                     val animatedAlpha by animateFloatAsState(
                         targetValue = targetAlpha,
                         animationSpec = tween(
-                            durationMillis = 400,
-                            easing = SmoothDecelerateEasing
+                            durationMillis = if (archiveTuneStyle) 620 else 400,
+                            easing = if (archiveTuneStyle) AppleMusicEasing else SmoothDecelerateEasing
                         ),
                         label = "lyricAlpha"
                     )
 
-                    val targetScale =
-                        if (
-                            archiveTuneStyle &&
-                            isSynced &&
-                            index != displayedCurrentLineIndex &&
-                            !isManualScrolling
-                        ) {
-                            0.95f
-                        } else {
-                            1f
-                        }
+                    // ArchiveTune changes line focus as a light handoff rather than snapping the
+                    // old line off and the new one on.
+                    val archiveLineFocus by animateFloatAsState(
+                        targetValue =
+                            if (
+                                archiveTuneStyle &&
+                                isSynced &&
+                                index == displayedCurrentLineIndex
+                            ) {
+                                1f
+                            } else {
+                                0f
+                            },
+                        animationSpec = tween(
+                            durationMillis = 620,
+                            easing = AppleMusicEasing,
+                        ),
+                        label = "archiveLineFocus",
+                    )
+
+                    val targetScale = 1f
 
                     val animatedScale by animateFloatAsState(
                         targetValue = targetScale,
@@ -1487,7 +1528,6 @@ fun Lyrics(
                         } else if (effectiveAnimationStyle == LyricsAnimationStyle.ARCHIVE_TUNE) {
                             if (hasWordTimings && item.words != null) {
                                 val archiveTuneMaxFontSize = lyricsTextSize.sp
-                                val archiveTuneRestingFontSize = lyricsTextSize.sp * 0.96f
                                 FlowRow(
                                     modifier =
                                         Modifier
@@ -1513,30 +1553,18 @@ fun Lyrics(
                                                 word.text
                                             }
 
-                                        if (isActiveLine && !reduceMotionDuringScroll) {
-                                            ArchiveTuneWord(
-                                                text = displayText,
-                                                startTime = (word.startTime * 1000).toLong(),
-                                                endTime = (word.endTime * 1000).toLong(),
-                                                currentTime = currentPlaybackPosition,
-                                                isRtl = lineIsRtl,
-                                                fontSize = archiveTuneMaxFontSize,
-                                                textColor = lyricsBaseColor,
-                                                isBackground = word.isBackground,
-                                            )
-                                        } else {
-                                            Text(
-                                                text = displayText,
-                                                fontSize =
-                                                    if (word.isBackground) {
-                                                        archiveTuneRestingFontSize * 0.82f
-                                                    } else {
-                                                        archiveTuneRestingFontSize
-                                                    },
-                                                color = lineColor,
-                                                fontWeight = FontWeight.Bold,
-                                            )
-                                        }
+                                        ArchiveTuneWord(
+                                            text = displayText,
+                                            startTime = (word.startTime * 1000).toLong(),
+                                            endTime = (word.endTime * 1000).toLong(),
+                                            currentTime = currentPlaybackPosition,
+                                            isRtl = lineIsRtl,
+                                            fontSize = archiveTuneMaxFontSize,
+                                            textColor = lyricsBaseColor,
+                                            isBackground = word.isBackground,
+                                            lineFocus = archiveLineFocus,
+                                            motionEnabled = isActiveLine && !reduceMotionDuringScroll,
+                                        )
                                     }
                                 }
                             } else {
