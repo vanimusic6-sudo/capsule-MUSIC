@@ -821,7 +821,7 @@
     <string name="lyrics_provider_youtube_description">То, что лежит в описании трека. Без тайминга.</string>
     <string name="lyrics_sync_offset">Сдвиг синхронизации</string>
     <string name="lyrics_sync_offset_value">%1$+.1f с</string>
-    <string name="lyrics_sync_offset_hint">Текст спешит — уменьшите. Отстаёт — увеличьте.</string>
+    <string name="lyrics_sync_offset_hint">текст спешит — уменьшите.\nтекст отстаёт — увеличьте.</string>
     <string name="enable_lyricsplus">LyricsPlus</string>
     <string name="enable_lyricsplus_description">Тексты сообщества с пословным таймингом, на нескольких волонтёрских зеркалах.</string>
     <string name="enable_paxsenix">Paxsenix</string>
