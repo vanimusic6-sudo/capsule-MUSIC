@@ -264,6 +264,12 @@ class MainActivity : ComponentActivity() {
     private var playerConnection by mutableStateOf<PlayerConnection?>(null)
     private var isMusicServiceBound = false
 
+    // Keep the actual top-level tab across Activity recreation. Android may show the previous task
+    // snapshot immediately, so restarting the live NavHost at HOME a moment later looks like the
+    // whole interface "jumps". The default-tab preference is only for a genuinely fresh launch.
+    private var restoredTopLevelRoute: String? = null
+    private var lastTopLevelRoute: String? = null
+
     private val serviceConnection =
         object : ServiceConnection {
             override fun onServiceConnected(
@@ -390,6 +396,11 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    override fun onSaveInstanceState(outState: Bundle) {
+        lastTopLevelRoute?.let { outState.putString(STATE_TOP_LEVEL_ROUTE, it) }
+        super.onSaveInstanceState(outState)
+    }
+
     override fun onStop() {
         safeUnbindMusicService()
         super.onStop()
@@ -439,6 +450,8 @@ class MainActivity : ComponentActivity() {
     @OptIn(ExperimentalMaterial3Api::class)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        restoredTopLevelRoute = savedInstanceState?.getString(STATE_TOP_LEVEL_ROUTE)
+        lastTopLevelRoute = restoredTopLevelRoute
         window.decorView.layoutDirection = View.LAYOUT_DIRECTION_LTR
         WindowCompat.setDecorFitsSystemWindows(window, false)
 
@@ -706,15 +719,30 @@ class MainActivity : ComponentActivity() {
                                 else -> null
                             }
                         }
-                    val initialMainRoute =
-                        remember(tabOpenedFromShortcut, initialDefaultOpenTab) {
-                            when (tabOpenedFromShortcut ?: initialDefaultOpenTab) {
-                                NavigationTab.HOME -> Screens.Home.route
-                                NavigationTab.LIBRARY -> Screens.Library.route
-                                else -> Screens.Home.route
+                    val restoredMainRoute =
+                        remember {
+                            restoredTopLevelRoute?.takeIf { route ->
+                                route == Screens.Home.route ||
+                                    route == Screens.Stats.route ||
+                                    route == Screens.History.route ||
+                                    route == Screens.Library.route
                             }
                         }
-
+                    val initialMainRoute =
+                        remember(tabOpenedFromShortcut, restoredMainRoute, initialDefaultOpenTab) {
+                            when {
+                                tabOpenedFromShortcut == NavigationTab.LIBRARY ->
+                                    Screens.Library.route
+                                tabOpenedFromShortcut == NavigationTab.HOME ->
+                                    Screens.Home.route
+                                restoredMainRoute != null ->
+                                    restoredMainRoute
+                                initialDefaultOpenTab == NavigationTab.LIBRARY ->
+                                    Screens.Library.route
+                                else ->
+                                    Screens.Home.route
+                            }
+                        }
 
                     val topLevelScreens =
                         listOf(
@@ -723,6 +751,12 @@ class MainActivity : ComponentActivity() {
                             Screens.History.route,
                             Screens.Library.route,
                         )
+
+                    LaunchedEffect(currentRoute) {
+                        if (currentRoute in topLevelScreens) {
+                            lastTopLevelRoute = currentRoute
+                        }
+                    }
 
                     val (query, onQueryChange) =
                         rememberSaveable(stateSaver = TextFieldValue.Saver) {
@@ -1896,6 +1930,7 @@ class MainActivity : ComponentActivity() {
     }
 
     companion object {
+        private const val STATE_TOP_LEVEL_ROUTE = "capsule.lastTopLevelRoute"
         const val ACTION_SEARCH = "com.nikhil.yt.action.SEARCH"
         const val ACTION_LIBRARY = "com.nikhil.yt.action.LIBRARY"
     }
