@@ -22,10 +22,16 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.Modifier
@@ -34,11 +40,13 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.nikhil.yt.R
+import com.nikhil.yt.ui.component.DefaultDialog
 import com.nikhil.yt.ui.screens.settings.LyricsPosition
 import com.nikhil.yt.constants.LyricsSyncOffsetKey
 import com.nikhil.yt.constants.LyricsTextPositionKey
 import com.nikhil.yt.utils.rememberEnumPreference
 import com.nikhil.yt.utils.rememberPreference
+import kotlin.math.roundToInt
 
 /** One press. Small enough to home in on a bad file, big enough to be worth pressing. */
 private const val OFFSET_STEP_MS = 100
@@ -67,6 +75,70 @@ internal fun LyricsTuning() {
     val (position, onPositionChange) =
         rememberEnumPreference(LyricsTextPositionKey, LyricsPosition.LEFT)
     val (offsetMs, onOffsetChange) = rememberPreference(LyricsSyncOffsetKey, defaultValue = 0)
+    var showOffsetDialog by rememberSaveable { mutableStateOf(false) }
+
+    if (showOffsetDialog) {
+        var tempOffset by remember(offsetMs, showOffsetDialog) {
+            mutableFloatStateOf(offsetMs.toFloat())
+        }
+
+        DefaultDialog(
+            onDismiss = { showOffsetDialog = false },
+            icon = {
+                Icon(
+                    painter = painterResource(R.drawable.sync),
+                    contentDescription = null,
+                )
+            },
+            title = { Text(stringResource(R.string.lyrics_sync_offset)) },
+            buttons = {
+                TextButton(onClick = { tempOffset = 0f }) {
+                    Text(stringResource(R.string.reset))
+                }
+
+                Spacer(Modifier.weight(1f))
+
+                TextButton(onClick = { showOffsetDialog = false }) {
+                    Text(stringResource(android.R.string.cancel))
+                }
+
+                TextButton(
+                    onClick = {
+                        onOffsetChange(clampOffset(tempOffset.roundToInt()))
+                        showOffsetDialog = false
+                    },
+                ) {
+                    Text(stringResource(android.R.string.ok))
+                }
+            },
+        ) {
+            Column(
+                modifier = Modifier.fillMaxWidth().padding(16.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                Text(
+                    text =
+                        stringResource(
+                            R.string.lyrics_sync_offset_value,
+                            tempOffset / 1000f,
+                        ),
+                    style = MaterialTheme.typography.titleMedium,
+                    textAlign = TextAlign.Center,
+                )
+
+                Spacer(Modifier.height(14.dp))
+
+                Slider(
+                    value = tempOffset,
+                    onValueChange = { tempOffset = it },
+                    valueRange = -OFFSET_LIMIT_MS.toFloat()..OFFSET_LIMIT_MS.toFloat(),
+                    steps = (OFFSET_LIMIT_MS * 2 / OFFSET_STEP_MS) - 1,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+        }
+    }
+
     Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
         Text(
             text = stringResource(R.string.lyrics_text_position),
@@ -156,7 +228,12 @@ internal fun LyricsTuning() {
                     text = stringResource(R.string.lyrics_sync_offset_value, offsetMs / 1000f),
                     style = MaterialTheme.typography.titleMedium,
                     textAlign = TextAlign.Center,
-                    modifier = Modifier.padding(horizontal = 14.dp).widthIn(min = 72.dp),
+                    modifier =
+                        Modifier
+                            .clip(RoundedCornerShape(12.dp))
+                            .clickable { showOffsetDialog = true }
+                            .padding(horizontal = 14.dp, vertical = 8.dp)
+                            .widthIn(min = 72.dp),
                 )
 
                 FilledTonalIconButton(
@@ -191,3 +268,4 @@ internal fun LyricsTuning() {
 
 /** Keeps a stored value in range too, not only a pressed one. */
 internal fun clampOffset(offsetMs: Int): Int = offsetMs.coerceIn(-OFFSET_LIMIT_MS, OFFSET_LIMIT_MS)
+
