@@ -21,7 +21,11 @@ package com.nikhil.yt.constants
 object LyricsProviderOrder {
     const val LYRICS_PLUS = "LYRICS_PLUS"
     const val BETTER_LYRICS = "BETTER_LYRICS"
-    const val PAXSENIX = "PAXSENIX"
+    const val PAXSENIX_APPLE_MUSIC = "PAXSENIX_APPLE_MUSIC"
+    const val PAXSENIX_SPOTIFY = "PAXSENIX_SPOTIFY"
+    const val PAXSENIX_MUSIXMATCH = "PAXSENIX_MUSIXMATCH"
+    const val PAXSENIX_NETEASE = "PAXSENIX_NETEASE"
+    const val PAXSENIX_YOUTUBE = "PAXSENIX_YOUTUBE"
     const val MUSIXMATCH = "MUSIXMATCH"
     const val NETEASE = "NETEASE"
     const val YOUTUBE = "YOUTUBE"
@@ -36,7 +40,11 @@ object LyricsProviderOrder {
         listOf(
             LYRICS_PLUS,
             BETTER_LYRICS,
-            PAXSENIX,
+            PAXSENIX_APPLE_MUSIC,
+            PAXSENIX_SPOTIFY,
+            PAXSENIX_MUSIXMATCH,
+            PAXSENIX_NETEASE,
+            PAXSENIX_YOUTUBE,
             MUSIXMATCH,
             NETEASE,
             YOUTUBE,
