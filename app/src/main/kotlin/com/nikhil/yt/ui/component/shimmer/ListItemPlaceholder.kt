@@ -23,28 +23,28 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.unit.dp
-import com.nikhil.yt.constants.ListItemHeight
-import com.nikhil.yt.constants.ListThumbnailSize
-import com.nikhil.yt.constants.ThumbnailCornerRadius
+import com.nikhil.yt.ui.component.LocalSongListVisuals
 
 @Composable
 fun ListItemPlaceHolder(
     modifier: Modifier = Modifier,
-    thumbnailShape: Shape = RoundedCornerShape(ThumbnailCornerRadius),
+    thumbnailShape: Shape? = null,
 ) {
+    val visuals = LocalSongListVisuals.current
+    val resolvedThumbnailShape = thumbnailShape ?: RoundedCornerShape(visuals.thumbnailCornerRadius)
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier =
         modifier
-            .height(ListItemHeight)
+            .height(visuals.rowHeight)
             .padding(horizontal = 6.dp),
     ) {
         Spacer(
             modifier =
             Modifier
                 .padding(6.dp)
-                .size(ListThumbnailSize)
-                .clip(thumbnailShape)
+                .size(visuals.thumbnailSize)
+                .clip(resolvedThumbnailShape)
                 .background(MaterialTheme.colorScheme.onSurface),
         )
 
