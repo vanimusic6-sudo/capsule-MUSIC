@@ -21,6 +21,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.media3.exoplayer.offline.Download
@@ -79,6 +80,7 @@ internal fun SoundCloudTrackListItem(
     onArtistClick: (String) -> Unit,
     onMoreClick: () -> Unit,
     modifier: Modifier = Modifier,
+    thumbnailSize: Dp = ListThumbnailSize,
 ) {
     val downloadUtil = LocalDownloadUtil.current
     val mediaId = soundCloudMediaId(track.permalink)
@@ -127,7 +129,7 @@ internal fun SoundCloudTrackListItem(
                 isActive = isActive,
                 isPlaying = isPlaying,
                 shape = RoundedCornerShape(ThumbnailCornerRadius),
-                modifier = Modifier.size(ListThumbnailSize),
+                modifier = Modifier.size(thumbnailSize),
             )
         },
         trailingContent = {
