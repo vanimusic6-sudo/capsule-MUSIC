@@ -78,22 +78,13 @@ constructor(
         val providers = if (preferredProviderOnly) listOf(ordered.first()) else ordered
 
         /*
-         * The best-synced answer wins, not the first answer.
+         * Provider order is the contract: the first enabled source that returns actual readable
+         * lyrics wins immediately. Do not wait for slower providers merely to compare sync grades.
          *
-         * Taking the first non-empty result made the order decide quality, which is not what an
-         * order is for: a source near the top returning an untimed wall of text beat a source below
-         * it that lands on the syllable, every time, for every song. That is what "the lyrics rush
-         * or lag" actually is most of the time — not a bad timestamp, but a result that had no
-         * timestamps to begin with, or line ones from a community file nobody checked.
-         *
-         * So every enabled provider is still asked in the user's order, but what comes back is
-         * graded, and the order now only breaks ties between results of equal quality. Word-level
-         * sync stops the search immediately: nothing beats it, so asking anyone else is a request
-         * made for no reason.
+         * isMeaningfulLyrics() stays load-bearing here, especially for Paxsenix: an empty TTML or
+         * timings-only response is a miss and must fall through to the next provider rather than
+         * becoming a blank lyrics screen.
          */
-        var best: LyricsResult? = null
-        var bestQuality = LyricsSyncQuality.PLAIN
-
         for (provider in providers) {
             currentCoroutineContext().ensureActive()
             if (!provider.isEnabled(context)) continue
@@ -110,19 +101,14 @@ constructor(
                 currentCoroutineContext().ensureActive()
                 val lyrics = result.getOrNull()
                 if (lyrics != null && isMeaningfulLyrics(lyrics)) {
-                    val quality = lyricsSyncQuality(lyrics)
+                    val chosen = LyricsResult(provider.name, lyrics)
                     GlobalLog.append(
                         Log.DEBUG,
                         "LyricsHelper",
-                        "${provider.name} returned $quality lyrics",
+                        "Using first meaningful lyrics from ${provider.name} for ${mediaMetadata.title}",
                     )
-                    // Strictly better only: an equal grade leaves the earlier provider in place,
-                    // which is where the user's order still decides.
-                    if (best == null || quality > bestQuality) {
-                        best = LyricsResult(provider.name, lyrics)
-                        bestQuality = quality
-                    }
-                    if (bestQuality == LyricsSyncQuality.WORD) break
+                    cache.put(mediaMetadata.id, listOf(chosen))
+                    return lyrics
                 } else {
                     result.exceptionOrNull()?.let { reportProviderFailure(provider, it) }
                 }
@@ -133,14 +119,7 @@ constructor(
             }
         }
 
-        val chosen = best ?: return LYRICS_NOT_FOUND
-        GlobalLog.append(
-            Log.DEBUG,
-            "LyricsHelper",
-            "Using ${chosen.providerName} ($bestQuality) for ${mediaMetadata.title}",
-        )
-        cache.put(mediaMetadata.id, listOf(chosen))
-        return chosen.lyrics
+        return LYRICS_NOT_FOUND
     }
 
     suspend fun getAllLyrics(
