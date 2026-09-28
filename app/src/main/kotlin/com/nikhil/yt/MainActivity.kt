@@ -904,10 +904,17 @@ class MainActivity : ComponentActivity() {
 
                     var yearInMusicSavedPlayerAnchor by rememberSaveable { mutableIntStateOf(-1) }
                     var immersiveStatusBarRequested by remember { mutableStateOf(false) }
+                    var lyricsStatusBarRequested by remember { mutableStateOf(false) }
                     val onImmersiveStatusBarRequest: (Boolean) -> Unit =
                         remember {
                             { hidden ->
                                 immersiveStatusBarRequested = hidden
+                            }
+                        }
+                    val onLyricsStatusBarRequest: (Boolean) -> Unit =
+                        remember {
+                            { hidden ->
+                                lyricsStatusBarRequested = hidden
                             }
                         }
 
@@ -920,10 +927,16 @@ class MainActivity : ComponentActivity() {
                      * Keep the requests separate, but let the Activity be the only code that talks
                      * to WindowInsetsController.
                      */
-                    LaunchedEffect(isYearInMusicScreen, immersiveStatusBarRequested) {
+                    LaunchedEffect(
+                        isYearInMusicScreen,
+                        immersiveStatusBarRequested,
+                        lyricsStatusBarRequested,
+                    ) {
                         val controller = WindowCompat.getInsetsController(window, window.decorView)
                         val shouldHideStatusBar =
-                            isYearInMusicScreen || immersiveStatusBarRequested
+                            isYearInMusicScreen ||
+                                immersiveStatusBarRequested ||
+                                lyricsStatusBarRequested
                         if (shouldHideStatusBar) {
                             controller.systemBarsBehavior =
                                 WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
@@ -1263,6 +1276,7 @@ class MainActivity : ComponentActivity() {
                         LocalMenuState provides menuState,
                         LocalCapsuleDockVisible provides capsuleDockActuallyVisible,
                         LocalImmersiveStatusBarRequest provides onImmersiveStatusBarRequest,
+                        LocalLyricsStatusBarRequest provides onLyricsStatusBarRequest,
                     ) {
                         Row {
                             AnimatedVisibility(useRail && shouldShowNavigationBar) {
@@ -1967,6 +1981,8 @@ val LocalPlayerConnection =
 val LocalPlayerAwareWindowInsets =
     compositionLocalOf<WindowInsets> { error("No WindowInsets provided") }
 val LocalImmersiveStatusBarRequest =
+    staticCompositionLocalOf<(Boolean) -> Unit> { { } }
+val LocalLyricsStatusBarRequest =
     staticCompositionLocalOf<(Boolean) -> Unit> { { } }
 val LocalDownloadUtil = staticCompositionLocalOf<DownloadUtil> { error("No DownloadUtil provided") }
 val LocalSyncUtils = staticCompositionLocalOf<SyncUtils> { error("No SyncUtils provided") }
