@@ -6,10 +6,6 @@
 
 package com.nikhil.yt.ui.player
 
-import android.app.Activity
-import android.content.Context
-import android.content.ContextWrapper
-import android.view.Window
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -62,14 +58,11 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
-import androidx.core.view.ViewCompat
-import androidx.core.view.WindowCompat
-import androidx.core.view.WindowInsetsCompat
-import androidx.core.view.WindowInsetsControllerCompat
 import androidx.media3.common.Player
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 import coil3.compose.AsyncImage
+import com.nikhil.yt.LocalImmersiveStatusBarRequest
 import com.nikhil.yt.R
 import com.nikhil.yt.constants.CapsuleImmersiveAvOrderKey
 import com.nikhil.yt.constants.CapsuleImmersiveCanvasPositionsKey
@@ -202,6 +195,15 @@ internal fun immersiveUpperHazeColor(edge: Color): Color =
     lerp(edge, Color.White, 0.055f)
 
 /** How much of the sheet the cover takes before it starts to go. */
+internal const val ImmersiveStatusBarHideProgress = 0.62f
+
+internal fun immersiveStatusBarShouldHide(
+    open: Boolean,
+    expansionProgress: Float,
+): Boolean =
+    open &&
+        expansionProgress.coerceIn(0f, 1f) >= ImmersiveStatusBarHideProgress
+
 private const val ImmersiveArtworkFraction = 0.55f
 
 /**
@@ -305,14 +307,13 @@ fun CapsuleImmersiveContent(
     bottomPadding: Dp,
     open: Boolean = true,
     /**
-     * Whether the sheet has arrived, not merely left the bottom.
+     * Raw bottom-sheet travel from collapsed (0) to expanded (1).
      *
-     * The status bar is hidden on this and nothing else. Hiding it the moment a drag begins
-     * changes the window insets while the screens behind are still visible, and everything back
-     * there jumps up with the clock. Waiting until the player covers them means the layout
-     * behind still shifts, but under a sheet nobody can see through.
+     * System-bar geometry is now fixed independently of visibility, so Immersive no longer has
+     * to wait until the sheet physically touches the top. The status bar starts leaving during
+     * the final third of the player's travel and is already in motion before the sheet arrives.
      */
-    expanded: Boolean = open,
+    expansionProgress: Float = if (open) 1f else 0f,
 ) {
     val onScreen = appIsOnScreen()
     val visible = open && onScreen
@@ -356,44 +357,28 @@ fun CapsuleImmersiveContent(
     val presentingVideo = isVideo && videoFirstFrameRendered
 
     /*
-     * Immersive owns only the VISIBILITY of the status bar, never the screen geometry.
+     * Request fullscreen from the Activity instead of manipulating the Window here.
      *
-     * The app shell and the other player skins reserve system-bar size even while the bar is
-     * hidden, so taking the clock/battery strip away no longer moves any anchors. Also remember
-     * the state we inherited: if another full-screen surface had already hidden the status bar,
-     * leaving Immersive must not force it visible.
+     * This is deliberately progress-driven: at 62% of the trip the bar begins to leave while the
+     * player still has distance left, rather than disappearing only after the sheet hits the top.
+     * The request is foreground-gated so returning directly into an expanded Immersive player
+     * re-issues the hide request, and leaving the player always re-issues the matching show.
      */
-    val context = LocalContext.current
-    val hideSystemBars = expanded && onScreen
-    DisposableEffect(hideSystemBars) {
-        val window = context.immersiveWindow()
-        val decorView = window?.decorView
-        val controller =
-            if (window != null && decorView != null) {
-                WindowCompat.getInsetsController(window, decorView)
-            } else {
-                null
-            }
-        val statusBarWasVisible =
-            hideSystemBars &&
-                decorView?.let {
-                    ViewCompat.getRootWindowInsets(it)
-                        ?.isVisible(WindowInsetsCompat.Type.statusBars())
-                } == true
-        val previousSystemBarsBehavior = controller?.systemBarsBehavior
-
-        if (hideSystemBars && controller != null) {
-            controller.systemBarsBehavior =
-                WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
-            controller.hide(WindowInsetsCompat.Type.statusBars())
+    val requestStatusBarHidden = LocalImmersiveStatusBarRequest.current
+    val shouldHideSystemBars =
+        onScreen &&
+            immersiveStatusBarShouldHide(
+                open = open,
+                expansionProgress = expansionProgress,
+            )
+    DisposableEffect(requestStatusBarHidden, shouldHideSystemBars) {
+        if (shouldHideSystemBars) {
+            requestStatusBarHidden(true)
         }
 
         onDispose {
-            if (hideSystemBars && controller != null) {
-                if (statusBarWasVisible) {
-                    controller.show(WindowInsetsCompat.Type.statusBars())
-                }
-                previousSystemBarsBehavior?.let { controller.systemBarsBehavior = it }
+            if (shouldHideSystemBars) {
+                requestStatusBarHidden(false)
             }
         }
     }
@@ -1224,11 +1209,4 @@ fun CapsuleImmersiveContent(
     }
 }
 
-/** The Activity window behind a Composable, or null when there is not one to reach. */
-private tailrec fun Context.immersiveWindow(): Window? =
-    when (this) {
-        is Activity -> window
-        is ContextWrapper -> baseContext.immersiveWindow()
-        else -> null
-    }
 
