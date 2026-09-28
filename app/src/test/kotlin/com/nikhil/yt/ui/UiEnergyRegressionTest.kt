@@ -45,4 +45,10 @@ class UiEnergyRegressionTest {
         assertTrue(source.contains("CAPSULE_VISUAL_PREFETCH_SETTLE_MS = 1_200L"))
         assertTrue(source.contains("delay(CAPSULE_VISUAL_PREFETCH_SETTLE_MS)"))
     }
+
+    @Test
+    fun `single artist tracks do not preload chooser portraits`() {
+        val source = source("com/nikhil/yt/ui/component/ArtistSelectionItem.kt")
+        assertTrue(source.contains("if (targets.size < 2) return@LaunchedEffect"))
+    }
 }
