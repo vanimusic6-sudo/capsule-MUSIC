@@ -66,6 +66,7 @@ import coil3.compose.AsyncImage
 import coil3.request.CachePolicy
 import coil3.request.ImageRequest
 import coil3.request.crossfade
+import coil3.size.Size
 import kotlinx.coroutines.CoroutineScope
 import com.nikhil.yt.R
 import com.nikhil.yt.constants.GridThumbnailHeight
@@ -115,7 +116,6 @@ import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import com.nikhil.yt.innertube.toHighResThumbnail
 import com.nikhil.yt.viewmodels.HomeViewModel
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
@@ -131,6 +131,9 @@ fun QuickPicksSection(
     modifier: Modifier = Modifier
 ) {
     val distinctQuickPicks = remember(quickPicks) { quickPicks.distinctBy { it.id } }
+    val density = LocalDensity.current
+    val requestWidthPx = with(density) { 250.dp.roundToPx().coerceAtLeast(1) }
+    val requestHeightPx = with(density) { 290.dp.roundToPx().coerceAtLeast(1) }
 
     HorizontalUncontainedCarousel(
         state = rememberCarouselState { distinctQuickPicks.size },
@@ -143,6 +146,15 @@ fun QuickPicksSection(
     ) { index ->
         val song = distinctQuickPicks[index]
         val isActive = song.id == mediaMetadata?.id
+        val context = LocalContext.current
+        val artworkRequest =
+            remember(song.song.thumbnailUrl, requestWidthPx, requestHeightPx) {
+                ImageRequest.Builder(context)
+                    .data(song.song.thumbnailUrl)
+                    .size(Size(requestWidthPx, requestHeightPx))
+                    .crossfade(true)
+                    .build()
+            }
 
         Box(
             modifier = Modifier
@@ -173,10 +185,7 @@ fun QuickPicksSection(
                 )
         ) {
             AsyncImage(
-                model = ImageRequest.Builder(LocalContext.current)
-                    .data(song.song.thumbnailUrl?.toHighResThumbnail())
-                    .crossfade(true)
-                    .build(),
+                model = artworkRequest,
                 contentDescription = null,
                 contentScale = ContentScale.Crop,
                 modifier = Modifier.fillMaxSize()
