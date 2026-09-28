@@ -36,7 +36,11 @@ class LyricsProviderOrderTest {
     @Test fun theNewProvidersAreReachable() {
         val defaults = LyricsProviderOrder.supportedProviders
         assertTrue("LyricsPlus must be in the order", "LYRICS_PLUS" in defaults)
-        assertTrue("Paxsenix must be in the order", "PAXSENIX" in defaults)
+        assertTrue("Paxsenix Apple Music must be in the order", "PAXSENIX_APPLE_MUSIC" in defaults)
+        assertTrue("Paxsenix Spotify must be in the order", "PAXSENIX_SPOTIFY" in defaults)
+        assertTrue("Paxsenix Musixmatch must be in the order", "PAXSENIX_MUSIXMATCH" in defaults)
+        assertTrue("Paxsenix NetEase must be in the order", "PAXSENIX_NETEASE" in defaults)
+        assertTrue("Paxsenix YouTube must be in the order", "PAXSENIX_YOUTUBE" in defaults)
         assertTrue("Musixmatch must be in the order", "MUSIXMATCH" in defaults)
     }
 
@@ -65,9 +69,29 @@ class LyricsProviderOrderTest {
     }
 
     @Test fun duplicatesAndWhitespaceAndCaseAreTolerated() {
+        val resolved =
+            LyricsProviderOrder.resolve(
+                " paxsenix_apple_music , PAXSENIX_APPLE_MUSIC,better_lyrics ",
+            )
         assertEquals(
-            listOf("PAXSENIX", "BETTER_LYRICS"),
-            LyricsProviderOrder.resolve(" paxsenix , PAXSENIX,better_lyrics ").take(2),
+            listOf("PAXSENIX_APPLE_MUSIC", "BETTER_LYRICS"),
+            resolved.take(2),
+        )
+    }
+
+    @Test fun legacyPaxsenixExpandsInPlace() {
+        val resolved = LyricsProviderOrder.resolve("YOUTUBE,PAXSENIX,BETTER_LYRICS")
+        assertEquals(
+            listOf(
+                "YOUTUBE",
+                "PAXSENIX_APPLE_MUSIC",
+                "PAXSENIX_SPOTIFY",
+                "PAXSENIX_MUSIXMATCH",
+                "PAXSENIX_NETEASE",
+                "PAXSENIX_YOUTUBE",
+                "BETTER_LYRICS",
+            ),
+            resolved.take(7),
         )
     }
 
