@@ -16,6 +16,32 @@ private val Ceiling: Dp = immersiveArtworkHeight(100_000.dp)
 
 class CapsuleImmersiveContentTest {
     @Test
+    fun `status bar leaves before immersive player reaches the top`() {
+        assertTrue(!immersiveStatusBarShouldHide(open = true, expansionProgress = 0f))
+        assertTrue(
+            !immersiveStatusBarShouldHide(
+                open = true,
+                expansionProgress = ImmersiveStatusBarHideProgress - 0.01f,
+            ),
+        )
+        assertTrue(
+            immersiveStatusBarShouldHide(
+                open = true,
+                expansionProgress = ImmersiveStatusBarHideProgress,
+            ),
+        )
+        assertTrue(
+            "the trigger must happen before the sheet reaches its expanded anchor",
+            ImmersiveStatusBarHideProgress < 1f,
+        )
+    }
+
+    @Test
+    fun `collapsed or dismissed immersive player never owns the status bar`() {
+        assertTrue(!immersiveStatusBarShouldHide(open = false, expansionProgress = 1f))
+    }
+
+    @Test
     fun `smoky seam darkens downward without changing sampled hue source`() {
         val edge = Color(0.62f, 0.62f, 0.62f, 1f)
         val floor = Color(0.50f, 0.50f, 0.50f, 1f)
