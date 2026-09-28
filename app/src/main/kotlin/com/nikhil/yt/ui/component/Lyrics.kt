@@ -2017,15 +2017,12 @@ fun Lyrics(
 
                             Text(
                                 text = styledText,
-                                fontSize = lyricsTextSize.sp,
+                                fontSize = appleLayoutFontSize,
                                 color = lyricsBaseColor,
                                 textAlign = alignment,
                                 fontWeight = FontWeight.Bold,
                                 lineHeight = (lyricsTextSize * lyricsLineSpacing).sp,
-                                modifier = Modifier.graphicsLayer {
-                                    scaleX = 1f
-                                    scaleY = 1f
-                                }
+                                modifier = Modifier,
                             )
                         } else {
 
