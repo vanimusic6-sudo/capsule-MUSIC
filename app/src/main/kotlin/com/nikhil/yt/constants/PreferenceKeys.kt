@@ -53,6 +53,7 @@ val EnableNetEaseKey = booleanPreferencesKey("enableNetEase")
  * on knowingly rather than something that is simply on.
  */
 val EnablePaxsenixKey = booleanPreferencesKey("enablePaxsenix")
+val EnableMusixmatchKey = booleanPreferencesKey("enableMusixmatch")
 val HideExplicitKey = booleanPreferencesKey("hideExplicit")
 val HideVideoKey = booleanPreferencesKey("hideVideo")
 /** Experimental SoundCloud source (keeps the old preference name on existing installs). */
