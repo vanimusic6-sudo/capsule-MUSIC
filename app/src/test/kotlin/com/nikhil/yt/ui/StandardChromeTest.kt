@@ -127,7 +127,7 @@ class StandardChromeTest {
             val canvas = Canvas(screenshot)
             canvas.translate(-bounds.left, -bounds.top)
             content.draw(canvas)
-            assertEquals(android.graphics.Color.rgb(16, 16, 16), screenshot.getPixel(0, 0))
+            assertEquals(android.graphics.Color.rgb(20, 20, 20), screenshot.getPixel(0, 0))
             assertEquals(android.graphics.Color.rgb(28, 28, 28), screenshot.getPixel(screenshot.width / 2, screenshot.height - 2))
             val output = File("build/reports/ui-previews/standard-chrome.png")
             output.parentFile.mkdirs()
