@@ -26,7 +26,6 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBars
@@ -49,16 +48,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.platform.LocalConfiguration
-import androidx.compose.runtime.rememberCoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
-import kotlinx.coroutines.launch
-import me.bush.translator.Translator
-import me.bush.translator.Language
-import com.nikhil.yt.utils.TranslatorLanguages
-import com.nikhil.yt.utils.TranslatorLang
 import com.nikhil.yt.utils.reportRecoverableException
-import androidx.compose.runtime.produceState
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.TextFieldValue
@@ -79,7 +69,6 @@ import com.nikhil.yt.ui.component.NewAction
 import com.nikhil.yt.ui.component.NewActionGrid
 import com.nikhil.yt.ui.component.TextFieldDialog
 import com.nikhil.yt.viewmodels.LyricsMenuViewModel
-import java.util.UUID
 
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -98,8 +87,6 @@ fun LyricsMenu(
         mutableStateOf(false)
     }
 
-    var showTranslateDialog by rememberSaveable { mutableStateOf(false) }
-    val coroutineScope = rememberCoroutineScope()
 
     if (showEditDialog) {
         TextFieldDialog(
@@ -337,233 +324,6 @@ fun LyricsMenu(
     val configuration = LocalConfiguration.current
     val isPortrait = configuration.orientation == Configuration.ORIENTATION_PORTRAIT
 
-    // Translate dialog moved outside of action list
-        if (showTranslateDialog) {
-            val initialText = lyricsProvider()?.lyrics.orEmpty()
-            val (textFieldValue, setTextFieldValue) =
-                rememberSaveable(stateSaver = TextFieldValue.Saver) {
-                    mutableStateOf(TextFieldValue(text = initialText))
-                }
-
-            val languages by produceState(initialValue = emptyList<TranslatorLang>()) {
-                withContext(Dispatchers.IO) {
-                    value = TranslatorLanguages.load(context)
-                }
-            }
-            var expanded by remember { mutableStateOf(false) }
-            var selectedLanguageCode by rememberSaveable { mutableStateOf("ENGLISH") }
-            var isTranslating by remember { mutableStateOf(false) }
-            val selectedLanguageName =
-                languages.firstOrNull { it.code == selectedLanguageCode }?.name ?: selectedLanguageCode
-
-            DefaultDialog(
-                onDismiss = { showTranslateDialog = false },
-                icon = {
-                    Icon(painter = painterResource(R.drawable.translate), contentDescription = null)
-                },
-                title = { Text(stringResource(R.string.translate)) },
-                buttons = {
-                    TextButton(onClick = { showTranslateDialog = false }) {
-                        Text(stringResource(android.R.string.cancel))
-                    }
-                    Spacer(Modifier.width(8.dp))
-                    if (isTranslating) {
-                        VeluneLoader(size = 20.dp)
-                    } else {
-                        TextButton(onClick = {
-                            isTranslating = true
-                            val inputText = textFieldValue.text
-                            val languageCode = selectedLanguageCode
-                            val languageName = selectedLanguageName
-                            coroutineScope.launch {
-                                try {
-                                    val lang = try {
-                                        Language(languageCode)
-                                    } catch (e: Exception) {
-                                        try { Language(languageName) } catch (_: Exception) { null }
-                                    }
-
-                                    if (lang == null) {
-                                        Toast.makeText(
-                                            context,
-                                            "Unsupported language: $languageName",
-                                            Toast.LENGTH_SHORT
-                                        ).show()
-                                        return@launch
-                                    }
-
-                                    val translatedLyrics = withContext(Dispatchers.IO) {
-                                        val translator = Translator()
-
-                                        val lines = inputText.split("\n")
-                                        val tsRegex =
-                                            Regex("^((?:\\[[0-9]{2}:[0-9]{2}(?:\\.[0-9]+)?\\])+)")
-                                        val contents = mutableListOf<String?>()
-                                        val stampsFor = mutableListOf<String?>()
-
-                                        for (line in lines) {
-                                            val trimmed = line.trimEnd()
-                                            val m = tsRegex.find(trimmed)
-                                            if (m != null) {
-                                                val stamps = m.groupValues[1]
-                                                val content =
-                                                    trimmed.substring(m.range.last + 1).trimStart()
-                                                stampsFor.add(stamps)
-                                                contents.add(if (content.isBlank()) null else content)
-                                            } else {
-                                                stampsFor.add(null)
-                                                contents.add(if (trimmed.isBlank()) null else trimmed)
-                                            }
-                                        }
-
-                                        val translatableIndices =
-                                            contents.mapIndexedNotNull { idx, c -> if (c != null) idx else null }
-                                        val translatedMap = mutableMapOf<Int, String>()
-
-                                        if (translatableIndices.isNotEmpty()) {
-                                            var sep = "<<<SEP-${UUID.randomUUID()}>>>"
-                                            while (contents.any { it?.contains(sep) == true }) {
-                                                sep = "<<<SEP-${UUID.randomUUID()}>>>"
-                                            }
-
-                                            val maxCharsPerRequest = 4000
-                                            val maxItemsPerBatch = 50
-
-                                            var cursor = 0
-                                            while (cursor < translatableIndices.size) {
-                                                var currentChars = 0
-                                                val batchIndices = mutableListOf<Int>()
-                                                while (cursor < translatableIndices.size && batchIndices.size < maxItemsPerBatch) {
-                                                    val idx = translatableIndices[cursor]
-                                                    val piece = requireNotNull(contents[idx]) {
-                                                        "Translatable lyric at index $idx is missing"
-                                                    }
-                                                    val pieceLen = piece.length
-                                                    if (batchIndices.isEmpty() || currentChars + pieceLen + sep.length <= maxCharsPerRequest) {
-                                                        batchIndices.add(idx)
-                                                        currentChars += pieceLen + sep.length
-                                                        cursor++
-                                                    } else break
-                                                }
-
-                                                val batchTexts = batchIndices.map { idx ->
-                                                    requireNotNull(contents[idx]) {
-                                                        "Batched lyric at index $idx is missing"
-                                                    }
-                                                }
-                                                val joined = batchTexts.joinToString(separator = sep)
-                                                val translatedJoined =
-                                                    translator.translateBlocking(joined, lang).translatedText
-
-                                                val parts = translatedJoined.split(sep)
-                                                if (parts.size == batchTexts.size) {
-                                                    for (i in batchIndices.indices) {
-                                                        translatedMap[batchIndices[i]] = parts[i]
-                                                    }
-                                                } else {
-                                                    for (idx in batchIndices) {
-                                                        val original = requireNotNull(contents[idx]) {
-                                                            "Fallback lyric at index $idx is missing"
-                                                        }
-                                                        val singleTranslated = runCatching {
-                                                            translator.translateBlocking(original, lang).translatedText
-                                                        }.getOrNull() ?: original
-                                                        translatedMap[idx] = singleTranslated
-                                                    }
-                                                }
-                                            }
-                                        }
-
-                                        val out = mutableListOf<String>()
-                                        for (i in contents.indices) {
-                                            val stamp = stampsFor[i]
-                                            val c = contents[i]
-                                            if (c == null) {
-                                                if (stamp != null) out.add(stamp) else out.add("")
-                                            } else {
-                                                val translatedText = translatedMap[i] ?: c
-                                                if (stamp != null) out.add("$stamp $translatedText") else out.add(translatedText)
-                                            }
-                                        }
-
-                                        out.joinToString("\n")
-                                    }
-                                    viewModel.updateLyrics(mediaMetadataProvider(), translatedLyrics)
-                                    showTranslateDialog = false
-                                } catch (e: Exception) {
-                                    Toast.makeText(
-                                        context,
-                                        resources.getString(R.string.translation_failed) + ": " + (e.localizedMessage ?: e.toString()),
-                                        Toast.LENGTH_SHORT
-                                    ).show()
-                                } finally {
-                                    isTranslating = false
-                                }
-                            }
-                        }) {
-                            Text(stringResource(R.string.translate))
-                        }
-                    }
-                }
-            ) {
-                Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
-                    OutlinedTextField(
-                        value = textFieldValue,
-                        onValueChange = setTextFieldValue,
-                        singleLine = false,
-                        label = { Text(stringResource(R.string.lyrics)) },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .heightIn(min = 80.dp, max = 220.dp)
-                    )
-
-                    Spacer(Modifier.height(12.dp))
-
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(
-                            text = stringResource(R.string.language_label),
-                            modifier = Modifier.width(96.dp)
-                        )
-
-                        ExposedDropdownMenuBox(
-                            expanded = expanded,
-                            onExpandedChange = { expanded = it },
-                            modifier = Modifier.weight(1f),
-                        ) {
-                            OutlinedTextField(
-                                value = selectedLanguageName,
-                                onValueChange = {},
-                                readOnly = true,
-                                singleLine = true,
-                                trailingIcon = {
-                                    ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded)
-                                },
-                                modifier = Modifier
-                                    .menuAnchor()
-                                    .fillMaxWidth()
-                            )
-
-                            ExposedDropdownMenu(
-                                expanded = expanded,
-                                onDismissRequest = { expanded = false }
-                            ) {
-                                languages.forEach { lang ->
-                                    DropdownMenuItem(
-                                        text = { Text(lang.name) },
-                                        onClick = {
-                                            selectedLanguageCode = lang.code
-                                            expanded = false
-                                        }
-                                    )
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-
     LazyColumn(
         userScrollEnabled = !isPortrait,
         contentPadding = PaddingValues(
@@ -603,18 +363,6 @@ fun LyricsMenu(
                             viewModel.refetchLyrics(mediaMetadataProvider(), lyricsProvider())
                             onDismiss()
                         }
-                    ),
-                    NewAction(
-                        icon = {
-                            Icon(
-                                painter = painterResource(R.drawable.translate),
-                                contentDescription = null,
-                                modifier = Modifier.size(28.dp),
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        },
-                        text = stringResource(R.string.translate),
-                        onClick = { showTranslateDialog = true }
                     ),
                     NewAction(
                         icon = {
