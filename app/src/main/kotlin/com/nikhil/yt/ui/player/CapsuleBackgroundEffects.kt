@@ -81,18 +81,32 @@ private const val STATIC_BACKGROUND_TIME_MS = 6_480L
  * the display refresh rate even when its derived value changes less often.
  */
 @Composable
-private fun rememberCapsuleAnimationTime(compact: Boolean): State<Long> {
-    val time = remember { mutableLongStateOf(SystemClock.elapsedRealtime()) }
+private fun rememberCapsuleAnimationTime(
+    compact: Boolean,
+    running: Boolean = true,
+): State<Long> {
+    /*
+     * This is an animation timeline, not wall-clock time.
+     *
+     * Using SystemClock.elapsedRealtime() directly makes paused backgrounds jump to a different
+     * phase when animated=false and jump again on resume. Accumulate only the time spent running
+     * instead, so pause means a real freeze of the current frame.
+     */
+    val time = remember { mutableLongStateOf(STATIC_BACKGROUND_TIME_MS) }
     val isVisible = appIsOnScreen()
     val framesPerSecond =
         if (compact) COMPACT_BACKGROUND_FPS else FULL_BACKGROUND_FPS
     val frameDelayMs = 1_000L / framesPerSecond
 
-    LaunchedEffect(compact, isVisible) {
-        if (!isVisible) return@LaunchedEffect
+    LaunchedEffect(compact, isVisible, running) {
+        if (!isVisible || !running) return@LaunchedEffect
 
+        var previousTick = SystemClock.elapsedRealtime()
         while (isActive) {
-            time.longValue = SystemClock.elapsedRealtime()
+            val now = SystemClock.elapsedRealtime()
+            val delta = (now - previousTick).coerceIn(0L, frameDelayMs * 3L)
+            time.longValue += delta
+            previousTick = now
             delay(frameDelayMs)
         }
     }
@@ -120,13 +134,13 @@ internal fun CapsuleProceduralBackground(
             ).map(::capsuleMutedArtworkColor)
         }
     val motionEnabled = LocalCapsuleBackgroundMotionEnabled.current
+    val needsClock = capsuleBackgroundNeedsClock(effect)
     val time =
-        if (
-            animated &&
-            motionEnabled &&
-            capsuleBackgroundNeedsClock(effect)
-        ) {
-            rememberCapsuleAnimationTime(compact = compact)
+        if (needsClock) {
+            rememberCapsuleAnimationTime(
+                compact = compact,
+                running = animated && motionEnabled,
+            )
         } else {
             null
         }
