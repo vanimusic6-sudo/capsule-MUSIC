@@ -905,6 +905,7 @@ class MainActivity : ComponentActivity() {
                     var yearInMusicSavedPlayerAnchor by rememberSaveable { mutableIntStateOf(-1) }
                     var immersiveStatusBarRequested by remember { mutableStateOf(false) }
                     var lyricsStatusBarRequested by remember { mutableStateOf(false) }
+                    var lyricsStatusBarRequestGeneration by remember { mutableIntStateOf(0) }
                     val onImmersiveStatusBarRequest: (Boolean) -> Unit =
                         remember {
                             { hidden ->
@@ -915,6 +916,11 @@ class MainActivity : ComponentActivity() {
                         remember {
                             { hidden ->
                                 lyricsStatusBarRequested = hidden
+                                if (hidden) {
+                                    // Material sheets may transiently restore system bars. Bump a
+                                    // generation so an identical "hide" request is still re-applied.
+                                    lyricsStatusBarRequestGeneration++
+                                }
                             }
                         }
 
@@ -931,6 +937,7 @@ class MainActivity : ComponentActivity() {
                         isYearInMusicScreen,
                         immersiveStatusBarRequested,
                         lyricsStatusBarRequested,
+                        lyricsStatusBarRequestGeneration,
                     ) {
                         val controller = WindowCompat.getInsetsController(window, window.decorView)
                         val shouldHideStatusBar =
