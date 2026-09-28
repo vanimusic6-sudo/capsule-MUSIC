@@ -67,7 +67,7 @@ object LyricsProviderOrder {
             raw
                 .orEmpty()
                 .split(',')
-                .map(::normalize)
+                .flatMap { expandLegacy(normalize(it)) }
                 .filter { it in supportedSet }
                 .distinct()
 
@@ -81,6 +81,19 @@ object LyricsProviderOrder {
     }
 
     fun encode(order: List<String>): String = resolve(order.joinToString(",")).joinToString(",")
+
+    private fun expandLegacy(value: String): List<String> =
+        when (value) {
+            "PAXSENIX" ->
+                listOf(
+                    PAXSENIX_APPLE_MUSIC,
+                    PAXSENIX_SPOTIFY,
+                    PAXSENIX_MUSIXMATCH,
+                    PAXSENIX_NETEASE,
+                    PAXSENIX_YOUTUBE,
+                )
+            else -> listOf(value)
+        }
 
     private fun normalize(value: String): String = value.trim().uppercase()
 }
