@@ -99,6 +99,7 @@ fun CapsuleLyricsContent(
     onMenuClick: () -> Unit,
     onSeekPreview: (Long) -> Unit,
     onSeekFinished: () -> Unit,
+    isVisible: Boolean = true,
     modifier: Modifier = Modifier,
 ) {
     val playerConnection =
@@ -378,6 +379,7 @@ fun CapsuleLyricsContent(
                 sliderPositionProvider = {
                     sliderPosition
                 },
+                isVisible = isVisible,
             )
         }
 
