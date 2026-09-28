@@ -10,6 +10,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.graphicsLayer
 import com.nikhil.yt.ui.motion.CapsuleStandardEasing
@@ -26,6 +27,10 @@ internal fun CapsuleSubscribeIcon(
     tint: Color,
     modifier: Modifier = Modifier,
     glyphScale: Float = 1f,
+    plusSpanScale: Float = 1f,
+    crossSpanScale: Float = 1f,
+    strokeScale: Float = 1f,
+    flattenAlpha: Boolean = false,
 ) {
     val mountedAt = remember { SystemClock.uptimeMillis() }
     val progress = remember {
@@ -49,6 +54,12 @@ internal fun CapsuleSubscribeIcon(
     Canvas(
         modifier.graphicsLayer {
             rotationZ = 45f * progress.value
+            if (flattenAlpha) {
+                // Apply translucency once to the complete glyph. Drawing two translucent strokes
+                // separately makes the + intersection visibly brighter than its arms.
+                alpha = tint.alpha
+                compositingStrategy = CompositingStrategy.Offscreen
+            }
         },
     ) {
         val unit = minOf(size.width, size.height) / 24f
@@ -61,17 +72,25 @@ internal fun CapsuleSubscribeIcon(
             Offset(origin.x + x * unit, origin.y + y * unit)
 
         val safeGlyphScale = glyphScale.coerceIn(0.75f, 1.45f)
-        val halfSpan = 6.8f * safeGlyphScale
-        val stroke = 2.15f * unit * (0.92f + 0.08f * safeGlyphScale)
+        val safePlusSpan = plusSpanScale.coerceIn(0.65f, 1.25f)
+        val safeCrossSpan = crossSpanScale.coerceIn(0.65f, 1.25f)
+        val stateSpanScale =
+            safePlusSpan + (safeCrossSpan - safePlusSpan) * progress.value.coerceIn(0f, 1f)
+        val halfSpan = 6.8f * safeGlyphScale * stateSpanScale
+        val stroke =
+            2.15f * unit *
+                (0.92f + 0.08f * safeGlyphScale) *
+                strokeScale.coerceIn(0.65f, 1.20f)
+        val drawTint = if (flattenAlpha) tint.copy(alpha = 1f) else tint
         drawLine(
-            tint,
+            drawTint,
             point(12f - halfSpan, 12f),
             point(12f + halfSpan, 12f),
             strokeWidth = stroke,
             cap = StrokeCap.Round,
         )
         drawLine(
-            tint,
+            drawTint,
             point(12f, 12f - halfSpan),
             point(12f, 12f + halfSpan),
             strokeWidth = stroke,
