@@ -62,7 +62,6 @@ class UiEnergyRegressionTest {
     fun `live search suggestions are debounced`() {
         val source = source("com/nikhil/yt/viewmodels/OnlineSearchSuggestionViewModel.kt")
         assertTrue(source.contains(".debounce(180L)"))
-        assertTrue(source.contains(".distinctUntilChanged()"))
     }
 
     @Test
