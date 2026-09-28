@@ -26,6 +26,13 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonNull
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.longOrNull
 import timber.log.Timber
 import kotlin.math.abs
 
@@ -93,10 +100,17 @@ object PaxsenixLyricsProvider : LyricsProvider {
     private const val APPLE_CATALOG = "https://amp-api.music.apple.com/v1/catalog/us"
     private const val APPLE_WEB = "https://beta.music.apple.com"
 
+    private val json =
+        Json {
+            isLenient = true
+            ignoreUnknownKeys = true
+            explicitNulls = false
+        }
+
     private val client by lazy {
         HttpClient(OkHttp) {
             install(ContentNegotiation) {
-                json(Json { isLenient = true; ignoreUnknownKeys = true })
+                json(json)
             }
             install(HttpTimeout) {
                 requestTimeoutMillis = 15_000
@@ -126,16 +140,61 @@ object PaxsenixLyricsProvider : LyricsProvider {
             return Result.failure(NoLyricsFromProvider("Paxsenix needs a title"))
         }
 
-        val candidates = search(title, artist, album, duration)
-        if (candidates.isEmpty()) {
-            return Result.failure(NoLyricsFromProvider("No Apple Music match for the track"))
+        val backends: List<Pair<String, suspend () -> String?>> =
+            listOf(
+                "Apple Music" to { fetchAppleMusic(title, artist, album, duration) },
+                "NetEase" to { fetchNetEase(title, artist, duration) },
+                "Spotify" to { fetchSpotify(title, artist, duration) },
+                "Musixmatch" to { fetchPaxsenixMusixmatch(title, artist, duration) },
+            )
+
+        for ((backend, fetch) in backends) {
+            val lyrics =
+                runCatchingCancellable { fetch() }
+                    .onFailure { Timber.tag(name).d(it, "%s backend failed", backend) }
+                    .getOrNull()
+            if (!lyrics.isNullOrBlank()) return Result.success(lyrics)
         }
 
-        for (track in candidates.take(MAX_TRACKS_TRIED)) {
-            val lyrics = fetchLyrics(track.id) ?: continue
-            return Result.success(lyrics)
+        return Result.failure(NoLyricsFromProvider("No Paxsenix backend returned lyrics"))
+    }
+
+    override suspend fun getAllLyrics(
+        id: String,
+        title: String,
+        artist: String,
+        album: String?,
+        duration: Int,
+        callback: (String) -> Unit,
+    ) {
+        if (title.isBlank()) return
+
+        val seen = LinkedHashSet<String>()
+        val backends: List<suspend () -> String?> =
+            listOf(
+                { fetchAppleMusic(title, artist, album, duration) },
+                { fetchNetEase(title, artist, duration) },
+                { fetchSpotify(title, artist, duration) },
+                { fetchPaxsenixMusixmatch(title, artist, duration) },
+            )
+
+        for (fetch in backends) {
+            val lyrics = runCatchingCancellable { fetch() }.getOrNull()?.trim().orEmpty()
+            if (lyrics.isNotEmpty() && seen.add(lyrics)) callback(lyrics)
         }
-        return Result.failure(NoLyricsFromProvider("Matched tracks had no lyrics"))
+    }
+
+    private suspend fun fetchAppleMusic(
+        title: String,
+        artist: String,
+        album: String?,
+        duration: Int,
+    ): String? {
+        val candidates = search(title, artist, album, duration)
+        for (track in candidates.take(MAX_TRACKS_TRIED)) {
+            fetchLyrics(track.id)?.let { return it }
+        }
+        return null
     }
 
     private suspend fun search(
@@ -268,6 +327,293 @@ object PaxsenixLyricsProvider : LyricsProvider {
             ?: body.elrcMultiPerson?.takeIf { it.isNotBlank() }
             ?: body.elrc?.takeIf { it.isNotBlank() }
             ?: body.plain?.takeIf { it.isNotBlank() }
+    }
+
+
+    private data class RelayTrack(
+        val id: String,
+        val title: String,
+        val artist: String,
+        val durationMs: Long,
+    )
+
+    private suspend fun fetchSpotify(
+        title: String,
+        artist: String,
+        duration: Int,
+    ): String? {
+        val track =
+            searchRelayTrack(
+                path = "spotify/search",
+                title = title,
+                artist = artist,
+                durationMs = duration.coerceAtLeast(0) * 1_000L,
+            ) ?: return null
+
+        val response =
+            runCatchingCancellable {
+                client.get("$RELAY/spotify/lyrics") {
+                    parameter("id", track.id)
+                }
+            }.getOrNull() ?: return null
+        if (!response.status.isSuccess()) return null
+        return parseRelayLyrics(response.bodyAsText())
+    }
+
+    private suspend fun fetchNetEase(
+        title: String,
+        artist: String,
+        duration: Int,
+    ): String? {
+        val track =
+            searchRelayTrack(
+                path = "netease/search",
+                title = title,
+                artist = artist,
+                durationMs = duration.coerceAtLeast(0) * 1_000L,
+            ) ?: return null
+
+        val response =
+            runCatchingCancellable {
+                client.get("$RELAY/netease/lyrics") {
+                    parameter("id", track.id)
+                    parameter("word", "true")
+                }
+            }.getOrNull() ?: return null
+        if (!response.status.isSuccess()) return null
+        return parseRelayLyrics(response.bodyAsText())
+    }
+
+    private suspend fun fetchPaxsenixMusixmatch(
+        title: String,
+        artist: String,
+        duration: Int,
+    ): String? {
+        val query = "$title $artist".trim()
+        for (type in listOf("word", null)) {
+            val response =
+                runCatchingCancellable {
+                    client.get("$RELAY/musixmatch/lyrics") {
+                        parameter("q", query)
+                        parameter("t", title)
+                        parameter("a", artist)
+                        if (duration > 0) parameter("d", duration)
+                        if (type != null) parameter("type", type)
+                    }
+                }.getOrNull() ?: continue
+            if (!response.status.isSuccess()) continue
+            parseRelayLyrics(response.bodyAsText())?.let { return it }
+        }
+        return null
+    }
+
+    private suspend fun searchRelayTrack(
+        path: String,
+        title: String,
+        artist: String,
+        durationMs: Long,
+    ): RelayTrack? {
+        val response =
+            runCatchingCancellable {
+                client.get("$RELAY/$path") {
+                    parameter("q", "$title $artist".trim())
+                }
+            }.getOrNull() ?: return null
+        if (!response.status.isSuccess()) return null
+
+        val root =
+            runCatchingCancellable {
+                json.parseToJsonElement(response.bodyAsText())
+            }.getOrNull() ?: return null
+
+        val candidates = buildList { root.collectRelayTracks(this) }
+        return candidates
+            .map { it to relayScore(it, title, artist, durationMs) }
+            .filter { it.second > 0 }
+            .maxByOrNull { it.second }
+            ?.first
+    }
+
+    private fun JsonElement.collectRelayTracks(destination: MutableList<RelayTrack>) {
+        when (this) {
+            is JsonArray -> forEach { it.collectRelayTracks(destination) }
+            is JsonObject -> {
+                toRelayTrack()?.let(destination::add)
+                values.forEach { it.collectRelayTracks(destination) }
+            }
+            else -> Unit
+        }
+    }
+
+    private fun JsonObject.toRelayTrack(): RelayTrack? {
+        val details = (this["attributes"] as? JsonObject) ?: this
+        val id =
+            firstString("realId", "id", "trackId", "track_id")
+                ?: details.firstString("realId", "id", "trackId", "track_id")
+                ?: return null
+        val title = details.firstString("name", "title", "trackName", "track_name") ?: return null
+        val artist =
+            details.firstString("artistName", "artist_name")
+                ?: details.artistNames().orEmpty()
+        val duration =
+            details.firstLong("durationInMillis", "durationMs", "duration_ms", "duration", "dt")
+                .toDurationMs()
+        return RelayTrack(id, title, artist, duration)
+    }
+
+    private fun JsonObject.firstString(vararg keys: String): String? =
+        keys
+            .asSequence()
+            .mapNotNull { key -> (this[key] as? JsonPrimitive)?.contentOrNull }
+            .map(String::trim)
+            .firstOrNull(String::isNotEmpty)
+
+    private fun JsonObject.firstLong(vararg keys: String): Long? =
+        keys
+            .asSequence()
+            .mapNotNull { key -> (this[key] as? JsonPrimitive)?.longOrNull }
+            .firstOrNull()
+
+    private fun JsonObject.artistNames(): String? {
+        val artists = this["artists"] ?: this["ar"] ?: this["artist"] ?: return null
+        return when (artists) {
+            is JsonPrimitive -> artists.contentOrNull
+            is JsonObject -> artists.firstString("name", "artistName", "title")
+            is JsonArray ->
+                artists
+                    .mapNotNull { value ->
+                        when (value) {
+                            is JsonPrimitive -> value.contentOrNull
+                            is JsonObject -> value.firstString("name", "artistName", "title")
+                            else -> null
+                        }
+                    }.joinToString(", ")
+                    .takeIf(String::isNotBlank)
+            else -> null
+        }
+    }
+
+    private fun Long?.toDurationMs(): Long =
+        when {
+            this == null || this <= 0L -> 0L
+            this < 10_000L -> this * 1_000L
+            else -> this
+        }
+
+    private fun relayScore(
+        track: RelayTrack,
+        title: String,
+        artist: String,
+        durationMs: Long,
+    ): Int {
+        val wantedTitle = LyricsQueryCleanup.title(title)
+        val wantedArtist = LyricsQueryCleanup.artist(artist)
+        var score = 0
+
+        score +=
+            when {
+                track.title.equals(wantedTitle, ignoreCase = true) -> 40
+                track.title.contains(wantedTitle, ignoreCase = true) ||
+                    wantedTitle.contains(track.title, ignoreCase = true) -> 20
+                else -> 0
+            }
+        if (wantedArtist.isNotBlank()) {
+            score +=
+                when {
+                    track.artist.equals(wantedArtist, ignoreCase = true) -> 30
+                    track.artist.contains(wantedArtist, ignoreCase = true) ||
+                        wantedArtist.contains(track.artist, ignoreCase = true) -> 12
+                    else -> 0
+                }
+        }
+        if (durationMs > 0L && track.durationMs > 0L) {
+            val gap = abs(durationMs - track.durationMs)
+            score +=
+                when {
+                    gap <= 2_500L -> 30
+                    gap <= 6_000L -> 16
+                    gap <= 10_000L -> 6
+                    else -> -25
+                }
+        }
+        return score
+    }
+
+    private val relayLyricsKeys =
+        listOf("lyrics", "lrc", "content", "text", "plainLyrics", "syncedLyrics", "line", "lyric")
+
+    private fun parseRelayLyrics(raw: String): String? {
+        val trimmed = raw.trim()
+        if (trimmed.isEmpty()) return null
+        if (trimmed.startsWith("<tt") || trimmed.startsWith("<?xml")) return trimmed
+
+        val payload = runCatching { json.parseToJsonElement(trimmed) }.getOrNull() ?: return trimmed
+        return extractRelayLyrics(payload)
+    }
+
+    private fun extractRelayLyrics(element: JsonElement): String? =
+        when (element) {
+            JsonNull -> null
+            is JsonPrimitive ->
+                if (element.isString) {
+                    element.content.trim().takeIf(String::isNotEmpty)?.let { value ->
+                        val nested = runCatching { json.parseToJsonElement(value) }.getOrNull()
+                        if (nested != null && nested !is JsonPrimitive) extractRelayLyrics(nested) else value
+                    }
+                } else {
+                    null
+                }
+
+            is JsonArray ->
+                relayLinesToLrc(element)
+                    ?: element.mapNotNull(::extractRelayLyrics).joinToString("\n").trim().takeIf(String::isNotEmpty)
+
+            is JsonObject -> {
+                (element["klyric"] as? JsonObject)
+                    ?.get("lyric")
+                    ?.let(::extractRelayLyrics)
+                    ?: (element["lrc"] as? JsonObject)
+                        ?.get("lyric")
+                        ?.let(::extractRelayLyrics)
+                    ?: relayLyricsKeys
+                        .asSequence()
+                        .mapNotNull { key -> element[key]?.let(::extractRelayLyrics) }
+                        .firstOrNull()
+                    ?: element["metadata"]?.let(::extractRelayLyrics)
+                    ?: element["words"]?.let(::extractRelayLyrics)
+            }
+        }
+
+    private fun relayLinesToLrc(lines: JsonArray): String? {
+        val converted =
+            lines.mapNotNull { value ->
+                val obj = value as? JsonObject ?: return@mapNotNull null
+                val text =
+                    obj.firstString("words", "text", "line", "lyric")
+                        ?.takeIf(String::isNotBlank)
+                        ?: return@mapNotNull null
+
+                val timeTag = obj.firstString("timeTag", "time_tag")
+                val millis =
+                    obj.firstLong("startTimeMs", "start_time_ms", "timestamp", "time")
+                        ?.toDurationMs()
+
+                when {
+                    !timeTag.isNullOrBlank() -> "[" + timeTag.removePrefix("[").removeSuffix("]") + "]" + text
+                    millis != null && millis > 0L -> lrcStamp(millis) + text
+                    else -> text
+                }
+            }
+        if (converted.isEmpty()) return null
+        return converted.joinToString("\n")
+    }
+
+    private fun lrcStamp(millis: Long): String {
+        val safe = millis.coerceAtLeast(0L)
+        val minutes = safe / 60_000L
+        val seconds = (safe / 1_000L) % 60L
+        val hundredths = (safe % 1_000L) / 10L
+        return "[%02d:%02d.%02d]".format(minutes, seconds, hundredths)
     }
 
     private suspend fun appleToken(): String? {
