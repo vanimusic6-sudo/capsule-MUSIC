@@ -17,6 +17,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.res.Configuration
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
@@ -74,6 +75,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotate
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
@@ -130,6 +132,23 @@ import kotlin.math.sin
 
 private val CapsuleArtworkShape =
     RoundedCornerShape(24.dp)
+
+private data class CapsuleArtworkFrame(
+    val mediaId: String,
+    val imageUrl: String?,
+    val title: String,
+    val queueIndex: Int,
+)
+
+internal fun capsuleArtworkSlideDirection(
+    fromIndex: Int,
+    toIndex: Int,
+): Int =
+    if (fromIndex >= 0 && toIndex >= 0 && toIndex < fromIndex) {
+        -1
+    } else {
+        1
+    }
 
 private val CapsuleControlsShape =
     RoundedCornerShape(24.dp)
@@ -337,6 +356,9 @@ fun CapsulePlayerContent(
     val playbackError by
         playerConnection.error.collectAsState()
 
+    val currentArtworkQueueIndex by
+        playerConnection.currentMediaItemIndex.collectAsState()
+
     val canSkipPrevious by
         playerConnection.canSkipPrevious.collectAsState()
 
@@ -525,6 +547,69 @@ fun CapsulePlayerContent(
         )
     }
 
+    val incomingArtworkFrame =
+        remember(
+            mediaMetadata.id,
+            mediaMetadata.thumbnailUrl,
+            mediaMetadata.title,
+            currentArtworkQueueIndex,
+        ) {
+            CapsuleArtworkFrame(
+                mediaId = mediaMetadata.id,
+                imageUrl =
+                    mediaMetadata.thumbnailUrl?.let { artwork ->
+                        // YouTube's =w540 rewrite must never touch SoundCloud CDN query strings.
+                        if (mediaMetadata.id.startsWith("soundcloud:")) artwork
+                        else artwork.toHighResThumbnail()
+                    },
+                title = mediaMetadata.title,
+                queueIndex = currentArtworkQueueIndex,
+            )
+        }
+    var shownArtworkFrame by remember { mutableStateOf(incomingArtworkFrame) }
+    var outgoingArtworkFrame by remember { mutableStateOf<CapsuleArtworkFrame?>(null) }
+    var artworkSlideDirection by remember { mutableStateOf(1) }
+    val artworkSwapProgress = remember { Animatable(1f) }
+
+    LaunchedEffect(incomingArtworkFrame, visible) {
+        // Full-player content stays composed while closed/backgrounded. Do not spend frames on an
+        // animation nobody can see, and do not replay it merely because the app came back.
+        if (!visible) {
+            outgoingArtworkFrame = null
+            shownArtworkFrame = incomingArtworkFrame
+            artworkSwapProgress.snapTo(1f)
+            return@LaunchedEffect
+        }
+
+        if (incomingArtworkFrame.mediaId == shownArtworkFrame.mediaId) {
+            // Thumbnail quality/index metadata can settle a moment after the media transition.
+            // Update the frame in place; this is still the same song and must not slide twice.
+            shownArtworkFrame = incomingArtworkFrame
+            return@LaunchedEffect
+        }
+
+        val previous = shownArtworkFrame
+        artworkSlideDirection =
+            capsuleArtworkSlideDirection(
+                fromIndex = previous.queueIndex,
+                toIndex = incomingArtworkFrame.queueIndex,
+            )
+        outgoingArtworkFrame = previous
+        shownArtworkFrame = incomingArtworkFrame
+        artworkSwapProgress.snapTo(0f)
+        artworkSwapProgress.animateTo(
+            targetValue = 1f,
+            animationSpec =
+                tween(
+                    durationMillis = 340,
+                    easing = FastOutSlowInEasing,
+                ),
+        )
+        if (shownArtworkFrame.mediaId == incomingArtworkFrame.mediaId) {
+            outgoingArtworkFrame = null
+        }
+    }
+
     val onPlayPause: () -> Unit = {
         if (!isListenTogetherGuest) {
             if (playbackState == Player.STATE_ENDED) {
@@ -631,33 +716,58 @@ fun CapsulePlayerContent(
                             modifier = Modifier.size(72.dp),
                         )
                     } else {
-                        AsyncImage(
-                            model = mediaMetadata.thumbnailUrl?.let { artwork ->
-                                // YouTube's =w540 URL rewrite corrupts SoundCloud CDN URLs
-                                // with query parameters; their full-size art is selected at search.
-                                if (mediaMetadata.id.startsWith("soundcloud:")) artwork
-                                else artwork.toHighResThumbnail()
-                            },
-                            contentDescription = mediaMetadata.title,
-                            contentScale =
-                                if (
-                                    cropAlbumArt ||
-                                    (
-                                        useClayLayout &&
-                                            (
-                                                artworkResizeActive ||
-                                                    abs(lightArtworkWidthScale - 1f) > 0.01f ||
-                                                    abs(lightArtworkHeightScale - 1f) > 0.01f
+                        val artworkContentScale =
+                            if (
+                                cropAlbumArt ||
+                                (
+                                    useClayLayout &&
+                                        (
+                                            artworkResizeActive ||
+                                                abs(lightArtworkWidthScale - 1f) > 0.01f ||
+                                                abs(lightArtworkHeightScale - 1f) > 0.01f
                                             )
-                                    )
-                                ) {
-                                    // Once the user reshapes the artwork frame, the image follows
-                                    // that frame by cropping instead of leaving Fit letterboxing.
-                                    ContentScale.Crop
-                                } else {
-                                    ContentScale.Fit
-                                },
-                            modifier = Modifier.fillMaxSize(),
+                                )
+                            ) {
+                                // Once the user reshapes the artwork frame, the image follows
+                                // that frame by cropping instead of leaving Fit letterboxing.
+                                ContentScale.Crop
+                            } else {
+                                ContentScale.Fit
+                            }
+
+                        // Both images live in the same clipped artwork viewport. The old cover
+                        // leaves while the new one physically pushes in from the opposite side.
+                        outgoingArtworkFrame?.let { outgoing ->
+                            AsyncImage(
+                                model = outgoing.imageUrl,
+                                contentDescription = null,
+                                contentScale = artworkContentScale,
+                                modifier =
+                                    Modifier
+                                        .fillMaxSize()
+                                        .graphicsLayer {
+                                            translationX =
+                                                -size.width *
+                                                    artworkSwapProgress.value *
+                                                    artworkSlideDirection
+                                        },
+                            )
+                        }
+
+                        val shown = shownArtworkFrame
+                        AsyncImage(
+                            model = shown.imageUrl,
+                            contentDescription = shown.title,
+                            contentScale = artworkContentScale,
+                            modifier =
+                                Modifier
+                                    .fillMaxSize()
+                                    .graphicsLayer {
+                                        translationX =
+                                            size.width *
+                                                (1f - artworkSwapProgress.value) *
+                                                artworkSlideDirection
+                                    },
                         )
                     }
                 }
