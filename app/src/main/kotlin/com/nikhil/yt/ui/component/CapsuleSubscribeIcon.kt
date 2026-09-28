@@ -25,6 +25,7 @@ internal fun CapsuleSubscribeIcon(
     subscribed: Boolean,
     tint: Color,
     modifier: Modifier = Modifier,
+    glyphScale: Float = 1f,
 ) {
     val mountedAt = remember { SystemClock.uptimeMillis() }
     val progress = remember {
@@ -59,18 +60,20 @@ internal fun CapsuleSubscribeIcon(
         fun point(x: Float, y: Float): Offset =
             Offset(origin.x + x * unit, origin.y + y * unit)
 
-        val stroke = 2.15f * unit
+        val safeGlyphScale = glyphScale.coerceIn(0.75f, 1.45f)
+        val halfSpan = 6.8f * safeGlyphScale
+        val stroke = 2.15f * unit * (0.92f + 0.08f * safeGlyphScale)
         drawLine(
             tint,
-            point(5.2f, 12f),
-            point(18.8f, 12f),
+            point(12f - halfSpan, 12f),
+            point(12f + halfSpan, 12f),
             strokeWidth = stroke,
             cap = StrokeCap.Round,
         )
         drawLine(
             tint,
-            point(12f, 5.2f),
-            point(12f, 18.8f),
+            point(12f, 12f - halfSpan),
+            point(12f, 12f + halfSpan),
             strokeWidth = stroke,
             cap = StrokeCap.Round,
         )
