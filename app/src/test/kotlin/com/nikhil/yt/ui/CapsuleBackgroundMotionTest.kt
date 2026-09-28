@@ -1,5 +1,6 @@
 package com.nikhil.yt.ui
 
+import java.io.File
 import com.nikhil.yt.ui.player.CONSTELLATION_PERIOD_MS
 import com.nikhil.yt.ui.player.CapsuleBackgroundEffect
 import com.nikhil.yt.ui.player.capsuleBackgroundAngle
@@ -56,5 +57,22 @@ class CapsuleBackgroundMotionTest {
         for (time in 0L..(2L * CONSTELLATION_PERIOD_MS) step 113L) {
             assertTrue(constellationBlend(time).nextAlpha in 0f..1f)
         }
+    }
+
+    @Test fun proceduralBackgroundPauseKeepsItsCurrentAnimationPhase() {
+        val candidates =
+            listOf(
+                File("src/main/kotlin/com/nikhil/yt/ui/player/CapsuleBackgroundEffects.kt"),
+                File("app/src/main/kotlin/com/nikhil/yt/ui/player/CapsuleBackgroundEffects.kt"),
+            )
+        val source =
+            candidates.firstOrNull(File::isFile)?.readText()
+                ?: error("Could not find CapsuleBackgroundEffects.kt")
+
+        assertTrue(source.contains("running: Boolean = true"))
+        assertTrue(source.contains("if (!isVisible || !running) return@LaunchedEffect"))
+        assertTrue(source.contains("time.longValue += delta"))
+        assertTrue(source.contains("running = animated && motionEnabled"))
+        assertFalse(source.contains("animated &&\n            motionEnabled &&\n            capsuleBackgroundNeedsClock(effect)"))
     }
 }
