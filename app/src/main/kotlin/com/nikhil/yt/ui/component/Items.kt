@@ -308,6 +308,7 @@ fun SongListItem(
     isPlaying: Boolean = false,
     isSwipeable: Boolean = true,
     showSourceIcon: Boolean = false,
+    thumbnailSizeOverride: Dp? = null,
     trailingContent: @Composable RowScope.() -> Unit = {},
 ) {
     val swipeEnabled by rememberPreference(SwipeToSongKey, defaultValue = false)
@@ -330,7 +331,7 @@ fun SongListItem(
                     isActive = isActive,
                     isPlaying = isPlaying,
                     shape = RoundedCornerShape(visuals.thumbnailCornerRadius),
-                    modifier = Modifier.size(visuals.thumbnailSize)
+                    modifier = Modifier.size(thumbnailSizeOverride ?: visuals.thumbnailSize)
                 )
             },
             trailingContent = trailingContent,
