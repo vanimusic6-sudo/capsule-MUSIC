@@ -495,8 +495,8 @@ private fun CapsulePlayerLyricsHost(
                     onMenuClick = onShowMenu,
                     onExpandQueue = queueState::expandSoft,
                     bottomPadding = 0.dp,
-                    open = !playerState.isCollapsed,
-                    expanded = playerState.isExpanded,
+                    open = !playerState.isCollapsed && !playerState.isDismissed,
+                    expansionProgress = playerState.rawProgress,
                 )
                 return@Box
             }
