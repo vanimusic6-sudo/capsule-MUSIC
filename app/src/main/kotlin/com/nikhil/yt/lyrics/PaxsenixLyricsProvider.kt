@@ -594,9 +594,11 @@ object PaxsenixLyricsProvider : LyricsProvider {
                         ?: return@mapNotNull null
 
                 val timeTag = obj.firstString("timeTag", "time_tag")
+                // Fields explicitly named *Ms are already milliseconds. Only the generic
+                // "time" field needs the seconds-vs-ms compatibility heuristic.
                 val millis =
-                    obj.firstLong("startTimeMs", "start_time_ms", "timestamp", "time")
-                        ?.toDurationMs()
+                    obj.firstLong("startTimeMs", "start_time_ms", "timestamp")
+                        ?: obj.firstLong("time")?.toDurationMs()
 
                 when {
                     !timeTag.isNullOrBlank() -> "[" + timeTag.removePrefix("[").removeSuffix("]") + "]" + text
