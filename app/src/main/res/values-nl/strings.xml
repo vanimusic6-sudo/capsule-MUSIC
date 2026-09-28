@@ -1,3 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="latest_release">Nieuwste release</string>
+    <string name="artist_release_metadata">Album • %1$d</string>
 </resources>
