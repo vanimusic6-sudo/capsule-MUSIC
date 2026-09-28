@@ -912,4 +912,6 @@ Velune will only extract your token, and everything else is stored locally.</str
     <string name="capsule_customize_hint">Long-press an element, then drag it. Elements snap into magnetic slots and push neighbours out of the way instead of overlapping.</string>
     <string name="capsule_light_lyric_placeholder">Lyric line is off — drag this placeholder</string>
     <string name="archive_tune_style">ArchiveTune</string>
+    <string name="lyrics_background_style">Lyrics background</string>
+    <string name="lyrics_background_solid">Plain background</string>
 </resources>
