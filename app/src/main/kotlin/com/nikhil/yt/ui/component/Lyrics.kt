@@ -1299,20 +1299,40 @@ fun Lyrics(
                         val hasRomanization = remember(romanizedText) { romanizedText != null }
 
                         val effectiveAnimationStyle = lyricsAnimationStyle
-                        val appleLayoutFontSize = lyricsTextSize.sp * 0.96f
 
                         val reduceMotionDuringScroll =
                             isSelectionModeActive || isManualScrolling
-                        val appleVisualScale =
+
+                        /*
+                         * Apple-style emphasis used to measure the glyphs at 96% and then enlarge
+                         * that raster layer past 100% (1 / .96). On some Android renderers the
+                         * offscreen Text layer keeps its original tight glyph bounds, so stems and
+                         * bowls on letters such as Cyrillic п/р/б were shaved by a pixel while the
+                         * layer grew. Render at the full font size instead and animate only from
+                         * 96% -> 100%. The visual sizes are identical, but the layer never expands
+                         * beyond the bitmap it was measured for.
+                         */
+                        val appleLayoutFontSize = lyricsTextSize.sp
+                        val appleScaleTarget =
                             if (
                                 effectiveAnimationStyle == LyricsAnimationStyle.APPLE &&
                                 isActiveLine &&
                                 !reduceMotionDuringScroll
                             ) {
-                                1f / 0.96f
+                                1f
+                            } else if (effectiveAnimationStyle == LyricsAnimationStyle.APPLE) {
+                                0.96f
                             } else {
                                 1f
                             }
+                        val appleVisualScale by animateFloatAsState(
+                            targetValue = appleScaleTarget,
+                            animationSpec = tween(
+                                durationMillis = 320,
+                                easing = AppleMusicEasing,
+                            ),
+                            label = "appleLyricScale",
+                        )
 
                         if (effectiveAnimationStyle == LyricsAnimationStyle.KARAOKE) {
                             val isCjk = remember(item.text) {
