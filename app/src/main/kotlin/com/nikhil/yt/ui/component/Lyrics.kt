@@ -572,6 +572,7 @@ private fun ArchiveTuneWord(
 @Composable
 fun Lyrics(
     sliderPositionProvider: () -> Long?,
+    isVisible: Boolean = true,
     modifier: Modifier = Modifier,
 ) {
     val playerConnection = LocalPlayerConnection.current ?: return
@@ -846,7 +847,18 @@ fun Lyrics(
         mutableStateOf(false)
     }
 
-    LaunchedEffect(lines, mediaMetadata?.id, lineSyncLeadMs) {
+    LaunchedEffect(isVisible, lines, mediaMetadata?.id, lineSyncLeadMs) {
+        // The lyrics surface remains mounted while its close animation runs. Stop owning the list
+        // the instant it becomes hidden, otherwise an in-flight auto-scroll can be cancelled at an
+        // arbitrary pixel and that stale position survives a quick reopen.
+        if (!isVisible) {
+            isManualScrolling = false
+            isSeeking = false
+            lastPreviewTime = 0L
+            initialScrollDone = false
+            return@LaunchedEffect
+        }
+
         if (!isSynced || lines.isEmpty()) return@LaunchedEffect
         val targetIndex =
             findCurrentLineIndex(
@@ -859,6 +871,8 @@ fun Lyrics(
             currentLineIndex = targetIndex
             deferredCurrentLineIndex = targetIndex
             previousLineIndex = targetIndex
+            // Reopening always performs one authoritative center pass from the live playback
+            // position instead of trusting whatever offset the previous transition left behind.
             initialScrollDone = false
             lastPreviewTime = 0L
         }
@@ -879,7 +893,9 @@ fun Lyrics(
         needsFrameAccurateWordAnimation,
         isManualScrolling,
         isPlaying,
+        isVisible,
     ) {
+        if (!isVisible) return@LaunchedEffect
         if (lyrics.isNullOrEmpty() || (!lyrics.startsWith("[") && !isTtml(lyrics))) {
             currentLineIndex = -1
             currentPlaybackPosition = 0L
@@ -926,7 +942,13 @@ fun Lyrics(
         }
     }
 
-    LaunchedEffect(currentLineIndex, lastPreviewTime, initialScrollDone) {
+    LaunchedEffect(
+        currentLineIndex,
+        lastPreviewTime,
+        initialScrollDone,
+        isVisible,
+    ) {
+        if (!isVisible) return@LaunchedEffect
 
         fun calculateOffset() = with(density) {
             if (currentLineIndex < 0 || currentLineIndex >= lines.size) return@with 0
@@ -952,21 +974,33 @@ fun Lyrics(
                     val offset = itemCenter - center
 
                     if (abs(offset) > 5) {
+                        val autoScrollDurationMs =
+                            with(density) {
+                                val travelDp = abs(offset).toDp().value
+                                (430f + travelDp * 1.15f)
+                                    .toInt()
+                                    .coerceIn(480, 1_150)
+                            }
+
                         lazyListState.animateScrollBy(
                             value = offset.toFloat(),
-                            animationSpec = if (isSeek) {
-                                // Faster response for seeking
-                                spring(
-                                    dampingRatio = Spring.DampingRatioLowBouncy,
-                                    stiffness = Spring.StiffnessMedium
-                                )
-                            } else {
-                                // Smooth auto-scroll
-                                spring(
-                                    dampingRatio = Spring.DampingRatioNoBouncy,
-                                    stiffness = Spring.StiffnessLow
-                                )
-                            }
+                            animationSpec =
+                                if (isSeek) {
+                                    // Seeking should still respond immediately to the finger.
+                                    spring(
+                                        dampingRatio = Spring.DampingRatioLowBouncy,
+                                        stiffness = Spring.StiffnessMedium,
+                                    )
+                                } else {
+                                    // Auto-scroll used to use one spring for every distance. A
+                                    // two-line lyric therefore covered far more pixels in roughly
+                                    // the same time and looked like a jump. Give long travel more
+                                    // time and land with the same soft Apple-style deceleration.
+                                    tween(
+                                        durationMillis = autoScrollDurationMs,
+                                        easing = AppleMusicEasing,
+                                    )
+                                },
                         )
                     }
                 } else {
