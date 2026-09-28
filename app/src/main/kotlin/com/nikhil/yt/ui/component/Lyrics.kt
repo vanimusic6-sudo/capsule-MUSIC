@@ -1404,7 +1404,7 @@ fun Lyrics(
                                         fontSize = lyricsTextSize.sp,
                                         textColor = lyricsBaseColor,
                                         inactiveAlpha = if (isActiveLine) 0.35f else 0.7f,
-                                        fontWeight = if (hasRomanization) FontWeight.Bold else FontWeight.ExtraBold,
+                                        fontWeight = FontWeight.Bold,
                                         isBackground = isBg,
                                         nudgeEnabled = isActiveLine && !reduceMotionDuringScroll,
                                     )
@@ -1469,12 +1469,7 @@ fun Lyrics(
                                     fontSize = lyricsTextSize.sp,
                                     color = if (isActiveLine) lyricsBaseColor else lineColor,
                                     textAlign = alignment,
-                                    fontWeight =
-                                        if (isActiveLine) {
-                                            FontWeight.ExtraBold
-                                        } else {
-                                            FontWeight.SemiBold
-                                        },
+                                    fontWeight = FontWeight.Bold,
                                     lineHeight = (lyricsTextSize * lyricsLineSpacing).sp,
                                     modifier =
                                         Modifier.graphicsLayer {
@@ -1489,7 +1484,7 @@ fun Lyrics(
                                     fontSize = lyricsTextSize.sp,
                                     color = lineColor,
                                     textAlign = alignment,
-                                    fontWeight = if (hasRomanization) FontWeight.Bold else FontWeight.Medium,
+                                    fontWeight = FontWeight.Bold,
                                     lineHeight = (lyricsTextSize * lyricsLineSpacing).sp
                                 )
                             } else {
@@ -1527,16 +1522,7 @@ fun Lyrics(
                                     val effectiveAlpha = if (word.isBackground) wordAlpha * 0.6f else wordAlpha
                                     val wordColor = lyricsBaseColor.copy(alpha = effectiveAlpha)
 
-                                    val wordWeight = if (hasRomanization) {
-                                        FontWeight.Bold
-                                    } else {
-                                        when {
-                                            !isActiveLine -> FontWeight.Bold
-                                            hasWordPassed -> FontWeight.Bold
-                                            isWordActive -> FontWeight.ExtraBold
-                                            else -> FontWeight.Medium
-                                        }
-                                    }
+                                    val wordWeight = FontWeight.Bold
 
                                     withStyle(
                                         style = SpanStyle(
@@ -1603,16 +1589,7 @@ fun Lyrics(
                                     val effectiveAlpha = if (word.isBackground) wordAlpha * 0.6f else wordAlpha
                                     val wordColor = lyricsBaseColor.copy(alpha = effectiveAlpha)
 
-                                    val wordWeight = if (hasRomanization) {
-                                        FontWeight.Bold
-                                    } else {
-                                        when {
-                                            !isActiveLine -> FontWeight.Bold
-                                            hasWordPassed -> FontWeight.Bold
-                                            isWordActive -> FontWeight.ExtraBold
-                                            else -> FontWeight.Medium
-                                        }
-                                    }
+                                    val wordWeight = FontWeight.Bold
 
                                     withStyle(
                                         style = SpanStyle(
@@ -1684,16 +1661,7 @@ fun Lyrics(
                                         baseWordColor
                                     }
 
-                                    val wordWeight = if (hasRomanization) {
-                                        FontWeight.Bold
-                                    } else {
-                                        when {
-                                            !isActiveLine -> FontWeight.Bold
-                                            isWordActive -> FontWeight.ExtraBold
-                                            hasWordPassed -> FontWeight.Bold
-                                            else -> FontWeight.Medium
-                                        }
-                                    }
+                                    val wordWeight = FontWeight.Bold
 
                                     val floatOffset = if (isWordActive && fillProgress > 0.1f) {
 
@@ -1924,16 +1892,7 @@ fun Lyrics(
 
                                     val wordColor = lyricsBaseColor.copy(alpha = wordAlpha)
 
-                                    val wordWeight = if (hasRomanization) {
-                                        FontWeight.Bold
-                                    } else {
-                                        when {
-                                            !isActiveLine -> FontWeight.SemiBold
-                                            hasWordPassed -> FontWeight.Bold
-                                            isWordActive -> FontWeight.ExtraBold
-                                            else -> FontWeight.Normal
-                                        }
-                                    }
+                                    val wordWeight = FontWeight.Bold
 
                                     withStyle(
                                         style = SpanStyle(
@@ -2125,7 +2084,7 @@ fun Lyrics(
                                 fontSize = lyricsTextSize.sp,
                                 color = lineColor,
                                 textAlign = alignment,
-                                fontWeight = if (isActiveLine) FontWeight.ExtraBold else if (index > displayedCurrentLineIndex) FontWeight.Light else FontWeight.Bold,
+                                fontWeight = FontWeight.Bold,
                                 lineHeight = (lyricsTextSize * lyricsLineSpacing).sp,
                                 modifier = Modifier
                             )
@@ -2176,7 +2135,7 @@ fun Lyrics(
                                                         withStyle(
                                                             style = SpanStyle(
                                                                 color = lyricsBaseColor.copy(alpha = romAlpha),
-                                                                fontWeight = if (hasWordPassed || isWordActive) FontWeight.Medium else FontWeight.Normal
+                                                                fontWeight = FontWeight.Medium
                                                             )
                                                         ) {
                                                             append(romWord)
@@ -2196,7 +2155,7 @@ fun Lyrics(
                                                         withStyle(
                                                             style = SpanStyle(
                                                                 color = lyricsBaseColor.copy(alpha = romAlpha),
-                                                                fontWeight = if (hasWordPassed || isWordActive) FontWeight.Medium else FontWeight.Normal
+                                                                fontWeight = FontWeight.Medium
                                                             )
                                                         ) {
                                                             append(romWord)
@@ -2232,7 +2191,7 @@ fun Lyrics(
                                                             withStyle(
                                                                 style = SpanStyle(
                                                                     color = romColor,
-                                                                    fontWeight = if (hasWordPassed) FontWeight.Medium else FontWeight.Normal
+                                                                    fontWeight = FontWeight.Medium
                                                                 )
                                                             ) {
                                                                 append(romWord)
@@ -2261,7 +2220,7 @@ fun Lyrics(
                                                         withStyle(
                                                             style = SpanStyle(
                                                                 color = lyricsBaseColor.copy(alpha = romAlpha),
-                                                                fontWeight = if (isWordActive) FontWeight.Medium else FontWeight.Normal,
+                                                                fontWeight = FontWeight.Medium,
                                                                 shadow = romShadow
                                                             )
                                                         ) {
@@ -2280,7 +2239,7 @@ fun Lyrics(
                                                         withStyle(
                                                             style = SpanStyle(
                                                                 color = romColor,
-                                                                fontWeight = if (isWordActive) FontWeight.Medium else FontWeight.Normal
+                                                                fontWeight = FontWeight.Medium
                                                             )
                                                         ) {
                                                             append(romWord)
