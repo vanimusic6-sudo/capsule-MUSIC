@@ -356,9 +356,6 @@ fun CapsulePlayerContent(
     val playbackError by
         playerConnection.error.collectAsState()
 
-    val currentArtworkQueueIndex by
-        playerConnection.currentMediaItemIndex.collectAsState()
-
     val canSkipPrevious by
         playerConnection.canSkipPrevious.collectAsState()
 
@@ -552,7 +549,6 @@ fun CapsulePlayerContent(
             mediaMetadata.id,
             mediaMetadata.thumbnailUrl,
             mediaMetadata.title,
-            currentArtworkQueueIndex,
         ) {
             CapsuleArtworkFrame(
                 mediaId = mediaMetadata.id,
@@ -563,7 +559,9 @@ fun CapsulePlayerContent(
                         else artwork.toHighResThumbnail()
                     },
                 title = mediaMetadata.title,
-                queueIndex = currentArtworkQueueIndex,
+                // Media3 has already committed the new index before it emits metadata. Reading
+                // directly here prevents a one-recomposition lag from flipping previous/next.
+                queueIndex = playerConnection.player.currentMediaItemIndex,
             )
         }
     var shownArtworkFrame by remember { mutableStateOf(incomingArtworkFrame) }
