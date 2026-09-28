@@ -84,13 +84,7 @@ private val CapsuleLyricsText =
 private val CapsuleLyricsSecondary =
     Color(0xFF858585)
 
-private val CapsuleLyricsOutline =
-    Color(0xFF343434)
-
-private val CapsuleLyricsPanel =
-    Color(0xFF171717)
-
-private val CapsuleLyricsPanelShape =
+private val lyricsPanelColorShape =
     RoundedCornerShape(24.dp)
 
 
@@ -130,6 +124,11 @@ fun CapsuleLyricsContent(
             mediaMetadata = mediaMetadata,
             enabled = lyricsBackground != LyricsBackgroundStyle.SOLID,
         )
+
+    // Same treatment as the full player: the control card is a translucent layer, not an
+    // opaque black block, so the selected lyrics background colours the panel underneath it.
+    val lyricsPanelColor = CapsuleLyricsText.copy(alpha = 0.025f)
+    val lyricsOutlineColor = CapsuleLyricsText.copy(alpha = 0.16f)
 
     val canSkipPrevious by
         playerConnection.canSkipPrevious.collectAsState()
@@ -462,17 +461,17 @@ fun CapsuleLyricsContent(
                 Modifier
                     .fillMaxWidth()
                     .clip(
-                        CapsuleLyricsPanelShape,
+                        lyricsPanelColorShape,
                     )
                     .border(
                         width = 1.dp,
                         color =
-                            CapsuleLyricsOutline,
+                            lyricsOutlineColor,
                         shape =
-                            CapsuleLyricsPanelShape,
+                            lyricsPanelColorShape,
                     )
                     .background(
-                        CapsuleLyricsPanel,
+                        lyricsPanelColor,
                     ),
         ) {
             Row(
@@ -548,7 +547,7 @@ fun CapsuleLyricsContent(
                         .fillMaxWidth()
                         .height(1.dp)
                         .background(
-                            CapsuleLyricsOutline,
+                            lyricsOutlineColor,
                         ),
             )
 
