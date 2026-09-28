@@ -5,6 +5,8 @@
     <string name="songs">Songs</string>
     <string name="artists">Artists</string>
     <string name="albums">Albums</string>
+    <string name="latest_release">Latest release</string>
+    <string name="artist_release_metadata">Album • %1$d</string>
     <string name="playlists">Playlists</string>
     <!-- Top bar -->
     <plurals name="n_selected">
