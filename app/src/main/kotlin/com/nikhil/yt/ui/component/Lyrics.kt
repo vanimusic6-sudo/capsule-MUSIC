@@ -441,9 +441,10 @@ private fun ArchiveTuneWord(
             else -> ((currentTime - startTime).toFloat() / duration).coerceIn(0f, 1f)
         }
     val wave = sin(progress * Math.PI).toFloat()
-    // Layout is intentionally measured slightly below the user's base size. The word pulse only
-    // grows back to the old base size, never beyond it, so animation cannot demand extra layout.
-    val scale = if (isActive) 1f + ((1f / 0.96f) - 1f) * wave else 1f
+    // Measure at the real maximum glyph size and animate only inside those bounds.
+    // Scaling a 96% Text layer above 1x can crop tight glyph edges on Android GPUs
+    // (especially visible on Cyrillic п/р/б), even when the parent itself is not clipped.
+    val scale = if (isActive) 0.96f + 0.04f * wave else 0.96f
     val targetLift = if (isActive) -3.5f * wave else 0f
     val lift by animateFloatAsState(
         targetValue = targetLift,
@@ -1485,7 +1486,7 @@ fun Lyrics(
                             }
                         } else if (effectiveAnimationStyle == LyricsAnimationStyle.ARCHIVE_TUNE) {
                             if (hasWordTimings && item.words != null) {
-                                val archiveTuneFontSize = lyricsTextSize.sp * 0.96f
+                                val archiveTuneFontSize = lyricsTextSize.sp
                                 FlowRow(
                                     modifier =
                                         Modifier
@@ -1540,7 +1541,7 @@ fun Lyrics(
                             } else {
                                 Text(
                                     text = item.text,
-                                    fontSize = lyricsTextSize.sp * 0.96f,
+                                    fontSize = lyricsTextSize.sp,
                                     color = if (isActiveLine) lyricsBaseColor else lineColor,
                                     textAlign = alignment,
                                     fontWeight = FontWeight.Bold,
