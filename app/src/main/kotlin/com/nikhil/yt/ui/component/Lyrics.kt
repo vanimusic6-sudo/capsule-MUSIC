@@ -197,7 +197,6 @@ import kotlinx.coroutines.withContext
 import kotlin.math.pow
 import kotlin.math.abs
 import kotlin.math.exp
-import kotlin.time.Duration.Companion.seconds
 import com.nikhil.yt.ui.motion.CapsuleStandardEasing
 
 
@@ -808,12 +807,20 @@ fun Lyrics(
         mutableStateOf(false)
     }
 
+    val needsFrameAccurateWordAnimation =
+        remember(lines, lyricsAnimationStyle) {
+            lyricsAnimationStyle != LyricsAnimationStyle.NONE &&
+                lines.any { !it.words.isNullOrEmpty() }
+        }
+
     LaunchedEffect(
         lyrics,
         lines,
         isAppMinimized,
         wordSyncLeadMs,
         lineSyncLeadMs,
+        needsFrameAccurateWordAnimation,
+        isManualScrolling,
     ) {
         if (lyrics.isNullOrEmpty() || (!lyrics.startsWith("[") && !isTtml(lyrics))) {
             currentLineIndex = -1
@@ -825,7 +832,11 @@ fun Lyrics(
                 delay(250L)
                 continue
             }
-            withFrameNanos { }
+            if (needsFrameAccurateWordAnimation && !isManualScrolling) {
+                withFrameNanos { }
+            } else {
+                delay(50L)
+            }
             val sliderPosition = sliderPositionProvider()
             val seekingNow = sliderPosition != null
             if (isSeeking != seekingNow) {
@@ -2802,8 +2813,6 @@ private const val VELUNE_SEEK_DURATION = 800L
 private const val VELUNE_FAST_SEEK_DURATION = 600L 
 
 private const val LyricsWordSyncLeadMs = 300L
-
-val LyricsPreviewTime = 2.seconds
 
 private val NoSpaceAfterChars: Set<Char> = setOf('(', '[', '{', '«', '‹', '“', '‘')
 
