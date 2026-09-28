@@ -9,7 +9,6 @@ package com.nikhil.yt.lyrics
 import android.content.Context
 import androidx.datastore.preferences.core.Preferences
 import com.nikhil.yt.constants.EnablePaxsenixAppleMusicKey
-import com.nikhil.yt.constants.EnablePaxsenixKey
 import com.nikhil.yt.constants.EnablePaxsenixMusixmatchKey
 import com.nikhil.yt.constants.EnablePaxsenixNetEaseKey
 import com.nikhil.yt.constants.EnablePaxsenixSpotifyKey
@@ -19,7 +18,7 @@ import com.nikhil.yt.utils.get
 import com.nikhil.yt.utils.runCatchingCancellable
 
 private fun Context.paxsenixBackendEnabled(key: Preferences.Key<Boolean>): Boolean =
-    dataStore[key] ?: dataStore[EnablePaxsenixKey] ?: false
+    dataStore[key] ?: false
 
 private suspend fun paxsenixResult(
     backend: String,
