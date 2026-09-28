@@ -633,4 +633,6 @@
     <string name="next">다음</string>
     <string name="next_song">다음 노래</string>
     <string name="allow">허용</string>
+    <string name="latest_release">최신 발매</string>
+    <string name="artist_release_metadata">앨범 • %1$d</string>
 </resources>
