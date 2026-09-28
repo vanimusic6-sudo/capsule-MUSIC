@@ -46,7 +46,7 @@ import com.nikhil.yt.ui.component.LocalMenuState
 import com.nikhil.yt.ui.component.YouTubeListItem
 import com.nikhil.yt.ui.menu.*
 import com.nikhil.yt.viewmodels.OnlineSearchSuggestionViewModel
-import kotlinx.coroutines.flow.drop
+import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 import androidx.compose.ui.graphics.Color
@@ -78,9 +78,9 @@ fun OnlineSearchScreen(
 
     val lazyListState = rememberLazyListState()
 
-    LaunchedEffect(Unit) {
-        snapshotFlow { lazyListState.firstVisibleItemScrollOffset }
-            .drop(1)
+    LaunchedEffect(lazyListState) {
+        snapshotFlow { lazyListState.isScrollInProgress }
+            .filter { it }
             .collect {
                 keyboardController?.hide()
             }
