@@ -103,6 +103,7 @@ fun LyricsScreen(
                     lyricsProvider = { currentLyrics },
                     mediaMetadataProvider = { mediaMetadata },
                     onDismiss = menuState::dismiss,
+                    keepStatusBarHidden = hideStatusBar,
                 )
             }
         },
