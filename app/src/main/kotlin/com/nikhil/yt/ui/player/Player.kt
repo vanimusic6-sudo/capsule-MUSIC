@@ -590,6 +590,7 @@ private fun CapsulePlayerLyricsHost(
                     LyricsScreen(
                         mediaMetadata = mediaMetadata,
                         onBackClick = onHideLyrics,
+                        hideStatusBar = design == CapsulePlayerDesign.IMMERSIVE,
                         modifier = Modifier.fillMaxSize(),
                     )
                 }
