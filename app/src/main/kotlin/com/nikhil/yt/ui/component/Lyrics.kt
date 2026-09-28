@@ -83,7 +83,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -442,7 +441,9 @@ private fun ArchiveTuneWord(
             else -> ((currentTime - startTime).toFloat() / duration).coerceIn(0f, 1f)
         }
     val wave = sin(progress * Math.PI).toFloat()
-    val scale = if (isActive) 1f + 0.018f * wave else 1f
+    // Layout is intentionally measured slightly below the user's base size. The word pulse only
+    // grows back to the old base size, never beyond it, so animation cannot demand extra layout.
+    val scale = if (isActive) 1f + ((1f / 0.96f) - 1f) * wave else 1f
     val targetLift = if (isActive) -3.5f * wave else 0f
     val lift by animateFloatAsState(
         targetValue = targetLift,
@@ -457,7 +458,7 @@ private fun ArchiveTuneWord(
     val glowRadius = if (isActive) glowProgress * 10f else 0f
     val effectiveFontSize = if (isBackground) fontSize * 0.82f else fontSize
     val baseAlpha = if (isBackground) 0.22f else 0.30f
-    val fontWeight = if (isBackground) FontWeight.SemiBold else FontWeight.ExtraBold
+    val fontWeight = FontWeight.Bold
 
     Box(
         modifier =
@@ -548,9 +549,15 @@ fun Lyrics(
     val resources = LocalResources.current
     val configuration = LocalConfiguration.current
 
-    DisposableEffect(Unit) {
+    val isPlaying by playerConnection.isPlaying.collectAsState()
+
+    DisposableEffect(isPlaying) {
         val window = (context as? android.app.Activity)?.window
-        window?.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        if (isPlaying) {
+            window?.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        } else {
+            window?.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        }
         onDispose {
             window?.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         }
@@ -832,10 +839,15 @@ fun Lyrics(
                 delay(250L)
                 continue
             }
-            if (needsFrameAccurateWordAnimation && !isManualScrolling) {
-                withFrameNanos { }
-            } else {
-                delay(50L)
+            when {
+                !isPlaying && sliderPositionProvider() == null ->
+                    delay(150L)
+
+                needsFrameAccurateWordAnimation && !isManualScrolling ->
+                    delay(33L)
+
+                else ->
+                    delay(50L)
             }
             val sliderPosition = sliderPositionProvider()
             val seekingNow = sliderPosition != null
@@ -1411,12 +1423,8 @@ fun Lyrics(
                                 }
                             }
                         } else if (effectiveAnimationStyle == LyricsAnimationStyle.ARCHIVE_TUNE) {
-                            if (
-                                hasWordTimings &&
-                                item.words != null &&
-                                isActiveLine &&
-                                !reduceMotionDuringScroll
-                            ) {
+                            if (hasWordTimings && item.words != null) {
+                                val archiveTuneFontSize = lyricsTextSize.sp * 0.96f
                                 FlowRow(
                                     modifier =
                                         Modifier
@@ -1441,40 +1449,41 @@ fun Lyrics(
                                             } else {
                                                 word.text
                                             }
-                                        ArchiveTuneWord(
-                                            text = displayText,
-                                            startTime = (word.startTime * 1000).toLong(),
-                                            endTime = (word.endTime * 1000).toLong(),
-                                            currentTime = currentPlaybackPosition,
-                                            isRtl = lineIsRtl,
-                                            fontSize = lyricsTextSize.sp,
-                                            textColor = lyricsBaseColor,
-                                            isBackground = word.isBackground,
-                                        )
+
+                                        if (isActiveLine && !reduceMotionDuringScroll) {
+                                            ArchiveTuneWord(
+                                                text = displayText,
+                                                startTime = (word.startTime * 1000).toLong(),
+                                                endTime = (word.endTime * 1000).toLong(),
+                                                currentTime = currentPlaybackPosition,
+                                                isRtl = lineIsRtl,
+                                                fontSize = archiveTuneFontSize,
+                                                textColor = lyricsBaseColor,
+                                                isBackground = word.isBackground,
+                                            )
+                                        } else {
+                                            Text(
+                                                text = displayText,
+                                                fontSize =
+                                                    if (word.isBackground) {
+                                                        archiveTuneFontSize * 0.82f
+                                                    } else {
+                                                        archiveTuneFontSize
+                                                    },
+                                                color = lineColor,
+                                                fontWeight = FontWeight.Bold,
+                                            )
+                                        }
                                     }
                                 }
                             } else {
-                                val archiveLift by animateFloatAsState(
-                                    targetValue =
-                                        if (isActiveLine && !reduceMotionDuringScroll) -2.5f else 0f,
-                                    animationSpec =
-                                        spring(
-                                            dampingRatio = Spring.DampingRatioNoBouncy,
-                                            stiffness = Spring.StiffnessMediumLow,
-                                        ),
-                                    label = "archiveTuneLineLift",
-                                )
                                 Text(
                                     text = item.text,
-                                    fontSize = lyricsTextSize.sp,
+                                    fontSize = lyricsTextSize.sp * 0.96f,
                                     color = if (isActiveLine) lyricsBaseColor else lineColor,
                                     textAlign = alignment,
                                     fontWeight = FontWeight.Bold,
                                     lineHeight = (lyricsTextSize * lyricsLineSpacing).sp,
-                                    modifier =
-                                        Modifier.graphicsLayer {
-                                            translationY = archiveLift
-                                        },
                                 )
                             }
                         } else if (hasWordTimings && item.words != null && effectiveAnimationStyle == LyricsAnimationStyle.APPLE) {
