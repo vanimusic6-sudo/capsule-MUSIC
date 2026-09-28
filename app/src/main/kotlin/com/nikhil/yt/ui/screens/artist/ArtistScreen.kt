@@ -715,7 +715,7 @@ fun ArtistScreen(
             context.startActivity(Intent.createChooser(shareIntent, null))
         },
     )
-
+}
 
 @Composable
 private fun ArtistLatestReleaseCard(
@@ -799,5 +799,4 @@ private fun ArtistLatestReleaseCard(
             }
         }
     }
-}
 }
