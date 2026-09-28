@@ -19,6 +19,7 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
@@ -50,6 +51,7 @@ import androidx.compose.material3.TopAppBarScrollBehavior
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
@@ -61,14 +63,18 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import coil3.compose.AsyncImage
 import androidx.compose.ui.util.fastForEach
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.navigation.NavController
@@ -89,14 +95,18 @@ import com.nikhil.yt.models.toMediaMetadata
 import com.nikhil.yt.playback.queues.ListQueue
 import com.nikhil.yt.playback.queues.YouTubeQueue
 import com.nikhil.yt.ui.component.ArtistHero
+import com.nikhil.yt.ui.component.ArtistToolbarArtworkHeight
+import com.nikhil.yt.ui.component.artistHeroArtworkHeight
 import com.nikhil.yt.ui.component.ArtistToolbar
 import com.nikhil.yt.ui.component.StandardChrome
 import com.nikhil.yt.ui.component.AlbumGridItem
 import com.nikhil.yt.ui.component.HideOnScrollFAB
 import com.nikhil.yt.ui.component.IconButton
 import com.nikhil.yt.ui.component.LocalMenuState
+import com.nikhil.yt.ui.component.LocalSongListVisuals
 import com.nikhil.yt.ui.component.NavigationTitle
 import com.nikhil.yt.ui.component.SongListItem
+import com.nikhil.yt.ui.component.SongListVisuals
 import com.nikhil.yt.ui.component.YouTubeGridItem
 import com.nikhil.yt.ui.component.YouTubeListItem
 import com.nikhil.yt.ui.component.shimmer.ListItemPlaceHolder
@@ -110,6 +120,18 @@ import com.nikhil.yt.ui.menu.YouTubeSongMenu
 import com.nikhil.yt.ui.utils.backToMain
 import com.nikhil.yt.utils.rememberPreference
 import com.nikhil.yt.viewmodels.ArtistViewModel
+
+private data class ArtistLatestRelease(
+    val id: String,
+    val title: String,
+    val thumbnailUrl: String?,
+    val year: Int?,
+)
+
+private val ArtistTrackRowHeight = 72.dp
+private val ArtistTrackArtworkSize = 56.dp
+private val ArtistTrackArtworkCornerRadius = 10.dp
+private val ArtistLatestReleaseArtworkSize = 112.dp
 
 @OptIn(ExperimentalFoundationApi::class, ExperimentalMaterial3Api::class)
 @Composable
@@ -139,10 +161,66 @@ fun ArtistScreen(
     val thumbnail = artistPage?.artist?.thumbnail ?: libraryArtist?.artist?.thumbnailUrl
     val artistName = artistPage?.artist?.title ?: libraryArtist?.artist?.name
     val remoteLoading = artistPage == null && viewModel.isLoading && !showLocal
+    val density = LocalDensity.current
 
-    val transparentAppBar by remember {
+    val latestRelease =
+        remember(showLocal, artistPage, libraryAlbums) {
+            if (showLocal) {
+                libraryAlbums
+                    .maxByOrNull { it.album.year ?: Int.MIN_VALUE }
+                    ?.let { album ->
+                        ArtistLatestRelease(
+                            id = album.id,
+                            title = album.album.title,
+                            thumbnailUrl = album.album.thumbnailUrl,
+                            year = album.album.year,
+                        )
+                    }
+            } else {
+                artistPage
+                    ?.sections
+                    .orEmpty()
+                    .asSequence()
+                    .flatMap { it.items.asSequence() }
+                    .filterIsInstance<AlbumItem>()
+                    .maxByOrNull { it.year ?: Int.MIN_VALUE }
+                    ?.let { album ->
+                        ArtistLatestRelease(
+                            id = album.id,
+                            title = album.title,
+                            thumbnailUrl = album.thumbnail,
+                            year = album.year,
+                        )
+                    }
+            }
+        }
+
+    /*
+     * Collapse the artwork toolbar when the portrait itself has left it, not when the entire
+     * hero item (title + actions included) finally leaves the LazyColumn. That makes the compact
+     * artist name appear immediately after the avatar passes behind the top bar.
+     */
+    val transparentAppBar by remember(lazyListState, density, systemBarsTopPadding) {
         derivedStateOf {
-            lazyListState.firstVisibleItemIndex == 0
+            if (lazyListState.firstVisibleItemIndex != 0) {
+                false
+            } else {
+                val viewportWidthPx = lazyListState.layoutInfo.viewportSize.width
+                if (viewportWidthPx <= 0) {
+                    true
+                } else {
+                    val artworkHeightPx =
+                        with(density) {
+                            artistHeroArtworkHeight(viewportWidthPx.toDp()).roundToPx()
+                        }
+                    val toolbarBottomPx =
+                        with(density) {
+                            (systemBarsTopPadding + ArtistToolbarArtworkHeight).roundToPx()
+                        }
+                    val collapseAtPx = (artworkHeightPx - toolbarBottomPx).coerceAtLeast(0)
+                    lazyListState.firstVisibleItemScrollOffset < collapseAtPx
+                }
+            }
         }
     }
 
@@ -155,13 +233,21 @@ fun ArtistScreen(
             .fillMaxSize()
             .background(surfaceColor)
     ) {
-        LazyColumn(
-            state = lazyListState,
-            contentPadding =
-                LocalPlayerAwareWindowInsets.current
-                    .only(WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom)
-                    .asPaddingValues(),
+        CompositionLocalProvider(
+            LocalSongListVisuals provides
+                SongListVisuals(
+                    rowHeight = ArtistTrackRowHeight,
+                    thumbnailSize = ArtistTrackArtworkSize,
+                    thumbnailCornerRadius = ArtistTrackArtworkCornerRadius,
+                ),
         ) {
+            LazyColumn(
+                state = lazyListState,
+                contentPadding =
+                    LocalPlayerAwareWindowInsets.current
+                        .only(WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom)
+                        .asPaddingValues(),
+            ) {
             // Loading and loaded data share the same reference composition.
             item(key = "header") {
                 ArtistHero(
@@ -239,6 +325,19 @@ fun ArtistScreen(
                         }
                     }
                 }
+                latestRelease?.let { release ->
+                    item(
+                        key = "latest_release_${release.id}",
+                    ) {
+                        ArtistLatestReleaseCard(
+                            release = release,
+                            onClick = {
+                                navController.navigate("album/${release.id}")
+                            },
+                        )
+                    }
+                }
+
                 // Content sections
                 if (showLocal) {
                     // Local Songs Section
@@ -567,6 +666,7 @@ fun ArtistScreen(
                 }
             }
         }
+        }
 
         // FAB for switching between local/remote view
         HideOnScrollFAB(
@@ -615,4 +715,89 @@ fun ArtistScreen(
             context.startActivity(Intent.createChooser(shareIntent, null))
         },
     )
+
+
+@Composable
+private fun ArtistLatestReleaseCard(
+    release: ArtistLatestRelease,
+    onClick: () -> Unit,
+) {
+    Surface(
+        onClick = onClick,
+        shape = RoundedCornerShape(20.dp),
+        color = MaterialTheme.colorScheme.surfaceContainerLow,
+        tonalElevation = 0.dp,
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .padding(start = 16.dp, top = 8.dp, end = 16.dp, bottom = 8.dp),
+    ) {
+        Row(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .padding(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
+            if (!release.thumbnailUrl.isNullOrBlank()) {
+                AsyncImage(
+                    model = release.thumbnailUrl,
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    modifier =
+                        Modifier
+                            .size(ArtistLatestReleaseArtworkSize)
+                            .clip(RoundedCornerShape(10.dp)),
+                )
+            } else {
+                Box(
+                    modifier =
+                        Modifier
+                            .size(ArtistLatestReleaseArtworkSize)
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(MaterialTheme.colorScheme.surfaceContainerHigh),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        painter = painterResource(R.drawable.album),
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(40.dp),
+                    )
+                }
+            }
+
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                Text(
+                    text = stringResource(R.string.latest_release).uppercase(),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.primary,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1,
+                )
+                Text(
+                    text = release.title,
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                release.year?.let { year ->
+                    Text(
+                        text = stringResource(R.string.artist_release_metadata, year),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
+        }
+    }
+}
 }
