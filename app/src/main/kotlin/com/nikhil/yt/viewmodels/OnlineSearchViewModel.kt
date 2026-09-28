@@ -55,6 +55,7 @@ constructor(
         private set
 
     private var soundCloudSearchJob: Job? = null
+    private var loadMoreJob: Job? = null
 
     init {
         viewModelScope.launch {
@@ -160,20 +161,22 @@ constructor(
     }
 
     fun loadMore() {
-        val filter = filter.value?.value
-        viewModelScope.launch {
-            if (filter == null) return@launch
-            val viewState = viewStateMap[filter] ?: return@launch
-            val continuation = viewState.continuation
-            if (continuation != null) {
+        if (loadMoreJob?.isActive == true) return
+
+        val filterValue = filter.value?.value ?: return
+        val viewState = viewStateMap[filterValue] ?: return
+        val continuation = viewState.continuation ?: return
+
+        loadMoreJob =
+            viewModelScope.launch {
                 val searchResult =
                     YouTube.searchContinuation(continuation).getOrNull() ?: return@launch
-                viewStateMap[filter] = ItemsPage(
-                    (viewState.items + searchResult.items).distinctBy { it.id },
-                    searchResult.continuation
-                )
+                viewStateMap[filterValue] =
+                    ItemsPage(
+                        (viewState.items + searchResult.items).distinctBy { it.id },
+                        searchResult.continuation,
+                    )
             }
-        }
     }
     private companion object {
         const val MAX_SOUNDCLOUD_SEARCH_TRACKS = 50
