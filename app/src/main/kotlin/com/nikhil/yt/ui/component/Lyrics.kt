@@ -740,7 +740,7 @@ fun Lyrics(
         mutableStateOf(false)
     }
 
-    var initialScrollDone by rememberSaveable {
+    var initialScrollDone by remember(mediaMetadata?.id) {
         mutableStateOf(false)
     }
 
@@ -937,11 +937,12 @@ fun Lyrics(
             }
         }
 
-        if((currentLineIndex == 0 && shouldScrollToFirstLine) || !initialScrollDone) {
+        if (!initialScrollDone) {
+            if (currentLineIndex < 0) return@LaunchedEffect
+
             shouldScrollToFirstLine = false
-            val initialCenterIndex = kotlin.math.max(0, currentLineIndex)
-            performSmoothPageScroll(initialCenterIndex)
-            if(!isAppMinimized) {
+            performSmoothPageScroll(currentLineIndex, isSeek = true)
+            if (!isAppMinimized) {
                 initialScrollDone = true
             }
         } else if (currentLineIndex != -1) {
@@ -1158,6 +1159,11 @@ fun Lyrics(
                                         }
                                     }
                                 } else if (isSynced && changeLyrics) {
+                                    isManualScrolling = false
+                                    lastPreviewTime = 0L
+                                    deferredCurrentLineIndex = index
+                                    previousLineIndex = index
+                                    initialScrollDone = true
                                     playerConnection.player.seekTo(item.time)
                                     scope.launch {
                                         val itemInfo = lazyListState.layoutInfo.visibleItemsInfo.firstOrNull { it.index == index }
