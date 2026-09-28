@@ -1956,21 +1956,9 @@ fun Lyrics(
                             )
                         } else if (isActiveLine && effectiveAnimationStyle == LyricsAnimationStyle.SLIDE && !reduceMotionDuringScroll) {
 
-                            val popInScale = remember { Animatable(0.95f) }
-
                             val fillProgress = remember { Animatable(0f) }
 
                             LaunchedEffect(index) {
-
-                                popInScale.snapTo(0.95f)
-                                popInScale.animateTo(
-                                    targetValue = 1f,
-                                    animationSpec = tween(
-                                        durationMillis = 200,
-                                        easing = CapsuleStandardEasing
-                                    )
-                                )
-
                                 fillProgress.snapTo(0f)
                                 fillProgress.animateTo(
                                     targetValue = 1f,
@@ -2000,12 +1988,6 @@ fun Lyrics(
                                 ) {
                                     append(item.text)
                                 }
-                            }
-
-                            val bounceScale = if (fill < 0.3f) {
-                                1f + (sin(fill * 3.33f * Math.PI.toFloat()) * 0.03f)
-                            } else {
-                                1f
                             }
 
                             Text(
@@ -2049,21 +2031,6 @@ fun Lyrics(
                                 }
                             )
                         } else {
-
-                            val popInScale = remember { Animatable(1f) }
-
-                            LaunchedEffect(isActiveLine, reduceMotionDuringScroll) {
-                                if (isActiveLine && !reduceMotionDuringScroll) {
-                                    popInScale.snapTo(0.96f)
-                                    popInScale.animateTo(
-                                        targetValue = 1f,
-                                        animationSpec = spring(
-                                            dampingRatio = Spring.DampingRatioNoBouncy,
-                                            stiffness = Spring.StiffnessMedium
-                                        )
-                                    )
-                                }
-                            }
 
                             val styledText = if (item.words != null) {
                                 buildAnnotatedString {
