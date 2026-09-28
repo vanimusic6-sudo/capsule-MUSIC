@@ -38,6 +38,7 @@ import kotlinx.coroutines.withContext
 fun LyricsScreen(
     mediaMetadata: MediaMetadata,
     onBackClick: () -> Unit,
+    isVisible: Boolean = true,
     modifier: Modifier = Modifier,
 ) {
     val playerConnection = LocalPlayerConnection.current ?: return
@@ -98,6 +99,7 @@ fun LyricsScreen(
             }
             sliderPosition = null
         },
+        isVisible = isVisible,
         modifier = modifier,
     )
 }
