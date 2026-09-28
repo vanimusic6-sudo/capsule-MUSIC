@@ -272,8 +272,15 @@ class MainActivity : ComponentActivity() {
             ) {
                 isMusicServiceBound = true
                 if (service is MusicBinder) {
-                    playerConnection =
-                        PlayerConnection(this@MainActivity, service, database, lifecycleScope)
+                    val existing = playerConnection
+                    if (existing == null || existing.service !== service.service) {
+                        existing?.dispose()
+                        playerConnection =
+                            PlayerConnection(this@MainActivity, service, database, lifecycleScope)
+                    }
+                    // A normal background -> foreground cycle binds to the same live service.
+                    // Keeping the same PlayerConnection prevents the whole Compose player tree,
+                    // theme collectors and mini-player state from being recreated on every return.
                     playPendingDeepLinkSongIfReady()
                     joinPendingTogetherIfReady()
                 }
@@ -410,8 +417,12 @@ class MainActivity : ComponentActivity() {
         if (shouldStopOnTaskClear) {
             safeUnbindMusicService()
             stopService(Intent(this, MusicService::class.java))
-            playerConnection = null
         }
+
+        // The Activity owns this listener. Normal onStop keeps it alive so re-entry can reuse it,
+        // but an actually destroyed Activity (including configuration replacement) must release it.
+        playerConnection?.dispose()
+        playerConnection = null
     }
 
     override fun onNewIntent(intent: Intent) {
