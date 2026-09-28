@@ -731,12 +731,15 @@ class MainActivity : ComponentActivity() {
                     val initialMainRoute =
                         remember(tabOpenedFromShortcut, restoredMainRoute, initialDefaultOpenTab) {
                             when {
+                                // A restored Activity must return to what was actually on screen.
+                                // The original launch Intent can outlive recreation and is no
+                                // longer an instruction once the user has navigated elsewhere.
+                                restoredMainRoute != null ->
+                                    restoredMainRoute
                                 tabOpenedFromShortcut == NavigationTab.LIBRARY ->
                                     Screens.Library.route
                                 tabOpenedFromShortcut == NavigationTab.HOME ->
                                     Screens.Home.route
-                                restoredMainRoute != null ->
-                                    restoredMainRoute
                                 initialDefaultOpenTab == NavigationTab.LIBRARY ->
                                     Screens.Library.route
                                 else ->
