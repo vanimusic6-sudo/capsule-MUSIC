@@ -842,10 +842,13 @@ fun Lyrics(
             }
             when {
                 !isPlaying && sliderPositionProvider() == null ->
-                    delay(150L)
+                    delay(250L)
 
-                needsFrameAccurateWordAnimation && !isManualScrolling ->
-                    delay(33L)
+                isManualScrolling ->
+                    delay(100L)
+
+                needsFrameAccurateWordAnimation ->
+                    delay(40L)
 
                 else ->
                     delay(50L)
