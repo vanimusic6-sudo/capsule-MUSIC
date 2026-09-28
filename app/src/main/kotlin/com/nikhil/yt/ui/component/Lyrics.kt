@@ -421,6 +421,119 @@ private fun KaraokeWord(
 }
 
 
+@Composable
+private fun ArchiveTuneWord(
+    text: String,
+    startTime: Long,
+    endTime: Long,
+    currentTime: Long,
+    isRtl: Boolean,
+    fontSize: TextUnit,
+    textColor: Color,
+    isBackground: Boolean,
+    modifier: Modifier = Modifier,
+) {
+    val duration = (endTime - startTime).coerceAtLeast(1L)
+    val isComplete = currentTime >= endTime
+    val isActive = currentTime in startTime until endTime
+    val progress =
+        when {
+            isComplete -> 1f
+            currentTime <= startTime -> 0f
+            else -> ((currentTime - startTime).toFloat() / duration).coerceIn(0f, 1f)
+        }
+    val wave = sin(progress * Math.PI).toFloat()
+    val scale = if (isActive) 1f + 0.018f * wave else 1f
+    val targetLift = if (isActive) -3.5f * wave else 0f
+    val lift by animateFloatAsState(
+        targetValue = targetLift,
+        animationSpec = tween(
+            durationMillis = if (isActive) 45 else 260,
+            easing = CapsuleStandardEasing,
+        ),
+        label = "archiveTuneWordLift",
+    )
+    val glowProgress = (progress * 2f).coerceAtMost(1f)
+    val glowAlpha = if (isActive) glowProgress * 0.38f else 0f
+    val glowRadius = if (isActive) glowProgress * 10f else 0f
+    val effectiveFontSize = if (isBackground) fontSize * 0.82f else fontSize
+    val baseAlpha = if (isBackground) 0.22f else 0.30f
+    val fontWeight = if (isBackground) FontWeight.SemiBold else FontWeight.ExtraBold
+
+    Box(
+        modifier =
+            modifier.graphicsLayer {
+                clip = false
+                translationY = lift
+                scaleX = scale
+                scaleY = scale
+            },
+    ) {
+        Text(
+            text = text,
+            fontSize = effectiveFontSize,
+            color = textColor.copy(alpha = baseAlpha),
+            fontWeight = fontWeight,
+        )
+
+        if (isComplete || isActive) {
+            Text(
+                text = text,
+                fontSize = effectiveFontSize,
+                color = textColor.copy(alpha = if (isBackground) 0.78f else 1f),
+                fontWeight = fontWeight,
+                style =
+                    LocalTextStyle.current.copy(
+                        shadow =
+                            if (glowAlpha > 0f) {
+                                Shadow(
+                                    color = textColor.copy(alpha = glowAlpha),
+                                    offset = Offset.Zero,
+                                    blurRadius = glowRadius.coerceAtLeast(1f),
+                                )
+                            } else {
+                                null
+                            },
+                    ),
+                modifier =
+                    if (isActive && !isComplete) {
+                        Modifier
+                            .graphicsLayer {
+                                compositingStrategy = CompositingStrategy.Offscreen
+                            }
+                            .drawWithContent {
+                                drawContent()
+                                val edgeWidth = 10.dp.toPx()
+                                val center =
+                                    if (isRtl) {
+                                        size.width - ((size.width + edgeWidth * 2f) * progress - edgeWidth)
+                                    } else {
+                                        (size.width + edgeWidth * 2f) * progress - edgeWidth
+                                    }
+                                drawRect(
+                                    brush =
+                                        Brush.horizontalGradient(
+                                            colors =
+                                                if (isRtl) {
+                                                    listOf(Color.Transparent, Color.Black)
+                                                } else {
+                                                    listOf(Color.Black, Color.Transparent)
+                                                },
+                                            startX = center - edgeWidth,
+                                            endX = center + edgeWidth,
+                                        ),
+                                    blendMode = BlendMode.DstIn,
+                                )
+                            }
+                    } else {
+                        Modifier
+                    },
+            )
+        }
+    }
+}
+
+
 @RequiresApi(Build.VERSION_CODES.M)
 @OptIn(ExperimentalFoundationApi::class, ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @SuppressLint("UnusedBoxWithConstraintsScope", "StringFormatInvalid")
@@ -920,8 +1033,17 @@ fun Lyrics(
 
                     val distance = abs(index - displayedCurrentLineIndex)
 
+                    val archiveTuneStyle =
+                        lyricsAnimationStyle == LyricsAnimationStyle.ARCHIVE_TUNE
                     val targetAlpha = when {
                         !isSynced || (isSelectionModeActive && isSelected) -> 1f
+                        isManualScrolling && archiveTuneStyle -> when {
+                            index == displayedCurrentLineIndex -> 1f
+                            distance == 1 -> 0.72f
+                            distance == 2 -> 0.56f
+                            distance == 3 -> 0.40f
+                            else -> 0.28f
+                        }
                         isManualScrolling -> when {
                             index == displayedCurrentLineIndex -> 1f
                             distance == 1 -> 0.85f
@@ -929,6 +1051,11 @@ fun Lyrics(
                             distance == 3 -> 0.55f
                             else -> 0.45f
                         }
+                        archiveTuneStyle && index == displayedCurrentLineIndex -> 1f
+                        archiveTuneStyle && distance == 1 -> 0.52f
+                        archiveTuneStyle && distance == 2 -> 0.30f
+                        archiveTuneStyle && distance == 3 -> 0.18f
+                        archiveTuneStyle -> 0.10f
                         index == displayedCurrentLineIndex -> 1f
                         distance == 1 -> 0.65f
                         distance == 2 -> 0.40f
@@ -945,7 +1072,17 @@ fun Lyrics(
                         label = "lyricAlpha"
                     )
 
-                    val targetScale = 1f
+                    val targetScale =
+                        if (
+                            archiveTuneStyle &&
+                            isSynced &&
+                            index != displayedCurrentLineIndex &&
+                            !isManualScrolling
+                        ) {
+                            0.95f
+                        } else {
+                            1f
+                        }
 
                     val animatedScale by animateFloatAsState(
                         targetValue = targetScale,
@@ -1094,7 +1231,7 @@ fun Lyrics(
                         val effectiveAnimationStyle = lyricsAnimationStyle
 
                         val reduceMotionDuringScroll =
-                            isSelectionModeActive
+                            isSelectionModeActive || isManualScrolling
 
                         if (effectiveAnimationStyle == LyricsAnimationStyle.KARAOKE) {
                             val isCjk = remember(item.text) {
@@ -1261,6 +1398,78 @@ fun Lyrics(
                                         nudgeEnabled = isActiveLine && !reduceMotionDuringScroll,
                                     )
                                 }
+                            }
+                        } else if (effectiveAnimationStyle == LyricsAnimationStyle.ARCHIVE_TUNE) {
+                            if (
+                                hasWordTimings &&
+                                item.words != null &&
+                                isActiveLine &&
+                                !reduceMotionDuringScroll
+                            ) {
+                                FlowRow(
+                                    modifier =
+                                        Modifier
+                                            .fillMaxWidth()
+                                            .padding(vertical = 4.dp),
+                                    horizontalArrangement =
+                                        when (lyricsTextPosition) {
+                                            LyricsPosition.LEFT -> Arrangement.Start
+                                            LyricsPosition.CENTER -> Arrangement.Center
+                                            LyricsPosition.RIGHT -> Arrangement.End
+                                        },
+                                    verticalArrangement = Arrangement.spacedBy(verticalLineSpacing),
+                                ) {
+                                    item.words.forEachIndexed { wordIndex, word ->
+                                        val nextText = item.words.getOrNull(wordIndex + 1)?.text
+                                        val displayText =
+                                            if (
+                                                nextText != null &&
+                                                shouldAppendWordSpace(word.text, nextText)
+                                            ) {
+                                                if (lineIsRtl) " ${word.text}" else "${word.text} "
+                                            } else {
+                                                word.text
+                                            }
+                                        ArchiveTuneWord(
+                                            text = displayText,
+                                            startTime = (word.startTime * 1000).toLong(),
+                                            endTime = (word.endTime * 1000).toLong(),
+                                            currentTime = currentPlaybackPosition,
+                                            isRtl = lineIsRtl,
+                                            fontSize = lyricsTextSize.sp,
+                                            textColor = lyricsBaseColor,
+                                            isBackground = word.isBackground,
+                                        )
+                                    }
+                                }
+                            } else {
+                                val archiveLift by animateFloatAsState(
+                                    targetValue =
+                                        if (isActiveLine && !reduceMotionDuringScroll) -2.5f else 0f,
+                                    animationSpec =
+                                        spring(
+                                            dampingRatio = Spring.DampingRatioNoBouncy,
+                                            stiffness = Spring.StiffnessMediumLow,
+                                        ),
+                                    label = "archiveTuneLineLift",
+                                )
+                                Text(
+                                    text = item.text,
+                                    fontSize = lyricsTextSize.sp,
+                                    color = if (isActiveLine) lyricsBaseColor else lineColor,
+                                    textAlign = alignment,
+                                    fontWeight =
+                                        if (isActiveLine) {
+                                            FontWeight.ExtraBold
+                                        } else {
+                                            FontWeight.SemiBold
+                                        },
+                                    lineHeight = (lyricsTextSize * lyricsLineSpacing).sp,
+                                    modifier =
+                                        Modifier.graphicsLayer {
+                                            translationY = archiveLift
+                                        },
+                                )
                             }
                         } else if (hasWordTimings && item.words != null && effectiveAnimationStyle == LyricsAnimationStyle.APPLE) {
                             if (!isActiveLine || reduceMotionDuringScroll) {
@@ -1934,7 +2143,10 @@ fun Lyrics(
                                                 val hasWordPassed = currentPlaybackPosition > wordEndMs
 
                                                 when (effectiveAnimationStyle) {
-                                                    LyricsAnimationStyle.APPLE, LyricsAnimationStyle.KARAOKE -> {
+                                                    LyricsAnimationStyle.APPLE,
+                                                    LyricsAnimationStyle.KARAOKE,
+                                                    LyricsAnimationStyle.ARCHIVE_TUNE,
+                                                    -> {
                                                         val rawProgress = if (isWordActive && wordDuration > 0) {
                                                             val elapsed = currentPlaybackPosition - wordStartMs
                                                             (elapsed.toFloat() / wordDuration).coerceIn(0f, 1f)
