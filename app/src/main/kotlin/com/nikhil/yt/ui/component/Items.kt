@@ -180,7 +180,8 @@ fun ListItem(
     badges: @Composable RowScope.() -> Unit = {},
     thumbnailContent: @Composable () -> Unit,
     trailingContent: @Composable RowScope.() -> Unit = {},
-    isActive: Boolean = false
+    isActive: Boolean = false,
+    itemHeight: Dp = ListItemHeight,
 ) = ListItem(
     title = title,
     modifier = modifier,
@@ -192,7 +193,8 @@ fun ListItem(
         }
     },
     thumbnailContent = thumbnailContent,
-    trailingContent = trailingContent
+    trailingContent = trailingContent,
+    itemHeight = itemHeight,
 )
 
 @Composable
