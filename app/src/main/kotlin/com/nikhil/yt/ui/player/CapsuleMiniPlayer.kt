@@ -578,7 +578,7 @@ fun CapsuleMiniPlayer(
                         )
 
                         Spacer(
-                            Modifier.width(8.dp),
+                            Modifier.width(4.dp),
                         )
                     }
 
@@ -1024,7 +1024,8 @@ private fun CapsuleSubscribeButton(
         CapsuleSubscribeIcon(
             subscribed = isSubscribed,
             tint = subscribeTint,
-            modifier = Modifier.size(if (standardStyle) 24.dp else 20.dp),
+            modifier = Modifier.size(if (standardStyle) 26.dp else 20.dp),
+            glyphScale = 1.45f,
         )
     }
 }
