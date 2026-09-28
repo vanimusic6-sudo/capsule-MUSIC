@@ -26,6 +26,9 @@ import androidx.compose.ui.unit.dp
 import com.nikhil.yt.R
 import com.nikhil.yt.ui.motion.CapsuleStandardEasing
 
+internal val ArtistToolbarCompactHeight = 64.dp
+internal val ArtistToolbarArtworkHeight = 96.dp
+
 /** Bare artwork controls at the reference height; their 48 dp touch targets are retained. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -60,7 +63,9 @@ internal fun ArtistToolbar(
         windowInsets = WindowInsets.safeDrawing.only(
             WindowInsetsSides.Horizontal + WindowInsetsSides.Top,
         ),
-        expandedHeight = (64f + 32f * artworkFraction).dp,
+        expandedHeight =
+            ArtistToolbarCompactHeight +
+                (ArtistToolbarArtworkHeight - ArtistToolbarCompactHeight) * artworkFraction,
         title = {
             Text(
                 name,
