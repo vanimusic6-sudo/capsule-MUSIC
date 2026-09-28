@@ -1,0 +1,48 @@
+package com.nikhil.yt.ui
+
+import java.io.File
+import org.junit.Assert.assertTrue
+import org.junit.Test
+
+/**
+ * Cheap source-level guards for the UI work that exists specifically to avoid warming the phone.
+ *
+ * These do not benchmark thermals. They pin the conditions that prevent hidden/paused decorative
+ * work from quietly returning during later visual refactors.
+ */
+class UiEnergyRegressionTest {
+    private fun source(relative: String): String {
+        val candidates =
+            listOf(
+                File("src/main/kotlin/$relative"),
+                File("app/src/main/kotlin/$relative"),
+            )
+        return candidates.firstOrNull(File::isFile)?.readText()
+            ?: error("Could not find $relative")
+    }
+
+    @Test
+    fun `mini player procedural motion stops when playback is not active`() {
+        val source = source("com/nikhil/yt/ui/player/CapsuleMiniPlayer.kt")
+        assertTrue(
+            source.contains(
+                "animated = isPlaying && playbackState == Player.STATE_READY",
+            ),
+        )
+    }
+
+    @Test
+    fun `collapsed player refresh is slower than expanded player refresh`() {
+        val source = source("com/nikhil/yt/ui/player/Player.kt")
+        assertTrue(source.contains("state.isExpanded -> 300L"))
+        assertTrue(source.contains("else -> 1_000L"))
+        assertTrue(source.contains("!isPlaying -> 1_500L"))
+    }
+
+    @Test
+    fun `rapid track changes do not immediately start high resolution visual preloads`() {
+        val source = source("com/nikhil/yt/ui/player/CapsuleMediaPreload.kt")
+        assertTrue(source.contains("CAPSULE_VISUAL_PREFETCH_SETTLE_MS = 1_200L"))
+        assertTrue(source.contains("delay(CAPSULE_VISUAL_PREFETCH_SETTLE_MS)"))
+    }
+}
