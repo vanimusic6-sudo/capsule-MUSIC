@@ -150,23 +150,10 @@ internal fun ArtistHero(
                 )
             }
         },
-        title = {
-            if (loading && name.isBlank()) {
-                Box(Modifier.fillMaxWidth(0.66f).height(38.dp).clip(RoundedCornerShape(10.dp))
-                    .background(StandardChrome.muted.copy(alpha = 0.18f)))
-            } else {
-                Text(
-                    text = name,
-                    style = MaterialTheme.typography.headlineLarge.copy(fontSize = 30.sp, lineHeight = 36.sp),
-                    fontWeight = FontWeight.Bold,
-                    color = StandardChrome.text.copy(alpha = 0.72f),
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                    // Alpha belongs to the glyphs, so the photograph shows through the letters.
-                    modifier = Modifier.semantics { heading() },
-                )
-            }
-        },
+        // The artist name now belongs to the pinned toolbar only. Keeping another copy
+        // over/next to the portrait made the header feel duplicated once the toolbar became
+        // persistent.
+        title = {},
         actions = {
             val stackActions = LocalDensity.current.fontScale > 1.3f
             val subscribeLabel = stringResource(if (displayedSubscribed) R.string.subscribed else R.string.subscribe)
