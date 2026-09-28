@@ -2156,8 +2156,7 @@ fun Lyrics(
                                                 when (effectiveAnimationStyle) {
                                                     LyricsAnimationStyle.APPLE,
                                                     LyricsAnimationStyle.KARAOKE,
-                                                    LyricsAnimationStyle.ARCHIVE_TUNE,
-                                                    -> {
+                                                    LyricsAnimationStyle.ARCHIVE_TUNE -> {
                                                         val rawProgress = if (isWordActive && wordDuration > 0) {
                                                             val elapsed = currentPlaybackPosition - wordStartMs
                                                             (elapsed.toFloat() / wordDuration).coerceIn(0f, 1f)
