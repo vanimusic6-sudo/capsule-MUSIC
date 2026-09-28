@@ -235,8 +235,7 @@ class ArtistHeroTest {
         for (frameTime in listOf(80L, 80L, 160L)) {
             compose.mainClock.advanceTimeBy(frameTime)
             compose.waitForIdle()
-            // The title intentionally clears its text semantics while hidden; measure
-            // its layout node during the fade, then check the visible text after settling.
+            // The title is always present; only the toolbar surface/foreground mode changes.
             val title = compose.onNodeWithTag("artist-toolbar-title", useUnmergedTree = true)
                 .fetchSemanticsNode().boundsInRoot
             controls.forEach {
@@ -252,7 +251,7 @@ class ArtistHeroTest {
         assertEquals(listOf("back", "copy", "share", "back", "copy", "share"), clicks)
 
         compose.runOnIdle { overArtwork = true }
-        compose.onNodeWithText("Pyrokinesis").assertDoesNotExist()
+        compose.onNodeWithText("Pyrokinesis").assertIsDisplayed()
         controls.forEach {
             assertEquals(bounds.top + safeTop + 32f * dp,
                 it.fetchSemanticsNode().boundsInRoot.center.y, 1f)
