@@ -1486,7 +1486,8 @@ fun Lyrics(
                             }
                         } else if (effectiveAnimationStyle == LyricsAnimationStyle.ARCHIVE_TUNE) {
                             if (hasWordTimings && item.words != null) {
-                                val archiveTuneFontSize = lyricsTextSize.sp
+                                val archiveTuneMaxFontSize = lyricsTextSize.sp
+                                val archiveTuneRestingFontSize = lyricsTextSize.sp * 0.96f
                                 FlowRow(
                                     modifier =
                                         Modifier
@@ -1519,7 +1520,7 @@ fun Lyrics(
                                                 endTime = (word.endTime * 1000).toLong(),
                                                 currentTime = currentPlaybackPosition,
                                                 isRtl = lineIsRtl,
-                                                fontSize = archiveTuneFontSize,
+                                                fontSize = archiveTuneMaxFontSize,
                                                 textColor = lyricsBaseColor,
                                                 isBackground = word.isBackground,
                                             )
@@ -1528,9 +1529,9 @@ fun Lyrics(
                                                 text = displayText,
                                                 fontSize =
                                                     if (word.isBackground) {
-                                                        archiveTuneFontSize * 0.82f
+                                                        archiveTuneRestingFontSize * 0.82f
                                                     } else {
-                                                        archiveTuneFontSize
+                                                        archiveTuneRestingFontSize
                                                     },
                                                 color = lineColor,
                                                 fontWeight = FontWeight.Bold,
@@ -1541,7 +1542,7 @@ fun Lyrics(
                             } else {
                                 Text(
                                     text = item.text,
-                                    fontSize = lyricsTextSize.sp,
+                                    fontSize = lyricsTextSize.sp * 0.96f,
                                     color = if (isActiveLine) lyricsBaseColor else lineColor,
                                     textAlign = alignment,
                                     fontWeight = FontWeight.Bold,
