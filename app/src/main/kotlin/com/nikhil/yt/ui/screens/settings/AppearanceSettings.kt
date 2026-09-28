@@ -54,6 +54,8 @@ import com.nikhil.yt.constants.HidePlayerThumbnailKey
 import com.nikhil.yt.constants.LibraryFilter
 import com.nikhil.yt.constants.LyricsAnimationStyle
 import com.nikhil.yt.constants.LyricsAnimationStyleKey
+import com.nikhil.yt.constants.LyricsBackgroundStyle
+import com.nikhil.yt.constants.LyricsBackgroundStyleKey
 import com.nikhil.yt.constants.LyricsClickKey
 import com.nikhil.yt.constants.LyricsLineSpacingKey
 import com.nikhil.yt.constants.LyricsScrollKey
@@ -255,6 +257,15 @@ fun AppearanceSettings(
         rememberEnumPreference(
             LyricsTextPositionKey,
             defaultValue = LyricsPosition.LEFT,
+        )
+
+    val (
+        lyricsBackground,
+        onLyricsBackgroundChange,
+    ) =
+        rememberEnumPreference(
+            LyricsBackgroundStyleKey,
+            defaultValue = LyricsBackgroundStyle.SOLID,
         )
 
     val (
@@ -1128,17 +1139,49 @@ fun AppearanceSettings(
                     LyricsPosition.LEFT ->
                         stringResource(
                             R.string.left,
-                        )
+                        ).replaceFirstChar { it.lowercase() }
 
                     LyricsPosition.CENTER ->
                         stringResource(
                             R.string.center,
-                        )
+                        ).replaceFirstChar { it.lowercase() }
 
                     LyricsPosition.RIGHT ->
                         stringResource(
                             R.string.right,
-                        )
+                        ).replaceFirstChar { it.lowercase() }
+                }
+            },
+        )
+
+        EnumListPreference(
+            title = {
+                Text(stringResource(R.string.lyrics_background_style))
+            },
+            icon = {
+                Icon(
+                    painterResource(R.drawable.palette),
+                    null,
+                )
+            },
+            selectedValue = lyricsBackground,
+            onValueSelected = onLyricsBackgroundChange,
+            valueText = {
+                when (it) {
+                    LyricsBackgroundStyle.SOLID ->
+                        stringResource(R.string.lyrics_background_solid)
+
+                    LyricsBackgroundStyle.CAPSULE_STAR ->
+                        stringResource(R.string.background_capsule_star)
+
+                    LyricsBackgroundStyle.CAPSULE_GLOW ->
+                        stringResource(R.string.background_capsule_glow)
+
+                    LyricsBackgroundStyle.NEBULA ->
+                        stringResource(R.string.background_nebula)
+
+                    LyricsBackgroundStyle.ARTWORK_GRADIENT ->
+                        stringResource(R.string.background_artwork_gradient)
                 }
             },
         )
