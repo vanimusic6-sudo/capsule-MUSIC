@@ -916,11 +916,10 @@ class MainActivity : ComponentActivity() {
                         remember {
                             { hidden ->
                                 lyricsStatusBarRequested = hidden
-                                if (hidden) {
-                                    // Material sheets may transiently restore system bars. Bump a
-                                    // generation so an identical "hide" request is still re-applied.
-                                    lyricsStatusBarRequestGeneration++
-                                }
+                                // Material sheets may alter system chrome themselves. Always bump
+                                // a generation so both an identical hide request (Immersive) and an
+                                // identical show request (other player styles) are re-applied.
+                                lyricsStatusBarRequestGeneration++
                             }
                         }
 
