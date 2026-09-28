@@ -220,7 +220,7 @@ class ArtistHeroTest {
             compose.onNodeWithContentDescription(compose.activity.getString(it)).assertIsDisplayed()
         }
         controls.forEach {
-            assertEquals(bounds.top + safeTop + 48f * dp, it.fetchSemanticsNode().boundsInRoot.center.y, 1f)
+            assertEquals(bounds.top + safeTop + 32f * dp, it.fetchSemanticsNode().boundsInRoot.center.y, 1f)
         }
         val bitmap = capture("toolbar")
         val emptyCorner = bitmap.getPixel((28f * dp).roundToInt(), (18f * dp).roundToInt())
@@ -228,8 +228,8 @@ class ArtistHeroTest {
         controls.forEach { it.performClick() }
         assertEquals(listOf("back", "copy", "share"), clicks)
 
-        // Scroll changes the toolbar mode. Check alignment during the transition, not
-        // just after it: a per-icon vertical offset previously left buttons below the name.
+        // Scroll changes only the toolbar surface/title state. Its geometry stays pinned;
+        // check alignment during the title fade as well as after it settles.
         compose.mainClock.autoAdvance = false
         compose.runOnIdle { overArtwork = false }
         for (frameTime in listOf(80L, 80L, 160L)) {
@@ -254,7 +254,7 @@ class ArtistHeroTest {
         compose.runOnIdle { overArtwork = true }
         compose.onNodeWithText("Pyrokinesis").assertDoesNotExist()
         controls.forEach {
-            assertEquals(bounds.top + safeTop + 48f * dp,
+            assertEquals(bounds.top + safeTop + 32f * dp,
                 it.fetchSemanticsNode().boundsInRoot.center.y, 1f)
         }
     }
