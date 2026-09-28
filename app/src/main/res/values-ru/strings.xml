@@ -847,4 +847,6 @@
     <string name="capsule_light_lyric_placeholder">Строка текста выключена — перетащите этот слот</string>
     <string name="latest_release">Последний релиз</string>
     <string name="artist_release_metadata">Альбом • %1$d</string>
+    <string name="lyrics_background_style">Фон текстового плеера</string>
+    <string name="lyrics_background_solid">Обычный фон</string>
 </resources>
