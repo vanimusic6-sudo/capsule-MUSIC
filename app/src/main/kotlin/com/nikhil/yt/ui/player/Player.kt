@@ -41,6 +41,7 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.media3.common.C
+import androidx.media3.common.Player
 import androidx.navigation.NavController
 import com.nikhil.yt.LocalPlayerConnection
 import com.nikhil.yt.constants.CapsulePlayerDesign
@@ -202,9 +203,9 @@ fun BottomSheetPlayer(
                     ?: C.TIME_UNSET
             delay(
                 when {
-                    !isPlaying -> 1_000L
+                    !isPlaying -> 1_500L
                     state.isExpanded -> 300L
-                    else -> 550L
+                    else -> 1_000L
                 },
             )
         }
@@ -219,7 +220,9 @@ fun BottomSheetPlayer(
     }
 
     val needsArtworkPalette =
-        playerBackground != PlayerBackgroundStyle.DEFAULT
+        playerBackground != PlayerBackgroundStyle.DEFAULT &&
+            !state.isCollapsed &&
+            !state.isDismissed
     val gradientColors =
         rememberCapsuleArtworkColors(
             mediaMetadata = enrichedMetadata,
@@ -279,6 +282,10 @@ fun BottomSheetPlayer(
                 PlayerBackground(
                     playerBackground = playerBackground,
                     gradientColors = gradientColors,
+                    animated =
+                        onScreen &&
+                            isPlaying &&
+                            playbackState == Player.STATE_READY,
                 )
             }
 
