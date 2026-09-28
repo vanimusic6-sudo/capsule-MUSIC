@@ -718,4 +718,6 @@
     <string name="together_welcome_join_body">オープンな共有リンク、またはコードを入力して「参加」をタップします。キューと再生はホストに従います。</string>
     <string name="together_welcome_permissions_title">権限と安全</string>
     <string name="together_welcome_permissions_body">ホストは、曲の追加、再生の制御、参加の承認要求をゲストに許可するかどうかを決定できます。</string>
+    <string name="latest_release">最新リリース</string>
+    <string name="artist_release_metadata">アルバム • %1$d</string>
 </resources>
