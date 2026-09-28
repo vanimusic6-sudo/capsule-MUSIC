@@ -569,10 +569,16 @@ fun CapsulePlayerContent(
     var artworkSlideDirection by remember { mutableStateOf(1) }
     val artworkSwapProgress = remember { Animatable(1f) }
 
-    LaunchedEffect(incomingArtworkFrame, visible) {
+    val artworkSlideEnabled =
+        visible &&
+            !isCapsuleVideoPlaying &&
+            !hideArtwork &&
+            design != CapsulePlayerDesign.IMMERSIVE
+
+    LaunchedEffect(incomingArtworkFrame, artworkSlideEnabled) {
         // Full-player content stays composed while closed/backgrounded. Do not spend frames on an
         // animation nobody can see, and do not replay it merely because the app came back.
-        if (!visible) {
+        if (!artworkSlideEnabled) {
             outgoingArtworkFrame = null
             shownArtworkFrame = incomingArtworkFrame
             artworkSwapProgress.snapTo(1f)
@@ -599,7 +605,7 @@ fun CapsulePlayerContent(
             targetValue = 1f,
             animationSpec =
                 tween(
-                    durationMillis = 340,
+                    durationMillis = 240,
                     easing = FastOutSlowInEasing,
                 ),
         )
@@ -634,40 +640,52 @@ fun CapsulePlayerContent(
                     retry = playerConnection.service::retryCurrentFromFreshStream,
                 )
             } else {
+                val artworkSlotModifier =
+                    Modifier
+                        .then(
+                            if (useClayLayout && !isCapsuleVideoPlaying) {
+                                Modifier.fillMaxSize()
+                            } else {
+                                Modifier
+                                    .fillMaxWidth()
+                                    .aspectRatio(
+                                        if (isCapsuleVideoPlaying) 16f / 9f else 1f,
+                                    )
+                            },
+                        )
+                        .offset(
+                            y = if (isCapsuleVideoPlaying || isLight) 0.dp else (-5).dp,
+                        )
+                        .then(
+                            if (isCapsuleVideoPlaying || hideArtwork) {
+                                Modifier
+                                    .clip(mediaShape)
+                                    .border(
+                                        1.dp,
+                                        if (isLight) Color.Transparent else outline,
+                                        mediaShape,
+                                    )
+                                    .background(
+                                        if (isCapsuleVideoPlaying) {
+                                            Color.Black
+                                        } else {
+                                            textColor.copy(alpha = 0.045f)
+                                        },
+                                    )
+                            } else {
+                                // The slot itself is invisible. Each moving child owns its own
+                                // rounded card, so the rounded corners travel with the cover rather
+                                // than acting like a stationary window over sliding bitmaps.
+                                Modifier.clipToBounds()
+                            },
+                        )
+                        .clickable(
+                            enabled = !isCapsuleVideoPlaying && !(isLight && lightEditorEnabled),
+                            onClick = onArtworkClick,
+                        )
+
                 Box(
-                    modifier =
-                        Modifier
-                            .then(
-                                if (useClayLayout && !isCapsuleVideoPlaying) {
-                                    Modifier.fillMaxSize()
-                                } else {
-                                    Modifier
-                                        .fillMaxWidth()
-                                        .aspectRatio(
-                                            if (isCapsuleVideoPlaying) 16f / 9f else 1f,
-                                        )
-                                },
-                            )
-                            .offset(
-                                y = if (isCapsuleVideoPlaying || isLight) 0.dp else (-5).dp,
-                            )
-                            .clip(mediaShape)
-                            .border(
-                                1.dp,
-                                if (isLight) Color.Transparent else outline,
-                                mediaShape,
-                            )
-                            .background(
-                                if (isCapsuleVideoPlaying) {
-                                    Color.Black
-                                } else {
-                                    textColor.copy(alpha = 0.045f)
-                                },
-                            )
-                            .clickable(
-                                enabled = !isCapsuleVideoPlaying && !(isLight && lightEditorEnabled),
-                                onClick = onArtworkClick,
-                            ),
+                    modifier = artworkSlotModifier,
                     contentAlignment = Alignment.Center,
                 ) {
                     if (isCapsuleVideoPlaying) {
@@ -733,13 +751,15 @@ fun CapsulePlayerContent(
                                 ContentScale.Fit
                             }
 
-                        // Both images live in the same clipped artwork viewport. The old cover
-                        // leaves while the new one physically pushes in from the opposite side.
+                        val cardBorder =
+                            if (isLight) Color.Transparent else outline
+                        val cardBackground = textColor.copy(alpha = 0.045f)
+
+                        // Animate complete cards, not bitmaps inside a stationary card shell.
+                        // The rounded corners, border and letterbox background move together with
+                        // each cover, matching the push transition used by other music players.
                         outgoingArtworkFrame?.let { outgoing ->
-                            AsyncImage(
-                                model = outgoing.imageUrl,
-                                contentDescription = null,
-                                contentScale = artworkContentScale,
+                            Box(
                                 modifier =
                                     Modifier
                                         .fillMaxSize()
@@ -748,15 +768,23 @@ fun CapsulePlayerContent(
                                                 -size.width *
                                                     artworkSwapProgress.value *
                                                     artworkSlideDirection
-                                        },
-                            )
+                                        }
+                                        .clip(mediaShape)
+                                        .border(1.dp, cardBorder, mediaShape)
+                                        .background(cardBackground),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                AsyncImage(
+                                    model = outgoing.imageUrl,
+                                    contentDescription = null,
+                                    contentScale = artworkContentScale,
+                                    modifier = Modifier.fillMaxSize(),
+                                )
+                            }
                         }
 
                         val shown = shownArtworkFrame
-                        AsyncImage(
-                            model = shown.imageUrl,
-                            contentDescription = shown.title,
-                            contentScale = artworkContentScale,
+                        Box(
                             modifier =
                                 Modifier
                                     .fillMaxSize()
@@ -765,8 +793,19 @@ fun CapsulePlayerContent(
                                             size.width *
                                                 (1f - artworkSwapProgress.value) *
                                                 artworkSlideDirection
-                                    },
-                        )
+                                    }
+                                    .clip(mediaShape)
+                                    .border(1.dp, cardBorder, mediaShape)
+                                    .background(cardBackground),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            AsyncImage(
+                                model = shown.imageUrl,
+                                contentDescription = shown.title,
+                                contentScale = artworkContentScale,
+                                modifier = Modifier.fillMaxSize(),
+                            )
+                        }
                     }
                 }
             }
