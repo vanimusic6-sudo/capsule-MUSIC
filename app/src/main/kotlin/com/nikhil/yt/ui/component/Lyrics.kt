@@ -455,7 +455,7 @@ private fun ArchiveTuneWord(
     val scale by animateFloatAsState(
         targetValue = scaleTarget,
         animationSpec = tween(
-            durationMillis = if (motionEnabled && isActive) 110 else 180,
+            durationMillis = if (motionEnabled && isActive) 150 else 220,
             easing = AppleMusicEasing,
         ),
         label = "archiveTuneWordScale",
@@ -469,7 +469,7 @@ private fun ArchiveTuneWord(
     val lift by animateFloatAsState(
         targetValue = targetLift,
         animationSpec = tween(
-            durationMillis = if (motionEnabled && isActive) 120 else 220,
+            durationMillis = if (motionEnabled && isActive) 170 else 260,
             easing = AppleMusicEasing,
         ),
         label = "archiveTuneWordLift",
@@ -1170,17 +1170,6 @@ fun Lyrics(
                         label = "archiveLineFocus",
                     )
 
-                    val targetScale = 1f
-
-                    val animatedScale by animateFloatAsState(
-                        targetValue = targetScale,
-                        animationSpec = spring(
-                            dampingRatio = Spring.DampingRatioNoBouncy,
-                            stiffness = Spring.StiffnessLow
-                        ),
-                        label = "lyricScale"
-                    )
-
                     val targetBlur = when {
                         !isSynced || index == displayedCurrentLineIndex -> 0f
                         isManualScrolling -> when {
@@ -1276,8 +1265,6 @@ fun Lyrics(
                         )
                         .alpha(animatedAlpha)
                         .graphicsLayer {
-                            scaleX = animatedScale
-                            scaleY = animatedScale
                             if (animatedBlur > 0.1f && distance > 2) {
                                 alpha = animatedAlpha * (1f - animatedBlur * 0.1f)
                             }
