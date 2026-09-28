@@ -57,7 +57,6 @@ import com.nikhil.yt.LocalPlayerAwareWindowInsets
 import com.nikhil.yt.LocalPlayerConnection
 import com.nikhil.yt.R
 import com.nikhil.yt.constants.InnerTubeCookieKey
-import com.nikhil.yt.constants.DisableBlurKey
 import com.nikhil.yt.constants.ShowHomeCategoryChipsKey
 import com.nikhil.yt.db.entities.Album
 import com.nikhil.yt.db.entities.Artist
@@ -118,7 +117,6 @@ fun HomeScreen(
     val accountName by viewModel.accountName.collectAsState()
     val accountImageUrl by viewModel.accountImageUrl.collectAsState()
     val innerTubeCookie by rememberPreference(InnerTubeCookieKey, "")
-    val (disableBlur) = rememberPreference(DisableBlurKey, true)
     val (showHomeCategoryChips) = rememberPreference(ShowHomeCategoryChipsKey, true)
     val isLoggedIn = remember(innerTubeCookie) {
         "SAPISID" in parseCookieString(innerTubeCookie)
@@ -190,24 +188,22 @@ fun HomeScreen(
          * much larger draw area alive. Quick Picks and every section below are deliberately left
          * untouched.
          */
-        if (!disableBlur) {
-            Box(
-                modifier =
-                    Modifier
-                        .fillMaxWidth()
-                        .height(430.dp)
-                        .align(Alignment.TopCenter)
-                        .drawWithCache {
-                            val brush =
-                                Brush.verticalGradient(
-                                    0f to tonalStart.copy(alpha = 0.30f),
-                                    0.42f to tonalMiddle.copy(alpha = 0.14f),
-                                    1f to Color.Transparent,
-                                )
-                            onDrawBehind { drawRect(brush) }
-                        },
-            )
-        }
+        Box(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .height(430.dp)
+                    .align(Alignment.TopCenter)
+                    .drawWithCache {
+                        val brush =
+                            Brush.verticalGradient(
+                                0f to tonalStart.copy(alpha = 0.30f),
+                                0.42f to tonalMiddle.copy(alpha = 0.14f),
+                                1f to Color.Transparent,
+                            )
+                        onDrawBehind { drawRect(brush) }
+                    },
+        )
         
         BoxWithConstraints(
             modifier = Modifier
