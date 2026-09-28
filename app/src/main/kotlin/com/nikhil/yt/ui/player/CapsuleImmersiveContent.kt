@@ -62,6 +62,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
@@ -355,26 +356,46 @@ fun CapsuleImmersiveContent(
     val presentingVideo = isVideo && videoFirstFrameRendered
 
     /*
-     * The status bar goes while this screen is up.
+     * Immersive owns only the VISIBILITY of the status bar, never the screen geometry.
      *
-     * The clock and the battery belong to the phone, not to the cover, and in a design whose whole
-     * point is that the picture runs to the edge of the glass they are the one thing that says
-     * otherwise. Transient-by-swipe, so a swipe from the top still brings them back.
-     *
-     * Restored on the way out rather than on a flag, so it comes back whether the player was
-     * closed, the design was changed, or the screen simply left the composition.
+     * The app shell and the other player skins reserve system-bar size even while the bar is
+     * hidden, so taking the clock/battery strip away no longer moves any anchors. Also remember
+     * the state we inherited: if another full-screen surface had already hidden the status bar,
+     * leaving Immersive must not force it visible.
      */
     val context = LocalContext.current
     val hideSystemBars = expanded && onScreen
     DisposableEffect(hideSystemBars) {
         val window = context.immersiveWindow()
-        val controller = window?.let { WindowCompat.getInsetsController(it, it.decorView) }
+        val decorView = window?.decorView
+        val controller =
+            if (window != null && decorView != null) {
+                WindowCompat.getInsetsController(window, decorView)
+            } else {
+                null
+            }
+        val statusBarWasVisible =
+            hideSystemBars &&
+                decorView?.let {
+                    ViewCompat.getRootWindowInsets(it)
+                        ?.isVisible(WindowInsetsCompat.Type.statusBars())
+                } == true
+        val previousSystemBarsBehavior = controller?.systemBarsBehavior
+
         if (hideSystemBars && controller != null) {
             controller.systemBarsBehavior =
                 WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
             controller.hide(WindowInsetsCompat.Type.statusBars())
         }
-        onDispose { controller?.show(WindowInsetsCompat.Type.statusBars()) }
+
+        onDispose {
+            if (hideSystemBars && controller != null) {
+                if (statusBarWasVisible) {
+                    controller.show(WindowInsetsCompat.Type.statusBars())
+                }
+                previousSystemBarsBehavior?.let { controller.systemBarsBehavior = it }
+            }
+        }
     }
 
     /*
