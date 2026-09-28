@@ -690,13 +690,28 @@ class MainActivity : ComponentActivity() {
                             CapsuleBottomBarEnabledKey,
                             defaultValue = false,
                         )
-                    val defaultOpenTab by rememberEnumPreference(DefaultOpenTabKey, NavigationTab.HOME)
+                    val initialDefaultOpenTab =
+                        remember {
+                            PreferenceStore.get(DefaultOpenTabKey)
+                                ?.let { raw ->
+                                    runCatching { NavigationTab.valueOf(raw) }.getOrNull()
+                                }
+                                ?: NavigationTab.HOME
+                        }
                     val pauseSearchHistory by rememberPreference(PauseSearchHistoryKey, defaultValue = false)
                     val tabOpenedFromShortcut =
                         remember {
                             when (intent?.action) {
                                 ACTION_LIBRARY -> NavigationTab.LIBRARY
                                 else -> null
+                            }
+                        }
+                    val initialMainRoute =
+                        remember(tabOpenedFromShortcut, initialDefaultOpenTab) {
+                            when (tabOpenedFromShortcut ?: initialDefaultOpenTab) {
+                                NavigationTab.HOME -> Screens.Home.route
+                                NavigationTab.LIBRARY -> Screens.Library.route
+                                else -> Screens.Home.route
                             }
                         }
 
@@ -1607,11 +1622,7 @@ class MainActivity : ComponentActivity() {
 
                                  NavHost(
                                     navController = navController,
-                                    startDestination = when (tabOpenedFromShortcut ?: defaultOpenTab) {
-                                        NavigationTab.HOME -> Screens.Home
-                                        NavigationTab.LIBRARY -> Screens.Library
-                                        else -> Screens.Home
-                                    }.route,
+                                    startDestination = initialMainRoute,
                                     enterTransition = {
                                         ScreenTransitions.enter(initialState.destination.route, targetState.destination.route)
                                     },
