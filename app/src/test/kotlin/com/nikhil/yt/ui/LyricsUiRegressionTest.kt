@@ -106,7 +106,7 @@ class LyricsUiRegressionTest {
         assertTrue(lyrics.contains("archiveTuneFontSize = lyricsTextSize.sp * 0.96f"))
         assertTrue(lyrics.contains("((1f / 0.96f) - 1f) * wave"))
         assertTrue(lyrics.contains("if (hasWordTimings && item.words != null)"))
-        assertFalse(lyrics.contains("FontWeight.ExtraBold"))
+        assertTrue(lyrics.contains("val fontWeight = FontWeight.Bold"))
     }
 
     @Test
