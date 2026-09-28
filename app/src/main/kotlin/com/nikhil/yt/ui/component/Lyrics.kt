@@ -695,7 +695,13 @@ fun Lyrics(
         mutableStateOf(false)
     }
 
-    LaunchedEffect(lyrics, lines, isAppMinimized) {
+    LaunchedEffect(
+        lyrics,
+        lines,
+        isAppMinimized,
+        wordSyncLeadMs,
+        lineSyncLeadMs,
+    ) {
         if (lyrics.isNullOrEmpty() || (!lyrics.startsWith("[") && !isTtml(lyrics))) {
             currentLineIndex = -1
             currentPlaybackPosition = 0L
@@ -724,12 +730,8 @@ fun Lyrics(
         }
     }
 
-    LaunchedEffect(isSeeking, lastPreviewTime) {
+    LaunchedEffect(isSeeking) {
         if (isSeeking) {
-            lastPreviewTime = 0L
-        } else if (lastPreviewTime != 0L) {
-            delay(LyricsPreviewTime)
-            isManualScrolling = false
             lastPreviewTime = 0L
         }
     }
