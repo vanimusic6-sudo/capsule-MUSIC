@@ -605,7 +605,8 @@ private fun YouTubeGridItemWrapper(
         isActive = item.id in listOf(mediaMetadata?.album?.id, mediaMetadata?.id),
         isPlaying = isPlaying,
         coroutineScope = scope,
-        thumbnailRatio = 1f,
+        // Let the item choose its natural Home aspect ratio (songs are wide, albums stay square)
+        // instead of forcing every recommendation into the same square card.
         modifier = modifier.combinedClickable(
             onClick = {
                 when (item) {
