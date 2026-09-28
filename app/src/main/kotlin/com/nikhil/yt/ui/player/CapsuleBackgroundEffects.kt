@@ -71,8 +71,8 @@ internal fun capsuleBackgroundNeedsClock(effect: CapsuleBackgroundEffect): Boole
  * the eye to tell 15 from 8, or 24 from 14, which is why the frame rate was the thing to cut
  * rather than the effect.
  */
-private const val COMPACT_BACKGROUND_FPS = 8
-private const val FULL_BACKGROUND_FPS = 14
+private const val COMPACT_BACKGROUND_FPS = 6
+private const val FULL_BACKGROUND_FPS = 12
 private const val STATIC_BACKGROUND_TIME_MS = 6_480L
 
 /**
