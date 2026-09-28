@@ -171,8 +171,14 @@ fun OnlineSearchResult(
 
     val coroutineScope = rememberCoroutineScope()
     val lazyListState = rememberLazyListState()
-    val downloads by LocalDownloadUtil.current.downloads.collectAsState()
     var sourceFilter by remember { mutableStateOf(SearchSourceFilter.ALL) }
+    val downloadUtil = LocalDownloadUtil.current
+    val downloads =
+        if (sourceFilter == SearchSourceFilter.SOUNDCLOUD) {
+            downloadUtil.downloads.collectAsState().value
+        } else {
+            emptyMap()
+        }
 
     val soundCloudResult = viewModel.soundCloudResult
     val soundCloudPage =
