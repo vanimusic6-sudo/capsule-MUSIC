@@ -1603,7 +1603,14 @@ internal fun CapsuleLightCanvasV2(
                                     // rail itself belongs in the 8dp dock gap, not on top of text,
                                     // sliders or the transport shell.
                                     .graphicsLayer {
-                                        translationY = -6.dp.toPx()
+                                        val preferredLift = 6.dp.toPx()
+                                        // Keep the rail in the gap, but never let the topmost
+                                        // block paint it outside the editor canvas into artwork.
+                                        translationY =
+                                            -minOf(
+                                                preferredLift,
+                                                animatedTop.coerceAtLeast(0f),
+                                            )
                                     }
                                     .width(30.dp)
                                     .height(4.dp)
