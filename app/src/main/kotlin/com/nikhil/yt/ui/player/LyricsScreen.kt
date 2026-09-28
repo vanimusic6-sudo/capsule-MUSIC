@@ -11,6 +11,7 @@ package com.nikhil.yt.ui.player
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -22,6 +23,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.media3.common.C
 import com.nikhil.yt.LocalDatabase
+import com.nikhil.yt.LocalLyricsStatusBarRequest
 import com.nikhil.yt.LocalPlayerConnection
 import com.nikhil.yt.db.entities.LyricsEntity
 import com.nikhil.yt.models.MediaMetadata
@@ -41,6 +43,14 @@ fun LyricsScreen(
     modifier: Modifier = Modifier,
 ) {
     val playerConnection = LocalPlayerConnection.current ?: return
+    val requestLyricsStatusBarHidden = LocalLyricsStatusBarRequest.current
+
+    DisposableEffect(requestLyricsStatusBarHidden) {
+        requestLyricsStatusBarHidden(true)
+        onDispose {
+            requestLyricsStatusBarHidden(false)
+        }
+    }
     val player = playerConnection.player
     val context = LocalContext.current
     val database = LocalDatabase.current
