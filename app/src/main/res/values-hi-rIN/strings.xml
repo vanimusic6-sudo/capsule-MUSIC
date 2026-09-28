@@ -778,4 +778,6 @@ Velune will only extract your token, and everything else is stored locally.</str
     <string name="token_copied">Token copied to clipboard</string>
     <string name="no_visitor_data">No visitor data available. Tokens cannot be generated.</string>
     <string name="extracting_from_url">Extracting tokens from URL…</string>
+    <string name="latest_release">नवीनतम रिलीज़</string>
+    <string name="artist_release_metadata">एल्बम • %1$d</string>
 </resources>
