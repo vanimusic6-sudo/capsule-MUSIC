@@ -1996,10 +1996,7 @@ fun Lyrics(
                                 textAlign = alignment,
                                 fontWeight = if (hasRomanization) FontWeight.Bold else FontWeight.ExtraBold,
                                 lineHeight = (lyricsTextSize * lyricsLineSpacing).sp,
-                                modifier = Modifier.graphicsLayer {
-                                    scaleX = 1f
-                                    scaleY = 1f
-                                }
+                                modifier = Modifier
                             )
                         } else if (isActiveLine && effectiveAnimationStyle == LyricsAnimationStyle.APPLE && !reduceMotionDuringScroll) {
 
