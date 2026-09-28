@@ -66,7 +66,8 @@ class LyricsUiRegressionTest {
     @Test
     fun `initial lyrics focus waits for a real current line`() {
         val lyrics = source("com/nikhil/yt/ui/component/Lyrics.kt")
-        assertTrue(lyrics.contains("if (currentLineIndex < 0) return@LaunchedEffect"))
+        assertTrue(lyrics.contains("findCurrentLineIndex(\n                lines,\n                playerConnection.player.currentPosition"))
+        assertTrue(lyrics.contains("initialScrollDone = false"))
         assertTrue(lyrics.contains("performSmoothPageScroll(currentLineIndex, isSeek = true)"))
     }
 
@@ -74,6 +75,7 @@ class LyricsUiRegressionTest {
     fun `tapping a lyric leaves free scroll and restores follow mode`() {
         val lyrics = source("com/nikhil/yt/ui/component/Lyrics.kt")
         assertTrue(lyrics.contains("isManualScrolling = false"))
+        assertTrue(lyrics.contains("currentLineIndex = index"))
         assertTrue(lyrics.contains("deferredCurrentLineIndex = index"))
         assertTrue(lyrics.contains("playerConnection.player.seekTo(item.time)"))
     }
@@ -82,8 +84,9 @@ class LyricsUiRegressionTest {
     fun `apple lyrics reserve smaller metrics and only render grow to old base`() {
         val lyrics = source("com/nikhil/yt/ui/component/Lyrics.kt")
         assertTrue(lyrics.contains("appleLayoutFontSize = lyricsTextSize.sp * 0.96f"))
-        assertTrue(lyrics.contains("1f / 0.96f"))
-        assertTrue(lyrics.contains("appleMusicStyle"))
+        assertTrue(lyrics.contains("appleVisualScale"))
+        assertTrue(lyrics.contains("scaleX = appleVisualScale"))
+        assertFalse(lyrics.contains("appleMusicStyle &&"))
     }
 
     @Test
@@ -141,5 +144,14 @@ class LyricsUiRegressionTest {
         assertTrue(lyrics.contains("delay(40L)"))
         assertTrue(lyrics.contains("delay(100L)"))
         assertTrue(lyrics.contains("delay(250L)"))
+    }
+
+    @Test
+    fun `apple growth is text local and leaves viewport padding intact`() {
+        val lyrics = source("com/nikhil/yt/ui/component/Lyrics.kt")
+        assertTrue(lyrics.contains(".padding(horizontal = 4.dp, vertical = 2.dp)"))
+        assertTrue(lyrics.contains("clip = false"))
+        assertTrue(lyrics.contains("scaleX = appleVisualScale"))
+        assertFalse(lyrics.contains("appleMusicStyle &&"))
     }
 }
