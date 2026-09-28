@@ -30,6 +30,9 @@ import com.nikhil.yt.utils.reportException
 import com.nikhil.yt.utils.reportRecoverableException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.combine
@@ -41,7 +44,7 @@ class PlayerConnection(
     context: Context,
     binder: MusicBinder,
     val database: MusicDatabase,
-    scope: CoroutineScope,
+    private val scope: CoroutineScope,
 ) : Player.Listener {
     val service = binder.service
     val player = service.player
@@ -82,6 +85,7 @@ class PlayerConnection(
     val canSkipNext = MutableStateFlow(true)
 
     val error = MutableStateFlow<PlaybackException?>(null)
+    private var pendingUiErrorJob: Job? = null
     val waitingForNetworkConnection = service.waitingForNetworkConnection
     val queueRestoreCompleted = service.queueRestoreCompleted
 
@@ -172,7 +176,13 @@ class PlayerConnection(
 
     override fun onPlaybackStateChanged(state: Int) {
         playbackState.value = state
-        error.value = player.playerError
+        // Media3 can briefly surface an I/O error while the service is already replacing an
+        // obsolete source after a skip. Recovery still happens immediately in MusicService; the
+        // UI only clears here. A persistent error is published by onPlayerErrorChanged after the
+        // grace period below.
+        if (state == Player.STATE_READY || player.playerError == null) {
+            clearPendingUiError()
+        }
     }
 
     override fun onPlayWhenReadyChanged(
@@ -190,6 +200,8 @@ class PlayerConnection(
         mediaItem: MediaItem?,
         reason: Int,
     ) {
+        // Never carry an obsolete source failure onto the artwork of the next track.
+        clearPendingUiError()
         val meta = mediaItem?.metadata ?: service.currentMediaMetadata.value
         mediaMetadata.value = meta
         currentMediaItemIndex.value = player.currentMediaItemIndex
@@ -221,10 +233,34 @@ class PlayerConnection(
     }
 
     override fun onPlayerErrorChanged(playbackError: PlaybackException?) {
-        if (playbackError != null) {
-            reportException(playbackError)
+        pendingUiErrorJob?.cancel()
+
+        if (playbackError == null) {
+            error.value = null
+            return
         }
-        error.value = playbackError
+
+        // Logging and MusicService recovery remain immediate. Only the visual error card waits:
+        // transient code-2000/source errors during a skip normally disappear as soon as the fresh
+        // source becomes READY, so flashing a full error card for them is actively misleading.
+        reportException(playbackError)
+        val mediaIdAtFailure = player.currentMediaItem?.mediaId
+        pendingUiErrorJob =
+            scope.launch {
+                delay(UI_ERROR_GRACE_MS)
+                val sameItem = player.currentMediaItem?.mediaId == mediaIdAtFailure
+                val sameError = player.playerError === playbackError
+                val recovered = player.playbackState == Player.STATE_READY
+                if (sameItem && sameError && !recovered) {
+                    error.value = playbackError
+                }
+            }
+    }
+
+    private fun clearPendingUiError() {
+        pendingUiErrorJob?.cancel()
+        pendingUiErrorJob = null
+        error.value = null
     }
 
     private fun updateCanSkipPreviousAndNext() {
@@ -244,6 +280,11 @@ class PlayerConnection(
     }
 
     fun dispose() {
+        clearPendingUiError()
         player.removeListener(this)
+    }
+
+    private companion object {
+        const val UI_ERROR_GRACE_MS = 1_200L
     }
 }
