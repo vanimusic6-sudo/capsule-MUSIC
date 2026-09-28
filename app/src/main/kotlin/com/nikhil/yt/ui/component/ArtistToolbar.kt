@@ -1,5 +1,7 @@
 package com.nikhil.yt.ui.component
 
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.only
@@ -11,6 +13,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
@@ -38,6 +41,12 @@ internal fun ArtistToolbar(
     modifier: Modifier = Modifier,
 ) {
     val foreground = if (overArtwork) Color.White else StandardChrome.text
+    val titleAlpha by
+        animateFloatAsState(
+            targetValue = if (overArtwork) 0f else 1f,
+            animationSpec = tween(durationMillis = 180),
+            label = "artistToolbarTitleAlpha",
+        )
     val buttonColors = IconButtonDefaults.iconButtonColors(
         containerColor = Color.Transparent,
         contentColor = foreground,
@@ -49,7 +58,6 @@ internal fun ArtistToolbar(
     TopAppBar(
         modifier = modifier,
         // One shared, centred row keeps the name and icons aligned throughout scrolling.
-        // 96 dp preserves the artwork controls' existing centre; the compact bar uses 64 dp.
         windowInsets = WindowInsets.safeDrawing.only(
             WindowInsetsSides.Horizontal + WindowInsetsSides.Top,
         ),
@@ -59,7 +67,7 @@ internal fun ArtistToolbar(
         title = {
             Text(
                 name,
-                modifier = Modifier.testTag("artist-toolbar-title").alpha(1f - artworkFraction)
+                modifier = Modifier.testTag("artist-toolbar-title").alpha(titleAlpha)
                     .then(if (overArtwork) Modifier.clearAndSetSemantics {} else Modifier),
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
