@@ -52,4 +52,42 @@ class LyricsUiRegressionTest {
         assertTrue(lyrics.contains("ArchiveTuneWord"))
         assertTrue(lyrics.contains("LyricsAnimationStyle.ARCHIVE_TUNE"))
     }
+
+    @Test
+    fun `lyrics menu system bars follow player design`() {
+        val player = source("com/nikhil/yt/ui/player/Player.kt")
+        val screen = source("com/nikhil/yt/ui/player/LyricsScreen.kt")
+        assertTrue(player.contains("hideStatusBar = design == CapsulePlayerDesign.IMMERSIVE"))
+        assertTrue(screen.contains("requestLyricsStatusBarHidden(hideStatusBar)"))
+    }
+
+    @Test
+    fun `lyrics player has its own five background choices`() {
+        val keys = source("com/nikhil/yt/constants/PreferenceKeys.kt")
+        val content = source("com/nikhil/yt/ui/player/CapsuleLyricsContent.kt")
+        assertTrue(keys.contains("enum class LyricsBackgroundStyle"))
+        assertTrue(keys.contains("CAPSULE_STAR"))
+        assertTrue(keys.contains("CAPSULE_GLOW"))
+        assertTrue(keys.contains("NEBULA"))
+        assertTrue(keys.contains("ARTWORK_GRADIENT"))
+        assertTrue(content.contains("CapsuleBackgroundEffect.CAPSULE_STAR"))
+        assertTrue(content.contains("CapsuleBackgroundEffect.CAPSULE_GLOW"))
+        assertTrue(content.contains("CapsuleBackgroundEffect.NEBULA"))
+        assertTrue(content.contains("CapsuleBackgroundEffect.MATTE_GRADIENT"))
+    }
+
+    @Test
+    fun `animated lyric focus does not change text metrics`() {
+        val lyrics = source("com/nikhil/yt/ui/component/Lyrics.kt")
+        assertFalse(lyrics.contains("val wordWeight = if (hasRomanization)"))
+        assertFalse(lyrics.contains("fontWeight = if (isActiveLine)"))
+    }
+
+    @Test
+    fun `lyrics tuning uses lowercase positions and centered sync controls`() {
+        val tuning = source("com/nikhil/yt/ui/menu/LyricsTuning.kt")
+        assertTrue(tuning.contains(".replaceFirstChar { it.lowercase() }"))
+        assertTrue(tuning.contains("horizontalArrangement = Arrangement.Center"))
+        assertTrue(tuning.contains("textAlign = TextAlign.Center"))
+    }
 }
