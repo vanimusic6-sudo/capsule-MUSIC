@@ -733,4 +733,6 @@ Velune sẽ chỉ trích xuất token của bạn, và mọi thứ khác đượ
     <string name="together_requesting_song_change">Yêu cầu chủ trì đổi bài hát…</string>
     <string name="together_song_change_failed">Yêu cầu thay đổi bài hát không được áp dụng. Vui lòng thử lại.</string>
     <string name="together_token_missing">Phiên bản này không hỗ trợ phát nhạc trực tuyến</string>
+    <string name="latest_release">Bản phát hành mới nhất</string>
+    <string name="artist_release_metadata">Album • %1$d</string>
 </resources>
