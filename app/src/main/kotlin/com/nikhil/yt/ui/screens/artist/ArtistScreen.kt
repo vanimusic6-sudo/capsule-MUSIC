@@ -95,7 +95,7 @@ import com.nikhil.yt.models.toMediaMetadata
 import com.nikhil.yt.playback.queues.ListQueue
 import com.nikhil.yt.playback.queues.YouTubeQueue
 import com.nikhil.yt.ui.component.ArtistHero
-import com.nikhil.yt.ui.component.ArtistToolbarArtworkHeight
+import com.nikhil.yt.ui.component.ArtistToolbarCompactHeight
 import com.nikhil.yt.ui.component.artistHeroArtworkHeight
 import com.nikhil.yt.ui.component.ArtistToolbar
 import com.nikhil.yt.ui.component.StandardChrome
@@ -226,7 +226,7 @@ fun ArtistScreen(
                         }
                     val toolbarBottomPx =
                         with(density) {
-                            (systemBarsTopPadding + ArtistToolbarArtworkHeight).roundToPx()
+                            (systemBarsTopPadding + ArtistToolbarCompactHeight).roundToPx()
                         }
                     artistToolbarOverArtwork(
                         firstVisibleItemIndex = lazyListState.firstVisibleItemIndex,
