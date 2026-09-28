@@ -50,8 +50,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.snapshotFlow
-import com.nikhil.yt.constants.SoundCloudWebPreviewEnabledKey
-import com.nikhil.yt.utils.rememberPreference
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -145,11 +143,10 @@ private fun SearchStatusText(
     )
 }
 
-private enum class SearchSourceFilter { ALL, YOUTUBE, SOUNDCLOUD }
+private enum class SearchSourceFilter { ALL, SOUNDCLOUD }
 
 private enum class SearchChip {
     ALL,
-    YOUTUBE,
     SOUNDCLOUD,
     SONGS,
     VIDEOS,
@@ -173,7 +170,6 @@ fun OnlineSearchResult(
 
     val coroutineScope = rememberCoroutineScope()
     val lazyListState = rememberLazyListState()
-    val (showSoundCloudPreview, _) = rememberPreference(SoundCloudWebPreviewEnabledKey, false)
     val downloads by LocalDownloadUtil.current.downloads.collectAsState()
     var sourceFilter by remember { mutableStateOf(SearchSourceFilter.ALL) }
 
@@ -184,8 +180,10 @@ fun OnlineSearchResult(
                 SoundCloudCatalog.Result.Success<SoundCloudCatalog.SearchPage>
         )?.value
 
-    LaunchedEffect(showSoundCloudPreview) {
-        if (showSoundCloudPreview) {
+    LaunchedEffect(sourceFilter) {
+        // SoundCloud is built in, but it does no search/network work until the user explicitly
+        // opens the SoundCloud source chip. Normal "All" and content-type filters stay YouTube.
+        if (sourceFilter == SearchSourceFilter.SOUNDCLOUD) {
             viewModel.ensureSoundCloudSearch()
         }
     }
@@ -252,7 +250,7 @@ fun OnlineSearchResult(
                 else -> false
             },
             isPlaying = isPlaying,
-            showSourceIcon = showSoundCloudPreview,
+            showSourceIcon = false,
             trailingContent = {
                 IconButton(
                     onClick = longClick,
@@ -371,8 +369,7 @@ fun OnlineSearchResult(
         val showYouTubeResults =
             sourceFilter != SearchSourceFilter.SOUNDCLOUD
         val showSoundCloudResults =
-            showSoundCloudPreview &&
-                sourceFilter != SearchSourceFilter.YOUTUBE
+            sourceFilter == SearchSourceFilter.SOUNDCLOUD
         val filteredPage = itemsPage
 
         if (searchFilter == null) {
@@ -740,7 +737,6 @@ fun OnlineSearchResult(
     }
 
     val selectedChip = when {
-        sourceFilter == SearchSourceFilter.YOUTUBE -> SearchChip.YOUTUBE
         sourceFilter == SearchSourceFilter.SOUNDCLOUD -> SearchChip.SOUNDCLOUD
         searchFilter == FILTER_SONG -> SearchChip.SONGS
         searchFilter == FILTER_VIDEO -> SearchChip.VIDEOS
@@ -766,10 +762,7 @@ fun OnlineSearchResult(
         ChipsRow(
             chips = buildList {
                 add(SearchChip.ALL to stringResource(R.string.filter_all))
-                if (showSoundCloudPreview) {
-                    add(SearchChip.YOUTUBE to "YouTube")
-                    add(SearchChip.SOUNDCLOUD to "SoundCloud")
-                }
+                add(SearchChip.SOUNDCLOUD to "SoundCloud")
                 add(SearchChip.SONGS to stringResource(R.string.filter_songs))
                 add(SearchChip.VIDEOS to stringResource(R.string.filter_videos))
                 add(SearchChip.ALBUMS to stringResource(R.string.filter_albums))
@@ -788,10 +781,6 @@ fun OnlineSearchResult(
                 when (chip) {
                     SearchChip.ALL -> {
                         sourceFilter = SearchSourceFilter.ALL
-                        viewModel.filter.value = null
-                    }
-                    SearchChip.YOUTUBE -> {
-                        sourceFilter = SearchSourceFilter.YOUTUBE
                         viewModel.filter.value = null
                     }
                     SearchChip.SOUNDCLOUD -> {
@@ -829,7 +818,6 @@ fun OnlineSearchResult(
             },
             icons = mapOf(
                 SearchChip.ALL to R.drawable.search,
-                SearchChip.YOUTUBE to R.drawable.youtube_source,
                 SearchChip.SOUNDCLOUD to R.drawable.soundcloud_source,
                 SearchChip.SONGS to R.drawable.music_note,
                 SearchChip.VIDEOS to R.drawable.slow_motion_video,
