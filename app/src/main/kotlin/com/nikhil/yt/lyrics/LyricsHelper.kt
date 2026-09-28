@@ -40,12 +40,11 @@ constructor(
     /** Every provider there is, by its id in [LyricsProviderOrder]. */
     private val providersById: Map<String, LyricsProvider> =
         mapOf(
-            LyricsProviderOrder.LRCLIB to LrcLibLyricsProvider,
             LyricsProviderOrder.LYRICS_PLUS to LyricsPlusLyricsProvider,
             LyricsProviderOrder.BETTER_LYRICS to BetterLyricsProvider,
             LyricsProviderOrder.PAXSENIX to PaxsenixLyricsProvider,
+            LyricsProviderOrder.MUSIXMATCH to MusixmatchLyricsProvider,
             LyricsProviderOrder.NETEASE to NetEaseLyricsProvider,
-            LyricsProviderOrder.YOUTUBE_SUBTITLE to YouTubeSubtitleLyricsProvider,
             LyricsProviderOrder.YOUTUBE to YouTubeLyricsProvider,
         )
 
