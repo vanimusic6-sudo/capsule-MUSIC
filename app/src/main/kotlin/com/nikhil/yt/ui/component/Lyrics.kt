@@ -43,6 +43,7 @@ import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBars
+import androidx.compose.foundation.layout.systemBarsIgnoringVisibility
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -846,7 +847,7 @@ fun Lyrics(
         } else {
             LazyColumn(
             state = lazyListState,
-            contentPadding = WindowInsets.systemBars
+            contentPadding = WindowInsets.systemBarsIgnoringVisibility
                 .only(WindowInsetsSides.Top)
                 .add(WindowInsets(top = maxHeight / 2, bottom = maxHeight / 2))
                 .asPaddingValues(),
