@@ -93,11 +93,9 @@ fun LyricsScreen(
         durationMs = duration,
         onClose = onBackClick,
         onMenuClick = {
-            if (hideStatusBar) {
-                // ModalBottomSheet may ask the window to expose system chrome. Reassert the
-                // Immersive contract right before mounting the sheet.
-                requestLyricsStatusBarHidden(true)
-            }
+            // Reassert the desired state before mounting the sheet: Immersive stays hidden,
+            // every other player design explicitly restores normal Android chrome.
+            requestLyricsStatusBarHidden(hideStatusBar)
             menuState.show {
                 LyricsMenu(
                     lyricsProvider = { currentLyrics },
