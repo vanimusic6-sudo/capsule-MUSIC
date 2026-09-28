@@ -63,17 +63,20 @@ import androidx.compose.ui.unit.sp
 import androidx.media3.common.C
 import androidx.media3.common.Player
 import com.nikhil.yt.LocalPlayerConnection
+import com.nikhil.yt.constants.LyricsBackgroundStyle
+import com.nikhil.yt.constants.LyricsBackgroundStyleKey
 import com.nikhil.yt.R
 import com.nikhil.yt.extensions.togglePlayPause
 import com.nikhil.yt.models.MediaMetadata
 import com.nikhil.yt.ui.component.Lyrics
 import com.nikhil.yt.utils.makeTimeString
+import com.nikhil.yt.utils.rememberEnumPreference
 import kotlinx.coroutines.isActive
 import kotlin.math.cos
 import kotlin.math.sin
 
 private val CapsuleLyricsBackground =
-    Color(0xFF101010)
+    Color(0xFF141414)
 
 private val CapsuleLyricsText =
     Color(0xFFF0F0F0)
@@ -115,6 +118,18 @@ fun CapsuleLyricsContent(
 
     val isPlaying by
         playerConnection.isPlaying.collectAsState()
+
+    val lyricsBackground by
+        rememberEnumPreference(
+            LyricsBackgroundStyleKey,
+            defaultValue = LyricsBackgroundStyle.SOLID,
+        )
+
+    val artworkColors =
+        rememberCapsuleArtworkColors(
+            mediaMetadata = mediaMetadata,
+            enabled = lyricsBackground != LyricsBackgroundStyle.SOLID,
+        )
 
     val canSkipPrevious by
         playerConnection.canSkipPrevious.collectAsState()
@@ -176,14 +191,62 @@ fun CapsuleLyricsContent(
                 displayPosition
         ).coerceAtLeast(0L)
 
-    Column(
+    Box(
         modifier =
             modifier
                 .fillMaxSize()
-                .background(
-                    CapsuleLyricsBackground,
+                .background(CapsuleLyricsBackground),
+    ) {
+        when (lyricsBackground) {
+            LyricsBackgroundStyle.SOLID -> Unit
+
+            LyricsBackgroundStyle.CAPSULE_STAR ->
+                CapsuleProceduralBackground(
+                    effect = CapsuleBackgroundEffect.CAPSULE_STAR,
+                    colors = artworkColors,
+                    modifier = Modifier.fillMaxSize(),
+                    animated = isPlaying && playbackState == Player.STATE_READY,
                 )
-                .windowInsetsPadding(
+
+            LyricsBackgroundStyle.CAPSULE_GLOW ->
+                CapsuleProceduralBackground(
+                    effect = CapsuleBackgroundEffect.CAPSULE_GLOW,
+                    colors = artworkColors,
+                    modifier = Modifier.fillMaxSize(),
+                    animated = false,
+                )
+
+            LyricsBackgroundStyle.NEBULA ->
+                CapsuleProceduralBackground(
+                    effect = CapsuleBackgroundEffect.NEBULA,
+                    colors = artworkColors,
+                    modifier = Modifier.fillMaxSize(),
+                    animated = isPlaying && playbackState == Player.STATE_READY,
+                )
+
+            LyricsBackgroundStyle.ARTWORK_GRADIENT ->
+                CapsuleProceduralBackground(
+                    effect = CapsuleBackgroundEffect.MATTE_GRADIENT,
+                    colors = artworkColors,
+                    modifier = Modifier.fillMaxSize(),
+                    animated = false,
+                )
+        }
+
+        if (lyricsBackground != LyricsBackgroundStyle.SOLID) {
+            Box(
+                modifier =
+                    Modifier
+                        .fillMaxSize()
+                        .background(Color.Black.copy(alpha = 0.14f)),
+            )
+        }
+
+        Column(
+            modifier =
+                Modifier
+                    .fillMaxSize()
+                    .windowInsetsPadding(
                     WindowInsets.systemBarsIgnoringVisibility.only(
                         WindowInsetsSides.Top +
                             WindowInsetsSides.Horizontal +
@@ -589,6 +652,7 @@ fun CapsuleLyricsContent(
         Spacer(
             Modifier.height(10.dp),
         )
+        }
     }
 }
 
