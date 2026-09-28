@@ -21,7 +21,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.media3.exoplayer.offline.Download
@@ -80,8 +79,8 @@ internal fun SoundCloudTrackListItem(
     onArtistClick: (String) -> Unit,
     onMoreClick: () -> Unit,
     modifier: Modifier = Modifier,
-    thumbnailSize: Dp = ListThumbnailSize,
 ) {
+    val visuals = LocalSongListVisuals.current
     val downloadUtil = LocalDownloadUtil.current
     val mediaId = soundCloudMediaId(track.permalink)
     val download by downloadUtil
@@ -128,8 +127,8 @@ internal fun SoundCloudTrackListItem(
                 thumbnailUrl = track.artworkUrl,
                 isActive = isActive,
                 isPlaying = isPlaying,
-                shape = RoundedCornerShape(ThumbnailCornerRadius),
-                modifier = Modifier.size(thumbnailSize),
+                shape = RoundedCornerShape(visuals.thumbnailCornerRadius),
+                modifier = Modifier.size(visuals.thumbnailSize),
             )
         },
         trailingContent = {
@@ -141,6 +140,7 @@ internal fun SoundCloudTrackListItem(
             }
         },
         isActive = isActive,
+        itemHeight = visuals.rowHeight,
         modifier = modifier.combinedClickable(
             onClick = onClick,
             onLongClick = onMoreClick,
@@ -155,6 +155,7 @@ internal fun SoundCloudPlaylistListItem(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val visuals = LocalSongListVisuals.current
     ListItem(
         title = playlist.title,
         subtitle = {
@@ -187,10 +188,11 @@ internal fun SoundCloudPlaylistListItem(
                 thumbnailUrl = playlist.artworkUrl,
                 isActive = false,
                 isPlaying = false,
-                shape = RoundedCornerShape(ThumbnailCornerRadius),
-                modifier = Modifier.size(ListThumbnailSize),
+                shape = RoundedCornerShape(visuals.thumbnailCornerRadius),
+                modifier = Modifier.size(visuals.thumbnailSize),
             )
         },
+        itemHeight = visuals.rowHeight,
         modifier = modifier.combinedClickable(
             onClick = onClick,
             onLongClick = onClick,
@@ -206,6 +208,7 @@ internal fun SoundCloudUserListItem(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val visuals = LocalSongListVisuals.current
     ListItem(
         title = user.name,
         subtitle = {
@@ -231,9 +234,10 @@ internal fun SoundCloudUserListItem(
                 isActive = false,
                 isPlaying = false,
                 shape = CircleShape,
-                modifier = Modifier.size(ListThumbnailSize),
+                modifier = Modifier.size(visuals.thumbnailSize),
             )
         },
+        itemHeight = visuals.rowHeight,
         modifier = modifier.combinedClickable(
             onClick = onClick,
             onLongClick = onClick,
