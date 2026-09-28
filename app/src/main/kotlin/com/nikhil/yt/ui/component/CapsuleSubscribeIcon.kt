@@ -11,15 +11,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.graphicsLayer
 import com.nikhil.yt.ui.motion.CapsuleStandardEasing
 
 /**
- * A real geometric morph between the subscribe plus and the subscribed check mark.
+ * Subscribe is one physical glyph: + rotates 45 degrees into × and rotates back on unsubscribe.
  *
- * Room-backed subscription state may briefly start from `null` when a mini-player subtree is
- * restored. That bootstrap is data restoration, not user intent, so state changes during the short
- * restore window snap to the truth. Once the icon has actually been on screen, later changes keep
- * the full morph animation.
+ * Room-backed subscription state may briefly restore just after composition. That bootstrap is
+ * data restoration, not a user tap, so the short restore window still snaps to the correct state.
  */
 @Composable
 internal fun CapsuleSubscribeIcon(
@@ -41,44 +40,39 @@ internal fun CapsuleSubscribeIcon(
         } else {
             progress.animateTo(
                 targetValue = target,
-                animationSpec = tween(durationMillis = 280, easing = CapsuleStandardEasing),
+                animationSpec = tween(durationMillis = 220, easing = CapsuleStandardEasing),
             )
         }
     }
 
-    Canvas(modifier) {
+    Canvas(
+        modifier.graphicsLayer {
+            rotationZ = 45f * progress.value
+        },
+    ) {
         val unit = minOf(size.width, size.height) / 24f
         val origin = Offset(
             x = (size.width - 24f * unit) / 2f,
             y = (size.height - 24f * unit) / 2f,
         )
 
-        fun lerp(start: Float, end: Float): Float = start + (end - start) * progress.value
         fun point(x: Float, y: Float): Offset =
             Offset(origin.x + x * unit, origin.y + y * unit)
 
-        // Horizontal plus stroke -> short rising stroke of the check.
-        val firstStart = point(
-            lerp(5.2f, 5.4f),
-            lerp(12f, 12.6f),
-        )
-        val firstEnd = point(
-            lerp(18.8f, 10.1f),
-            lerp(12f, 17.1f),
-        )
-
-        // Vertical plus stroke -> long falling stroke of the check.
-        val secondStart = point(
-            lerp(12f, 10.1f),
-            lerp(5.2f, 17.1f),
-        )
-        val secondEnd = point(
-            lerp(12f, 19.1f),
-            lerp(18.8f, 7.2f),
-        )
-
         val stroke = 2.15f * unit
-        drawLine(tint, firstStart, firstEnd, strokeWidth = stroke, cap = StrokeCap.Round)
-        drawLine(tint, secondStart, secondEnd, strokeWidth = stroke, cap = StrokeCap.Round)
+        drawLine(
+            tint,
+            point(5.2f, 12f),
+            point(18.8f, 12f),
+            strokeWidth = stroke,
+            cap = StrokeCap.Round,
+        )
+        drawLine(
+            tint,
+            point(12f, 5.2f),
+            point(12f, 18.8f),
+            strokeWidth = stroke,
+            cap = StrokeCap.Round,
+        )
     }
 }
