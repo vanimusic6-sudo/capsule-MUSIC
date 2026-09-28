@@ -8,6 +8,7 @@ package com.nikhil.yt.ui.menu
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -18,6 +19,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.Icon
@@ -35,6 +37,8 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.nikhil.yt.R
 import com.nikhil.yt.ui.screens.settings.LyricsPosition
+import com.nikhil.yt.constants.LyricsBackgroundStyle
+import com.nikhil.yt.constants.LyricsBackgroundStyleKey
 import com.nikhil.yt.constants.LyricsSyncOffsetKey
 import com.nikhil.yt.constants.LyricsTextPositionKey
 import com.nikhil.yt.utils.rememberEnumPreference
@@ -67,6 +71,8 @@ internal fun LyricsTuning() {
     val (position, onPositionChange) =
         rememberEnumPreference(LyricsTextPositionKey, LyricsPosition.LEFT)
     val (offsetMs, onOffsetChange) = rememberPreference(LyricsSyncOffsetKey, defaultValue = 0)
+    val (backgroundStyle, onBackgroundStyleChange) =
+        rememberEnumPreference(LyricsBackgroundStyleKey, LyricsBackgroundStyle.SOLID)
 
     Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
         Text(
@@ -118,6 +124,69 @@ internal fun LyricsTuning() {
                             } else {
                                 MaterialTheme.colorScheme.onSurfaceVariant
                             },
+                    )
+                }
+            }
+        }
+
+        Spacer(Modifier.height(18.dp))
+
+        Text(
+            text = stringResource(R.string.lyrics_background_style),
+            style = MaterialTheme.typography.labelLarge,
+            color = MaterialTheme.colorScheme.secondary,
+        )
+        Spacer(Modifier.height(8.dp))
+
+        Row(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            LyricsBackgroundStyle.entries.forEach { value ->
+                val selected = backgroundStyle == value
+                Box(
+                    modifier =
+                        Modifier
+                            .clip(RoundedCornerShape(14.dp))
+                            .background(
+                                if (selected) {
+                                    MaterialTheme.colorScheme.primaryContainer
+                                } else {
+                                    MaterialTheme.colorScheme.surfaceContainer
+                                },
+                            )
+                            .clickable { onBackgroundStyleChange(value) }
+                            .padding(horizontal = 14.dp, vertical = 9.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(
+                        text =
+                            when (value) {
+                                LyricsBackgroundStyle.SOLID ->
+                                    stringResource(R.string.lyrics_background_solid)
+
+                                LyricsBackgroundStyle.CAPSULE_STAR ->
+                                    stringResource(R.string.background_capsule_star)
+
+                                LyricsBackgroundStyle.CAPSULE_GLOW ->
+                                    stringResource(R.string.background_capsule_glow)
+
+                                LyricsBackgroundStyle.NEBULA ->
+                                    stringResource(R.string.background_nebula)
+
+                                LyricsBackgroundStyle.ARTWORK_GRADIENT ->
+                                    stringResource(R.string.background_artwork_gradient)
+                            },
+                        color =
+                            if (selected) {
+                                MaterialTheme.colorScheme.onPrimaryContainer
+                            } else {
+                                MaterialTheme.colorScheme.onSurfaceVariant
+                            },
+                        maxLines = 1,
                     )
                 }
             }
