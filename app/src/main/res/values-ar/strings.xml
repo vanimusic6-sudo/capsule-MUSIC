@@ -347,4 +347,6 @@
     <string name="player">مشغل</string>
     <string name="player_text_alignment">محاذاة نص المشغل</string>
     <string name="lyrics_text_position">موضع نص كلمات الأغنية</string>
+    <string name="latest_release">أحدث إصدار</string>
+    <string name="artist_release_metadata">ألبوم • %1$d</string>
 </resources>
