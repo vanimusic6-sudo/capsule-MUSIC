@@ -17,7 +17,6 @@ import android.content.Context
 import android.content.Intent
 import android.content.res.Configuration
 import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
@@ -75,7 +74,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotate
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
@@ -132,23 +130,6 @@ import kotlin.math.sin
 
 private val CapsuleArtworkShape =
     RoundedCornerShape(24.dp)
-
-private data class CapsuleArtworkFrame(
-    val mediaId: String,
-    val imageUrl: String?,
-    val title: String,
-    val queueIndex: Int,
-)
-
-internal fun capsuleArtworkSlideDirection(
-    fromIndex: Int,
-    toIndex: Int,
-): Int =
-    if (fromIndex >= 0 && toIndex >= 0 && toIndex < fromIndex) {
-        -1
-    } else {
-        1
-    }
 
 private val CapsuleControlsShape =
     RoundedCornerShape(24.dp)
@@ -544,76 +525,6 @@ fun CapsulePlayerContent(
         )
     }
 
-    val incomingArtworkFrame =
-        remember(
-            mediaMetadata.id,
-            mediaMetadata.thumbnailUrl,
-            mediaMetadata.title,
-        ) {
-            CapsuleArtworkFrame(
-                mediaId = mediaMetadata.id,
-                imageUrl =
-                    mediaMetadata.thumbnailUrl?.let { artwork ->
-                        // YouTube's =w540 rewrite must never touch SoundCloud CDN query strings.
-                        if (mediaMetadata.id.startsWith("soundcloud:")) artwork
-                        else artwork.toHighResThumbnail()
-                    },
-                title = mediaMetadata.title,
-                // Media3 has already committed the new index before it emits metadata. Reading
-                // directly here prevents a one-recomposition lag from flipping previous/next.
-                queueIndex = playerConnection.player.currentMediaItemIndex,
-            )
-        }
-    var shownArtworkFrame by remember { mutableStateOf(incomingArtworkFrame) }
-    var outgoingArtworkFrame by remember { mutableStateOf<CapsuleArtworkFrame?>(null) }
-    var artworkSlideDirection by remember { mutableStateOf(1) }
-    val artworkSwapProgress = remember { Animatable(1f) }
-
-    val artworkSlideEnabled =
-        visible &&
-            !isCapsuleVideoPlaying &&
-            !hideArtwork &&
-            design != CapsulePlayerDesign.IMMERSIVE
-
-    LaunchedEffect(incomingArtworkFrame, artworkSlideEnabled) {
-        // Full-player content stays composed while closed/backgrounded. Do not spend frames on an
-        // animation nobody can see, and do not replay it merely because the app came back.
-        if (!artworkSlideEnabled) {
-            outgoingArtworkFrame = null
-            shownArtworkFrame = incomingArtworkFrame
-            artworkSwapProgress.snapTo(1f)
-            return@LaunchedEffect
-        }
-
-        if (incomingArtworkFrame.mediaId == shownArtworkFrame.mediaId) {
-            // Thumbnail quality/index metadata can settle a moment after the media transition.
-            // Update the frame in place; this is still the same song and must not slide twice.
-            shownArtworkFrame = incomingArtworkFrame
-            return@LaunchedEffect
-        }
-
-        val previous = shownArtworkFrame
-        artworkSlideDirection =
-            capsuleArtworkSlideDirection(
-                fromIndex = previous.queueIndex,
-                toIndex = incomingArtworkFrame.queueIndex,
-            )
-        outgoingArtworkFrame = previous
-        shownArtworkFrame = incomingArtworkFrame
-        artworkSwapProgress.snapTo(0f)
-        artworkSwapProgress.animateTo(
-            targetValue = 1f,
-            animationSpec =
-                tween(
-                    durationMillis = 240,
-                    easing = FastOutSlowInEasing,
-                ),
-        )
-        if (shownArtworkFrame.mediaId == incomingArtworkFrame.mediaId) {
-            outgoingArtworkFrame = null
-        }
-    }
-
     val onPlayPause: () -> Unit = {
         if (!isListenTogetherGuest) {
             if (playbackState == Player.STATE_ENDED) {
@@ -640,52 +551,40 @@ fun CapsulePlayerContent(
                     retry = playerConnection.service::retryCurrentFromFreshStream,
                 )
             } else {
-                val artworkSlotModifier =
-                    Modifier
-                        .then(
-                            if (useClayLayout && !isCapsuleVideoPlaying) {
-                                Modifier.fillMaxSize()
-                            } else {
-                                Modifier
-                                    .fillMaxWidth()
-                                    .aspectRatio(
-                                        if (isCapsuleVideoPlaying) 16f / 9f else 1f,
-                                    )
-                            },
-                        )
-                        .offset(
-                            y = if (isCapsuleVideoPlaying || isLight) 0.dp else (-5).dp,
-                        )
-                        .then(
-                            if (isCapsuleVideoPlaying || hideArtwork) {
-                                Modifier
-                                    .clip(mediaShape)
-                                    .border(
-                                        1.dp,
-                                        if (isLight) Color.Transparent else outline,
-                                        mediaShape,
-                                    )
-                                    .background(
-                                        if (isCapsuleVideoPlaying) {
-                                            Color.Black
-                                        } else {
-                                            textColor.copy(alpha = 0.045f)
-                                        },
-                                    )
-                            } else {
-                                // The slot itself is invisible. Each moving child owns its own
-                                // rounded card, so the rounded corners travel with the cover rather
-                                // than acting like a stationary window over sliding bitmaps.
-                                Modifier.clipToBounds()
-                            },
-                        )
-                        .clickable(
-                            enabled = !isCapsuleVideoPlaying && !(isLight && lightEditorEnabled),
-                            onClick = onArtworkClick,
-                        )
-
                 Box(
-                    modifier = artworkSlotModifier,
+                    modifier =
+                        Modifier
+                            .then(
+                                if (useClayLayout && !isCapsuleVideoPlaying) {
+                                    Modifier.fillMaxSize()
+                                } else {
+                                    Modifier
+                                        .fillMaxWidth()
+                                        .aspectRatio(
+                                            if (isCapsuleVideoPlaying) 16f / 9f else 1f,
+                                        )
+                                },
+                            )
+                            .offset(
+                                y = if (isCapsuleVideoPlaying || isLight) 0.dp else (-5).dp,
+                            )
+                            .clip(mediaShape)
+                            .border(
+                                1.dp,
+                                if (isLight) Color.Transparent else outline,
+                                mediaShape,
+                            )
+                            .background(
+                                if (isCapsuleVideoPlaying) {
+                                    Color.Black
+                                } else {
+                                    textColor.copy(alpha = 0.045f)
+                                },
+                            )
+                            .clickable(
+                                enabled = !isCapsuleVideoPlaying && !(isLight && lightEditorEnabled),
+                                onClick = onArtworkClick,
+                            ),
                     contentAlignment = Alignment.Center,
                 ) {
                     if (isCapsuleVideoPlaying) {
@@ -732,80 +631,34 @@ fun CapsulePlayerContent(
                             modifier = Modifier.size(72.dp),
                         )
                     } else {
-                        val artworkContentScale =
-                            if (
-                                cropAlbumArt ||
-                                (
-                                    useClayLayout &&
-                                        (
-                                            artworkResizeActive ||
-                                                abs(lightArtworkWidthScale - 1f) > 0.01f ||
-                                                abs(lightArtworkHeightScale - 1f) > 0.01f
+                        AsyncImage(
+                            model = mediaMetadata.thumbnailUrl?.let { artwork ->
+                                // YouTube's =w540 URL rewrite corrupts SoundCloud CDN URLs
+                                // with query parameters; their full-size art is selected at search.
+                                if (mediaMetadata.id.startsWith("soundcloud:")) artwork
+                                else artwork.toHighResThumbnail()
+                            },
+                            contentDescription = mediaMetadata.title,
+                            contentScale =
+                                if (
+                                    cropAlbumArt ||
+                                    (
+                                        useClayLayout &&
+                                            (
+                                                artworkResizeActive ||
+                                                    abs(lightArtworkWidthScale - 1f) > 0.01f ||
+                                                    abs(lightArtworkHeightScale - 1f) > 0.01f
                                             )
-                                )
-                            ) {
-                                // Once the user reshapes the artwork frame, the image follows
-                                // that frame by cropping instead of leaving Fit letterboxing.
-                                ContentScale.Crop
-                            } else {
-                                ContentScale.Fit
-                            }
-
-                        val cardBorder =
-                            if (isLight) Color.Transparent else outline
-                        val cardBackground = textColor.copy(alpha = 0.045f)
-
-                        // Animate complete cards, not bitmaps inside a stationary card shell.
-                        // The rounded corners, border and letterbox background move together with
-                        // each cover, matching the push transition used by other music players.
-                        outgoingArtworkFrame?.let { outgoing ->
-                            Box(
-                                modifier =
-                                    Modifier
-                                        .fillMaxSize()
-                                        .graphicsLayer {
-                                            translationX =
-                                                -size.width *
-                                                    artworkSwapProgress.value *
-                                                    artworkSlideDirection
-                                        }
-                                        .clip(mediaShape)
-                                        .border(1.dp, cardBorder, mediaShape)
-                                        .background(cardBackground),
-                                contentAlignment = Alignment.Center,
-                            ) {
-                                AsyncImage(
-                                    model = outgoing.imageUrl,
-                                    contentDescription = null,
-                                    contentScale = artworkContentScale,
-                                    modifier = Modifier.fillMaxSize(),
-                                )
-                            }
-                        }
-
-                        val shown = shownArtworkFrame
-                        Box(
-                            modifier =
-                                Modifier
-                                    .fillMaxSize()
-                                    .graphicsLayer {
-                                        translationX =
-                                            size.width *
-                                                (1f - artworkSwapProgress.value) *
-                                                artworkSlideDirection
-                                    }
-                                    .clip(mediaShape)
-                                    .border(1.dp, cardBorder, mediaShape)
-                                    .background(cardBackground),
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            AsyncImage(
-                                model = shown.imageUrl,
-                                contentDescription = shown.title,
-                                contentScale = artworkContentScale,
-                                modifier = Modifier.fillMaxSize(),
-                            )
-                        }
+                                    )
+                                ) {
+                                    // Once the user reshapes the artwork frame, the image follows
+                                    // that frame by cropping instead of leaving Fit letterboxing.
+                                    ContentScale.Crop
+                                } else {
+                                    ContentScale.Fit
+                                },
+                            modifier = Modifier.fillMaxSize(),
+                        )
                     }
                 }
             }
