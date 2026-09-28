@@ -1,5 +1,6 @@
 package com.nikhil.yt.ui.player
 
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import org.junit.Assert.assertEquals
@@ -14,6 +15,21 @@ private val Floor: Dp = immersiveArtworkHeight(0.dp)
 private val Ceiling: Dp = immersiveArtworkHeight(100_000.dp)
 
 class CapsuleImmersiveContentTest {
+    @Test
+    fun `smoky seam darkens downward without changing sampled hue source`() {
+        val edge = Color(0.62f, 0.62f, 0.62f, 1f)
+        val floor = Color(0.50f, 0.50f, 0.50f, 1f)
+
+        val seam = immersiveSeamColor(edge, floor)
+        val haze = immersiveUpperHazeColor(edge)
+
+        assertTrue(seam.red < edge.red)
+        assertTrue(seam.red > floor.red)
+        assertTrue(haze.red > edge.red)
+        assertTrue(haze.red < 1f)
+    }
+
+
     @Test
     fun `difficult artwork only boosts fade after threshold`() {
         val calm = immersiveFadeProfile(bottomTexture = 0f, landscape = false)
