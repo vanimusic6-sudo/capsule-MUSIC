@@ -828,6 +828,7 @@ fun Lyrics(
         lineSyncLeadMs,
         needsFrameAccurateWordAnimation,
         isManualScrolling,
+        isPlaying,
     ) {
         if (lyrics.isNullOrEmpty() || (!lyrics.startsWith("[") && !isTtml(lyrics))) {
             currentLineIndex = -1
