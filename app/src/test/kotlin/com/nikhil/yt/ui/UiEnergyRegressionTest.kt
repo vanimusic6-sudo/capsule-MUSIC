@@ -51,4 +51,24 @@ class UiEnergyRegressionTest {
         val source = source("com/nikhil/yt/ui/component/ArtistSelectionItem.kt")
         assertTrue(source.contains("if (targets.size < 2) return@LaunchedEffect"))
     }
+
+    @Test
+    fun `download rows ignore unrelated download map updates`() {
+        val source = source("com/nikhil/yt/playback/DownloadUtil.kt")
+        assertTrue(source.contains(".distinctUntilChanged()"))
+    }
+
+    @Test
+    fun `live search suggestions are debounced`() {
+        val source = source("com/nikhil/yt/viewmodels/OnlineSearchSuggestionViewModel.kt")
+        assertTrue(source.contains(".debounce(180L)"))
+        assertTrue(source.contains(".distinctUntilChanged()"))
+    }
+
+    @Test
+    fun `home hero artwork is decoded at display size`() {
+        val source = source("com/nikhil/yt/ui/screens/HomeScreenComponents.kt")
+        assertTrue(source.contains(".size(Size(requestWidthPx, requestHeightPx))"))
+        assertTrue(!source.contains("song.song.thumbnailUrl?.toHighResThumbnail()"))
+    }
 }
