@@ -904,25 +904,12 @@ class MainActivity : ComponentActivity() {
 
                     var yearInMusicSavedPlayerAnchor by rememberSaveable { mutableIntStateOf(-1) }
                     var immersiveStatusBarRequested by remember { mutableStateOf(false) }
-                    var lyricsStatusBarRequested by remember { mutableStateOf(false) }
-                    var lyricsStatusBarRequestGeneration by remember { mutableIntStateOf(0) }
                     val onImmersiveStatusBarRequest: (Boolean) -> Unit =
                         remember {
                             { hidden ->
                                 immersiveStatusBarRequested = hidden
                             }
                         }
-                    val onLyricsStatusBarRequest: (Boolean) -> Unit =
-                        remember {
-                            { hidden ->
-                                lyricsStatusBarRequested = hidden
-                                // Material sheets may alter system chrome themselves. Always bump
-                                // a generation so both an identical hide request (Immersive) and an
-                                // identical show request (other player styles) are re-applied.
-                                lyricsStatusBarRequestGeneration++
-                            }
-                        }
-
                     /*
                      * One owner for status-bar visibility.
                      *
@@ -935,14 +922,10 @@ class MainActivity : ComponentActivity() {
                     LaunchedEffect(
                         isYearInMusicScreen,
                         immersiveStatusBarRequested,
-                        lyricsStatusBarRequested,
-                        lyricsStatusBarRequestGeneration,
                     ) {
                         val controller = WindowCompat.getInsetsController(window, window.decorView)
                         val shouldHideStatusBar =
-                            isYearInMusicScreen ||
-                                immersiveStatusBarRequested ||
-                                lyricsStatusBarRequested
+                            isYearInMusicScreen || immersiveStatusBarRequested
                         if (shouldHideStatusBar) {
                             controller.systemBarsBehavior =
                                 WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
@@ -1282,7 +1265,6 @@ class MainActivity : ComponentActivity() {
                         LocalMenuState provides menuState,
                         LocalCapsuleDockVisible provides capsuleDockActuallyVisible,
                         LocalImmersiveStatusBarRequest provides onImmersiveStatusBarRequest,
-                        LocalLyricsStatusBarRequest provides onLyricsStatusBarRequest,
                     ) {
                         Row {
                             AnimatedVisibility(useRail && shouldShowNavigationBar) {
@@ -1987,8 +1969,6 @@ val LocalPlayerConnection =
 val LocalPlayerAwareWindowInsets =
     compositionLocalOf<WindowInsets> { error("No WindowInsets provided") }
 val LocalImmersiveStatusBarRequest =
-    staticCompositionLocalOf<(Boolean) -> Unit> { { } }
-val LocalLyricsStatusBarRequest =
     staticCompositionLocalOf<(Boolean) -> Unit> { { } }
 val LocalDownloadUtil = staticCompositionLocalOf<DownloadUtil> { error("No DownloadUtil provided") }
 val LocalSyncUtils = staticCompositionLocalOf<SyncUtils> { error("No SyncUtils provided") }
