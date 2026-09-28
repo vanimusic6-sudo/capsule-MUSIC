@@ -23,7 +23,6 @@ import androidx.compose.ui.unit.dp
 import com.nikhil.yt.R
 
 internal val ArtistToolbarCompactHeight = 64.dp
-internal val ArtistToolbarArtworkHeight = 96.dp
 
 /** Bare artwork controls at the reference height; their 48 dp touch targets are retained. */
 @OptIn(ExperimentalMaterial3Api::class)
