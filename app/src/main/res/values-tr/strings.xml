@@ -613,4 +613,6 @@
     <string name="next">Sonraki</string>
     <string name="next_song">Sonraki Şarkı</string>
     <string name="allow">İzin ver</string>
+    <string name="latest_release">En son yayın</string>
+    <string name="artist_release_metadata">Albüm • %1$d</string>
 </resources>
