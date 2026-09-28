@@ -37,6 +37,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -57,6 +58,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import com.nikhil.yt.LocalDatabase
+import com.nikhil.yt.LocalLyricsStatusBarRequest
 import com.nikhil.yt.R
 import com.nikhil.yt.db.entities.LyricsEntity
 import com.nikhil.yt.lyrics.LyricsUtils.isTtml
@@ -77,8 +79,18 @@ fun LyricsMenu(
     lyricsProvider: () -> LyricsEntity?,
     mediaMetadataProvider: () -> MediaMetadata,
     onDismiss: () -> Unit,
+    keepStatusBarHidden: Boolean = false,
     viewModel: LyricsMenuViewModel = hiltViewModel(),
 ) {
+    val requestLyricsStatusBarHidden = LocalLyricsStatusBarRequest.current
+
+    DisposableEffect(requestLyricsStatusBarHidden, keepStatusBarHidden) {
+        if (keepStatusBarHidden) {
+            requestLyricsStatusBarHidden(true)
+        }
+        onDispose { }
+    }
+
     val context = LocalContext.current
     val resources = LocalResources.current
     val database = LocalDatabase.current
