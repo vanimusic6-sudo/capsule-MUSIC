@@ -92,10 +92,11 @@ internal object ArtistPortraits {
 }
 
 /**
- * Warm portraits as soon as the track starts. Metadata/database portraits are
- * always primed. For a real multi-artist chooser, missing portraits are also
- * resolved in the background, capped to four artists so playback startup never
- * turns into an unbounded metadata sweep.
+ * Warm portraits only when a chooser can actually be shown.
+ *
+ * A single credited artist opens directly, so preloading that portrait on every ordinary track
+ * is pure background I/O and image decode. Multi-artist tracks still warm the chooser portraits,
+ * capped to four artists so playback startup never becomes an unbounded metadata sweep.
  */
 @Composable
 fun PreloadArtistPortraits(artists: List<MediaMetadata.Artist>) {
@@ -110,8 +111,8 @@ fun PreloadArtistPortraits(artists: List<MediaMetadata.Artist>) {
         }
 
     LaunchedEffect(targets) {
-        if (targets.isEmpty()) return@LaunchedEffect
-        val allowNetwork = targets.size > 1
+        if (targets.size < 2) return@LaunchedEffect
+        val allowNetwork = true
 
         coroutineScope {
             targets.forEach { artist ->
