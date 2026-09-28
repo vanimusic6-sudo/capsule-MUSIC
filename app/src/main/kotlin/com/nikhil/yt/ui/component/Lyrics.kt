@@ -814,6 +814,24 @@ fun Lyrics(
         mutableStateOf(false)
     }
 
+    LaunchedEffect(lines, mediaMetadata?.id, lineSyncLeadMs) {
+        if (!isSynced || lines.isEmpty()) return@LaunchedEffect
+        val targetIndex =
+            findCurrentLineIndex(
+                lines,
+                playerConnection.player.currentPosition,
+                leadMs = lineSyncLeadMs,
+            )
+        if (targetIndex >= 0) {
+            isManualScrolling = false
+            currentLineIndex = targetIndex
+            deferredCurrentLineIndex = targetIndex
+            previousLineIndex = targetIndex
+            initialScrollDone = false
+            lastPreviewTime = 0L
+        }
+    }
+
     val needsFrameAccurateWordAnimation =
         remember(lines, lyricsAnimationStyle) {
             lyricsAnimationStyle != LyricsAnimationStyle.NONE &&
@@ -1103,20 +1121,15 @@ fun Lyrics(
                     )
 
                     val targetScale =
-                        when {
+                        if (
                             archiveTuneStyle &&
-                                isSynced &&
-                                index != displayedCurrentLineIndex &&
-                                !isManualScrolling ->
-                                0.95f
-
-                            appleMusicStyle &&
-                                isSynced &&
-                                index == displayedCurrentLineIndex &&
-                                !isManualScrolling ->
-                                1f / 0.96f
-
-                            else -> 1f
+                            isSynced &&
+                            index != displayedCurrentLineIndex &&
+                            !isManualScrolling
+                        ) {
+                            0.95f
+                        } else {
+                            1f
                         }
 
                     val animatedScale by animateFloatAsState(
@@ -1171,6 +1184,7 @@ fun Lyrics(
                                 } else if (isSynced && changeLyrics) {
                                     isManualScrolling = false
                                     lastPreviewTime = 0L
+                                    currentLineIndex = index
                                     deferredCurrentLineIndex = index
                                     previousLineIndex = index
                                     initialScrollDone = true
@@ -1195,6 +1209,7 @@ fun Lyrics(
                                         } else {
                                             lazyListState.animateScrollToItem(index)
                                         }
+                                        isManualScrolling = false
                                     }
                                     lastPreviewTime = 0L
                                 }
@@ -1273,6 +1288,16 @@ fun Lyrics(
 
                         val reduceMotionDuringScroll =
                             isSelectionModeActive || isManualScrolling
+                        val appleVisualScale =
+                            if (
+                                effectiveAnimationStyle == LyricsAnimationStyle.APPLE &&
+                                isActiveLine &&
+                                !reduceMotionDuringScroll
+                            ) {
+                                1f / 0.96f
+                            } else {
+                                1f
+                            }
 
                         if (effectiveAnimationStyle == LyricsAnimationStyle.KARAOKE) {
                             val isCjk = remember(item.text) {
@@ -1560,7 +1585,15 @@ fun Lyrics(
                                 text = styledText,
                                 fontSize = appleLayoutFontSize,
                                 textAlign = alignment,
-                                lineHeight = (lyricsTextSize * lyricsLineSpacing).sp
+                                lineHeight = (lyricsTextSize * lyricsLineSpacing).sp,
+                                modifier =
+                                    Modifier
+                                        .padding(horizontal = 4.dp, vertical = 2.dp)
+                                        .graphicsLayer {
+                                            clip = false
+                                            scaleX = appleVisualScale
+                                            scaleY = appleVisualScale
+                                        },
                             )
                         } else if (hasWordTimings && item.words != null && effectiveAnimationStyle == LyricsAnimationStyle.FADE) {
                             if (!isActiveLine || reduceMotionDuringScroll) {
@@ -1928,7 +1961,15 @@ fun Lyrics(
                                 text = styledText,
                                 fontSize = appleLayoutFontSize,
                                 textAlign = alignment,
-                                lineHeight = (lyricsTextSize * lyricsLineSpacing).sp
+                                lineHeight = (lyricsTextSize * lyricsLineSpacing).sp,
+                                modifier =
+                                    Modifier
+                                        .padding(horizontal = 4.dp, vertical = 2.dp)
+                                        .graphicsLayer {
+                                            clip = false
+                                            scaleX = appleVisualScale
+                                            scaleY = appleVisualScale
+                                        },
                             )
                         } else if (isActiveLine && effectiveAnimationStyle == LyricsAnimationStyle.GLOW && !reduceMotionDuringScroll) {
 
@@ -2022,7 +2063,14 @@ fun Lyrics(
                                 textAlign = alignment,
                                 fontWeight = FontWeight.Bold,
                                 lineHeight = (lyricsTextSize * lyricsLineSpacing).sp,
-                                modifier = Modifier,
+                                modifier =
+                                    Modifier
+                                        .padding(horizontal = 4.dp, vertical = 2.dp)
+                                        .graphicsLayer {
+                                            clip = false
+                                            scaleX = appleVisualScale
+                                            scaleY = appleVisualScale
+                                        },
                             )
                         } else {
 
