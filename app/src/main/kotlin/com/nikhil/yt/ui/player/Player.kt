@@ -560,22 +560,26 @@ private fun CapsulePlayerLyricsHost(
                     .graphicsLayer {
                         val reaction = lyricsMotion.value.coerceIn(0f, 1f)
                         if (design == CapsulePlayerDesign.IMMERSIVE) {
-                            // Full-bleed artwork cannot tolerate a sub-pixel shrink: the first
-                            // lyrics frame used to expose a thin bright raster seam at its edge.
+                            // Immersive owns its full-bleed artwork floor, so keep that surface
+                            // intact until its dedicated Lyrics transition is separated as well.
                             translationY = 0f
                             scaleX = 1f
                             scaleY = 1f
+                            alpha = 1f
                         } else {
                             translationY = -2.75f * reaction
                             scaleX = 1f - 0.00070f * reaction
                             scaleY = 1f - 0.00100f * reaction
+
+                            /*
+                             * Start dissolving on the very first Lyrics frame and reach exactly
+                             * zero when Lyrics lands. The player background itself is rendered
+                             * outside this foreground layer, so only the card/controls disappear;
+                             * the shared backdrop stays stable underneath the soft reveal.
+                             */
+                            alpha = (1f - reaction).coerceIn(0f, 1f)
                         }
 
-                        /*
-                         * Never fade or mask the player card during the Lyrics transition.
-                         * Earlier seam-hiding experiments erased part of the artwork under the
-                         * moving feather, which read as the track card itself dimming.
-                         */
                         transformOrigin = TransformOrigin(0.5f, 0.5f)
                     },
         ) {
