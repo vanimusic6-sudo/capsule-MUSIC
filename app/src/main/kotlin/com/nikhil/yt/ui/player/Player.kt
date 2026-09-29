@@ -168,8 +168,16 @@ fun BottomSheetPlayer(
             )
         }
 
-    /* Start cover + portrait work while the full player is still collapsed. */
-    PreloadCapsuleTrackAssets(enrichedMetadata)
+    val onScreen = appIsOnScreen()
+
+    /*
+     * Start cover + portrait work while the player is collapsed, but never while the whole app is
+     * backgrounded. Returning to the app remounts this immediately, long before the user can finish
+     * an expand gesture.
+     */
+    if (onScreen) {
+        PreloadCapsuleTrackAssets(enrichedMetadata)
+    }
 
     var position by remember(mediaMetadata?.id) {
         mutableLongStateOf(playerConnection.player.currentPosition.coerceAtLeast(0L))
@@ -189,8 +197,6 @@ fun BottomSheetPlayer(
      * Playback position is the service's business, not this screen's; this is only the readout.
      * Coming back restarts the loop, which reads immediately, so nothing is stale on return.
      */
-    val onScreen = appIsOnScreen()
-
     LaunchedEffect(
         mediaMetadata?.id,
         playbackState,
@@ -230,7 +236,8 @@ fun BottomSheetPlayer(
     }
 
     val needsArtworkPalette =
-        playerBackground != PlayerBackgroundStyle.DEFAULT &&
+        onScreen &&
+            playerBackground != PlayerBackgroundStyle.DEFAULT &&
             !state.isCollapsed &&
             !state.isDismissed
     val gradientColors =
@@ -276,11 +283,18 @@ fun BottomSheetPlayer(
             playerConnection.service.stopAndClearPlayback()
         },
         collapsedContent = {
+            val miniVisible =
+                onScreen &&
+                    !state.isExpanded &&
+                    !state.isDismissed
             MiniPlayer(
-                position = position,
-                duration = duration,
+                // Avoid propagating the full-player's 300ms progress clock into a subtree that is
+                // completely covered. As soon as the collapse animation leaves the expanded
+                // anchor, live values are restored before the mini-player is visibly exposed.
+                position = if (miniVisible) position else 0L,
+                duration = if (miniVisible) duration else 0L,
                 pureBlack = pureBlack,
-                visible = !state.isExpanded && !state.isDismissed,
+                visible = miniVisible,
             )
         },
     ) {
