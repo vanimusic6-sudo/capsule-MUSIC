@@ -8,6 +8,7 @@ package com.nikhil.yt.ui.player
 
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.State
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import com.nikhil.yt.constants.PlayerBackgroundStyle
@@ -17,6 +18,7 @@ fun PlayerBackground(
     playerBackground: PlayerBackgroundStyle,
     gradientColors: List<Color>,
     animated: Boolean = true,
+    sharedAnimationTime: State<Long>? = null,
 ) {
     val modifier = Modifier.fillMaxSize()
 
@@ -61,6 +63,7 @@ fun PlayerBackground(
                 colors = gradientColors,
                 modifier = modifier,
                 animated = animated,
+                sharedAnimationTime = sharedAnimationTime,
             )
 
         PlayerBackgroundStyle.CAPSULE_STAR ->
