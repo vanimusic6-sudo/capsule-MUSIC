@@ -570,48 +570,13 @@ private fun CapsulePlayerLyricsHost(
                             scaleX = 1f - 0.00070f * reaction
                             scaleY = 1f - 0.00100f * reaction
                         }
+
                         /*
-                         * Keep the player itself at full brightness. Offscreen compositing is used
-                         * only so the draw mask below can erase the narrow strip underneath the
-                         * Lyrics feather instead of fading the whole card.
+                         * Never fade or mask the player card during the Lyrics transition.
+                         * Earlier seam-hiding experiments erased part of the artwork under the
+                         * moving feather, which read as the track card itself dimming.
                          */
-                        compositingStrategy = CompositingStrategy.Offscreen
                         transformOrigin = TransformOrigin(0.5f, 0.5f)
-                    }
-                    .drawWithContent {
-                        val reaction = lyricsMotion.value.coerceIn(0f, 1f)
-                        drawContent()
-
-                        if (
-                            design != CapsulePlayerDesign.IMMERSIVE &&
-                            reaction > 0.001f &&
-                            reaction < 0.999f
-                        ) {
-                            val revealTop =
-                                ((1f - reaction) * size.height)
-                                    .coerceIn(0f, size.height)
-                            val seamGuard = 48.dp.toPx()
-                            val visibleEnd =
-                                ((revealTop - seamGuard) / size.height)
-                                    .coerceIn(0f, 1f)
-                            val hiddenStart =
-                                ((revealTop + seamGuard * 0.20f) / size.height)
-                                    .coerceIn(visibleEnd, 1f)
-
-                            drawRect(
-                                brush =
-                                    Brush.verticalGradient(
-                                        colorStops =
-                                            arrayOf(
-                                                0f to Color.Black,
-                                                visibleEnd to Color.Black,
-                                                hiddenStart to Color.Transparent,
-                                                1f to Color.Transparent,
-                                            ),
-                                    ),
-                                blendMode = BlendMode.DstIn,
-                            )
-                        }
                     },
         ) {
             if (design == CapsulePlayerDesign.IMMERSIVE) {
