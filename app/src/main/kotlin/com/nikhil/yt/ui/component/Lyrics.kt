@@ -1026,10 +1026,10 @@ fun Lyrics(
                     // Manual scrolling intentionally suppresses lyric motion, so a slower clock is
                     // enough to keep the current-line bookkeeping fresh.
                     isManualScrolling -> 180L
-                    // Word-synced motion keeps the only fast clock. All non-active lines are now
-                    // detached from currentPlaybackPosition, so this wakes only the visible line
-                    // whose words are actually moving.
-                    needsFineProgress -> 50L
+                    // Word-synced motion keeps the only fast clock. 25 Hz is enough to remove the
+                    // small stepping visible at 20 Hz, while all non-active lines remain detached
+                    // from currentPlaybackPosition and therefore do not pay for these ticks.
+                    needsFineProgress -> 40L
                     // Line-only sync does not need a 12.5 Hz poll; 10 Hz still lands well ahead of
                     // the 500ms+ visual hand-off and saves idle CPU time.
                     else -> 100L
