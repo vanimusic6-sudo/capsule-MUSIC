@@ -6,6 +6,8 @@
 
 package com.nikhil.yt.ui.player
 
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
@@ -40,7 +42,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -71,8 +72,6 @@ import com.nikhil.yt.models.MediaMetadata
 import com.nikhil.yt.ui.component.Lyrics
 import com.nikhil.yt.utils.makeTimeString
 import com.nikhil.yt.utils.rememberEnumPreference
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.isActive
 import kotlin.math.cos
 import kotlin.math.sin
 
@@ -210,7 +209,7 @@ fun CapsuleLyricsContent(
                         isVisible &&
                             isPlaying &&
                             playbackState == Player.STATE_READY,
-                    animationFps = 8,
+                    animationFps = 12,
                 )
 
             LyricsBackgroundStyle.CAPSULE_GLOW ->
@@ -515,6 +514,8 @@ fun CapsuleLyricsContent(
                             isPlaying,
                         isLoading =
                             isLoading,
+                        visible =
+                            isVisible,
                         onClick = {
                             if (
                                 playbackState ==
@@ -714,28 +715,35 @@ private fun CapsuleLyricsSideButton(
 private fun CapsuleLyricsOrbitButton(
     isPlaying: Boolean,
     isLoading: Boolean,
+    visible: Boolean,
     onClick: () -> Unit,
 ) {
-    var rotation by
+    val rotation =
         remember {
-            mutableFloatStateOf(0f)
+            Animatable(0f)
         }
 
+    /*
+     * Use exactly the same continuous orbit clock as the full player. The previous 10 Hz stepped
+     * clock was cheaper on paper but the bright comet makes those steps obvious. This still costs
+     * nothing while Lyrics is hidden/paused/loading because the Animatable only runs when visible.
+     */
     LaunchedEffect(
         isPlaying,
         isLoading,
+        visible,
     ) {
-        /*
-         * This orbit is deliberately slow decoration. Ten updates per second are enough for an
-         * eight-second revolution and avoid keeping Compose awake for an effect the eye reads as
-         * continuous anyway. Pausing still freezes the dot at the exact current angle.
-         */
-        if (isPlaying && !isLoading) {
-            val tickMs = 100L
-            val degreesPerTick = 360f * tickMs / 8_000f
-            while (isActive) {
-                delay(tickMs)
-                rotation = (rotation + degreesPerTick) % 360f
+        if (orbitShouldTurn(isPlaying, isLoading, visible)) {
+            while (true) {
+                rotation.animateTo(
+                    targetValue = rotation.value + 360f,
+                    animationSpec =
+                        tween(
+                            durationMillis = 8_000,
+                            easing = LinearEasing,
+                        ),
+                )
+                rotation.snapTo(rotation.value % 360f)
             }
         }
     }
@@ -825,7 +833,7 @@ private fun CapsuleLyricsOrbitButton(
 
                     val angle =
                         Math.toRadians(
-                            rotation.toDouble(),
+                            rotation.value.toDouble(),
                         )
 
                     val previousAngle =
