@@ -81,7 +81,7 @@ private const val STATIC_BACKGROUND_TIME_MS = 6_480L
  * the display refresh rate even when its derived value changes less often.
  */
 @Composable
-private fun rememberCapsuleAnimationTime(
+internal fun rememberCapsuleAnimationTime(
     compact: Boolean,
     running: Boolean = true,
     framesPerSecondOverride: Int? = null,
@@ -130,6 +130,7 @@ internal fun CapsuleProceduralBackground(
     compact: Boolean = false,
     animated: Boolean = true,
     animationFps: Int? = null,
+    sharedAnimationTime: State<Long>? = null,
 ) {
     val primary = MaterialTheme.colorScheme.primary
     val secondary = MaterialTheme.colorScheme.secondary
@@ -146,11 +147,12 @@ internal fun CapsuleProceduralBackground(
     val needsClock = capsuleBackgroundNeedsClock(effect)
     val time =
         if (needsClock) {
-            rememberCapsuleAnimationTime(
-                compact = compact,
-                running = animated && motionEnabled,
-                framesPerSecondOverride = animationFps,
-            )
+            sharedAnimationTime
+                ?: rememberCapsuleAnimationTime(
+                    compact = compact,
+                    running = animated && motionEnabled,
+                    framesPerSecondOverride = animationFps,
+                )
         } else {
             null
         }
