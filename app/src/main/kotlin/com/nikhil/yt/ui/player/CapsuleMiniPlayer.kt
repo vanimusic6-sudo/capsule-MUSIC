@@ -126,9 +126,13 @@ fun CapsuleMiniPlayer(
     modifier: Modifier = Modifier,
     pureBlack: Boolean,
     standardStyle: Boolean = false,
+    visible: Boolean = true,
 ) {
     val playerConnection =
         LocalPlayerConnection.current ?: return
+
+    val onScreen = appIsOnScreen()
+    val visualsActive = visible && onScreen
 
     val database =
         LocalDatabase.current
@@ -172,7 +176,8 @@ fun CapsuleMiniPlayer(
         rememberCapsuleArtworkColors(
             mediaMetadata = mediaMetadata,
             enabled =
-                miniPlayerBackground !=
+                visualsActive &&
+                    miniPlayerBackground !=
                     MiniPlayerBackgroundStyle.THEME,
         )
 
@@ -295,7 +300,7 @@ fun CapsuleMiniPlayer(
                 )
                 .padding(horizontal = if (standardStyle) 12.dp else 10.dp)
                 .let { baseModifier ->
-                    if (swipeThumbnail) {
+                    if (swipeThumbnail && visualsActive) {
                         baseModifier.pointerInput(
                             mediaMetadata?.id,
                             swipeDistanceThresholdPx,
@@ -500,7 +505,10 @@ fun CapsuleMiniPlayer(
             style = miniPlayerBackground,
             pureBlack = pureBlack,
             colors = miniArtworkColors,
-            animated = isPlaying && playbackState == Player.STATE_READY,
+            animated =
+                visualsActive &&
+                    isPlaying &&
+                    playbackState == Player.STATE_READY,
             modifier =
                 Modifier
                     .fillMaxWidth()
@@ -556,6 +564,7 @@ fun CapsuleMiniPlayer(
                 CapsuleMiniSongInfo(
                     mediaMetadata =
                         mediaMetadata,
+                    visible = visualsActive,
                     modifier =
                         Modifier.weight(1f),
                 )
@@ -829,20 +838,29 @@ private fun CapsuleMiniPlayButton(
 @Composable
 private fun CapsuleMiniSongInfo(
     mediaMetadata: MediaMetadata?,
+    visible: Boolean,
     modifier: Modifier = Modifier,
 ) {
     val playerConnection =
         LocalPlayerConnection.current
 
     val error by
-        playerConnection
-            ?.error
-            ?.collectAsState()
-            ?: remember {
+        if (visible) {
+            playerConnection
+                ?.error
+                ?.collectAsState()
+                ?: remember {
+                    androidx.compose.runtime.mutableStateOf<
+                        androidx.media3.common.PlaybackException?
+                    >(null)
+                }
+        } else {
+            remember {
                 androidx.compose.runtime.mutableStateOf<
                     androidx.media3.common.PlaybackException?
                 >(null)
             }
+        }
 
     Column(
         modifier = modifier,
@@ -862,13 +880,15 @@ private fun CapsuleMiniSongInfo(
                 overflow =
                     TextOverflow.Clip,
                 modifier =
-                    Modifier.basicMarquee(
-                        iterations = 1,
-                        initialDelayMillis =
-                            3000,
-                        velocity =
-                            30.dp,
-                    ),
+                    if (visible) {
+                        Modifier.basicMarquee(
+                            iterations = 1,
+                            initialDelayMillis = 3000,
+                            velocity = 30.dp,
+                        )
+                    } else {
+                        Modifier
+                    },
             )
 
             Row(
@@ -904,13 +924,15 @@ private fun CapsuleMiniSongInfo(
                     overflow =
                         TextOverflow.Clip,
                     modifier =
+                    if (visible) {
                         Modifier.basicMarquee(
                             iterations = 1,
-                            initialDelayMillis =
-                                3000,
-                            velocity =
-                                30.dp,
-                        ),
+                            initialDelayMillis = 3000,
+                            velocity = 30.dp,
+                        )
+                    } else {
+                        Modifier
+                    },
                 )
             }
 
