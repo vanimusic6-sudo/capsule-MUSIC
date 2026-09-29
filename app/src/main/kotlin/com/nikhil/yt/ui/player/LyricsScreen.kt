@@ -19,6 +19,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.media3.common.C
 import com.nikhil.yt.LocalDatabase
@@ -38,6 +39,7 @@ import kotlinx.coroutines.withContext
 fun LyricsScreen(
     mediaMetadata: MediaMetadata,
     onBackClick: () -> Unit,
+    playerArtworkColors: List<Color> = emptyList(),
     isVisible: Boolean = true,
     modifier: Modifier = Modifier,
 ) {
@@ -104,6 +106,7 @@ fun LyricsScreen(
         onSeekPreview = {
             sliderPosition = it
         },
+        playerArtworkColors = playerArtworkColors,
         onSeekFinished = {
             sliderPosition?.let {
                 player.seekTo(it)
