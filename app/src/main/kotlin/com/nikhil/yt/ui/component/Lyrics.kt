@@ -2111,7 +2111,7 @@ fun Lyrics(
                                         withStyle(
                                             style = SpanStyle(
                                                 brush = wordBrush,
-                                                fontWeight = if (hasRomanization) FontWeight.Bold else FontWeight.ExtraBold
+                                                fontWeight = FontWeight.Bold
                                             )
                                         ) {
                                             append(word.text)
@@ -2129,7 +2129,7 @@ fun Lyrics(
                                         withStyle(
                                             style = SpanStyle(
                                                 color = lyricsBaseColor.copy(alpha = 0.3f),
-                                                fontWeight = if (hasRomanization) FontWeight.Bold else FontWeight.Medium
+                                                fontWeight = FontWeight.Bold
                                             )
                                         ) {
                                             append(word.text)
@@ -2140,7 +2140,7 @@ fun Lyrics(
                                         withStyle(
                                             style = SpanStyle(
                                                 color = wordColor,
-                                                fontWeight = if (hasRomanization) FontWeight.Bold else FontWeight.Medium
+                                                fontWeight = FontWeight.Bold
                                             )
                                         ) {
                                             append(word.text)
@@ -2182,6 +2182,8 @@ fun Lyrics(
                                     val smoothProgress = rawProgress * rawProgress * (3f - 2f * rawProgress)
 
                                     val wordAlpha = when {
+                                        !isActiveLine && index < displayedCurrentLineIndex ->
+                                            0.55f + (0.45f * animatedLineFocus)
                                         !isActiveLine -> 0.55f
                                         hasWordPassed -> 1f
                                         isWordActive -> 0.55f + (0.45f * smoothProgress)
