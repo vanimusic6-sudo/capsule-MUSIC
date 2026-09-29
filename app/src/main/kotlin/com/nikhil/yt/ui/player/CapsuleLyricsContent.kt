@@ -72,6 +72,7 @@ import com.nikhil.yt.models.MediaMetadata
 import com.nikhil.yt.ui.component.Lyrics
 import com.nikhil.yt.utils.makeTimeString
 import com.nikhil.yt.utils.rememberEnumPreference
+import kotlinx.coroutines.isActive
 import kotlin.math.cos
 import kotlin.math.sin
 
@@ -229,7 +230,7 @@ fun CapsuleLyricsContent(
                         isVisible &&
                             isPlaying &&
                             playbackState == Player.STATE_READY,
-                    animationFps = 8,
+                    animationFps = 12,
                 )
 
             LyricsBackgroundStyle.ARTWORK_GRADIENT ->
@@ -734,7 +735,7 @@ private fun CapsuleLyricsOrbitButton(
         visible,
     ) {
         if (orbitShouldTurn(isPlaying, isLoading, visible)) {
-            while (true) {
+            while (isActive) {
                 rotation.animateTo(
                     targetValue = rotation.value + 360f,
                     animationSpec =
@@ -839,7 +840,7 @@ private fun CapsuleLyricsOrbitButton(
                     val previousAngle =
                         Math.toRadians(
                             (
-                                rotation -
+                                rotation.value -
                                     15f
                             ).toDouble(),
                         )
