@@ -577,6 +577,7 @@ private fun CapsulePlayerLyricsHost(
                     !playerState.isCollapsed &&
                         !playerState.isDismissed &&
                         !showLyrics,
+                expansionProgress = playerState.rawProgress,
             )
         }
 
