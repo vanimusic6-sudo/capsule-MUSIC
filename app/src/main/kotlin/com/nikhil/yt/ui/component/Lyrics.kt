@@ -153,6 +153,8 @@ import coil3.request.allowHardware
 import coil3.toBitmap
 import com.nikhil.yt.LocalPlayerConnection
 import com.nikhil.yt.R
+import com.nikhil.yt.constants.CapsulePlayerDesign
+import com.nikhil.yt.constants.CapsulePlayerDesignKey
 import com.nikhil.yt.constants.DarkModeKey
 import com.nikhil.yt.constants.LyricsClickKey
 import com.nikhil.yt.constants.LyricsRomanizeJapaneseKey
@@ -163,6 +165,7 @@ import com.nikhil.yt.constants.LyricsTextPositionKey
 import com.nikhil.yt.constants.LyricsAnimationStyle
 import com.nikhil.yt.constants.LyricsAnimationStyleKey
 import com.nikhil.yt.constants.LyricsTextSizeKey
+import com.nikhil.yt.constants.LyricsUsePlayerThemeKey
 import com.nikhil.yt.constants.LyricsLineSpacingKey
 import com.nikhil.yt.constants.PlayerBackgroundStyle
 import com.nikhil.yt.constants.PlayerBackgroundStyleKey
@@ -619,6 +622,14 @@ fun Lyrics(
         key = PlayerBackgroundStyleKey,
         defaultValue = PlayerBackgroundStyle.CAPSULE_STAR
     )
+    val playerDesign by rememberEnumPreference(
+        key = CapsulePlayerDesignKey,
+        defaultValue = CapsulePlayerDesign.SUPER,
+    )
+    val lyricsUsePlayerTheme by rememberPreference(
+        LyricsUsePlayerThemeKey,
+        defaultValue = false,
+    )
 
     val darkTheme by rememberEnumPreference(DarkModeKey, defaultValue = DarkMode.AUTO)
     val isSystemInDarkTheme = isSystemInDarkTheme()
@@ -723,8 +734,15 @@ fun Lyrics(
             !lyrics.isNullOrEmpty() && (lyrics.startsWith("[") || isTtml(lyrics))
         }
 
-    val lyricsBaseColor = if (useDarkTheme || playerBackground != PlayerBackgroundStyle.DEFAULT) Color.White else Color.Black
-    val lyricsGlowColor = if (useDarkTheme || playerBackground != PlayerBackgroundStyle.DEFAULT) Color.White else Color.Black
+    val lyricsUsesDarkSurface =
+        lyricsUsePlayerTheme &&
+            (
+                playerDesign == CapsulePlayerDesign.IMMERSIVE ||
+                    playerBackground != PlayerBackgroundStyle.DEFAULT
+            )
+    val lyricsBaseColor =
+        if (useDarkTheme || lyricsUsesDarkSurface) Color.White else Color.Black
+    val lyricsGlowColor = lyricsBaseColor
     val textColor = lyricsBaseColor
 
     /*
