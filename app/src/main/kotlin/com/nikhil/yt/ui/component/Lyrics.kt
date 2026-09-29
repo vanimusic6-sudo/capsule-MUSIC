@@ -1271,6 +1271,32 @@ fun Lyrics(
                         archiveTuneStyle && distance == 2 -> 0.22f
                         archiveTuneStyle && distance == 3 -> 0.08f
                         archiveTuneStyle -> 0.02f
+
+                        // Every animated style now keeps the outgoing side physically present until
+                        // the list itself carries it into the edge fade. Previously Fade/Glow/Slide
+                        // dimmed two tall rows by logical index first, which looked like a light
+                        // snap and could expose a large blank band during scroll.
+                        lyricsAnimationStyle != LyricsAnimationStyle.NONE &&
+                            index == displayedCurrentLineIndex -> 1f
+                        lyricsAnimationStyle != LyricsAnimationStyle.NONE &&
+                            index < displayedCurrentLineIndex &&
+                            distance == 1 -> 0.68f
+                        lyricsAnimationStyle != LyricsAnimationStyle.NONE &&
+                            index < displayedCurrentLineIndex &&
+                            distance == 2 -> 0.48f
+                        lyricsAnimationStyle != LyricsAnimationStyle.NONE &&
+                            index < displayedCurrentLineIndex &&
+                            distance == 3 -> 0.28f
+                        lyricsAnimationStyle != LyricsAnimationStyle.NONE &&
+                            index < displayedCurrentLineIndex -> 0.10f
+                        lyricsAnimationStyle != LyricsAnimationStyle.NONE &&
+                            distance == 1 -> 0.55f
+                        lyricsAnimationStyle != LyricsAnimationStyle.NONE &&
+                            distance == 2 -> 0.28f
+                        lyricsAnimationStyle != LyricsAnimationStyle.NONE &&
+                            distance == 3 -> 0.10f
+                        lyricsAnimationStyle != LyricsAnimationStyle.NONE -> 0.03f
+
                         index == displayedCurrentLineIndex -> 1f
                         distance == 1 -> 0.58f
                         distance == 2 -> 0.30f
@@ -1282,22 +1308,26 @@ fun Lyrics(
                         archiveTuneStyle &&
                             isSynced &&
                             index == displayedCurrentLineIndex
+                    val animatedLineIsFocused =
+                        lyricsAnimationStyle != LyricsAnimationStyle.NONE &&
+                            isSynced &&
+                            index == displayedCurrentLineIndex
 
                     val animatedAlpha by animateFloatAsState(
                         targetValue = targetAlpha,
                         animationSpec =
                             tween(
                                 durationMillis =
-                                    if (archiveTuneStyle) {
-                                        // Focus arrives promptly, but the previous line is allowed
-                                        // to dissolve behind the scroll instead of being dimmed in
-                                        // the same instant the next line becomes current.
-                                        if (archiveLineIsFocused) 500 else 1_100
-                                    } else {
-                                        520
+                                    when {
+                                        archiveTuneStyle ->
+                                            if (archiveLineIsFocused) 500 else 1_100
+                                        lyricsAnimationStyle != LyricsAnimationStyle.NONE ->
+                                            if (animatedLineIsFocused) 500 else 1_050
+                                        else ->
+                                            520
                                     },
                                 easing =
-                                    if (archiveTuneStyle) {
+                                    if (lyricsAnimationStyle != LyricsAnimationStyle.NONE) {
                                         AppleMusicEasing
                                     } else {
                                         SmoothDecelerateEasing
