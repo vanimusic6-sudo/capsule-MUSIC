@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -140,13 +141,6 @@ internal fun LyricsTuning() {
     }
 
     Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
-        Text(
-            text = stringResource(R.string.lyrics_text_position),
-            style = MaterialTheme.typography.labelLarge,
-            color = MaterialTheme.colorScheme.secondary,
-        )
-        Spacer(Modifier.height(8.dp))
-
         val positions = listOf(LyricsPosition.LEFT, LyricsPosition.CENTER, LyricsPosition.RIGHT)
         Row(
             modifier =
@@ -248,17 +242,13 @@ internal fun LyricsTuning() {
                 }
             }
 
-            Spacer(Modifier.height(8.dp))
-
-            Text(
-                text = stringResource(R.string.lyrics_sync_offset_hint),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.outline,
-                textAlign = TextAlign.Center,
-            )
-
             if (offsetMs != 0) {
-                TextButton(onClick = { onOffsetChange(0) }) {
+                Spacer(Modifier.height(10.dp))
+
+                FilledTonalButton(
+                    onClick = { onOffsetChange(0) },
+                    shape = RoundedCornerShape(14.dp),
+                ) {
                     Text(stringResource(R.string.reset))
                 }
             }
