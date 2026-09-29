@@ -34,9 +34,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
@@ -641,32 +643,54 @@ private fun CapsulePlayerLyricsHost(
             val fullHeightPx = constraints.maxHeight.toFloat()
 
             if (lyricsLayerMounted) {
+                /*
+                 * The backdrop is screen-anchored and revealed by a moving clip. It never travels
+                 * or stretches with the page, so a vertical gradient/glow/starfield keeps the same
+                 * screen coordinates as the player underneath. A solid theme looked fine before
+                 * because every pixel is identical; structured backgrounds exposed this bug as a
+                 * bright sweep during the transition.
+                 */
+                Box(
+                    modifier =
+                        Modifier
+                            .fillMaxSize()
+                            .drawWithContent {
+                                val travelled = lyricsMotion.value.coerceIn(0f, 1f)
+                                val revealTop =
+                                    ((1f - travelled) * size.height)
+                                        .coerceIn(0f, size.height)
+
+                                clipRect(
+                                    top = revealTop,
+                                    bottom = size.height,
+                                ) {
+                                    this@drawWithContent.drawContent()
+                                }
+                            },
+                ) {
+                    CapsuleLyricsBackdropLayer(
+                        mediaMetadata = mediaMetadata,
+                        playerArtworkColors = playerArtworkColors,
+                        backdropAnimationTime = backdropAnimationTime,
+                        isVisible = showLyrics,
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                }
+
+                /*
+                 * Only Lyrics controls/text travel. The background above is fixed to the display
+                 * and simply revealed underneath this foreground, so the two screens never expose
+                 * one another through a transparent page and the gradient itself never moves.
+                 */
                 Box(
                     modifier =
                         Modifier
                             .fillMaxSize()
                             .graphicsLayer {
-                                /*
-                                 * Travel, settle and blur all read the same progress, so the lyrics
-                                 * sheet lands exactly once and holds still. The previous version
-                                 * added a velocity-derived lag to its translation and a squash
-                                 * driven by spring overshoot; both fought the travel they were
-                                 * layered on and produced the jitter at the end of the transition.
-                                 */
                                 val travelled = lyricsMotion.value.coerceIn(0f, 1f)
                                 translationY =
                                     ((1f - travelled) * fullHeightPx).coerceAtLeast(0f)
 
-                                /*
-                                 * Unrolling, not settling. The sheet is over-tall at the start and
-                                 * draws down to its true height from its own top edge; its width
-                                 * never changes at all. That is what keeps it from reading as the
-                                 * player's fold played in reverse.
-                                 *
-                                 * No blur — a full-screen RenderEffect costs an offscreen buffer
-                                 * every frame, which is what made these surfaces stall the first
-                                 * time they were used.
-                                 */
                                 val opening =
                                     CapsuleMotion.approach(
                                         progress = travelled,
@@ -675,14 +699,6 @@ private fun CapsulePlayerLyricsHost(
                                 val remaining = 1f - opening
                                 scaleX = 1f
                                 scaleY = 1f + LyricsUnrollStretch * remaining
-
-                                /*
-                                 * The lyrics page is a real opaque surface. Never fade the whole
-                                 * page: doing so alpha-composites its own background with the player
-                                 * background underneath and changes the perceived gradient while
-                                 * the sheet is travelling. Geometry provides the transition; the
-                                 * backdrop itself stays fully opaque from its first visible pixel.
-                                 */
                                 alpha = 1f
                                 transformOrigin = TransformOrigin(0.5f, 0f)
                             },
@@ -692,6 +708,7 @@ private fun CapsulePlayerLyricsHost(
                         onBackClick = onHideLyrics,
                         playerArtworkColors = playerArtworkColors,
                         backdropAnimationTime = backdropAnimationTime,
+                        drawBackdrop = false,
                         isVisible = showLyrics,
                         modifier = Modifier.fillMaxSize(),
                     )
