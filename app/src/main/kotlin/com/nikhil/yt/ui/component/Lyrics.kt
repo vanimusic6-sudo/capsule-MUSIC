@@ -479,12 +479,23 @@ private fun ArchiveTuneWord(
     )
     val glowProgress = (progress * 2f).coerceAtMost(1f)
     val glowAlpha =
-        if (motionEnabled && isActive) {
-            glowProgress * 0.38f * safeLineFocus
-        } else {
-            0f
+        when {
+            motionEnabled && isActive ->
+                glowProgress * 0.38f * safeLineFocus
+            // Once focus moves away, completed words retain a very small halo that follows the
+            // line-focus tail. This is cheap (only the previous visible line has focus > 0) and
+            // removes the one-frame "light switched off" impression.
+            isComplete && safeLineFocus > 0.001f ->
+                0.11f * safeLineFocus
+            else ->
+                0f
         }
-    val glowRadius = if (glowAlpha > 0f) glowProgress * 10f else 0f
+    val glowRadius =
+        when {
+            motionEnabled && isActive && glowAlpha > 0f -> glowProgress * 10f
+            glowAlpha > 0f -> 5.5f * safeLineFocus
+            else -> 0f
+        }
     val effectiveFontSize = if (isBackground) fontSize * 0.82f else fontSize
     // As focus arrives, the subdued line smoothly trades its diffuse light for the word reveal.
     val restingAlpha = if (isBackground) 0.54f else 0.70f
@@ -511,7 +522,7 @@ private fun ArchiveTuneWord(
             fontWeight = fontWeight,
         )
 
-        if (isComplete || isActive) {
+        if (safeLineFocus > 0.001f && (isComplete || isActive)) {
             Text(
                 text = text,
                 fontSize = effectiveFontSize,
@@ -1264,32 +1275,43 @@ fun Lyrics(
                         else -> 0.04f
                     }
 
+                    val archiveLineIsFocused =
+                        archiveTuneStyle &&
+                            isSynced &&
+                            index == displayedCurrentLineIndex
+
                     val animatedAlpha by animateFloatAsState(
                         targetValue = targetAlpha,
-                        animationSpec = tween(
-                            durationMillis = if (archiveTuneStyle) 700 else 520,
-                            easing = if (archiveTuneStyle) AppleMusicEasing else SmoothDecelerateEasing
-                        ),
-                        label = "lyricAlpha"
+                        animationSpec =
+                            tween(
+                                durationMillis =
+                                    if (archiveTuneStyle) {
+                                        // Focus arrives promptly, but the previous line is allowed
+                                        // to dissolve behind the scroll instead of being dimmed in
+                                        // the same instant the next line becomes current.
+                                        if (archiveLineIsFocused) 480 else 1_050
+                                    } else {
+                                        520
+                                    },
+                                easing =
+                                    if (archiveTuneStyle) {
+                                        AppleMusicEasing
+                                    } else {
+                                        SmoothDecelerateEasing
+                                    },
+                            ),
+                        label = "lyricAlpha",
                     )
 
-                    // ArchiveTune changes line focus as a light handoff rather than snapping the
-                    // old line off and the new one on.
+                    // The light hand-off is intentionally asymmetric: the new line lights up
+                    // quickly, while the old one leaves a long soft tail.
                     val archiveLineFocus by animateFloatAsState(
-                        targetValue =
-                            if (
-                                archiveTuneStyle &&
-                                isSynced &&
-                                index == displayedCurrentLineIndex
-                            ) {
-                                1f
-                            } else {
-                                0f
-                            },
-                        animationSpec = tween(
-                            durationMillis = 620,
-                            easing = AppleMusicEasing,
-                        ),
+                        targetValue = if (archiveLineIsFocused) 1f else 0f,
+                        animationSpec =
+                            tween(
+                                durationMillis = if (archiveLineIsFocused) 460 else 1_280,
+                                easing = AppleMusicEasing,
+                            ),
                         label = "archiveLineFocus",
                     )
 
@@ -1629,12 +1651,11 @@ fun Lyrics(
                                             text = displayText,
                                             startTime = (word.startTime * 1000).toLong(),
                                             endTime = (word.endTime * 1000).toLong(),
-                                            currentTime =
-                                                if (isActiveLine) {
-                                                    currentPlaybackPosition
-                                                } else {
-                                                    Long.MIN_VALUE
-                                                },
+                                            // Keep real playback time even after this
+                                            // line stops being current. lineFocus is what decides
+                                            // whether the reveal layer is visible, so the previous
+                                            // line can fade its already-lit words naturally.
+                                            currentTime = currentPlaybackPosition,
                                             isRtl = lineIsRtl,
                                             fontSize = archiveTuneMaxFontSize,
                                             textColor = lyricsBaseColor,
