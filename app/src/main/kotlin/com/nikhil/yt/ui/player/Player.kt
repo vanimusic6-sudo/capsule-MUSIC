@@ -560,26 +560,20 @@ private fun CapsulePlayerLyricsHost(
                     .graphicsLayer {
                         val reaction = lyricsMotion.value.coerceIn(0f, 1f)
                         if (design == CapsulePlayerDesign.IMMERSIVE) {
-                            // Immersive owns its full-bleed artwork floor, so keep that surface
-                            // intact until its dedicated Lyrics transition is separated as well.
+                            // Full-bleed artwork cannot tolerate a sub-pixel shrink: keep the
+                            // underlying player completely stable during the Lyrics transition.
                             translationY = 0f
                             scaleX = 1f
                             scaleY = 1f
-                            alpha = 1f
                         } else {
                             translationY = -2.75f * reaction
                             scaleX = 1f - 0.00070f * reaction
                             scaleY = 1f - 0.00100f * reaction
-
-                            /*
-                             * Start dissolving on the very first Lyrics frame and reach exactly
-                             * zero when Lyrics lands. The player background itself is rendered
-                             * outside this foreground layer, so only the card/controls disappear;
-                             * the shared backdrop stays stable underneath the soft reveal.
-                             */
-                            alpha = (1f - reaction).coerceIn(0f, 1f)
                         }
 
+                        // The player underneath never dissolves. Only the Lyrics layer fades out
+                        // while closing.
+                        alpha = 1f
                         transformOrigin = TransformOrigin(0.5f, 0.5f)
                     },
         ) {
@@ -692,9 +686,17 @@ private fun CapsulePlayerLyricsHost(
                             .fillMaxSize()
                             .graphicsLayer {
                                 /*
-                                 * The reveal uses DstIn below. Keep it in its own offscreen layer
-                                 * so the soft mask can never punch through the player underneath.
+                                 * Opening keeps the Lyrics backdrop fully opaque. Closing is
+                                 * different: dissolve the Lyrics surface from the first frame and
+                                 * reach zero exactly as it leaves the screen.
                                  */
+                                val travelled = lyricsMotion.value.coerceIn(0f, 1f)
+                                alpha =
+                                    if (showLyrics) {
+                                        1f
+                                    } else {
+                                        travelled
+                                    }
                                 compositingStrategy = CompositingStrategy.Offscreen
                             }
                             .drawWithContent {
@@ -769,7 +771,12 @@ private fun CapsulePlayerLyricsHost(
                                 val remaining = 1f - opening
                                 scaleX = 1f
                                 scaleY = 1f + LyricsUnrollStretch * remaining
-                                alpha = 1f
+                                alpha =
+                                    if (showLyrics) {
+                                        1f
+                                    } else {
+                                        travelled
+                                    }
                                 transformOrigin = TransformOrigin(0.5f, 0f)
                             },
                 ) {
