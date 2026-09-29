@@ -109,6 +109,9 @@ fun CapsuleLyricsContent(
     val player =
         playerConnection.player
 
+    val onScreen = appIsOnScreen()
+    val visualsActive = isVisible && onScreen
+
     val playbackState by
         playerConnection.playbackState.collectAsState()
 
@@ -124,7 +127,9 @@ fun CapsuleLyricsContent(
     val artworkColors =
         rememberCapsuleArtworkColors(
             mediaMetadata = mediaMetadata,
-            enabled = lyricsBackground != LyricsBackgroundStyle.SOLID,
+            enabled =
+                visualsActive &&
+                    lyricsBackground != LyricsBackgroundStyle.SOLID,
         )
 
     // Same treatment as the full player: the control card is a translucent layer, not an
@@ -207,7 +212,7 @@ fun CapsuleLyricsContent(
                     colors = artworkColors,
                     modifier = Modifier.fillMaxSize(),
                     animated =
-                        isVisible &&
+                        visualsActive &&
                             isPlaying &&
                             playbackState == Player.STATE_READY,
                     animationFps = 12,
@@ -227,7 +232,7 @@ fun CapsuleLyricsContent(
                     colors = artworkColors,
                     modifier = Modifier.fillMaxSize(),
                     animated =
-                        isVisible &&
+                        visualsActive &&
                             isPlaying &&
                             playbackState == Player.STATE_READY,
                     animationFps = 12,
@@ -516,7 +521,7 @@ fun CapsuleLyricsContent(
                         isLoading =
                             isLoading,
                         visible =
-                            isVisible,
+                            visualsActive,
                         onClick = {
                             if (
                                 playbackState ==
