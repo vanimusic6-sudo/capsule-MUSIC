@@ -1429,9 +1429,19 @@ fun Lyrics(
                                 }
                             ) {
                         val isActiveLine = index == displayedCurrentLineIndex && isSynced
-                        val lineColor = remember(isActiveLine, lyricsBaseColor) {
-                            if (isActiveLine) lyricsBaseColor else lyricsBaseColor.copy(alpha = 0.7f)
-                        }
+                        val lineColor =
+                            remember(
+                                isActiveLine,
+                                index,
+                                displayedCurrentLineIndex,
+                                lyricsBaseColor,
+                            ) {
+                                if (isActiveLine || index < displayedCurrentLineIndex) {
+                                    lyricsBaseColor
+                                } else {
+                                    lyricsBaseColor.copy(alpha = 0.7f)
+                                }
+                            }
                         val alignment = remember(lyricsTextPosition) {
                             when (lyricsTextPosition) {
                                 LyricsPosition.LEFT -> TextAlign.Start
@@ -1738,10 +1748,11 @@ fun Lyrics(
                                     }
 
                                     val wordAlpha = when {
-                                        !isActiveLine -> 0.7f
+                                        !isActiveLine && index < displayedCurrentLineIndex -> 1f
+                                        !isActiveLine -> 0.62f
                                         hasWordPassed -> 1f
-                                        isWordActive -> 0.5f + (0.5f * transitionProgress) 
-                                        else -> 0.35f 
+                                        isWordActive -> 0.5f + (0.5f * transitionProgress)
+                                        else -> 0.35f
                                     }
 
                                     // Apply background vocal styling
@@ -1781,72 +1792,82 @@ fun Lyrics(
                                         },
                             )
                         } else if (hasWordTimings && item.words != null && effectiveAnimationStyle == LyricsAnimationStyle.FADE) {
-                            if (!isActiveLine || reduceMotionDuringScroll) {
-                                Text(
-                                    text = item.text,
-                                    fontSize = lyricsTextSize.sp,
-                                    color = lineColor,
-                                    textAlign = alignment,
-                                    fontWeight = if (hasRomanization) FontWeight.Bold else FontWeight.Medium,
-                                    lineHeight = (lyricsTextSize * lyricsLineSpacing).sp
-                                )
-                            } else {
+                            /*
+                             * Keep one typography/layout path for the whole lifetime of the row.
+                             * The old implementation swapped inactive Medium plain Text for active
+                             * Bold annotated Text, so glyph widths and wrapping could change at the
+                             * exact moment the line became current.
+                             */
+                            val styledText =
+                                buildAnnotatedString {
+                                    item.words.forEachIndexed { wordIndex, word ->
+                                        val wordStartMs = (word.startTime * 1000).toLong()
+                                        val wordEndMs = (word.endTime * 1000).toLong()
+                                        val wordDuration = (wordEndMs - wordStartMs).coerceAtLeast(1L)
 
-                            val styledText = buildAnnotatedString {
-                                item.words.forEachIndexed { wordIndex, word ->
-                                    val wordStartMs = (word.startTime * 1000).toLong()
-                                    val wordEndMs = (word.endTime * 1000).toLong()
-                                    val wordDuration = wordEndMs - wordStartMs
+                                        val isWordActive =
+                                            isActiveLine &&
+                                                !reduceMotionDuringScroll &&
+                                                currentPlaybackPosition in wordStartMs..wordEndMs
+                                        val hasWordPassed =
+                                            isActiveLine &&
+                                                currentPlaybackPosition > wordEndMs
 
-                                    val isWordActive = isActiveLine && currentPlaybackPosition >= wordStartMs && currentPlaybackPosition <= wordEndMs
-                                    val hasWordPassed = isActiveLine && currentPlaybackPosition > wordEndMs
+                                        val fadeProgress =
+                                            when {
+                                                hasWordPassed -> 1f
+                                                isWordActive -> {
+                                                    val linear =
+                                                        (
+                                                            (currentPlaybackPosition - wordStartMs)
+                                                                .toFloat() /
+                                                                wordDuration.toFloat()
+                                                        ).coerceIn(0f, 1f)
+                                                    linear * linear * (3f - 2f * linear)
+                                                }
+                                                else -> 0f
+                                            }
 
-                                    val fadeProgress = if (isWordActive && wordDuration > 0) {
-                                        val timeElapsed = currentPlaybackPosition - wordStartMs
-                                        val linear = (timeElapsed.toFloat() / wordDuration.toFloat()).coerceIn(0f, 1f)
+                                        val wordAlpha =
+                                            when {
+                                                !isActiveLine &&
+                                                    index < displayedCurrentLineIndex -> 1f
+                                                !isActiveLine -> 0.65f
+                                                reduceMotionDuringScroll -> 0.65f
+                                                else -> 0.35f + (0.65f * fadeProgress)
+                                            }
+                                        val effectiveAlpha =
+                                            if (word.isBackground) wordAlpha * 0.6f else wordAlpha
 
-                                        linear * linear * (3f - 2f * linear)
-                                    } else if (hasWordPassed) {
-                                        1f
-                                    } else {
-                                        0f
-                                    }
+                                        withStyle(
+                                            style =
+                                                SpanStyle(
+                                                    color =
+                                                        lyricsBaseColor.copy(
+                                                            alpha = effectiveAlpha,
+                                                        ),
+                                                    fontWeight = FontWeight.Bold,
+                                                    fontSize =
+                                                        if (word.isBackground) {
+                                                            lyricsTextSize.sp * 0.85f
+                                                        } else {
+                                                            TextUnit.Unspecified
+                                                        },
+                                                ),
+                                        ) {
+                                            append(word.text)
+                                        }
 
-                                    val wordAlpha = if (isActiveLine) {
-                                        0.35f + (0.65f * fadeProgress)
-                                    } else {
-                                        0.65f
-                                    }
-
-                                    // Apply background vocal styling
-                                    val effectiveAlpha = if (word.isBackground) wordAlpha * 0.6f else wordAlpha
-                                    val wordColor = lyricsBaseColor.copy(alpha = effectiveAlpha)
-
-                                    val wordWeight = FontWeight.Bold
-
-                                    withStyle(
-                                        style = SpanStyle(
-                                            color = wordColor,
-                                            fontWeight = wordWeight,
-                                            fontSize = if (word.isBackground) lyricsTextSize.sp * 0.85f else TextUnit.Unspecified
-                                        )
-                                    ) {
-                                        append(word.text)
-                                    }
-
-                                    if (wordIndex < item.words.size - 1) {
-                                        append(" ")
+                                        if (wordIndex < item.words.size - 1) append(" ")
                                     }
                                 }
-                            }
 
                             Text(
                                 text = styledText,
                                 fontSize = lyricsTextSize.sp,
                                 textAlign = alignment,
-                                lineHeight = (lyricsTextSize * lyricsLineSpacing).sp
+                                lineHeight = (lyricsTextSize * lyricsLineSpacing).sp,
                             )
-                            }
                         } else if (hasWordTimings && item.words != null && effectiveAnimationStyle == LyricsAnimationStyle.GLOW) {
                             if (!isActiveLine || reduceMotionDuringScroll) {
                                 Text(
