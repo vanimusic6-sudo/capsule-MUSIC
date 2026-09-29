@@ -52,7 +52,6 @@ val EnableNetEaseKey = booleanPreferencesKey("enableNetEase")
  * decrypted, but it is an API meant for their client rather than ours, so it is something to turn
  * on knowingly rather than something that is simply on.
  */
-val EnablePaxsenixKey = booleanPreferencesKey("enablePaxsenix")
 val EnablePaxsenixAppleMusicKey = booleanPreferencesKey("enablePaxsenixAppleMusic")
 val HideExplicitKey = booleanPreferencesKey("hideExplicit")
 val HideVideoKey = booleanPreferencesKey("hideVideo")
