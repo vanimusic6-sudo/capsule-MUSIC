@@ -848,4 +848,15 @@
     <string name="lyrics_background_solid">Обычный фон</string>
     <string name="lyrics_use_player_theme">Использовать тему плеера в текстах</string>
     <string name="lyrics_use_player_theme_description">Экран текста автоматически использует фон обычного плеера. Для режима «Погружение» применяется раскраска по обложке.</string>
+    <string name="capsule_customize_share_section">Обмен дизайном</string>
+    <string name="capsule_customize_share">Поделиться дизайном</string>
+    <string name="capsule_customize_share_description">Отправить полную раскладку текущего экрана Capsule как переносимый пресет.</string>
+    <string name="capsule_customize_share_chooser">Поделиться дизайном Capsule</string>
+    <string name="capsule_customize_import">Импортировать дизайн</string>
+    <string name="capsule_customize_import_entry_description">Вставить пресет Capsule, которым с вами поделились.</string>
+    <string name="capsule_customize_import_description">Вставьте сюда пресет дизайна Capsule. Перед применением раскладка будет проверена, а режим редактирования автоматически выключится.</string>
+    <string name="capsule_customize_import_hint">JSON дизайна Capsule</string>
+    <string name="capsule_customize_import_apply">Применить</string>
+    <string name="capsule_customize_import_invalid">Этот пресет Capsule повреждён или имеет неподдерживаемый формат.</string>
+    <string name="capsule_customize_import_success">Дизайн Capsule импортирован.</string>
 </resources>
