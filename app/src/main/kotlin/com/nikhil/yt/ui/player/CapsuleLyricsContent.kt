@@ -40,6 +40,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.State
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -108,6 +109,7 @@ fun CapsuleLyricsContent(
     onSeekPreview: (Long) -> Unit,
     onSeekFinished: () -> Unit,
     playerArtworkColors: List<Color> = emptyList(),
+    backdropAnimationTime: State<Long>? = null,
     isVisible: Boolean = true,
     modifier: Modifier = Modifier,
 ) {
@@ -281,6 +283,7 @@ fun CapsuleLyricsContent(
                         visualsActive &&
                             isPlaying &&
                             playbackState == Player.STATE_READY,
+                    sharedAnimationTime = backdropAnimationTime,
                 )
             }
 
