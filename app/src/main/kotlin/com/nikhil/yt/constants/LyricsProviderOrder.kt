@@ -74,13 +74,7 @@ object LyricsProviderOrder {
 
     private fun expandLegacy(value: String): List<String> =
         when (value) {
-            "PAXSENIX",
-            "PAXSENIX_SPOTIFY",
-            "PAXSENIX_MUSIXMATCH",
-            "PAXSENIX_NETEASE",
-            "PAXSENIX_YOUTUBE",
-            "MUSIXMATCH",
-            -> listOf(PAXSENIX_APPLE_MUSIC)
+            "PAXSENIX" -> listOf(PAXSENIX_APPLE_MUSIC)
             else -> listOf(value)
         }
 
