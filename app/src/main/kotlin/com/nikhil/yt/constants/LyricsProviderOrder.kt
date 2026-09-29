@@ -22,7 +22,6 @@ object LyricsProviderOrder {
     const val LYRICS_PLUS = "LYRICS_PLUS"
     const val BETTER_LYRICS = "BETTER_LYRICS"
     const val PAXSENIX_APPLE_MUSIC = "PAXSENIX_APPLE_MUSIC"
-    const val DEEZER = "DEEZER"
     const val NETEASE = "NETEASE"
     const val YOUTUBE = "YOUTUBE"
 
@@ -36,7 +35,6 @@ object LyricsProviderOrder {
         listOf(
             LYRICS_PLUS,
             BETTER_LYRICS,
-            DEEZER,
             PAXSENIX_APPLE_MUSIC,
             NETEASE,
             YOUTUBE,
