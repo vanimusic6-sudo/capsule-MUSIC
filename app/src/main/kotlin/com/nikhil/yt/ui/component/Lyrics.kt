@@ -859,6 +859,9 @@ fun Lyrics(
     var isManualScrolling by rememberSaveable {
         mutableStateOf(false)
     }
+    var isReturningToSync by remember {
+        mutableStateOf(false)
+    }
 
     val manualScrollThresholdPx = with(density) { 28.dp.toPx() }
 
@@ -872,6 +875,7 @@ fun Lyrics(
         targetIndex: Int,
         animated: Boolean,
         seek: Boolean = false,
+        returnToSync: Boolean = false,
     ) {
         if (!isVisible || targetIndex !in lines.indices) return
 
@@ -893,6 +897,7 @@ fun Lyrics(
                 val visible = before.visibleItemsInfo
                 val targetIsBelow =
                     animated &&
+                        returnToSync &&
                         !seek &&
                         visible.isNotEmpty() &&
                         targetIndex > visible.maxOf { it.index }
@@ -918,10 +923,22 @@ fun Lyrics(
                 if (itemInfo == null && targetIsBelow) {
                     /*
                      * Variable-height lyric rows can occasionally push the target just below the
-                     * first staging viewport. Move only one row closer — still from below — rather
-                     * than falling back to the old top placement.
+                     * first staging viewport. Move only one row closer — still from below.
                      */
                     lazyListState.scrollToItem((targetIndex - 1).coerceAtLeast(0))
+                    withFrameNanos { }
+                    itemInfo =
+                        lazyListState.layoutInfo.visibleItemsInfo
+                            .firstOrNull { it.index == targetIndex }
+                }
+
+                if (itemInfo == null) {
+                    /*
+                     * Reliability wins over choreography in the pathological case of a lyric row
+                     * taller than the viewport: make the requested row measurable so return mode
+                     * can never finish without actually attaching to the live line.
+                     */
+                    lazyListState.scrollToItem(targetIndex)
                     withFrameNanos { }
                     itemInfo =
                         lazyListState.layoutInfo.visibleItemsInfo
@@ -986,6 +1003,7 @@ fun Lyrics(
         // the instant it becomes hidden, otherwise an in-flight auto-scroll can be cancelled at an
         // arbitrary pixel and that stale position survives a quick reopen.
         if (!isVisible || isAppMinimized) {
+            isReturningToSync = false
             isManualScrolling = false
             isSeeking = false
             lastPreviewTime = 0L
@@ -1020,6 +1038,7 @@ fun Lyrics(
         lineSyncLeadMs,
         lyricsAnimationStyle,
         isManualScrolling,
+        isReturningToSync,
         isPlaying,
         isVisible,
     ) {
@@ -1073,6 +1092,9 @@ fun Lyrics(
 
             val delayMs =
                 when {
+                    // While returning, the destination is live: detect a line hand-off quickly so
+                    // the old scroll is cancelled and the new current line immediately takes over.
+                    isReturningToSync -> 40L
                     // Nothing visual is advancing while paused.
                     !isPlaying && sliderPosition == null -> 420L
                     // Manual scrolling intentionally suppresses lyric motion, so a slower clock is
@@ -1100,11 +1122,17 @@ fun Lyrics(
         currentLineIndex,
         lastPreviewTime,
         initialScrollDone,
+        isReturningToSync,
         isVisible,
         isAppMinimized,
     ) {
         if (!isVisible || isAppMinimized || !isSynced) return@LaunchedEffect
         if (currentLineIndex !in lines.indices) return@LaunchedEffect
+
+        if (isReturningToSync) {
+            deferredCurrentLineIndex = currentLineIndex
+            return@LaunchedEffect
+        }
 
         if (!initialScrollDone) {
             shouldScrollToFirstLine = false
@@ -1148,6 +1176,88 @@ fun Lyrics(
         previousLineIndex = currentLineIndex
     }
 
+    /*
+     * One coroutine owns "return to sync". currentLineIndex is a key on purpose: if playback
+     * advances while the list is flying, Compose cancels the old scroll (animateScrollBy is
+     * cancellable) and starts again toward the newest live line. No stale target can win after it.
+     */
+    LaunchedEffect(
+        isReturningToSync,
+        currentLineIndex,
+        isVisible,
+        isAppMinimized,
+    ) {
+        if (!isReturningToSync || !isVisible || isAppMinimized || !isSynced) {
+            return@LaunchedEffect
+        }
+
+        val targetIndex = currentLineIndex
+        if (targetIndex !in lines.indices) {
+            isReturningToSync = false
+            isManualScrolling = false
+            return@LaunchedEffect
+        }
+
+        deferredCurrentLineIndex = targetIndex
+
+        repeat(2) {
+            anchorLyricLine(
+                targetIndex = targetIndex,
+                animated = true,
+                returnToSync = true,
+            )
+
+            // A key change cancels this effect before this point, but keep the invariant explicit.
+            if (currentLineIndex != targetIndex) {
+                return@LaunchedEffect
+            }
+
+            val info =
+                lazyListState.layoutInfo.visibleItemsInfo
+                    .firstOrNull { it.index == targetIndex }
+            val layout = lazyListState.layoutInfo
+            val viewportHeight = layout.viewportEndOffset - layout.viewportStartOffset
+            val centered =
+                if (info != null && viewportHeight > 0) {
+                    val anchorY = layout.viewportStartOffset + viewportHeight / 2
+                    val itemCenter = info.offset + info.size / 2
+                    abs(itemCenter - anchorY) <= 4
+                } else {
+                    false
+                }
+
+            if (centered) {
+                deferredCurrentLineIndex = targetIndex
+                previousLineIndex = targetIndex
+                lastPreviewTime = 0L
+                isManualScrolling = false
+                isReturningToSync = false
+                return@LaunchedEffect
+            }
+        }
+
+        /*
+         * Final safety correction. This path should be rare (usually only after a row remeasures
+         * during the flight), but never leave the UI in a half-returned state.
+         */
+        if (currentLineIndex == targetIndex) {
+            lazyListState.scrollToItem(targetIndex)
+            withFrameNanos { }
+            anchorLyricLine(
+                targetIndex = targetIndex,
+                animated = true,
+                returnToSync = false,
+            )
+            if (currentLineIndex == targetIndex) {
+                deferredCurrentLineIndex = targetIndex
+                previousLineIndex = targetIndex
+                lastPreviewTime = 0L
+                isManualScrolling = false
+                isReturningToSync = false
+            }
+        }
+    }
+
     BoxWithConstraints(
         contentAlignment = Alignment.TopCenter,
         modifier = modifier
@@ -1172,6 +1282,7 @@ fun Lyrics(
         } else {
             LazyColumn(
             state = lazyListState,
+            userScrollEnabled = !isReturningToSync,
             contentPadding = WindowInsets.systemBarsIgnoringVisibility
                 .only(WindowInsetsSides.Top)
                 .add(WindowInsets(top = maxHeight / 2, bottom = maxHeight / 2))
@@ -1182,6 +1293,7 @@ fun Lyrics(
                     remember(
                         manualScrollThresholdPx,
                         scrollLyrics,
+                        isReturningToSync,
                         mediaMetadata?.id,
                     ) {
                         var accumulatedDragPx = 0f
@@ -1196,6 +1308,7 @@ fun Lyrics(
                             ): Offset {
                                 if (
                                     !isSelectionModeActive &&
+                                    !isReturningToSync &&
                                     source == NestedScrollSource.UserInput
                                 ) {
                                     accumulatedDragPx += abs(consumed.y)
@@ -1226,7 +1339,7 @@ fun Lyrics(
                                 consumed: Velocity,
                                 available: Velocity,
                             ): Velocity {
-                                if (!isSelectionModeActive) {
+                                if (!isSelectionModeActive && !isReturningToSync) {
                                     if (enteredManualMode) {
                                         lastPreviewTime = System.currentTimeMillis()
                                         isManualScrolling = true
@@ -1289,6 +1402,8 @@ fun Lyrics(
                         lyricsAnimationStyle == LyricsAnimationStyle.ARCHIVE_TUNE
                     val targetAlpha = when {
                         !isSynced || (isSelectionModeActive && isSelected) -> 1f
+                        isReturningToSync && index == currentLineIndex -> 1f
+                        isReturningToSync -> 0.36f
                         isManualScrolling && archiveTuneStyle -> when {
                             index == displayedCurrentLineIndex -> 1f
                             distance == 1 -> 0.72f
@@ -1377,6 +1492,7 @@ fun Lyrics(
                             tween(
                                 durationMillis =
                                     when {
+                                        isReturningToSync -> 180
                                         archiveTuneStyle ->
                                             if (archiveLineIsFocused) 500 else 1_100
                                         lyricsAnimationStyle != LyricsAnimationStyle.NONE ->
@@ -1410,7 +1526,7 @@ fun Lyrics(
                         .fillMaxWidth()
                         // Removed .clip() to prevent glow clipping
                         .combinedClickable(
-                            enabled = true,
+                            enabled = !isReturningToSync,
                             onClick = {
                                 if (isSelectionModeActive) {
                                     if (isSelected) {
@@ -2611,7 +2727,11 @@ fun Lyrics(
         }
 
             AnimatedVisibility(
-                visible = isManualScrolling && scrollLyrics && !isSelectionModeActive,
+                visible =
+                    isManualScrolling &&
+                        scrollLyrics &&
+                        !isSelectionModeActive &&
+                        !isReturningToSync,
                 enter = slideInVertically(
                     animationSpec = tween(durationMillis = 300, easing = CapsuleStandardEasing),
                     initialOffsetY = { it * 2 }
@@ -2635,18 +2755,18 @@ fun Lyrics(
                             shape = RoundedCornerShape(24.dp)
                         )
                         .clickable {
-                            isManualScrolling = false
-                            lastPreviewTime = 0L
-
-                            // Resume always returns to the exact same anchor used by
-                            // automatic tracking; never align the line to the list start.
-                            if (currentLineIndex in lines.indices) {
-                                scope.launch {
-                                    anchorLyricLine(
-                                        targetIndex = currentLineIndex,
-                                        animated = true,
-                                    )
-                                }
+                            if (
+                                !isReturningToSync &&
+                                currentLineIndex in lines.indices
+                            ) {
+                                /*
+                                 * Keep manual mode set during the flight. That prevents the normal
+                                 * auto-scroll path from becoming a second owner before the live row
+                                 * is actually centered.
+                                 */
+                                deferredCurrentLineIndex = currentLineIndex
+                                lastPreviewTime = 0L
+                                isReturningToSync = true
                             }
                         }
                         .padding(horizontal = 20.dp, vertical = 10.dp),
