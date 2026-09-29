@@ -110,7 +110,17 @@ internal fun PaxsenixStatsDialog(onDismiss: () -> Unit) {
 
 @Composable
 private fun PaxsenixStatsContent(stats: PaxsenixStats) {
-    val overallRate = parseRate(stats.overall_success_rate)
+    val appleStats =
+        stats.providers.entries
+            .firstOrNull { (name, _) ->
+                name.equals("apple_music", ignoreCase = true) ||
+                    name.equals("apple-music", ignoreCase = true) ||
+                    name.contains("apple", ignoreCase = true)
+            }
+            ?.value
+    val appleRate = parseRate(appleStats?.success_rate ?: "0%")
+    val appleRequests = (appleStats?.hits ?: 0) + (appleStats?.errors ?: 0)
+
     Column(
         modifier =
             Modifier
@@ -119,9 +129,9 @@ private fun PaxsenixStatsContent(stats: PaxsenixStats) {
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         PaxsenixHealthBar(
-            rate = overallRate,
+            rate = appleRate,
             label =
-                when (healthFor(overallRate)) {
+                when (healthFor(appleRate)) {
                     PaxsenixHealth.OPERATIONAL -> stringResource(R.string.paxsenix_status_operational)
                     PaxsenixHealth.DEGRADED -> stringResource(R.string.paxsenix_status_degraded)
                     PaxsenixHealth.DOWN -> stringResource(R.string.paxsenix_status_down)
@@ -129,24 +139,28 @@ private fun PaxsenixStatsContent(stats: PaxsenixStats) {
         )
 
         StatRow(stringResource(R.string.paxsenix_uptime), formatUptime(stats.uptime_seconds))
-        StatRow(stringResource(R.string.paxsenix_total_requests), stats.total_requests.toString())
-        StatRow(stringResource(R.string.paxsenix_success_rate), stats.overall_success_rate)
+        StatRow(stringResource(R.string.paxsenix_total_requests), appleRequests.toString())
+        StatRow(
+            stringResource(R.string.paxsenix_success_rate),
+            appleStats?.success_rate ?: "0%",
+        )
 
-        if (stats.providers.isNotEmpty()) {
+        if (appleStats != null) {
             HorizontalDivider()
             Text(
                 text = stringResource(R.string.paxsenix_providers),
                 style = MaterialTheme.typography.labelLarge,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                stats.providers.forEach { (name, providerStats) ->
-                    PaxsenixProviderRow(name, providerStats)
-                }
-            }
+            PaxsenixProviderRow("apple_music", appleStats)
         }
 
-        if (stats.request_log.isNotEmpty()) {
+        val appleRequestsLog =
+            stats.request_log.filter { entry ->
+                entry.provider.contains("apple", ignoreCase = true) ||
+                    entry.endpoint.contains("apple-music", ignoreCase = true)
+            }
+        if (appleRequestsLog.isNotEmpty()) {
             HorizontalDivider()
             Text(
                 text = stringResource(R.string.paxsenix_recent_requests),
@@ -154,7 +168,7 @@ private fun PaxsenixStatsContent(stats: PaxsenixStats) {
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                stats.request_log.take(5).forEach { entry ->
+                appleRequestsLog.take(5).forEach { entry ->
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,
