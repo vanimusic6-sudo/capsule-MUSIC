@@ -107,6 +107,7 @@ fun CapsuleLyricsContent(
     onMenuClick: () -> Unit,
     onSeekPreview: (Long) -> Unit,
     onSeekFinished: () -> Unit,
+    playerArtworkColors: List<Color> = emptyList(),
     isVisible: Boolean = true,
     modifier: Modifier = Modifier,
 ) {
@@ -156,13 +157,23 @@ fun CapsuleLyricsContent(
                     playerBackground != PlayerBackgroundStyle.DEFAULT
             )
 
-    val artworkColors =
+    val localArtworkColors =
         rememberCapsuleArtworkColors(
             mediaMetadata = mediaMetadata,
-            // Palette extraction is event-driven/cached. Keep the resolved colors warm through the
-            // close transition so the background cannot flash back to the fallback color.
-            enabled = onScreen && needsArtworkColors,
+            // Normally the already-resolved player palette is handed across the transition. Keep
+            // this as a fallback for direct/restored Lyrics entry only; never launch a duplicate
+            // extraction when the player already has the colors warm.
+            enabled =
+                onScreen &&
+                    needsArtworkColors &&
+                    playerArtworkColors.isEmpty(),
         )
+    val artworkColors =
+        if (playerArtworkColors.isNotEmpty()) {
+            playerArtworkColors
+        } else {
+            localArtworkColors
+        }
 
     // Same treatment as the full player: the control card is a translucent layer, not an
     // opaque black block, so the selected lyrics background colours the panel underneath it.
