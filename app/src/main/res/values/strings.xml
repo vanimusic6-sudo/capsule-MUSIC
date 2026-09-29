@@ -927,4 +927,15 @@ Velune will only extract your token, and everything else is stored locally.</str
     <string name="lyrics_background_solid">Plain background</string>
     <string name="lyrics_use_player_theme">Use player theme in lyrics</string>
     <string name="lyrics_use_player_theme_description">When enabled, the lyrics screen follows the full player background. Immersive uses artwork coloring.</string>
+    <string name="capsule_customize_share_section">Share designs</string>
+    <string name="capsule_customize_share">Share design</string>
+    <string name="capsule_customize_share_description">Send the complete layout of the current Capsule screen as a portable preset.</string>
+    <string name="capsule_customize_share_chooser">Share Capsule design</string>
+    <string name="capsule_customize_import">Import design</string>
+    <string name="capsule_customize_import_entry_description">Paste a Capsule preset shared by someone else.</string>
+    <string name="capsule_customize_import_description">Paste the Capsule design preset here. The layout is validated before it is applied, and importing never starts edit mode.</string>
+    <string name="capsule_customize_import_hint">Capsule design JSON</string>
+    <string name="capsule_customize_import_apply">Apply</string>
+    <string name="capsule_customize_import_invalid">This Capsule design preset is invalid or unsupported.</string>
+    <string name="capsule_customize_import_success">Capsule design imported.</string>
 </resources>
