@@ -135,9 +135,6 @@ fun CapsuleMiniPlayer(
     val onScreen = appIsOnScreen()
     val visualsActive = visible && onScreen
 
-    val database =
-        LocalDatabase.current
-
     val mediaMetadata by
         playerConnection.mediaMetadata.collectAsState()
 
@@ -155,6 +152,40 @@ fun CapsuleMiniPlayer(
             isPlaying && playbackState == Player.STATE_READY,
         )
     }
+
+    val miniPlayerBackground by
+        rememberEnumPreference(
+            MiniPlayerBackgroundStyleKey,
+            defaultValue = MiniPlayerBackgroundStyle.CAPSULE_STAR,
+        )
+
+    val miniArtworkColors =
+        rememberCapsuleArtworkColors(
+            mediaMetadata = mediaMetadata,
+            // Palette extraction is event-driven and cached, not a frame clock. Keep it warm while
+            // another player surface covers the mini-player so collapsing reveals the correct
+            // colour immediately instead of painting after the animation has already started.
+            enabled =
+                onScreen &&
+                    miniPlayerBackground !=
+                    MiniPlayerBackgroundStyle.THEME,
+        )
+
+    if (!visualsActive) {
+        // Preserve BottomSheet's collapsed measurement, but do not keep the hidden mini-player's
+        // database/session/swipe subscriptions or animation objects alive underneath full-player.
+        // Palette extraction above intentionally stays warm because the reveal color is perceptual.
+        Box(
+            modifier =
+                modifier
+                    .fillMaxWidth()
+                    .height(MiniPlayerHeight),
+        )
+        return
+    }
+
+    val database =
+        LocalDatabase.current
 
     val currentSong by
         playerConnection.currentSong.collectAsState(
@@ -174,24 +205,6 @@ fun CapsuleMiniPlayer(
         rememberPreference(
             SwipeThumbnailKey,
             defaultValue = true,
-        )
-
-    val miniPlayerBackground by
-        rememberEnumPreference(
-            MiniPlayerBackgroundStyleKey,
-            defaultValue = MiniPlayerBackgroundStyle.CAPSULE_STAR,
-        )
-
-    val miniArtworkColors =
-        rememberCapsuleArtworkColors(
-            mediaMetadata = mediaMetadata,
-            // Palette extraction is event-driven and cached, not a frame clock. Keep it warm while
-            // another player surface covers the mini-player so collapsing reveals the correct
-            // colour immediately instead of painting after the animation has already started.
-            enabled =
-                onScreen &&
-                    miniPlayerBackground !=
-                    MiniPlayerBackgroundStyle.THEME,
         )
 
     val togetherState by
