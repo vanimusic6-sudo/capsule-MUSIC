@@ -565,10 +565,28 @@ private fun CapsulePlayerLyricsHost(
                             translationY = 0f
                             scaleX = 1f
                             scaleY = 1f
+                            alpha = 1f
                         } else {
                             translationY = -2.75f * reaction
                             scaleX = 1f - 0.00070f * reaction
                             scaleY = 1f - 0.00100f * reaction
+
+                            /*
+                             * The Lyrics reveal edge is intentionally soft. If the player UI stays
+                             * opaque underneath that feather, bright artwork and controls leak
+                             * through it as a horizontal stripe. Dissolve the foreground early so
+                             * the feather blends the Lyrics backdrop into the same player backdrop,
+                             * not into the album cover.
+                             *
+                             * On close this runs in reverse only near the end, after the moving
+                             * boundary has already passed the artwork area.
+                             */
+                            val foregroundExit =
+                                CapsuleMotion.approach(
+                                    progress = reaction,
+                                    window = 0.34f,
+                                )
+                            alpha = 1f - foregroundExit
                         }
                         transformOrigin = TransformOrigin(0.5f, 0.5f)
                     },
