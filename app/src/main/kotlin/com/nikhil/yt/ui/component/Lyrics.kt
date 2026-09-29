@@ -882,40 +882,45 @@ fun Lyrics(
 
             if (itemInfo == null) {
                 /*
-                 * Keep the old return animation and timing. The only difference is where an
-                 * off-screen target is made measurable: a live line below the current viewport
-                 * starts at the bottom and therefore travels upward into focus; a line above keeps
-                 * the original top-down entrance.
+                 * Preserve the original return path exactly: make the target measurable first,
+                 * then run the same centre tween below. The only extra step is for a target that
+                 * genuinely lives below the current viewport — stage that measured row at the
+                 * bottom edge so the old tween brings it upward instead of always entering from
+                 * the top.
                  */
                 val before = lazyListState.layoutInfo
                 val visible = before.visibleItemsInfo
                 val targetIsBelow =
-                    visible.isNotEmpty() &&
+                    animated &&
+                        !seek &&
+                        visible.isNotEmpty() &&
                         targetIndex > visible.maxOf { it.index }
 
-                if (animated && !seek && targetIsBelow) {
-                    val viewportHeight =
-                        before.viewportEndOffset - before.viewportStartOffset
-                    val estimatedHeight =
-                        visible
-                            .map { it.size }
-                            .takeIf { it.isNotEmpty() }
-                            ?.average()
-                            ?.toInt()
-                            ?: with(density) { 64.dp.roundToPx() }
-                    val bottomPlacement =
-                        (viewportHeight - estimatedHeight)
-                            .coerceAtLeast(0)
+                lazyListState.scrollToItem(targetIndex)
+                withFrameNanos { }
 
-                    lazyListState.scrollToItem(
-                        index = targetIndex,
-                        scrollOffset = -bottomPlacement,
-                    )
-                } else {
-                    lazyListState.scrollToItem(targetIndex)
+                if (targetIsBelow) {
+                    val placed =
+                        lazyListState.layoutInfo.visibleItemsInfo
+                            .firstOrNull { it.index == targetIndex }
+                    if (placed != null) {
+                        val layout = lazyListState.layoutInfo
+                        val viewportHeight =
+                            layout.viewportEndOffset - layout.viewportStartOffset
+                        val bottomOffset =
+                            (viewportHeight - placed.size)
+                                .coerceAtLeast(0)
+
+                        /*
+                         * Negative scroll moves the already-measured row down. Unlike a negative
+                         * scrollOffset passed to scrollToItem, the row remains part of the visible
+                         * layout, so the old centring animation below always has something to pull.
+                         */
+                        lazyListState.scrollBy(-bottomOffset.toFloat())
+                        withFrameNanos { }
+                    }
                 }
 
-                withFrameNanos { }
                 itemInfo =
                     lazyListState.layoutInfo.visibleItemsInfo
                         .firstOrNull { it.index == targetIndex }
