@@ -7,11 +7,11 @@
 package com.nikhil.yt.ui.player
 
 import com.nikhil.yt.constants.CapsuleCustomizeTarget
-import org.json.JSONObject
+import java.net.URLDecoder
+import java.net.URLEncoder
 import java.util.Locale
 
-private const val CAPSULE_DESIGN_PRESET_FORMAT = "capsule-player-layout"
-private const val CAPSULE_DESIGN_PRESET_VERSION = 1
+private const val CAPSULE_DESIGN_PRESET_HEADER = "CAPSULE-DESIGN/1"
 
 internal data class CapsuleDesignPreset(
     val target: CapsuleCustomizeTarget,
@@ -28,67 +28,82 @@ internal data class CapsuleDesignPreset(
 )
 
 /**
- * Small, versioned interchange format for community-created Capsule screens.
+ * Dependency-free, versioned interchange format for community-created Capsule screens.
  *
- * The codec deliberately stores the same semantic state as the editor rather than raw pixels or a
- * screenshot. On import every field is run through the editor's existing decoders/encoders so an
- * old, hand-edited or partially corrupt preset falls back to legal Capsule geometry instead of
- * injecting unchecked values into DataStore.
+ * Do not use org.json here. The app also carries the standalone org.json artifact, while Android
+ * ships its own classes with the same package name. R8 can optimise against one hierarchy and then
+ * Android verifies against the other one, which causes a VerifyError before the share sheet even
+ * opens on some Android 16 builds.
+ *
+ * Each value is URL-escaped, so delimiters inside saved layout strings remain safe. On import every
+ * field still goes through the editor's existing decoders/encoders before it reaches DataStore.
  */
 internal object CapsuleDesignPresetCodec {
-    fun encode(preset: CapsuleDesignPreset): String {
-        val layout =
-            JSONObject()
-                .put("order", preset.layoutOrder)
-                .put("positions", preset.canvasPositions)
-                .put("metadataOrder", preset.metadataOrder)
-                .put("modeOrder", preset.modeOrder)
-                .put("avOrder", preset.avOrder)
-                .put("transportOrder", preset.transportOrder)
+    private fun escape(value: String): String =
+        URLEncoder.encode(value, Charsets.UTF_8.name())
 
-        if (preset.target == CapsuleCustomizeTarget.LIGHT) {
-            layout
-                .put("artworkWidthScale", preset.artworkWidthScale ?: 1f)
-                .put("artworkHeightScale", preset.artworkHeightScale ?: 1f)
-                .put("legacyGaps", preset.blockGaps ?: CapsuleLightBaseGapsEncoded)
-                .put("lyricLineEnabled", preset.lyricLineEnabled ?: true)
-        }
+    private fun unescape(value: String): String =
+        URLDecoder.decode(value, Charsets.UTF_8.name())
 
-        return JSONObject()
-            .put("format", CAPSULE_DESIGN_PRESET_FORMAT)
-            .put("version", CAPSULE_DESIGN_PRESET_VERSION)
-            .put("target", preset.target.name)
-            .put("layout", layout)
-            .toString(2)
-    }
+    fun encode(preset: CapsuleDesignPreset): String =
+        buildString {
+            appendLine(CAPSULE_DESIGN_PRESET_HEADER)
+            appendLine("target=${escape(preset.target.name)}")
+            appendLine("order=${escape(preset.layoutOrder)}")
+            appendLine("positions=${escape(preset.canvasPositions)}")
+            appendLine("metadata=${escape(preset.metadataOrder)}")
+            appendLine("mode=${escape(preset.modeOrder)}")
+            appendLine("av=${escape(preset.avOrder)}")
+            appendLine("transport=${escape(preset.transportOrder)}")
+
+            if (preset.target == CapsuleCustomizeTarget.LIGHT) {
+                appendLine("artworkWidth=${escape((preset.artworkWidthScale ?: 1f).toString())}")
+                appendLine("artworkHeight=${escape((preset.artworkHeightScale ?: 1f).toString())}")
+                appendLine("gaps=${escape(preset.blockGaps ?: CapsuleLightBaseGapsEncoded)}")
+                appendLine("lyricLine=${if (preset.lyricLineEnabled != false) "1" else "0"}")
+            }
+        }.trimEnd()
 
     fun decode(raw: String): CapsuleDesignPreset? =
         runCatching {
-            val root = JSONObject(raw.trim())
-            require(root.optString("format") == CAPSULE_DESIGN_PRESET_FORMAT)
+            val lines =
+                raw
+                    .trim()
+                    .lineSequence()
+                    .map(String::trim)
+                    .filter(String::isNotEmpty)
+                    .toList()
 
-            val version = root.optInt("version", -1)
-            require(version in 1..CAPSULE_DESIGN_PRESET_VERSION)
+            require(lines.firstOrNull() == CAPSULE_DESIGN_PRESET_HEADER)
+
+            val fields =
+                buildMap {
+                    lines.drop(1).forEach { line ->
+                        val parts = line.split('=', limit = 2)
+                        if (parts.size == 2) {
+                            put(parts[0], unescape(parts[1]))
+                        }
+                    }
+                }
 
             val target =
                 CapsuleCustomizeTarget.valueOf(
-                    root.getString("target").uppercase(Locale.US),
+                    fields.getValue("target").uppercase(Locale.US),
                 )
-            val layout = root.getJSONObject("layout")
 
             val layoutOrder =
                 when (target) {
                     CapsuleCustomizeTarget.LIGHT ->
                         encodeCapsuleLightOrder(
                             decodeCapsuleLightOrder(
-                                layout.optString("order", CapsuleLightBaseOrderEncoded),
+                                fields["order"] ?: CapsuleLightBaseOrderEncoded,
                             ),
                         )
 
                     CapsuleCustomizeTarget.IMMERSIVE ->
                         encodeCapsuleImmersiveOrder(
                             decodeCapsuleImmersiveOrder(
-                                layout.optString("order", CapsuleImmersiveBaseOrderEncoded),
+                                fields["order"] ?: CapsuleImmersiveBaseOrderEncoded,
                             ),
                         )
                 }
@@ -96,62 +111,60 @@ internal object CapsuleDesignPresetCodec {
             val canvasPositions =
                 encodeCapsuleLightCanvasPositions(
                     decodeCapsuleLightCanvasPositions(
-                        layout.optString("positions", CapsuleLightCanvasPositionsBaseEncoded),
+                        fields["positions"] ?: CapsuleLightCanvasPositionsBaseEncoded,
                     ),
                 )
 
             val metadataOrder =
                 encodeCapsuleLightMetadataOrder(
                     decodeCapsuleLightMetadataOrder(
-                        layout.optString(
-                            "metadataOrder",
-                            CapsuleLightMetadataBaseOrderEncoded,
-                        ),
+                        fields["metadata"] ?: CapsuleLightMetadataBaseOrderEncoded,
                     ),
                 )
             val modeOrder =
                 encodeCapsuleLightModeOrder(
                     decodeCapsuleLightModeOrder(
-                        layout.optString("modeOrder", CapsuleLightModeBaseOrderEncoded),
+                        fields["mode"] ?: CapsuleLightModeBaseOrderEncoded,
                     ),
                 )
             val avOrder =
                 encodeCapsuleLightAvOrder(
                     decodeCapsuleLightAvOrder(
-                        layout.optString("avOrder", CapsuleLightAvBaseOrderEncoded),
+                        fields["av"] ?: CapsuleLightAvBaseOrderEncoded,
                     ),
                 )
             val transportOrder =
                 encodeCapsuleLightTransportOrder(
                     decodeCapsuleLightTransportOrder(
-                        layout.optString(
-                            "transportOrder",
-                            CapsuleLightTransportBaseOrderEncoded,
-                        ),
+                        fields["transport"] ?: CapsuleLightTransportBaseOrderEncoded,
                     ),
                 )
 
             if (target == CapsuleCustomizeTarget.LIGHT) {
                 val widthScale =
-                    layout
-                        .optDouble("artworkWidthScale", 1.0)
-                        .toFloat()
-                        .takeIf { it.isFinite() }
+                    fields["artworkWidth"]
+                        ?.toFloatOrNull()
+                        ?.takeIf { it.isFinite() }
                         ?.coerceIn(0.55f, 1.08f)
                         ?: 1f
                 val heightScale =
-                    layout
-                        .optDouble("artworkHeightScale", 1.0)
-                        .toFloat()
-                        .takeIf { it.isFinite() }
+                    fields["artworkHeight"]
+                        ?.toFloatOrNull()
+                        ?.takeIf { it.isFinite() }
                         ?.coerceIn(0.55f, 1.35f)
                         ?: 1f
                 val gaps =
                     encodeCapsuleLightBlockGaps(
                         decodeCapsuleLightBlockGaps(
-                            layout.optString("legacyGaps", CapsuleLightBaseGapsEncoded),
+                            fields["gaps"] ?: CapsuleLightBaseGapsEncoded,
                         ),
                     )
+                val lyricLineEnabled =
+                    when (fields["lyricLine"]?.lowercase(Locale.US)) {
+                        "0", "false", "off" -> false
+                        "1", "true", "on" -> true
+                        else -> true
+                    }
 
                 CapsuleDesignPreset(
                     target = target,
@@ -164,7 +177,7 @@ internal object CapsuleDesignPresetCodec {
                     artworkWidthScale = widthScale,
                     artworkHeightScale = heightScale,
                     blockGaps = gaps,
-                    lyricLineEnabled = layout.optBoolean("lyricLineEnabled", true),
+                    lyricLineEnabled = lyricLineEnabled,
                 )
             } else {
                 CapsuleDesignPreset(
