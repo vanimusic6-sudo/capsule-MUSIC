@@ -1937,7 +1937,8 @@ fun Lyrics(
                                         val brightness =
                                             when {
                                                 !isActiveLine &&
-                                                    index < displayedCurrentLineIndex -> 1f
+                                                    index < displayedCurrentLineIndex ->
+                                                    0.58f + (0.42f * animatedLineFocus)
                                                 !isActiveLine -> 0.58f
                                                 reduceMotionDuringScroll -> 0.58f
                                                 isWordActive || hasWordPassed ->
@@ -2062,7 +2063,12 @@ fun Lyrics(
                                             !isActiveLine &&
                                                 index < displayedCurrentLineIndex ->
                                                 SpanStyle(
-                                                    color = lyricsBaseColor,
+                                                    color =
+                                                        lyricsBaseColor.copy(
+                                                            alpha =
+                                                                0.58f +
+                                                                    (0.42f * animatedLineFocus),
+                                                        ),
                                                     fontWeight = FontWeight.Bold,
                                                 )
                                             hasLinePassed ->
@@ -2137,7 +2143,16 @@ fun Lyrics(
                                     } else if (hasWordPassed) {
                                         withStyle(
                                             style = SpanStyle(
-                                                color = lyricsBaseColor,
+                                                color =
+                                                    lyricsBaseColor.copy(
+                                                        alpha =
+                                                            if (!isActiveLine) {
+                                                                0.58f +
+                                                                    (0.42f * animatedLineFocus)
+                                                            } else {
+                                                                1f
+                                                            },
+                                                    ),
                                                 fontWeight = FontWeight.Bold
                                             )
                                         ) {
