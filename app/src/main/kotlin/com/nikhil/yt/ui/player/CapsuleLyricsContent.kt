@@ -97,44 +97,18 @@ private val lyricsPanelColorShape =
     RoundedCornerShape(24.dp)
 
 
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
-fun CapsuleLyricsContent(
+internal fun CapsuleLyricsBackdropLayer(
     mediaMetadata: MediaMetadata,
-    sliderPosition: Long?,
-    positionMs: Long,
-    durationMs: Long,
-    onClose: () -> Unit,
-    onMenuClick: () -> Unit,
-    onSeekPreview: (Long) -> Unit,
-    onSeekFinished: () -> Unit,
     playerArtworkColors: List<Color> = emptyList(),
     backdropAnimationTime: State<Long>? = null,
     isVisible: Boolean = true,
     modifier: Modifier = Modifier,
 ) {
-    val playerConnection =
-        LocalPlayerConnection.current ?: return
-
-    val player =
-        playerConnection.player
-
+    val playerConnection = LocalPlayerConnection.current ?: return
     val onScreen = appIsOnScreen()
-    val visualsActive = isVisible && onScreen
-
-    if (!onScreen) {
-        // Background means genuinely invisible. Tear down the expensive lyrics subtree instead of
-        // merely stopping its clocks: no player-flow collectors, sliders, text layout or shadows
-        // stay subscribed while Android is showing another app. Refocus on return is immediate.
-        Box(modifier = modifier.fillMaxSize())
-        return
-    }
-
-    val playbackState by
-        playerConnection.playbackState.collectAsState()
-
-    val isPlaying by
-        playerConnection.isPlaying.collectAsState()
+    val playbackState by playerConnection.playbackState.collectAsState()
+    val isPlaying by playerConnection.isPlaying.collectAsState()
 
     val lyricsUsePlayerTheme by
         rememberPreference(
@@ -162,9 +136,6 @@ fun CapsuleLyricsContent(
     val localArtworkColors =
         rememberCapsuleArtworkColors(
             mediaMetadata = mediaMetadata,
-            // Normally the already-resolved player palette is handed across the transition. Keep
-            // this as a fallback for direct/restored Lyrics entry only; never launch a duplicate
-            // extraction when the player already has the colors warm.
             enabled =
                 onScreen &&
                     needsArtworkColors &&
@@ -176,6 +147,111 @@ fun CapsuleLyricsContent(
         } else {
             localArtworkColors
         }
+
+    val lyricsBackdrop =
+        capsuleLyricsBackdrop(
+            usePlayerTheme = lyricsUsePlayerTheme,
+            playerDesign = playerDesign,
+            playerBackground = playerBackground,
+        )
+
+    val baseBackgroundColor =
+        when (lyricsBackdrop) {
+            CapsuleLyricsBackdrop.Solid ->
+                CapsuleLyricsBackground
+
+            is CapsuleLyricsBackdrop.PlayerTheme ->
+                if (lyricsBackdrop.style == PlayerBackgroundStyle.DEFAULT) {
+                    MaterialTheme.colorScheme.background
+                } else {
+                    CapsuleLyricsBackground
+                }
+
+            CapsuleLyricsBackdrop.ImmersiveColoring ->
+                CapsuleLyricsBackground
+        }
+
+    Box(
+        modifier =
+            modifier
+                .fillMaxSize()
+                .background(baseBackgroundColor),
+    ) {
+        when (val backdrop = lyricsBackdrop) {
+            CapsuleLyricsBackdrop.Solid ->
+                Unit
+
+            CapsuleLyricsBackdrop.ImmersiveColoring -> {
+                val coloringStops =
+                    remember(artworkColors) {
+                        PlayerBackgroundColorUtils.buildImmersiveLyricsColoringStops(artworkColors)
+                    }
+                Box(
+                    modifier =
+                        Modifier
+                            .fillMaxSize()
+                            .background(
+                                Brush.verticalGradient(
+                                    colorStops = coloringStops,
+                                ),
+                            ),
+                )
+            }
+
+            is CapsuleLyricsBackdrop.PlayerTheme ->
+                PlayerBackground(
+                    playerBackground = backdrop.style,
+                    gradientColors = artworkColors,
+                    animated =
+                        isVisible &&
+                            onScreen &&
+                            isPlaying &&
+                            playbackState == Player.STATE_READY,
+                    sharedAnimationTime = backdropAnimationTime,
+                )
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
+@Composable
+fun CapsuleLyricsContent(
+    mediaMetadata: MediaMetadata,
+    sliderPosition: Long?,
+    positionMs: Long,
+    durationMs: Long,
+    onClose: () -> Unit,
+    onMenuClick: () -> Unit,
+    onSeekPreview: (Long) -> Unit,
+    onSeekFinished: () -> Unit,
+    playerArtworkColors: List<Color> = emptyList(),
+    backdropAnimationTime: State<Long>? = null,
+    drawBackdrop: Boolean = true,
+    isVisible: Boolean = true,
+    modifier: Modifier = Modifier,
+) {
+    val playerConnection =
+        LocalPlayerConnection.current ?: return
+
+    val player =
+        playerConnection.player
+
+    val onScreen = appIsOnScreen()
+    val visualsActive = isVisible && onScreen
+
+    if (!onScreen) {
+        // Background means genuinely invisible. Tear down the expensive lyrics subtree instead of
+        // merely stopping its clocks: no player-flow collectors, sliders, text layout or shadows
+        // stay subscribed while Android is showing another app. Refocus on return is immediate.
+        Box(modifier = modifier.fillMaxSize())
+        return
+    }
+
+    val playbackState by
+        playerConnection.playbackState.collectAsState()
+
+    val isPlaying by
+        playerConnection.isPlaying.collectAsState()
 
     // Same treatment as the full player: the control card is a translucent layer, not an
     // opaque black block, so the selected lyrics background colours the panel underneath it.
@@ -242,66 +318,17 @@ fun CapsuleLyricsContent(
                 displayPosition
         ).coerceAtLeast(0L)
 
-    val lyricsBackdrop =
-        capsuleLyricsBackdrop(
-            usePlayerTheme = lyricsUsePlayerTheme,
-            playerDesign = playerDesign,
-            playerBackground = playerBackground,
-        )
-
-    val baseBackgroundColor =
-        when (lyricsBackdrop) {
-            CapsuleLyricsBackdrop.Solid ->
-                CapsuleLyricsBackground
-
-            is CapsuleLyricsBackdrop.PlayerTheme ->
-                if (lyricsBackdrop.style == PlayerBackgroundStyle.DEFAULT) {
-                    MaterialTheme.colorScheme.background
-                } else {
-                    CapsuleLyricsBackground
-                }
-
-            CapsuleLyricsBackdrop.ImmersiveColoring ->
-                CapsuleLyricsBackground
-        }
-
     Box(
-        modifier =
-            modifier
-                .fillMaxSize()
-                .background(baseBackgroundColor),
+        modifier = modifier.fillMaxSize(),
     ) {
-        when (val backdrop = lyricsBackdrop) {
-            CapsuleLyricsBackdrop.Solid ->
-                Unit
-
-            CapsuleLyricsBackdrop.ImmersiveColoring -> {
-                val coloringStops =
-                    remember(artworkColors) {
-                        PlayerBackgroundColorUtils.buildImmersiveLyricsColoringStops(artworkColors)
-                    }
-                Box(
-                    modifier =
-                        Modifier
-                            .fillMaxSize()
-                            .background(
-                                Brush.verticalGradient(
-                                    colorStops = coloringStops,
-                                ),
-                    ),
-                )
-            }
-
-            is CapsuleLyricsBackdrop.PlayerTheme ->
-                PlayerBackground(
-                    playerBackground = backdrop.style,
-                    gradientColors = artworkColors,
-                    animated =
-                        visualsActive &&
-                            isPlaying &&
-                            playbackState == Player.STATE_READY,
-                    sharedAnimationTime = backdropAnimationTime,
-                )
+        if (drawBackdrop) {
+            CapsuleLyricsBackdropLayer(
+                mediaMetadata = mediaMetadata,
+                playerArtworkColors = playerArtworkColors,
+                backdropAnimationTime = backdropAnimationTime,
+                isVisible = isVisible,
+                modifier = Modifier.fillMaxSize(),
+            )
         }
 
         Column(
