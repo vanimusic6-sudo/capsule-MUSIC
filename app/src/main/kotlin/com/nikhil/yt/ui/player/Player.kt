@@ -782,8 +782,20 @@ private fun CapsulePlayerLyricsHost(
                                     if (showLyrics) {
                                         1f
                                     } else {
-                                        ((travelled - 0.14f) / 0.86f)
-                                            .coerceIn(0f, 1f)
+                                        /*
+                                         * Close in two visual phases. White UI is the highest
+                                         * contrast thing on the screen, so remove it almost
+                                         * immediately; the remaining travel then belongs only to
+                                         * the quiet gradient surface underneath.
+                                         *
+                                         * travelled runs 1 -> 0 while closing. This window fades
+                                         * the entire foreground during roughly the first quarter
+                                         * of the close and keeps it fully gone afterwards.
+                                         */
+                                        CapsuleMotion.smooth(
+                                            ((travelled - 0.76f) / 0.24f)
+                                                .coerceIn(0f, 1f),
+                                        )
                                     }
                                 compositingStrategy =
                                     if (showLyrics) {
