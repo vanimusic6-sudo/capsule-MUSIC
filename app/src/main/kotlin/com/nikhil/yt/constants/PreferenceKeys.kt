@@ -410,6 +410,7 @@ enum class MiniPlayerBackgroundStyle {
 
 
 val LyricsBackgroundStyleKey = stringPreferencesKey("lyricsBackgroundStyle")
+val LyricsUsePlayerThemeKey = booleanPreferencesKey("lyricsUsePlayerTheme")
 enum class LyricsBackgroundStyle {
     SOLID,
     CAPSULE_STAR,
