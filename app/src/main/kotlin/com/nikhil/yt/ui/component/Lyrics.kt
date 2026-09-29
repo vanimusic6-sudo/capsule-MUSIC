@@ -964,19 +964,13 @@ fun Lyrics(
         }
     }
 
-    val needsFrameAccurateWordAnimation =
-        remember(lines, lyricsAnimationStyle) {
-            lyricsAnimationStyle != LyricsAnimationStyle.NONE &&
-                lines.any { !it.words.isNullOrEmpty() }
-        }
-
     LaunchedEffect(
         lyrics,
         lines,
         isAppMinimized,
         wordSyncLeadMs,
         lineSyncLeadMs,
-        needsFrameAccurateWordAnimation,
+        lyricsAnimationStyle,
         isManualScrolling,
         isPlaying,
         isVisible,
@@ -987,38 +981,61 @@ fun Lyrics(
             currentPlaybackPosition = 0L
             return@LaunchedEffect
         }
+
+        /*
+         * Update first, sleep second. Velune did the opposite, so reopening lyrics or returning
+         * from the background could show the stale line until the next polling/animation beat.
+         *
+         * Word motion gets 20 Hz; line-only tracking gets ~12.5 Hz. Those rates are well above the
+         * visual bandwidth of these slow lyric effects but substantially reduce wakeups versus the
+         * old permanent 25 Hz loop.
+         */
         while (isActive) {
             if (isAppMinimized) {
-                delay(250L)
+                delay(350L)
                 continue
             }
-            when {
-                !isPlaying && sliderPositionProvider() == null ->
-                    delay(250L)
 
-                isManualScrolling ->
-                    delay(100L)
-
-                needsFrameAccurateWordAnimation ->
-                    delay(40L)
-
-                else ->
-                    delay(50L)
-            }
             val sliderPosition = sliderPositionProvider()
             val seekingNow = sliderPosition != null
             if (isSeeking != seekingNow) {
                 isSeeking = seekingNow
             }
+
             val position = sliderPosition ?: playerConnection.player.currentPosition
+            val newLineIndex =
+                findCurrentLineIndex(
+                    lines,
+                    position,
+                    leadMs = lineSyncLeadMs,
+                )
+
+            if (currentLineIndex != newLineIndex) {
+                currentLineIndex = newLineIndex
+            }
+
             val syncedPosition = (position + wordSyncLeadMs).coerceAtLeast(0L)
             if (currentPlaybackPosition != syncedPosition) {
                 currentPlaybackPosition = syncedPosition
             }
-            val newLineIndex = findCurrentLineIndex(lines, position, leadMs = lineSyncLeadMs)
-            if (currentLineIndex != newLineIndex) {
-                currentLineIndex = newLineIndex
-            }
+
+            val activeLineHasWords =
+                lines.getOrNull(newLineIndex)?.words?.isNotEmpty() == true
+            val needsFineProgress =
+                lyricsAnimationStyle == LyricsAnimationStyle.KARAOKE ||
+                    (
+                        lyricsAnimationStyle != LyricsAnimationStyle.NONE &&
+                            activeLineHasWords
+                    )
+
+            val delayMs =
+                when {
+                    !isPlaying && sliderPosition == null -> 300L
+                    isManualScrolling -> 140L
+                    needsFineProgress -> 50L
+                    else -> 80L
+                }
+            delay(delayMs)
         }
     }
 
@@ -1033,104 +1050,48 @@ fun Lyrics(
         lastPreviewTime,
         initialScrollDone,
         isVisible,
+        isAppMinimized,
     ) {
-        if (!isVisible) return@LaunchedEffect
-
-        fun calculateOffset() = with(density) {
-            if (currentLineIndex < 0 || currentLineIndex >= lines.size) return@with 0
-            val currentItem = lines[currentLineIndex]
-            val totalNewLines = currentItem.text.count { it == '\n' }
-
-            val dpValue = if (landscapeOffset) 16.dp else 20.dp
-            dpValue.toPx().toInt() * totalNewLines
-        }
-
-        if (!isSynced) return@LaunchedEffect
-
-        suspend fun performSmoothPageScroll(targetIndex: Int, isSeek: Boolean = false) {
-            // Don't block on animation - let new scroll requests interrupt old ones
-            
-            try {
-                val itemInfo = lazyListState.layoutInfo.visibleItemsInfo.firstOrNull { it.index == targetIndex }
-                if (itemInfo != null) {
-                    // Item is visible, just center it
-                    val viewportHeight = lazyListState.layoutInfo.viewportEndOffset - lazyListState.layoutInfo.viewportStartOffset
-                    val center = lazyListState.layoutInfo.viewportStartOffset + (viewportHeight / 2)
-                    val itemCenter = itemInfo.offset + itemInfo.size / 2
-                    val offset = itemCenter - center
-
-                    if (abs(offset) > 5) {
-                        val autoScrollDurationMs =
-                            with(density) {
-                                val travelDp = abs(offset).toDp().value
-                                (430f + travelDp * 1.15f)
-                                    .toInt()
-                                    .coerceIn(480, 1_150)
-                            }
-
-                        lazyListState.animateScrollBy(
-                            value = offset.toFloat(),
-                            animationSpec =
-                                if (isSeek) {
-                                    // Seeking should still respond immediately to the finger.
-                                    spring(
-                                        dampingRatio = Spring.DampingRatioLowBouncy,
-                                        stiffness = Spring.StiffnessMedium,
-                                    )
-                                } else {
-                                    // Auto-scroll used to use one spring for every distance. A
-                                    // two-line lyric therefore covered far more pixels in roughly
-                                    // the same time and looked like a jump. Give long travel more
-                                    // time and land with the same soft Apple-style deceleration.
-                                    tween(
-                                        durationMillis = autoScrollDurationMs,
-                                        easing = AppleMusicEasing,
-                                    )
-                                },
-                        )
-                    }
-                } else {
-                    // Item not visible - use simpler scrollToItem for better performance
-                    val firstVisibleIndex = lazyListState.firstVisibleItemIndex
-                    val distance = abs(targetIndex - firstVisibleIndex)
-
-                    if (distance > 15) {
-                        // Far away - instant scroll to vicinity, then smooth scroll
-                        lazyListState.scrollToItem(targetIndex)
-                    } else {
-                        // Close - just animate
-                        lazyListState.animateScrollToItem(
-                            index = targetIndex,
-                            scrollOffset = 0
-                        )
-                    }
-                }
-            } catch (e: Exception) {
-                // Ignore scroll interruptions
-            }
-        }
+        if (!isVisible || isAppMinimized || !isSynced) return@LaunchedEffect
+        if (currentLineIndex !in lines.indices) return@LaunchedEffect
 
         if (!initialScrollDone) {
-            if (currentLineIndex < 0) return@LaunchedEffect
-
             shouldScrollToFirstLine = false
-            performSmoothPageScroll(currentLineIndex, isSeek = true)
-            if (!isAppMinimized) {
-                initialScrollDone = true
-            }
-        } else if (currentLineIndex != -1) {
+            // Opening/foregrounding is state restoration, not choreography: land on the live line
+            // immediately so the user never waits for the next lyric transition to regain focus.
+            anchorLyricLine(
+                targetIndex = currentLineIndex,
+                animated = false,
+            )
+            initialScrollDone = true
+        } else {
             deferredCurrentLineIndex = currentLineIndex
-            if (isSeeking) {
-                val seekCenterIndex = kotlin.math.max(0, currentLineIndex)
-                performSmoothPageScroll(seekCenterIndex, isSeek = true)
-            } else if ((lastPreviewTime == 0L || currentLineIndex != previousLineIndex) && scrollLyrics && !isManualScrolling) {
-                if (currentLineIndex != previousLineIndex) {
-                    val centerTargetIndex = kotlin.math.max(0, currentLineIndex)
-                    performSmoothPageScroll(centerTargetIndex)
+
+            when {
+                isSeeking -> {
+                    anchorLyricLine(
+                        targetIndex = currentLineIndex,
+                        animated = true,
+                        seek = true,
+                    )
+                }
+
+                scrollLyrics &&
+                    !isManualScrolling &&
+                    (
+                        lastPreviewTime == 0L ||
+                            currentLineIndex != previousLineIndex
+                    ) &&
+                    currentLineIndex != previousLineIndex -> {
+                    anchorLyricLine(
+                        targetIndex = currentLineIndex,
+                        animated = true,
+                    )
                 }
             }
         }
-        if(currentLineIndex > 0) {
+
+        if (currentLineIndex > 0) {
             shouldScrollToFirstLine = true
         }
         previousLineIndex = currentLineIndex
