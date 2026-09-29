@@ -146,6 +146,15 @@ fun CapsuleMiniPlayer(
     val isPlaying by
         playerConnection.isPlaying.collectAsState()
 
+    LaunchedEffect(isPlaying, playbackState) {
+        // The mini-player has no visible comet, but it owns playback while the full player is
+        // collapsed. Updating the shared phase on play/pause state changes costs no frames and
+        // keeps the next visible player/lyrics comet temporally continuous.
+        CapsuleCometPhaseClock.setRunning(
+            isPlaying && playbackState == Player.STATE_READY,
+        )
+    }
+
     val currentSong by
         playerConnection.currentSong.collectAsState(
             initial = null,
@@ -175,8 +184,11 @@ fun CapsuleMiniPlayer(
     val miniArtworkColors =
         rememberCapsuleArtworkColors(
             mediaMetadata = mediaMetadata,
+            // Palette extraction is event-driven and cached, not a frame clock. Keep it warm while
+            // another player surface covers the mini-player so collapsing reveals the correct
+            // colour immediately instead of painting after the animation has already started.
             enabled =
-                visualsActive &&
+                onScreen &&
                     miniPlayerBackground !=
                     MiniPlayerBackgroundStyle.THEME,
         )
