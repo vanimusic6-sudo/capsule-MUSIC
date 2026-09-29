@@ -40,6 +40,7 @@ fun LyricsScreen(
     mediaMetadata: MediaMetadata,
     onBackClick: () -> Unit,
     playerArtworkColors: List<Color> = emptyList(),
+    useHostPlayerBackdrop: Boolean = false,
     isVisible: Boolean = true,
     modifier: Modifier = Modifier,
 ) {
@@ -107,6 +108,7 @@ fun LyricsScreen(
             sliderPosition = it
         },
         playerArtworkColors = playerArtworkColors,
+        useHostPlayerBackdrop = useHostPlayerBackdrop,
         onSeekFinished = {
             sliderPosition?.let {
                 player.seekTo(it)
