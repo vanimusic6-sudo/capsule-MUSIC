@@ -998,37 +998,13 @@ fun CapsulePlayerContent(
                                     }
                                 }
 
-                                lightEditorEnabled -> {
-                                    // The feature may be switched off, but its position still
-                                    // exists in the editor so the user can move it before enabling.
-                                    Box(
-                                        modifier =
-                                            Modifier
-                                                .fillMaxWidth()
-                                                .height(CapsuleLightDisabledLyricSlotHeight)
-                                                .padding(horizontal = 24.dp, vertical = 5.dp)
-                                                .border(
-                                                    1.dp,
-                                                    textColor.copy(alpha = 0.14f),
-                                                    RoundedCornerShape(12.dp),
-                                                ),
-                                        contentAlignment = Alignment.Center,
-                                    ) {
-                                        Text(
-                                            text = stringResource(R.string.capsule_light_lyric_placeholder),
-                                            color = textColor.copy(alpha = 0.42f),
-                                            fontSize = 12.sp,
-                                            maxLines = 1,
-                                        )
-                                    }
-                                }
-
                                 else -> {
                                     /*
-                                     * Disabled means absent in the real player. CanvasV2 explicitly
-                                     * supports a measured 0 px optional block, so LYRIC keeps its
-                                     * saved anchor/order for a future re-enable without consuming
-                                     * any of the artwork's height budget now.
+                                     * When the lyric-line feature is disabled, it is absent from
+                                     * both the real player and the editor. CanvasV2 still measures
+                                     * this optional block as 0 px, so its saved order can survive a
+                                     * future re-enable without reserving space or showing a ghost
+                                     * editor element in the meantime.
                                      */
                                     Spacer(
                                         Modifier
