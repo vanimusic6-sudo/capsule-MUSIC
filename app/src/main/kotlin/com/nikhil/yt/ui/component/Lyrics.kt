@@ -966,7 +966,7 @@ fun Lyrics(
         isPlaying,
         isVisible,
     ) {
-        if (!isVisible) return@LaunchedEffect
+        if (!isVisible || isAppMinimized) return@LaunchedEffect
         if (lyrics.isNullOrEmpty() || (!lyrics.startsWith("[") && !isTtml(lyrics))) {
             currentLineIndex = -1
             currentPlaybackPosition = 0L
@@ -982,11 +982,6 @@ fun Lyrics(
          * old permanent 25 Hz loop.
          */
         while (isActive) {
-            if (isAppMinimized) {
-                delay(350L)
-                continue
-            }
-
             val sliderPosition = sliderPositionProvider()
             val seekingNow = sliderPosition != null
             if (isSeeking != seekingNow) {
