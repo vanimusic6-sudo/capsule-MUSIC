@@ -872,6 +872,7 @@ fun Lyrics(
         targetIndex: Int,
         animated: Boolean,
         seek: Boolean = false,
+        softReturn: Boolean = false,
     ) {
         if (!isVisible || targetIndex !in lines.indices) return
 
@@ -881,9 +882,39 @@ fun Lyrics(
                     .firstOrNull { it.index == targetIndex }
 
             if (itemInfo == null) {
-                // First make the requested line measurable. This branch is used when opening
-                // lyrics in the middle of a track or returning after the app was backgrounded.
-                lazyListState.scrollToItem(targetIndex)
+                /*
+                 * Returning from free scroll used to teleport the live line to the top first and
+                 * only then animate it down to the centre. That made every return look top-down,
+                 * even when the live line was actually below the user's viewport.
+                 *
+                 * For an explicit/manual return, travel toward the target from the current list
+                 * position and ask LazyColumn to land it near the centre. The final few pixels are
+                 * corrected below with our softer spring. Opening/restoration keeps the instant
+                 * path because it is state restoration, not choreography.
+                 */
+                if (animated && softReturn) {
+                    val before = lazyListState.layoutInfo
+                    val viewportHeight =
+                        before.viewportEndOffset - before.viewportStartOffset
+                    val estimatedItemHeight =
+                        before.visibleItemsInfo
+                            .map { it.size }
+                            .takeIf { it.isNotEmpty() }
+                            ?.average()
+                            ?.toInt()
+                            ?: with(density) { 64.dp.roundToPx() }
+                    val desiredTop =
+                        ((viewportHeight - estimatedItemHeight) / 2)
+                            .coerceAtLeast(0)
+
+                    lazyListState.animateScrollToItem(
+                        index = targetIndex,
+                        scrollOffset = -desiredTop,
+                    )
+                } else {
+                    lazyListState.scrollToItem(targetIndex)
+                }
+
                 withFrameNanos { }
                 itemInfo =
                     lazyListState.layoutInfo.visibleItemsInfo
@@ -909,6 +940,21 @@ fun Lyrics(
                         spring(
                             dampingRatio = Spring.DampingRatioNoBouncy,
                             stiffness = Spring.StiffnessMedium,
+                        ),
+                )
+            } else if (softReturn) {
+                /*
+                 * The sign of offset is the direction the live line actually lives in, so the
+                 * spring naturally comes back from above or below instead of always falling from
+                 * the top. High damping + low stiffness gives one soft settle, not a rubber-band
+                 * bounce.
+                 */
+                lazyListState.animateScrollBy(
+                    value = offset.toFloat(),
+                    animationSpec =
+                        spring(
+                            dampingRatio = 0.88f,
+                            stiffness = 165f,
                         ),
                 )
             } else {
@@ -1201,6 +1247,7 @@ fun Lyrics(
                                             anchorLyricLine(
                                                 targetIndex = currentLineIndex,
                                                 animated = true,
+                                                softReturn = true,
                                             )
                                         }
                                     }
@@ -2606,6 +2653,7 @@ fun Lyrics(
                                     anchorLyricLine(
                                         targetIndex = currentLineIndex,
                                         animated = true,
+                                        softReturn = true,
                                     )
                                 }
                             }
