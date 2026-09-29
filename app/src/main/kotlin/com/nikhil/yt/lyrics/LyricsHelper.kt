@@ -37,6 +37,10 @@ constructor(
     @ApplicationContext private val context: Context,
     private val networkConnectivity: NetworkConnectivityObserver,
 ) {
+    init {
+        DeezerLyricsProvider.initialize(context)
+    }
+
     /** Every provider there is, by its id in [LyricsProviderOrder]. */
     private val providersById: Map<String, LyricsProvider> =
         mapOf(
