@@ -882,11 +882,12 @@ fun Lyrics(
 
             if (itemInfo == null) {
                 /*
-                 * Preserve the original return path exactly: make the target measurable first,
-                 * then run the same centre tween below. The only extra step is for a target that
-                 * genuinely lives below the current viewport — stage that measured row at the
-                 * bottom edge so the old tween brings it upward instead of always entering from
-                 * the top.
+                 * The original top-down return remains byte-for-byte in spirit: place the live row
+                 * at the top, measure it, then let the old centre tween do the visible motion.
+                 *
+                 * For the opposite direction do not place the row at the top first. Jump to a
+                 * nearby earlier row so the live row is already in the lower part of the viewport
+                 * on its first visible frame; from there the exact same old tween pulls it upward.
                  */
                 val before = lazyListState.layoutInfo
                 val visible = before.visibleItemsInfo
@@ -896,34 +897,36 @@ fun Lyrics(
                         visible.isNotEmpty() &&
                         targetIndex > visible.maxOf { it.index }
 
-                lazyListState.scrollToItem(targetIndex)
-                withFrameNanos { }
-
                 if (targetIsBelow) {
-                    val placed =
-                        lazyListState.layoutInfo.visibleItemsInfo
-                            .firstOrNull { it.index == targetIndex }
-                    if (placed != null) {
-                        val layout = lazyListState.layoutInfo
-                        val viewportHeight =
-                            layout.viewportEndOffset - layout.viewportStartOffset
-                        val bottomOffset =
-                            (viewportHeight - placed.size)
-                                .coerceAtLeast(0)
+                    val rowsBeforeTarget =
+                        (visible.size - 2)
+                            .coerceAtLeast(1)
+                    val stagingIndex =
+                        (targetIndex - rowsBeforeTarget)
+                            .coerceAtLeast(0)
 
-                        /*
-                         * Negative scroll moves the already-measured row down. Unlike a negative
-                         * scrollOffset passed to scrollToItem, the row remains part of the visible
-                         * layout, so the old centring animation below always has something to pull.
-                         */
-                        lazyListState.scrollBy(-bottomOffset.toFloat())
-                        withFrameNanos { }
-                    }
+                    lazyListState.scrollToItem(stagingIndex)
+                } else {
+                    lazyListState.scrollToItem(targetIndex)
                 }
 
+                withFrameNanos { }
                 itemInfo =
                     lazyListState.layoutInfo.visibleItemsInfo
                         .firstOrNull { it.index == targetIndex }
+
+                if (itemInfo == null && targetIsBelow) {
+                    /*
+                     * Variable-height lyric rows can occasionally push the target just below the
+                     * first staging viewport. Move only one row closer — still from below — rather
+                     * than falling back to the old top placement.
+                     */
+                    lazyListState.scrollToItem((targetIndex - 1).coerceAtLeast(0))
+                    withFrameNanos { }
+                    itemInfo =
+                        lazyListState.layoutInfo.visibleItemsInfo
+                            .firstOrNull { it.index == targetIndex }
+                }
             }
 
             val measuredItem = itemInfo ?: return
