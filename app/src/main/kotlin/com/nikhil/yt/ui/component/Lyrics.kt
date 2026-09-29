@@ -1252,6 +1252,26 @@ fun Lyrics(
                             else -> 0.45f
                         }
                         archiveTuneStyle && index == displayedCurrentLineIndex -> 1f
+
+                        // Do not let already-passed lines turn into empty layout space while they
+                        // are still physically crossing the viewport. Two tall outgoing rows can
+                        // occupy a large amount of height; if both are dimmed by logical index
+                        // distance first, the eye reads the resulting blank band as a frame hitch.
+                        // Keep the trailing side alive and let the actual top fading edge perform
+                        // the final disappearance.
+                        archiveTuneStyle &&
+                            index < displayedCurrentLineIndex &&
+                            distance == 1 -> 0.70f
+                        archiveTuneStyle &&
+                            index < displayedCurrentLineIndex &&
+                            distance == 2 -> 0.50f
+                        archiveTuneStyle &&
+                            index < displayedCurrentLineIndex &&
+                            distance == 3 -> 0.30f
+                        archiveTuneStyle &&
+                            index < displayedCurrentLineIndex -> 0.12f
+
+                        // Incoming lines remain quieter so focus still clearly travels forward.
                         archiveTuneStyle && distance == 1 -> 0.46f
                         archiveTuneStyle && distance == 2 -> 0.22f
                         archiveTuneStyle && distance == 3 -> 0.08f
