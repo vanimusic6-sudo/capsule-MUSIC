@@ -110,6 +110,26 @@ fun Queue(
     onBackgroundColor: Color,
     pureBlack: Boolean,
 ) {
+    val onScreen = appIsOnScreen()
+    val queueVisible =
+        onScreen &&
+            !state.isCollapsed &&
+            !state.isDismissed
+
+    if (!queueVisible) {
+        // Queue used to keep its database/player/automix/reorder subscriptions alive for the whole
+        // playback session even though its sheet is normally closed. Keep only the zero-height
+        // BottomSheet shell so its anchors remain valid; mount the heavy queue the moment opening
+        // actually begins.
+        BottomSheet(
+            state = state,
+            backgroundColor = Color.Unspecified,
+            modifier = modifier,
+            collapsedContent = {},
+        ) {}
+        return
+    }
+
     val context = LocalContext.current
     val haptic = LocalHapticFeedback.current
     val menuState = LocalMenuState.current
