@@ -1367,16 +1367,6 @@ fun Lyrics(
                         label = "archiveLineFocus",
                     )
 
-                    val animatedLineFocus by animateFloatAsState(
-                        targetValue = if (animatedLineIsFocused) 1f else 0f,
-                        animationSpec =
-                            tween(
-                                durationMillis = if (animatedLineIsFocused) 480 else 980,
-                                easing = AppleMusicEasing,
-                            ),
-                        label = "animatedLineFocus",
-                    )
-
                     val itemModifier = Modifier
                         .fillMaxWidth()
                         // Removed .clip() to prevent glow clipping
@@ -1458,19 +1448,10 @@ fun Lyrics(
                                 }
                             ) {
                         val isActiveLine = index == displayedCurrentLineIndex && isSynced
-                        val lineColor =
-                            remember(
-                                isActiveLine,
-                                index,
-                                displayedCurrentLineIndex,
-                                lyricsBaseColor,
-                            ) {
-                                if (isActiveLine || index < displayedCurrentLineIndex) {
-                                    lyricsBaseColor
-                                } else {
-                                    lyricsBaseColor.copy(alpha = 0.7f)
-                                }
-                            }
+                        // Distance/focus dimming lives on the row's single animated alpha layer.
+                        // Keeping a second alpha in the text color caused a brief two-phase flash
+                        // whenever a line changed from upcoming -> active -> passed.
+                        val lineColor = lyricsBaseColor
                         val alignment = remember(lyricsTextPosition) {
                             when (lyricsTextPosition) {
                                 LyricsPosition.LEFT -> TextAlign.Start
@@ -1778,7 +1759,7 @@ fun Lyrics(
 
                                     val wordAlpha = when {
                                         !isActiveLine && index < displayedCurrentLineIndex ->
-                                            0.62f + (0.38f * animatedLineFocus)
+                                            1f
                                         !isActiveLine -> 0.62f
                                         hasWordPassed -> 1f
                                         isWordActive -> 0.5f + (0.5f * transitionProgress)
@@ -1862,7 +1843,7 @@ fun Lyrics(
                                             when {
                                                 !isActiveLine &&
                                                     index < displayedCurrentLineIndex ->
-                                                    0.65f + (0.35f * animatedLineFocus)
+                                                    1f
                                                 !isActiveLine -> 0.65f
                                                 reduceMotionDuringScroll -> 0.65f
                                                 else -> 0.35f + (0.65f * fadeProgress)
@@ -1938,7 +1919,7 @@ fun Lyrics(
                                             when {
                                                 !isActiveLine &&
                                                     index < displayedCurrentLineIndex ->
-                                                    0.58f + (0.42f * animatedLineFocus)
+                                                    1f
                                                 !isActiveLine -> 0.58f
                                                 reduceMotionDuringScroll -> 0.58f
                                                 isWordActive || hasWordPassed ->
@@ -2066,8 +2047,7 @@ fun Lyrics(
                                                     color =
                                                         lyricsBaseColor.copy(
                                                             alpha =
-                                                                0.58f +
-                                                                    (0.42f * animatedLineFocus),
+                                                                1f,
                                                         ),
                                                     fontWeight = FontWeight.Bold,
                                                 )
@@ -2147,8 +2127,7 @@ fun Lyrics(
                                                     lyricsBaseColor.copy(
                                                         alpha =
                                                             if (!isActiveLine) {
-                                                                0.58f +
-                                                                    (0.42f * animatedLineFocus)
+                                                                1f
                                                             } else {
                                                                 1f
                                                             },
@@ -2216,7 +2195,7 @@ fun Lyrics(
 
                                     val wordAlpha = when {
                                         !isActiveLine && index < displayedCurrentLineIndex ->
-                                            0.55f + (0.45f * animatedLineFocus)
+                                            1f
                                         !isActiveLine -> 0.55f
                                         hasWordPassed -> 1f
                                         isWordActive -> 0.55f + (0.45f * smoothProgress)
