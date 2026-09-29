@@ -108,6 +108,7 @@ fun CapsuleLyricsContent(
     onSeekPreview: (Long) -> Unit,
     onSeekFinished: () -> Unit,
     playerArtworkColors: List<Color> = emptyList(),
+    useHostPlayerBackdrop: Boolean = false,
     isVisible: Boolean = true,
     modifier: Modifier = Modifier,
 ) {
@@ -240,15 +241,33 @@ fun CapsuleLyricsContent(
                 displayPosition
         ).coerceAtLeast(0L)
 
-    val baseBackgroundColor =
-        if (
+    /*
+     * During the in-player lyrics transition the host already owns the exact PlayerBackground
+     * frame that was visible under the artwork. Rendering a second PlayerBackground here starts a
+     * second procedural clock (or a second copy of the same gradient) and the two layers get alpha
+     * blended while Lyrics travels upward. That blend is the brief "brighter gradient" flash.
+     *
+     * Keep a single backdrop owner for non-Immersive themed players. Direct/restored Lyrics entry
+     * still paints its own backdrop, and Immersive keeps its dedicated coloring treatment.
+     */
+    val sharesHostBackdrop =
+        useHostPlayerBackdrop &&
             lyricsUsePlayerTheme &&
             playerDesign != CapsulePlayerDesign.IMMERSIVE &&
-            playerBackground == PlayerBackgroundStyle.DEFAULT
-        ) {
-            MaterialTheme.colorScheme.background
-        } else {
-            CapsuleLyricsBackground
+            playerBackground != PlayerBackgroundStyle.DEFAULT
+
+    val baseBackgroundColor =
+        when {
+            sharesHostBackdrop ->
+                Color.Transparent
+
+            lyricsUsePlayerTheme &&
+                playerDesign != CapsulePlayerDesign.IMMERSIVE &&
+                playerBackground == PlayerBackgroundStyle.DEFAULT ->
+                MaterialTheme.colorScheme.background
+
+            else ->
+                CapsuleLyricsBackground
         }
 
     Box(
@@ -273,7 +292,7 @@ fun CapsuleLyricsContent(
                                 ),
                             ),
                 )
-            } else {
+            } else if (!sharesHostBackdrop) {
                 PlayerBackground(
                     playerBackground = playerBackground,
                     gradientColors = artworkColors,
