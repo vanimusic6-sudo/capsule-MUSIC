@@ -171,7 +171,12 @@ fun CapsulePlayerContent(
 ) {
     // Composition keeps running behind a backgrounded app; only drawing stops.
     val onScreen = appIsOnScreen()
-    val visible = open && onScreen
+    if (!onScreen) {
+        Box(Modifier.fillMaxSize())
+        return
+    }
+
+    val visible = open
     val isLight = design == CapsulePlayerDesign.LIGHT
     val isLandscape =
         LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
