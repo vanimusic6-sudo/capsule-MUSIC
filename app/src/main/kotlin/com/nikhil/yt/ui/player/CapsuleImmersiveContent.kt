@@ -340,7 +340,7 @@ fun CapsuleImmersiveContent(
         mutableStateOf(false)
     }
     DisposableEffect(playerConnection.player, isVideo, videoPlaybackState.videoId, mediaMetadata.id) {
-        if (isVideo) {
+        if (isVideo && visible) {
             val listener = object : Player.Listener {
                 override fun onRenderedFirstFrame() {
                     videoFirstFrameRendered = true
