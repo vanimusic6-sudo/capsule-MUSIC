@@ -576,7 +576,7 @@ fun CapsulePlayerContent(
                                 mediaShape,
                             )
                             .background(
-                                if (isCapsuleVideoPlaying) {
+                                if (isCapsuleVideoPlaying && visible) {
                                     Color.Black
                                 } else {
                                     textColor.copy(alpha = 0.045f)
