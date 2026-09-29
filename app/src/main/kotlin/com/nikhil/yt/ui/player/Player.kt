@@ -666,6 +666,7 @@ private fun CapsulePlayerLyricsHost(
                         mediaMetadata = mediaMetadata,
                         onBackClick = onHideLyrics,
                         playerArtworkColors = playerArtworkColors,
+                        useHostPlayerBackdrop = design != CapsulePlayerDesign.IMMERSIVE,
                         isVisible = showLyrics,
                         modifier = Modifier.fillMaxSize(),
                     )
