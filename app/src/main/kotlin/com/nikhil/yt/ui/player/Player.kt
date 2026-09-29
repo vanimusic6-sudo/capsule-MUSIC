@@ -14,14 +14,13 @@ import android.net.Uri
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
@@ -56,6 +55,7 @@ import com.nikhil.yt.ui.component.LocalBottomSheetPageState
 import com.nikhil.yt.ui.component.LocalMenuState
 import com.nikhil.yt.ui.component.rememberBottomSheetState
 import com.nikhil.yt.ui.menu.PlayerMenu
+import com.nikhil.yt.ui.motion.CapsuleMotion
 import com.nikhil.yt.ui.screens.settings.DarkMode
 import com.nikhil.yt.ui.utils.ShowMediaInfo
 import com.nikhil.yt.utils.rememberEnumPreference
