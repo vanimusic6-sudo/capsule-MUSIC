@@ -307,11 +307,19 @@ fun BottomSheetPlayer(
              * would be a second picture competing with the cover.
              */
             if (
-                !showInlineLyrics &&
                 !state.isCollapsed &&
                 !state.isDismissed &&
                 effectivePlayerDesign != CapsulePlayerDesign.IMMERSIVE
             ) {
+                /*
+                 * Keep the already-rendered player backdrop under the lyrics travel. Lyrics opens
+                 * from off-screen, so unmounting PlayerBackground as soon as showLyrics=true
+                 * exposed the BottomSheet's neutral Surface color through the uncovered area and
+                 * looked like the player suddenly turned grey.
+                 *
+                 * The expensive part still sleeps: once Lyrics owns the screen the backdrop is
+                 * rendered as a static cached frame, with no procedural animation clock.
+                 */
                 PlayerBackground(
                     playerBackground = playerBackground,
                     gradientColors = gradientColors,
