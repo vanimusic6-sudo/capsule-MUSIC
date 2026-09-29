@@ -428,10 +428,17 @@ fun CapsulePlayerContent(
             defaultValue = true,
         )
 
-    val lyricLineEnabled = isLight && showLyricLine && visible
+    /*
+     * Visibility controls the lyric work, not its geometry. If the feature is enabled, its slot
+     * remains part of the Light scene while another surface (such as full Lyrics) temporarily owns
+     * the screen. If the feature itself is disabled, the slot is truly zero-height outside edit
+     * mode so it cannot steal artwork budget.
+     */
+    val lyricLineConfigured = isLight && showLyricLine
+    val lyricLineActive = lyricLineConfigured && visible
 
     val lyricsEntity by
-        if (lyricLineEnabled) {
+        if (lyricLineActive) {
             playerConnection.currentLyrics.collectAsState(initial = null)
         } else {
             remember { mutableStateOf<LyricsEntity?>(null) }
@@ -448,7 +455,7 @@ fun CapsulePlayerContent(
      * track whose lyrics screen was never opened had nothing in the database and the row stayed
      * empty forever, waiting on a request nobody was going to make.
      */
-    if (lyricLineEnabled) {
+    if (lyricLineActive) {
         RequestLyricsIfMissing(mediaMetadata, lyricsEntity)
     }
 
@@ -680,22 +687,25 @@ fun CapsulePlayerContent(
         onMenuClick = onMenuClick,
         onExpandQueue = onExpandQueue,
         lyricLine =
-            if (!lyricLineEnabled) {
+            if (!lyricLineConfigured) {
                 null
             } else {
                 {
                     /*
                      * positionMs already ticks for the progress bar, so following the
-                     * lyrics adds no timer of its own: the line is derived from the
-                     * position that is here anyway, and only the line text is handed
-                     * down, so the row recomposes when the line changes, not per tick.
+                     * lyrics adds no timer of its own. When the player is temporarily hidden, keep
+                     * this composable only as geometry and stop lyric collection/fetching above.
                      */
                     CapsuleLightLyricLine(
                         line =
-                            capsuleLightLyricLineAt(
-                                syncedLyricLines,
-                                displayPosition + clampOffset(lyricSyncOffsetMs),
-                            ),
+                            if (lyricLineActive) {
+                                capsuleLightLyricLineAt(
+                                    syncedLyricLines,
+                                    displayPosition + clampOffset(lyricSyncOffsetMs),
+                                )
+                            } else {
+                                null
+                            },
                         textColor = textColor,
                     )
                 }
@@ -964,7 +974,7 @@ fun CapsulePlayerContent(
 
                         CapsuleLightBlock.LYRIC -> {
                             when {
-                                lyricLineEnabled -> {
+                                lyricLineConfigured -> {
                                     Column(
                                         modifier = Modifier.fillMaxWidth(),
                                         horizontalAlignment = Alignment.CenterHorizontally,
@@ -973,10 +983,14 @@ fun CapsulePlayerContent(
                                         Box(Modifier.width(artworkBaseWidth * lightArtworkWidthScale)) {
                                             CapsuleLightLyricLine(
                                                 line =
-                                                    capsuleLightLyricLineAt(
-                                                        syncedLyricLines,
-                                                        displayPosition + clampOffset(lyricSyncOffsetMs),
-                                                    ),
+                                                    if (lyricLineActive) {
+                                                        capsuleLightLyricLineAt(
+                                                            syncedLyricLines,
+                                                            displayPosition + clampOffset(lyricSyncOffsetMs),
+                                                        )
+                                                    } else {
+                                                        null
+                                                    },
                                                 textColor = textColor,
                                             )
                                         }
@@ -1010,12 +1024,16 @@ fun CapsulePlayerContent(
                                 }
 
                                 else -> {
-                                    // Same geometry as the editor placeholder, only invisible.
-                                    // Toggling "Edit" must not move any real Light block.
+                                    /*
+                                     * Disabled means absent in the real player. CanvasV2 explicitly
+                                     * supports a measured 0 px optional block, so LYRIC keeps its
+                                     * saved anchor/order for a future re-enable without consuming
+                                     * any of the artwork's height budget now.
+                                     */
                                     Spacer(
                                         Modifier
                                             .fillMaxWidth()
-                                            .height(CapsuleLightDisabledLyricSlotHeight),
+                                            .height(0.dp),
                                     )
                                 }
                             }
