@@ -726,13 +726,12 @@ private fun CapsuleLyricsOrbitButton(
         isLoading,
     ) {
         /*
-         * This orbit is deliberately slow decoration. Animatable used to wake Compose on every
-         * display frame for an eight-second revolution; 12.5 fps is visually identical at this
-         * speed and leaves the frame clock asleep most of the time. Pausing simply stops updates,
-         * so the dot still freezes at the exact angle where pause was pressed.
+         * This orbit is deliberately slow decoration. Ten updates per second are enough for an
+         * eight-second revolution and avoid keeping Compose awake for an effect the eye reads as
+         * continuous anyway. Pausing still freezes the dot at the exact current angle.
          */
         if (isPlaying && !isLoading) {
-            val tickMs = 80L
+            val tickMs = 100L
             val degreesPerTick = 360f * tickMs / 8_000f
             while (isActive) {
                 delay(tickMs)
