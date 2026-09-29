@@ -846,4 +846,6 @@
     <string name="artist_release_metadata">Альбом • %1$d</string>
     <string name="lyrics_background_style">Фон текстового плеера</string>
     <string name="lyrics_background_solid">Обычный фон</string>
+    <string name="lyrics_use_player_theme">Использовать тему плеера в текстах</string>
+    <string name="lyrics_use_player_theme_description">Экран текста автоматически использует фон обычного плеера. Для режима «Погружение» применяется раскраска по обложке.</string>
 </resources>
