@@ -6,6 +6,8 @@
 
 package com.nikhil.yt.ui.screens.settings
 
+import android.content.Intent
+import android.widget.Toast
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsetsSides
@@ -14,12 +16,20 @@ import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
@@ -32,6 +42,7 @@ import com.nikhil.yt.constants.CapsulePlayerDesign
 import com.nikhil.yt.constants.CapsulePlayerDesignKey
 import com.nikhil.yt.constants.CapsuleLightEditEnabledKey
 import com.nikhil.yt.constants.CapsuleLightEditSessionActiveKey
+import com.nikhil.yt.constants.CapsuleLightLyricLineKey
 import com.nikhil.yt.constants.CapsuleLightLayoutOrderKey
 import com.nikhil.yt.constants.CapsuleLightMetadataOrderKey
 import com.nikhil.yt.constants.CapsuleLightModeOrderKey
@@ -52,6 +63,8 @@ import com.nikhil.yt.ui.component.IconButton
 import com.nikhil.yt.ui.component.PreferenceEntry
 import com.nikhil.yt.ui.component.PreferenceGroupTitle
 import com.nikhil.yt.ui.component.SwitchPreference
+import com.nikhil.yt.ui.player.CapsuleDesignPreset
+import com.nikhil.yt.ui.player.CapsuleDesignPresetCodec
 import com.nikhil.yt.ui.player.CapsuleLightBaseOrderEncoded
 import com.nikhil.yt.ui.player.CapsuleLightBaseGapsEncoded
 import com.nikhil.yt.ui.player.CapsuleLightCanvasPositionsBaseEncoded
@@ -79,6 +92,10 @@ fun CapsuleCustomizeSettings(
             CapsulePlayerDesignKey,
             defaultValue = CapsulePlayerDesign.SUPER,
         )
+    val context = LocalContext.current
+    var showImportDialog by rememberSaveable { mutableStateOf(false) }
+    var importPayload by rememberSaveable { mutableStateOf("") }
+
     val (lightEditEnabled, onLightEditEnabledChange) =
         rememberPreference(
             CapsuleLightEditEnabledKey,
@@ -109,7 +126,7 @@ fun CapsuleCustomizeSettings(
     val effectiveTarget = activeTarget ?: currentSupportedTarget
     val editEnabled = activeTarget != null
     val editAvailable = activeTarget != null || currentSupportedTarget != null
-    val (_, onLayoutOrderChange) =
+    val (layoutOrder, onLayoutOrderChange) =
         rememberPreference(
             CapsuleLightLayoutOrderKey,
             defaultValue = CapsuleLightBaseOrderEncoded,
@@ -119,77 +136,202 @@ fun CapsuleCustomizeSettings(
             CapsuleLightEditSessionActiveKey,
             defaultValue = false,
         )
-    val (_, onMetadataOrderChange) =
+    val (metadataOrder, onMetadataOrderChange) =
         rememberPreference(
             CapsuleLightMetadataOrderKey,
             defaultValue = CapsuleLightMetadataBaseOrderEncoded,
         )
-    val (_, onModeOrderChange) =
+    val (modeOrder, onModeOrderChange) =
         rememberPreference(
             CapsuleLightModeOrderKey,
             defaultValue = CapsuleLightModeBaseOrderEncoded,
         )
-    val (_, onAvOrderChange) =
+    val (avOrder, onAvOrderChange) =
         rememberPreference(
             CapsuleLightAvOrderKey,
             defaultValue = CapsuleLightAvBaseOrderEncoded,
         )
-    val (_, onTransportOrderChange) =
+    val (transportOrder, onTransportOrderChange) =
         rememberPreference(
             CapsuleLightTransportOrderKey,
             defaultValue = CapsuleLightTransportBaseOrderEncoded,
         )
-    val (_, onArtworkWidthScaleChange) =
+    val (artworkWidthScale, onArtworkWidthScaleChange) =
         rememberPreference(
             CapsuleLightArtworkWidthScaleKey,
             defaultValue = 1f,
         )
-    val (_, onArtworkHeightScaleChange) =
+    val (artworkHeightScale, onArtworkHeightScaleChange) =
         rememberPreference(
             CapsuleLightArtworkHeightScaleKey,
             defaultValue = 1f,
         )
-    val (_, onBlockGapsChange) =
+    val (blockGaps, onBlockGapsChange) =
         rememberPreference(
             CapsuleLightBlockGapsKey,
             defaultValue = CapsuleLightBaseGapsEncoded,
         )
-    val (_, onCanvasPositionsChange) =
+    val (canvasPositions, onCanvasPositionsChange) =
         rememberPreference(
             CapsuleLightCanvasPositionsKey,
             defaultValue = CapsuleLightCanvasPositionsBaseEncoded,
         )
 
-    val (_, onImmersiveLayoutOrderChange) =
+    val (lyricLineEnabled, onLyricLineEnabledChange) =
+        rememberPreference(
+            CapsuleLightLyricLineKey,
+            defaultValue = true,
+        )
+
+    val (immersiveLayoutOrder, onImmersiveLayoutOrderChange) =
         rememberPreference(
             CapsuleImmersiveLayoutOrderKey,
             defaultValue = CapsuleImmersiveBaseOrderEncoded,
         )
-    val (_, onImmersiveCanvasPositionsChange) =
+    val (immersiveCanvasPositions, onImmersiveCanvasPositionsChange) =
         rememberPreference(
             CapsuleImmersiveCanvasPositionsKey,
             defaultValue = CapsuleLightCanvasPositionsBaseEncoded,
         )
-    val (_, onImmersiveMetadataOrderChange) =
+    val (immersiveMetadataOrder, onImmersiveMetadataOrderChange) =
         rememberPreference(
             CapsuleImmersiveMetadataOrderKey,
             defaultValue = CapsuleLightMetadataBaseOrderEncoded,
         )
-    val (_, onImmersiveModeOrderChange) =
+    val (immersiveModeOrder, onImmersiveModeOrderChange) =
         rememberPreference(
             CapsuleImmersiveModeOrderKey,
             defaultValue = CapsuleLightModeBaseOrderEncoded,
         )
-    val (_, onImmersiveAvOrderChange) =
+    val (immersiveAvOrder, onImmersiveAvOrderChange) =
         rememberPreference(
             CapsuleImmersiveAvOrderKey,
             defaultValue = CapsuleLightAvBaseOrderEncoded,
         )
-    val (_, onImmersiveTransportOrderChange) =
+    val (immersiveTransportOrder, onImmersiveTransportOrderChange) =
         rememberPreference(
             CapsuleImmersiveTransportOrderKey,
             defaultValue = CapsuleLightTransportBaseOrderEncoded,
         )
+
+    fun presetFor(target: CapsuleCustomizeTarget): CapsuleDesignPreset =
+        when (target) {
+            CapsuleCustomizeTarget.LIGHT ->
+                CapsuleDesignPreset(
+                    target = target,
+                    layoutOrder = layoutOrder,
+                    canvasPositions = canvasPositions,
+                    metadataOrder = metadataOrder,
+                    modeOrder = modeOrder,
+                    avOrder = avOrder,
+                    transportOrder = transportOrder,
+                    artworkWidthScale = artworkWidthScale,
+                    artworkHeightScale = artworkHeightScale,
+                    blockGaps = blockGaps,
+                    lyricLineEnabled = lyricLineEnabled,
+                )
+
+            CapsuleCustomizeTarget.IMMERSIVE ->
+                CapsuleDesignPreset(
+                    target = target,
+                    layoutOrder = immersiveLayoutOrder,
+                    canvasPositions = immersiveCanvasPositions,
+                    metadataOrder = immersiveMetadataOrder,
+                    modeOrder = immersiveModeOrder,
+                    avOrder = immersiveAvOrder,
+                    transportOrder = immersiveTransportOrder,
+                )
+        }
+
+    fun applyPreset(preset: CapsuleDesignPreset) {
+        // Never import into a live drag transaction.
+        onLightEditEnabledChange(false)
+        onImmersiveEditEnabledChange(false)
+        onEditSessionActiveChange(false)
+        onLatchedTargetChange(preset.target)
+
+        when (preset.target) {
+            CapsuleCustomizeTarget.LIGHT -> {
+                onLayoutOrderChange(preset.layoutOrder)
+                onCanvasPositionsChange(preset.canvasPositions)
+                onMetadataOrderChange(preset.metadataOrder)
+                onModeOrderChange(preset.modeOrder)
+                onAvOrderChange(preset.avOrder)
+                onTransportOrderChange(preset.transportOrder)
+                onArtworkWidthScaleChange(preset.artworkWidthScale ?: 1f)
+                onArtworkHeightScaleChange(preset.artworkHeightScale ?: 1f)
+                onBlockGapsChange(preset.blockGaps ?: CapsuleLightBaseGapsEncoded)
+                onLyricLineEnabledChange(preset.lyricLineEnabled ?: true)
+            }
+
+            CapsuleCustomizeTarget.IMMERSIVE -> {
+                onImmersiveLayoutOrderChange(preset.layoutOrder)
+                onImmersiveCanvasPositionsChange(preset.canvasPositions)
+                onImmersiveMetadataOrderChange(preset.metadataOrder)
+                onImmersiveModeOrderChange(preset.modeOrder)
+                onImmersiveAvOrderChange(preset.avOrder)
+                onImmersiveTransportOrderChange(preset.transportOrder)
+            }
+        }
+    }
+
+    val shareTarget = effectiveTarget ?: latchedTarget
+    val shareChooserTitle = stringResource(R.string.capsule_customize_share_chooser)
+
+    if (showImportDialog) {
+        AlertDialog(
+            onDismissRequest = { showImportDialog = false },
+            title = {
+                Text(stringResource(R.string.capsule_customize_import))
+            },
+            text = {
+                Column {
+                    Text(stringResource(R.string.capsule_customize_import_description))
+                    Spacer(Modifier.height(12.dp))
+                    OutlinedTextField(
+                        value = importPayload,
+                        onValueChange = { importPayload = it },
+                        minLines = 7,
+                        maxLines = 12,
+                        label = {
+                            Text(stringResource(R.string.capsule_customize_import_hint))
+                        },
+                    )
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showImportDialog = false }) {
+                    Text(stringResource(android.R.string.cancel))
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    enabled = importPayload.isNotBlank(),
+                    onClick = {
+                        val preset = CapsuleDesignPresetCodec.decode(importPayload)
+                        if (preset == null) {
+                            Toast.makeText(
+                                context,
+                                context.getString(R.string.capsule_customize_import_invalid),
+                                Toast.LENGTH_SHORT,
+                            ).show()
+                        } else {
+                            applyPreset(preset)
+                            importPayload = ""
+                            showImportDialog = false
+                            Toast.makeText(
+                                context,
+                                context.getString(R.string.capsule_customize_import_success),
+                                Toast.LENGTH_SHORT,
+                            ).show()
+                        }
+                    },
+                ) {
+                    Text(stringResource(R.string.capsule_customize_import_apply))
+                }
+            },
+        )
+    }
 
     Column(
         Modifier
@@ -290,6 +432,55 @@ fun CapsuleCustomizeSettings(
                     }
                     null -> Unit
                 }
+            },
+        )
+
+        PreferenceGroupTitle(
+            title = stringResource(R.string.capsule_customize_share_section),
+        )
+
+        PreferenceEntry(
+            title = {
+                Text(stringResource(R.string.capsule_customize_share))
+            },
+            description = stringResource(R.string.capsule_customize_share_description),
+            icon = {
+                Icon(
+                    painterResource(R.drawable.share),
+                    contentDescription = null,
+                )
+            },
+            onClick = {
+                val payload = CapsuleDesignPresetCodec.encode(presetFor(shareTarget))
+                val shareIntent =
+                    Intent(Intent.ACTION_SEND).apply {
+                        type = "text/plain"
+                        putExtra(Intent.EXTRA_SUBJECT, "Capsule design")
+                        putExtra(Intent.EXTRA_TEXT, payload)
+                    }
+                context.startActivity(
+                    Intent.createChooser(
+                        shareIntent,
+                        shareChooserTitle,
+                    ),
+                )
+            },
+        )
+
+        PreferenceEntry(
+            title = {
+                Text(stringResource(R.string.capsule_customize_import))
+            },
+            description = stringResource(R.string.capsule_customize_import_entry_description),
+            icon = {
+                Icon(
+                    painterResource(R.drawable.restore),
+                    contentDescription = null,
+                )
+            },
+            onClick = {
+                importPayload = ""
+                showImportDialog = true
             },
         )
 
