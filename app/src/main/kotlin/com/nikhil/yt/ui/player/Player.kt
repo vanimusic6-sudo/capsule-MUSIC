@@ -35,10 +35,12 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.graphics.BlendMode
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
@@ -590,7 +592,11 @@ private fun CapsulePlayerLyricsHost(
                     },
                     onShowLyrics = onShowLyrics,
                     onMenuClick = onShowMenu,
-                    onExpandQueue = queueState::expandSoft,
+                    onExpandQueue = {
+                        if (!showLyrics) {
+                            queueState.expandSoft()
+                        }
+                    },
                     bottomPadding = 0.dp,
                     open = !playerState.isCollapsed && !playerState.isDismissed,
                     expansionProgress = playerState.rawProgress,
@@ -610,7 +616,11 @@ private fun CapsulePlayerLyricsHost(
                 liked = liked,
                 playerConnection = playerConnection,
                 onToggleLike = playerConnection::toggleLike,
-                onExpandQueue = queueState::expandSoft,
+                onExpandQueue = {
+                    if (!showLyrics) {
+                        queueState.expandSoft()
+                    }
+                },
                 onCollapse = playerState::collapseSoft,
                 onArtworkClick = onShowLyrics,
                 onArtistSelected = { artist ->
@@ -654,17 +664,51 @@ private fun CapsulePlayerLyricsHost(
                     modifier =
                         Modifier
                             .fillMaxSize()
+                            .graphicsLayer {
+                                /*
+                                 * The reveal uses DstIn below. Keep it in its own offscreen layer
+                                 * so the soft mask can never punch through the player underneath.
+                                 */
+                                compositingStrategy = CompositingStrategy.Offscreen
+                            }
                             .drawWithContent {
                                 val travelled = lyricsMotion.value.coerceIn(0f, 1f)
-                                val revealTop =
-                                    ((1f - travelled) * size.height)
-                                        .coerceIn(0f, size.height)
+                                if (travelled <= 0.001f) {
+                                    return@drawWithContent
+                                }
 
-                                clipRect(
-                                    top = revealTop,
-                                    bottom = size.height,
-                                ) {
-                                    this@drawWithContent.drawContent()
+                                drawContent()
+
+                                if (travelled < 0.999f) {
+                                    /*
+                                     * A hard clip produced the thin horizontal "knife edge" seen
+                                     * while closing Lyrics. Feather only the moving boundary; the
+                                     * rest of the backdrop stays fully opaque and screen-anchored.
+                                     */
+                                    val revealTop =
+                                        ((1f - travelled) * size.height)
+                                            .coerceIn(0f, size.height)
+                                    val featherPx = 44.dp.toPx()
+                                    val transparentEnd =
+                                        ((revealTop - featherPx) / size.height)
+                                            .coerceIn(0f, 1f)
+                                    val opaqueStart =
+                                        ((revealTop + featherPx) / size.height)
+                                            .coerceIn(transparentEnd, 1f)
+
+                                    drawRect(
+                                        brush =
+                                            Brush.verticalGradient(
+                                                colorStops =
+                                                    arrayOf(
+                                                        0f to Color.Transparent,
+                                                        transparentEnd to Color.Transparent,
+                                                        opaqueStart to Color.Black,
+                                                        1f to Color.Black,
+                                                    ),
+                                            ),
+                                        blendMode = BlendMode.DstIn,
+                                    )
                                 }
                             },
                 ) {
