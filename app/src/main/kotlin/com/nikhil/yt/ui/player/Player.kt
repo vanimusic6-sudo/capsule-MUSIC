@@ -471,6 +471,7 @@ private const val LyricsOpenWindow = 0.70f
 /** Vertical only. The horizontal axis is left at exactly 1 throughout, which is the whole point. */
 private const val LyricsUnrollStretch = 0.045f
 private const val LyricsTravelMillis = 480
+private const val LyricsCloseMillis = 520
 
 /**
  * Softer off the mark than the player's, and a touch longer.
@@ -480,6 +481,7 @@ private const val LyricsTravelMillis = 480
  * that difference in time as well as in shape.
  */
 private val LyricsEasing = CubicBezierEasing(0.42f, 0f, 0.28f, 1f)
+private val LyricsCloseEasing = CubicBezierEasing(0.30f, 0f, 0.18f, 1f)
 
 @Composable
 private fun CapsulePlayerLyricsHost(
@@ -528,7 +530,21 @@ private fun CapsulePlayerLyricsHost(
          */
         lyricsMotion.animateTo(
             targetValue = if (showLyrics) 1f else 0f,
-            animationSpec = tween(durationMillis = LyricsTravelMillis, easing = LyricsEasing),
+            animationSpec =
+                tween(
+                    durationMillis =
+                        if (showLyrics) {
+                            LyricsTravelMillis
+                        } else {
+                            LyricsCloseMillis
+                        },
+                    easing =
+                        if (showLyrics) {
+                            LyricsEasing
+                        } else {
+                            LyricsCloseEasing
+                        },
+                ),
         )
 
         if (!showLyrics) {
