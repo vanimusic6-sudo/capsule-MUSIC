@@ -84,6 +84,7 @@ private const val STATIC_BACKGROUND_TIME_MS = 6_480L
 private fun rememberCapsuleAnimationTime(
     compact: Boolean,
     running: Boolean = true,
+    framesPerSecondOverride: Int? = null,
 ): State<Long> {
     /*
      * This is an animation timeline, not wall-clock time.
@@ -95,10 +96,17 @@ private fun rememberCapsuleAnimationTime(
     val time = remember { mutableLongStateOf(STATIC_BACKGROUND_TIME_MS) }
     val isVisible = appIsOnScreen()
     val framesPerSecond =
-        if (compact) COMPACT_BACKGROUND_FPS else FULL_BACKGROUND_FPS
+        (
+            framesPerSecondOverride
+                ?: if (compact) {
+                    COMPACT_BACKGROUND_FPS
+                } else {
+                    FULL_BACKGROUND_FPS
+                }
+        ).coerceIn(1, 60)
     val frameDelayMs = 1_000L / framesPerSecond
 
-    LaunchedEffect(compact, isVisible, running) {
+    LaunchedEffect(compact, isVisible, running, framesPerSecond) {
         if (!isVisible || !running) return@LaunchedEffect
 
         var previousTick = SystemClock.elapsedRealtime()
@@ -121,6 +129,7 @@ internal fun CapsuleProceduralBackground(
     colors: List<Color> = emptyList(),
     compact: Boolean = false,
     animated: Boolean = true,
+    animationFps: Int? = null,
 ) {
     val primary = MaterialTheme.colorScheme.primary
     val secondary = MaterialTheme.colorScheme.secondary
@@ -140,6 +149,7 @@ internal fun CapsuleProceduralBackground(
             rememberCapsuleAnimationTime(
                 compact = compact,
                 running = animated && motionEnabled,
+                framesPerSecondOverride = animationFps,
             )
         } else {
             null
