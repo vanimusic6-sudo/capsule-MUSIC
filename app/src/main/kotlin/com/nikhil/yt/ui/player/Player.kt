@@ -785,7 +785,12 @@ private fun CapsulePlayerLyricsHost(
                                         ((travelled - 0.14f) / 0.86f)
                                             .coerceIn(0f, 1f)
                                     }
-                                compositingStrategy = CompositingStrategy.Offscreen
+                                compositingStrategy =
+                                    if (showLyrics) {
+                                        CompositingStrategy.Auto
+                                    } else {
+                                        CompositingStrategy.Offscreen
+                                    }
                                 transformOrigin = TransformOrigin(0.5f, 0f)
                             },
                 ) {
