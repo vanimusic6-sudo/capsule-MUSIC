@@ -2294,50 +2294,11 @@ internal fun CapsuleOrbitButton(
     enabled: Boolean = true,
 ) {
     val rotation =
-        remember {
-            Animatable(0f)
-        }
-
-    /*
-     * The comet only turns while it can be seen.
-     *
-     * It used to turn whenever anything was playing, and this content stays composed behind the
-     * collapsed sheet — so putting on an album and using the rest of the app left a continuous
-     * animation clock running on a button nobody was looking at. A running Animatable requests a
-     * frame every vsync, which means the whole window recomposed and redrew at the display rate,
-     * for hours, for a dot going round a circle off screen. That is the most expensive thing an
-     * idle screen can do.
-     *
-     * The Animatable itself still survives across all of this, so the documented behaviour is
-     * unchanged: the dot holds its exact angle while stopped and carries on from there.
-     */
-    LaunchedEffect(
-        isPlaying,
-        isLoading,
-        visible,
-    ) {
-        if (orbitShouldTurn(isPlaying, isLoading, visible)) {
-            while (isActive) {
-                rotation.animateTo(
-                    targetValue =
-                        rotation.value +
-                            360f,
-                    animationSpec =
-                        tween(
-                            durationMillis =
-                                8_000,
-                            easing =
-                                LinearEasing,
-                        ),
-                )
-
-                rotation.snapTo(
-                    rotation.value %
-                        360f,
-                )
-            }
-        }
-    }
+        rememberCapsuleCometRotation(
+            isPlaying = isPlaying,
+            isLoading = isLoading,
+            visible = visible,
+        )
 
     val alpha by
         animateFloatAsState(
