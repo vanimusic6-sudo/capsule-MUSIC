@@ -1269,14 +1269,19 @@ fun Lyrics(
 
         deferredCurrentLineIndex = targetIndex
 
-        repeat(2) {
+        /*
+         * Usually one pass is enough. Extra passes only compensate for rows remeasuring while the
+         * scroll is moving; every pass still starts from the list's current physical position and
+         * uses animateScrollBy, so there is no hidden jump between them.
+         */
+        repeat(4) {
             anchorLyricLine(
                 targetIndex = targetIndex,
                 animated = true,
                 returnToSync = true,
             )
 
-            // A key change cancels this effect before this point, but keep the invariant explicit.
+            // A line hand-off restarts this effect with the new target.
             if (currentLineIndex != targetIndex) {
                 return@LaunchedEffect
             }
@@ -1288,7 +1293,8 @@ fun Lyrics(
             val viewportHeight = layout.viewportEndOffset - layout.viewportStartOffset
             val centered =
                 if (info != null && viewportHeight > 0) {
-                    val anchorY = layout.viewportStartOffset + viewportHeight / 2
+                    val anchorY =
+                        layout.viewportStartOffset + viewportHeight / 2
                     val itemCenter = info.offset + info.size / 2
                     abs(itemCenter - anchorY) <= 4
                 } else {
@@ -1303,46 +1309,20 @@ fun Lyrics(
                 isReturningToSync = false
                 return@LaunchedEffect
             }
+
+            withFrameNanos { }
         }
 
         /*
-         * A row can remeasure during the final settle. Never repair that with scrollToItem — that
-         * would reintroduce the teleport we are explicitly removing. One last continuous pass uses
-         * the same live-targeted path; if playback advances, the effect is cancelled and restarted
-         * for the new line before any stale target can be committed.
+         * Pathological layout fallback: release ownership but force the normal tracker to perform
+         * one authoritative correction on the next effect pass. This is only reachable after four
+         * fully animated attempts and prevents the UI from ever remaining input-locked.
          */
         if (currentLineIndex == targetIndex) {
-            anchorLyricLine(
-                targetIndex = targetIndex,
-                animated = true,
-                returnToSync = true,
-            )
-
-            if (currentLineIndex == targetIndex) {
-                val info =
-                    lazyListState.layoutInfo.visibleItemsInfo
-                        .firstOrNull { it.index == targetIndex }
-                val layout = lazyListState.layoutInfo
-                val viewportHeight =
-                    layout.viewportEndOffset - layout.viewportStartOffset
-                val centered =
-                    if (info != null && viewportHeight > 0) {
-                        val anchorY =
-                            layout.viewportStartOffset + viewportHeight / 2
-                        val itemCenter = info.offset + info.size / 2
-                        abs(itemCenter - anchorY) <= 4
-                    } else {
-                        false
-                    }
-
-                if (centered) {
-                    deferredCurrentLineIndex = targetIndex
-                    previousLineIndex = targetIndex
-                    lastPreviewTime = 0L
-                    isManualScrolling = false
-                    isReturningToSync = false
-                }
-            }
+            previousLineIndex = -1
+            lastPreviewTime = 0L
+            isManualScrolling = false
+            isReturningToSync = false
         }
     }
 
@@ -1616,8 +1596,8 @@ fun Lyrics(
                                 },
                             animationSpec =
                                 tween(
-                                    durationMillis = 320,
-                                    easing = ReturnToSyncEasing,
+                                    durationMillis = 380,
+                                    easing = ReturnToSyncSettleEasing,
                                 ),
                             label = "lyricReturnFocusScale",
                         )
