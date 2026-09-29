@@ -242,15 +242,27 @@ fun CapsuleLyricsContent(
                 displayPosition
         ).coerceAtLeast(0L)
 
+    val lyricsBackdrop =
+        capsuleLyricsBackdrop(
+            usePlayerTheme = lyricsUsePlayerTheme,
+            playerDesign = playerDesign,
+            playerBackground = playerBackground,
+        )
+
     val baseBackgroundColor =
-        if (
-            lyricsUsePlayerTheme &&
-            playerDesign != CapsulePlayerDesign.IMMERSIVE &&
-            playerBackground == PlayerBackgroundStyle.DEFAULT
-        ) {
-            MaterialTheme.colorScheme.background
-        } else {
-            CapsuleLyricsBackground
+        when (lyricsBackdrop) {
+            CapsuleLyricsBackdrop.Solid ->
+                CapsuleLyricsBackground
+
+            is CapsuleLyricsBackdrop.PlayerTheme ->
+                if (lyricsBackdrop.style == PlayerBackgroundStyle.DEFAULT) {
+                    MaterialTheme.colorScheme.background
+                } else {
+                    CapsuleLyricsBackground
+                }
+
+            CapsuleLyricsBackdrop.ImmersiveColoring ->
+                CapsuleLyricsBackground
         }
 
     Box(
@@ -259,8 +271,11 @@ fun CapsuleLyricsContent(
                 .fillMaxSize()
                 .background(baseBackgroundColor),
     ) {
-        if (lyricsUsePlayerTheme) {
-            if (playerDesign == CapsulePlayerDesign.IMMERSIVE) {
+        when (val backdrop = lyricsBackdrop) {
+            CapsuleLyricsBackdrop.Solid ->
+                Unit
+
+            CapsuleLyricsBackdrop.ImmersiveColoring -> {
                 val coloringStops =
                     remember(artworkColors) {
                         PlayerBackgroundColorUtils.buildImmersiveLyricsColoringStops(artworkColors)
@@ -273,11 +288,13 @@ fun CapsuleLyricsContent(
                                 Brush.verticalGradient(
                                     colorStops = coloringStops,
                                 ),
-                            ),
+                    ),
                 )
-            } else {
+            }
+
+            is CapsuleLyricsBackdrop.PlayerTheme ->
                 PlayerBackground(
-                    playerBackground = playerBackground,
+                    playerBackground = backdrop.style,
                     gradientColors = artworkColors,
                     animated =
                         visualsActive &&
@@ -285,19 +302,6 @@ fun CapsuleLyricsContent(
                             playbackState == Player.STATE_READY,
                     sharedAnimationTime = backdropAnimationTime,
                 )
-            }
-
-            if (
-                playerDesign == CapsulePlayerDesign.IMMERSIVE ||
-                playerBackground != PlayerBackgroundStyle.DEFAULT
-            ) {
-                Box(
-                    modifier =
-                        Modifier
-                            .fillMaxSize()
-                            .background(Color.Black.copy(alpha = 0.12f)),
-                )
-            }
         }
 
         Column(
