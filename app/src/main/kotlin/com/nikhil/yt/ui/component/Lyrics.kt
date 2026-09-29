@@ -206,6 +206,7 @@ import com.nikhil.yt.ui.motion.CapsuleStandardEasing
 
 
 private val AppleMusicEasing = CubicBezierEasing(0.25f, 0.1f, 0.25f, 1.0f)
+private val ReturnToSyncEasing = CubicBezierEasing(0.30f, 0f, 0.16f, 1f)
 private val SmoothDecelerateEasing = CubicBezierEasing(0.0f, 0.0f, 0.2f, 1.0f)
 
 private fun isRtlText(text: String): Boolean {
@@ -971,16 +972,32 @@ fun Lyrics(
                 val durationMs =
                     with(density) {
                         val travelDp = abs(offset).toDp().value
-                        (460f + travelDp * 1.35f)
-                            .toInt()
-                            .coerceIn(520, 1_300)
+                        if (returnToSync) {
+                            /*
+                             * Same target, same cancellation semantics, only calmer choreography:
+                             * a slightly longer approach avoids the "snap then brake" feeling when
+                             * returning from a long manual scroll.
+                             */
+                            (560f + travelDp * 1.45f)
+                                .toInt()
+                                .coerceIn(620, 1_420)
+                        } else {
+                            (460f + travelDp * 1.35f)
+                                .toInt()
+                                .coerceIn(520, 1_300)
+                        }
                     }
                 lazyListState.animateScrollBy(
                     value = offset.toFloat(),
                     animationSpec =
                         tween(
                             durationMillis = durationMs,
-                            easing = AppleMusicEasing,
+                            easing =
+                                if (returnToSync) {
+                                    ReturnToSyncEasing
+                                } else {
+                                    AppleMusicEasing
+                                },
                         ),
                 )
             }
@@ -1094,7 +1111,7 @@ fun Lyrics(
                 when {
                     // While returning, the destination is live: detect a line hand-off quickly so
                     // the old scroll is cancelled and the new current line immediately takes over.
-                    isReturningToSync -> 40L
+                    isReturningToSync -> 50L
                     // Nothing visual is advancing while paused.
                     !isPlaying && sliderPosition == null -> 420L
                     // Manual scrolling intentionally suppresses lyric motion, so a slower clock is
@@ -1403,7 +1420,7 @@ fun Lyrics(
                     val targetAlpha = when {
                         !isSynced || (isSelectionModeActive && isSelected) -> 1f
                         isReturningToSync && index == currentLineIndex -> 1f
-                        isReturningToSync -> 0.36f
+                        isReturningToSync -> 0.38f
                         isManualScrolling && archiveTuneStyle -> when {
                             index == displayedCurrentLineIndex -> 1f
                             distance == 1 -> 0.72f
@@ -1486,29 +1503,53 @@ fun Lyrics(
                             isSynced &&
                             index == displayedCurrentLineIndex
 
-                    val animatedAlpha by animateFloatAsState(
-                        targetValue = targetAlpha,
-                        animationSpec =
-                            tween(
-                                durationMillis =
-                                    when {
-                                        isReturningToSync -> 180
-                                        archiveTuneStyle ->
-                                            if (archiveLineIsFocused) 500 else 1_100
-                                        lyricsAnimationStyle != LyricsAnimationStyle.NONE ->
-                                            if (animatedLineIsFocused) 500 else 1_050
-                                        else ->
-                                            520
-                                    },
-                                easing =
-                                    if (lyricsAnimationStyle != LyricsAnimationStyle.NONE) {
-                                        AppleMusicEasing
-                                    } else {
-                                        SmoothDecelerateEasing
-                                    },
-                            ),
-                        label = "lyricAlpha",
-                    )
+                    val animatedAlphaState =
+                        animateFloatAsState(
+                            targetValue = targetAlpha,
+                            animationSpec =
+                                tween(
+                                    durationMillis =
+                                        when {
+                                            isReturningToSync -> 260
+                                            archiveTuneStyle ->
+                                                if (archiveLineIsFocused) 500 else 1_100
+                                            lyricsAnimationStyle != LyricsAnimationStyle.NONE ->
+                                                if (animatedLineIsFocused) 500 else 1_050
+                                            else ->
+                                                520
+                                        },
+                                    easing =
+                                        if (isReturningToSync) {
+                                            ReturnToSyncEasing
+                                        } else if (lyricsAnimationStyle != LyricsAnimationStyle.NONE) {
+                                            AppleMusicEasing
+                                        } else {
+                                            SmoothDecelerateEasing
+                                        },
+                                ),
+                            label = "lyricAlpha",
+                        )
+
+                    /*
+                     * A tiny scale lift makes the live row feel magnetically collected by the
+                     * centre anchor. Only one row changes scale, and the value is consumed directly
+                     * by graphicsLayer below so it does not recompose the lyric subtree every frame.
+                     */
+                    val returnFocusScaleState =
+                        animateFloatAsState(
+                            targetValue =
+                                if (isReturningToSync && index == currentLineIndex) {
+                                    1.018f
+                                } else {
+                                    1f
+                                },
+                            animationSpec =
+                                tween(
+                                    durationMillis = 320,
+                                    easing = ReturnToSyncEasing,
+                                ),
+                            label = "lyricReturnFocusScale",
+                        )
 
                     // The light hand-off is intentionally asymmetric: the new line lights up
                     // quickly, while the old one leaves a long soft tail.
@@ -1580,9 +1621,18 @@ fun Lyrics(
                             horizontal = 24.dp,
                             vertical = 8.dp
                         )
-                        // One alpha layer only. The previous "blur" path multiplied alpha a
-                        // second time and allocated another graphics layer for every visible line.
-                        .alpha(animatedAlpha)
+                        /*
+                         * One layer for both opacity and the tiny return-focus scale. Reading the
+                         * animation State inside graphicsLayer keeps those frame-by-frame updates in
+                         * the layer invalidation path instead of recomposing the entire text row.
+                         */
+                        .graphicsLayer {
+                            alpha = animatedAlphaState.value
+                            val returnScale = returnFocusScaleState.value
+                            scaleX = returnScale
+                            scaleY = returnScale
+                            transformOrigin = TransformOrigin.Center
+                        }
 
                     val baseLayoutDirection = LocalLayoutDirection.current
                     val lineIsRtl = remember(item.text) { isRtlText(item.text) }
