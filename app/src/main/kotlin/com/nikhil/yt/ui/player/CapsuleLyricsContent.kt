@@ -6,7 +6,6 @@
 
 package com.nikhil.yt.ui.player
 
-import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
@@ -42,7 +41,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -71,6 +72,7 @@ import com.nikhil.yt.models.MediaMetadata
 import com.nikhil.yt.ui.component.Lyrics
 import com.nikhil.yt.utils.makeTimeString
 import com.nikhil.yt.utils.rememberEnumPreference
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlin.math.cos
 import kotlin.math.sin
@@ -205,7 +207,11 @@ fun CapsuleLyricsContent(
                     effect = CapsuleBackgroundEffect.CAPSULE_STAR,
                     colors = artworkColors,
                     modifier = Modifier.fillMaxSize(),
-                    animated = isPlaying && playbackState == Player.STATE_READY,
+                    animated =
+                        isVisible &&
+                            isPlaying &&
+                            playbackState == Player.STATE_READY,
+                    animationFps = 8,
                 )
 
             LyricsBackgroundStyle.CAPSULE_GLOW ->
@@ -221,7 +227,11 @@ fun CapsuleLyricsContent(
                     effect = CapsuleBackgroundEffect.NEBULA,
                     colors = artworkColors,
                     modifier = Modifier.fillMaxSize(),
-                    animated = isPlaying && playbackState == Player.STATE_READY,
+                    animated =
+                        isVisible &&
+                            isPlaying &&
+                            playbackState == Player.STATE_READY,
+                    animationFps = 8,
                 )
 
             LyricsBackgroundStyle.ARTWORK_GRADIENT ->
@@ -707,37 +717,27 @@ private fun CapsuleLyricsOrbitButton(
     isLoading: Boolean,
     onClick: () -> Unit,
 ) {
-    val rotation =
+    var rotation by
         remember {
-            Animatable(0f)
+            mutableFloatStateOf(0f)
         }
 
     LaunchedEffect(
         isPlaying,
         isLoading,
     ) {
-        if (
-            isPlaying &&
-            !isLoading
-        ) {
+        /*
+         * This orbit is deliberately slow decoration. Animatable used to wake Compose on every
+         * display frame for an eight-second revolution; 12.5 fps is visually identical at this
+         * speed and leaves the frame clock asleep most of the time. Pausing simply stops updates,
+         * so the dot still freezes at the exact angle where pause was pressed.
+         */
+        if (isPlaying && !isLoading) {
+            val tickMs = 80L
+            val degreesPerTick = 360f * tickMs / 8_000f
             while (isActive) {
-                rotation.animateTo(
-                    targetValue =
-                        rotation.value +
-                            360f,
-                    animationSpec =
-                        tween(
-                            durationMillis =
-                                8_000,
-                            easing =
-                                LinearEasing,
-                        ),
-                )
-
-                rotation.snapTo(
-                    rotation.value %
-                        360f,
-                )
+                delay(tickMs)
+                rotation = (rotation + degreesPerTick) % 360f
             }
         }
     }
@@ -835,7 +835,7 @@ private fun CapsuleLyricsOrbitButton(
                     val previousAngle =
                         Math.toRadians(
                             (
-                                rotation.value -
+                                rotation -
                                     15f
                             ).toDouble(),
                         )
