@@ -925,4 +925,6 @@ Velune will only extract your token, and everything else is stored locally.</str
     <string name="archive_tune_style">ArchiveTune</string>
     <string name="lyrics_background_style">Lyrics background</string>
     <string name="lyrics_background_solid">Plain background</string>
+    <string name="lyrics_use_player_theme">Use player theme in lyrics</string>
+    <string name="lyrics_use_player_theme_description">When enabled, the lyrics screen follows the full player background. Immersive uses artwork coloring.</string>
 </resources>
