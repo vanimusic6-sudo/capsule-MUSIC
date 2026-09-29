@@ -24,6 +24,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.State
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -279,6 +280,27 @@ fun BottomSheetPlayer(
         }
     }
 
+    val backdropNeedsClock =
+        when (playerBackground) {
+            PlayerBackgroundStyle.GLOW_ANIMATED,
+            PlayerBackgroundStyle.CAPSULE_STAR,
+            PlayerBackgroundStyle.NEBULA,
+            -> true
+
+            else -> false
+        }
+    val backdropTimelineRunning =
+        backdropNeedsClock &&
+            onScreen &&
+            isPlaying &&
+            playbackState == Player.STATE_READY &&
+            (!showInlineLyrics || !freezeBackdropAfterLyricsSettles)
+    val sharedBackdropAnimationTime =
+        rememberCapsuleAnimationTime(
+            compact = false,
+            running = backdropTimelineRunning,
+        )
+
     val queueSheetState =
         rememberBottomSheetState(
             dismissedBound = 0.dp,
@@ -347,14 +369,8 @@ fun BottomSheetPlayer(
                 PlayerBackground(
                     playerBackground = playerBackground,
                     gradientColors = gradientColors,
-                    animated =
-                        onScreen &&
-                            isPlaying &&
-                            playbackState == Player.STATE_READY &&
-                            (
-                                !showInlineLyrics ||
-                                    !freezeBackdropAfterLyricsSettles
-                            ),
+                    animated = backdropTimelineRunning,
+                    sharedAnimationTime = sharedBackdropAnimationTime,
                 )
             }
 
@@ -364,6 +380,7 @@ fun BottomSheetPlayer(
                     showLyrics = showInlineLyrics,
                     mediaMetadata = metadata,
                     playerArtworkColors = gradientColors,
+                    backdropAnimationTime = sharedBackdropAnimationTime,
                     sliderPosition = sliderPosition,
                     position = position,
                     duration = duration,
@@ -466,6 +483,7 @@ private fun CapsulePlayerLyricsHost(
     showLyrics: Boolean,
     mediaMetadata: MediaMetadata,
     playerArtworkColors: List<Color>,
+    backdropAnimationTime: State<Long>,
     sliderPosition: Long?,
     position: Long,
     duration: Long,
@@ -673,6 +691,7 @@ private fun CapsulePlayerLyricsHost(
                         mediaMetadata = mediaMetadata,
                         onBackClick = onHideLyrics,
                         playerArtworkColors = playerArtworkColors,
+                        backdropAnimationTime = backdropAnimationTime,
                         isVisible = showLyrics,
                         modifier = Modifier.fillMaxSize(),
                     )
