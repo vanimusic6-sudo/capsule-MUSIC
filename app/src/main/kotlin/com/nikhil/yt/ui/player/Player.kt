@@ -255,6 +255,30 @@ fun BottomSheetPlayer(
             else -> Color.White
         }
 
+    /*
+     * Do not change the procedural backdrop's running/frozen mode on the same frame that Lyrics
+     * starts travelling. Some effects have phase-dependent luminance, so switching the clock at
+     * pointer-up can make the still-visible top of the player look like it flashed brighter even
+     * though the palette did not change.
+     *
+     * Let the existing backdrop continue exactly as it was for the 480 ms travel, then freeze it
+     * only after Lyrics has fully covered the player. Closing Lyrics resumes immediately, before
+     * the underlying player is revealed.
+     */
+    var freezeBackdropAfterLyricsSettles by remember {
+        mutableStateOf(false)
+    }
+
+    LaunchedEffect(showInlineLyrics) {
+        if (showInlineLyrics) {
+            freezeBackdropAfterLyricsSettles = false
+            delay(LyricsTravelMillis.toLong())
+            freezeBackdropAfterLyricsSettles = true
+        } else {
+            freezeBackdropAfterLyricsSettles = false
+        }
+    }
+
     val queueSheetState =
         rememberBottomSheetState(
             dismissedBound = 0.dp,
@@ -325,9 +349,12 @@ fun BottomSheetPlayer(
                     gradientColors = gradientColors,
                     animated =
                         onScreen &&
-                            !showInlineLyrics &&
                             isPlaying &&
-                            playbackState == Player.STATE_READY,
+                            playbackState == Player.STATE_READY &&
+                            (
+                                !showInlineLyrics ||
+                                    !freezeBackdropAfterLyricsSettles
+                            ),
                 )
             }
 
