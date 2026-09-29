@@ -316,7 +316,11 @@ fun CapsuleImmersiveContent(
     expansionProgress: Float = if (open) 1f else 0f,
 ) {
     val onScreen = appIsOnScreen()
-    val visible = open && onScreen
+    if (!onScreen || (!open && expansionProgress <= 0.001f)) {
+        Box(Modifier.fillMaxSize())
+        return
+    }
+    val visible = open
 
     val isPlaying by playerConnection.isPlaying.collectAsState()
     val playbackState by playerConnection.playbackState.collectAsState()
