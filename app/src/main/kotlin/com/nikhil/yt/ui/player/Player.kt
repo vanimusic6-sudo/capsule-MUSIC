@@ -565,30 +565,53 @@ private fun CapsulePlayerLyricsHost(
                             translationY = 0f
                             scaleX = 1f
                             scaleY = 1f
-                            alpha = 1f
                         } else {
                             translationY = -2.75f * reaction
                             scaleX = 1f - 0.00070f * reaction
                             scaleY = 1f - 0.00100f * reaction
-
-                            /*
-                             * The Lyrics reveal edge is intentionally soft. If the player UI stays
-                             * opaque underneath that feather, bright artwork and controls leak
-                             * through it as a horizontal stripe. Dissolve the foreground early so
-                             * the feather blends the Lyrics backdrop into the same player backdrop,
-                             * not into the album cover.
-                             *
-                             * On close this runs in reverse only near the end, after the moving
-                             * boundary has already passed the artwork area.
-                             */
-                            val foregroundExit =
-                                CapsuleMotion.approach(
-                                    progress = reaction,
-                                    window = 0.34f,
-                                )
-                            alpha = 1f - foregroundExit
                         }
+                        /*
+                         * Keep the player itself at full brightness. Offscreen compositing is used
+                         * only so the draw mask below can erase the narrow strip underneath the
+                         * Lyrics feather instead of fading the whole card.
+                         */
+                        compositingStrategy = CompositingStrategy.Offscreen
                         transformOrigin = TransformOrigin(0.5f, 0.5f)
+                    }
+                    .drawWithContent {
+                        val reaction = lyricsMotion.value.coerceIn(0f, 1f)
+                        drawContent()
+
+                        if (
+                            design != CapsulePlayerDesign.IMMERSIVE &&
+                            reaction > 0.001f &&
+                            reaction < 0.999f
+                        ) {
+                            val revealTop =
+                                ((1f - reaction) * size.height)
+                                    .coerceIn(0f, size.height)
+                            val seamGuard = 48.dp.toPx()
+                            val visibleEnd =
+                                ((revealTop - seamGuard) / size.height)
+                                    .coerceIn(0f, 1f)
+                            val hiddenStart =
+                                ((revealTop + seamGuard * 0.20f) / size.height)
+                                    .coerceIn(visibleEnd, 1f)
+
+                            drawRect(
+                                brush =
+                                    Brush.verticalGradient(
+                                        colorStops =
+                                            arrayOf(
+                                                0f to Color.Black,
+                                                visibleEnd to Color.Black,
+                                                hiddenStart to Color.Transparent,
+                                                1f to Color.Transparent,
+                                            ),
+                                    ),
+                                blendMode = BlendMode.DstIn,
+                            )
+                        }
                     },
         ) {
             if (design == CapsulePlayerDesign.IMMERSIVE) {
