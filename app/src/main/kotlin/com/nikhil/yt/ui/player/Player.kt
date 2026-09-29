@@ -471,7 +471,7 @@ private const val LyricsOpenWindow = 0.70f
 /** Vertical only. The horizontal axis is left at exactly 1 throughout, which is the whole point. */
 private const val LyricsUnrollStretch = 0.045f
 private const val LyricsTravelMillis = 480
-private const val LyricsCloseMillis = 520
+private const val LyricsCloseMillis = 570
 
 /**
  * Softer off the mark than the player's, and a touch longer.
@@ -481,7 +481,7 @@ private const val LyricsCloseMillis = 520
  * that difference in time as well as in shape.
  */
 private val LyricsEasing = CubicBezierEasing(0.42f, 0f, 0.28f, 1f)
-private val LyricsCloseEasing = CubicBezierEasing(0.30f, 0f, 0.18f, 1f)
+private val LyricsCloseEasing = CubicBezierEasing(0.34f, 0f, 0.16f, 1f)
 
 @Composable
 private fun CapsulePlayerLyricsHost(
@@ -695,7 +695,16 @@ private fun CapsulePlayerLyricsHost(
                                     if (showLyrics) {
                                         1f
                                     } else {
-                                        CapsuleMotion.smooth(travelled)
+                                        /*
+                                         * Keep the colour surface visually solid for most of the
+                                         * downward travel. Fading it from frame one made the sheet
+                                         * read as if it dissolved halfway down instead of actually
+                                         * leaving the screen. Only the final ~30% of travel fades.
+                                         */
+                                        CapsuleMotion.smooth(
+                                            (travelled / 0.30f)
+                                                .coerceIn(0f, 1f),
+                                        )
                                     }
 
                                 /*
@@ -805,7 +814,7 @@ private fun CapsulePlayerLyricsHost(
                                          * of the close and keeps it fully gone afterwards.
                                          */
                                         CapsuleMotion.smooth(
-                                            ((travelled - 0.62f) / 0.38f)
+                                            ((travelled - 0.58f) / 0.42f)
                                                 .coerceIn(0f, 1f),
                                         )
                                     }
