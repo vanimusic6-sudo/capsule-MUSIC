@@ -127,8 +127,11 @@ fun CapsuleLyricsContent(
     val artworkColors =
         rememberCapsuleArtworkColors(
             mediaMetadata = mediaMetadata,
+            // Keep the palette alive during the close transition. isVisible becomes false before
+            // the sheet is unmounted, and disabling the palette here used to swap the background
+            // to theme fallback for the last animation frames.
             enabled =
-                visualsActive &&
+                onScreen &&
                     lyricsBackground != LyricsBackgroundStyle.SOLID,
         )
 
@@ -725,34 +728,11 @@ private fun CapsuleLyricsOrbitButton(
     onClick: () -> Unit,
 ) {
     val rotation =
-        remember {
-            Animatable(0f)
-        }
-
-    /*
-     * Use exactly the same continuous orbit clock as the full player. The previous 10 Hz stepped
-     * clock was cheaper on paper but the bright comet makes those steps obvious. This still costs
-     * nothing while Lyrics is hidden/paused/loading because the Animatable only runs when visible.
-     */
-    LaunchedEffect(
-        isPlaying,
-        isLoading,
-        visible,
-    ) {
-        if (orbitShouldTurn(isPlaying, isLoading, visible)) {
-            while (isActive) {
-                rotation.animateTo(
-                    targetValue = rotation.value + 360f,
-                    animationSpec =
-                        tween(
-                            durationMillis = 8_000,
-                            easing = LinearEasing,
-                        ),
-                )
-                rotation.snapTo(rotation.value % 360f)
-            }
-        }
-    }
+        rememberCapsuleCometRotation(
+            isPlaying = isPlaying,
+            isLoading = isLoading,
+            visible = visible,
+        )
 
     val alpha by
         animateFloatAsState(
