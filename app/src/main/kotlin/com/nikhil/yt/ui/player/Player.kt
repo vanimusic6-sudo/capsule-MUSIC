@@ -695,9 +695,21 @@ private fun CapsulePlayerLyricsHost(
                                     if (showLyrics) {
                                         1f
                                     } else {
-                                        travelled
+                                        CapsuleMotion.smooth(travelled)
                                     }
-                                compositingStrategy = CompositingStrategy.Offscreen
+
+                                /*
+                                 * DstIn needs an offscreen buffer only while the reveal edge is
+                                 * actually moving. Once Lyrics is fully open the backdrop is static
+                                 * and opaque, so keeping a full-screen offscreen layer alive wastes
+                                 * GPU bandwidth and memory for no visual benefit.
+                                 */
+                                compositingStrategy =
+                                    if (travelled < 0.999f) {
+                                        CompositingStrategy.Offscreen
+                                    } else {
+                                        CompositingStrategy.Auto
+                                    }
                             }
                             .drawWithContent {
                                 val travelled = lyricsMotion.value.coerceIn(0f, 1f)
@@ -793,7 +805,7 @@ private fun CapsulePlayerLyricsHost(
                                          * of the close and keeps it fully gone afterwards.
                                          */
                                         CapsuleMotion.smooth(
-                                            ((travelled - 0.76f) / 0.24f)
+                                            ((travelled - 0.62f) / 0.38f)
                                                 .coerceIn(0f, 1f),
                                         )
                                     }
