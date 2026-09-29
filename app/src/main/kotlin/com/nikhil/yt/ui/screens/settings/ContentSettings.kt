@@ -77,15 +77,10 @@ fun ContentSettings(
     val (enableLyricsPlus, onEnableLyricsPlusChange) = rememberPreference(key = EnableLyricsPlusKey, defaultValue = true)
     val (enablePaxsenixApple, onEnablePaxsenixAppleChange) =
         rememberPreference(key = EnablePaxsenixAppleMusicKey, defaultValue = false)
-    val (enablePaxsenixSpotify, onEnablePaxsenixSpotifyChange) =
-        rememberPreference(key = EnablePaxsenixSpotifyKey, defaultValue = false)
-    val (enablePaxsenixMusixmatch, onEnablePaxsenixMusixmatchChange) =
-        rememberPreference(key = EnablePaxsenixMusixmatchKey, defaultValue = false)
-    val (enablePaxsenixNetEase, onEnablePaxsenixNetEaseChange) =
-        rememberPreference(key = EnablePaxsenixNetEaseKey, defaultValue = false)
-    val (enablePaxsenixYouTube, onEnablePaxsenixYouTubeChange) =
-        rememberPreference(key = EnablePaxsenixYouTubeKey, defaultValue = false)
-    val (enableMusixmatch, onEnableMusixmatchChange) = rememberPreference(key = EnableMusixmatchKey, defaultValue = true)
+    val (enableDeezerLyrics, onEnableDeezerLyricsChange) =
+        rememberPreference(key = EnableDeezerLyricsKey, defaultValue = false)
+    val (deezerLyricsCookie, _) =
+        rememberPreference(key = DeezerCookieKey, defaultValue = "")
     val (enableNetEase, onEnableNetEaseChange) = rememberPreference(key = EnableNetEaseKey, defaultValue = true)
     val (rawLyricsProviderOrder, onLyricsProviderOrderChange) =
         rememberPreference(key = LyricsProviderOrderKey, defaultValue = "")
@@ -98,6 +93,7 @@ fun ContentSettings(
         )
     var showLyricsProviderPriorityDialog by remember { mutableStateOf(false) }
     var showPaxsenixStatsDialog by remember { mutableStateOf(false) }
+    var showDeezerLyricsLoginDialog by remember { mutableStateOf(false) }
 
     val (lyricsRomanizeJapanese, onLyricsRomanizeJapaneseChange) = rememberPreference(LyricsRomanizeJapaneseKey, defaultValue = true)
     val (lyricsRomanizeKorean, onLyricsRomanizeKoreanChange) = rememberPreference(LyricsRomanizeKoreanKey, defaultValue = true)
@@ -262,34 +258,6 @@ fun ContentSettings(
             checked = enablePaxsenixApple,
             onCheckedChange = onEnablePaxsenixAppleChange,
         )
-        SwitchPreference(
-            title = { Text(stringResource(R.string.enable_paxsenix_spotify)) },
-            description = stringResource(R.string.lyrics_provider_paxsenix_spotify_description),
-            icon = { Icon(painterResource(R.drawable.lyrics), null) },
-            checked = enablePaxsenixSpotify,
-            onCheckedChange = onEnablePaxsenixSpotifyChange,
-        )
-        SwitchPreference(
-            title = { Text(stringResource(R.string.enable_paxsenix_musixmatch)) },
-            description = stringResource(R.string.lyrics_provider_paxsenix_musixmatch_description),
-            icon = { Icon(painterResource(R.drawable.lyrics), null) },
-            checked = enablePaxsenixMusixmatch,
-            onCheckedChange = onEnablePaxsenixMusixmatchChange,
-        )
-        SwitchPreference(
-            title = { Text(stringResource(R.string.enable_paxsenix_netease)) },
-            description = stringResource(R.string.lyrics_provider_paxsenix_netease_description),
-            icon = { Icon(painterResource(R.drawable.lyrics), null) },
-            checked = enablePaxsenixNetEase,
-            onCheckedChange = onEnablePaxsenixNetEaseChange,
-        )
-        SwitchPreference(
-            title = { Text(stringResource(R.string.enable_paxsenix_youtube)) },
-            description = stringResource(R.string.lyrics_provider_paxsenix_youtube_description),
-            icon = { Icon(painterResource(R.drawable.lyrics), null) },
-            checked = enablePaxsenixYouTube,
-            onCheckedChange = onEnablePaxsenixYouTubeChange,
-        )
         PreferenceEntry(
             title = { Text(stringResource(R.string.paxsenix_status_title)) },
             description = stringResource(R.string.paxsenix_status_description),
@@ -297,11 +265,22 @@ fun ContentSettings(
             onClick = { showPaxsenixStatsDialog = true },
         )
         SwitchPreference(
-            title = { Text(stringResource(R.string.enable_musixmatch)) },
-            description = stringResource(R.string.enable_musixmatch_description),
+            title = { Text(stringResource(R.string.enable_deezer_lyrics)) },
+            description = stringResource(R.string.lyrics_provider_deezer_description),
             icon = { Icon(painterResource(R.drawable.lyrics), null) },
-            checked = enableMusixmatch,
-            onCheckedChange = onEnableMusixmatchChange,
+            checked = enableDeezerLyrics,
+            onCheckedChange = onEnableDeezerLyricsChange,
+        )
+        PreferenceEntry(
+            title = { Text(stringResource(R.string.deezer_lyrics_login)) },
+            description =
+                if (com.nikhil.yt.lyrics.deezerArlFromInput(deezerLyricsCookie) != null) {
+                    stringResource(R.string.deezer_lyrics_connected)
+                } else {
+                    stringResource(R.string.deezer_lyrics_login_required)
+                },
+            icon = { Icon(painterResource(R.drawable.login), null) },
+            onClick = { showDeezerLyricsLoginDialog = true },
         )
         SwitchPreference(
             title = { Text(stringResource(R.string.enable_netease)) },
@@ -388,6 +367,12 @@ fun ContentSettings(
     if (showPaxsenixStatsDialog) {
         PaxsenixStatsDialog(
             onDismiss = { showPaxsenixStatsDialog = false },
+        )
+    }
+
+    if (showDeezerLyricsLoginDialog) {
+        DeezerLyricsLoginDialog(
+            onDismiss = { showDeezerLyricsLoginDialog = false },
         )
     }
 
