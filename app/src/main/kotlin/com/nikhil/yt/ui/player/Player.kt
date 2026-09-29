@@ -191,9 +191,19 @@ fun BottomSheetPlayer(
      */
     val onScreen = appIsOnScreen()
 
-    LaunchedEffect(mediaMetadata?.id, playbackState, isPlaying, sliderPosition, onScreen) {
+    LaunchedEffect(
+        mediaMetadata?.id,
+        playbackState,
+        isPlaying,
+        sliderPosition,
+        onScreen,
+        showInlineLyrics,
+        state.isDismissed,
+    ) {
         if (sliderPosition != null) return@LaunchedEffect
-        if (!onScreen) return@LaunchedEffect
+        // Lyrics owns its own visible progress readout. Do not keep the hidden player clock alive
+        // underneath it, and do not poll anything after the whole sheet was dismissed.
+        if (!onScreen || showInlineLyrics || state.isDismissed) return@LaunchedEffect
 
         while (isActive) {
             position = playerConnection.player.currentPosition.coerceAtLeast(0L)
@@ -270,6 +280,7 @@ fun BottomSheetPlayer(
                 position = position,
                 duration = duration,
                 pureBlack = pureBlack,
+                visible = !state.isExpanded && !state.isDismissed,
             )
         },
     ) {
@@ -278,12 +289,17 @@ fun BottomSheetPlayer(
              * Immersion paints its own floor from the artwork, and a chosen backdrop behind it
              * would be a second picture competing with the cover.
              */
-            if (!state.isCollapsed && effectivePlayerDesign != CapsulePlayerDesign.IMMERSIVE) {
+            if (
+                !state.isCollapsed &&
+                !state.isDismissed &&
+                effectivePlayerDesign != CapsulePlayerDesign.IMMERSIVE
+            ) {
                 PlayerBackground(
                     playerBackground = playerBackground,
                     gradientColors = gradientColors,
                     animated =
                         onScreen &&
+                            !showInlineLyrics &&
                             isPlaying &&
                             playbackState == Player.STATE_READY,
                 )
@@ -541,7 +557,10 @@ private fun CapsulePlayerLyricsHost(
                 onMenuClick = onShowMenu,
                 context = LocalContext.current,
                 bottomPadding = 0.dp,
-                open = !playerState.isCollapsed,
+                open =
+                    !playerState.isCollapsed &&
+                        !playerState.isDismissed &&
+                        !showLyrics,
             )
         }
 
