@@ -30,6 +30,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.nikhil.yt.constants.DeezerCookieKey
+import com.nikhil.yt.constants.EnableDeezerLyricsKey
 import com.nikhil.yt.lyrics.deezerArlFromInput
 import com.nikhil.yt.utils.rememberPreference
 
@@ -53,6 +54,7 @@ private val DeezerCookieCaptureDelaysMs =
 @SuppressLint("SetJavaScriptEnabled")
 internal fun DeezerLyricsLoginDialog(onDismiss: () -> Unit) {
     var deezerCookie by rememberPreference(DeezerCookieKey, "")
+    var deezerLyricsEnabled by rememberPreference(EnableDeezerLyricsKey, false)
     var webView by remember { mutableStateOf<WebView?>(null) }
     var saved by remember { mutableStateOf(deezerArlFromInput(deezerCookie) != null) }
     val handler = remember { Handler(Looper.getMainLooper()) }
@@ -66,6 +68,7 @@ internal fun DeezerLyricsLoginDialog(onDismiss: () -> Unit) {
                 .takeIf { deezerArlFromInput(it) != null }
                 ?: return
         deezerCookie = merged
+        deezerLyricsEnabled = true
         saved = true
     }
 
