@@ -366,9 +366,9 @@ fun BottomSheetPlayer(
  * Capsule keeps that idea but removes the fade/blur entirely: the surface is opaque from frame one
  * and expands around the artwork/card region, so it reads as the card becoming the lyrics screen.
  */
-private const val LyricsCardStartScaleX = 0.90f
-private const val LyricsCardStartScaleY = 0.72f
-private const val LyricsCardStartLiftFraction = 0.035f
+private const val LyricsCardStartScaleX = 0.92f
+private const val LyricsCardStartScaleY = 0.78f
+private const val LyricsCardStartLiftFraction = 0.14f
 
 @Composable
 private fun CapsulePlayerLyricsHost(
@@ -417,7 +417,9 @@ private fun CapsulePlayerLyricsHost(
             targetValue = if (showLyrics) 1f else 0f,
             animationSpec =
                 spring(
-                    dampingRatio = 0.86f,
+                    // Keep ArchiveTune's Miko spring character: a soft, physical settle instead
+                    // of the stretched "rubber card" feel the previous Capsule variant had.
+                    dampingRatio = 0.82f,
                     stiffness = Spring.StiffnessMediumLow,
                 ),
         )
@@ -426,8 +428,6 @@ private fun CapsulePlayerLyricsHost(
             lyricsLayerMounted = false
         }
     }
-
-    val lyricsCardShape = remember { RoundedCornerShape(30.dp) }
 
     Box(modifier = Modifier.fillMaxSize()) {
         Box(
@@ -542,9 +542,16 @@ private fun CapsulePlayerLyricsHost(
                                 val travelled = lyricsMotion.value.coerceIn(0f, 1f)
                                 val remaining = 1f - travelled
 
-                                // No fade and no RenderEffect: the lyrics surface is opaque for the
-                                // whole transition. It grows out of the artwork/card region rather
-                                // than travelling up from the bottom edge.
+                                /*
+                                 * Match ArchiveTune's Miko geometry much more closely:
+                                 * - bottom transform origin
+                                 * - short upward travel from below
+                                 * - anisotropic 0.92 x 0.78 expansion
+                                 * - rounded sheet becoming a screen
+                                 *
+                                 * Capsule deliberately keeps alpha at 1 and uses no RenderEffect,
+                                 * so the motion is physical without a visible fade or blur.
+                                 */
                                 scaleX =
                                     LyricsCardStartScaleX +
                                         (1f - LyricsCardStartScaleX) * travelled
@@ -552,17 +559,15 @@ private fun CapsulePlayerLyricsHost(
                                     LyricsCardStartScaleY +
                                         (1f - LyricsCardStartScaleY) * travelled
                                 translationY =
-                                    -fullHeightPx *
+                                    fullHeightPx *
                                         LyricsCardStartLiftFraction *
                                         remaining
                                 alpha = 1f
-                                transformOrigin = TransformOrigin(0.5f, 0.33f)
+                                transformOrigin = TransformOrigin(0.5f, 1f)
 
-                                // A rounded card silhouette is useful during the expansion, but
-                                // clipping is disabled once it reaches full screen so steady-state
-                                // lyrics pay no clipping/offscreen cost.
-                                shape = lyricsCardShape
-                                clip = travelled < 0.995f
+                                val corner = 32.dp * remaining
+                                shape = RoundedCornerShape(corner)
+                                clip = travelled < 0.998f
                             },
                 ) {
                     LyricsScreen(
