@@ -6,7 +6,6 @@
 
 package com.nikhil.yt.ui.player
 
-import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
@@ -827,9 +826,7 @@ private fun CapsuleLyricsOrbitButton(
 
                     val angle =
                         Math.toRadians(
-                            rotation
-                                .value
-                                .toDouble(),
+                            rotation.toDouble(),
                         )
 
                     val previousAngle =
