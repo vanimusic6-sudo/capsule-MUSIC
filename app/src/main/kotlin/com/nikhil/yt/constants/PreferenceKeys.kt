@@ -417,6 +417,8 @@ enum class LyricsBackgroundStyle {
     CAPSULE_GLOW,
     NEBULA,
     ARTWORK_GRADIENT,
+    /** Runtime-only style used by Lyrics when the full player is Immersive/Coloring. */
+    COLORING,
 }
 
 val LyricsAnimationStyleKey = stringPreferencesKey("lyricsAnimationStyle")
