@@ -206,7 +206,8 @@ import com.nikhil.yt.ui.motion.CapsuleStandardEasing
 
 
 private val AppleMusicEasing = CubicBezierEasing(0.25f, 0.1f, 0.25f, 1.0f)
-private val ReturnToSyncEasing = CubicBezierEasing(0.30f, 0f, 0.16f, 1f)
+private val ReturnToSyncApproachEasing = CubicBezierEasing(0.20f, 0.48f, 0.42f, 0.90f)
+private val ReturnToSyncSettleEasing = CubicBezierEasing(0.18f, 0.58f, 0.22f, 1f)
 private val SmoothDecelerateEasing = CubicBezierEasing(0.0f, 0.0f, 0.2f, 1.0f)
 
 private fun isRtlText(text: String): Boolean {
@@ -881,70 +882,137 @@ fun Lyrics(
         if (!isVisible || targetIndex !in lines.indices) return
 
         try {
+            /*
+             * Explicit return-to-sync is intentionally different from ordinary lyric tracking.
+             *
+             * The old implementation prepared an off-screen target with scrollToItem(), which
+             * meant the list teleported first and only the final centring looked animated. Here
+             * every pixel from the user's current manual-scroll position to the live lyric is
+             * produced by animateScrollBy(). No staging jump exists.
+             *
+             * Phase 1 is a fast, soft approach using the measured average row stride. It stops
+             * close to the destination rather than exactly on it. Phase 2 measures the real live
+             * row and performs a slower final settle into the centre anchor. currentLineIndex is a
+             * LaunchedEffect key outside this function, so a line change cancels either phase and
+             * immediately retargets from whatever position is on screen at that exact moment.
+             */
+            if (animated && returnToSync && !seek) {
+                repeat(3) {
+                    val layout = lazyListState.layoutInfo
+                    val visible = layout.visibleItemsInfo
+                    if (visible.isEmpty()) return@repeat
+
+                    val targetInfo =
+                        visible.firstOrNull { it.index == targetIndex }
+                    if (targetInfo != null) return@repeat
+
+                    val viewportHeight =
+                        layout.viewportEndOffset - layout.viewportStartOffset
+                    if (viewportHeight <= 0) return@repeat
+                    val anchorY = layout.viewportStartOffset + viewportHeight / 2
+
+                    val centreItem =
+                        visible.minByOrNull {
+                            abs((it.offset + it.size / 2) - anchorY)
+                        } ?: return@repeat
+
+                    val measuredStrides =
+                        visible
+                            .zipWithNext()
+                            .mapNotNull { (first, second) ->
+                                val indexGap = second.index - first.index
+                                if (indexGap <= 0) {
+                                    null
+                                } else {
+                                    (second.offset - first.offset).toFloat() / indexGap
+                                }
+                            }
+                            .filter { abs(it) > 1f }
+
+                    val averageStride =
+                        if (measuredStrides.isNotEmpty()) {
+                            measuredStrides.average().toFloat()
+                        } else {
+                            visible.map { it.size }.average().toFloat()
+                        }.coerceAtLeast(1f)
+
+                    val indexDistance = targetIndex - centreItem.index
+                    val centreError =
+                        (centreItem.offset + centreItem.size / 2) - anchorY
+                    val estimatedDistance =
+                        centreError + indexDistance * averageStride
+
+                    if (abs(estimatedDistance) <= 2f) return@repeat
+
+                    val distanceInRows = abs(indexDistance)
+                    val approachFraction =
+                        when {
+                            distanceInRows >= 10 -> 0.94f
+                            distanceInRows >= 5 -> 0.90f
+                            else -> 0.82f
+                        }
+                    val approachDurationMs =
+                        (300 + distanceInRows * 18)
+                            .coerceIn(320, 680)
+
+                    lazyListState.animateScrollBy(
+                        value = estimatedDistance * approachFraction,
+                        animationSpec =
+                            tween(
+                                durationMillis = approachDurationMs,
+                                easing = ReturnToSyncApproachEasing,
+                            ),
+                    )
+                    withFrameNanos { }
+                }
+
+                val settledLayout = lazyListState.layoutInfo
+                val settledTarget =
+                    settledLayout.visibleItemsInfo
+                        .firstOrNull { it.index == targetIndex }
+                        ?: return
+                val viewportHeight =
+                    settledLayout.viewportEndOffset - settledLayout.viewportStartOffset
+                if (viewportHeight <= 0) return
+
+                val anchorY =
+                    settledLayout.viewportStartOffset + viewportHeight / 2
+                val targetCenter =
+                    settledTarget.offset + settledTarget.size / 2
+                val finalOffset = targetCenter - anchorY
+                if (abs(finalOffset) <= 2) return
+
+                val settleDurationMs =
+                    with(density) {
+                        val travelDp = abs(finalOffset).toDp().value
+                        (300f + travelDp * 0.48f)
+                            .toInt()
+                            .coerceIn(320, 560)
+                    }
+
+                lazyListState.animateScrollBy(
+                    value = finalOffset.toFloat(),
+                    animationSpec =
+                        tween(
+                            durationMillis = settleDurationMs,
+                            easing = ReturnToSyncSettleEasing,
+                        ),
+                )
+                return
+            }
+
             var itemInfo =
                 lazyListState.layoutInfo.visibleItemsInfo
                     .firstOrNull { it.index == targetIndex }
 
             if (itemInfo == null) {
-                /*
-                 * The original top-down return remains byte-for-byte in spirit: place the live row
-                 * at the top, measure it, then let the old centre tween do the visible motion.
-                 *
-                 * For the opposite direction do not place the row at the top first. Jump to a
-                 * nearby earlier row so the live row is already in the lower part of the viewport
-                 * on its first visible frame; from there the exact same old tween pulls it upward.
-                 */
-                val before = lazyListState.layoutInfo
-                val visible = before.visibleItemsInfo
-                val targetIsBelow =
-                    animated &&
-                        returnToSync &&
-                        !seek &&
-                        visible.isNotEmpty() &&
-                        targetIndex > visible.maxOf { it.index }
-
-                if (targetIsBelow) {
-                    val rowsBeforeTarget =
-                        (visible.size - 2)
-                            .coerceAtLeast(1)
-                    val stagingIndex =
-                        (targetIndex - rowsBeforeTarget)
-                            .coerceAtLeast(0)
-
-                    lazyListState.scrollToItem(stagingIndex)
-                } else {
-                    lazyListState.scrollToItem(targetIndex)
-                }
-
+                // Ordinary tracking/restoration keeps its established behaviour. Only the explicit
+                // return mode above avoids direct positioning so we do not destabilise normal sync.
+                lazyListState.scrollToItem(targetIndex)
                 withFrameNanos { }
                 itemInfo =
                     lazyListState.layoutInfo.visibleItemsInfo
                         .firstOrNull { it.index == targetIndex }
-
-                if (itemInfo == null && targetIsBelow) {
-                    /*
-                     * Variable-height lyric rows can occasionally push the target just below the
-                     * first staging viewport. Move only one row closer — still from below.
-                     */
-                    lazyListState.scrollToItem((targetIndex - 1).coerceAtLeast(0))
-                    withFrameNanos { }
-                    itemInfo =
-                        lazyListState.layoutInfo.visibleItemsInfo
-                            .firstOrNull { it.index == targetIndex }
-                }
-
-                if (itemInfo == null) {
-                    /*
-                     * Reliability wins over choreography in the pathological case of a lyric row
-                     * taller than the viewport: make the requested row measurable so return mode
-                     * can never finish without actually attaching to the live line.
-                     */
-                    lazyListState.scrollToItem(targetIndex)
-                    withFrameNanos { }
-                    itemInfo =
-                        lazyListState.layoutInfo.visibleItemsInfo
-                            .firstOrNull { it.index == targetIndex }
-                }
             }
 
             val measuredItem = itemInfo ?: return
@@ -972,32 +1040,16 @@ fun Lyrics(
                 val durationMs =
                     with(density) {
                         val travelDp = abs(offset).toDp().value
-                        if (returnToSync) {
-                            /*
-                             * Same target, same cancellation semantics, only calmer choreography:
-                             * a slightly longer approach avoids the "snap then brake" feeling when
-                             * returning from a long manual scroll.
-                             */
-                            (560f + travelDp * 1.45f)
-                                .toInt()
-                                .coerceIn(620, 1_420)
-                        } else {
-                            (460f + travelDp * 1.35f)
-                                .toInt()
-                                .coerceIn(520, 1_300)
-                        }
+                        (460f + travelDp * 1.35f)
+                            .toInt()
+                            .coerceIn(520, 1_300)
                     }
                 lazyListState.animateScrollBy(
                     value = offset.toFloat(),
                     animationSpec =
                         tween(
                             durationMillis = durationMs,
-                            easing =
-                                if (returnToSync) {
-                                    ReturnToSyncEasing
-                                } else {
-                                    AppleMusicEasing
-                                },
+                            easing = AppleMusicEasing,
                         ),
                 )
             }
@@ -1254,23 +1306,42 @@ fun Lyrics(
         }
 
         /*
-         * Final safety correction. This path should be rare (usually only after a row remeasures
-         * during the flight), but never leave the UI in a half-returned state.
+         * A row can remeasure during the final settle. Never repair that with scrollToItem — that
+         * would reintroduce the teleport we are explicitly removing. One last continuous pass uses
+         * the same live-targeted path; if playback advances, the effect is cancelled and restarted
+         * for the new line before any stale target can be committed.
          */
         if (currentLineIndex == targetIndex) {
-            lazyListState.scrollToItem(targetIndex)
-            withFrameNanos { }
             anchorLyricLine(
                 targetIndex = targetIndex,
                 animated = true,
-                returnToSync = false,
+                returnToSync = true,
             )
+
             if (currentLineIndex == targetIndex) {
-                deferredCurrentLineIndex = targetIndex
-                previousLineIndex = targetIndex
-                lastPreviewTime = 0L
-                isManualScrolling = false
-                isReturningToSync = false
+                val info =
+                    lazyListState.layoutInfo.visibleItemsInfo
+                        .firstOrNull { it.index == targetIndex }
+                val layout = lazyListState.layoutInfo
+                val viewportHeight =
+                    layout.viewportEndOffset - layout.viewportStartOffset
+                val centered =
+                    if (info != null && viewportHeight > 0) {
+                        val anchorY =
+                            layout.viewportStartOffset + viewportHeight / 2
+                        val itemCenter = info.offset + info.size / 2
+                        abs(itemCenter - anchorY) <= 4
+                    } else {
+                        false
+                    }
+
+                if (centered) {
+                    deferredCurrentLineIndex = targetIndex
+                    previousLineIndex = targetIndex
+                    lastPreviewTime = 0L
+                    isManualScrolling = false
+                    isReturningToSync = false
+                }
             }
         }
     }
@@ -1510,7 +1581,7 @@ fun Lyrics(
                                 tween(
                                     durationMillis =
                                         when {
-                                            isReturningToSync -> 260
+                                            isReturningToSync -> 320
                                             archiveTuneStyle ->
                                                 if (archiveLineIsFocused) 500 else 1_100
                                             lyricsAnimationStyle != LyricsAnimationStyle.NONE ->
@@ -1520,7 +1591,7 @@ fun Lyrics(
                                         },
                                     easing =
                                         if (isReturningToSync) {
-                                            ReturnToSyncEasing
+                                            ReturnToSyncSettleEasing
                                         } else if (lyricsAnimationStyle != LyricsAnimationStyle.NONE) {
                                             AppleMusicEasing
                                         } else {
@@ -1539,7 +1610,7 @@ fun Lyrics(
                         animateFloatAsState(
                             targetValue =
                                 if (isReturningToSync && index == currentLineIndex) {
-                                    1.018f
+                                    1.012f
                                 } else {
                                     1f
                                 },
