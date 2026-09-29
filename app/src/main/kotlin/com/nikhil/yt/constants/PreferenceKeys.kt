@@ -54,11 +54,8 @@ val EnableNetEaseKey = booleanPreferencesKey("enableNetEase")
  */
 val EnablePaxsenixKey = booleanPreferencesKey("enablePaxsenix")
 val EnablePaxsenixAppleMusicKey = booleanPreferencesKey("enablePaxsenixAppleMusic")
-val EnablePaxsenixSpotifyKey = booleanPreferencesKey("enablePaxsenixSpotify")
-val EnablePaxsenixMusixmatchKey = booleanPreferencesKey("enablePaxsenixMusixmatch")
-val EnablePaxsenixNetEaseKey = booleanPreferencesKey("enablePaxsenixNetEase")
-val EnablePaxsenixYouTubeKey = booleanPreferencesKey("enablePaxsenixYouTube")
-val EnableMusixmatchKey = booleanPreferencesKey("enableMusixmatch")
+val EnableDeezerLyricsKey = booleanPreferencesKey("enableDeezerLyrics")
+val DeezerCookieKey = stringPreferencesKey("deezerLyricsCookie")
 val HideExplicitKey = booleanPreferencesKey("hideExplicit")
 val HideVideoKey = booleanPreferencesKey("hideVideo")
 /** Experimental SoundCloud source (keeps the old preference name on existing installs). */
