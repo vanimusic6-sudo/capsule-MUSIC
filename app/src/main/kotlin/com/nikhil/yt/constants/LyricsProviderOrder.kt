@@ -22,11 +22,7 @@ object LyricsProviderOrder {
     const val LYRICS_PLUS = "LYRICS_PLUS"
     const val BETTER_LYRICS = "BETTER_LYRICS"
     const val PAXSENIX_APPLE_MUSIC = "PAXSENIX_APPLE_MUSIC"
-    const val PAXSENIX_SPOTIFY = "PAXSENIX_SPOTIFY"
-    const val PAXSENIX_MUSIXMATCH = "PAXSENIX_MUSIXMATCH"
-    const val PAXSENIX_NETEASE = "PAXSENIX_NETEASE"
-    const val PAXSENIX_YOUTUBE = "PAXSENIX_YOUTUBE"
-    const val MUSIXMATCH = "MUSIXMATCH"
+    const val DEEZER = "DEEZER"
     const val NETEASE = "NETEASE"
     const val YOUTUBE = "YOUTUBE"
 
@@ -40,12 +36,8 @@ object LyricsProviderOrder {
         listOf(
             LYRICS_PLUS,
             BETTER_LYRICS,
+            DEEZER,
             PAXSENIX_APPLE_MUSIC,
-            PAXSENIX_SPOTIFY,
-            PAXSENIX_MUSIXMATCH,
-            PAXSENIX_NETEASE,
-            PAXSENIX_YOUTUBE,
-            MUSIXMATCH,
             NETEASE,
             YOUTUBE,
         )
@@ -84,14 +76,13 @@ object LyricsProviderOrder {
 
     private fun expandLegacy(value: String): List<String> =
         when (value) {
-            "PAXSENIX" ->
-                listOf(
-                    PAXSENIX_APPLE_MUSIC,
-                    PAXSENIX_SPOTIFY,
-                    PAXSENIX_MUSIXMATCH,
-                    PAXSENIX_NETEASE,
-                    PAXSENIX_YOUTUBE,
-                )
+            "PAXSENIX",
+            "PAXSENIX_SPOTIFY",
+            "PAXSENIX_MUSIXMATCH",
+            "PAXSENIX_NETEASE",
+            "PAXSENIX_YOUTUBE",
+            "MUSIXMATCH",
+            -> listOf(PAXSENIX_APPLE_MUSIC)
             else -> listOf(value)
         }
 
