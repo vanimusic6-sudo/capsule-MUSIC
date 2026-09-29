@@ -1629,7 +1629,12 @@ fun Lyrics(
                                             text = displayText,
                                             startTime = (word.startTime * 1000).toLong(),
                                             endTime = (word.endTime * 1000).toLong(),
-                                            currentTime = currentPlaybackPosition,
+                                            currentTime =
+                                                if (isActiveLine) {
+                                                    currentPlaybackPosition
+                                                } else {
+                                                    Long.MIN_VALUE
+                                                },
                                             isRtl = lineIsRtl,
                                             fontSize = archiveTuneMaxFontSize,
                                             textColor = lyricsBaseColor,
@@ -2455,12 +2460,13 @@ fun Lyrics(
                             isManualScrolling = false
                             lastPreviewTime = 0L
 
-                            // Automatic scroll to current lyric
-                            if (currentLineIndex >= 0) {
+                            // Resume always returns to the exact same anchor used by
+                            // automatic tracking; never align the line to the list start.
+                            if (currentLineIndex in lines.indices) {
                                 scope.launch {
-                                    lazyListState.animateScrollToItem(
-                                        index = currentLineIndex,
-                                        scrollOffset = 0
+                                    anchorLyricLine(
+                                        targetIndex = currentLineIndex,
+                                        animated = true,
                                     )
                                 }
                             }
