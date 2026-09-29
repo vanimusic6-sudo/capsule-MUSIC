@@ -50,6 +50,8 @@ fun LyricsScreen(
 
     val currentLyrics by
         playerConnection.currentLyrics.collectAsState(initial = null)
+    val isPlaying by
+        playerConnection.isPlaying.collectAsState()
 
     // One owner for "fetch these lyrics if we do not have them", shared with the sounding line
     // under Capsule Light's artwork.
@@ -65,15 +67,20 @@ fun LyricsScreen(
         mutableStateOf<Long?>(null)
     }
 
-    LaunchedEffect(mediaMetadata.id, player, isVisible, onScreen) {
-        // This is a display clock, not playback state. When the sheet is hidden or the app is in
-        // background there is literally nothing to update, so terminate the coroutine completely.
+    LaunchedEffect(mediaMetadata.id, player, isVisible, onScreen, isPlaying) {
+        // This is a display clock, not playback state. Hidden/backgrounded/paused surfaces should
+        // do zero periodic work. A pause reads the final position once and sleeps until playback
+        // resumes or the user seeks.
         if (!isVisible || !onScreen) return@LaunchedEffect
 
+        position = player.currentPosition.coerceAtLeast(0L)
+        duration = player.duration.takeIf { it > 0L } ?: C.TIME_UNSET
+        if (!isPlaying) return@LaunchedEffect
+
         while (isActive) {
+            delay(250)
             position = player.currentPosition.coerceAtLeast(0L)
             duration = player.duration.takeIf { it > 0L } ?: C.TIME_UNSET
-            delay(250)
         }
     }
 
