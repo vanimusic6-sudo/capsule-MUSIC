@@ -1126,39 +1126,81 @@ fun Lyrics(
                 .add(WindowInsets(top = maxHeight / 2, bottom = maxHeight / 2))
                 .asPaddingValues(),
             modifier = Modifier
-                .smoothFadingEdge(vertical = 72.dp)
-                .nestedScroll(remember {
-                    var lastScrollTime = 0L
-                    object : NestedScrollConnection {
-                        override fun onPostScroll(
-                            consumed: Offset,
-                            available: Offset,
-                            source: NestedScrollSource
-                        ): Offset {
-                            if (!isSelectionModeActive && source == NestedScrollSource.UserInput) {
-                                val currentTime = System.currentTimeMillis()
-                                // Debounce scroll updates to reduce state changes
-                                if (currentTime - lastScrollTime > 50) {
-                                    lastPreviewTime = currentTime
-                                    isManualScrolling = true
-                                    lastScrollTime = currentTime
-                                }
-                            }
-                            return super.onPostScroll(consumed, available, source)
-                        }
+                .smoothFadingEdge(top = 128.dp, bottom = 104.dp)
+                .nestedScroll(
+                    remember(
+                        manualScrollThresholdPx,
+                        scrollLyrics,
+                        mediaMetadata?.id,
+                    ) {
+                        var accumulatedDragPx = 0f
+                        var enteredManualMode = false
+                        var lastScrollTime = 0L
 
-                        override suspend fun onPostFling(
-                            consumed: Velocity,
-                            available: Velocity
-                        ): Velocity {
-                            if (!isSelectionModeActive) {
-                                lastPreviewTime = System.currentTimeMillis()
-                                isManualScrolling = true
+                        object : NestedScrollConnection {
+                            override fun onPostScroll(
+                                consumed: Offset,
+                                available: Offset,
+                                source: NestedScrollSource,
+                            ): Offset {
+                                if (
+                                    !isSelectionModeActive &&
+                                    source == NestedScrollSource.UserInput
+                                ) {
+                                    accumulatedDragPx += abs(consumed.y)
+                                    val currentTime = System.currentTimeMillis()
+
+                                    // A tiny touch used to detach tracking immediately. Require a
+                                    // deliberate drag before entering free-scroll mode.
+                                    if (
+                                        !enteredManualMode &&
+                                        accumulatedDragPx >= manualScrollThresholdPx
+                                    ) {
+                                        enteredManualMode = true
+                                        isManualScrolling = true
+                                        lastPreviewTime = currentTime
+                                        lastScrollTime = currentTime
+                                    } else if (
+                                        enteredManualMode &&
+                                        currentTime - lastScrollTime > 80L
+                                    ) {
+                                        lastPreviewTime = currentTime
+                                        lastScrollTime = currentTime
+                                    }
+                                }
+                                return super.onPostScroll(consumed, available, source)
                             }
-                            return super.onPostFling(consumed, available)
+
+                            override suspend fun onPostFling(
+                                consumed: Velocity,
+                                available: Velocity,
+                            ): Velocity {
+                                if (!isSelectionModeActive) {
+                                    if (enteredManualMode) {
+                                        lastPreviewTime = System.currentTimeMillis()
+                                        isManualScrolling = true
+                                    } else if (
+                                        scrollLyrics &&
+                                        currentLineIndex in lines.indices
+                                    ) {
+                                        // Small accidental drags are elastic: return the live line
+                                        // to the one canonical anchor instead of preserving drift.
+                                        scope.launch {
+                                            anchorLyricLine(
+                                                targetIndex = currentLineIndex,
+                                                animated = true,
+                                            )
+                                        }
+                                    }
+                                }
+
+                                accumulatedDragPx = 0f
+                                enteredManualMode = false
+                                return super.onPostFling(consumed, available)
+                            }
                         }
-                    }
-                })
+                    },
+                )
         ) {
             val displayedCurrentLineIndex =
                 if (isSeeking || isSelectionModeActive) deferredCurrentLineIndex else currentLineIndex
@@ -1211,21 +1253,21 @@ fun Lyrics(
                             else -> 0.45f
                         }
                         archiveTuneStyle && index == displayedCurrentLineIndex -> 1f
-                        archiveTuneStyle && distance == 1 -> 0.52f
-                        archiveTuneStyle && distance == 2 -> 0.30f
-                        archiveTuneStyle && distance == 3 -> 0.18f
-                        archiveTuneStyle -> 0.10f
+                        archiveTuneStyle && distance == 1 -> 0.46f
+                        archiveTuneStyle && distance == 2 -> 0.22f
+                        archiveTuneStyle && distance == 3 -> 0.08f
+                        archiveTuneStyle -> 0.02f
                         index == displayedCurrentLineIndex -> 1f
-                        distance == 1 -> 0.65f
-                        distance == 2 -> 0.40f
-                        distance == 3 -> 0.25f
-                        else -> 0.15f
+                        distance == 1 -> 0.58f
+                        distance == 2 -> 0.30f
+                        distance == 3 -> 0.12f
+                        else -> 0.04f
                     }
 
                     val animatedAlpha by animateFloatAsState(
                         targetValue = targetAlpha,
                         animationSpec = tween(
-                            durationMillis = if (archiveTuneStyle) 620 else 400,
+                            durationMillis = if (archiveTuneStyle) 700 else 520,
                             easing = if (archiveTuneStyle) AppleMusicEasing else SmoothDecelerateEasing
                         ),
                         label = "lyricAlpha"
@@ -1249,27 +1291,6 @@ fun Lyrics(
                             easing = AppleMusicEasing,
                         ),
                         label = "archiveLineFocus",
-                    )
-
-                    val targetBlur = when {
-                        !isSynced || index == displayedCurrentLineIndex -> 0f
-                        isManualScrolling -> when {
-                            distance == 1 -> 0.15f
-                            distance == 2 -> 0.25f
-                            else -> 0.35f
-                        }
-                        distance == 1 -> 0.3f
-                        distance == 2 -> 0.6f
-                        else -> 1f
-                    }
-
-                    val animatedBlur by animateFloatAsState(
-                        targetValue = targetBlur,
-                        animationSpec = tween(
-                            durationMillis = 300,
-                            easing = CapsuleStandardEasing
-                        ),
-                        label = "lyricBlur"
                     )
 
                     val itemModifier = Modifier
@@ -1300,25 +1321,11 @@ fun Lyrics(
                                     initialScrollDone = true
                                     playerConnection.player.seekTo(item.time)
                                     scope.launch {
-                                        val itemInfo = lazyListState.layoutInfo.visibleItemsInfo.firstOrNull { it.index == index }
-                                        if (itemInfo != null) {
-                                            val viewportHeight = lazyListState.layoutInfo.viewportEndOffset - lazyListState.layoutInfo.viewportStartOffset
-                                            val center = lazyListState.layoutInfo.viewportStartOffset + (viewportHeight / 2)
-                                            val itemCenter = itemInfo.offset + itemInfo.size / 2
-                                            val offset = itemCenter - center
-
-                                            if (abs(offset) > 10) {
-                                                lazyListState.animateScrollBy(
-                                                    value = offset.toFloat(),
-                                                    animationSpec = spring(
-                                                        dampingRatio = Spring.DampingRatioNoBouncy,
-                                                        stiffness = Spring.StiffnessVeryLow
-                                                    )
-                                                )
-                                            }
-                                        } else {
-                                            lazyListState.animateScrollToItem(index)
-                                        }
+                                        anchorLyricLine(
+                                            targetIndex = index,
+                                            animated = true,
+                                            seek = true,
+                                        )
                                         isManualScrolling = false
                                     }
                                     lastPreviewTime = 0L
@@ -1344,12 +1351,9 @@ fun Lyrics(
                             horizontal = 24.dp,
                             vertical = 8.dp
                         )
+                        // One alpha layer only. The previous "blur" path multiplied alpha a
+                        // second time and allocated another graphics layer for every visible line.
                         .alpha(animatedAlpha)
-                        .graphicsLayer {
-                            if (animatedBlur > 0.1f && distance > 2) {
-                                alpha = animatedAlpha * (1f - animatedBlur * 0.1f)
-                            }
-                        }
 
                     val baseLayoutDirection = LocalLayoutDirection.current
                     val lineIsRtl = remember(item.text) { isRtlText(item.text) }
