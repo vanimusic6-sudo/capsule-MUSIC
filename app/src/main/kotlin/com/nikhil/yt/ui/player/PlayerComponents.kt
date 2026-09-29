@@ -72,6 +72,7 @@ fun PlayerBackground(
                 colors = gradientColors,
                 modifier = modifier,
                 animated = animated,
+                sharedAnimationTime = sharedAnimationTime,
             )
 
         PlayerBackgroundStyle.NEBULA ->
@@ -80,6 +81,7 @@ fun PlayerBackground(
                 colors = gradientColors,
                 modifier = modifier,
                 animated = animated,
+                sharedAnimationTime = sharedAnimationTime,
             )
     }
 }
