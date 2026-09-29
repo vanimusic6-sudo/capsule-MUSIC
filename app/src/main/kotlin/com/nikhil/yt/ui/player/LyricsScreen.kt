@@ -11,6 +11,7 @@ package com.nikhil.yt.ui.player
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.State
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -40,6 +41,7 @@ fun LyricsScreen(
     mediaMetadata: MediaMetadata,
     onBackClick: () -> Unit,
     playerArtworkColors: List<Color> = emptyList(),
+    backdropAnimationTime: State<Long>? = null,
     isVisible: Boolean = true,
     modifier: Modifier = Modifier,
 ) {
@@ -107,6 +109,7 @@ fun LyricsScreen(
             sliderPosition = it
         },
         playerArtworkColors = playerArtworkColors,
+        backdropAnimationTime = backdropAnimationTime,
         onSeekFinished = {
             sliderPosition?.let {
                 player.seekTo(it)
