@@ -237,6 +237,7 @@ fun BottomSheetPlayer(
 
     val needsArtworkPalette =
         onScreen &&
+            !showInlineLyrics &&
             playerBackground != PlayerBackgroundStyle.DEFAULT &&
             !state.isCollapsed &&
             !state.isDismissed
@@ -304,6 +305,7 @@ fun BottomSheetPlayer(
              * would be a second picture competing with the cover.
              */
             if (
+                !showInlineLyrics &&
                 !state.isCollapsed &&
                 !state.isDismissed &&
                 effectivePlayerDesign != CapsulePlayerDesign.IMMERSIVE
