@@ -119,6 +119,14 @@ fun CapsuleLyricsContent(
     val onScreen = appIsOnScreen()
     val visualsActive = isVisible && onScreen
 
+    if (!onScreen) {
+        // Background means genuinely invisible. Tear down the expensive lyrics subtree instead of
+        // merely stopping its clocks: no player-flow collectors, sliders, text layout or shadows
+        // stay subscribed while Android is showing another app. Refocus on return is immediate.
+        Box(modifier = modifier.fillMaxSize())
+        return
+    }
+
     val playbackState by
         playerConnection.playbackState.collectAsState()
 
