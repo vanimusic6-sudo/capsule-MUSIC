@@ -771,12 +771,21 @@ private fun CapsulePlayerLyricsHost(
                                 val remaining = 1f - opening
                                 scaleX = 1f
                                 scaleY = 1f + LyricsUnrollStretch * remaining
+
+                                /*
+                                 * The backdrop may stay faintly visible into the last pixels of
+                                 * travel, but bright lyric glyphs/shadows must not float over an
+                                 * already-transparent sheet. Fade the entire foreground as one
+                                 * offscreen layer and finish that fade slightly before travel ends.
+                                 */
                                 alpha =
                                     if (showLyrics) {
                                         1f
                                     } else {
-                                        travelled
+                                        ((travelled - 0.14f) / 0.86f)
+                                            .coerceIn(0f, 1f)
                                     }
+                                compositingStrategy = CompositingStrategy.Offscreen
                                 transformOrigin = TransformOrigin(0.5f, 0f)
                             },
                 ) {
