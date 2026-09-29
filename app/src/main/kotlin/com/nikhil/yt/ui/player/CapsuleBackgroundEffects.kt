@@ -95,6 +95,7 @@ internal fun rememberCapsuleAnimationTime(
      */
     val time = remember { mutableLongStateOf(STATIC_BACKGROUND_TIME_MS) }
     val isVisible = appIsOnScreen()
+    val motionEnabled = LocalCapsuleBackgroundMotionEnabled.current
     val framesPerSecond =
         (
             framesPerSecondOverride
@@ -106,8 +107,8 @@ internal fun rememberCapsuleAnimationTime(
         ).coerceIn(1, 60)
     val frameDelayMs = 1_000L / framesPerSecond
 
-    LaunchedEffect(compact, isVisible, running, framesPerSecond) {
-        if (!isVisible || !running) return@LaunchedEffect
+    LaunchedEffect(compact, isVisible, running, framesPerSecond, motionEnabled) {
+        if (!isVisible || !running || !motionEnabled) return@LaunchedEffect
 
         var previousTick = SystemClock.elapsedRealtime()
         while (isActive) {
