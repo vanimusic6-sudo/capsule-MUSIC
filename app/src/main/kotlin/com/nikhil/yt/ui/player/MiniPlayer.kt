@@ -20,6 +20,7 @@ fun MiniPlayer(
     duration: Long,
     modifier: Modifier = Modifier,
     pureBlack: Boolean,
+    visible: Boolean = true,
 ) {
     val capsuleDock by rememberPreference(CapsuleBottomBarEnabledKey, false)
     CapsuleMiniPlayer(
@@ -28,5 +29,6 @@ fun MiniPlayer(
         modifier = modifier,
         pureBlack = pureBlack,
         standardStyle = !capsuleDock,
+        visible = visible,
     )
 }
