@@ -1021,10 +1021,18 @@ fun Lyrics(
 
             val delayMs =
                 when {
-                    !isPlaying && sliderPosition == null -> 300L
-                    isManualScrolling -> 140L
+                    // Nothing visual is advancing while paused.
+                    !isPlaying && sliderPosition == null -> 420L
+                    // Manual scrolling intentionally suppresses lyric motion, so a slower clock is
+                    // enough to keep the current-line bookkeeping fresh.
+                    isManualScrolling -> 180L
+                    // Word-synced motion keeps the only fast clock. All non-active lines are now
+                    // detached from currentPlaybackPosition, so this wakes only the visible line
+                    // whose words are actually moving.
                     needsFineProgress -> 50L
-                    else -> 80L
+                    // Line-only sync does not need a 12.5 Hz poll; 10 Hz still lands well ahead of
+                    // the 500ms+ visual hand-off and saves idle CPU time.
+                    else -> 100L
                 }
             delay(delayMs)
         }
