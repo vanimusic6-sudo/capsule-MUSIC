@@ -1309,7 +1309,8 @@ fun Lyrics(
                             isSynced &&
                             index == displayedCurrentLineIndex
                     val animatedLineIsFocused =
-                        lyricsAnimationStyle != LyricsAnimationStyle.NONE &&
+                        !archiveTuneStyle &&
+                            lyricsAnimationStyle != LyricsAnimationStyle.NONE &&
                             isSynced &&
                             index == displayedCurrentLineIndex
 
@@ -1346,6 +1347,16 @@ fun Lyrics(
                                 easing = AppleMusicEasing,
                             ),
                         label = "archiveLineFocus",
+                    )
+
+                    val animatedLineFocus by animateFloatAsState(
+                        targetValue = if (animatedLineIsFocused) 1f else 0f,
+                        animationSpec =
+                            tween(
+                                durationMillis = if (animatedLineIsFocused) 480 else 980,
+                                easing = AppleMusicEasing,
+                            ),
+                        label = "animatedLineFocus",
                     )
 
                     val itemModifier = Modifier
@@ -1748,7 +1759,8 @@ fun Lyrics(
                                     }
 
                                     val wordAlpha = when {
-                                        !isActiveLine && index < displayedCurrentLineIndex -> 1f
+                                        !isActiveLine && index < displayedCurrentLineIndex ->
+                                            0.62f + (0.38f * animatedLineFocus)
                                         !isActiveLine -> 0.62f
                                         hasWordPassed -> 1f
                                         isWordActive -> 0.5f + (0.5f * transitionProgress)
@@ -1831,7 +1843,8 @@ fun Lyrics(
                                         val wordAlpha =
                                             when {
                                                 !isActiveLine &&
-                                                    index < displayedCurrentLineIndex -> 1f
+                                                    index < displayedCurrentLineIndex ->
+                                                    0.65f + (0.35f * animatedLineFocus)
                                                 !isActiveLine -> 0.65f
                                                 reduceMotionDuringScroll -> 0.65f
                                                 else -> 0.35f + (0.65f * fadeProgress)
