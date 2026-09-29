@@ -237,10 +237,12 @@ fun BottomSheetPlayer(
 
     val needsArtworkPalette =
         onScreen &&
-            !showInlineLyrics &&
-            playerBackground != PlayerBackgroundStyle.DEFAULT &&
             !state.isCollapsed &&
-            !state.isDismissed
+            !state.isDismissed &&
+            (
+                playerBackground != PlayerBackgroundStyle.DEFAULT ||
+                    effectivePlayerDesign == CapsulePlayerDesign.IMMERSIVE
+            )
     val gradientColors =
         rememberCapsuleArtworkColors(
             mediaMetadata = enrichedMetadata,
@@ -326,6 +328,7 @@ fun BottomSheetPlayer(
                     design = effectivePlayerDesign,
                     showLyrics = showInlineLyrics,
                     mediaMetadata = metadata,
+                    playerArtworkColors = gradientColors,
                     sliderPosition = sliderPosition,
                     position = position,
                     duration = duration,
@@ -428,6 +431,7 @@ private fun CapsulePlayerLyricsHost(
     design: CapsulePlayerDesign,
     showLyrics: Boolean,
     mediaMetadata: MediaMetadata,
+    playerArtworkColors: List<Color>,
     sliderPosition: Long?,
     position: Long,
     duration: Long,
@@ -626,6 +630,7 @@ private fun CapsulePlayerLyricsHost(
                     LyricsScreen(
                         mediaMetadata = mediaMetadata,
                         onBackClick = onHideLyrics,
+                        playerArtworkColors = playerArtworkColors,
                         isVisible = showLyrics,
                         modifier = Modifier.fillMaxSize(),
                     )
