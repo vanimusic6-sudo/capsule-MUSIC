@@ -168,10 +168,13 @@ fun CapsulePlayerContent(
      * row would pop in late and vanish early and the layout would visibly reset on both.
      */
     open: Boolean = true,
+    expansionProgress: Float = if (open) 1f else 0f,
 ) {
-    // Composition keeps running behind a backgrounded app; only drawing stops.
+    // Keep the full player alive through its collapse/open transition, but once the sheet has
+    // actually reached the mini-player anchor there is no reason to keep its subscriptions,
+    // artwork tree and local animation state composed underneath.
     val onScreen = appIsOnScreen()
-    if (!onScreen) {
+    if (!onScreen || (!open && expansionProgress <= 0.001f)) {
         Box(Modifier.fillMaxSize())
         return
     }
