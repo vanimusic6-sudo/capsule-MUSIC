@@ -17,6 +17,7 @@ import androidx.annotation.RequiresApi
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.animateScrollBy
+import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -83,6 +84,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -188,6 +190,7 @@ import com.nikhil.yt.utils.ComposeToImage
 import com.nikhil.yt.utils.rememberEnumPreference
 import com.nikhil.yt.utils.rememberPreference
 import com.nikhil.yt.utils.reportRecoverableException
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
@@ -822,14 +825,15 @@ fun Lyrics(
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_STOP) {
-                val visibleItemsInfo = lazyListState.layoutInfo.visibleItemsInfo
-                val isCurrentLineVisible = visibleItemsInfo.any { it.index == currentLineIndex }
-                if (isCurrentLineVisible) {
-                    initialScrollDone = false
-                }
+                // Never preserve a half-finished list offset across background/foreground. The old
+                // Velune logic only reset when the current line happened to be visible, which is
+                // exactly how an accidental off-centre anchor survived a minimize cycle.
+                initialScrollDone = false
                 isAppMinimized = true
-            } else if(event == Lifecycle.Event.ON_START) {
+            } else if (event == Lifecycle.Event.ON_START) {
                 isAppMinimized = false
+                initialScrollDone = false
+                lastPreviewTime = 0L
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
@@ -847,11 +851,93 @@ fun Lyrics(
         mutableStateOf(false)
     }
 
-    LaunchedEffect(isVisible, lines, mediaMetadata?.id, lineSyncLeadMs) {
+    val manualScrollThresholdPx = with(density) { 28.dp.toPx() }
+
+    /*
+     * Every path that gives focus back to the synced line goes through the same physical anchor.
+     * Previously visible items were centred, off-screen items were aligned to the list start, and
+     * the "resume auto-scroll" button used yet another path. That let the anchor drift all the way
+     * under the bottom controls and made the bad position persistent.
+     */
+    suspend fun anchorLyricLine(
+        targetIndex: Int,
+        animated: Boolean,
+        seek: Boolean = false,
+    ) {
+        if (!isVisible || targetIndex !in lines.indices) return
+
+        try {
+            var itemInfo =
+                lazyListState.layoutInfo.visibleItemsInfo
+                    .firstOrNull { it.index == targetIndex }
+
+            if (itemInfo == null) {
+                // First make the requested line measurable. This branch is used when opening
+                // lyrics in the middle of a track or returning after the app was backgrounded.
+                lazyListState.scrollToItem(targetIndex)
+                withFrameNanos { }
+                itemInfo =
+                    lazyListState.layoutInfo.visibleItemsInfo
+                        .firstOrNull { it.index == targetIndex }
+            }
+
+            val measuredItem = itemInfo ?: return
+            val layout = lazyListState.layoutInfo
+            val viewportHeight = layout.viewportEndOffset - layout.viewportStartOffset
+            if (viewportHeight <= 0) return
+
+            val anchorY = layout.viewportStartOffset + viewportHeight / 2
+            val itemCenter = measuredItem.offset + measuredItem.size / 2
+            val offset = itemCenter - anchorY
+            if (abs(offset) <= 2) return
+
+            if (!animated) {
+                lazyListState.scrollBy(offset.toFloat())
+            } else if (seek) {
+                lazyListState.animateScrollBy(
+                    value = offset.toFloat(),
+                    animationSpec =
+                        spring(
+                            dampingRatio = Spring.DampingRatioNoBouncy,
+                            stiffness = Spring.StiffnessMedium,
+                        ),
+                )
+            } else {
+                val durationMs =
+                    with(density) {
+                        val travelDp = abs(offset).toDp().value
+                        (460f + travelDp * 1.35f)
+                            .toInt()
+                            .coerceIn(520, 1_300)
+                    }
+                lazyListState.animateScrollBy(
+                    value = offset.toFloat(),
+                    animationSpec =
+                        tween(
+                            durationMillis = durationMs,
+                            easing = AppleMusicEasing,
+                        ),
+                )
+            }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            // A new line or a user gesture may invalidate the current layout between frames.
+            // The next tracking pass will re-anchor from live playback position.
+        }
+    }
+
+    LaunchedEffect(
+        isVisible,
+        isAppMinimized,
+        lines,
+        mediaMetadata?.id,
+        lineSyncLeadMs,
+    ) {
         // The lyrics surface remains mounted while its close animation runs. Stop owning the list
         // the instant it becomes hidden, otherwise an in-flight auto-scroll can be cancelled at an
         // arbitrary pixel and that stale position survives a quick reopen.
-        if (!isVisible) {
+        if (!isVisible || isAppMinimized) {
             isManualScrolling = false
             isSeeking = false
             lastPreviewTime = 0L
