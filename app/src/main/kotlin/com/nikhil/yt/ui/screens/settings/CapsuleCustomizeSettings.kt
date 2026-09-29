@@ -6,6 +6,7 @@
 
 package com.nikhil.yt.ui.screens.settings
 
+import android.content.ClipData
 import android.content.Intent
 import android.widget.Toast
 import androidx.compose.foundation.layout.Column
@@ -16,24 +17,20 @@ import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import com.nikhil.yt.LocalPlayerAwareWindowInsets
 import com.nikhil.yt.R
 import com.nikhil.yt.constants.CapsuleCustomizeTarget
@@ -73,6 +70,8 @@ import com.nikhil.yt.ui.player.CapsuleLightModeBaseOrderEncoded
 import com.nikhil.yt.ui.player.CapsuleLightAvBaseOrderEncoded
 import com.nikhil.yt.ui.player.CapsuleLightTransportBaseOrderEncoded
 import com.nikhil.yt.ui.player.CapsuleImmersiveBaseOrderEncoded
+import com.nikhil.yt.ui.player.readCapsuleDesignPresetFile
+import com.nikhil.yt.ui.player.writeCapsuleDesignPresetFile
 import com.nikhil.yt.ui.utils.backToMain
 import com.nikhil.yt.utils.rememberEnumPreference
 import com.nikhil.yt.utils.rememberPreference
@@ -93,8 +92,6 @@ fun CapsuleCustomizeSettings(
             defaultValue = CapsulePlayerDesign.SUPER,
         )
     val context = LocalContext.current
-    var showImportDialog by rememberSaveable { mutableStateOf(false) }
-    var importPayload by rememberSaveable { mutableStateOf("") }
 
     val (lightEditEnabled, onLightEditEnabledChange) =
         rememberPreference(
@@ -277,61 +274,31 @@ fun CapsuleCustomizeSettings(
 
     val shareTarget = effectiveTarget ?: latchedTarget
     val shareChooserTitle = stringResource(R.string.capsule_customize_share_chooser)
+    val importPresetLauncher =
+        rememberLauncherForActivityResult(
+            contract = ActivityResultContracts.OpenDocument(),
+        ) { uri ->
+            if (uri != null) {
+                val preset =
+                    readCapsuleDesignPresetFile(context, uri)
+                        ?.let(CapsuleDesignPresetCodec::decode)
 
-    if (showImportDialog) {
-        AlertDialog(
-            onDismissRequest = { showImportDialog = false },
-            title = {
-                Text(stringResource(R.string.capsule_customize_import))
-            },
-            text = {
-                Column {
-                    Text(stringResource(R.string.capsule_customize_import_description))
-                    Spacer(Modifier.height(12.dp))
-                    OutlinedTextField(
-                        value = importPayload,
-                        onValueChange = { importPayload = it },
-                        minLines = 7,
-                        maxLines = 12,
-                        label = {
-                            Text(stringResource(R.string.capsule_customize_import_hint))
-                        },
-                    )
+                if (preset == null) {
+                    Toast.makeText(
+                        context,
+                        context.getString(R.string.capsule_customize_import_invalid),
+                        Toast.LENGTH_SHORT,
+                    ).show()
+                } else {
+                    applyPreset(preset)
+                    Toast.makeText(
+                        context,
+                        context.getString(R.string.capsule_customize_import_success),
+                        Toast.LENGTH_SHORT,
+                    ).show()
                 }
-            },
-            dismissButton = {
-                TextButton(onClick = { showImportDialog = false }) {
-                    Text(stringResource(android.R.string.cancel))
-                }
-            },
-            confirmButton = {
-                TextButton(
-                    enabled = importPayload.isNotBlank(),
-                    onClick = {
-                        val preset = CapsuleDesignPresetCodec.decode(importPayload)
-                        if (preset == null) {
-                            Toast.makeText(
-                                context,
-                                context.getString(R.string.capsule_customize_import_invalid),
-                                Toast.LENGTH_SHORT,
-                            ).show()
-                        } else {
-                            applyPreset(preset)
-                            importPayload = ""
-                            showImportDialog = false
-                            Toast.makeText(
-                                context,
-                                context.getString(R.string.capsule_customize_import_success),
-                                Toast.LENGTH_SHORT,
-                            ).show()
-                        }
-                    },
-                ) {
-                    Text(stringResource(R.string.capsule_customize_import_apply))
-                }
-            },
-        )
-    }
+            }
+        }
 
     Column(
         Modifier
@@ -451,19 +418,36 @@ fun CapsuleCustomizeSettings(
                 )
             },
             onClick = {
-                val payload = CapsuleDesignPresetCodec.encode(presetFor(shareTarget))
-                val shareIntent =
-                    Intent(Intent.ACTION_SEND).apply {
-                        type = "text/plain"
-                        putExtra(Intent.EXTRA_SUBJECT, "Capsule design")
-                        putExtra(Intent.EXTRA_TEXT, payload)
-                    }
-                context.startActivity(
-                    Intent.createChooser(
-                        shareIntent,
-                        shareChooserTitle,
-                    ),
-                )
+                runCatching {
+                    val payload = CapsuleDesignPresetCodec.encode(presetFor(shareTarget))
+                    val (file, uri) =
+                        writeCapsuleDesignPresetFile(
+                            context = context,
+                            target = shareTarget,
+                            payload = payload,
+                        )
+                    val shareIntent =
+                        Intent(Intent.ACTION_SEND).apply {
+                            type = "application/octet-stream"
+                            putExtra(Intent.EXTRA_SUBJECT, file.nameWithoutExtension)
+                            putExtra(Intent.EXTRA_STREAM, uri)
+                            clipData = ClipData.newRawUri(file.name, uri)
+                            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                        }
+
+                    context.startActivity(
+                        Intent.createChooser(
+                            shareIntent,
+                            shareChooserTitle,
+                        ),
+                    )
+                }.onFailure {
+                    Toast.makeText(
+                        context,
+                        context.getString(R.string.capsule_customize_share_failed),
+                        Toast.LENGTH_SHORT,
+                    ).show()
+                }
             },
         )
 
@@ -479,8 +463,7 @@ fun CapsuleCustomizeSettings(
                 )
             },
             onClick = {
-                importPayload = ""
-                showImportDialog = true
+                importPresetLauncher.launch(arrayOf("*/*"))
             },
         )
 
