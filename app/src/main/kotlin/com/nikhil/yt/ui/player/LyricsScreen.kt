@@ -46,6 +46,7 @@ fun LyricsScreen(
     val context = LocalContext.current
     val database = LocalDatabase.current
     val menuState = LocalMenuState.current
+    val onScreen = appIsOnScreen()
 
     val currentLyrics by
         playerConnection.currentLyrics.collectAsState(initial = null)
@@ -64,7 +65,11 @@ fun LyricsScreen(
         mutableStateOf<Long?>(null)
     }
 
-    LaunchedEffect(mediaMetadata.id, player) {
+    LaunchedEffect(mediaMetadata.id, player, isVisible, onScreen) {
+        // This is a display clock, not playback state. When the sheet is hidden or the app is in
+        // background there is literally nothing to update, so terminate the coroutine completely.
+        if (!isVisible || !onScreen) return@LaunchedEffect
+
         while (isActive) {
             position = player.currentPosition.coerceAtLeast(0L)
             duration = player.duration.takeIf { it > 0L } ?: C.TIME_UNSET
