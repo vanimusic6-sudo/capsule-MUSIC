@@ -449,7 +449,6 @@ private const val LyricsOpenWindow = 0.70f
 
 /** Vertical only. The horizontal axis is left at exactly 1 throughout, which is the whole point. */
 private const val LyricsUnrollStretch = 0.045f
-private const val LyricsOpenFade = 0.90f
 private const val LyricsTravelMillis = 480
 
 /**
@@ -658,7 +657,15 @@ private fun CapsulePlayerLyricsHost(
                                 val remaining = 1f - opening
                                 scaleX = 1f
                                 scaleY = 1f + LyricsUnrollStretch * remaining
-                                alpha = 1f - LyricsOpenFade * remaining
+
+                                /*
+                                 * The lyrics page is a real opaque surface. Never fade the whole
+                                 * page: doing so alpha-composites its own background with the player
+                                 * background underneath and changes the perceived gradient while
+                                 * the sheet is travelling. Geometry provides the transition; the
+                                 * backdrop itself stays fully opaque from its first visible pixel.
+                                 */
+                                alpha = 1f
                                 transformOrigin = TransformOrigin(0.5f, 0f)
                             },
                 ) {
@@ -666,7 +673,6 @@ private fun CapsulePlayerLyricsHost(
                         mediaMetadata = mediaMetadata,
                         onBackClick = onHideLyrics,
                         playerArtworkColors = playerArtworkColors,
-                        useHostPlayerBackdrop = design != CapsulePlayerDesign.IMMERSIVE,
                         isVisible = showLyrics,
                         modifier = Modifier.fillMaxSize(),
                     )
