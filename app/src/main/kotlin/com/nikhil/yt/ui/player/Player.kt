@@ -360,15 +360,36 @@ fun BottomSheetPlayer(
 }
 
 /**
- * Lyrics opens from the visual centre of the player card instead of sliding in from a screen edge.
+ * The lyrics sheet has a character of its own, and it had to be made more than nominally different.
  *
- * ArchiveTune's Miko transition gets its physical feel from anisotropic scale + a rounded sheet.
- * Capsule keeps that idea but removes the fade/blur entirely: the surface is opaque from frame one
- * and expands around the artwork/card region, so it reads as the card becoming the lyrics screen.
+ * Both surfaces used to rise from the bottom and resolve a uniform scale, which is one animation
+ * played twice however the numbers differ — the eye reads the *geometry*, not the constants. What
+ * separates them now is where each one is anchored and along which axis it moves:
+ *
+ * - the player is anchored at the **bottom**, at the dock it folds into, and scales on both axes. It
+ *   is an object shrinking towards a place.
+ * - the lyrics are anchored at the **top** and stretch on the vertical axis alone. Nothing about
+ *   them gets wider or narrower; the sheet unrolls downward from its own top edge, the way a page
+ *   is pulled out rather than a card zoomed in.
+ *
+ * Those are opposite anchors and different axes, so the two cannot be mistaken for each other even
+ * though the idea — rise, open out, settle — is the one that was there before.
  */
-private const val LyricsCardStartScaleX = 0.92f
-private const val LyricsCardStartScaleY = 0.78f
-private const val LyricsCardStartLiftFraction = 0.14f
+private const val LyricsOpenWindow = 0.70f
+
+/** Vertical only. The horizontal axis is left at exactly 1 throughout, which is the whole point. */
+private const val LyricsUnrollStretch = 0.045f
+private const val LyricsOpenFade = 0.90f
+private const val LyricsTravelMillis = 480
+
+/**
+ * Softer off the mark than the player's, and a touch longer.
+ *
+ * The sheet should feel lighter than the thing it covers: the player is a slab being moved, the
+ * lyrics are a page being drawn out. Spending even less distance in the first frames is what carries
+ * that difference in time as well as in shape.
+ */
+private val LyricsEasing = CubicBezierEasing(0.42f, 0f, 0.28f, 1f)
 
 @Composable
 private fun CapsulePlayerLyricsHost(
@@ -415,13 +436,7 @@ private fun CapsulePlayerLyricsHost(
          */
         lyricsMotion.animateTo(
             targetValue = if (showLyrics) 1f else 0f,
-            animationSpec =
-                spring(
-                    // Keep ArchiveTune's Miko spring character: a soft, physical settle instead
-                    // of the stretched "rubber card" feel the previous Capsule variant had.
-                    dampingRatio = 0.82f,
-                    stiffness = Spring.StiffnessMediumLow,
-                ),
+            animationSpec = tween(durationMillis = LyricsTravelMillis, easing = LyricsEasing),
         )
 
         if (!showLyrics) {
@@ -539,35 +554,37 @@ private fun CapsulePlayerLyricsHost(
                         Modifier
                             .fillMaxSize()
                             .graphicsLayer {
+                                /*
+                                 * Travel, settle and blur all read the same progress, so the lyrics
+                                 * sheet lands exactly once and holds still. The previous version
+                                 * added a velocity-derived lag to its translation and a squash
+                                 * driven by spring overshoot; both fought the travel they were
+                                 * layered on and produced the jitter at the end of the transition.
+                                 */
                                 val travelled = lyricsMotion.value.coerceIn(0f, 1f)
-                                val remaining = 1f - travelled
+                                translationY =
+                                    ((1f - travelled) * fullHeightPx).coerceAtLeast(0f)
 
                                 /*
-                                 * Match ArchiveTune's Miko geometry much more closely:
-                                 * - bottom transform origin
-                                 * - short upward travel from below
-                                 * - anisotropic 0.92 x 0.78 expansion
-                                 * - rounded sheet becoming a screen
+                                 * Unrolling, not settling. The sheet is over-tall at the start and
+                                 * draws down to its true height from its own top edge; its width
+                                 * never changes at all. That is what keeps it from reading as the
+                                 * player's fold played in reverse.
                                  *
-                                 * Capsule deliberately keeps alpha at 1 and uses no RenderEffect,
-                                 * so the motion is physical without a visible fade or blur.
+                                 * No blur — a full-screen RenderEffect costs an offscreen buffer
+                                 * every frame, which is what made these surfaces stall the first
+                                 * time they were used.
                                  */
-                                scaleX =
-                                    LyricsCardStartScaleX +
-                                        (1f - LyricsCardStartScaleX) * travelled
-                                scaleY =
-                                    LyricsCardStartScaleY +
-                                        (1f - LyricsCardStartScaleY) * travelled
-                                translationY =
-                                    fullHeightPx *
-                                        LyricsCardStartLiftFraction *
-                                        remaining
-                                alpha = 1f
-                                transformOrigin = TransformOrigin(0.5f, 1f)
-
-                                val corner = 32.dp * remaining
-                                shape = RoundedCornerShape(corner)
-                                clip = travelled < 0.998f
+                                val opening =
+                                    CapsuleMotion.approach(
+                                        progress = travelled,
+                                        window = LyricsOpenWindow,
+                                    )
+                                val remaining = 1f - opening
+                                scaleX = 1f
+                                scaleY = 1f + LyricsUnrollStretch * remaining
+                                alpha = 1f - LyricsOpenFade * remaining
+                                transformOrigin = TransformOrigin(0.5f, 0f)
                             },
                 ) {
                     LyricsScreen(
