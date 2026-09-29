@@ -42,12 +42,8 @@ constructor(
         mapOf(
             LyricsProviderOrder.LYRICS_PLUS to LyricsPlusLyricsProvider,
             LyricsProviderOrder.BETTER_LYRICS to BetterLyricsProvider,
+            LyricsProviderOrder.DEEZER to DeezerLyricsProvider,
             LyricsProviderOrder.PAXSENIX_APPLE_MUSIC to PaxsenixAppleMusicLyricsProvider,
-            LyricsProviderOrder.PAXSENIX_SPOTIFY to PaxsenixSpotifyLyricsProvider,
-            LyricsProviderOrder.PAXSENIX_MUSIXMATCH to PaxsenixMusixmatchLyricsProvider,
-            LyricsProviderOrder.PAXSENIX_NETEASE to PaxsenixNetEaseLyricsProvider,
-            LyricsProviderOrder.PAXSENIX_YOUTUBE to PaxsenixYouTubeLyricsProvider,
-            LyricsProviderOrder.MUSIXMATCH to MusixmatchLyricsProvider,
             LyricsProviderOrder.NETEASE to NetEaseLyricsProvider,
             LyricsProviderOrder.YOUTUBE to YouTubeLyricsProvider,
         )
