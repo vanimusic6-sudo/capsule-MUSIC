@@ -680,6 +680,54 @@ fun CapsulePlayerContent(
             }
     }
 
+    /*
+     * A disabled lyric line is not part of the editable scene at all. Keep its persisted order and
+     * last position in storage so enabling it later restores the user's design, but remove it from
+     * the live CanvasV2 order/positions. This also removes the otherwise invisible inter-block gap,
+     * so the artwork really receives every pixel that the disabled row used to consume.
+     */
+    val visibleLightOrder =
+        if (lyricLineConfigured) {
+            lightOrder
+        } else {
+            lightOrder.filterNot { it == CapsuleLightBlock.LYRIC }
+        }
+    val visibleLightCanvasPositions =
+        if (lyricLineConfigured) {
+            lightCanvasPositions
+        } else {
+            lightCanvasPositions - CapsuleLightBlock.LYRIC
+        }
+
+    fun restoreHiddenLyric(
+        reorderedVisible: List<CapsuleLightBlock>,
+    ): List<CapsuleLightBlock> {
+        if (lyricLineConfigured || CapsuleLightBlock.LYRIC in reorderedVisible) {
+            return decodeCapsuleLightOrder(
+                encodeCapsuleLightOrder(reorderedVisible),
+            )
+        }
+
+        val storedIndex =
+            lightOrder
+                .indexOf(CapsuleLightBlock.LYRIC)
+                .takeIf { it >= 0 }
+                ?: 1
+        val full =
+            reorderedVisible
+                .toMutableList()
+                .apply {
+                    add(
+                        storedIndex.coerceIn(0, size),
+                        CapsuleLightBlock.LYRIC,
+                    )
+                }
+
+        return decodeCapsuleLightOrder(
+            encodeCapsuleLightOrder(full),
+        )
+    }
+
     CapsulePlayerLayout(
         design = design,
         textColor = textColor,
@@ -803,11 +851,11 @@ fun CapsulePlayerContent(
                     )
                 },
         lightEditorEnabled = useClayLayout && lightEditorEnabled,
-        lightOrder = lightOrder,
-        lightCanvasPositionsDp = lightCanvasPositions,
+        lightOrder = visibleLightOrder,
+        lightCanvasPositionsDp = visibleLightCanvasPositions,
         lightGapsDp = lightBlockGaps,
         onLightOrderChange = { reordered ->
-            lightOrder = decodeCapsuleLightOrder(encodeCapsuleLightOrder(reordered))
+            lightOrder = restoreHiddenLyric(reordered)
         },
         onLightEditStarted = {
             lightEditInProgress = true
@@ -819,18 +867,29 @@ fun CapsulePlayerContent(
         lightInteractionActive = lightEditInProgress,
         lightArtworkResizeActive = artworkResizeActive,
         onLightOrderSettled = { reordered ->
-            val safeOrder = decodeCapsuleLightOrder(encodeCapsuleLightOrder(reordered))
+            val safeOrder = restoreHiddenLyric(reordered)
             lightOrder = safeOrder
             onLightOrderEncodedChange(encodeCapsuleLightOrder(safeOrder))
             lightEditInProgress = false
             lightValidationGeneration += 1
         },
         onLightCanvasSettled = { positions, reordered ->
-            val safeOrder = decodeCapsuleLightOrder(encodeCapsuleLightOrder(reordered))
-            val safePositions =
+            val safeOrder = restoreHiddenLyric(reordered)
+            val visibleSafePositions =
                 positions
                     .filterKeys { it in CapsuleLightBaseOrder }
                     .mapValues { (_, value) -> value.coerceAtLeast(0f) }
+            val safePositions =
+                if (!lyricLineConfigured) {
+                    lightCanvasPositions[CapsuleLightBlock.LYRIC]
+                        ?.let { lyricTop ->
+                            visibleSafePositions +
+                                (CapsuleLightBlock.LYRIC to lyricTop.coerceAtLeast(0f))
+                        }
+                        ?: visibleSafePositions
+                } else {
+                    visibleSafePositions
+                }
 
             lightOrder = safeOrder
             lightCanvasPositions = safePositions
