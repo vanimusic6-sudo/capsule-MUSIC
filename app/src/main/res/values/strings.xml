@@ -900,6 +900,11 @@ Velune will only extract your token, and everything else is stored locally.</str
     <string name="enable_paxsenix_netease">Paxsenix: NetEase</string>
     <string name="enable_paxsenix_youtube">Paxsenix: YouTube</string>
     <string name="lyrics_provider_paxsenix_apple_description">Apple Music lyrics through the Paxsenix relay.</string>
+    <string name="enable_deezer_lyrics">Deezer lyrics</string>
+    <string name="lyrics_provider_deezer_description">Deezer rich-sync lyrics with word-by-word timing. Requires Deezer login.</string>
+    <string name="deezer_lyrics_login">Deezer login</string>
+    <string name="deezer_lyrics_connected">Connected — Deezer lyrics are available</string>
+    <string name="deezer_lyrics_login_required">Sign in to Deezer to enable rich-sync lyrics</string>
     <string name="lyrics_provider_paxsenix_spotify_description">Spotify lyrics through the Paxsenix relay.</string>
     <string name="lyrics_provider_paxsenix_musixmatch_description">Musixmatch lyrics through the Paxsenix relay.</string>
     <string name="lyrics_provider_paxsenix_netease_description">NetEase lyrics through the Paxsenix relay.</string>
