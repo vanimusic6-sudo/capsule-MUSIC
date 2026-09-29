@@ -37,6 +37,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -49,6 +50,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -64,14 +66,19 @@ import androidx.compose.ui.unit.sp
 import androidx.media3.common.C
 import androidx.media3.common.Player
 import com.nikhil.yt.LocalPlayerConnection
-import com.nikhil.yt.constants.LyricsBackgroundStyle
-import com.nikhil.yt.constants.LyricsBackgroundStyleKey
+import com.nikhil.yt.constants.CapsulePlayerDesign
+import com.nikhil.yt.constants.CapsulePlayerDesignKey
+import com.nikhil.yt.constants.LyricsUsePlayerThemeKey
+import com.nikhil.yt.constants.PlayerBackgroundStyle
+import com.nikhil.yt.constants.PlayerBackgroundStyleKey
 import com.nikhil.yt.R
 import com.nikhil.yt.extensions.togglePlayPause
 import com.nikhil.yt.models.MediaMetadata
 import com.nikhil.yt.ui.component.Lyrics
+import com.nikhil.yt.ui.theme.PlayerBackgroundColorUtils
 import com.nikhil.yt.utils.makeTimeString
 import com.nikhil.yt.utils.rememberEnumPreference
+import com.nikhil.yt.utils.rememberPreference
 import kotlinx.coroutines.isActive
 import kotlin.math.cos
 import kotlin.math.sin
@@ -118,21 +125,35 @@ fun CapsuleLyricsContent(
     val isPlaying by
         playerConnection.isPlaying.collectAsState()
 
-    val lyricsBackground by
-        rememberEnumPreference(
-            LyricsBackgroundStyleKey,
-            defaultValue = LyricsBackgroundStyle.SOLID,
+    val lyricsUsePlayerTheme by
+        rememberPreference(
+            LyricsUsePlayerThemeKey,
+            defaultValue = false,
         )
+    val playerBackground by
+        rememberEnumPreference(
+            PlayerBackgroundStyleKey,
+            defaultValue = PlayerBackgroundStyle.CAPSULE_STAR,
+        )
+    val playerDesign by
+        rememberEnumPreference(
+            CapsulePlayerDesignKey,
+            defaultValue = CapsulePlayerDesign.SUPER,
+        )
+
+    val needsArtworkColors =
+        lyricsUsePlayerTheme &&
+            (
+                playerDesign == CapsulePlayerDesign.IMMERSIVE ||
+                    playerBackground != PlayerBackgroundStyle.DEFAULT
+            )
 
     val artworkColors =
         rememberCapsuleArtworkColors(
             mediaMetadata = mediaMetadata,
-            // Keep the palette alive during the close transition. isVisible becomes false before
-            // the sheet is unmounted, and disabling the palette here used to swap the background
-            // to theme fallback for the last animation frames.
-            enabled =
-                onScreen &&
-                    lyricsBackground != LyricsBackgroundStyle.SOLID,
+            // Palette extraction is event-driven/cached. Keep the resolved colors warm through the
+            // close transition so the background cannot flash back to the fallback color.
+            enabled = onScreen && needsArtworkColors,
         )
 
     // Same treatment as the full player: the control card is a translucent layer, not an
@@ -200,63 +221,61 @@ fun CapsuleLyricsContent(
                 displayPosition
         ).coerceAtLeast(0L)
 
+    val baseBackgroundColor =
+        if (
+            lyricsUsePlayerTheme &&
+            playerDesign != CapsulePlayerDesign.IMMERSIVE &&
+            playerBackground == PlayerBackgroundStyle.DEFAULT
+        ) {
+            MaterialTheme.colorScheme.background
+        } else {
+            CapsuleLyricsBackground
+        }
+
     Box(
         modifier =
             modifier
                 .fillMaxSize()
-                .background(CapsuleLyricsBackground),
+                .background(baseBackgroundColor),
     ) {
-        when (lyricsBackground) {
-            LyricsBackgroundStyle.SOLID -> Unit
-
-            LyricsBackgroundStyle.CAPSULE_STAR ->
-                CapsuleProceduralBackground(
-                    effect = CapsuleBackgroundEffect.CAPSULE_STAR,
-                    colors = artworkColors,
-                    modifier = Modifier.fillMaxSize(),
+        if (lyricsUsePlayerTheme) {
+            if (playerDesign == CapsulePlayerDesign.IMMERSIVE) {
+                val coloringStops =
+                    remember(artworkColors) {
+                        PlayerBackgroundColorUtils.buildImmersiveLyricsColoringStops(artworkColors)
+                    }
+                Box(
+                    modifier =
+                        Modifier
+                            .fillMaxSize()
+                            .background(
+                                Brush.verticalGradient(
+                                    colorStops = coloringStops,
+                                ),
+                            ),
+                )
+            } else {
+                PlayerBackground(
+                    playerBackground = playerBackground,
+                    gradientColors = artworkColors,
                     animated =
                         visualsActive &&
                             isPlaying &&
                             playbackState == Player.STATE_READY,
-                    animationFps = 12,
                 )
+            }
 
-            LyricsBackgroundStyle.CAPSULE_GLOW ->
-                CapsuleProceduralBackground(
-                    effect = CapsuleBackgroundEffect.CAPSULE_GLOW,
-                    colors = artworkColors,
-                    modifier = Modifier.fillMaxSize(),
-                    animated = false,
+            if (
+                playerDesign == CapsulePlayerDesign.IMMERSIVE ||
+                playerBackground != PlayerBackgroundStyle.DEFAULT
+            ) {
+                Box(
+                    modifier =
+                        Modifier
+                            .fillMaxSize()
+                            .background(Color.Black.copy(alpha = 0.12f)),
                 )
-
-            LyricsBackgroundStyle.NEBULA ->
-                CapsuleProceduralBackground(
-                    effect = CapsuleBackgroundEffect.NEBULA,
-                    colors = artworkColors,
-                    modifier = Modifier.fillMaxSize(),
-                    animated =
-                        visualsActive &&
-                            isPlaying &&
-                            playbackState == Player.STATE_READY,
-                    animationFps = 12,
-                )
-
-            LyricsBackgroundStyle.ARTWORK_GRADIENT ->
-                CapsuleProceduralBackground(
-                    effect = CapsuleBackgroundEffect.MATTE_GRADIENT,
-                    colors = artworkColors,
-                    modifier = Modifier.fillMaxSize(),
-                    animated = false,
-                )
-        }
-
-        if (lyricsBackground != LyricsBackgroundStyle.SOLID) {
-            Box(
-                modifier =
-                    Modifier
-                        .fillMaxSize()
-                        .background(Color.Black.copy(alpha = 0.14f)),
-            )
+            }
         }
 
         Column(
