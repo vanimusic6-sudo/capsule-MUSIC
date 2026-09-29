@@ -872,7 +872,6 @@ fun Lyrics(
         targetIndex: Int,
         animated: Boolean,
         seek: Boolean = false,
-        softReturn: Boolean = false,
     ) {
         if (!isVisible || targetIndex !in lines.indices) return
 
@@ -883,54 +882,35 @@ fun Lyrics(
 
             if (itemInfo == null) {
                 /*
-                 * Returning from free scroll used to teleport the live line to the top first and
-                 * only then animate it down to the centre. That made every return look top-down,
-                 * even when the live line was actually below the user's viewport.
-                 *
-                 * For an explicit/manual return, travel toward the target from the current list
-                 * position and ask LazyColumn to land it near the centre. The final few pixels are
-                 * corrected below with our softer spring. Opening/restoration keeps the instant
-                 * path because it is state restoration, not choreography.
+                 * Keep the old return animation and timing. The only difference is where an
+                 * off-screen target is made measurable: a live line below the current viewport
+                 * starts at the bottom and therefore travels upward into focus; a line above keeps
+                 * the original top-down entrance.
                  */
-                if (animated && softReturn) {
-                    /*
-                     * Walk toward the live line from the user's actual viewport instead of asking
-                     * animateScrollToItem to snap into its own spring. Two bounded estimation passes
-                     * are enough for variable-height lyric rows; both preserve the real direction.
-                     */
-                    repeat(2) {
-                        val layoutBefore = lazyListState.layoutInfo
-                        val visible = layoutBefore.visibleItemsInfo
-                        if (visible.isEmpty()) return@repeat
-                        if (visible.any { it.index == targetIndex }) return@repeat
+                val before = lazyListState.layoutInfo
+                val visible = before.visibleItemsInfo
+                val targetIsBelow =
+                    visible.isNotEmpty() &&
+                        targetIndex > visible.maxOf { it.index }
 
-                        val viewportCenter =
-                            (layoutBefore.viewportStartOffset + layoutBefore.viewportEndOffset) / 2
-                        val centerItem =
-                            visible.minByOrNull {
-                                abs((it.offset + it.size / 2) - viewportCenter)
-                            } ?: return@repeat
-                        val averageHeight =
-                            visible
-                                .map { it.size }
-                                .average()
-                                .toFloat()
-                                .coerceAtLeast(1f)
-                        val indexDistance = targetIndex - centerItem.index
-                        val estimatedDistance = indexDistance * averageHeight
-                        val durationMs =
-                            (560 + abs(indexDistance) * 34)
-                                .coerceIn(620, 1_050)
+                if (animated && !seek && targetIsBelow) {
+                    val viewportHeight =
+                        before.viewportEndOffset - before.viewportStartOffset
+                    val estimatedHeight =
+                        visible
+                            .map { it.size }
+                            .takeIf { it.isNotEmpty() }
+                            ?.average()
+                            ?.toInt()
+                            ?: with(density) { 64.dp.roundToPx() }
+                    val bottomPlacement =
+                        (viewportHeight - estimatedHeight)
+                            .coerceAtLeast(0)
 
-                        lazyListState.animateScrollBy(
-                            value = estimatedDistance,
-                            animationSpec =
-                                tween(
-                                    durationMillis = durationMs,
-                                    easing = AppleMusicEasing,
-                                ),
-                        )
-                    }
+                    lazyListState.scrollToItem(
+                        index = targetIndex,
+                        scrollOffset = -bottomPlacement,
+                    )
                 } else {
                     lazyListState.scrollToItem(targetIndex)
                 }
@@ -939,18 +919,6 @@ fun Lyrics(
                 itemInfo =
                     lazyListState.layoutInfo.visibleItemsInfo
                         .firstOrNull { it.index == targetIndex }
-
-                if (itemInfo == null && animated && softReturn) {
-                    /*
-                     * Extremely uneven/missing rows can defeat the estimate. One final direct
-                     * placement is a safety net only; normal manual returns never hit this path.
-                     */
-                    lazyListState.scrollToItem(targetIndex)
-                    withFrameNanos { }
-                    itemInfo =
-                        lazyListState.layoutInfo.visibleItemsInfo
-                            .firstOrNull { it.index == targetIndex }
-                }
             }
 
             val measuredItem = itemInfo ?: return
@@ -972,27 +940,6 @@ fun Lyrics(
                         spring(
                             dampingRatio = Spring.DampingRatioNoBouncy,
                             stiffness = Spring.StiffnessMedium,
-                        ),
-                )
-            } else if (softReturn) {
-                /*
-                 * Manual focus return should feel pulled, not sprung. The signed offset still
-                 * decides whether the list comes back from above or below, but a slow eased tween
-                 * removes the sharp acceleration and visible rebound of the previous spring.
-                 */
-                val settleDurationMs =
-                    with(density) {
-                        val travelDp = abs(offset).toDp().value
-                        (360f + travelDp * 0.55f)
-                            .toInt()
-                            .coerceIn(380, 720)
-                    }
-                lazyListState.animateScrollBy(
-                    value = offset.toFloat(),
-                    animationSpec =
-                        tween(
-                            durationMillis = settleDurationMs,
-                            easing = AppleMusicEasing,
                         ),
                 )
             } else {
@@ -1285,7 +1232,6 @@ fun Lyrics(
                                             anchorLyricLine(
                                                 targetIndex = currentLineIndex,
                                                 animated = true,
-                                                softReturn = true,
                                             )
                                         }
                                     }
@@ -2691,7 +2637,6 @@ fun Lyrics(
                                     anchorLyricLine(
                                         targetIndex = currentLineIndex,
                                         animated = true,
-                                        softReturn = true,
                                     )
                                 }
                             }
