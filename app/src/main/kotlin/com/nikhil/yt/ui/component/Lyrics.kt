@@ -434,11 +434,12 @@ private fun ArchiveTuneWord(
     isBackground: Boolean,
     lineFocus: Float,
     motionEnabled: Boolean,
+    releaseCompleted: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
     val duration = (endTime - startTime).coerceAtLeast(1L)
-    val isComplete = currentTime >= endTime
-    val isActive = currentTime in startTime until endTime
+    val isComplete = releaseCompleted || currentTime >= endTime
+    val isActive = !releaseCompleted && currentTime in startTime until endTime
     val progress =
         when {
             isComplete -> 1f
@@ -449,53 +450,32 @@ private fun ArchiveTuneWord(
     val wave = sin(progress * Math.PI).toFloat()
     // The word is always measured at its maximum size, so FlowRow never needs to reflow when
     // focus moves to this line. Only the already-reserved visual layer moves from 96% -> 100%.
-    val scaleTarget =
+    /*
+     * The previous version fed a new target into two animateFloatAsState instances on every lyric
+     * clock tick. That repeatedly restarted tiny per-word animations and caused occasional frame
+     * spikes on long lines. The wave is already eased, so drawing its sampled value directly is
+     * both smoother under load and much cheaper.
+     */
+    val scale =
         if (motionEnabled && isActive) {
             (0.96f + 0.04f * wave * safeLineFocus).coerceIn(0.96f, 1f)
         } else {
             0.96f
         }
-    val scale by animateFloatAsState(
-        targetValue = scaleTarget,
-        animationSpec = tween(
-            durationMillis = if (motionEnabled && isActive) 150 else 220,
-            easing = AppleMusicEasing,
-        ),
-        label = "archiveTuneWordScale",
-    )
-    val targetLift =
+    val lift =
         if (motionEnabled && isActive) {
             -3.2f * wave * safeLineFocus
         } else {
             0f
         }
-    val lift by animateFloatAsState(
-        targetValue = targetLift,
-        animationSpec = tween(
-            durationMillis = if (motionEnabled && isActive) 170 else 260,
-            easing = AppleMusicEasing,
-        ),
-        label = "archiveTuneWordLift",
-    )
     val glowProgress = (progress * 2f).coerceAtMost(1f)
     val glowAlpha =
-        when {
-            motionEnabled && isActive ->
-                glowProgress * 0.38f * safeLineFocus
-            // Once focus moves away, completed words retain a very small halo that follows the
-            // line-focus tail. This is cheap (only the previous visible line has focus > 0) and
-            // removes the one-frame "light switched off" impression.
-            isComplete && safeLineFocus > 0.001f ->
-                0.11f * safeLineFocus
-            else ->
-                0f
+        if (motionEnabled && isActive) {
+            glowProgress * 0.34f * safeLineFocus
+        } else {
+            0f
         }
-    val glowRadius =
-        when {
-            motionEnabled && isActive && glowAlpha > 0f -> glowProgress * 10f
-            glowAlpha > 0f -> 5.5f * safeLineFocus
-            else -> 0f
-        }
+    val glowRadius = if (glowAlpha > 0f) glowProgress * 8f else 0f
     val effectiveFontSize = if (isBackground) fontSize * 0.82f else fontSize
     // As focus arrives, the subdued line smoothly trades its diffuse light for the word reveal.
     val restingAlpha = if (isBackground) 0.54f else 0.70f
@@ -1289,7 +1269,7 @@ fun Lyrics(
                                         // Focus arrives promptly, but the previous line is allowed
                                         // to dissolve behind the scroll instead of being dimmed in
                                         // the same instant the next line becomes current.
-                                        if (archiveLineIsFocused) 480 else 1_050
+                                        if (archiveLineIsFocused) 500 else 1_100
                                     } else {
                                         520
                                     },
@@ -1309,7 +1289,7 @@ fun Lyrics(
                         targetValue = if (archiveLineIsFocused) 1f else 0f,
                         animationSpec =
                             tween(
-                                durationMillis = if (archiveLineIsFocused) 460 else 1_280,
+                                durationMillis = if (archiveLineIsFocused) 500 else 1_100,
                                 easing = AppleMusicEasing,
                             ),
                         label = "archiveLineFocus",
@@ -1651,17 +1631,23 @@ fun Lyrics(
                                             text = displayText,
                                             startTime = (word.startTime * 1000).toLong(),
                                             endTime = (word.endTime * 1000).toLong(),
-                                            // Keep real playback time even after this
-                                            // line stops being current. lineFocus is what decides
-                                            // whether the reveal layer is visible, so the previous
-                                            // line can fade its already-lit words naturally.
-                                            currentTime = currentPlaybackPosition,
+                                            currentTime =
+                                                if (isActiveLine) {
+                                                    currentPlaybackPosition
+                                                } else {
+                                                    Long.MIN_VALUE
+                                                },
                                             isRtl = lineIsRtl,
                                             fontSize = archiveTuneMaxFontSize,
                                             textColor = lyricsBaseColor,
                                             isBackground = word.isBackground,
                                             lineFocus = archiveLineFocus,
                                             motionEnabled = isActiveLine && !reduceMotionDuringScroll,
+                                            // Keep the old line's reveal layer alive during the
+                                            // focus tail without subscribing every visible line to
+                                            // the 20 Hz playback clock.
+                                            releaseCompleted =
+                                                !isActiveLine && archiveLineFocus > 0.001f,
                                         )
                                     }
                                 }
