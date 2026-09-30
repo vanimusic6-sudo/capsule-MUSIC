@@ -489,8 +489,7 @@ private val LyricsFrameOrigin = TransformOrigin(0.5f, 0f)
 private val LyricsEasing = CubicBezierEasing(0.38f, 0.04f, 0.22f, 1f)
 private val LyricsCloseEasing = CubicBezierEasing(0.36f, 0.02f, 0.24f, 1f)
 private val LyricsForegroundAcquireEasing = CubicBezierEasing(0.32f, 0f, 0.26f, 1f)
-private val LyricsForegroundReleaseEasing = CubicBezierEasing(0.46f, 0f, 0.42f, 1f)
-private val LyricsVeilReleaseEasing = CubicBezierEasing(0.40f, 0f, 0.34f, 1f)
+private val LyricsDissolveEasing = CubicBezierEasing(0.32f, 0f, 0.34f, 1f)
 
 @Composable
 @OptIn(ExperimentalLayoutApi::class)
@@ -518,23 +517,21 @@ private fun CapsulePlayerLyricsHost(
     // Each property keeps its current value on cancellation. A quick reverse therefore starts
     // from the pixels already on screen, rather than switching to another geometry formula.
     val sheetOffset = remember { Animatable(if (showLyrics) 0f else 1f) }
-    val backdropOpacity = remember { Animatable(1f) }
+    val sheetOpacity = remember { Animatable(if (showLyrics) 1f else 0f) }
     val foregroundOpacity = remember { Animatable(if (showLyrics) 1f else 0f) }
     val frameRelease = remember { Animatable(if (showLyrics) 0f else 1f) }
     var lyricsLayerMounted by remember { mutableStateOf(showLyrics) }
-    var lyricsForegroundMounted by remember { mutableStateOf(showLyrics) }
     var lyricsRuntimeActive by remember { mutableStateOf(showLyrics) }
 
     LaunchedEffect(showLyrics) {
         if (showLyrics) {
             if (!lyricsLayerMounted) {
                 sheetOffset.snapTo(1f)
-                backdropOpacity.snapTo(1f)
+                sheetOpacity.snapTo(1f)
                 foregroundOpacity.snapTo(0f)
                 frameRelease.snapTo(1f)
             }
             lyricsLayerMounted = true
-            lyricsForegroundMounted = true
             lyricsRuntimeActive = false
             coroutineScope {
                 launch {
@@ -544,7 +541,7 @@ private fun CapsulePlayerLyricsHost(
                     frameRelease.animateTo(0f, tween(LyricsTravelMillis, easing = LyricsEasing))
                 }
                 launch {
-                    backdropOpacity.animateTo(1f, tween(240, easing = LyricsForegroundAcquireEasing))
+                    sheetOpacity.animateTo(1f, tween(240, easing = LyricsForegroundAcquireEasing))
                 }
                 launch {
                     // Centre the list while it is still transparent, then reveal the entire UI.
@@ -557,8 +554,9 @@ private fun CapsulePlayerLyricsHost(
             lyricsRuntimeActive = false
             coroutineScope {
                 launch {
-                    foregroundOpacity.animateTo(0f, tween(560, easing = LyricsForegroundReleaseEasing))
-                    lyricsForegroundMounted = false
+                    // Composite the entire page first, then dissolve it once. The text, glass
+                    // controls and opaque floor keep their internal contrast throughout release.
+                    sheetOpacity.animateTo(0f, tween(LyricsCloseMillis, easing = LyricsDissolveEasing))
                 }
                 launch {
                     // Release the page far enough to read as motion while its UI is still visible.
@@ -570,14 +568,6 @@ private fun CapsulePlayerLyricsHost(
                 }
                 launch {
                     frameRelease.animateTo(1f, tween(LyricsCloseMillis, easing = LyricsCloseEasing))
-                }
-                launch {
-                    // The opaque floor initially hides the incoming controls. Reveal the player
-                    // only after the outgoing UI has started to dissolve, preventing double panels.
-                    backdropOpacity.animateTo(
-                        0f,
-                        tween(460, delayMillis = 200, easing = LyricsVeilReleaseEasing),
-                    )
                 }
             }
             lyricsLayerMounted = false
@@ -701,33 +691,36 @@ private fun CapsulePlayerLyricsHost(
             }
 
             if (lyricsLayerMounted) {
-                // Both foreground and backdrop have exactly the same rounded frame geometry.
-                // Inverse scale/translation keeps the cached gradient in display coordinates.
                 Box(
-                    modifier = Modifier.fillMaxSize().then(lyricsFrame),
+                    modifier = Modifier.fillMaxSize().graphicsLayer {
+                        alpha = sheetOpacity.value
+                        // Auto applies alpha to the composited page, rather than to overlapping
+                        // draw commands. Its temporary buffer is only needed while alpha < 1.
+                        compositingStrategy = CompositingStrategy.Auto
+                    },
                 ) {
-                    Box(
-                        modifier = Modifier.fillMaxSize().graphicsLayer {
-                            val release = frameRelease.value
-                            scaleX = 1f / (1f - LyricsFrameWidthInset * release)
-                            scaleY = 1f / (1f - LyricsFrameHeightInset * release)
-                            transformOrigin = LyricsFrameOrigin
-                            translationY = -sheetOffset.value * fullHeightPx * scaleY
-                            alpha = backdropOpacity.value
-                            compositingStrategy = CompositingStrategy.ModulateAlpha
-                        },
-                    ) {
-                        CapsuleLyricsBackdropLayer(
-                            mediaMetadata = mediaMetadata,
-                            playerArtworkColors = playerArtworkColors,
-                            backdropAnimationTime = backdropAnimationTime,
-                            isVisible = showLyrics,
-                            modifier = Modifier.fillMaxSize(),
-                        )
+                    // Background and foreground share the rounded frame. The background itself
+                    // stays opaque; inverse transforms preserve its frozen display coordinates.
+                    Box(modifier = Modifier.fillMaxSize().then(lyricsFrame)) {
+                        Box(
+                            modifier = Modifier.fillMaxSize().graphicsLayer {
+                                val release = frameRelease.value
+                                scaleX = 1f / (1f - LyricsFrameWidthInset * release)
+                                scaleY = 1f / (1f - LyricsFrameHeightInset * release)
+                                transformOrigin = LyricsFrameOrigin
+                                translationY = -sheetOffset.value * fullHeightPx * scaleY
+                            },
+                        ) {
+                            CapsuleLyricsBackdropLayer(
+                                mediaMetadata = mediaMetadata,
+                                playerArtworkColors = playerArtworkColors,
+                                backdropAnimationTime = backdropAnimationTime,
+                                isVisible = showLyrics,
+                                modifier = Modifier.fillMaxSize(),
+                            )
+                        }
                     }
-                }
 
-                if (lyricsForegroundMounted) {
                     // This clip belongs to the stationary viewport, not to the moving page. It
                     // prevents travelling controls from painting behind system navigation buttons.
                     Box(
@@ -740,7 +733,7 @@ private fun CapsulePlayerLyricsHost(
                         Box(
                             modifier = Modifier.fillMaxSize().then(lyricsFrame).graphicsLayer {
                                 alpha = foregroundOpacity.value
-                                compositingStrategy = CompositingStrategy.ModulateAlpha
+                                compositingStrategy = CompositingStrategy.Auto
                             },
                         ) {
                             LyricsScreen(
