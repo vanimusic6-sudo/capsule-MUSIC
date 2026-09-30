@@ -707,9 +707,14 @@ private fun CapsulePlayerLyricsHost(
                                                     .coerceIn(0f, 1f),
                                             )
                                         val tailFade =
-                                            (travelled / 0.16f)
+                                            (travelled / 0.18f)
                                                 .coerceIn(0f, 1f)
-                                        baseAlpha * tailFade
+                                        /*
+                                         * Stronger final transparency, applied to the whole
+                                         * remaining sheet uniformly. Squaring only this tail
+                                         * factor leaves the travel/reveal geometry untouched.
+                                         */
+                                        baseAlpha * tailFade * tailFade
                                     }
 
                                 /*
