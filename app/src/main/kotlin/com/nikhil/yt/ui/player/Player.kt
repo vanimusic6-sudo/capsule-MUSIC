@@ -261,14 +261,9 @@ fun BottomSheetPlayer(
         }
 
     /*
-     * Do not change the procedural backdrop's running/frozen mode on the same frame that Lyrics
-     * starts travelling. Some effects have phase-dependent luminance, so switching the clock at
-     * pointer-up can make the still-visible top of the player look like it flashed brighter even
-     * though the palette did not change.
-     *
-     * Let the existing backdrop continue exactly as it was for the 480 ms travel, then freeze it
-     * only after Lyrics has fully covered the player. Closing Lyrics resumes immediately, before
-     * the underlying player is revealed.
+     * Keep one frozen procedural phase for the entire Lyrics session and both transitions. This
+     * prevents colour drift between player/Lyrics backdrops and avoids redrawing two procedural
+     * backgrounds while the transition itself is already animating.
      */
     var freezeBackdropAfterLyricsSettles by remember {
         mutableStateOf(showInlineLyrics)
@@ -729,12 +724,11 @@ private fun CapsulePlayerLyricsHost(
                  * because every pixel is identical; structured backgrounds exposed this bug as a
                  * bright sweep during the transition.
                  */
-                if (lyricsForegroundMounted) {
-                    Box(
-                        modifier =
-                            Modifier
-                                .fillMaxSize()
-                                .graphicsLayer {
+                Box(
+                    modifier =
+                        Modifier
+                            .fillMaxSize()
+                            .graphicsLayer {
                                 /*
                                  * Opening keeps the Lyrics backdrop fully opaque. Closing is
                                  * different: dissolve the Lyrics surface from the first frame and
@@ -855,7 +849,7 @@ private fun CapsulePlayerLyricsHost(
                         mediaMetadata = mediaMetadata,
                         playerArtworkColors = playerArtworkColors,
                         backdropAnimationTime = backdropAnimationTime,
-                        isVisible = lyricsRuntimeActive,
+                        isVisible = showLyrics,
                         modifier = Modifier.fillMaxSize(),
                     )
                 }
@@ -865,11 +859,12 @@ private fun CapsulePlayerLyricsHost(
                  * and simply revealed underneath this foreground, so the two screens never expose
                  * one another through a transparent page and the gradient itself never moves.
                  */
-                Box(
-                    modifier =
-                        Modifier
-                            .fillMaxSize()
-                            .graphicsLayer {
+                if (lyricsForegroundMounted) {
+                    Box(
+                        modifier =
+                            Modifier
+                                .fillMaxSize()
+                                .graphicsLayer {
                                 val travelled = lyricsMotion.value.coerceIn(0f, 1f)
                                 translationY =
                                     ((1f - travelled) * fullHeightPx).coerceAtLeast(0f)
@@ -937,10 +932,10 @@ private fun CapsulePlayerLyricsHost(
                         playerArtworkColors = playerArtworkColors,
                         backdropAnimationTime = backdropAnimationTime,
                         drawBackdrop = false,
-                        isVisible = showLyrics,
+                        isVisible = lyricsRuntimeActive,
                         modifier = Modifier.fillMaxSize(),
                     )
-                    }
+                }
                 }
             }
         }
