@@ -904,128 +904,41 @@ fun Lyrics(
                 val viewportHeight =
                     layout.viewportEndOffset - layout.viewportStartOffset
                 if (viewportHeight <= 0) return
-                val anchorY =
-                    layout.viewportStartOffset + viewportHeight / 2
 
                 var targetInfo =
                     visible.firstOrNull { it.index == targetIndex }
 
                 if (targetInfo == null) {
-                    val centreItem =
-                        visible.minByOrNull {
-                            abs((it.offset + it.size / 2) - anchorY)
-                        } ?: return
-
                     /*
-                     * Estimate one continuous trip from the real viewport to just short of the
-                     * live lyric. Previously this was split into several approach tweens, so every
-                     * segment decelerated near an intermediate row and looked like it "caught" on
-                     * the text. One approach means one velocity profile and no intermediate stops.
+                     * Do not estimate a long pixel distance from the currently visible rows.
+                     * Lyric rows vary too much in height, so the old estimate accumulated error and
+                     * then corrected itself against a new set of rows — the "catching" visible in
+                     * the recording.
+                     *
+                     * Let LazyList own the long-distance travel. It knows its lazy layout and can
+                     * move toward an off-screen index without our code repeatedly measuring and
+                     * re-accelerating at intermediate lyrics. Give it an approximate centre offset
+                     * up-front, then perform one exact correction after the real row is measurable.
                      */
-                    val measuredStrides =
+                    val estimatedRowHeight =
                         visible
-                            .zipWithNext()
-                            .mapNotNull { (first, second) ->
-                                val gap = second.index - first.index
-                                if (gap <= 0) {
-                                    null
-                                } else {
-                                    (second.offset - first.offset).toFloat() / gap
-                                }
-                            }
-                            .filter { abs(it) > 1f }
+                            .map { it.size }
+                            .average()
+                            .toInt()
+                            .coerceAtLeast(1)
+                    val desiredTop =
+                        ((viewportHeight - estimatedRowHeight) / 2)
+                            .coerceAtLeast(0)
 
-                    val averageStride =
-                        if (measuredStrides.isNotEmpty()) {
-                            measuredStrides.average().toFloat()
-                        } else {
-                            visible.map { it.size }.average().toFloat()
-                        }.coerceAtLeast(1f)
+                    lazyListState.animateScrollToItem(
+                        index = targetIndex,
+                        scrollOffset = -desiredTop,
+                    )
+                    withFrameNanos { }
 
-                    val indexDistance = targetIndex - centreItem.index
-                    val centreError =
-                        (centreItem.offset + centreItem.size / 2) - anchorY
-                    val estimatedDistance =
-                        centreError + indexDistance * averageStride
-                    val distanceInRows = abs(indexDistance)
-
-                    /*
-                     * Leave roughly one row for the final settle. On very long trips this keeps the
-                     * destination inside the viewport without braking on every row along the way.
-                     */
-                    val reservePx =
-                        averageStride *
-                            when {
-                                distanceInRows >= 12 -> 0.85f
-                                distanceInRows >= 6 -> 0.72f
-                                else -> 0.55f
-                            }
-                    val approachDistance =
-                        if (estimatedDistance > 0f) {
-                            (estimatedDistance - reservePx).coerceAtLeast(0f)
-                        } else {
-                            (estimatedDistance + reservePx).coerceAtMost(0f)
-                        }
-
-                    if (abs(approachDistance) > 2f) {
-                        val approachDurationMs =
-                            (280 + distanceInRows * 20)
-                                .coerceIn(320, 760)
-
-                        lazyListState.animateScrollBy(
-                            value = approachDistance,
-                            animationSpec =
-                                tween(
-                                    durationMillis = approachDurationMs,
-                                    easing = ReturnToSyncApproachEasing,
-                                ),
-                        )
-                        withFrameNanos { }
-                    }
-
-                    val afterApproach = lazyListState.layoutInfo
                     targetInfo =
-                        afterApproach.visibleItemsInfo
+                        lazyListState.layoutInfo.visibleItemsInfo
                             .firstOrNull { it.index == targetIndex }
-
-                    /*
-                     * Variable-height rows can make the estimate miss by a little. Do one short
-                     * continuation with no "focus" choreography rather than restarting a full
-                     * approach and visibly catching another line.
-                     */
-                    if (targetInfo == null) {
-                        val afterVisible = afterApproach.visibleItemsInfo
-                        val afterViewportHeight =
-                            afterApproach.viewportEndOffset - afterApproach.viewportStartOffset
-                        if (afterVisible.isEmpty() || afterViewportHeight <= 0) return
-                        val afterAnchorY =
-                            afterApproach.viewportStartOffset + afterViewportHeight / 2
-                        val afterCentre =
-                            afterVisible.minByOrNull {
-                                abs((it.offset + it.size / 2) - afterAnchorY)
-                            } ?: return
-                        val remainingRows = targetIndex - afterCentre.index
-                        val continuation =
-                            remainingRows * averageStride
-
-                        if (abs(continuation) > 2f) {
-                            lazyListState.animateScrollBy(
-                                value = continuation,
-                                animationSpec =
-                                    tween(
-                                        durationMillis =
-                                            (180 + abs(remainingRows) * 14)
-                                                .coerceIn(200, 420),
-                                        easing = ReturnToSyncApproachEasing,
-                                    ),
-                            )
-                            withFrameNanos { }
-                        }
-
-                        targetInfo =
-                            lazyListState.layoutInfo.visibleItemsInfo
-                                .firstOrNull { it.index == targetIndex }
-                    }
                 }
 
                 val settledTarget = targetInfo ?: return
@@ -1040,12 +953,16 @@ fun Lyrics(
                     (settledTarget.offset + settledTarget.size / 2) - settledAnchorY
                 if (abs(finalOffset) <= 2) return
 
+                /*
+                 * One non-spring settle. It is deliberately short and monotonic; there is no scale
+                 * bounce and no second long-distance approach.
+                 */
                 val settleDurationMs =
                     with(density) {
                         val travelDp = abs(finalOffset).toDp().value
-                        (270f + travelDp * 0.52f)
+                        (250f + travelDp * 0.42f)
                             .toInt()
-                            .coerceIn(300, 560)
+                            .coerceIn(260, 480)
                     }
 
                 lazyListState.animateScrollBy(
@@ -1203,25 +1120,39 @@ fun Lyrics(
                 currentLineIndex = newLineIndex
             }
 
-            val syncedPosition = (position + wordSyncLeadMs).coerceAtLeast(0L)
-            if (currentPlaybackPosition != syncedPosition) {
-                currentPlaybackPosition = syncedPosition
+            /*
+             * During a return flight the text is moving and non-focus rows are dimmed, so updating
+             * karaoke/word progress every tick only forces extra text work that the eye cannot use.
+             * Keep the destination line live, but freeze word progress until the list is attached
+             * again; the next loop iteration catches it up immediately.
+             */
+            if (!isReturningToSync) {
+                val syncedPosition =
+                    (position + wordSyncLeadMs)
+                        .coerceAtLeast(0L)
+                if (currentPlaybackPosition != syncedPosition) {
+                    currentPlaybackPosition = syncedPosition
+                }
             }
 
             val activeLineHasWords =
-                lines.getOrNull(newLineIndex)?.words?.isNotEmpty() == true
+                !isReturningToSync &&
+                    lines.getOrNull(newLineIndex)?.words?.isNotEmpty() == true
             val needsFineProgress =
-                lyricsAnimationStyle == LyricsAnimationStyle.KARAOKE ||
+                !isReturningToSync &&
                     (
-                        lyricsAnimationStyle != LyricsAnimationStyle.NONE &&
-                            activeLineHasWords
+                        lyricsAnimationStyle == LyricsAnimationStyle.KARAOKE ||
+                            (
+                                lyricsAnimationStyle != LyricsAnimationStyle.NONE &&
+                                    activeLineHasWords
+                            )
                     )
 
             val delayMs =
                 when {
                     // While returning, the destination is live: detect a line hand-off quickly so
                     // the old scroll is cancelled and the new current line immediately takes over.
-                    isReturningToSync -> 50L
+                    isReturningToSync -> 80L
                     // Nothing visual is advancing while paused.
                     !isPlaying && sliderPosition == null -> 420L
                     // Manual scrolling intentionally suppresses lyric motion, so a slower clock is
