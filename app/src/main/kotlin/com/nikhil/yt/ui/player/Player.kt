@@ -943,7 +943,13 @@ private fun CapsulePlayerLyricsHost(
                                  */
                                 compositingStrategy =
                                     if (alpha > 0.001f && alpha < 0.999f) {
-                                        CompositingStrategy.Offscreen
+                                        /*
+                                         * Foreground fading does not need a full-screen temporary
+                                         * texture. Modulate child draw alpha in place instead:
+                                         * substantially less GPU bandwidth during the transition,
+                                         * especially on high-refresh-rate displays.
+                                         */
+                                        CompositingStrategy.ModulateAlpha
                                     } else {
                                         CompositingStrategy.Auto
                                     }
