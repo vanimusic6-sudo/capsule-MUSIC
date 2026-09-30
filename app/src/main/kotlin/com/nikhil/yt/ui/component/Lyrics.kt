@@ -778,6 +778,17 @@ fun Lyrics(
     var currentPlaybackPosition by remember {
         mutableLongStateOf(0L)
     }
+    var pausedSeekLineIndex by remember(mediaMetadata?.id, lyrics) {
+        mutableIntStateOf(-1)
+    }
+    val hasPausedSeekPreview = !isPlaying && pausedSeekLineIndex in lines.indices
+
+    LaunchedEffect(isPlaying) {
+        if (isPlaying) {
+            // The selected line joins the normal focus/word animation only when playback resumes.
+            pausedSeekLineIndex = -1
+        }
+    }
 
     var previousLineIndex by rememberSaveable {
         mutableIntStateOf(0)
@@ -1013,6 +1024,7 @@ fun Lyrics(
         isReturningToSync,
         isPlaying,
         isVisible,
+        pausedSeekLineIndex,
     ) {
         if (!isVisible || isAppMinimized) return@LaunchedEffect
         if (lyrics.isNullOrEmpty() || (!lyrics.startsWith("[") && !isTtml(lyrics))) {
@@ -1031,6 +1043,10 @@ fun Lyrics(
          */
         while (isActive) {
             val sliderPosition = sliderPositionProvider()
+            if (sliderPosition != null && pausedSeekLineIndex >= 0) {
+                // Scrubbing the slider takes ownership away from an earlier clicked-line preview.
+                pausedSeekLineIndex = -1
+            }
             val seekingNow = sliderPosition != null
             if (isSeeking != seekingNow) {
                 isSeeking = seekingNow
@@ -1049,11 +1065,15 @@ fun Lyrics(
 
             val position = sliderPosition ?: playerConnection.player.currentPosition
             val newLineIndex =
-                findCurrentLineIndex(
-                    lines,
-                    position,
-                    leadMs = lineSyncLeadMs,
-                )
+                if (hasPausedSeekPreview && sliderPosition == null) {
+                    pausedSeekLineIndex
+                } else {
+                    findCurrentLineIndex(
+                        lines,
+                        position,
+                        leadMs = lineSyncLeadMs,
+                    )
+                }
 
             if (currentLineIndex != newLineIndex) {
                 currentLineIndex = newLineIndex
@@ -1574,6 +1594,7 @@ fun Lyrics(
         ) {
             val displayedCurrentLineIndex =
                 when {
+                    hasPausedSeekPreview -> pausedSeekLineIndex
                     isReturningToSync -> returnVisualFocusIndex
                     returnFocusHoldIndex in lines.indices -> returnFocusHoldIndex
                     isSeeking || isSelectionModeActive -> deferredCurrentLineIndex
@@ -1613,6 +1634,12 @@ fun Lyrics(
                         lyricsAnimationStyle == LyricsAnimationStyle.ARCHIVE_TUNE
                     val targetAlpha = when {
                         !isSynced || (isSelectionModeActive && isSelected) -> 1f
+                        hasPausedSeekPreview -> when {
+                            index == pausedSeekLineIndex -> 0.78f
+                            distance == 1 -> 0.36f
+                            distance == 2 -> 0.22f
+                            else -> 0.10f
+                        }
                         isReturningToSync &&
                             index == returnVisualFocusIndex -> 1f
                         isReturningToSync -> 0.56f
@@ -1691,11 +1718,13 @@ fun Lyrics(
                     val archiveLineIsFocused =
                         archiveTuneStyle &&
                             isSynced &&
+                            !hasPausedSeekPreview &&
                             index == displayedCurrentLineIndex
                     val animatedLineIsFocused =
                         !archiveTuneStyle &&
                             lyricsAnimationStyle != LyricsAnimationStyle.NONE &&
                             isSynced &&
+                            !hasPausedSeekPreview &&
                             index == displayedCurrentLineIndex
 
                     val animatedAlphaState =
@@ -1705,6 +1734,7 @@ fun Lyrics(
                                 tween(
                                     durationMillis =
                                         when {
+                                            hasPausedSeekPreview -> 180
                                             isReturningToSync ->
                                                 if (index == returnVisualFocusIndex) 520 else 260
                                             archiveTuneStyle ->
@@ -1732,7 +1762,11 @@ fun Lyrics(
                         targetValue = if (archiveLineIsFocused) 1f else 0f,
                         animationSpec =
                             tween(
-                                durationMillis = if (archiveLineIsFocused) 500 else 1_100,
+                                durationMillis = when {
+                                    hasPausedSeekPreview -> 180
+                                    archiveLineIsFocused -> 500
+                                    else -> 1_100
+                                },
                                 easing = AppleMusicEasing,
                             ),
                         label = "archiveLineFocus",
@@ -1759,6 +1793,12 @@ fun Lyrics(
                                     }
                                 } else if (isSynced && changeLyrics) {
                                     isManualScrolling = false
+                                    // An explicit seek supersedes the previous return-to-sync hold.
+                                    // Otherwise that held line wins over currentLineIndex below.
+                                    returnFocusHoldIndex = -1
+                                    returnVisualFocusIndex = -1
+                                    isSeeking = false
+                                    pausedSeekLineIndex = if (isPlaying) -1 else index
                                     lastPreviewTime = 0L
                                     currentLineIndex = index
                                     deferredCurrentLineIndex = index
@@ -1828,7 +1868,8 @@ fun Lyrics(
                                     LyricsPosition.RIGHT -> Alignment.End
                                 }
                             ) {
-                        val isActiveLine = index == displayedCurrentLineIndex && isSynced
+                        val isActiveLine = index == displayedCurrentLineIndex && isSynced &&
+                            !hasPausedSeekPreview
                         // Distance/focus dimming lives on the row's single animated alpha layer.
                         // Keeping a second alpha in the text color caused a brief two-phase flash
                         // whenever a line changed from upcoming -> active -> passed.
@@ -1856,7 +1897,8 @@ fun Lyrics(
                         val reduceMotionDuringScroll =
                             isSelectionModeActive ||
                                 isManualScrolling ||
-                                isReturningToSync
+                                isReturningToSync ||
+                                hasPausedSeekPreview
 
                         /*
                          * Apple-style emphasis used to measure the glyphs at 96% and then enlarge

@@ -20,7 +20,10 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.systemBarsIgnoringVisibility
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
@@ -34,12 +37,14 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.CompositingStrategy
-import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import androidx.media3.common.C
 import androidx.media3.common.Player
@@ -61,7 +66,9 @@ import com.nikhil.yt.ui.screens.settings.DarkMode
 import com.nikhil.yt.ui.utils.ShowMediaInfo
 import com.nikhil.yt.utils.rememberEnumPreference
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 
 internal fun capsulePlayerDesignForOrientation(
     selected: CapsulePlayerDesign,
@@ -481,6 +488,7 @@ private val LyricsForegroundReleaseEasing = CubicBezierEasing(0.34f, 0f, 0.30f, 
 private val LyricsVeilReleaseEasing = CubicBezierEasing(0.40f, 0f, 0.34f, 1f)
 
 @Composable
+@OptIn(ExperimentalLayoutApi::class)
 private fun CapsulePlayerLyricsHost(
     design: CapsulePlayerDesign,
     showLyrics: Boolean,
@@ -502,83 +510,63 @@ private fun CapsulePlayerLyricsHost(
     onHideLyrics: () -> Unit,
     onShowMenu: () -> Unit,
 ) {
-    val lyricsMotion = remember {
-        Animatable(if (showLyrics) 1f else 0f)
-    }
-    var lyricsLayerMounted by remember {
-        mutableStateOf(showLyrics)
-    }
-    var lyricsForegroundMounted by remember {
-        mutableStateOf(showLyrics)
-    }
-    var lyricsRuntimeActive by remember {
-        mutableStateOf(showLyrics)
-    }
+    // Each property keeps its current value on cancellation. A quick reverse therefore starts
+    // from the pixels already on screen, rather than switching to another geometry formula.
+    val sheetOffset = remember { Animatable(if (showLyrics) 0f else 1f) }
+    val backdropOpacity = remember { Animatable(1f) }
+    val foregroundOpacity = remember { Animatable(if (showLyrics) 1f else 0f) }
+    var lyricsLayerMounted by remember { mutableStateOf(showLyrics) }
+    var lyricsForegroundMounted by remember { mutableStateOf(showLyrics) }
+    var lyricsRuntimeActive by remember { mutableStateOf(showLyrics) }
 
-    /*
-     * Keep the heavy Lyrics subtree alive only while it can actually contribute pixels.
-     *
-     * Opening starts with the cheap backdrop alone. The text/list subtree mounts shortly before its
-     * acquire fade becomes visible, so parsing/layout/collectors do not compete with the first
-     * transition frames. Closing stops its runtime work immediately and unmounts it as soon as the
-     * foreground release has visually reached zero, while the cheap colour tail may continue.
-     */
     LaunchedEffect(showLyrics) {
         if (showLyrics) {
-            /*
-             * Compose the foreground immediately while its alpha is still zero, but keep all
-             * periodic Lyrics work asleep until the acquire fade is about to become visible. This
-             * avoids a text-layout spike landing mid-transition without paying for clocks nobody
-             * can see.
-             */
+            if (!lyricsLayerMounted) {
+                sheetOffset.snapTo(1f)
+                backdropOpacity.snapTo(1f)
+                foregroundOpacity.snapTo(0f)
+            }
+            lyricsLayerMounted = true
             lyricsForegroundMounted = true
             lyricsRuntimeActive = false
-            delay(120L)
-            lyricsRuntimeActive = true
-        } else {
+            coroutineScope {
+                launch {
+                    sheetOffset.animateTo(0f, tween(LyricsTravelMillis, easing = LyricsEasing))
+                }
+                launch {
+                    backdropOpacity.animateTo(1f, tween(240, easing = LyricsForegroundAcquireEasing))
+                }
+                launch {
+                    // Centre the list while it is still transparent, then reveal the entire UI.
+                    delay(160L)
+                    lyricsRuntimeActive = true
+                    foregroundOpacity.animateTo(1f, tween(360, easing = LyricsForegroundAcquireEasing))
+                }
+            }
+        } else if (lyricsLayerMounted) {
             lyricsRuntimeActive = false
-            // Runtime stops immediately, but keep the already-rendered foreground mounted long
-            // enough for its low-alpha travel tail to remain visually continuous.
-            delay(500L)
-            lyricsForegroundMounted = false
-        }
-    }
-
-    /*
-     * Mount/unmount only at the ends of the transition. The animated Float is consumed by
-     * graphicsLayer/draw below, so the player/lyrics subtrees are not recomposed every frame.
-     */
-    LaunchedEffect(showLyrics) {
-        if (showLyrics) {
-            lyricsLayerMounted = true
-        }
-
-        /*
-         * A decelerating tween, not a spring. A critically damped spring approaches its target
-         * asymptotically and is cut off at its visibility threshold, so the last pixels are covered
-         * by a jump — the sheet appeared to snap onto the edge as if magnetised. A tween lands on
-         * the value exactly, at a known time, with its speed already down to nothing.
-         */
-        lyricsMotion.animateTo(
-            targetValue = if (showLyrics) 1f else 0f,
-            animationSpec =
-                tween(
-                    durationMillis =
-                        if (showLyrics) {
-                            LyricsTravelMillis
-                        } else {
-                            LyricsCloseMillis
-                        },
-                    easing =
-                        if (showLyrics) {
-                            LyricsEasing
-                        } else {
-                            LyricsCloseEasing
-                        },
-                ),
-        )
-
-        if (!showLyrics) {
+            coroutineScope {
+                launch {
+                    foregroundOpacity.animateTo(0f, tween(380, easing = LyricsForegroundReleaseEasing))
+                    lyricsForegroundMounted = false
+                }
+                launch {
+                    // A short release avoids throwing the controls under Android's navigation bar.
+                    // Even an interrupted opening continues down from its actual current position.
+                    sheetOffset.animateTo(
+                        (sheetOffset.value + 0.045f).coerceAtMost(1f),
+                        tween(LyricsCloseMillis, easing = LyricsCloseEasing),
+                    )
+                }
+                launch {
+                    // The opaque floor initially hides the incoming controls. Reveal the player
+                    // only after the outgoing UI has started to dissolve, preventing double panels.
+                    backdropOpacity.animateTo(
+                        0f,
+                        tween(520, delayMillis = 100, easing = LyricsVeilReleaseEasing),
+                    )
+                }
+            }
             lyricsLayerMounted = false
         }
     }
@@ -587,26 +575,7 @@ private fun CapsulePlayerLyricsHost(
         Box(
             modifier =
                 Modifier
-                    .fillMaxSize()
-                    .graphicsLayer {
-                        val reaction = lyricsMotion.value.coerceIn(0f, 1f)
-                        if (design == CapsulePlayerDesign.IMMERSIVE) {
-                            // Full-bleed artwork cannot tolerate a sub-pixel shrink: keep the
-                            // underlying player completely stable during the Lyrics transition.
-                            translationY = 0f
-                            scaleX = 1f
-                            scaleY = 1f
-                        } else {
-                            translationY = -2.75f * reaction
-                            scaleX = 1f - 0.00070f * reaction
-                            scaleY = 1f - 0.00100f * reaction
-                        }
-
-                        // The player underneath never dissolves. Only the Lyrics layer fades out
-                        // while closing.
-                        alpha = 1f
-                        transformOrigin = TransformOrigin(0.5f, 0.5f)
-                    },
+                    .fillMaxSize(),
         ) {
             if (design == CapsulePlayerDesign.IMMERSIVE) {
                 /*
@@ -702,96 +671,26 @@ private fun CapsulePlayerLyricsHost(
 
         BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
             val fullHeightPx = constraints.maxHeight.toFloat()
+            val density = LocalDensity.current
+            val systemBars = WindowInsets.systemBarsIgnoringVisibility
+            val safeTopPx = systemBars.getTop(density).toFloat()
+            val safeBottomPx = systemBars.getBottom(density).toFloat()
 
             if (lyricsLayerMounted) {
-                /*
-                 * OPENING: one real sheet moves from the bottom to the top.
-                 *
-                 * Earlier versions kept the backdrop fixed and merely revealed it with a DstIn
-                 * mask while the foreground travelled independently. Geometrically that reads as a
-                 * patch growing from an attachment point, not as one physical surface entering the
-                 * screen. It also required a full-screen offscreen buffer on every opening frame.
-                 *
-                 * The outer layer below is the sheet itself. While opening it translates as one
-                 * rigid rectangle and clips its children to its own bounds. The backdrop inside is
-                 * counter-translated by the exact opposite amount so gradients/stars stay in fixed
-                 * screen coordinates and never sweep or change colour. The foreground is NOT
-                 * counter-translated, so it rides with the sheet exactly like ink on a page.
-                 *
-                 * Closing keeps the separate translucent hand-off: the backdrop releases evenly
-                 * while the foreground settles a short distance down into it.
-                 */
+                // The opaque surface still enters as one real canvas. Counter-motion keeps the
+                // cached gradient in display coordinates, with no mask or offscreen texture.
                 Box(
-                    modifier =
-                        Modifier
-                            .fillMaxSize()
-                            .graphicsLayer {
-                                val travelled =
-                                    lyricsMotion.value
-                                        .coerceIn(0f, 1f)
-                                if (showLyrics && travelled < 0.999f) {
-                                    translationY =
-                                        ((1f - travelled) * fullHeightPx)
-                                            .coerceAtLeast(0f)
-                                    clip = true
-                                } else {
-                                    translationY = 0f
-                                    clip = false
-                                }
-                            },
+                    modifier = Modifier.fillMaxSize().graphicsLayer {
+                        translationY = sheetOffset.value * fullHeightPx
+                        clip = true
+                    },
                 ) {
                     Box(
-                        modifier =
-                            Modifier
-                                .fillMaxSize()
-                                .graphicsLayer {
-                                    val travelled =
-                                        lyricsMotion.value
-                                            .coerceIn(0f, 1f)
-
-                                    if (showLyrics) {
-                                        /*
-                                         * Counter-motion keeps the structured backdrop visually
-                                         * pinned to the display even though its containing sheet is
-                                         * physically moving upward.
-                                         */
-                                        translationY =
-                                            -((1f - travelled) * fullHeightPx)
-                                                .coerceAtLeast(0f)
-
-                                        /*
-                                         * The sheet itself is material, not a cross-fade. Its
-                                         * moving edge is the transition, so keep the surface fully
-                                         * opaque from the first visible pixel. Only the interface
-                                         * on top fades in later.
-                                         */
-                                        alpha = 1f
-                                    } else {
-                                        translationY = 0f
-
-                                        val closeProgress =
-                                            (1f - travelled)
-                                                .coerceIn(0f, 1f)
-                                        // One continuous release avoids the visible seam where
-                                        // the old two-stage veil dropped to 18% almost at once.
-                                        alpha = 1f - LyricsVeilReleaseEasing.transform(
-                                            ((closeProgress - 0.03f) / 0.97f)
-                                                .coerceIn(0f, 1f),
-                                        )
-                                    }
-
-                                    /*
-                                     * No DstIn and no full-screen temporary texture. The backdrop
-                                     * is one drawing subtree, so in-place alpha modulation is enough
-                                     * for both the tiny opening acquire and the closing veil.
-                                     */
-                                    compositingStrategy =
-                                        if (alpha > 0.001f && alpha < 0.999f) {
-                                            CompositingStrategy.ModulateAlpha
-                                        } else {
-                                            CompositingStrategy.Auto
-                                        }
-                                },
+                        modifier = Modifier.fillMaxSize().graphicsLayer {
+                            translationY = -sheetOffset.value * fullHeightPx
+                            alpha = backdropOpacity.value
+                            compositingStrategy = CompositingStrategy.ModulateAlpha
+                        },
                     ) {
                         CapsuleLyricsBackdropLayer(
                             mediaMetadata = mediaMetadata,
@@ -801,63 +700,24 @@ private fun CapsulePlayerLyricsHost(
                             modifier = Modifier.fillMaxSize(),
                         )
                     }
+                }
 
-                    /*
-                     * The whole UI rides the same opening sheet. There is no stretch and no top
-                     * transform origin anymore: those were the cues that made the panel look as if
-                     * it was attached to the upper layer rather than being one continuous canvas.
-                     *
-                     * On close the outer sheet is stationary and the foreground eases down a
-                     * short distance while both layers fade continuously.
-                     */
-                    if (lyricsForegroundMounted) {
+                if (lyricsForegroundMounted) {
+                    // This clip belongs to the stationary viewport, not to the moving page. It
+                    // prevents travelling controls from painting behind system navigation buttons.
+                    Box(
+                        modifier = Modifier.fillMaxSize().drawWithContent {
+                            clipRect(top = safeTopPx, bottom = size.height - safeBottomPx) {
+                                this@drawWithContent.drawContent()
+                            }
+                        },
+                    ) {
                         Box(
-                            modifier =
-                                Modifier
-                                    .fillMaxSize()
-                                    .graphicsLayer {
-                                        val travelled =
-                                            lyricsMotion.value
-                                                .coerceIn(0f, 1f)
-
-                                        translationY =
-                                            if (showLyrics) {
-                                                0f
-                                            } else {
-                                                (LyricsForegroundReleaseEasing.transform(
-                                                    ((1f - travelled) / 0.9f)
-                                                        .coerceIn(0f, 1f),
-                                                ) * fullHeightPx * 0.22f)
-                                                    .coerceAtLeast(0f)
-                                            }
-                                        scaleX = 1f
-                                        scaleY = 1f
-
-                                        alpha =
-                                            if (showLyrics) {
-                                                val acquireProgress =
-                                                    ((travelled - 0.06f) / 0.88f)
-                                                        .coerceIn(0f, 1f)
-                                                LyricsForegroundAcquireEasing.transform(
-                                                    acquireProgress,
-                                                )
-                                            } else {
-                                                val closeProgress =
-                                                    (1f - travelled)
-                                                        .coerceIn(0f, 1f)
-                                                1f - LyricsForegroundReleaseEasing.transform(
-                                                    ((closeProgress - 0.02f) / 0.98f)
-                                                        .coerceIn(0f, 1f),
-                                                )
-                                            }
-
-                                        compositingStrategy =
-                                            if (alpha > 0.001f && alpha < 0.999f) {
-                                                CompositingStrategy.ModulateAlpha
-                                            } else {
-                                                CompositingStrategy.Auto
-                                            }
-                                    },
+                            modifier = Modifier.fillMaxSize().graphicsLayer {
+                                translationY = sheetOffset.value * fullHeightPx
+                                alpha = foregroundOpacity.value
+                                compositingStrategy = CompositingStrategy.ModulateAlpha
+                            },
                         ) {
                             LyricsScreen(
                                 mediaMetadata = mediaMetadata,
