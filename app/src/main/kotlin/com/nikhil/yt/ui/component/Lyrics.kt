@@ -206,7 +206,6 @@ import com.nikhil.yt.ui.motion.CapsuleStandardEasing
 
 
 private val AppleMusicEasing = CubicBezierEasing(0.25f, 0.1f, 0.25f, 1.0f)
-private val ReturnToSyncApproachEasing = CubicBezierEasing(0.18f, 0.38f, 0.34f, 0.92f)
 private val ReturnToSyncSettleEasing = CubicBezierEasing(0.20f, 0f, 0.12f, 1f)
 private val SmoothDecelerateEasing = CubicBezierEasing(0.0f, 0.0f, 0.2f, 1.0f)
 
@@ -885,16 +884,11 @@ fun Lyrics(
             /*
              * Explicit return-to-sync is intentionally different from ordinary lyric tracking.
              *
-             * The old implementation prepared an off-screen target with scrollToItem(), which
-             * meant the list teleported first and only the final centring looked animated. Here
-             * every pixel from the user's current manual-scroll position to the live lyric is
-             * produced by animateScrollBy(). No staging jump exists.
-             *
-             * Phase 1 is a fast, soft approach using the measured average row stride. It stops
-             * close to the destination rather than exactly on it. Phase 2 measures the real live
-             * row and performs a slower final settle into the centre anchor. currentLineIndex is a
-             * LaunchedEffect key outside this function, so a line change cancels either phase and
-             * immediately retargets from whatever position is on screen at that exact moment.
+             * Long-distance return is delegated to LazyList's own animated index scroll instead
+             * of estimating a pixel trip from lyric-row heights. Once the real row is visible, one
+             * short tween centres it precisely. currentLineIndex is a LaunchedEffect key outside
+             * this function, so a line change cancels either phase and immediately retargets from
+             * whatever position is currently on screen.
              */
             if (animated && returnToSync && !seek) {
                 val layout = lazyListState.layoutInfo
@@ -1259,9 +1253,8 @@ fun Lyrics(
         deferredCurrentLineIndex = targetIndex
 
         /*
-         * Usually one pass is enough. Extra passes only compensate for rows remeasuring while the
-         * scroll is moving; every pass still starts from the list's current physical position and
-         * uses animateScrollBy, so there is no hidden jump between them.
+         * Usually one pass is enough. A second pass only compensates for a row remeasuring during
+         * the settle; the target is already visible by then, so it is just a short exact correction.
          */
         repeat(2) {
             anchorLyricLine(
