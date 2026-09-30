@@ -206,8 +206,8 @@ import com.nikhil.yt.ui.motion.CapsuleStandardEasing
 
 
 private val AppleMusicEasing = CubicBezierEasing(0.25f, 0.1f, 0.25f, 1.0f)
-private val ReturnToSyncApproachEasing = CubicBezierEasing(0.20f, 0.48f, 0.42f, 0.90f)
-private val ReturnToSyncSettleEasing = CubicBezierEasing(0.18f, 0.58f, 0.22f, 1f)
+private val ReturnToSyncApproachEasing = CubicBezierEasing(0.18f, 0.38f, 0.34f, 0.92f)
+private val ReturnToSyncSettleEasing = CubicBezierEasing(0.20f, 0f, 0.12f, 1f)
 private val SmoothDecelerateEasing = CubicBezierEasing(0.0f, 0.0f, 0.2f, 1.0f)
 
 private fun isRtlText(text: String): Boolean {
@@ -897,34 +897,40 @@ fun Lyrics(
              * immediately retargets from whatever position is on screen at that exact moment.
              */
             if (animated && returnToSync && !seek) {
-                repeat(3) {
-                    val layout = lazyListState.layoutInfo
-                    val visible = layout.visibleItemsInfo
-                    if (visible.isEmpty()) return@repeat
+                val layout = lazyListState.layoutInfo
+                val visible = layout.visibleItemsInfo
+                if (visible.isEmpty()) return
 
-                    val targetInfo =
-                        visible.firstOrNull { it.index == targetIndex }
-                    if (targetInfo != null) return@repeat
+                val viewportHeight =
+                    layout.viewportEndOffset - layout.viewportStartOffset
+                if (viewportHeight <= 0) return
+                val anchorY =
+                    layout.viewportStartOffset + viewportHeight / 2
 
-                    val viewportHeight =
-                        layout.viewportEndOffset - layout.viewportStartOffset
-                    if (viewportHeight <= 0) return@repeat
-                    val anchorY = layout.viewportStartOffset + viewportHeight / 2
+                var targetInfo =
+                    visible.firstOrNull { it.index == targetIndex }
 
+                if (targetInfo == null) {
                     val centreItem =
                         visible.minByOrNull {
                             abs((it.offset + it.size / 2) - anchorY)
-                        } ?: return@repeat
+                        } ?: return
 
+                    /*
+                     * Estimate one continuous trip from the real viewport to just short of the
+                     * live lyric. Previously this was split into several approach tweens, so every
+                     * segment decelerated near an intermediate row and looked like it "caught" on
+                     * the text. One approach means one velocity profile and no intermediate stops.
+                     */
                     val measuredStrides =
                         visible
                             .zipWithNext()
                             .mapNotNull { (first, second) ->
-                                val indexGap = second.index - first.index
-                                if (indexGap <= 0) {
+                                val gap = second.index - first.index
+                                if (gap <= 0) {
                                     null
                                 } else {
-                                    (second.offset - first.offset).toFloat() / indexGap
+                                    (second.offset - first.offset).toFloat() / gap
                                 }
                             }
                             .filter { abs(it) > 1f }
@@ -941,53 +947,105 @@ fun Lyrics(
                         (centreItem.offset + centreItem.size / 2) - anchorY
                     val estimatedDistance =
                         centreError + indexDistance * averageStride
-
-                    if (abs(estimatedDistance) <= 2f) return@repeat
-
                     val distanceInRows = abs(indexDistance)
-                    val approachFraction =
-                        when {
-                            distanceInRows >= 10 -> 0.94f
-                            distanceInRows >= 5 -> 0.90f
-                            else -> 0.82f
-                        }
-                    val approachDurationMs =
-                        (300 + distanceInRows * 18)
-                            .coerceIn(320, 680)
 
-                    lazyListState.animateScrollBy(
-                        value = estimatedDistance * approachFraction,
-                        animationSpec =
-                            tween(
-                                durationMillis = approachDurationMs,
-                                easing = ReturnToSyncApproachEasing,
-                            ),
-                    )
-                    withFrameNanos { }
+                    /*
+                     * Leave roughly one row for the final settle. On very long trips this keeps the
+                     * destination inside the viewport without braking on every row along the way.
+                     */
+                    val reservePx =
+                        averageStride *
+                            when {
+                                distanceInRows >= 12 -> 0.85f
+                                distanceInRows >= 6 -> 0.72f
+                                else -> 0.55f
+                            }
+                    val approachDistance =
+                        if (estimatedDistance > 0f) {
+                            (estimatedDistance - reservePx).coerceAtLeast(0f)
+                        } else {
+                            (estimatedDistance + reservePx).coerceAtMost(0f)
+                        }
+
+                    if (abs(approachDistance) > 2f) {
+                        val approachDurationMs =
+                            (280 + distanceInRows * 20)
+                                .coerceIn(320, 760)
+
+                        lazyListState.animateScrollBy(
+                            value = approachDistance,
+                            animationSpec =
+                                tween(
+                                    durationMillis = approachDurationMs,
+                                    easing = ReturnToSyncApproachEasing,
+                                ),
+                        )
+                        withFrameNanos { }
+                    }
+
+                    val afterApproach = lazyListState.layoutInfo
+                    targetInfo =
+                        afterApproach.visibleItemsInfo
+                            .firstOrNull { it.index == targetIndex }
+
+                    /*
+                     * Variable-height rows can make the estimate miss by a little. Do one short
+                     * continuation with no "focus" choreography rather than restarting a full
+                     * approach and visibly catching another line.
+                     */
+                    if (targetInfo == null) {
+                        val afterVisible = afterApproach.visibleItemsInfo
+                        val afterViewportHeight =
+                            afterApproach.viewportEndOffset - afterApproach.viewportStartOffset
+                        if (afterVisible.isEmpty() || afterViewportHeight <= 0) return
+                        val afterAnchorY =
+                            afterApproach.viewportStartOffset + afterViewportHeight / 2
+                        val afterCentre =
+                            afterVisible.minByOrNull {
+                                abs((it.offset + it.size / 2) - afterAnchorY)
+                            } ?: return
+                        val remainingRows = targetIndex - afterCentre.index
+                        val continuation =
+                            remainingRows * averageStride
+
+                        if (abs(continuation) > 2f) {
+                            lazyListState.animateScrollBy(
+                                value = continuation,
+                                animationSpec =
+                                    tween(
+                                        durationMillis =
+                                            (180 + abs(remainingRows) * 14)
+                                                .coerceIn(200, 420),
+                                        easing = ReturnToSyncApproachEasing,
+                                    ),
+                            )
+                            withFrameNanos { }
+                        }
+
+                        targetInfo =
+                            lazyListState.layoutInfo.visibleItemsInfo
+                                .firstOrNull { it.index == targetIndex }
+                    }
                 }
 
+                val settledTarget = targetInfo ?: return
                 val settledLayout = lazyListState.layoutInfo
-                val settledTarget =
-                    settledLayout.visibleItemsInfo
-                        .firstOrNull { it.index == targetIndex }
-                        ?: return
-                val viewportHeight =
+                val settledViewportHeight =
                     settledLayout.viewportEndOffset - settledLayout.viewportStartOffset
-                if (viewportHeight <= 0) return
+                if (settledViewportHeight <= 0) return
 
-                val anchorY =
-                    settledLayout.viewportStartOffset + viewportHeight / 2
-                val targetCenter =
-                    settledTarget.offset + settledTarget.size / 2
-                val finalOffset = targetCenter - anchorY
+                val settledAnchorY =
+                    settledLayout.viewportStartOffset + settledViewportHeight / 2
+                val finalOffset =
+                    (settledTarget.offset + settledTarget.size / 2) - settledAnchorY
                 if (abs(finalOffset) <= 2) return
 
                 val settleDurationMs =
                     with(density) {
                         val travelDp = abs(finalOffset).toDp().value
-                        (300f + travelDp * 0.48f)
+                        (270f + travelDp * 0.52f)
                             .toInt()
-                            .coerceIn(320, 560)
+                            .coerceIn(300, 560)
                     }
 
                 lazyListState.animateScrollBy(
@@ -1274,7 +1332,7 @@ fun Lyrics(
          * scroll is moving; every pass still starts from the list's current physical position and
          * uses animateScrollBy, so there is no hidden jump between them.
          */
-        repeat(4) {
+        repeat(2) {
             anchorLyricLine(
                 targetIndex = targetIndex,
                 animated = true,
@@ -1581,27 +1639,6 @@ fun Lyrics(
                             label = "lyricAlpha",
                         )
 
-                    /*
-                     * A tiny scale lift makes the live row feel magnetically collected by the
-                     * centre anchor. Only one row changes scale, and the value is consumed directly
-                     * by graphicsLayer below so it does not recompose the lyric subtree every frame.
-                     */
-                    val returnFocusScaleState =
-                        animateFloatAsState(
-                            targetValue =
-                                if (isReturningToSync && index == currentLineIndex) {
-                                    1.012f
-                                } else {
-                                    1f
-                                },
-                            animationSpec =
-                                tween(
-                                    durationMillis = 380,
-                                    easing = ReturnToSyncSettleEasing,
-                                ),
-                            label = "lyricReturnFocusScale",
-                        )
-
                     // The light hand-off is intentionally asymmetric: the new line lights up
                     // quickly, while the old one leaves a long soft tail.
                     val archiveLineFocus by animateFloatAsState(
@@ -1679,10 +1716,6 @@ fun Lyrics(
                          */
                         .graphicsLayer {
                             alpha = animatedAlphaState.value
-                            val returnScale = returnFocusScaleState.value
-                            scaleX = returnScale
-                            scaleY = returnScale
-                            transformOrigin = TransformOrigin.Center
                         }
 
                     val baseLayoutDirection = LocalLayoutDirection.current
