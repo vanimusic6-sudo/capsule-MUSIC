@@ -27,7 +27,7 @@
   </div>
   <section>
     <h1>Текст как отдельное полотно</h1>
-    <p>При открытии полотно поднимается и расправляет скруглённые края. При закрытии фон, текст и кнопки растворяются вместе, пока полотно немного сжимается и мягко уходит вниз.</p>
+    <p>При открытии полотно поднимается и расправляет скруглённые края. При закрытии сначала мягко растворяются текст, название, исполнитель и кнопки. Затем пустое полотно со скруглением быстрее уходит вниз и открывает плеер.</p>
     <button id="open">Открыть</button><button id="close">Закрыть</button>
     <label><input id="slow" type="checkbox"> Замедлить в 4 раза</label>
     <p id="status" aria-live="polite">Плеер</p>
@@ -61,8 +61,13 @@
       $('sheet').style.opacity='1';$('foreground').style.opacity='0';mounted=true;
     }
     if(!mounted)return;
-    $('status').textContent=open?'Открытие · 590 мс':'Закрытие · 660 мс';
-    const duration=open?590:660,curve=open?openCurve:closeCurve;
+    $('status').textContent=open?'Открытие · 590 мс':'Растворение интерфейса · 220 мс';
+    if(!open){
+      await animate($('foreground'),{opacity:'0'},220,'cubic-bezier(.32,0,.34,1)');
+      if(currentGeneration!==generation)return;
+      $('status').textContent='Уход полотна · 300 мс (всего 520 мс)';
+    }
+    const duration=open?590:300,curve=open?openCurve:closeCurve;
     const matrix=new DOMMatrixReadOnly(getComputedStyle(frames[0]).transform);
     // Use the untransformed viewport height for release distance, including interrupted opening.
     const viewport=document.querySelector('.phone').clientHeight;
@@ -70,7 +75,7 @@
     const transform=open?'translateY(0) scale(1,1)':`translateY(${targetY}px) scale(.972,.982)`;
     const tasks=frames.map(frame=>animate(frame,{transform,borderRadius:open?'0px':'28px'},duration,curve));
     if(open)tasks.push(animate($('foreground'),{opacity:'1'},360,'cubic-bezier(.32,0,.26,1)',160));
-    tasks.push(animate($('sheet'),{opacity:open?'1':'0'},open?240:660,open?'cubic-bezier(.32,0,.26,1)':'cubic-bezier(.32,0,.34,1)'));
+    tasks.push(animate($('sheet'),{opacity:open?'1':'0'},open?240:300,open?'cubic-bezier(.32,0,.26,1)':'cubic-bezier(.32,0,.34,1)'));
     await Promise.all(tasks);
     if(currentGeneration!==generation)return;
     settle();mounted=open;$('status').textContent=open?'Текст открыт':'Плеер';

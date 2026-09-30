@@ -474,7 +474,9 @@ fun BottomSheetPlayer(
  * without reintroducing the colour sweep that moving procedural backgrounds used to cause.
  */
 private const val LyricsTravelMillis = 590
-private const val LyricsCloseMillis = 660
+private const val LyricsCloseForegroundMillis = 220
+private const val LyricsCloseTravelMillis = 300
+private const val LyricsCloseMillis = LyricsCloseForegroundMillis + LyricsCloseTravelMillis
 private const val LyricsFrameWidthInset = 0.028f
 private const val LyricsFrameHeightInset = 0.018f
 private val LyricsFrameOrigin = TransformOrigin(0.5f, 0f)
@@ -552,22 +554,26 @@ private fun CapsulePlayerLyricsHost(
             }
         } else if (lyricsLayerMounted) {
             lyricsRuntimeActive = false
+            // Dissolve the whole UI while the page is stationary. Keep the floor opaque so the
+            // departing text/controls never overlap the incoming player's title and controls.
+            foregroundOpacity.animateTo(
+                0f,
+                tween(LyricsCloseForegroundMillis, easing = LyricsDissolveEasing),
+            )
             coroutineScope {
                 launch {
-                    // Composite the entire page first, then dissolve it once. The text, glass
-                    // controls and opaque floor keep their internal contrast throughout release.
-                    sheetOpacity.animateTo(0f, tween(LyricsCloseMillis, easing = LyricsDissolveEasing))
+                    // Only the empty rounded page now moves and reveals the player beneath it.
+                    sheetOpacity.animateTo(0f, tween(LyricsCloseTravelMillis, easing = LyricsDissolveEasing))
                 }
                 launch {
-                    // Release the page far enough to read as motion while its UI is still visible.
                     // Interrupted openings continue from the actual position and rounded outline.
                     sheetOffset.animateTo(
                         (sheetOffset.value + 0.10f).coerceAtMost(1f),
-                        tween(LyricsCloseMillis, easing = LyricsCloseEasing),
+                        tween(LyricsCloseTravelMillis, easing = LyricsCloseEasing),
                     )
                 }
                 launch {
-                    frameRelease.animateTo(1f, tween(LyricsCloseMillis, easing = LyricsCloseEasing))
+                    frameRelease.animateTo(1f, tween(LyricsCloseTravelMillis, easing = LyricsCloseEasing))
                 }
             }
             lyricsLayerMounted = false
