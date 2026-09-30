@@ -271,28 +271,32 @@ fun BottomSheetPlayer(
      * the underlying player is revealed.
      */
     var freezeBackdropAfterLyricsSettles by remember {
-        mutableStateOf(false)
+        mutableStateOf(showInlineLyrics)
+    }
+    var lyricsHasOpened by remember {
+        mutableStateOf(showInlineLyrics)
     }
 
     LaunchedEffect(showInlineLyrics) {
         if (showInlineLyrics) {
             /*
-             * Keep the existing player phase alive while Lyrics opens so the still-visible player
-             * cannot flash, then freeze once Lyrics fully owns the screen.
+             * Freeze the shared procedural phase immediately. The old path kept the clock running
+             * through the entire opening, forcing both the still-visible player backdrop and the
+             * incoming Lyrics backdrop to redraw every frame. Holding the current phase preserves
+             * the exact colours while making the transition essentially static-background work.
              */
-            freezeBackdropAfterLyricsSettles = false
-            delay(LyricsTravelMillis.toLong())
+            lyricsHasOpened = true
             freezeBackdropAfterLyricsSettles = true
-        } else {
+        } else if (lyricsHasOpened) {
             /*
-             * Closing now reveals the whole player almost immediately. Do NOT restart its
-             * procedural background underneath a fading Lyrics layer: two independently moving
-             * colour fields caused the artwork/background to appear to change colour and doubled
-             * GPU work during the transition. Hold the exact frozen frame until Lyrics is gone,
-             * then resume once there is only one visible backdrop again.
+             * Keep that same frozen frame through close as well. Resume only after Lyrics is fully
+             * gone, so artwork/background colour cannot drift underneath a translucent hand-off.
              */
             freezeBackdropAfterLyricsSettles = true
             delay(LyricsCloseMillis.toLong())
+            freezeBackdropAfterLyricsSettles = false
+        } else {
+            // Initial composition is not a Lyrics close transition.
             freezeBackdropAfterLyricsSettles = false
         }
     }
@@ -483,7 +487,7 @@ private const val LyricsOpenWindow = 0.70f
 
 /** Vertical only. The horizontal axis is left at exactly 1 throughout, which is the whole point. */
 private const val LyricsUnrollStretch = 0.045f
-private const val LyricsTravelMillis = 480
+private const val LyricsTravelMillis = 540
 private const val LyricsCloseMillis = 570
 
 /**
@@ -493,8 +497,10 @@ private const val LyricsCloseMillis = 570
  * lyrics are a page being drawn out. Spending even less distance in the first frames is what carries
  * that difference in time as well as in shape.
  */
-private val LyricsEasing = CubicBezierEasing(0.42f, 0f, 0.28f, 1f)
+private val LyricsEasing = CubicBezierEasing(0.34f, 0.02f, 0.20f, 1f)
 private val LyricsCloseEasing = CubicBezierEasing(0.30f, 0.05f, 0.18f, 1f)
+private val LyricsForegroundAcquireEasing = CubicBezierEasing(0.24f, 0f, 0.18f, 1f)
+private val LyricsBackdropAcquireEasing = CubicBezierEasing(0.22f, 0f, 0.20f, 1f)
 private val LyricsForegroundReleaseEasing = CubicBezierEasing(0.24f, 0f, 0.18f, 1f)
 private val LyricsVeilReleaseEasing = CubicBezierEasing(0.20f, 0f, 0.22f, 1f)
 
@@ -526,11 +532,39 @@ private fun CapsulePlayerLyricsHost(
     var lyricsLayerMounted by remember {
         mutableStateOf(showLyrics)
     }
+    var lyricsForegroundMounted by remember {
+        mutableStateOf(showLyrics)
+    }
+    var lyricsRuntimeActive by remember {
+        mutableStateOf(showLyrics)
+    }
 
     /*
-     * Mount/unmount only at the ends of the transition. The animated Float and velocity are read by
-     * graphicsLayer below, so the expensive player/lyrics subtrees are not recomposed on every frame.
-     * The spring stays under-damped for impact, but lower stiffness makes that impact arrive softly.
+     * Keep the heavy Lyrics subtree alive only while it can actually contribute pixels.
+     *
+     * Opening starts with the cheap backdrop alone. The text/list subtree mounts shortly before its
+     * acquire fade becomes visible, so parsing/layout/collectors do not compete with the first
+     * transition frames. Closing stops its runtime work immediately and unmounts it as soon as the
+     * foreground release has visually reached zero, while the cheap colour tail may continue.
+     */
+    LaunchedEffect(showLyrics) {
+        if (showLyrics) {
+            lyricsRuntimeActive = false
+            lyricsForegroundMounted = false
+            delay(70L)
+            lyricsForegroundMounted = true
+            delay(50L)
+            lyricsRuntimeActive = true
+        } else {
+            lyricsRuntimeActive = false
+            delay(220L)
+            lyricsForegroundMounted = false
+        }
+    }
+
+    /*
+     * Mount/unmount only at the ends of the transition. The animated Float is consumed by
+     * graphicsLayer/draw below, so the player/lyrics subtrees are not recomposed every frame.
      */
     LaunchedEffect(showLyrics) {
         if (showLyrics) {
@@ -695,11 +729,12 @@ private fun CapsulePlayerLyricsHost(
                  * because every pixel is identical; structured backgrounds exposed this bug as a
                  * bright sweep during the transition.
                  */
-                Box(
-                    modifier =
-                        Modifier
-                            .fillMaxSize()
-                            .graphicsLayer {
+                if (lyricsForegroundMounted) {
+                    Box(
+                        modifier =
+                            Modifier
+                                .fillMaxSize()
+                                .graphicsLayer {
                                 /*
                                  * Opening keeps the Lyrics backdrop fully opaque. Closing is
                                  * different: dissolve the Lyrics surface from the first frame and
@@ -708,7 +743,12 @@ private fun CapsulePlayerLyricsHost(
                                 val travelled = lyricsMotion.value.coerceIn(0f, 1f)
                                 alpha =
                                     if (showLyrics) {
-                                        1f
+                                        val acquire =
+                                            LyricsBackdropAcquireEasing.transform(
+                                                (travelled / 0.84f)
+                                                    .coerceIn(0f, 1f),
+                                            )
+                                        0.16f + 0.84f * acquire
                                     } else {
                                         /*
                                          * Closing is a veil, not an opaque sheet. Make the player
@@ -815,7 +855,7 @@ private fun CapsulePlayerLyricsHost(
                         mediaMetadata = mediaMetadata,
                         playerArtworkColors = playerArtworkColors,
                         backdropAnimationTime = backdropAnimationTime,
-                        isVisible = showLyrics,
+                        isVisible = lyricsRuntimeActive,
                         modifier = Modifier.fillMaxSize(),
                     )
                 }
@@ -851,7 +891,12 @@ private fun CapsulePlayerLyricsHost(
                                  */
                                 alpha =
                                     if (showLyrics) {
-                                        1f
+                                        val acquireProgress =
+                                            ((travelled - 0.10f) / 0.82f)
+                                                .coerceIn(0f, 1f)
+                                        LyricsForegroundAcquireEasing.transform(
+                                            acquireProgress,
+                                        )
                                     } else {
                                         /*
                                          * Close in two visual phases. White UI is the highest
@@ -878,7 +923,7 @@ private fun CapsulePlayerLyricsHost(
                                  * full-screen buffer for content the GPU cannot see.
                                  */
                                 compositingStrategy =
-                                    if (!showLyrics && alpha > 0.001f && alpha < 0.999f) {
+                                    if (alpha > 0.001f && alpha < 0.999f) {
                                         CompositingStrategy.Offscreen
                                     } else {
                                         CompositingStrategy.Auto
@@ -895,6 +940,7 @@ private fun CapsulePlayerLyricsHost(
                         isVisible = showLyrics,
                         modifier = Modifier.fillMaxSize(),
                     )
+                    }
                 }
             }
         }
