@@ -1413,45 +1413,71 @@ fun Lyrics(
                     ) {
                         var accumulatedDragPx = 0f
                         var enteredManualMode = false
-                        var lastScrollTime = 0L
+
+                        fun registerUserDrag(deltaPx: Float) {
+                            if (
+                                deltaPx <= 0f ||
+                                enteredManualMode ||
+                                isSelectionModeActive ||
+                                isReturningToSync
+                            ) {
+                                return
+                            }
+
+                            accumulatedDragPx += deltaPx
+                            if (accumulatedDragPx >= manualScrollThresholdPx) {
+                                enteredManualMode = true
+                                isManualScrolling = true
+                                // One state write on entry is enough. While manual mode owns the
+                                // list, continuously refreshing this timestamp has no behavioural
+                                // value and only causes extra snapshot invalidations.
+                                lastPreviewTime = System.currentTimeMillis()
+                            }
+                        }
 
                         object : NestedScrollConnection {
+                            override fun onPreScroll(
+                                available: Offset,
+                                source: NestedScrollSource,
+                            ): Offset {
+                                if (
+                                    source == NestedScrollSource.UserInput &&
+                                    !isSelectionModeActive &&
+                                    !isReturningToSync
+                                ) {
+                                    val draggingPastTop =
+                                        available.y > 0f &&
+                                            !lazyListState.canScrollBackward
+                                    val draggingPastBottom =
+                                        available.y < 0f &&
+                                            !lazyListState.canScrollForward
+
+                                    if (draggingPastTop || draggingPastBottom) {
+                                        registerUserDrag(abs(available.y))
+
+                                        /*
+                                         * Stop edge overscroll here, before the player's outer
+                                         * sheet sees it. Normal in-range scroll still returns zero
+                                         * and remains entirely LazyColumn's job.
+                                         */
+                                        return Offset(
+                                            x = 0f,
+                                            y = available.y,
+                                        )
+                                    }
+                                }
+                                return Offset.Zero
+                            }
+
                             override fun onPostScroll(
                                 consumed: Offset,
                                 available: Offset,
                                 source: NestedScrollSource,
                             ): Offset {
-                                if (
-                                    !isSelectionModeActive &&
-                                    !isReturningToSync &&
-                                    source == NestedScrollSource.UserInput
-                                ) {
-                                    /*
-                                     * Count attempted vertical travel, not only pixels LazyColumn
-                                     * managed to consume. At the first/last lyric consumed.y can be
-                                     * zero even though the finger is still deliberately dragging.
-                                     * Treat that edge drag as manual scrolling instead of snapping
-                                     * back to playback focus.
-                                     */
-                                    accumulatedDragPx +=
-                                        abs(consumed.y) + abs(available.y)
-
-                                    val currentTime = System.currentTimeMillis()
-                                    if (
-                                        !enteredManualMode &&
-                                        accumulatedDragPx >= manualScrollThresholdPx
-                                    ) {
-                                        enteredManualMode = true
-                                        isManualScrolling = true
-                                        lastPreviewTime = currentTime
-                                        lastScrollTime = currentTime
-                                    } else if (
-                                        enteredManualMode &&
-                                        currentTime - lastScrollTime > 120L
-                                    ) {
-                                        lastPreviewTime = currentTime
-                                        lastScrollTime = currentTime
-                                    }
+                                if (source == NestedScrollSource.UserInput) {
+                                    registerUserDrag(
+                                        abs(consumed.y) + abs(available.y),
+                                    )
                                 }
 
                                 /*
@@ -1640,7 +1666,7 @@ fun Lyrics(
                                     durationMillis =
                                         when {
                                             isReturningToSync ->
-                                                if (index == returnVisualFocusIndex) 380 else 220
+                                                if (index == returnVisualFocusIndex) 430 else 180
                                             archiveTuneStyle ->
                                                 if (archiveLineIsFocused) 500 else 1_100
                                             lyricsAnimationStyle != LyricsAnimationStyle.NONE ->
