@@ -34,8 +34,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.drawWithContent
-import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.CompositingStrategy
@@ -478,10 +476,6 @@ fun BottomSheetPlayer(
  * Those are opposite anchors and different axes, so the two cannot be mistaken for each other even
  * though the idea — rise, open out, settle — is the one that was there before.
  */
-private const val LyricsOpenWindow = 0.70f
-
-/** Vertical only. The horizontal axis is left at exactly 1 throughout, which is the whole point. */
-private const val LyricsUnrollStretch = 0.045f
 private const val LyricsTravelMillis = 540
 private const val LyricsCloseMillis = 570
 
@@ -724,51 +718,79 @@ private fun CapsulePlayerLyricsHost(
 
             if (lyricsLayerMounted) {
                 /*
-                 * The backdrop is screen-anchored and revealed by a moving clip. It never travels
-                 * or stretches with the page, so a vertical gradient/glow/starfield keeps the same
-                 * screen coordinates as the player underneath. A solid theme looked fine before
-                 * because every pixel is identical; structured backgrounds exposed this bug as a
-                 * bright sweep during the transition.
+                 * OPENING: one real sheet moves from the bottom to the top.
+                 *
+                 * Earlier versions kept the backdrop fixed and merely revealed it with a DstIn
+                 * mask while the foreground travelled independently. Geometrically that reads as a
+                 * patch growing from an attachment point, not as one physical surface entering the
+                 * screen. It also required a full-screen offscreen buffer on every opening frame.
+                 *
+                 * The outer layer below is the sheet itself. While opening it translates as one
+                 * rigid rectangle and clips its children to its own bounds. The backdrop inside is
+                 * counter-translated by the exact opposite amount so gradients/stars stay in fixed
+                 * screen coordinates and never sweep or change colour. The foreground is NOT
+                 * counter-translated, so it rides with the sheet exactly like ink on a page.
+                 *
+                 * CLOSING intentionally remains the separate translucent hand-off we already tuned:
+                 * outer translation is zero, backdrop becomes a veil, foreground travels down.
                  */
                 Box(
                     modifier =
                         Modifier
                             .fillMaxSize()
                             .graphicsLayer {
-                                /*
-                                 * Opening keeps the Lyrics backdrop fully opaque. Closing is
-                                 * different: dissolve the Lyrics surface from the first frame and
-                                 * reach zero exactly as it leaves the screen.
-                                 */
-                                val travelled = lyricsMotion.value.coerceIn(0f, 1f)
-                                alpha =
+                                val travelled =
+                                    lyricsMotion.value
+                                        .coerceIn(0f, 1f)
+                                if (showLyrics && travelled < 0.999f) {
+                                    translationY =
+                                        ((1f - travelled) * fullHeightPx)
+                                            .coerceAtLeast(0f)
+                                    clip = true
+                                } else {
+                                    translationY = 0f
+                                    clip = false
+                                }
+                            },
+                ) {
+                    Box(
+                        modifier =
+                            Modifier
+                                .fillMaxSize()
+                                .graphicsLayer {
+                                    val travelled =
+                                        lyricsMotion.value
+                                            .coerceIn(0f, 1f)
+
                                     if (showLyrics) {
+                                        /*
+                                         * Counter-motion keeps the structured backdrop visually
+                                         * pinned to the display even though its containing sheet is
+                                         * physically moving upward.
+                                         */
+                                        translationY =
+                                            -((1f - travelled) * fullHeightPx)
+                                                .coerceAtLeast(0f)
+
+                                        /*
+                                         * A physical sheet should read as material as soon as it
+                                         * enters. Keep it almost opaque from the first visible
+                                         * pixels; only a tiny acquire softens the initial contact.
+                                         */
                                         val acquire =
                                             LyricsBackdropAcquireEasing.transform(
-                                                (travelled / 0.84f)
+                                                (travelled / 0.78f)
                                                     .coerceIn(0f, 1f),
                                             )
-                                        0.16f + 0.84f * acquire
+                                        alpha =
+                                            0.94f +
+                                                0.06f * acquire
                                     } else {
-                                        /*
-                                         * Closing is a veil, not an opaque sheet. Make the player
-                                         * underneath readable as one complete screen almost
-                                         * immediately, keep a faint Lyrics colour wash during the
-                                         * physical downward motion, then dissolve that wash in the
-                                         * final tail.
-                                         */
+                                        translationY = 0f
+
                                         val closeProgress =
                                             (1f - travelled)
                                                 .coerceIn(0f, 1f)
-
-                                        /*
-                                         * Archive Tune does not keep two equally strong visual
-                                         * states fighting for attention. Its old focus releases
-                                         * quickly, then leaves only a soft tail while the new focus
-                                         * becomes authoritative. Do the same for the Lyrics colour:
-                                         * drop to a barely-there wash early, then let that tiny wash
-                                         * trail out for the rest of the close.
-                                         */
                                         val releaseProgress =
                                             LyricsVeilReleaseEasing.transform(
                                                 (closeProgress / 0.34f)
@@ -778,194 +800,117 @@ private fun CapsulePlayerLyricsHost(
                                             1f +
                                                 (0.18f - 1f) *
                                                     releaseProgress
-
                                         val tailProgress =
                                             LyricsVeilReleaseEasing.transform(
                                                 ((closeProgress - 0.34f) / 0.66f)
                                                     .coerceIn(0f, 1f),
                                             )
-                                        veilAlpha *
-                                            (1f - tailProgress)
+                                        alpha =
+                                            veilAlpha *
+                                                (1f - tailProgress)
                                     }
 
-                                /*
-                                 * DstIn needs an offscreen buffer only while the reveal edge is
-                                 * actually moving. Once Lyrics is fully open the backdrop is static
-                                 * and opaque, so keeping a full-screen offscreen layer alive wastes
-                                 * GPU bandwidth and memory for no visual benefit.
-                                 */
-                                compositingStrategy =
-                                    if (showLyrics && travelled < 0.999f) {
-                                        CompositingStrategy.Offscreen
-                                    } else {
-                                        CompositingStrategy.Auto
-                                    }
-                            }
-                            .drawWithContent {
-                                val travelled = lyricsMotion.value.coerceIn(0f, 1f)
-                                if (travelled <= 0.001f) {
-                                    return@drawWithContent
-                                }
+                                    /*
+                                     * No DstIn and no full-screen temporary texture. The backdrop
+                                     * is one drawing subtree, so in-place alpha modulation is enough
+                                     * for both the tiny opening acquire and the closing veil.
+                                     */
+                                    compositingStrategy =
+                                        if (alpha > 0.001f && alpha < 0.999f) {
+                                            CompositingStrategy.ModulateAlpha
+                                        } else {
+                                            CompositingStrategy.Auto
+                                        }
+                                },
+                    ) {
+                        CapsuleLyricsBackdropLayer(
+                            mediaMetadata = mediaMetadata,
+                            playerArtworkColors = playerArtworkColors,
+                            backdropAnimationTime = backdropAnimationTime,
+                            isVisible = showLyrics,
+                            modifier = Modifier.fillMaxSize(),
+                        )
+                    }
 
-                                drawContent()
-
-                                /*
-                                 * Opening keeps the bottom-up reveal that already feels good.
-                                 * Closing intentionally has no spatial clip at all: a clipping edge,
-                                 * even a soft one, necessarily hides one part of the underlying
-                                 * player while exposing another. The close instead uses the uniform
-                                 * translucent veil above, so every player element stays visible.
-                                 */
-                                if (showLyrics && travelled < 0.999f) {
-                                    val revealTop =
-                                        ((1f - travelled) * size.height)
-                                            .coerceIn(0f, size.height)
-                                    val visibleHeightPx =
-                                        (size.height * travelled)
-                                            .coerceAtLeast(0f)
-                                    val featherPx =
-                                        minOf(
-                                            44.dp.toPx(),
-                                            visibleHeightPx * 0.075f,
-                                        ).coerceAtLeast(1f)
-                                    val transparentEnd =
-                                        ((revealTop - featherPx) / size.height)
-                                            .coerceIn(0f, 1f)
-                                    val opaqueStart =
-                                        ((revealTop + featherPx) / size.height)
-                                            .coerceIn(transparentEnd, 1f)
-
-                                    drawRect(
-                                        brush =
-                                            Brush.verticalGradient(
-                                                colorStops =
-                                                    arrayOf(
-                                                        0f to Color.Transparent,
-                                                        transparentEnd to Color.Transparent,
-                                                        opaqueStart to Color.Black,
-                                                        1f to Color.Black,
-                                                    ),
-                                            ),
-                                        blendMode = BlendMode.DstIn,
-                                    )
-                                }
-                            },
-                ) {
-                    CapsuleLyricsBackdropLayer(
-                        mediaMetadata = mediaMetadata,
-                        playerArtworkColors = playerArtworkColors,
-                        backdropAnimationTime = backdropAnimationTime,
-                        isVisible = showLyrics,
-                        modifier = Modifier.fillMaxSize(),
-                    )
-                }
-
-                /*
-                 * Only Lyrics controls/text travel. The background above is fixed to the display
-                 * and simply revealed underneath this foreground, so the two screens never expose
-                 * one another through a transparent page and the gradient itself never moves.
-                 */
-                if (lyricsForegroundMounted) {
-                    Box(
-                        modifier =
-                            Modifier
-                                .fillMaxSize()
-                                .graphicsLayer {
-                                val travelled = lyricsMotion.value.coerceIn(0f, 1f)
-                                translationY =
-                                    ((1f - travelled) * fullHeightPx).coerceAtLeast(0f)
-
-                                val opening =
-                                    CapsuleMotion.approach(
-                                        progress = travelled,
-                                        window = LyricsOpenWindow,
-                                    )
-                                val remaining = 1f - opening
-                                scaleX = 1f
-                                scaleY = 1f + LyricsUnrollStretch * remaining
-
-                                /*
-                                 * The backdrop may stay faintly visible into the last pixels of
-                                 * travel, but bright lyric glyphs/shadows must not float over an
-                                 * already-transparent sheet. Fade the entire foreground as one
-                                 * offscreen layer and finish that fade slightly before travel ends.
-                                 */
-                                alpha =
-                                    if (showLyrics) {
-                                        val acquireProgress =
-                                            ((travelled - 0.10f) / 0.82f)
-                                                .coerceIn(0f, 1f)
-                                        LyricsForegroundAcquireEasing.transform(
-                                            acquireProgress,
-                                        )
-                                    } else {
-                                        /*
-                                         * Close in two visual phases. White UI is the highest
-                                         * contrast thing on the screen, so remove it almost
-                                         * immediately; the remaining travel then belongs only to
-                                         * the quiet gradient surface underneath.
-                                         *
-                                         * travelled runs 1 -> 0 while closing. This window fades
-                                         * the entire foreground during roughly the first quarter
-                                         * of the close and keeps it fully gone afterwards.
-                                         */
-                                        val closeProgress =
-                                            (1f - travelled)
+                    /*
+                     * The whole UI rides the same opening sheet. There is no stretch and no top
+                     * transform origin anymore: those were the cues that made the panel look as if
+                     * it was attached to the upper layer rather than being one continuous canvas.
+                     *
+                     * On close the outer sheet is stationary and this foreground alone travels
+                     * downward through the already-tuned two-stage release.
+                     */
+                    if (lyricsForegroundMounted) {
+                        Box(
+                            modifier =
+                                Modifier
+                                    .fillMaxSize()
+                                    .graphicsLayer {
+                                        val travelled =
+                                            lyricsMotion.value
                                                 .coerceIn(0f, 1f)
 
-                                        /*
-                                         * Two-stage release, mirroring a good focus hand-off:
-                                         * lose the harsh white contrast quickly, but keep a faint
-                                         * moving silhouette long enough for the eye to read actual
-                                         * downward travel instead of an instantaneous disappearance.
-                                         */
-                                        val deEmphasis =
-                                            LyricsForegroundReleaseEasing.transform(
-                                                (closeProgress / 0.24f)
-                                                    .coerceIn(0f, 1f),
-                                            )
-                                        val softBodyAlpha =
-                                            1f +
-                                                (0.24f - 1f) *
-                                                    deEmphasis
-                                        val tail =
-                                            LyricsForegroundReleaseEasing.transform(
-                                                ((closeProgress - 0.24f) / 0.50f)
-                                                    .coerceIn(0f, 1f),
-                                            )
-                                        softBodyAlpha *
-                                            (1f - tail)
-                                    }
-                                /*
-                                 * The foreground needs an offscreen layer only while it is visibly
-                                 * blending. Once the early fade has reached zero, stop allocating a
-                                 * full-screen buffer for content the GPU cannot see.
-                                 */
-                                compositingStrategy =
-                                    if (alpha > 0.001f && alpha < 0.999f) {
-                                        /*
-                                         * Foreground fading does not need a full-screen temporary
-                                         * texture. Modulate child draw alpha in place instead:
-                                         * substantially less GPU bandwidth during the transition,
-                                         * especially on high-refresh-rate displays.
-                                         */
-                                        CompositingStrategy.ModulateAlpha
-                                    } else {
-                                        CompositingStrategy.Auto
-                                    }
-                                transformOrigin = TransformOrigin(0.5f, 0f)
-                            },
-                ) {
-                    LyricsScreen(
-                        mediaMetadata = mediaMetadata,
-                        onBackClick = onHideLyrics,
-                        playerArtworkColors = playerArtworkColors,
-                        backdropAnimationTime = backdropAnimationTime,
-                        drawBackdrop = false,
-                        isVisible = lyricsRuntimeActive,
-                        modifier = Modifier.fillMaxSize(),
-                    )
-                }
+                                        translationY =
+                                            if (showLyrics) {
+                                                0f
+                                            } else {
+                                                ((1f - travelled) * fullHeightPx)
+                                                    .coerceAtLeast(0f)
+                                            }
+                                        scaleX = 1f
+                                        scaleY = 1f
+
+                                        alpha =
+                                            if (showLyrics) {
+                                                val acquireProgress =
+                                                    ((travelled - 0.16f) / 0.78f)
+                                                        .coerceIn(0f, 1f)
+                                                LyricsForegroundAcquireEasing.transform(
+                                                    acquireProgress,
+                                                )
+                                            } else {
+                                                val closeProgress =
+                                                    (1f - travelled)
+                                                        .coerceIn(0f, 1f)
+                                                val deEmphasis =
+                                                    LyricsForegroundReleaseEasing.transform(
+                                                        (closeProgress / 0.24f)
+                                                            .coerceIn(0f, 1f),
+                                                    )
+                                                val softBodyAlpha =
+                                                    1f +
+                                                        (0.24f - 1f) *
+                                                            deEmphasis
+                                                val tail =
+                                                    LyricsForegroundReleaseEasing.transform(
+                                                        (
+                                                            (closeProgress - 0.24f) /
+                                                                0.50f
+                                                        ).coerceIn(0f, 1f),
+                                                    )
+                                                softBodyAlpha *
+                                                    (1f - tail)
+                                            }
+
+                                        compositingStrategy =
+                                            if (alpha > 0.001f && alpha < 0.999f) {
+                                                CompositingStrategy.ModulateAlpha
+                                            } else {
+                                                CompositingStrategy.Auto
+                                            }
+                                    },
+                        ) {
+                            LyricsScreen(
+                                mediaMetadata = mediaMetadata,
+                                onBackClick = onHideLyrics,
+                                playerArtworkColors = playerArtworkColors,
+                                backdropAnimationTime = backdropAnimationTime,
+                                drawBackdrop = false,
+                                isVisible = lyricsRuntimeActive,
+                                modifier = Modifier.fillMaxSize(),
+                            )
+                        }
+                    }
                 }
             }
         }
