@@ -481,7 +481,7 @@ private const val LyricsCloseMillis = 570
  * that difference in time as well as in shape.
  */
 private val LyricsEasing = CubicBezierEasing(0.42f, 0f, 0.28f, 1f)
-private val LyricsCloseEasing = CubicBezierEasing(0.34f, 0f, 0.16f, 1f)
+private val LyricsCloseEasing = CubicBezierEasing(0.32f, 0.07f, 0.16f, 1f)
 
 @Composable
 private fun CapsulePlayerLyricsHost(
