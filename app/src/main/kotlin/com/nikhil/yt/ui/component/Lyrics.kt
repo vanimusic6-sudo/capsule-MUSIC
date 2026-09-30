@@ -202,6 +202,7 @@ import kotlinx.coroutines.withContext
 import kotlin.math.pow
 import kotlin.math.abs
 import kotlin.math.exp
+import com.nikhil.yt.ui.motion.CapsuleMotion
 import com.nikhil.yt.ui.motion.CapsuleStandardEasing
 
 
