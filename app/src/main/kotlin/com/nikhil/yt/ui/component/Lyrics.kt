@@ -873,7 +873,10 @@ fun Lyrics(
     var returnVisualFocusIndex by remember {
         mutableIntStateOf(-1)
     }
-    val returnBridgeShiftPx = with(density) { 68.dp.toPx() }
+    var returnFocusHoldIndex by remember {
+        mutableIntStateOf(-1)
+    }
+    val returnBridgeShiftPx = with(density) { 30.dp.toPx() }
 
     val manualScrollThresholdPx = with(density) { 28.dp.toPx() }
 
@@ -1032,6 +1035,17 @@ fun Lyrics(
                 isSeeking = seekingNow
             }
 
+            /*
+             * Return-to-sync owns its own target sampling. Do zero periodic line/word work while
+             * it is running: the hidden midpoint reads player.currentPosition directly, which is
+             * both fresher than this polling loop and much cheaper than waking Compose throughout
+             * the transition.
+             */
+            if (isReturningToSync) {
+                delay(260L)
+                continue
+            }
+
             val position = sliderPosition ?: playerConnection.player.currentPosition
             val newLineIndex =
                 findCurrentLineIndex(
@@ -1044,39 +1058,24 @@ fun Lyrics(
                 currentLineIndex = newLineIndex
             }
 
-            /*
-             * During a return flight the text is moving and non-focus rows are dimmed, so updating
-             * karaoke/word progress every tick only forces extra text work that the eye cannot use.
-             * Keep the destination line live, but freeze word progress until the list is attached
-             * again; the next loop iteration catches it up immediately.
-             */
-            if (!isReturningToSync) {
-                val syncedPosition =
-                    (position + wordSyncLeadMs)
-                        .coerceAtLeast(0L)
-                if (currentPlaybackPosition != syncedPosition) {
-                    currentPlaybackPosition = syncedPosition
-                }
+            val syncedPosition =
+                (position + wordSyncLeadMs)
+                    .coerceAtLeast(0L)
+            if (currentPlaybackPosition != syncedPosition) {
+                currentPlaybackPosition = syncedPosition
             }
 
             val activeLineHasWords =
-                !isReturningToSync &&
-                    lines.getOrNull(newLineIndex)?.words?.isNotEmpty() == true
+                lines.getOrNull(newLineIndex)?.words?.isNotEmpty() == true
             val needsFineProgress =
-                !isReturningToSync &&
+                lyricsAnimationStyle == LyricsAnimationStyle.KARAOKE ||
                     (
-                        lyricsAnimationStyle == LyricsAnimationStyle.KARAOKE ||
-                            (
-                                lyricsAnimationStyle != LyricsAnimationStyle.NONE &&
-                                    activeLineHasWords
-                            )
+                        lyricsAnimationStyle != LyricsAnimationStyle.NONE &&
+                            activeLineHasWords
                     )
 
             val delayMs =
                 when {
-                    // While returning, the destination is live: detect a line hand-off quickly so
-                    // the old scroll is cancelled and the new current line immediately takes over.
-                    isReturningToSync -> 120L
                     // Nothing visual is advancing while paused.
                     !isPlaying && sliderPosition == null -> 420L
                     // Manual scrolling intentionally suppresses lyric motion, so a slower clock is
@@ -1148,6 +1147,12 @@ fun Lyrics(
                         targetIndex = currentLineIndex,
                         animated = true,
                     )
+                    if (
+                        returnFocusHoldIndex >= 0 &&
+                        currentLineIndex != returnFocusHoldIndex
+                    ) {
+                        returnFocusHoldIndex = -1
+                    }
                 }
             }
         }
@@ -1159,12 +1164,12 @@ fun Lyrics(
     }
 
     /*
-     * Manual return-to-sync has one owner and a symmetric visual path in both directions.
+     * Manual return-to-sync is a geometry hand-off followed by a focus hand-off.
      *
-     * Archive Tune's important idea is preserved here: list position and visual focus are separate.
-     * During a far return the outgoing viewport leaves, the list is exactly centred while fully
-     * invisible, then the destination viewport enters and its line focus fades in independently.
-     * No approximate centre offset is used, so top->bottom and bottom->top share the same logic.
+     * ArchiveTune/SimpMusic both avoid dragging a LazyList through large off-screen distances:
+     * bring the target into layout, wait one frame, then animate only the local correction. We use
+     * the same performance rule, but hide the far reposition inside a soft directional dissolve so
+     * the user still perceives continuity rather than a teleport.
      */
     LaunchedEffect(
         isReturningToSync,
@@ -1182,19 +1187,29 @@ fun Lyrics(
         }
 
         try {
+            returnFocusHoldIndex = -1
+            returnVisualFocusIndex = -1
+
             var targetIndex = currentLineIndex
+            if (targetIndex !in lines.indices) {
+                targetIndex =
+                    findCurrentLineIndex(
+                        lines,
+                        playerConnection.player.currentPosition,
+                        leadMs = lineSyncLeadMs,
+                    )
+            }
             if (targetIndex !in lines.indices) {
                 isManualScrolling = false
                 isReturningToSync = false
                 return@LaunchedEffect
             }
 
-            returnVisualFocusIndex = -1
             deferredCurrentLineIndex = targetIndex
 
             var layout = lazyListState.layoutInfo
             var visible = layout.visibleItemsInfo
-            var viewportHeight =
+            val viewportHeight =
                 layout.viewportEndOffset - layout.viewportStartOffset
             if (visible.isEmpty() || viewportHeight <= 0) {
                 isManualScrolling = false
@@ -1202,7 +1217,7 @@ fun Lyrics(
                 return@LaunchedEffect
             }
 
-            var anchorY =
+            val anchorY =
                 layout.viewportStartOffset + viewportHeight / 2
             var targetInfo =
                 visible.firstOrNull { it.index == targetIndex }
@@ -1216,16 +1231,13 @@ fun Lyrics(
                     targetIndex - centreItem.index
 
                 returnBridgeDirection =
-                    if (indexDistance > 0) {
-                        -1
-                    } else {
-                        1
-                    }
+                    if (indexDistance > 0) -1 else 1
                 returnBridgeProgress.snapTo(0f)
 
                 /*
-                 * One continuous bridge. Translation never changes direction or velocity at the
-                 * midpoint; opacity alone reaches zero there.
+                 * One slow-enough bridge to read as motion, not a blink. The physical shift is
+                 * intentionally small: large fake travel looked like the list was being thrown.
+                 * Opacity carries the hand-off; geometry only hints at direction.
                  */
                 val bridgeJob =
                     launch {
@@ -1233,7 +1245,7 @@ fun Lyrics(
                             targetValue = 1f,
                             animationSpec =
                                 tween(
-                                    durationMillis = 300,
+                                    durationMillis = 460,
                                     easing = LinearEasing,
                                 ),
                         )
@@ -1247,32 +1259,37 @@ fun Lyrics(
                 }
 
                 /*
-                 * Hidden midpoint: sample the freshest playback line, position it normally, then
-                 * measure the real row and centre it exactly with a non-animated correction.
-                 * This is the key directional fix. No guessed scrollOffset and no content-padding
-                 * asymmetry survive into the incoming half.
+                 * At the fully hidden midpoint sample playback directly instead of trusting a
+                 * polling state that may be one lyric behind. Freeze that target for the incoming
+                 * half; a later line change is handled only after this hand-off is complete.
                  */
-                val latestAtMidpoint = currentLineIndex
-                if (latestAtMidpoint in lines.indices) {
-                    targetIndex = latestAtMidpoint
-                    deferredCurrentLineIndex = latestAtMidpoint
+                val midpointTarget =
+                    findCurrentLineIndex(
+                        lines,
+                        playerConnection.player.currentPosition,
+                        leadMs = lineSyncLeadMs,
+                    )
+                if (midpointTarget in lines.indices) {
+                    targetIndex = midpointTarget
+                    currentLineIndex = midpointTarget
+                    deferredCurrentLineIndex = midpointTarget
                 }
 
                 lazyListState.scrollToItem(targetIndex)
                 withFrameNanos { }
 
                 layout = lazyListState.layoutInfo
-                viewportHeight =
-                    layout.viewportEndOffset - layout.viewportStartOffset
                 targetInfo =
                     layout.visibleItemsInfo
                         .firstOrNull { it.index == targetIndex }
+                val hiddenViewportHeight =
+                    layout.viewportEndOffset - layout.viewportStartOffset
 
-                if (targetInfo != null && viewportHeight > 0) {
-                    anchorY =
-                        layout.viewportStartOffset + viewportHeight / 2
+                if (targetInfo != null && hiddenViewportHeight > 0) {
+                    val hiddenAnchor =
+                        layout.viewportStartOffset + hiddenViewportHeight / 2
                     val hiddenOffset =
-                        (targetInfo.offset + targetInfo.size / 2) - anchorY
+                        (targetInfo.offset + targetInfo.size / 2) - hiddenAnchor
                     if (abs(hiddenOffset) > 1) {
                         lazyListState.scrollBy(hiddenOffset.toFloat())
                         withFrameNanos { }
@@ -1280,53 +1297,56 @@ fun Lyrics(
                 }
 
                 /*
-                 * Archive-Tune-style focus hand-off: the line becomes the visual focus only after
-                 * its geometry is already correct. Word motion remains suppressed because manual
-                 * mode is still active; only row focus/alpha is allowed to arrive.
+                 * Geometry is finished before focus starts. Archive Tune's good-looking hand-off is
+                 * based on the same separation: the active line acquires emphasis independently of
+                 * the list motion rather than trying to become bright while still finding its slot.
                  */
                 returnVisualFocusIndex = targetIndex
 
                 bridgeJob.join()
                 returnBridgeProgress.snapTo(0f)
-
-                layout = lazyListState.layoutInfo
-                visible = layout.visibleItemsInfo
-                viewportHeight =
-                    layout.viewportEndOffset - layout.viewportStartOffset
-                targetInfo =
-                    visible.firstOrNull { it.index == targetIndex }
             } else {
-                /*
-                 * Already visible: no bridge or hidden reposition is needed. Let the row acquire
-                 * focus first, then do one real continuous centre scroll.
-                 */
-                returnVisualFocusIndex = targetIndex
                 val exactOffset =
                     (targetInfo.offset + targetInfo.size / 2) - anchorY
                 if (abs(exactOffset) > 2) {
-                    lazyListState.animateScrollBy(
-                        value = exactOffset.toFloat(),
-                        animationSpec =
-                            tween(
-                                durationMillis =
-                                    with(density) {
-                                        val travelDp = abs(exactOffset).toDp().value
-                                        (260f + travelDp * 0.45f)
-                                            .toInt()
-                                            .coerceIn(280, 460)
-                                    },
-                                easing = ReturnToSyncSettleEasing,
-                            ),
-                    )
+                    val settleDuration =
+                        with(density) {
+                            val travelDp = abs(exactOffset).toDp().value
+                            (360f + travelDp * 0.55f)
+                                .toInt()
+                                .coerceIn(380, 620)
+                        }
+
+                    val scrollJob =
+                        launch {
+                            lazyListState.animateScrollBy(
+                                value = exactOffset.toFloat(),
+                                animationSpec =
+                                    tween(
+                                        durationMillis = settleDuration,
+                                        easing = AppleMusicEasing,
+                                    ),
+                            )
+                        }
+
+                    // Let geometry establish direction first; focus then starts arriving while the
+                    // last part of the local settle is still gliding.
+                    delay((settleDuration * 0.58f).toLong())
+                    returnVisualFocusIndex = targetIndex
+                    scrollJob.join()
                     withFrameNanos { }
+                } else {
+                    returnVisualFocusIndex = targetIndex
                 }
             }
 
             /*
-             * Do not launch another far bridge if playback advances during the incoming half.
-             * Commit the line that was actually shown; normal tracking gets the newest current line
-             * immediately after ownership is released and performs only the ordinary adjacent move.
+             * Hold the visual focus that actually landed. If playback crossed into another lyric
+             * during the incoming half, do not change brightness on the same frame we release the
+             * return controller. Normal tracking will first move geometry to the new line and only
+             * then release this hold.
              */
+            returnFocusHoldIndex = targetIndex
             previousLineIndex = targetIndex
             deferredCurrentLineIndex = targetIndex
             lastPreviewTime = 0L
@@ -1339,6 +1359,24 @@ fun Lyrics(
             }
             returnBridgeDirection = 0
             returnVisualFocusIndex = -1
+        }
+    }
+
+    LaunchedEffect(
+        returnFocusHoldIndex,
+        currentLineIndex,
+        isReturningToSync,
+    ) {
+        if (
+            !isReturningToSync &&
+            returnFocusHoldIndex in lines.indices &&
+            returnFocusHoldIndex == currentLineIndex
+        ) {
+            // Let the 500ms-ish focus acquire finish instead of dropping the hold immediately.
+            delay(520L)
+            if (currentLineIndex == returnFocusHoldIndex) {
+                returnFocusHoldIndex = -1
+            }
         }
     }
 
@@ -1383,19 +1421,19 @@ fun Lyrics(
                             } else {
                                 ((bridge - 0.5f) / 0.5f).coerceIn(0f, 1f)
                             }
-                        val alphaEase = CapsuleMotion.smooth(phase)
+                        val alphaEase =
+                            AppleMusicEasing.transform(phase)
                         val shift = returnBridgeShiftPx * returnBridgeDirection
 
                         /*
-                         * Translation keeps moving at a steady rate all the way to the invisible
-                         * midpoint; only opacity eases. The content swap therefore cannot expose a
-                         * velocity stop or a visible teleport.
+                         * Keep the fake travel tiny and let opacity do the work. The old 68dp shift
+                         * made the hand-off feel like a throw; ~30dp only communicates direction.
                          */
                         if (outgoing) {
-                            translationY = shift * phase
+                            translationY = shift * alphaEase
                             alpha = 1f - alphaEase
                         } else {
-                            translationY = -shift * (1f - phase)
+                            translationY = -shift * (1f - alphaEase)
                             alpha = alphaEase
                         }
                     } else {
@@ -1536,6 +1574,7 @@ fun Lyrics(
             val displayedCurrentLineIndex =
                 when {
                     isReturningToSync -> returnVisualFocusIndex
+                    returnFocusHoldIndex in lines.indices -> returnFocusHoldIndex
                     isSeeking || isSelectionModeActive -> deferredCurrentLineIndex
                     else -> currentLineIndex
                 }
@@ -1575,7 +1614,7 @@ fun Lyrics(
                         !isSynced || (isSelectionModeActive && isSelected) -> 1f
                         isReturningToSync &&
                             index == returnVisualFocusIndex -> 1f
-                        isReturningToSync -> 0.46f
+                        isReturningToSync -> 0.56f
                         isManualScrolling && archiveTuneStyle -> when {
                             index == displayedCurrentLineIndex -> 1f
                             distance == 1 -> 0.72f
@@ -1666,7 +1705,7 @@ fun Lyrics(
                                     durationMillis =
                                         when {
                                             isReturningToSync ->
-                                                if (index == returnVisualFocusIndex) 430 else 180
+                                                if (index == returnVisualFocusIndex) 520 else 260
                                             archiveTuneStyle ->
                                                 if (archiveLineIsFocused) 500 else 1_100
                                             lyricsAnimationStyle != LyricsAnimationStyle.NONE ->
@@ -1676,7 +1715,7 @@ fun Lyrics(
                                         },
                                     easing =
                                         if (isReturningToSync) {
-                                            ReturnFocusEasing
+                                            AppleMusicEasing
                                         } else if (lyricsAnimationStyle != LyricsAnimationStyle.NONE) {
                                             AppleMusicEasing
                                         } else {
