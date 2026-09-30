@@ -868,7 +868,7 @@ fun Lyrics(
     var returnBridgeDirection by remember {
         mutableIntStateOf(0)
     }
-    val returnBridgeShiftPx = with(density) { 42.dp.toPx() }
+    val returnBridgeShiftPx = with(density) { 68.dp.toPx() }
 
     val manualScrollThresholdPx = with(density) { 28.dp.toPx() }
 
@@ -1071,7 +1071,7 @@ fun Lyrics(
                 when {
                     // While returning, the destination is live: detect a line hand-off quickly so
                     // the old scroll is cancelled and the new current line immediately takes over.
-                    isReturningToSync -> 80L
+                    isReturningToSync -> 100L
                     // Nothing visual is advancing while paused.
                     !isPlaying && sliderPosition == null -> 420L
                     // Manual scrolling intentionally suppresses lyric motion, so a slower clock is
@@ -1154,18 +1154,11 @@ fun Lyrics(
     }
 
     /*
-     * One coroutine owns manual return-to-sync from start to finish.
+     * Manual return-to-sync has exactly one owner and, for a far target, at most one visual bridge.
      *
-     * Crucially, currentLineIndex is NOT a LaunchedEffect key. The old implementation cancelled
-     * and restarted the scroll whenever playback crossed into the next lyric while a long return
-     * was in flight. That restart was one of the hidden "broken" motions. We read the latest line
-     * inside the running coroutine instead: a hand-off updates the final destination without
-     * tearing down the motion already on screen.
-     *
-     * Near return: one real continuous list scroll + one exact settle.
-     * Far return: a very cheap directional bridge hides one direct lazy-list reposition, then one
-     * exact settle. We never compose/measure dozens of intermediate lyric rows just to simulate
-     * distance, which is both more stable and much cooler.
+     * currentLineIndex is intentionally not an effect key. Playback can advance while this block
+     * is running without cancelling and restarting the motion. We sample the freshest line at the
+     * hidden midpoint and again before the final settle.
      */
     LaunchedEffect(
         isReturningToSync,
@@ -1182,227 +1175,249 @@ fun Lyrics(
         }
 
         try {
-            repeat(3) {
-                var targetIndex = currentLineIndex
-                if (targetIndex !in lines.indices) {
+            var targetIndex = currentLineIndex
+            if (targetIndex !in lines.indices) {
+                isManualScrolling = false
+                isReturningToSync = false
+                return@LaunchedEffect
+            }
+
+            deferredCurrentLineIndex = targetIndex
+
+            var layout = lazyListState.layoutInfo
+            var visible = layout.visibleItemsInfo
+            var viewportHeight =
+                layout.viewportEndOffset - layout.viewportStartOffset
+            if (visible.isEmpty() || viewportHeight <= 0) {
+                isManualScrolling = false
+                isReturningToSync = false
+                return@LaunchedEffect
+            }
+
+            var anchorY =
+                layout.viewportStartOffset + viewportHeight / 2
+            var targetInfo =
+                visible.firstOrNull { it.index == targetIndex }
+
+            if (targetInfo == null) {
+                val centreItem =
+                    visible.minByOrNull {
+                        abs((it.offset + it.size / 2) - anchorY)
+                    } ?: return@LaunchedEffect
+                val indexDistance =
+                    targetIndex - centreItem.index
+
+                if (abs(indexDistance) <= 4) {
+                    /*
+                     * Nearby destination: show a real continuous scroll. Over four rows is where
+                     * variable lyric heights begin to make pixel estimation visually unreliable.
+                     */
+                    val measuredStrides =
+                        visible
+                            .zipWithNext()
+                            .mapNotNull { (first, second) ->
+                                val gap = second.index - first.index
+                                if (gap <= 0) {
+                                    null
+                                } else {
+                                    (second.offset - first.offset).toFloat() / gap
+                                }
+                            }
+                            .filter { abs(it) > 1f }
+                    val averageStride =
+                        if (measuredStrides.isNotEmpty()) {
+                            measuredStrides.average().toFloat()
+                        } else {
+                            visible.map { it.size }.average().toFloat()
+                        }.coerceAtLeast(1f)
+                    val centreError =
+                        (centreItem.offset + centreItem.size / 2) - anchorY
+                    val estimatedDistance =
+                        centreError + indexDistance * averageStride
+
+                    if (abs(estimatedDistance) > 2f) {
+                        lazyListState.animateScrollBy(
+                            value = estimatedDistance,
+                            animationSpec =
+                                tween(
+                                    durationMillis =
+                                        (260 + abs(indexDistance) * 34)
+                                            .coerceIn(280, 420),
+                                    easing = ReturnToSyncSettleEasing,
+                                ),
+                        )
+                        withFrameNanos { }
+                    }
+                } else {
+                    /*
+                     * Far destination: one continuous 0..1 bridge. The old bridge was two separate
+                     * tweens (0..0.499, snap, 0.501..1); each tween stopped its velocity in the
+                     * middle, making the whole return visibly jerk. Here the progress animation
+                     * never stops. We only swap the lazy-list content at 0.5, where the layer is
+                     * completely transparent.
+                     */
+                    returnBridgeDirection =
+                        if (indexDistance > 0) {
+                            -1
+                        } else {
+                            1
+                        }
+                    returnBridgeProgress.snapTo(0f)
+
+                    val bridgeJob =
+                        launch {
+                            returnBridgeProgress.animateTo(
+                                targetValue = 1f,
+                                animationSpec =
+                                    tween(
+                                        durationMillis = 280,
+                                        easing = LinearEasing,
+                                    ),
+                            )
+                        }
+
+                    while (
+                        bridgeJob.isActive &&
+                        returnBridgeProgress.value < 0.5f
+                    ) {
+                        withFrameNanos { }
+                    }
+
+                    // At the invisible midpoint use the freshest playback line. This is the only
+                    // direct reposition on a far return and therefore the only expensive layout hop.
+                    val latestAtMidpoint = currentLineIndex
+                    if (latestAtMidpoint in lines.indices) {
+                        targetIndex = latestAtMidpoint
+                        deferredCurrentLineIndex = latestAtMidpoint
+                    }
+
+                    layout = lazyListState.layoutInfo
+                    viewportHeight =
+                        layout.viewportEndOffset - layout.viewportStartOffset
+                    val averageHeight =
+                        layout.visibleItemsInfo
+                            .map { it.size }
+                            .takeIf { it.isNotEmpty() }
+                            ?.average()
+                            ?.toInt()
+                            ?.coerceAtLeast(1)
+                            ?: with(density) { 64.dp.roundToPx() }
+                    val desiredTop =
+                        ((viewportHeight - averageHeight) / 2)
+                            .coerceAtLeast(0)
+
+                    lazyListState.scrollToItem(
+                        index = targetIndex,
+                        scrollOffset = -desiredTop,
+                    )
+                    withFrameNanos { }
+                    bridgeJob.join()
+                    returnBridgeProgress.snapTo(0f)
+                }
+
+                layout = lazyListState.layoutInfo
+                visible = layout.visibleItemsInfo
+                viewportHeight =
+                    layout.viewportEndOffset - layout.viewportStartOffset
+                if (visible.isEmpty() || viewportHeight <= 0) {
                     isManualScrolling = false
                     isReturningToSync = false
                     return@LaunchedEffect
                 }
 
-                deferredCurrentLineIndex = targetIndex
-
-                val layout = lazyListState.layoutInfo
-                val visible = layout.visibleItemsInfo
-                val viewportHeight =
-                    layout.viewportEndOffset - layout.viewportStartOffset
-                if (visible.isEmpty() || viewportHeight <= 0) {
-                    withFrameNanos { }
-                    return@repeat
-                }
-
-                val anchorY =
-                    layout.viewportStartOffset + viewportHeight / 2
-                var targetInfo =
-                    visible.firstOrNull { it.index == targetIndex }
-
-                if (targetInfo == null) {
-                    val centreItem =
-                        visible.minByOrNull {
-                            abs((it.offset + it.size / 2) - anchorY)
-                        } ?: return@repeat
-                    val indexDistance =
-                        targetIndex - centreItem.index
-
-                    if (abs(indexDistance) <= 4) {
-                        /*
-                         * Close enough to show genuine travel. One tween only — no segmented
-                         * approach, so there is no intermediate row where velocity can "catch".
-                         */
-                        val measuredStrides =
+                /*
+                 * Playback may have advanced by one line during the incoming half. Do not launch a
+                 * second bridge. For the normal adjacent hand-off, one short physical scroll is
+                 * cheaper and visually continuous.
+                 */
+                val latestIndex = currentLineIndex
+                if (latestIndex in lines.indices && latestIndex != targetIndex) {
+                    val latestInfo =
+                        visible.firstOrNull { it.index == latestIndex }
+                    if (latestInfo != null) {
+                        targetIndex = latestIndex
+                        deferredCurrentLineIndex = latestIndex
+                    } else if (abs(latestIndex - targetIndex) <= 2) {
+                        val currentTarget =
+                            visible.firstOrNull { it.index == targetIndex }
+                        val averageStride =
                             visible
                                 .zipWithNext()
                                 .mapNotNull { (first, second) ->
                                     val gap = second.index - first.index
-                                    if (gap <= 0) {
-                                        null
-                                    } else {
-                                        (second.offset - first.offset).toFloat() / gap
-                                    }
+                                    if (gap <= 0) null
+                                    else (second.offset - first.offset).toFloat() / gap
                                 }
                                 .filter { abs(it) > 1f }
-                        val averageStride =
-                            if (measuredStrides.isNotEmpty()) {
-                                measuredStrides.average().toFloat()
-                            } else {
-                                visible.map { it.size }.average().toFloat()
-                            }.coerceAtLeast(1f)
-                        val centreError =
-                            (centreItem.offset + centreItem.size / 2) - anchorY
-                        val estimatedDistance =
-                            centreError + indexDistance * averageStride
-
-                        if (abs(estimatedDistance) > 2f) {
-                            lazyListState.animateScrollBy(
-                                value = estimatedDistance,
-                                animationSpec =
-                                    tween(
-                                        durationMillis =
-                                            (280 + abs(indexDistance) * 32)
-                                                .coerceIn(300, 440),
-                                        easing = ReturnToSyncSettleEasing,
-                                    ),
-                            )
-                            withFrameNanos { }
-                        }
-                    } else {
-                        /*
-                         * A far return should not make LazyColumn lay out every lyric between here
-                         * and the target. Move the current viewport out, reposition while the list
-                         * is intentionally almost invisible, then bring the destination viewport in.
-                         * This preserves direction and continuity without the heat or remeasurement
-                         * instability of a kilometre-long physical scroll.
-                         */
-                        returnBridgeDirection =
-                            if (indexDistance > 0) {
-                                -1
-                            } else {
-                                1
-                            }
-                        returnBridgeProgress.snapTo(0f)
-                        returnBridgeProgress.animateTo(
-                            targetValue = 0.499f,
-                            animationSpec =
-                                tween(
-                                    durationMillis = 120,
-                                    easing = SmoothDecelerateEasing,
-                                ),
-                        )
-
-                        // Playback may have advanced while the viewport was leaving. Update the
-                        // hidden jump to the freshest line without restarting the animation.
-                        val latestIndex = currentLineIndex
-                        if (latestIndex in lines.indices) {
-                            targetIndex = latestIndex
-                            deferredCurrentLineIndex = latestIndex
-                        }
-
-                        val hiddenLayout = lazyListState.layoutInfo
-                        val hiddenViewportHeight =
-                            hiddenLayout.viewportEndOffset -
-                                hiddenLayout.viewportStartOffset
-                        val averageHeight =
-                            hiddenLayout.visibleItemsInfo
-                                .map { it.size }
                                 .takeIf { it.isNotEmpty() }
                                 ?.average()
-                                ?.toInt()
-                                ?.coerceAtLeast(1)
-                                ?: with(density) { 64.dp.roundToPx() }
-                        val desiredTop =
-                            ((hiddenViewportHeight - averageHeight) / 2)
-                                .coerceAtLeast(0)
+                                ?.toFloat()
+                                ?: visible.map { it.size }.average().toFloat()
 
-                        lazyListState.scrollToItem(
-                            index = targetIndex,
-                            scrollOffset = -desiredTop,
-                        )
-                        withFrameNanos { }
-
-                        // Switch from outgoing to incoming side only while nearly invisible.
-                        returnBridgeProgress.snapTo(0.501f)
-                        returnBridgeProgress.animateTo(
-                            targetValue = 1f,
+                        lazyListState.animateScrollBy(
+                            value = (latestIndex - targetIndex) * averageStride,
                             animationSpec =
                                 tween(
-                                    durationMillis = 170,
+                                    durationMillis = 190,
                                     easing = ReturnToSyncSettleEasing,
                                 ),
                         )
-                        returnBridgeProgress.snapTo(0f)
+                        withFrameNanos { }
+                        targetIndex = latestIndex
+                        deferredCurrentLineIndex = latestIndex
                     }
-
-                    targetInfo =
-                        lazyListState.layoutInfo.visibleItemsInfo
-                            .firstOrNull { it.index == targetIndex }
                 }
 
-                // Never commit an old target. If playback advanced during the visual trip, use the
-                // next pass for the latest line; normally that is only one adjacent-row correction.
-                val latestIndex = currentLineIndex
-                if (latestIndex != targetIndex) {
-                    return@repeat
-                }
+                targetInfo =
+                    lazyListState.layoutInfo.visibleItemsInfo
+                        .firstOrNull { it.index == targetIndex }
+            }
 
-                val measuredTarget = targetInfo ?: return@repeat
+            val measuredTarget = targetInfo
+                ?: lazyListState.layoutInfo.visibleItemsInfo
+                    .firstOrNull { it.index == targetIndex }
+
+            if (measuredTarget != null) {
                 val finalLayout = lazyListState.layoutInfo
                 val finalViewportHeight =
                     finalLayout.viewportEndOffset - finalLayout.viewportStartOffset
-                if (finalViewportHeight <= 0) return@repeat
+                if (finalViewportHeight > 0) {
+                    val finalAnchorY =
+                        finalLayout.viewportStartOffset + finalViewportHeight / 2
+                    val finalOffset =
+                        (measuredTarget.offset + measuredTarget.size / 2) - finalAnchorY
 
-                val finalAnchorY =
-                    finalLayout.viewportStartOffset + finalViewportHeight / 2
-                val finalOffset =
-                    (measuredTarget.offset + measuredTarget.size / 2) - finalAnchorY
-
-                if (abs(finalOffset) > 3) {
-                    lazyListState.animateScrollBy(
-                        value = finalOffset.toFloat(),
-                        animationSpec =
-                            tween(
-                                durationMillis =
-                                    with(density) {
-                                        val travelDp = abs(finalOffset).toDp().value
-                                        (230f + travelDp * 0.36f)
-                                            .toInt()
-                                            .coerceIn(240, 420)
-                                    },
-                                easing = ReturnToSyncSettleEasing,
-                            ),
-                    )
-                    withFrameNanos { }
-                }
-
-                if (currentLineIndex != targetIndex) {
-                    return@repeat
-                }
-
-                val verified =
-                    lazyListState.layoutInfo.visibleItemsInfo
-                        .firstOrNull { it.index == targetIndex }
-                val verifiedLayout = lazyListState.layoutInfo
-                val verifiedHeight =
-                    verifiedLayout.viewportEndOffset -
-                        verifiedLayout.viewportStartOffset
-                val isCentered =
-                    if (verified != null && verifiedHeight > 0) {
-                        val verifiedAnchor =
-                            verifiedLayout.viewportStartOffset + verifiedHeight / 2
-                        abs(
-                            (verified.offset + verified.size / 2) -
-                                verifiedAnchor
-                        ) <= 4
-                    } else {
-                        false
+                    if (abs(finalOffset) > 3) {
+                        lazyListState.animateScrollBy(
+                            value = finalOffset.toFloat(),
+                            animationSpec =
+                                tween(
+                                    durationMillis =
+                                        with(density) {
+                                            val travelDp = abs(finalOffset).toDp().value
+                                            (220f + travelDp * 0.32f)
+                                                .toInt()
+                                                .coerceIn(230, 390)
+                                        },
+                                    easing = ReturnToSyncSettleEasing,
+                                ),
+                        )
+                        withFrameNanos { }
                     }
-
-                if (isCentered) {
-                    deferredCurrentLineIndex = targetIndex
-                    previousLineIndex = targetIndex
-                    lastPreviewTime = 0L
-                    initialScrollDone = true
-                    isManualScrolling = false
-                    isReturningToSync = false
-                    return@LaunchedEffect
                 }
             }
 
             /*
-             * Never leave input locked after an exotic layout/remeasure case. Release ownership
-             * and let the normal tracker perform one authoritative correction on its next pass.
+             * One final freshness check. If playback crossed one adjacent lyric during the precise
+             * settle, let the normal tracker take that tiny next hand-off after ownership is
+             * released. Do not restart the long-return choreography.
              */
-            previousLineIndex = -1
+            val landedIndex = currentLineIndex
+            deferredCurrentLineIndex =
+                if (landedIndex in lines.indices) landedIndex else targetIndex
+            previousLineIndex = targetIndex
             lastPreviewTime = 0L
+            initialScrollDone = true
             isManualScrolling = false
             isReturningToSync = false
         } finally {
@@ -1454,15 +1469,20 @@ fun Lyrics(
                             } else {
                                 ((bridge - 0.5f) / 0.5f).coerceIn(0f, 1f)
                             }
-                        val eased = CapsuleMotion.smooth(phase)
+                        val alphaEase = CapsuleMotion.smooth(phase)
                         val shift = returnBridgeShiftPx * returnBridgeDirection
 
+                        /*
+                         * Translation keeps moving at a steady rate all the way to the invisible
+                         * midpoint; only opacity eases. The content swap therefore cannot expose a
+                         * velocity stop or a visible teleport.
+                         */
                         if (outgoing) {
-                            translationY = shift * eased
-                            alpha = 1f - 0.72f * eased
+                            translationY = shift * phase
+                            alpha = 1f - alphaEase
                         } else {
-                            translationY = -shift * (1f - eased)
-                            alpha = 0.28f + 0.72f * eased
+                            translationY = -shift * (1f - phase)
+                            alpha = alphaEase
                         }
                     } else {
                         translationY = 0f
@@ -1587,7 +1607,7 @@ fun Lyrics(
                         lyricsAnimationStyle == LyricsAnimationStyle.ARCHIVE_TUNE
                     val targetAlpha = when {
                         !isSynced || (isSelectionModeActive && isSelected) -> 1f
-                        isReturningToSync -> 0.40f
+                        isReturningToSync -> 0.52f
                         isManualScrolling && archiveTuneStyle -> when {
                             index == displayedCurrentLineIndex -> 1f
                             distance == 1 -> 0.72f
@@ -1677,7 +1697,7 @@ fun Lyrics(
                                 tween(
                                     durationMillis =
                                         when {
-                                            isReturningToSync -> 320
+                                            isReturningToSync -> 120
                                             archiveTuneStyle ->
                                                 if (archiveLineIsFocused) 500 else 1_100
                                             lyricsAnimationStyle != LyricsAnimationStyle.NONE ->
