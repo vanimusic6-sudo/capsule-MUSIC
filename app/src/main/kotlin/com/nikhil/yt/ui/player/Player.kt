@@ -34,7 +34,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.TransformOrigin
@@ -58,7 +57,6 @@ import com.nikhil.yt.ui.component.LocalBottomSheetPageState
 import com.nikhil.yt.ui.component.LocalMenuState
 import com.nikhil.yt.ui.component.rememberBottomSheetState
 import com.nikhil.yt.ui.menu.PlayerMenu
-import com.nikhil.yt.ui.motion.CapsuleMotion
 import com.nikhil.yt.ui.screens.settings.DarkMode
 import com.nikhil.yt.ui.utils.ShowMediaInfo
 import com.nikhil.yt.utils.rememberEnumPreference
@@ -461,20 +459,10 @@ fun BottomSheetPlayer(
 }
 
 /**
- * The lyrics sheet has a character of its own, and it had to be made more than nominally different.
- *
- * Both surfaces used to rise from the bottom and resolve a uniform scale, which is one animation
- * played twice however the numbers differ — the eye reads the *geometry*, not the constants. What
- * separates them now is where each one is anchored and along which axis it moves:
- *
- * - the player is anchored at the **bottom**, at the dock it folds into, and scales on both axes. It
- *   is an object shrinking towards a place.
- * - the lyrics are anchored at the **top** and stretch on the vertical axis alone. Nothing about
- *   them gets wider or narrower; the sheet unrolls downward from its own top edge, the way a page
- *   is pulled out rather than a card zoomed in.
- *
- * Those are opposite anchors and different axes, so the two cannot be mistaken for each other even
- * though the idea — rise, open out, settle — is the one that was there before.
+ * Lyrics opens as one rigid full-screen sheet that rises from the bottom. The detailed backdrop is
+ * counter-translated inside that moving sheet so its light/gradient coordinates stay fixed to the
+ * display, while the foreground rides with the sheet. This keeps the physical "canvas" motion
+ * without reintroducing the colour sweep that moving procedural backgrounds used to cause.
  */
 private const val LyricsTravelMillis = 540
 private const val LyricsCloseMillis = 570
