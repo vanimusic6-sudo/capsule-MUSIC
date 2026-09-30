@@ -742,7 +742,21 @@ private fun CapsulePlayerLyricsHost(
                                     val revealTop =
                                         ((1f - travelled) * size.height)
                                             .coerceIn(0f, size.height)
-                                    val featherPx = 44.dp.toPx()
+                                    /*
+                                     * A fixed 44dp feather becomes a huge part of the sheet when
+                                     * only a small strip is left on screen. That is why the lower
+                                     * part looked transparent while the upper part was still
+                                     * travelling. Keep the feather proportional to the remaining
+                                     * visible height, capped at the old maximum.
+                                     */
+                                    val visibleHeightPx =
+                                        (size.height * travelled)
+                                            .coerceAtLeast(0f)
+                                    val featherPx =
+                                        minOf(
+                                            44.dp.toPx(),
+                                            visibleHeightPx * 0.075f,
+                                        ).coerceAtLeast(1f)
                                     val transparentEnd =
                                         ((revealTop - featherPx) / size.height)
                                             .coerceIn(0f, 1f)
