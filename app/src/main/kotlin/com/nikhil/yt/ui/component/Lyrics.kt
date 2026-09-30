@@ -207,7 +207,8 @@ import com.nikhil.yt.ui.motion.CapsuleStandardEasing
 
 
 private val AppleMusicEasing = CubicBezierEasing(0.25f, 0.1f, 0.25f, 1.0f)
-private val ReturnToSyncSettleEasing = CubicBezierEasing(0.20f, 0f, 0.12f, 1f)
+private val ReturnToSyncSettleEasing = CubicBezierEasing(0.22f, 0f, 0.16f, 1f)
+private val ReturnFocusEasing = CubicBezierEasing(0.24f, 0f, 0.18f, 1f)
 private val SmoothDecelerateEasing = CubicBezierEasing(0.0f, 0.0f, 0.2f, 1.0f)
 
 private fun isRtlText(text: String): Boolean {
@@ -343,6 +344,7 @@ private fun KaraokeWord(
         // 3. Active (filling) layer - SOFT MASK (no glow)
         Box(
             modifier = Modifier
+                .fillMaxSize()
                 .graphicsLayer {
                      compositingStrategy = CompositingStrategy.Offscreen
                      
@@ -1074,7 +1076,7 @@ fun Lyrics(
                 when {
                     // While returning, the destination is live: detect a line hand-off quickly so
                     // the old scroll is cancelled and the new current line immediately takes over.
-                    isReturningToSync -> 100L
+                    isReturningToSync -> 120L
                     // Nothing visual is advancing while paused.
                     !isPlaying && sliderPosition == null -> 420L
                     // Manual scrolling intentionally suppresses lyric motion, so a slower clock is
@@ -1424,11 +1426,17 @@ fun Lyrics(
                                     !isReturningToSync &&
                                     source == NestedScrollSource.UserInput
                                 ) {
-                                    accumulatedDragPx += abs(consumed.y)
-                                    val currentTime = System.currentTimeMillis()
+                                    /*
+                                     * Count attempted vertical travel, not only pixels LazyColumn
+                                     * managed to consume. At the first/last lyric consumed.y can be
+                                     * zero even though the finger is still deliberately dragging.
+                                     * Treat that edge drag as manual scrolling instead of snapping
+                                     * back to playback focus.
+                                     */
+                                    accumulatedDragPx +=
+                                        abs(consumed.y) + abs(available.y)
 
-                                    // A tiny touch used to detach tracking immediately. Require a
-                                    // deliberate drag before entering free-scroll mode.
+                                    val currentTime = System.currentTimeMillis()
                                     if (
                                         !enteredManualMode &&
                                         accumulatedDragPx >= manualScrollThresholdPx
@@ -1439,41 +1447,61 @@ fun Lyrics(
                                         lastScrollTime = currentTime
                                     } else if (
                                         enteredManualMode &&
-                                        currentTime - lastScrollTime > 80L
+                                        currentTime - lastScrollTime > 120L
                                     ) {
                                         lastPreviewTime = currentTime
                                         lastScrollTime = currentTime
                                     }
                                 }
-                                return super.onPostScroll(consumed, available, source)
+
+                                /*
+                                 * Consume any vertical remainder at the lyric viewport boundary.
+                                 * Otherwise that unconsumed delta bubbles to the player's parent
+                                 * sheet and a drag on empty lyric space / past the list edge can
+                                 * start collapsing the whole player.
+                                 */
+                                return if (
+                                    source == NestedScrollSource.UserInput &&
+                                    !isSelectionModeActive
+                                ) {
+                                    Offset(
+                                        x = 0f,
+                                        y = available.y,
+                                    )
+                                } else {
+                                    Offset.Zero
+                                }
                             }
 
                             override suspend fun onPostFling(
                                 consumed: Velocity,
                                 available: Velocity,
                             ): Velocity {
-                                if (!isSelectionModeActive && !isReturningToSync) {
-                                    if (enteredManualMode) {
-                                        lastPreviewTime = System.currentTimeMillis()
-                                        isManualScrolling = true
-                                    } else if (
-                                        scrollLyrics &&
-                                        currentLineIndex in lines.indices
-                                    ) {
-                                        // Small accidental drags are elastic: return the live line
-                                        // to the one canonical anchor instead of preserving drift.
-                                        scope.launch {
-                                            anchorLyricLine(
-                                                targetIndex = currentLineIndex,
-                                                animated = true,
-                                            )
-                                        }
-                                    }
+                                if (
+                                    enteredManualMode &&
+                                    !isSelectionModeActive &&
+                                    !isReturningToSync
+                                ) {
+                                    lastPreviewTime = System.currentTimeMillis()
+                                    isManualScrolling = true
                                 }
 
+                                /*
+                                 * Never auto-return after a fling that did not move the list.
+                                 * That case is exactly what happens when the user swipes farther
+                                 * past the top/bottom boundary.
+                                 */
                                 accumulatedDragPx = 0f
                                 enteredManualMode = false
-                                return super.onPostFling(consumed, available)
+
+                                return if (!isSelectionModeActive) {
+                                    Velocity(
+                                        x = 0f,
+                                        y = available.y,
+                                    )
+                                } else {
+                                    Velocity.Zero
+                                }
                             }
                         }
                     },
@@ -1612,7 +1640,7 @@ fun Lyrics(
                                     durationMillis =
                                         when {
                                             isReturningToSync ->
-                                                if (index == returnVisualFocusIndex) 260 else 180
+                                                if (index == returnVisualFocusIndex) 380 else 220
                                             archiveTuneStyle ->
                                                 if (archiveLineIsFocused) 500 else 1_100
                                             lyricsAnimationStyle != LyricsAnimationStyle.NONE ->
@@ -1622,7 +1650,7 @@ fun Lyrics(
                                         },
                                     easing =
                                         if (isReturningToSync) {
-                                            ReturnToSyncSettleEasing
+                                            ReturnFocusEasing
                                         } else if (lyricsAnimationStyle != LyricsAnimationStyle.NONE) {
                                             AppleMusicEasing
                                         } else {
