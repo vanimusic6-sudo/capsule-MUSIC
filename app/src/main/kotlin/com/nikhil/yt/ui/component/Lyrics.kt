@@ -575,6 +575,7 @@ fun Lyrics(
     sliderPositionProvider: () -> Long?,
     isVisible: Boolean = true,
     modifier: Modifier = Modifier,
+    onLineSeek: (Long) -> Unit = {},
 ) {
     val playerConnection = LocalPlayerConnection.current ?: return
     val menuState = LocalMenuState.current
@@ -1077,10 +1078,10 @@ fun Lyrics(
             val delayMs =
                 when {
                     // Nothing visual is advancing while paused.
-                    !isPlaying && sliderPosition == null -> 420L
+                    !isPlaying && sliderPosition == null -> 900L
                     // Manual scrolling intentionally suppresses lyric motion, so a slower clock is
                     // enough to keep the current-line bookkeeping fresh.
-                    isManualScrolling -> 180L
+                    isManualScrolling -> 240L
                     // Word-synced motion keeps the only fast clock. 25 Hz is enough to remove the
                     // small stepping visible at 20 Hz, while all non-active lines remain detached
                     // from currentPlaybackPosition and therefore do not pay for these ticks.
@@ -1762,8 +1763,13 @@ fun Lyrics(
                                     currentLineIndex = index
                                     deferredCurrentLineIndex = index
                                     previousLineIndex = index
+                                    currentPlaybackPosition = (item.time + wordSyncLeadMs)
+                                        .coerceAtLeast(0L)
                                     initialScrollDone = true
                                     playerConnection.player.seekTo(item.time)
+                                    // The player seek and the visible progress readout must share
+                                    // the same event. A paused track has no running display clock.
+                                    onLineSeek(item.time)
                                     scope.launch {
                                         anchorLyricLine(
                                             targetIndex = index,

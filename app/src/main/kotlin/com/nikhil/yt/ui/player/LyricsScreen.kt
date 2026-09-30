@@ -83,7 +83,9 @@ fun LyricsScreen(
         if (!isPlaying) return@LaunchedEffect
 
         while (isActive) {
-            delay(250)
+            // The bar does not need the lyric word clock's cadence. Seeking a line updates
+            // position synchronously below, so this only follows uninterrupted playback.
+            delay(350)
             position = player.currentPosition.coerceAtLeast(0L)
             duration = player.duration.takeIf { it > 0L } ?: C.TIME_UNSET
         }
@@ -108,6 +110,10 @@ fun LyricsScreen(
         },
         onSeekPreview = {
             sliderPosition = it
+        },
+        onLineSeek = { seekPosition ->
+            sliderPosition = null
+            position = seekPosition.coerceAtLeast(0L)
         },
         playerArtworkColors = playerArtworkColors,
         backdropAnimationTime = backdropAnimationTime,

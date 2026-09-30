@@ -224,6 +224,7 @@ fun CapsuleLyricsContent(
     onMenuClick: () -> Unit,
     onSeekPreview: (Long) -> Unit,
     onSeekFinished: () -> Unit,
+    onLineSeek: (Long) -> Unit,
     playerArtworkColors: List<Color> = emptyList(),
     backdropAnimationTime: State<Long>? = null,
     drawBackdrop: Boolean = true,
@@ -469,6 +470,7 @@ fun CapsuleLyricsContent(
                     sliderPosition
                 },
                 isVisible = isVisible,
+                onLineSeek = onLineSeek,
             )
         }
 

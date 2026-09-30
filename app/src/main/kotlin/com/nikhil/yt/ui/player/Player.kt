@@ -464,8 +464,8 @@ fun BottomSheetPlayer(
  * display, while the foreground rides with the sheet. This keeps the physical "canvas" motion
  * without reintroducing the colour sweep that moving procedural backgrounds used to cause.
  */
-private const val LyricsTravelMillis = 540
-private const val LyricsCloseMillis = 570
+private const val LyricsTravelMillis = 590
+private const val LyricsCloseMillis = 620
 
 /**
  * Softer off the mark than the player's, and a touch longer.
@@ -474,11 +474,11 @@ private const val LyricsCloseMillis = 570
  * lyrics are a page being drawn out. Spending even less distance in the first frames is what carries
  * that difference in time as well as in shape.
  */
-private val LyricsEasing = CubicBezierEasing(0.34f, 0.02f, 0.20f, 1f)
-private val LyricsCloseEasing = CubicBezierEasing(0.28f, 0.04f, 0.22f, 1f)
-private val LyricsForegroundAcquireEasing = CubicBezierEasing(0.24f, 0f, 0.18f, 1f)
-private val LyricsForegroundReleaseEasing = CubicBezierEasing(0.24f, 0f, 0.18f, 1f)
-private val LyricsVeilReleaseEasing = CubicBezierEasing(0.20f, 0f, 0.22f, 1f)
+private val LyricsEasing = CubicBezierEasing(0.38f, 0.04f, 0.22f, 1f)
+private val LyricsCloseEasing = CubicBezierEasing(0.36f, 0.02f, 0.24f, 1f)
+private val LyricsForegroundAcquireEasing = CubicBezierEasing(0.32f, 0f, 0.26f, 1f)
+private val LyricsForegroundReleaseEasing = CubicBezierEasing(0.34f, 0f, 0.30f, 1f)
+private val LyricsVeilReleaseEasing = CubicBezierEasing(0.40f, 0f, 0.34f, 1f)
 
 @Composable
 private fun CapsulePlayerLyricsHost(
@@ -539,7 +539,7 @@ private fun CapsulePlayerLyricsHost(
             lyricsRuntimeActive = false
             // Runtime stops immediately, but keep the already-rendered foreground mounted long
             // enough for its low-alpha travel tail to remain visually continuous.
-            delay(410L)
+            delay(500L)
             lyricsForegroundMounted = false
         }
     }
@@ -718,8 +718,8 @@ private fun CapsulePlayerLyricsHost(
                  * screen coordinates and never sweep or change colour. The foreground is NOT
                  * counter-translated, so it rides with the sheet exactly like ink on a page.
                  *
-                 * CLOSING intentionally remains the separate translucent hand-off we already tuned:
-                 * outer translation is zero, backdrop becomes a veil, foreground travels down.
+                 * Closing keeps the separate translucent hand-off: the backdrop releases evenly
+                 * while the foreground settles a short distance down into it.
                  */
                 Box(
                     modifier =
@@ -772,23 +772,12 @@ private fun CapsulePlayerLyricsHost(
                                         val closeProgress =
                                             (1f - travelled)
                                                 .coerceIn(0f, 1f)
-                                        val releaseProgress =
-                                            LyricsVeilReleaseEasing.transform(
-                                                (closeProgress / 0.34f)
-                                                    .coerceIn(0f, 1f),
-                                            )
-                                        val veilAlpha =
-                                            1f +
-                                                (0.18f - 1f) *
-                                                    releaseProgress
-                                        val tailProgress =
-                                            LyricsVeilReleaseEasing.transform(
-                                                ((closeProgress - 0.34f) / 0.66f)
-                                                    .coerceIn(0f, 1f),
-                                            )
-                                        alpha =
-                                            veilAlpha *
-                                                (1f - tailProgress)
+                                        // One continuous release avoids the visible seam where
+                                        // the old two-stage veil dropped to 18% almost at once.
+                                        alpha = 1f - LyricsVeilReleaseEasing.transform(
+                                            ((closeProgress - 0.03f) / 0.97f)
+                                                .coerceIn(0f, 1f),
+                                        )
                                     }
 
                                     /*
@@ -818,8 +807,8 @@ private fun CapsulePlayerLyricsHost(
                      * transform origin anymore: those were the cues that made the panel look as if
                      * it was attached to the upper layer rather than being one continuous canvas.
                      *
-                     * On close the outer sheet is stationary and this foreground alone travels
-                     * downward through the already-tuned two-stage release.
+                     * On close the outer sheet is stationary and the foreground eases down a
+                     * short distance while both layers fade continuously.
                      */
                     if (lyricsForegroundMounted) {
                         Box(
@@ -835,7 +824,10 @@ private fun CapsulePlayerLyricsHost(
                                             if (showLyrics) {
                                                 0f
                                             } else {
-                                                ((1f - travelled) * fullHeightPx)
+                                                (LyricsForegroundReleaseEasing.transform(
+                                                    ((1f - travelled) / 0.9f)
+                                                        .coerceIn(0f, 1f),
+                                                ) * fullHeightPx * 0.22f)
                                                     .coerceAtLeast(0f)
                                             }
                                         scaleX = 1f
@@ -844,7 +836,7 @@ private fun CapsulePlayerLyricsHost(
                                         alpha =
                                             if (showLyrics) {
                                                 val acquireProgress =
-                                                    ((travelled - 0.16f) / 0.78f)
+                                                    ((travelled - 0.06f) / 0.88f)
                                                         .coerceIn(0f, 1f)
                                                 LyricsForegroundAcquireEasing.transform(
                                                     acquireProgress,
@@ -853,24 +845,10 @@ private fun CapsulePlayerLyricsHost(
                                                 val closeProgress =
                                                     (1f - travelled)
                                                         .coerceIn(0f, 1f)
-                                                val deEmphasis =
-                                                    LyricsForegroundReleaseEasing.transform(
-                                                        (closeProgress / 0.24f)
-                                                            .coerceIn(0f, 1f),
-                                                    )
-                                                val softBodyAlpha =
-                                                    1f +
-                                                        (0.24f - 1f) *
-                                                            deEmphasis
-                                                val tail =
-                                                    LyricsForegroundReleaseEasing.transform(
-                                                        (
-                                                            (closeProgress - 0.24f) /
-                                                                0.50f
-                                                        ).coerceIn(0f, 1f),
-                                                    )
-                                                softBodyAlpha *
-                                                    (1f - tail)
+                                                1f - LyricsForegroundReleaseEasing.transform(
+                                                    ((closeProgress - 0.02f) / 0.98f)
+                                                        .coerceIn(0f, 1f),
+                                                )
                                             }
 
                                         compositingStrategy =
