@@ -311,7 +311,7 @@ fun BottomSheetPlayer(
             onScreen &&
             isPlaying &&
             playbackState == Player.STATE_READY &&
-            (!showInlineLyrics || !freezeBackdropAfterLyricsSettles)
+            !freezeBackdropAfterLyricsSettles
     val sharedBackdropAnimationTime =
         rememberCapsuleAnimationTime(
             compact = false,
