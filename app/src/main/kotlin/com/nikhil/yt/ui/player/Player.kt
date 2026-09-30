@@ -744,18 +744,33 @@ private fun CapsulePlayerLyricsHost(
                                      * while closing Lyrics. Feather only the moving boundary; the
                                      * rest of the backdrop stays fully opaque and screen-anchored.
                                      */
+                                    /*
+                                     * The geometric sheet keeps the same 570ms travel, but the
+                                     * backdrop seam is allowed to finish sooner on close. Otherwise
+                                     * the horizontal split keeps "cutting" the player for almost
+                                     * the entire transition even after the bright UI is already gone.
+                                     *
+                                     * This is deliberately direction-agnostic and monotonic:
+                                     * opening is unchanged; closing only advances the reveal edge.
+                                     */
+                                    val revealProgress =
+                                        if (showLyrics) {
+                                            travelled
+                                        } else {
+                                            (
+                                                travelled *
+                                                    (0.70f + 0.30f * travelled)
+                                            ).coerceIn(0f, 1f)
+                                        }
                                     val revealTop =
-                                        ((1f - travelled) * size.height)
+                                        ((1f - revealProgress) * size.height)
                                             .coerceIn(0f, size.height)
                                     /*
-                                     * A fixed 44dp feather becomes a huge part of the sheet when
-                                     * only a small strip is left on screen. That is why the lower
-                                     * part looked transparent while the upper part was still
-                                     * travelling. Keep the feather proportional to the remaining
-                                     * visible height, capped at the old maximum.
+                                     * Keep the feather proportional to the remaining visible
+                                     * backdrop so the seam also gets physically narrower near exit.
                                      */
                                     val visibleHeightPx =
-                                        (size.height * travelled)
+                                        (size.height * revealProgress)
                                             .coerceAtLeast(0f)
                                     val featherPx =
                                         minOf(
