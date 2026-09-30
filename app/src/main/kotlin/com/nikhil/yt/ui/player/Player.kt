@@ -544,11 +544,15 @@ private fun CapsulePlayerLyricsHost(
      */
     LaunchedEffect(showLyrics) {
         if (showLyrics) {
-            lyricsRuntimeActive = false
-            lyricsForegroundMounted = false
-            delay(70L)
+            /*
+             * Compose the foreground immediately while its alpha is still zero, but keep all
+             * periodic Lyrics work asleep until the acquire fade is about to become visible. This
+             * avoids a text-layout spike landing mid-transition without paying for clocks nobody
+             * can see.
+             */
             lyricsForegroundMounted = true
-            delay(50L)
+            lyricsRuntimeActive = false
+            delay(120L)
             lyricsRuntimeActive = true
         } else {
             lyricsRuntimeActive = false
