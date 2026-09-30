@@ -696,25 +696,31 @@ private fun CapsulePlayerLyricsHost(
                                         1f
                                     } else {
                                         /*
-                                         * Keep the colour surface visually solid for most of the
-                                         * downward travel. Fading it from frame one made the sheet
-                                         * read as if it dissolved halfway down instead of actually
-                                         * leaving the screen. Only the final ~30% of travel fades.
+                                         * Closing is a veil, not an opaque sheet. Make the player
+                                         * underneath readable as one complete screen almost
+                                         * immediately, keep a faint Lyrics colour wash during the
+                                         * physical downward motion, then dissolve that wash in the
+                                         * final tail.
                                          */
-                                        val baseAlpha =
+                                        val closeProgress =
+                                            (1f - travelled)
+                                                .coerceIn(0f, 1f)
+                                        val glassProgress =
                                             CapsuleMotion.smooth(
-                                                (travelled / 0.30f)
+                                                (closeProgress / 0.18f)
                                                     .coerceIn(0f, 1f),
                                             )
-                                        val tailFade =
-                                            (travelled / 0.18f)
-                                                .coerceIn(0f, 1f)
-                                        /*
-                                         * Stronger final transparency, applied to the whole
-                                         * remaining sheet uniformly. Squaring only this tail
-                                         * factor leaves the travel/reveal geometry untouched.
-                                         */
-                                        baseAlpha * tailFade * tailFade
+                                        val glassAlpha =
+                                            1f +
+                                                (0.22f - 1f) *
+                                                    glassProgress
+                                        val tailAlpha =
+                                            CapsuleMotion.smooth(
+                                                (travelled / 0.20f)
+                                                    .coerceIn(0f, 1f),
+                                            )
+
+                                        glassAlpha * tailAlpha
                                     }
 
                                 /*
@@ -724,7 +730,7 @@ private fun CapsulePlayerLyricsHost(
                                  * GPU bandwidth and memory for no visual benefit.
                                  */
                                 compositingStrategy =
-                                    if (travelled < 0.999f) {
+                                    if (showLyrics && travelled < 0.999f) {
                                         CompositingStrategy.Offscreen
                                     } else {
                                         CompositingStrategy.Auto
@@ -738,39 +744,19 @@ private fun CapsulePlayerLyricsHost(
 
                                 drawContent()
 
-                                if (travelled < 0.999f) {
-                                    /*
-                                     * A hard clip produced the thin horizontal "knife edge" seen
-                                     * while closing Lyrics. Feather only the moving boundary; the
-                                     * rest of the backdrop stays fully opaque and screen-anchored.
-                                     */
-                                    /*
-                                     * The geometric sheet keeps the same 570ms travel, but the
-                                     * backdrop seam is allowed to finish sooner on close. Otherwise
-                                     * the horizontal split keeps "cutting" the player for almost
-                                     * the entire transition even after the bright UI is already gone.
-                                     *
-                                     * This is deliberately direction-agnostic and monotonic:
-                                     * opening is unchanged; closing only advances the reveal edge.
-                                     */
-                                    val revealProgress =
-                                        if (showLyrics) {
-                                            travelled
-                                        } else {
-                                            (
-                                                travelled *
-                                                    (0.70f + 0.30f * travelled)
-                                            ).coerceIn(0f, 1f)
-                                        }
+                                /*
+                                 * Opening keeps the bottom-up reveal that already feels good.
+                                 * Closing intentionally has no spatial clip at all: a clipping edge,
+                                 * even a soft one, necessarily hides one part of the underlying
+                                 * player while exposing another. The close instead uses the uniform
+                                 * translucent veil above, so every player element stays visible.
+                                 */
+                                if (showLyrics && travelled < 0.999f) {
                                     val revealTop =
-                                        ((1f - revealProgress) * size.height)
+                                        ((1f - travelled) * size.height)
                                             .coerceIn(0f, size.height)
-                                    /*
-                                     * Keep the feather proportional to the remaining visible
-                                     * backdrop so the seam also gets physically narrower near exit.
-                                     */
                                     val visibleHeightPx =
-                                        (size.height * revealProgress)
+                                        (size.height * travelled)
                                             .coerceAtLeast(0f)
                                     val featherPx =
                                         minOf(
