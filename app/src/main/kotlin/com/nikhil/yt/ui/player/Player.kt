@@ -477,7 +477,6 @@ private const val LyricsCloseMillis = 570
 private val LyricsEasing = CubicBezierEasing(0.34f, 0.02f, 0.20f, 1f)
 private val LyricsCloseEasing = CubicBezierEasing(0.28f, 0.04f, 0.22f, 1f)
 private val LyricsForegroundAcquireEasing = CubicBezierEasing(0.24f, 0f, 0.18f, 1f)
-private val LyricsBackdropAcquireEasing = CubicBezierEasing(0.22f, 0f, 0.20f, 1f)
 private val LyricsForegroundReleaseEasing = CubicBezierEasing(0.24f, 0f, 0.18f, 1f)
 private val LyricsVeilReleaseEasing = CubicBezierEasing(0.20f, 0f, 0.22f, 1f)
 
@@ -761,18 +760,12 @@ private fun CapsulePlayerLyricsHost(
                                                 .coerceAtLeast(0f)
 
                                         /*
-                                         * A physical sheet should read as material as soon as it
-                                         * enters. Keep it almost opaque from the first visible
-                                         * pixels; only a tiny acquire softens the initial contact.
+                                         * The sheet itself is material, not a cross-fade. Its
+                                         * moving edge is the transition, so keep the surface fully
+                                         * opaque from the first visible pixel. Only the interface
+                                         * on top fades in later.
                                          */
-                                        val acquire =
-                                            LyricsBackdropAcquireEasing.transform(
-                                                (travelled / 0.78f)
-                                                    .coerceIn(0f, 1f),
-                                            )
-                                        alpha =
-                                            0.94f +
-                                                0.06f * acquire
+                                        alpha = 1f
                                     } else {
                                         translationY = 0f
 
