@@ -493,7 +493,7 @@ private const val LyricsCloseMillis = 570
  * that difference in time as well as in shape.
  */
 private val LyricsEasing = CubicBezierEasing(0.34f, 0.02f, 0.20f, 1f)
-private val LyricsCloseEasing = CubicBezierEasing(0.30f, 0.05f, 0.18f, 1f)
+private val LyricsCloseEasing = CubicBezierEasing(0.28f, 0.04f, 0.22f, 1f)
 private val LyricsForegroundAcquireEasing = CubicBezierEasing(0.24f, 0f, 0.18f, 1f)
 private val LyricsBackdropAcquireEasing = CubicBezierEasing(0.22f, 0f, 0.20f, 1f)
 private val LyricsForegroundReleaseEasing = CubicBezierEasing(0.24f, 0f, 0.18f, 1f)
@@ -556,7 +556,9 @@ private fun CapsulePlayerLyricsHost(
             lyricsRuntimeActive = true
         } else {
             lyricsRuntimeActive = false
-            delay(220L)
+            // Runtime stops immediately, but keep the already-rendered foreground mounted long
+            // enough for its low-alpha travel tail to remain visually continuous.
+            delay(410L)
             lyricsForegroundMounted = false
         }
     }
@@ -769,17 +771,17 @@ private fun CapsulePlayerLyricsHost(
                                          */
                                         val releaseProgress =
                                             LyricsVeilReleaseEasing.transform(
-                                                (closeProgress / 0.24f)
+                                                (closeProgress / 0.34f)
                                                     .coerceIn(0f, 1f),
                                             )
                                         val veilAlpha =
                                             1f +
-                                                (0.10f - 1f) *
+                                                (0.18f - 1f) *
                                                     releaseProgress
 
                                         val tailProgress =
                                             LyricsVeilReleaseEasing.transform(
-                                                ((closeProgress - 0.24f) / 0.76f)
+                                                ((closeProgress - 0.34f) / 0.66f)
                                                     .coerceIn(0f, 1f),
                                             )
                                         veilAlpha *
@@ -910,11 +912,29 @@ private fun CapsulePlayerLyricsHost(
                                         val closeProgress =
                                             (1f - travelled)
                                                 .coerceIn(0f, 1f)
-                                        1f -
+
+                                        /*
+                                         * Two-stage release, mirroring a good focus hand-off:
+                                         * lose the harsh white contrast quickly, but keep a faint
+                                         * moving silhouette long enough for the eye to read actual
+                                         * downward travel instead of an instantaneous disappearance.
+                                         */
+                                        val deEmphasis =
                                             LyricsForegroundReleaseEasing.transform(
-                                                (closeProgress / 0.32f)
+                                                (closeProgress / 0.24f)
                                                     .coerceIn(0f, 1f),
                                             )
+                                        val softBodyAlpha =
+                                            1f +
+                                                (0.24f - 1f) *
+                                                    deEmphasis
+                                        val tail =
+                                            LyricsForegroundReleaseEasing.transform(
+                                                ((closeProgress - 0.24f) / 0.50f)
+                                                    .coerceIn(0f, 1f),
+                                            )
+                                        softBodyAlpha *
+                                            (1f - tail)
                                     }
                                 /*
                                  * The foreground needs an offscreen layer only while it is visibly
