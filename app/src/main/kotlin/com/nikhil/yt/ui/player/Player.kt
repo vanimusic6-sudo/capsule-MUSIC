@@ -701,10 +701,15 @@ private fun CapsulePlayerLyricsHost(
                                          * read as if it dissolved halfway down instead of actually
                                          * leaving the screen. Only the final ~30% of travel fades.
                                          */
-                                        CapsuleMotion.smooth(
-                                            (travelled / 0.30f)
-                                                .coerceIn(0f, 1f),
-                                        )
+                                        val baseAlpha =
+                                            CapsuleMotion.smooth(
+                                                (travelled / 0.30f)
+                                                    .coerceIn(0f, 1f),
+                                            )
+                                        val tailFade =
+                                            (travelled / 0.16f)
+                                                .coerceIn(0f, 1f)
+                                        baseAlpha * tailFade
                                     }
 
                                 /*
@@ -818,11 +823,16 @@ private fun CapsulePlayerLyricsHost(
                                                 .coerceIn(0f, 1f),
                                         )
                                     }
+                                /*
+                                 * The foreground needs an offscreen layer only while it is visibly
+                                 * blending. Once the early fade has reached zero, stop allocating a
+                                 * full-screen buffer for content the GPU cannot see.
+                                 */
                                 compositingStrategy =
-                                    if (showLyrics) {
-                                        CompositingStrategy.Auto
-                                    } else {
+                                    if (!showLyrics && alpha > 0.001f && alpha < 0.999f) {
                                         CompositingStrategy.Offscreen
+                                    } else {
+                                        CompositingStrategy.Auto
                                     }
                                 transformOrigin = TransformOrigin(0.5f, 0f)
                             },
