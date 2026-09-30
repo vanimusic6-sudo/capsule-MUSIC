@@ -276,10 +276,23 @@ fun BottomSheetPlayer(
 
     LaunchedEffect(showInlineLyrics) {
         if (showInlineLyrics) {
+            /*
+             * Keep the existing player phase alive while Lyrics opens so the still-visible player
+             * cannot flash, then freeze once Lyrics fully owns the screen.
+             */
             freezeBackdropAfterLyricsSettles = false
             delay(LyricsTravelMillis.toLong())
             freezeBackdropAfterLyricsSettles = true
         } else {
+            /*
+             * Closing now reveals the whole player almost immediately. Do NOT restart its
+             * procedural background underneath a fading Lyrics layer: two independently moving
+             * colour fields caused the artwork/background to appear to change colour and doubled
+             * GPU work during the transition. Hold the exact frozen frame until Lyrics is gone,
+             * then resume once there is only one visible backdrop again.
+             */
+            freezeBackdropAfterLyricsSettles = true
+            delay(LyricsCloseMillis.toLong())
             freezeBackdropAfterLyricsSettles = false
         }
     }
@@ -481,7 +494,9 @@ private const val LyricsCloseMillis = 570
  * that difference in time as well as in shape.
  */
 private val LyricsEasing = CubicBezierEasing(0.42f, 0f, 0.28f, 1f)
-private val LyricsCloseEasing = CubicBezierEasing(0.32f, 0.07f, 0.16f, 1f)
+private val LyricsCloseEasing = CubicBezierEasing(0.30f, 0.05f, 0.18f, 1f)
+private val LyricsForegroundReleaseEasing = CubicBezierEasing(0.24f, 0f, 0.18f, 1f)
+private val LyricsVeilReleaseEasing = CubicBezierEasing(0.20f, 0f, 0.22f, 1f)
 
 @Composable
 private fun CapsulePlayerLyricsHost(
@@ -705,22 +720,32 @@ private fun CapsulePlayerLyricsHost(
                                         val closeProgress =
                                             (1f - travelled)
                                                 .coerceIn(0f, 1f)
-                                        val glassProgress =
-                                            CapsuleMotion.smooth(
-                                                (closeProgress / 0.18f)
-                                                    .coerceIn(0f, 1f),
-                                            )
-                                        val glassAlpha =
-                                            1f +
-                                                (0.22f - 1f) *
-                                                    glassProgress
-                                        val tailAlpha =
-                                            CapsuleMotion.smooth(
-                                                (travelled / 0.20f)
-                                                    .coerceIn(0f, 1f),
-                                            )
 
-                                        glassAlpha * tailAlpha
+                                        /*
+                                         * Archive Tune does not keep two equally strong visual
+                                         * states fighting for attention. Its old focus releases
+                                         * quickly, then leaves only a soft tail while the new focus
+                                         * becomes authoritative. Do the same for the Lyrics colour:
+                                         * drop to a barely-there wash early, then let that tiny wash
+                                         * trail out for the rest of the close.
+                                         */
+                                        val releaseProgress =
+                                            LyricsVeilReleaseEasing.transform(
+                                                (closeProgress / 0.24f)
+                                                    .coerceIn(0f, 1f),
+                                            )
+                                        val veilAlpha =
+                                            1f +
+                                                (0.10f - 1f) *
+                                                    releaseProgress
+
+                                        val tailProgress =
+                                            LyricsVeilReleaseEasing.transform(
+                                                ((closeProgress - 0.24f) / 0.76f)
+                                                    .coerceIn(0f, 1f),
+                                            )
+                                        veilAlpha *
+                                            (1f - tailProgress)
                                     }
 
                                 /*
@@ -838,10 +863,14 @@ private fun CapsulePlayerLyricsHost(
                                          * the entire foreground during roughly the first quarter
                                          * of the close and keeps it fully gone afterwards.
                                          */
-                                        CapsuleMotion.smooth(
-                                            ((travelled - 0.58f) / 0.42f)
-                                                .coerceIn(0f, 1f),
-                                        )
+                                        val closeProgress =
+                                            (1f - travelled)
+                                                .coerceIn(0f, 1f)
+                                        1f -
+                                            LyricsForegroundReleaseEasing.transform(
+                                                (closeProgress / 0.32f)
+                                                    .coerceIn(0f, 1f),
+                                            )
                                     }
                                 /*
                                  * The foreground needs an offscreen layer only while it is visibly
