@@ -24,6 +24,7 @@ import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.systemBarsIgnoringVisibility
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
@@ -40,6 +41,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.CompositingStrategy
+import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.platform.LocalConfiguration
@@ -472,7 +474,10 @@ fun BottomSheetPlayer(
  * without reintroducing the colour sweep that moving procedural backgrounds used to cause.
  */
 private const val LyricsTravelMillis = 590
-private const val LyricsCloseMillis = 620
+private const val LyricsCloseMillis = 660
+private const val LyricsFrameWidthInset = 0.028f
+private const val LyricsFrameHeightInset = 0.018f
+private val LyricsFrameOrigin = TransformOrigin(0.5f, 0f)
 
 /**
  * Softer off the mark than the player's, and a touch longer.
@@ -484,7 +489,7 @@ private const val LyricsCloseMillis = 620
 private val LyricsEasing = CubicBezierEasing(0.38f, 0.04f, 0.22f, 1f)
 private val LyricsCloseEasing = CubicBezierEasing(0.36f, 0.02f, 0.24f, 1f)
 private val LyricsForegroundAcquireEasing = CubicBezierEasing(0.32f, 0f, 0.26f, 1f)
-private val LyricsForegroundReleaseEasing = CubicBezierEasing(0.34f, 0f, 0.30f, 1f)
+private val LyricsForegroundReleaseEasing = CubicBezierEasing(0.46f, 0f, 0.42f, 1f)
 private val LyricsVeilReleaseEasing = CubicBezierEasing(0.40f, 0f, 0.34f, 1f)
 
 @Composable
@@ -515,6 +520,7 @@ private fun CapsulePlayerLyricsHost(
     val sheetOffset = remember { Animatable(if (showLyrics) 0f else 1f) }
     val backdropOpacity = remember { Animatable(1f) }
     val foregroundOpacity = remember { Animatable(if (showLyrics) 1f else 0f) }
+    val frameRelease = remember { Animatable(if (showLyrics) 0f else 1f) }
     var lyricsLayerMounted by remember { mutableStateOf(showLyrics) }
     var lyricsForegroundMounted by remember { mutableStateOf(showLyrics) }
     var lyricsRuntimeActive by remember { mutableStateOf(showLyrics) }
@@ -525,6 +531,7 @@ private fun CapsulePlayerLyricsHost(
                 sheetOffset.snapTo(1f)
                 backdropOpacity.snapTo(1f)
                 foregroundOpacity.snapTo(0f)
+                frameRelease.snapTo(1f)
             }
             lyricsLayerMounted = true
             lyricsForegroundMounted = true
@@ -532,6 +539,9 @@ private fun CapsulePlayerLyricsHost(
             coroutineScope {
                 launch {
                     sheetOffset.animateTo(0f, tween(LyricsTravelMillis, easing = LyricsEasing))
+                }
+                launch {
+                    frameRelease.animateTo(0f, tween(LyricsTravelMillis, easing = LyricsEasing))
                 }
                 launch {
                     backdropOpacity.animateTo(1f, tween(240, easing = LyricsForegroundAcquireEasing))
@@ -547,23 +557,26 @@ private fun CapsulePlayerLyricsHost(
             lyricsRuntimeActive = false
             coroutineScope {
                 launch {
-                    foregroundOpacity.animateTo(0f, tween(380, easing = LyricsForegroundReleaseEasing))
+                    foregroundOpacity.animateTo(0f, tween(560, easing = LyricsForegroundReleaseEasing))
                     lyricsForegroundMounted = false
                 }
                 launch {
-                    // A short release avoids throwing the controls under Android's navigation bar.
-                    // Even an interrupted opening continues down from its actual current position.
+                    // Release the page far enough to read as motion while its UI is still visible.
+                    // Interrupted openings continue from the actual position and rounded outline.
                     sheetOffset.animateTo(
-                        (sheetOffset.value + 0.045f).coerceAtMost(1f),
+                        (sheetOffset.value + 0.10f).coerceAtMost(1f),
                         tween(LyricsCloseMillis, easing = LyricsCloseEasing),
                     )
+                }
+                launch {
+                    frameRelease.animateTo(1f, tween(LyricsCloseMillis, easing = LyricsCloseEasing))
                 }
                 launch {
                     // The opaque floor initially hides the incoming controls. Reveal the player
                     // only after the outgoing UI has started to dissolve, preventing double panels.
                     backdropOpacity.animateTo(
                         0f,
-                        tween(520, delayMillis = 100, easing = LyricsVeilReleaseEasing),
+                        tween(460, delayMillis = 200, easing = LyricsVeilReleaseEasing),
                     )
                 }
             }
@@ -675,19 +688,31 @@ private fun CapsulePlayerLyricsHost(
             val systemBars = WindowInsets.systemBarsIgnoringVisibility
             val safeTopPx = systemBars.getTop(density).toFloat()
             val safeBottomPx = systemBars.getBottom(density).toFloat()
+            // Read animation values only inside the render layer. The list is not recomposed or
+            // measured on every transition frame, and the rounded outline needs no blur/mask pass.
+            val lyricsFrame = Modifier.graphicsLayer {
+                val release = frameRelease.value
+                translationY = sheetOffset.value * fullHeightPx
+                scaleX = 1f - LyricsFrameWidthInset * release
+                scaleY = 1f - LyricsFrameHeightInset * release
+                transformOrigin = LyricsFrameOrigin
+                shape = RoundedCornerShape(28.dp * release)
+                clip = true
+            }
 
             if (lyricsLayerMounted) {
-                // The opaque surface still enters as one real canvas. Counter-motion keeps the
-                // cached gradient in display coordinates, with no mask or offscreen texture.
+                // Both foreground and backdrop have exactly the same rounded frame geometry.
+                // Inverse scale/translation keeps the cached gradient in display coordinates.
                 Box(
-                    modifier = Modifier.fillMaxSize().graphicsLayer {
-                        translationY = sheetOffset.value * fullHeightPx
-                        clip = true
-                    },
+                    modifier = Modifier.fillMaxSize().then(lyricsFrame),
                 ) {
                     Box(
                         modifier = Modifier.fillMaxSize().graphicsLayer {
-                            translationY = -sheetOffset.value * fullHeightPx
+                            val release = frameRelease.value
+                            scaleX = 1f / (1f - LyricsFrameWidthInset * release)
+                            scaleY = 1f / (1f - LyricsFrameHeightInset * release)
+                            transformOrigin = LyricsFrameOrigin
+                            translationY = -sheetOffset.value * fullHeightPx * scaleY
                             alpha = backdropOpacity.value
                             compositingStrategy = CompositingStrategy.ModulateAlpha
                         },
@@ -713,8 +738,7 @@ private fun CapsulePlayerLyricsHost(
                         },
                     ) {
                         Box(
-                            modifier = Modifier.fillMaxSize().graphicsLayer {
-                                translationY = sheetOffset.value * fullHeightPx
+                            modifier = Modifier.fillMaxSize().then(lyricsFrame).graphicsLayer {
                                 alpha = foregroundOpacity.value
                                 compositingStrategy = CompositingStrategy.ModulateAlpha
                             },
