@@ -15,6 +15,7 @@ import android.net.Uri
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.CubicBezierEasing
+import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.isSystemInDarkTheme
@@ -28,6 +29,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.State
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -39,6 +41,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.TransformOrigin
@@ -273,10 +276,6 @@ fun BottomSheetPlayer(
     var freezeBackdropAfterLyricsSettles by remember {
         mutableStateOf(showInlineLyrics)
     }
-    var lyricsHasOpened by remember {
-        mutableStateOf(showInlineLyrics)
-    }
-
     LaunchedEffect(showInlineLyrics) {
         if (showInlineLyrics) {
             /*
@@ -285,20 +284,9 @@ fun BottomSheetPlayer(
              * incoming Lyrics backdrop to redraw every frame. Holding the current phase preserves
              * the exact colours while making the transition essentially static-background work.
              */
-            lyricsHasOpened = true
             freezeBackdropAfterLyricsSettles = true
-        } else if (lyricsHasOpened) {
-            /*
-             * Keep that same frozen frame through close as well. Resume only after Lyrics is fully
-             * gone, so artwork/background colour cannot drift underneath a translucent hand-off.
-             */
-            freezeBackdropAfterLyricsSettles = true
-            delay(LyricsCloseMillis.toLong())
-            freezeBackdropAfterLyricsSettles = false
-        } else {
-            // Initial composition is not a Lyrics close transition.
-            freezeBackdropAfterLyricsSettles = false
         }
+        // Closing uses a spring, so the host releases this freeze on actual completion.
     }
 
     val backdropNeedsClock =
@@ -427,6 +415,11 @@ fun BottomSheetPlayer(
                     onHideLyrics = {
                         showInlineLyrics = false
                     },
+                    onLyricsCloseSettled = {
+                        if (!showInlineLyrics) {
+                            freezeBackdropAfterLyricsSettles = false
+                        }
+                    },
                     onShowMenu = {
                         menuState.show {
                             PlayerMenu(
@@ -475,11 +468,9 @@ fun BottomSheetPlayer(
  */
 private const val LyricsTravelMillis = 590
 private const val LyricsCloseForegroundMillis = 220
-private const val LyricsCloseTravelMillis = 300
-private const val LyricsCloseMillis = LyricsCloseForegroundMillis + LyricsCloseTravelMillis
 private const val LyricsFrameWidthInset = 0.028f
 private const val LyricsFrameHeightInset = 0.018f
-private val LyricsFrameOrigin = TransformOrigin(0.5f, 0f)
+private val LyricsFrameOrigin = TransformOrigin(0.5f, 1f)
 
 /**
  * Softer off the mark than the player's, and a touch longer.
@@ -489,7 +480,6 @@ private val LyricsFrameOrigin = TransformOrigin(0.5f, 0f)
  * that difference in time as well as in shape.
  */
 private val LyricsEasing = CubicBezierEasing(0.38f, 0.04f, 0.22f, 1f)
-private val LyricsCloseEasing = CubicBezierEasing(0.36f, 0.02f, 0.24f, 1f)
 private val LyricsForegroundAcquireEasing = CubicBezierEasing(0.32f, 0f, 0.26f, 1f)
 private val LyricsDissolveEasing = CubicBezierEasing(0.32f, 0f, 0.34f, 1f)
 
@@ -514,6 +504,7 @@ private fun CapsulePlayerLyricsHost(
     queueState: BottomSheetState,
     onShowLyrics: () -> Unit,
     onHideLyrics: () -> Unit,
+    onLyricsCloseSettled: () -> Unit,
     onShowMenu: () -> Unit,
 ) {
     // Each property keeps its current value on cancellation. A quick reverse therefore starts
@@ -522,8 +513,15 @@ private fun CapsulePlayerLyricsHost(
     val sheetOpacity = remember { Animatable(if (showLyrics) 1f else 0f) }
     val foregroundOpacity = remember { Animatable(if (showLyrics) 1f else 0f) }
     val frameRelease = remember { Animatable(if (showLyrics) 0f else 1f) }
+    val archiveCloseProgress = remember { Animatable(1f) }
+    val archiveScrim = remember { Animatable(0f) }
     var lyricsLayerMounted by remember { mutableStateOf(showLyrics) }
     var lyricsRuntimeActive by remember { mutableStateOf(showLyrics) }
+
+    DisposableEffect(Unit) {
+        // Clearing the current song can remove the host before its spring has completed.
+        onDispose { onLyricsCloseSettled() }
+    }
 
     LaunchedEffect(showLyrics) {
         if (showLyrics) {
@@ -532,6 +530,8 @@ private fun CapsulePlayerLyricsHost(
                 sheetOpacity.snapTo(1f)
                 foregroundOpacity.snapTo(0f)
                 frameRelease.snapTo(1f)
+                archiveCloseProgress.snapTo(1f)
+                archiveScrim.snapTo(0f)
             }
             lyricsLayerMounted = true
             lyricsRuntimeActive = false
@@ -541,6 +541,14 @@ private fun CapsulePlayerLyricsHost(
                 }
                 launch {
                     frameRelease.animateTo(0f, tween(LyricsTravelMillis, easing = LyricsEasing))
+                }
+                launch {
+                    // These are already at their targets on a normal opening. On reversal they
+                    // restore the existing opening continuously from the interrupted close.
+                    archiveCloseProgress.animateTo(1f, tween(LyricsTravelMillis, easing = LyricsEasing))
+                }
+                launch {
+                    archiveScrim.animateTo(0f, tween(LyricsTravelMillis, easing = LyricsEasing))
                 }
                 launch {
                     sheetOpacity.animateTo(1f, tween(240, easing = LyricsForegroundAcquireEasing))
@@ -560,23 +568,17 @@ private fun CapsulePlayerLyricsHost(
                 0f,
                 tween(LyricsCloseForegroundMillis, easing = LyricsDissolveEasing),
             )
-            coroutineScope {
-                launch {
-                    // Only the empty rounded page now moves and reveals the player beneath it.
-                    sheetOpacity.animateTo(0f, tween(LyricsCloseTravelMillis, easing = LyricsDissolveEasing))
-                }
-                launch {
-                    // Interrupted openings continue from the actual position and rounded outline.
-                    sheetOffset.animateTo(
-                        (sheetOffset.value + 0.10f).coerceAtMost(1f),
-                        tween(LyricsCloseTravelMillis, easing = LyricsCloseEasing),
-                    )
-                }
-                launch {
-                    frameRelease.animateTo(1f, tween(LyricsCloseTravelMillis, easing = LyricsCloseEasing))
-                }
-            }
+            // ArchiveTune MikoLyricsTransition (rukamori/ArchiveTune, Player.kt, 2f48b815):
+            // same spring and bounded progress, with its
+            // scale, bottom-centre pivot, translation, dual alpha, corner radius and black scrim.
+            // The sole added stage is the stationary foreground dissolve above.
+            archiveScrim.snapTo(1f)
+            archiveCloseProgress.animateTo(
+                0f,
+                spring(dampingRatio = 0.82f, stiffness = Spring.StiffnessMediumLow),
+            )
             lyricsLayerMounted = false
+            onLyricsCloseSettled()
         }
     }
 
@@ -688,25 +690,38 @@ private fun CapsulePlayerLyricsHost(
             // measured on every transition frame, and the rounded outline needs no blur/mask pass.
             val lyricsFrame = Modifier.graphicsLayer {
                 val release = frameRelease.value
-                translationY = sheetOffset.value * fullHeightPx
-                scaleX = 1f - LyricsFrameWidthInset * release
-                scaleY = 1f - LyricsFrameHeightInset * release
+                val progress = archiveCloseProgress.value.coerceIn(0f, 1f)
+                val closeRelease = 1f - progress
+                // The opening's top pivot is expressed around the closing's bottom pivot by
+                // subtracting its height inset. This preserves the original opening pixels.
+                translationY = (sheetOffset.value - LyricsFrameHeightInset * release +
+                    0.16f * closeRelease) * fullHeightPx
+                scaleX = 0.92f + 0.08f * progress - LyricsFrameWidthInset * release
+                scaleY = 0.78f + 0.22f * progress - LyricsFrameHeightInset * release
                 transformOrigin = LyricsFrameOrigin
-                shape = RoundedCornerShape(28.dp * release)
+                alpha = (0.2f + 0.8f * progress).coerceIn(0f, 1f)
+                shape = RoundedCornerShape(28.dp * release + 32.dp * closeRelease)
                 clip = true
             }
 
             if (lyricsLayerMounted) {
                 Box(
                     modifier = Modifier.fillMaxSize().graphicsLayer {
-                        alpha = sheetOpacity.value
+                        alpha = sheetOpacity.value * archiveCloseProgress.value.coerceIn(0f, 1f)
                         // Auto applies alpha to the composited page, rather than to overlapping
                         // draw commands. Its temporary buffer is only needed while alpha < 1.
                         compositingStrategy = CompositingStrategy.Auto
+                    }.drawBehind {
+                        drawRect(
+                            Color.Black,
+                            alpha = 0.24f * archiveScrim.value *
+                                archiveCloseProgress.value.coerceIn(0f, 1f),
+                        )
                     },
                 ) {
                     // Background and foreground share the rounded frame. The background itself
-                    // stays opaque; inverse transforms preserve its frozen display coordinates.
+                    // keeps its own colours. Only the opening is counter-transformed; during the
+                    // ArchiveTune close the background travels and scales with its card.
                     Box(modifier = Modifier.fillMaxSize().then(lyricsFrame)) {
                         Box(
                             modifier = Modifier.fillMaxSize().graphicsLayer {
@@ -714,7 +729,8 @@ private fun CapsulePlayerLyricsHost(
                                 scaleX = 1f / (1f - LyricsFrameWidthInset * release)
                                 scaleY = 1f / (1f - LyricsFrameHeightInset * release)
                                 transformOrigin = LyricsFrameOrigin
-                                translationY = -sheetOffset.value * fullHeightPx * scaleY
+                                translationY = -(sheetOffset.value -
+                                    LyricsFrameHeightInset * release) * fullHeightPx * scaleY
                             },
                         ) {
                             CapsuleLyricsBackdropLayer(
