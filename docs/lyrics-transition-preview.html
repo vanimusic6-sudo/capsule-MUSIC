@@ -27,7 +27,7 @@
   </div>
   <section>
     <h1>Текст как отдельное полотно</h1>
-    <p>Интерфейс мягко растворяется, затем полотно немного оседает вниз и открывает плеер. Цвета остаются на месте, края слегка скругляются. Полное закрытие занимает 420 мс.</p>
+    <p>Закрытие повторяет открытие в обратном направлении: то же полотно, путь, скругление и затухание интерфейса. В обе стороны переход занимает 590 мс.</p>
     <button id="open">Открыть</button><button id="close">Закрыть</button>
     <label><input id="slow" type="checkbox"> Замедлить в 4 раза</label>
     <p id="status" aria-live="polite">Плеер</p>
@@ -40,6 +40,7 @@
   const active = new Set();
   let mounted = false, generation = 0;
   const openCurve = 'cubic-bezier(.38,.04,.22,1)';
+  const closeCurve = 'cubic-bezier(.78,0,.62,.96)';
   function settle(){
     for(const animation of active){animation.commitStyles();animation.cancel()}
     active.clear();
@@ -61,12 +62,7 @@
       $('sheet').style.opacity='1';$('foreground').style.opacity='0';mounted=true;
     }
     if(!mounted)return;
-    $('status').textContent=open?'Открытие · 590 мс':'Растворение интерфейса · 160 мс';
-    if(!open){
-      await animate($('foreground'),{opacity:'0'},160,'cubic-bezier(.32,0,.34,1)');
-      if(currentGeneration!==generation)return;
-      $('status').textContent='Мягкий уход · 260 мс';
-    }
+    $('status').textContent=open?'Открытие · 590 мс':'Обратное открытие · 590 мс';
     let tasks;
     if(open){
       tasks=frames.map(frame=>animate(frame,{transform:'translateY(0) scale(1,1)',borderRadius:'0px',opacity:'1'},590,openCurve));
@@ -74,17 +70,13 @@
       tasks.push(animate($('sheet'),{opacity:'1'},240,'cubic-bezier(.32,0,.26,1)'));
       tasks.push(animate($('surface'),{transform:'translateY(0) scale(1,1)'},590,openCurve));
     }else{
-      const matrix=new DOMMatrixReadOnly(getComputedStyle(frames[0]).transform);
-      const radius=parseFloat(getComputedStyle(frames[0]).borderRadius);
-      const targetY=matrix.m42+36;
-      const easing='cubic-bezier(.30,0,.20,1)';
+      const viewport=document.querySelector('.phone').clientHeight;
       tasks=frames.map(frame=>animate(frame,{
-        transform:`translateY(${targetY}px) scale(${matrix.m11},${matrix.m22})`,
-        borderRadius:`${radius+20}px`},260,easing));
-      tasks.push(animate($('sheet'),{opacity:'0'},260,easing));
+        transform:'translateY(100%) scale(.972,.982)',borderRadius:'28px'},590,closeCurve));
+      tasks.push(animate($('foreground'),{opacity:'0'},360,'cubic-bezier(.74,0,.68,1)',70));
       // Counter-motion keeps the gradient still while the edge of the surface travels.
       tasks.push(animate($('surface'),{
-        transform:`translateY(${-targetY/matrix.m22}px) scale(${1/matrix.m11},${1/matrix.m22})`},260,easing));
+        transform:`translateY(${-viewport/.982}px) scale(${1/.972},${1/.982})`},590,closeCurve));
     }
     await Promise.all(tasks);
     if(currentGeneration!==generation)return;
