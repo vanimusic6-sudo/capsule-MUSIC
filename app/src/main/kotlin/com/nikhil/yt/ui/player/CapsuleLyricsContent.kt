@@ -166,6 +166,8 @@ internal fun CapsuleLyricsBackdropLayer(
     val artworkColors = resolvedArtworkColors.ifEmpty { retainedArtworkColors[0] }
 
     BoxWithConstraints(modifier = modifier.fillMaxSize().background(CapsuleLyricsBackground)) {
+        val artworkAspectRatio = maxWidth.value /
+            immersiveArtworkHeight(maxHeight).value.coerceAtLeast(1f)
         // Crossfade only changes of layout/style. Track palettes keep the same renderer and
         // the same 1400ms interpolation as the player; no permanent second backdrop layer.
         Crossfade(
@@ -186,8 +188,7 @@ internal fun CapsuleLyricsBackdropLayer(
                             mediaMetadata = mediaMetadata,
                             enabled = onScreen && isVisible &&
                                 lyricsBackdrop == CapsuleLyricsBackdrop.ImmersiveColoring,
-                            visibleArtworkAspectRatio = maxWidth.value /
-                                immersiveArtworkHeight(maxHeight).value.coerceAtLeast(1f),
+                            visibleArtworkAspectRatio = artworkAspectRatio,
                         )
                         ImmersiveLyricsColoring(tone.edge)
                     }
