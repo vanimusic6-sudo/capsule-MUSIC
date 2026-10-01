@@ -1,7 +1,8 @@
 /*
- * Velune - by Nikhil
- * Nikhil
- * Licensed Under GPL-3.0
+ * ArchiveTune (2026)
+ * © Rukamori — github.com/rukamori
+ * GPL-3.0 License | Contributors: see git history
+ * Do not remove or alter this notice. - Per GPL-3.0 Section 4 & Section 5
  */
 
 package com.nikhil.yt.ui.component
@@ -18,7 +19,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.compositionLocalOf
@@ -40,19 +40,28 @@ class MenuState(
 ) {
     var isVisible by mutableStateOf(isVisible)
     var content by mutableStateOf(content)
-    var expandFully by mutableStateOf(false)
+    internal var dialogContent by mutableStateOf<(@Composable () -> Unit)?>(null)
+        private set
 
-    fun show(
-        expandFully: Boolean = false,
-        content: @Composable ColumnScope.() -> Unit,
-    ) {
-        this.expandFully = expandFully
+    @OptIn(ExperimentalMaterial3Api::class)
+    fun show(content: @Composable ColumnScope.() -> Unit) {
+        dialogContent = null
         isVisible = true
         this.content = content
     }
 
+    @OptIn(ExperimentalMaterial3Api::class)
     fun dismiss() {
         isVisible = false
+    }
+
+    fun showDialog(content: @Composable () -> Unit) {
+        isVisible = false
+        dialogContent = content
+    }
+
+    fun dismissDialog() {
+        dialogContent = null
     }
 }
 
@@ -65,12 +74,10 @@ fun BottomSheetMenu(
 ) {
     val focusManager = LocalFocusManager.current
 
+    state.dialogContent?.invoke()
+
     if (state.isVisible) {
-        val sheetState = rememberModalBottomSheetState(
-            skipPartiallyExpanded = state.expandFully,
-        )
         ModalBottomSheet(
-            sheetState = sheetState,
             onDismissRequest = {
                 focusManager.clearFocus()
                 state.isVisible = false
@@ -93,7 +100,6 @@ fun BottomSheetMenu(
                 modifier =
                     Modifier
                         .fillMaxWidth()
-                        .then(if (state.expandFully) Modifier.fillMaxHeight() else Modifier)
                         .padding(horizontal = 20.dp),
             ) {
                 state.content(this)

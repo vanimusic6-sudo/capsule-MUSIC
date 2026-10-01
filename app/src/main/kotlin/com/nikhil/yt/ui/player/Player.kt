@@ -421,7 +421,7 @@ fun BottomSheetPlayer(
                         }
                     },
                     onShowMenu = {
-                        menuState.show(expandFully = true) {
+                        menuState.show {
                             PlayerMenu(
                                 mediaMetadata = metadata,
                                 navController = navController,

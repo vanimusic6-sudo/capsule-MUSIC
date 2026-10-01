@@ -143,7 +143,7 @@ import kotlin.math.roundToInt
 import java.util.UUID
 
 @Composable
-fun ColumnScope.PlayerMenu(
+fun PlayerMenu(
     mediaMetadata: MediaMetadata?,
     navController: NavController,
     playerBottomSheetState: BottomSheetState,
@@ -398,7 +398,7 @@ fun ColumnScope.PlayerMenu(
     Spacer(modifier = Modifier.height(16.dp))
 
     LazyColumn(
-        modifier = Modifier.fillMaxWidth().weight(1f),
+        modifier = Modifier.fillMaxWidth(),
         contentPadding = PaddingValues(
             start = 0.dp,
             top = 0.dp,
@@ -407,84 +407,86 @@ fun ColumnScope.PlayerMenu(
         ),
     ) {
         item {
-            NewActionGrid(
-                actions = listOf(
-                    NewAction(
-                        icon = {
-                            Icon(
-                                painter = painterResource(R.drawable.radio),
-                                contentDescription = null,
-                                modifier = Modifier.size(28.dp),
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        },
-                        text = stringResource(R.string.start_radio),
-                        onClick = {
-                            Toast.makeText(context, resources.getString(R.string.starting_radio), Toast.LENGTH_SHORT).show()
-                            playerConnection.startRadioSeamlessly()
-                            onDismiss()
-                        }
-                    ),
-                    NewAction(
-                        icon = {
-                            Icon(
-                                painter = painterResource(R.drawable.playlist_add),
-                                contentDescription = null,
-                                modifier = Modifier.size(28.dp),
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        },
-                        text = stringResource(R.string.add_to_playlist),
-                        onClick = { showChoosePlaylistDialog = true }
-                    ),
-                    NewAction(
-                        icon = { Icon(painterResource(R.drawable.bedtime), contentDescription = null) },
-                        text = stringResource(R.string.sleep_timer),
-                        enabled = canSetSleepTimer,
-                        onClick = { showSleepTimer = true },
-                    ),
-                    NewAction(
-                        icon = {
-                            Icon(
-                                painter = painterResource(R.drawable.link),
-                                contentDescription = null,
-                                modifier = Modifier.size(28.dp),
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        },
-                        text = stringResource(R.string.copy_link),
-                        onClick = {
-                            val clipboard =
-                                context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
-                            val clip =
-                                android.content.ClipData.newPlainText(
-                                    resources.getString(R.string.copy_link),
-                                    "https://music.youtube.com/watch?v=${mediaMetadata.id}",
+            MenuSurfaceSection(modifier = Modifier.padding(vertical = 6.dp)) {
+                NewActionGrid(
+                    actions = listOf(
+                        NewAction(
+                            icon = {
+                                Icon(
+                                    painter = painterResource(R.drawable.radio),
+                                    contentDescription = null,
+                                    modifier = Modifier.size(28.dp),
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
-                            clipboard.setPrimaryClip(clip)
-                            android.widget.Toast.makeText(context, R.string.link_copied, android.widget.Toast.LENGTH_SHORT).show()
-                            onDismiss()
-                        }
+                            },
+                            text = stringResource(R.string.start_radio),
+                            onClick = {
+                                Toast.makeText(context, resources.getString(R.string.starting_radio), Toast.LENGTH_SHORT).show()
+                                playerConnection.startRadioSeamlessly()
+                                onDismiss()
+                            }
+                        ),
+                        NewAction(
+                            icon = {
+                                Icon(
+                                    painter = painterResource(R.drawable.playlist_add),
+                                    contentDescription = null,
+                                    modifier = Modifier.size(28.dp),
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            },
+                            text = stringResource(R.string.add_to_playlist),
+                            onClick = { showChoosePlaylistDialog = true }
+                        ),
+                        NewAction(
+                            icon = { Icon(painterResource(R.drawable.bedtime), contentDescription = null) },
+                            text = stringResource(R.string.sleep_timer),
+                            enabled = canSetSleepTimer,
+                            onClick = { showSleepTimer = true },
+                        ),
+                        NewAction(
+                            icon = {
+                                Icon(
+                                    painter = painterResource(R.drawable.link),
+                                    contentDescription = null,
+                                    modifier = Modifier.size(28.dp),
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            },
+                            text = stringResource(R.string.copy_link),
+                            onClick = {
+                                val clipboard =
+                                    context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                                val clip =
+                                    android.content.ClipData.newPlainText(
+                                        resources.getString(R.string.copy_link),
+                                        "https://music.youtube.com/watch?v=${mediaMetadata.id}",
+                                    )
+                                clipboard.setPrimaryClip(clip)
+                                android.widget.Toast.makeText(context, R.string.link_copied, android.widget.Toast.LENGTH_SHORT).show()
+                                onDismiss()
+                            }
+                        ),
+                        NewAction(
+                            icon = {
+                                Icon(
+                                    painter = painterResource(R.drawable.fire),
+                                    contentDescription = null,
+                                    modifier = Modifier.size(28.dp),
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            },
+                            text = stringResource(R.string.music_together),
+                            onClick = {
+                                onDismiss()
+                                playerBottomSheetState.snapTo(playerBottomSheetState.collapsedBound)
+                                navController.navigate("settings/music_together")
+                            }
+                        )
                     ),
-                    NewAction(
-                        icon = {
-                            Icon(
-                                painter = painterResource(R.drawable.fire),
-                                contentDescription = null,
-                                modifier = Modifier.size(28.dp),
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        },
-                        text = stringResource(R.string.music_together),
-                        onClick = {
-                            onDismiss()
-                            playerBottomSheetState.snapTo(playerBottomSheetState.collapsedBound)
-                            navController.navigate("settings/music_together")
-                        }
-                    )
-                ),
-                modifier = Modifier.padding(vertical = 4.dp)
-            )
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 12.dp)
+                )
+            }
         }
         item {
             Spacer(modifier = Modifier.height(12.dp))
