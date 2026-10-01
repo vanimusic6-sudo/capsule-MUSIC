@@ -47,7 +47,7 @@ class CapsuleLightFavoriteTest {
         compose.setContent {
             MaterialTheme {
                 Box(Modifier.background(Color.Black).testTag("light-heart")) {
-                    CapsuleLightFavorite(liked, Color.White) { liked = !liked }
+                    CapsuleLightFavorite(liked, Color.White, onToggleLike = { liked = !liked })
                 }
             }
         }
@@ -86,7 +86,7 @@ class CapsuleLightFavoriteTest {
         compose.setContent {
             MaterialTheme {
                 Box(Modifier.background(Color.Black).testTag("light-heart")) {
-                    CapsuleLightFavorite(liked, Color.White) {}
+                    CapsuleLightFavorite(liked, Color.White, onToggleLike = {})
                 }
             }
         }
@@ -120,7 +120,7 @@ class CapsuleLightFavoriteTest {
             MaterialTheme {
                 Column(Modifier.size(320.dp, 200.dp).verticalScroll(rememberScrollState())) {
                     Box(Modifier.background(Color.Black).testTag("light-heart")) {
-                        CapsuleLightFavorite(liked, Color.White) {}
+                        CapsuleLightFavorite(liked, Color.White, onToggleLike = {})
                     }
                     Box(Modifier.size(320.dp, 600.dp))
                 }

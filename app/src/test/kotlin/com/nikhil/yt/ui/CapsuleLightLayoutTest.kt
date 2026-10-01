@@ -40,6 +40,7 @@ import com.nikhil.yt.ui.player.CapsuleLightLyricLine
 import com.nikhil.yt.ui.player.CapsuleLightLyricLineHeight
 import com.nikhil.yt.ui.player.CapsuleLightToggleHeight
 import com.nikhil.yt.ui.player.CapsuleLightToggleRadius
+import com.nikhil.yt.ui.player.CapsuleLightToggleSegmentRadius
 import com.nikhil.yt.ui.player.CapsuleLightPanelRadius
 import com.nikhil.yt.ui.player.CapsuleLightToggleInset
 import com.nikhil.yt.ui.player.CapsulePlayerLayout
