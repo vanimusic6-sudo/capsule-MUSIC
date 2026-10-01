@@ -15,7 +15,6 @@ import android.net.Uri
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.CubicBezierEasing
-import androidx.compose.animation.core.Easing
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
@@ -469,10 +468,10 @@ private const val LyricsCloseTravelMillis = 300
 private const val LyricsForegroundOpenDelayMillis = 145
 private const val LyricsForegroundOpenFadeMillis = 330
 private const val LyricsForegroundCloseFadeMillis = 210
-private const val LyricsFrameWidthInset = 0.028f
-private const val LyricsFrameHeightInset = 0.018f
+// Match the existing fully contracted close, and start opening from that slightly smaller card.
+private const val LyricsFrameWidthInset = 0.052f
+private const val LyricsFrameHeightInset = 0.042f
 private const val LyricsCloseAccentMillis = 160
-private const val LyricsCloseScaleInset = 0.024f
 private const val LyricsCloseAlphaLoss = 0.03f
 private val LyricsFrameCornerRadius = 32.dp
 private val LyricsFrameOrigin = TransformOrigin(0.5f, 0f)
@@ -481,9 +480,12 @@ private val LyricsFrameOrigin = TransformOrigin(0.5f, 0f)
  * Keep the established page motion and unhurried reveal on opening. Closing reverses the travel
  * curve on its own shorter timeline; the UI starts dissolving immediately, ahead of the fast drop.
  */
-private val LyricsEasing = CubicBezierEasing(0.38f, 0.04f, 0.22f, 1f)
+private val LyricsOpenEasing = CubicBezierEasing(0.40f, 0f, 0.25f, 1f)
+// Size changes ease in/out independently of travel, with no fast contraction at close start.
+private val LyricsFrameEasing = CubicBezierEasing(0.42f, 0f, 0.58f, 1f)
 private val LyricsForegroundAcquireEasing = CubicBezierEasing(0.32f, 0f, 0.26f, 1f)
-private val LyricsCloseEasing = Easing { fraction -> 1f - LyricsEasing.transform(1f - fraction) }
+// Preserve the accepted closing travel: the time-reverse of the original opening curve.
+private val LyricsCloseEasing = CubicBezierEasing(0.78f, 0f, 0.62f, 0.96f)
 // An early dissolve prevents bright text/slider streaks during the later, faster sheet travel.
 private val LyricsForegroundReleaseEasing = CubicBezierEasing(0.32f, 0f, 0.26f, 1f)
 
@@ -539,13 +541,13 @@ private fun CapsulePlayerLyricsHost(
             lyricsRuntimeActive = false
             coroutineScope {
                 launch {
-                    sheetOffset.animateTo(0f, tween(LyricsOpenTravelMillis, easing = LyricsEasing))
+                    sheetOffset.animateTo(0f, tween(LyricsOpenTravelMillis, easing = LyricsOpenEasing))
                 }
                 launch {
-                    frameRelease.animateTo(0f, tween(LyricsOpenTravelMillis, easing = LyricsEasing))
+                    frameRelease.animateTo(0f, tween(LyricsOpenTravelMillis, easing = LyricsFrameEasing))
                 }
                 launch {
-                    // Restore an interrupted close from its current size and opacity.
+                    // Restore an interrupted close from its current opacity.
                     closeAccent.animateTo(0f, tween(LyricsCloseAccentMillis, easing = LyricsForegroundAcquireEasing))
                 }
                 launch {
@@ -557,14 +559,14 @@ private fun CapsulePlayerLyricsHost(
             }
         } else if (lyricsLayerMounted) {
             lyricsRuntimeActive = false
-            // Preserve reverse-opening travel, adding only an early, slight contraction and 3%
-            // transparency. The page still uncovers the player primarily through its movement.
+            // Preserve the travel/fade, but let contraction and rounding grow throughout the close.
+            // The page still uncovers the player primarily through its movement.
             coroutineScope {
                 launch {
                     sheetOffset.animateTo(1f, tween(LyricsCloseTravelMillis, easing = LyricsCloseEasing))
                 }
                 launch {
-                    frameRelease.animateTo(1f, tween(LyricsCloseTravelMillis, easing = LyricsCloseEasing))
+                    frameRelease.animateTo(1f, tween(LyricsCloseTravelMillis, easing = LyricsFrameEasing))
                 }
                 launch {
                     closeAccent.animateTo(1f, tween(LyricsCloseAccentMillis, easing = LyricsForegroundAcquireEasing))
@@ -693,14 +695,13 @@ private fun CapsulePlayerLyricsHost(
             // measured on every transition frame, and the rounded outline needs no blur/mask pass.
             val lyricsFrame = Modifier.graphicsLayer {
                 val release = frameRelease.value
-                val accent = closeAccent.value
                 translationY = sheetOffset.value * fullHeightPx
-                scaleX = 1f - LyricsFrameWidthInset * release - LyricsCloseScaleInset * accent
-                scaleY = 1f - LyricsFrameHeightInset * release - LyricsCloseScaleInset * accent
+                scaleX = 1f - LyricsFrameWidthInset * release
+                scaleY = 1f - LyricsFrameHeightInset * release
                 transformOrigin = LyricsFrameOrigin
-                // Hold a rounded edge through the visible travel, then flatten as opening settles.
+                // A smooth profile retains rounded opening edges without a clamp/max handoff.
                 shape = RoundedCornerShape(
-                    LyricsFrameCornerRadius * maxOf((release * 6f).coerceIn(0f, 1f), accent),
+                    LyricsFrameCornerRadius * release * (2f - release),
                 )
                 clip = true
             }
@@ -720,9 +721,8 @@ private fun CapsulePlayerLyricsHost(
                         Box(
                             modifier = Modifier.fillMaxSize().graphicsLayer {
                                 val release = frameRelease.value
-                                val accent = closeAccent.value
-                                scaleX = 1f / (1f - LyricsFrameWidthInset * release - LyricsCloseScaleInset * accent)
-                                scaleY = 1f / (1f - LyricsFrameHeightInset * release - LyricsCloseScaleInset * accent)
+                                scaleX = 1f / (1f - LyricsFrameWidthInset * release)
+                                scaleY = 1f / (1f - LyricsFrameHeightInset * release)
                                 transformOrigin = LyricsFrameOrigin
                                 translationY = -sheetOffset.value * fullHeightPx * scaleY
                             },
