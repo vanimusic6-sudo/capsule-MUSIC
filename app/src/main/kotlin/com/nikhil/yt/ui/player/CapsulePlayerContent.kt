@@ -1642,7 +1642,7 @@ fun CapsulePlayerContent(
 
                 Spacer(
                     Modifier.height(
-                        16.dp,
+                        if (isLight) 16.dp else 4.dp,
                     ),
                 )
 
