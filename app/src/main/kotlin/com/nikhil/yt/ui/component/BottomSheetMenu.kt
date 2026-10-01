@@ -39,8 +39,13 @@ class MenuState(
 ) {
     var isVisible by mutableStateOf(isVisible)
     var content by mutableStateOf(content)
+    var sheetGesturesEnabled by mutableStateOf(true)
 
-    fun show(content: @Composable ColumnScope.() -> Unit) {
+    fun show(
+        sheetGesturesEnabled: Boolean = true,
+        content: @Composable ColumnScope.() -> Unit,
+    ) {
+        this.sheetGesturesEnabled = sheetGesturesEnabled
         isVisible = true
         this.content = content
     }
@@ -70,6 +75,9 @@ fun BottomSheetMenu(
             // Menus move as an opaque surface. A transparent scrim preserves outside-tap dismissal
             // without dimming or visually blending the screen underneath.
             scrimColor = Color.Transparent,
+            // Let menu content consume an ordinary flick. Dragging the sheet itself
+            // fights the nested list and exposes the navigation area underneath.
+            sheetGesturesEnabled = state.sheetGesturesEnabled,
             dragHandle = {
                 Box(
                     modifier =

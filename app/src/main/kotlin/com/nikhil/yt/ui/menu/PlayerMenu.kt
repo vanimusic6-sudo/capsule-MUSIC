@@ -143,7 +143,7 @@ import kotlin.math.roundToInt
 import java.util.UUID
 
 @Composable
-fun PlayerMenu(
+fun ColumnScope.PlayerMenu(
     mediaMetadata: MediaMetadata?,
     navController: NavController,
     playerBottomSheetState: BottomSheetState,
@@ -398,12 +398,8 @@ fun PlayerMenu(
     Spacer(modifier = Modifier.height(16.dp))
 
     LazyColumn(
-        contentPadding = PaddingValues(
-            start = 0.dp,
-            top = 0.dp,
-            end = 0.dp,
-            bottom = 8.dp + WindowInsets.systemBars.asPaddingValues().calculateBottomPadding(),
-        ),
+        modifier = Modifier.fillMaxWidth().weight(1f),
+        contentPadding = PaddingValues(bottom = 8.dp),
     ) {
         item {
             NewActionGrid(
@@ -718,6 +714,13 @@ fun PlayerMenu(
             }
         }
     }
+    // Keep the opaque navigation area fixed while only the actions above it scroll.
+    Spacer(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(8.dp + WindowInsets.systemBars.asPaddingValues().calculateBottomPadding())
+            .background(MaterialTheme.colorScheme.surface),
+    )
 }
 
 @Composable
