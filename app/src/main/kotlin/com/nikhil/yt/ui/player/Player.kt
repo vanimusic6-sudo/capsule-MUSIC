@@ -464,29 +464,28 @@ fun BottomSheetPlayer(
  * display, while the foreground rides with the sheet. This keeps the physical "canvas" motion
  * without reintroducing the colour sweep that moving procedural backgrounds used to cause.
  */
-private const val LyricsTravelMillis = 260
-private const val LyricsForegroundDelayMillis = 70
-private const val LyricsForegroundFadeMillis = 160
-private const val LyricsForegroundCloseDelayMillis =
-    LyricsTravelMillis - LyricsForegroundDelayMillis - LyricsForegroundFadeMillis
+private const val LyricsOpenTravelMillis = 540
+private const val LyricsCloseTravelMillis = 300
+private const val LyricsForegroundOpenDelayMillis = 145
+private const val LyricsForegroundOpenFadeMillis = 330
+private const val LyricsForegroundCloseFadeMillis = 210
 private const val LyricsFrameWidthInset = 0.028f
 private const val LyricsFrameHeightInset = 0.018f
-private const val LyricsCloseAccentMillis = 140
+private const val LyricsCloseAccentMillis = 160
 private const val LyricsCloseScaleInset = 0.024f
 private const val LyricsCloseAlphaLoss = 0.03f
 private val LyricsFrameCornerRadius = 32.dp
 private val LyricsFrameOrigin = TransformOrigin(0.5f, 0f)
 
 /**
- * Keep the established page motion, compressed into a short transition. Closing reverses the
- * travel curve; its small early contraction makes the departing sheet feel like a lifted card.
+ * Keep the established page motion and unhurried reveal on opening. Closing reverses the travel
+ * curve on its own shorter timeline; the UI starts dissolving immediately, ahead of the fast drop.
  */
 private val LyricsEasing = CubicBezierEasing(0.38f, 0.04f, 0.22f, 1f)
 private val LyricsForegroundAcquireEasing = CubicBezierEasing(0.32f, 0f, 0.26f, 1f)
 private val LyricsCloseEasing = Easing { fraction -> 1f - LyricsEasing.transform(1f - fraction) }
-private val LyricsForegroundReleaseEasing = Easing { fraction ->
-    1f - LyricsForegroundAcquireEasing.transform(1f - fraction)
-}
+// An early dissolve prevents bright text/slider streaks during the later, faster sheet travel.
+private val LyricsForegroundReleaseEasing = CubicBezierEasing(0.32f, 0f, 0.26f, 1f)
 
 @Composable
 @OptIn(ExperimentalLayoutApi::class)
@@ -540,10 +539,10 @@ private fun CapsulePlayerLyricsHost(
             lyricsRuntimeActive = false
             coroutineScope {
                 launch {
-                    sheetOffset.animateTo(0f, tween(LyricsTravelMillis, easing = LyricsEasing))
+                    sheetOffset.animateTo(0f, tween(LyricsOpenTravelMillis, easing = LyricsEasing))
                 }
                 launch {
-                    frameRelease.animateTo(0f, tween(LyricsTravelMillis, easing = LyricsEasing))
+                    frameRelease.animateTo(0f, tween(LyricsOpenTravelMillis, easing = LyricsEasing))
                 }
                 launch {
                     // Restore an interrupted close from its current size and opacity.
@@ -551,9 +550,9 @@ private fun CapsulePlayerLyricsHost(
                 }
                 launch {
                     // Centre the list while it is still transparent, then reveal the entire UI.
-                    delay(LyricsForegroundDelayMillis.toLong())
+                    delay(LyricsForegroundOpenDelayMillis.toLong())
                     lyricsRuntimeActive = true
-                    foregroundOpacity.animateTo(1f, tween(LyricsForegroundFadeMillis, easing = LyricsForegroundAcquireEasing))
+                    foregroundOpacity.animateTo(1f, tween(LyricsForegroundOpenFadeMillis, easing = LyricsForegroundAcquireEasing))
                 }
             }
         } else if (lyricsLayerMounted) {
@@ -562,10 +561,10 @@ private fun CapsulePlayerLyricsHost(
             // transparency. The page still uncovers the player primarily through its movement.
             coroutineScope {
                 launch {
-                    sheetOffset.animateTo(1f, tween(LyricsTravelMillis, easing = LyricsCloseEasing))
+                    sheetOffset.animateTo(1f, tween(LyricsCloseTravelMillis, easing = LyricsCloseEasing))
                 }
                 launch {
-                    frameRelease.animateTo(1f, tween(LyricsTravelMillis, easing = LyricsCloseEasing))
+                    frameRelease.animateTo(1f, tween(LyricsCloseTravelMillis, easing = LyricsCloseEasing))
                 }
                 launch {
                     closeAccent.animateTo(1f, tween(LyricsCloseAccentMillis, easing = LyricsForegroundAcquireEasing))
@@ -574,8 +573,7 @@ private fun CapsulePlayerLyricsHost(
                     foregroundOpacity.animateTo(
                         0f,
                         tween(
-                            LyricsForegroundFadeMillis,
-                            delayMillis = LyricsForegroundCloseDelayMillis,
+                            LyricsForegroundCloseFadeMillis,
                             easing = LyricsForegroundReleaseEasing,
                         ),
                     )
