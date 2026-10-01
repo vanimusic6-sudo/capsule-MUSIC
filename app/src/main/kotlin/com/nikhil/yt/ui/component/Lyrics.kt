@@ -211,6 +211,17 @@ private val ReturnToSyncSettleEasing = CubicBezierEasing(0.22f, 0f, 0.16f, 1f)
 private val ReturnFocusEasing = CubicBezierEasing(0.24f, 0f, 0.18f, 1f)
 private val SmoothDecelerateEasing = CubicBezierEasing(0.0f, 0.0f, 0.2f, 1.0f)
 
+// Row alpha handles the line-to-line focus. Word fill must never reset its resting brightness.
+private const val AppleWordBaseAlpha = 0.62f
+private const val FadeWordBaseAlpha = 0.65f
+private const val GlowWordBaseAlpha = 0.58f
+private const val SlideWordBaseAlpha = 0.62f
+private const val KaraokeWordBaseAlpha = 0.70f
+private const val RomanizedWordBaseAlpha = 0.50f
+
+private fun lyricFillAlpha(baseAlpha: Float, progress: Float, filledAlpha: Float = 1f): Float =
+    baseAlpha + (filledAlpha - baseAlpha) * progress.coerceIn(0f, 1f)
+
 private fun isRtlText(text: String): Boolean {
     for (ch in text) {
         when (Character.getDirectionality(ch)) {
@@ -484,11 +495,9 @@ private fun ArchiveTuneWord(
         }
     val glowRadius = if (glowAlpha > 0f) glowProgress * 8f else 0f
     val effectiveFontSize = if (isBackground) fontSize * 0.82f else fontSize
-    // As focus arrives, the subdued line smoothly trades its diffuse light for the word reveal.
+    // Keep the unfilled layer stable as line focus arrives; only the reveal adds brightness.
     val restingAlpha = if (isBackground) 0.54f else 0.70f
-    val focusedBaseAlpha = if (isBackground) 0.22f else 0.30f
-    val baseAlpha =
-        restingAlpha + (focusedBaseAlpha - restingAlpha) * safeLineFocus
+    val baseAlpha = restingAlpha
     val revealAlpha =
         safeLineFocus * if (isBackground) 0.78f else 1f
     val fontWeight = FontWeight.Bold
@@ -1873,7 +1882,14 @@ fun Lyrics(
                         // Distance/focus dimming lives on the row's single animated alpha layer.
                         // Keeping a second alpha in the text color caused a brief two-phase flash
                         // whenever a line changed from upcoming -> active -> passed.
-                        val lineColor = lyricsBaseColor
+                        val lineColor =
+                            if (lyricsAnimationStyle == LyricsAnimationStyle.SLIDE &&
+                                !hasPausedSeekPreview && index > displayedCurrentLineIndex
+                            ) {
+                                lyricsBaseColor.copy(alpha = SlideWordBaseAlpha)
+                            } else {
+                                lyricsBaseColor
+                            }
                         val alignment = remember(lyricsTextPosition) {
                             when (lyricsTextPosition) {
                                 LyricsPosition.LEFT -> TextAlign.Start
@@ -2090,7 +2106,7 @@ fun Lyrics(
                                         isRtl = lineIsRtl,
                                         fontSize = lyricsTextSize.sp,
                                         textColor = lyricsBaseColor,
-                                        inactiveAlpha = if (isActiveLine) 0.35f else 0.7f,
+                                        inactiveAlpha = KaraokeWordBaseAlpha,
                                         fontWeight = FontWeight.Bold,
                                         isBackground = isBg,
                                         nudgeEnabled = isActiveLine && !reduceMotionDuringScroll,
@@ -2185,10 +2201,10 @@ fun Lyrics(
                                     val wordAlpha = when {
                                         !isActiveLine && index < displayedCurrentLineIndex ->
                                             1f
-                                        !isActiveLine -> 0.62f
+                                        !isActiveLine -> AppleWordBaseAlpha
                                         hasWordPassed -> 1f
-                                        isWordActive -> 0.5f + (0.5f * transitionProgress)
-                                        else -> 0.35f
+                                        isWordActive -> lyricFillAlpha(AppleWordBaseAlpha, transitionProgress)
+                                        else -> AppleWordBaseAlpha
                                     }
 
                                     // Apply background vocal styling
@@ -2269,9 +2285,9 @@ fun Lyrics(
                                                 !isActiveLine &&
                                                     index < displayedCurrentLineIndex ->
                                                     1f
-                                                !isActiveLine -> 0.65f
-                                                reduceMotionDuringScroll -> 0.65f
-                                                else -> 0.35f + (0.65f * fadeProgress)
+                                                !isActiveLine -> FadeWordBaseAlpha
+                                                reduceMotionDuringScroll -> FadeWordBaseAlpha
+                                                else -> lyricFillAlpha(FadeWordBaseAlpha, fadeProgress)
                                             }
                                         val effectiveAlpha =
                                             if (word.isBackground) wordAlpha * 0.6f else wordAlpha
@@ -2345,11 +2361,11 @@ fun Lyrics(
                                                 !isActiveLine &&
                                                     index < displayedCurrentLineIndex ->
                                                     1f
-                                                !isActiveLine -> 0.58f
-                                                reduceMotionDuringScroll -> 0.58f
+                                                !isActiveLine -> GlowWordBaseAlpha
+                                                reduceMotionDuringScroll -> GlowWordBaseAlpha
                                                 isWordActive || hasWordPassed ->
-                                                    0.45f + (0.55f * fillProgress)
-                                                else -> 0.35f
+                                                    lyricFillAlpha(GlowWordBaseAlpha, fillProgress)
+                                                else -> GlowWordBaseAlpha
                                             }
                                         val effectiveAlpha =
                                             if (word.isBackground) brightness * 0.6f else brightness
@@ -2456,12 +2472,12 @@ fun Lyrics(
                                                                 lyricsBaseColor.copy(alpha = 0.9f),
                                                             (fillProgress + 0.02f)
                                                                 .coerceIn(0f, 1f) to
-                                                                lyricsBaseColor.copy(alpha = 0.5f),
+                                                                lyricsBaseColor.copy(alpha = SlideWordBaseAlpha),
                                                             (fillProgress + 0.08f)
                                                                 .coerceIn(0f, 1f) to
-                                                                lyricsBaseColor.copy(alpha = 0.35f),
+                                                                lyricsBaseColor.copy(alpha = SlideWordBaseAlpha),
                                                             1.0f to
-                                                                lyricsBaseColor.copy(alpha = 0.35f),
+                                                                lyricsBaseColor.copy(alpha = SlideWordBaseAlpha),
                                                         ),
                                                     fontWeight = FontWeight.Bold,
                                                 )
@@ -2485,7 +2501,7 @@ fun Lyrics(
                                                 SpanStyle(
                                                     color =
                                                         if (isActiveLine) {
-                                                            lyricsBaseColor.copy(alpha = 0.35f)
+                                                            lyricsBaseColor.copy(alpha = SlideWordBaseAlpha)
                                                         } else {
                                                             lineColor
                                                         },
@@ -2703,11 +2719,11 @@ fun Lyrics(
 
                             val slideBrush = rtlAwareHorizontalGradient(
                                 isRtl = lineIsRtl,
-                                0.0f to lyricsBaseColor.copy(alpha = 0.3f),
+                                0.0f to lyricsBaseColor.copy(alpha = SlideWordBaseAlpha),
                                 (fill * 0.7f).coerceIn(0f, 1f) to lyricsBaseColor.copy(alpha = 0.9f),
                                 fill to lyricsBaseColor,
                                 (fill + 0.1f).coerceIn(0f, 1f) to lyricsBaseColor.copy(alpha = 0.7f),
-                                1.0f to lyricsBaseColor.copy(alpha = if (fill >= 1f) 1f else 0.3f)
+                                1.0f to lyricsBaseColor.copy(alpha = if (fill >= 1f) 1f else SlideWordBaseAlpha)
                             )
 
                             val styledText = buildAnnotatedString {
@@ -2827,8 +2843,8 @@ fun Lyrics(
 
                                                         val romAlpha = when {
                                                             hasWordPassed -> 0.8f
-                                                            isWordActive -> 0.4f + (0.4f * smoothProgress)
-                                                            else -> 0.3f
+                                                            isWordActive -> lyricFillAlpha(RomanizedWordBaseAlpha, smoothProgress, 0.8f)
+                                                            else -> RomanizedWordBaseAlpha
                                                         }
 
                                                         withStyle(
@@ -2849,7 +2865,7 @@ fun Lyrics(
                                                         } else {
                                                             0f
                                                         }
-                                                        val romAlpha = 0.3f + (0.5f * fadeProgress)
+                                                        val romAlpha = lyricFillAlpha(RomanizedWordBaseAlpha, fadeProgress, 0.8f)
 
                                                         withStyle(
                                                             style = SpanStyle(
@@ -2870,8 +2886,8 @@ fun Lyrics(
                                                                 0.0f to lyricsBaseColor.copy(alpha = 0.8f),
                                                                 (fillProgress * 0.95f).coerceIn(0f, 1f) to lyricsBaseColor.copy(alpha = 0.8f),
                                                                 fillProgress to lyricsBaseColor.copy(alpha = 0.5f),
-                                                                (fillProgress + 0.05f).coerceIn(0f, 1f) to lyricsBaseColor.copy(alpha = 0.3f),
-                                                                1.0f to lyricsBaseColor.copy(alpha = 0.3f)
+                                                                (fillProgress + 0.05f).coerceIn(0f, 1f) to lyricsBaseColor.copy(alpha = RomanizedWordBaseAlpha),
+                                                                1.0f to lyricsBaseColor.copy(alpha = RomanizedWordBaseAlpha)
                                                             )
 
                                                             withStyle(
@@ -2885,7 +2901,7 @@ fun Lyrics(
                                                         } else {
                                                             val romColor = when {
                                                                 hasWordPassed -> lyricsBaseColor.copy(alpha = 0.7f)
-                                                                else -> lyricsBaseColor.copy(alpha = 0.3f)
+                                                                else -> lyricsBaseColor.copy(alpha = RomanizedWordBaseAlpha)
                                                             }
                                                             withStyle(
                                                                 style = SpanStyle(
@@ -2907,7 +2923,7 @@ fun Lyrics(
                                                             0f
                                                         }
 
-                                                        val romAlpha = 0.4f + (0.4f * fillProgress)
+                                                        val romAlpha = lyricFillAlpha(RomanizedWordBaseAlpha, fillProgress, 0.8f)
                                                         val romShadow = if (isWordActive && fillProgress > 0.05f) {
                                                             Shadow(
                                                                 color = lyricsGlowColor.copy(alpha = 0.5f * fillProgress),
@@ -2932,7 +2948,7 @@ fun Lyrics(
                                                             !isActiveLine -> lyricsBaseColor.copy(alpha = 0.5f)
                                                             isWordActive -> lyricsBaseColor.copy(alpha = 0.8f)
                                                             hasWordPassed -> lyricsBaseColor.copy(alpha = 0.7f)
-                                                            else -> lyricsBaseColor.copy(alpha = 0.4f)
+                                                            else -> lyricsBaseColor.copy(alpha = RomanizedWordBaseAlpha)
                                                         }
 
                                                         withStyle(

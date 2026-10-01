@@ -12,7 +12,7 @@
   .phone{position:relative;width:min(350px,82vw);aspect-ratio:392/776;flex-shrink:0;border-radius:32px;overflow:hidden;background:#140600;box-shadow:0 0 0 2px #59463d,0 24px 60px #0008}
   .player,.sheet,.frame,.surface,.foreground{position:absolute;inset:0;width:100%;height:100%}
   .sheet{isolation:isolate;will-change:opacity}
-  .player,.foreground{object-fit:fill}.frame{transform-origin:50% 0;overflow:hidden;will-change:transform;border-radius:32px;transform:translateY(100%) scale(.972,.982)}
+  .player,.foreground{object-fit:fill}.frame{transform-origin:50% 0;overflow:hidden;will-change:transform;border-radius:32px;transform:translateY(100%) scale(1,1)}
   .surface{background:linear-gradient(#785100,#462000 50%,#090705);transform-origin:50% 0}
   .foreground{opacity:0}#status{font-size:14px;color:#dabba3;min-height:22px}
   small{color:#9e918a;display:block;margin-top:20px} @media(max-width:700px){main{flex-direction:column;gap:24px;padding:24px 16px}.phone{width:min(310px,80vw)}}
@@ -27,7 +27,7 @@
   </div>
   <section>
     <h1>Текст как отдельное полотно</h1>
-    <p>Открытие — 540 мс, закрытие — 300 мс. Размер и скругление меняются плавно на всём пути. Сила увеличения при открытии возвращена к прежней, новая скорость сохранена. При закрытии интерфейс по-прежнему растворяется сразу. Прозрачность полотна — 3%.</p>
+    <p>Открытие — 540 мс, закрытие — 300 мс. Размер и скругление меняются плавно на всём пути. Открытие — выезд полноразмерного полотна без приближения, скорость сохранена. При закрытии интерфейс по-прежнему растворяется сразу. Прозрачность полотна — 3%.</p>
     <button id="open">Открыть</button><button id="close">Закрыть</button>
     <label><input id="slow" type="checkbox"> Замедлить в 4 раза</label>
     <p id="status" aria-live="polite">Плеер</p>
@@ -37,7 +37,7 @@
 <script>
   const $ = id => document.getElementById(id);
   const frames = [$('backgroundFrame'), $('foregroundFrame')];
-  const state = {offset:1,release:1,openingCorrection:.024,accent:0,foreground:0};
+  const state = {offset:1,release:1,scaleX:1,scaleY:1,accent:0,foreground:0};
   let mounted = false, animationFrame = 0;
   // Solve cubic-bezier time so the preview uses the same curves as Compose.
   function bezier(x1,y1,x2,y2){
@@ -54,8 +54,8 @@
   const frameCurve=bezier(.42,0,.58,1);
   const acquireCurve=bezier(.32,0,.26,1);
   function render(){
-    const width=1-.052*state.release+state.openingCorrection;
-    const height=1-.042*state.release+state.openingCorrection;
+    const width=state.scaleX;
+    const height=state.scaleY;
     const radius=32*state.release*(2-state.release);
     const viewport=document.querySelector('.phone').clientHeight;
     for(const frame of frames){
@@ -69,7 +69,7 @@
   }
   function transition(open){
     cancelAnimationFrame(animationFrame);
-    if(open&&!mounted){Object.assign(state,{offset:1,release:1,openingCorrection:.024,accent:0,foreground:0});mounted=true}
+    if(open&&!mounted){Object.assign(state,{offset:1,release:1,scaleX:1,scaleY:1,accent:0,foreground:0});mounted=true}
     if(!mounted)return;
     const from={...state},speed=$('slow').checked?4:1,start=performance.now();
     const duration=open?540:300;
@@ -82,7 +82,8 @@
       const value=(key,target,progress)=>from[key]+(target-from[key])*progress;
       state.offset=value('offset',open?0:1,travel(phase(duration)));
       state.release=value('release',open?0:1,frameCurve(phase(duration)));
-      state.openingCorrection=value('openingCorrection',0,frameCurve(phase(duration)));
+      state.scaleX=value('scaleX',open?1:.948,frameCurve(phase(duration)));
+      state.scaleY=value('scaleY',open?1:.958,frameCurve(phase(duration)));
       state.accent=value('accent',open?0:1,acquireCurve(phase(160)));
       state.foreground=value('foreground',open?1:0,foregroundCurve(phase(open?330:210,open?145:0)));
       render();

@@ -358,7 +358,7 @@ fun LyricsMenu(
                                 tint = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         },
-                        text = stringResource(R.string.refetch),
+                        text = stringResource(R.string.refresh),
                         onClick = {
                             viewModel.refetchLyrics(mediaMetadataProvider(), lyricsProvider())
                             onDismiss()
