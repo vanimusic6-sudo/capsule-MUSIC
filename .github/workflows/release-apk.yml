@@ -5,6 +5,7 @@ on:
   push:
     branches:
       - next/capsule-clay
+      - audit/energy-20261001
 
 permissions:
   contents: read

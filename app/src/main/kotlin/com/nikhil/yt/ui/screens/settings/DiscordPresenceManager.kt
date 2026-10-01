@@ -217,6 +217,11 @@ object DiscordPresenceManager {
             }
 
             while (isActive) {
+                // The first presence was already sent above. Wait for the next interval instead
+                // of making the same network update twice when the service starts.
+                val delayMs = intervalProvider()
+                if (delayMs <= 0L) break
+                delay(delayMs)
                 try {
                     // switch to Main for player access
                     val (song, position, isPaused) = withContext(Dispatchers.Main) {
@@ -238,10 +243,6 @@ object DiscordPresenceManager {
                 } catch (e: Exception) {
                     Timber.tag(logTag).e(e, "loop error → ${e.message}")
                 }
-
-                val delayMs = intervalProvider()
-                if (delayMs <= 0L) break
-                delay(delayMs)
             }
         }
 

@@ -7,6 +7,7 @@ on:
       - main
       - cleanup/capsule-player-only
       - next/capsule-clay
+      - audit/energy-20261001
 
 permissions:
   contents: read
@@ -50,6 +51,9 @@ jobs:
           gradle :app:testUniversalDebugUnitTest \
             --tests 'com.nikhil.yt.lyrics.InstrumentalLyricsTest' \
             --tests 'com.nikhil.yt.ui.BottomSheetAnchorTest' \
+            --tests 'com.nikhil.yt.playback.AudioPrefetchSchedulingTest' \
+            --tests 'com.nikhil.yt.playback.CrossfadeSchedulingTest' \
+            --tests 'com.nikhil.yt.ui.UiEnergyRegressionTest' \
             --stacktrace --no-daemon
 
       - name: Build Universal Debug APK

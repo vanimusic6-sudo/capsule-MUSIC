@@ -246,6 +246,7 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.TimeoutCancellationException
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -264,6 +265,7 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.withContext
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.ConnectionPool
@@ -346,7 +348,7 @@ internal const val SIGNED_URL_MAX_FRESH_RESOLVE_DELAY_MS = 3_000L
 internal const val SIGNED_URL_REJECTIONS_BEFORE_CLIENT_ROLLOVER = 2
 internal const val AUDIO_PREFETCH_LEAD_TIME_MS = 45_000L
 internal const val AUDIO_PREFETCH_MIN_CURRENT_PROGRESS_MS = 3_000L
-internal const val AUDIO_PREFETCH_RECHECK_MS = 2_000L
+internal const val AUDIO_PREFETCH_RECHECK_MS = 30_000L
 internal const val AUDIO_PREFETCHED_URL_MAX_AGE_MS = 60_000L
 
 internal fun audioPrefetchWaitMs(
@@ -904,6 +906,9 @@ class MusicService :
         )
 
         val mediaId = upcoming.singleOrNull() ?: return
+        // A cancelled timer must never consume a wakeup meant for its replacement.
+        val wakeups = Channel<Unit>(Channel.CONFLATED)
+        prefetchScheduleWakeups = wakeups
         prefetchScheduleJob =
             ioScope.launch {
                 /*
@@ -934,7 +939,12 @@ class MusicService :
                         }
 
                     if (waitMs <= 0L) break
-                    delay(waitMs.coerceAtMost(AUDIO_PREFETCH_RECHECK_MS))
+                    // A long track can wait near its lead window rather than waking the service
+                    // every two seconds. Seeks and play/pause changes wake the timer immediately;
+                    // the bounded fallback also covers unusual timeline/route changes.
+                    withTimeoutOrNull(waitMs.coerceAtMost(AUDIO_PREFETCH_RECHECK_MS)) {
+                        wakeups.receive()
+                    }
                 }
 
                 if (!isActive || !audioResolveCoordinator.isPrefetchGenerationCurrent(prefetchGeneration)) {
@@ -1165,6 +1175,7 @@ class MusicService :
         }
     }
     private var prefetchScheduleJob: Job? = null
+    private var prefetchScheduleWakeups = Channel<Unit>(Channel.CONFLATED)
 
     /** Which googlevideo server groups are currently refusing everything, on this network. */
     private val audioCdnHostHealth = AudioCdnHostHealth()
@@ -1785,6 +1796,7 @@ class MusicService :
             .distinctUntilChanged()
             .collectLatest(scope) {
                 crossfadeDurationMs.value = it
+                crossfadeAudio?.onPlaybackEvent()
                 // Crossfade requires software mixing, so offload must stop immediately.
                 updateAudioOffload(dataStore.get(AudioOffload, false))
             }
@@ -3683,6 +3695,27 @@ class MusicService :
     override fun onEvents(player: Player, events: Player.Events) {
         if (events.contains(EVENT_POSITION_DISCONTINUITY)) {
             playbackPositionGeneration.markDiscontinuity()
+        }
+        if (events.containsAny(
+                EVENT_POSITION_DISCONTINUITY,
+                Player.EVENT_PLAY_WHEN_READY_CHANGED,
+                Player.EVENT_IS_PLAYING_CHANGED,
+                Player.EVENT_PLAYBACK_STATE_CHANGED,
+            )
+        ) {
+            prefetchScheduleWakeups.trySend(Unit)
+        }
+        if (events.containsAny(
+                EVENT_POSITION_DISCONTINUITY,
+                EVENT_TIMELINE_CHANGED,
+                Player.EVENT_MEDIA_ITEM_TRANSITION,
+                Player.EVENT_PLAY_WHEN_READY_CHANGED,
+                Player.EVENT_IS_PLAYING_CHANGED,
+                Player.EVENT_PLAYBACK_STATE_CHANGED,
+                Player.EVENT_REPEAT_MODE_CHANGED,
+            )
+        ) {
+            crossfadeAudio?.onPlaybackEvent()
         }
         if (events.containsAny(
                 Player.EVENT_PLAY_WHEN_READY_CHANGED,

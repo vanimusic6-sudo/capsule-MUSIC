@@ -24,6 +24,7 @@ import androidx.compose.ui.graphics.Color
 import com.valentinilk.shimmer.defaultShimmerTheme
 import com.valentinilk.shimmer.shimmer
 import androidx.compose.material3.MaterialTheme
+import com.nikhil.yt.ui.player.appIsOnScreen
 
 @Composable
 fun ShimmerHost(
@@ -49,13 +50,14 @@ fun ShimmerHost(
      * blend mode, no layer.
      */
     val surface = MaterialTheme.colorScheme.surface
+    val onScreen = appIsOnScreen()
 
     Column(
         horizontalAlignment = horizontalAlignment,
         verticalArrangement = verticalArrangement,
         modifier =
         modifier
-            .shimmer()
+            .then(if (onScreen) Modifier.shimmer() else Modifier)
             .then(
                 if (fadeToSurface) Modifier.drawWithContent {
                     drawContent()

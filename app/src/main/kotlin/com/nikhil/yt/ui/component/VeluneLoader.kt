@@ -16,7 +16,6 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.size
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
@@ -27,6 +26,7 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import com.nikhil.yt.ui.player.appIsOnScreen
 import kotlin.math.cos
 import kotlin.math.sin
 
@@ -45,27 +45,33 @@ fun VeluneLoader(
 ) {
     val accentColor = color ?: MaterialTheme.colorScheme.primary
 
-    val infiniteTransition = rememberInfiniteTransition(label = "capsule_comet_loader")
-
-    val rotation by infiniteTransition.animateFloat(
-        initialValue = 0f,
-        targetValue = 360f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(1_150, easing = LinearEasing),
-            repeatMode = RepeatMode.Restart,
-        ),
-        label = "comet_rotation",
-    )
-
-    val pulse by infiniteTransition.animateFloat(
-        initialValue = 0.78f,
-        targetValue = 1f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(650, easing = LinearEasing),
-            repeatMode = RepeatMode.Reverse,
-        ),
-        label = "comet_pulse",
-    )
+    val rotation: Float
+    val pulse: Float
+    if (appIsOnScreen()) {
+        // Removing the transition from composition stops its frame clock while the app is hidden.
+        val infiniteTransition = rememberInfiniteTransition(label = "capsule_comet_loader")
+        rotation = infiniteTransition.animateFloat(
+            initialValue = 0f,
+            targetValue = 360f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(1_150, easing = LinearEasing),
+                repeatMode = RepeatMode.Restart,
+            ),
+            label = "comet_rotation",
+        ).value
+        pulse = infiniteTransition.animateFloat(
+            initialValue = 0.78f,
+            targetValue = 1f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(650, easing = LinearEasing),
+                repeatMode = RepeatMode.Reverse,
+            ),
+            label = "comet_pulse",
+        ).value
+    } else {
+        rotation = 0f
+        pulse = 0.78f
+    }
 
     Box(
         contentAlignment = Alignment.Center,

@@ -14,16 +14,22 @@ import androidx.media3.exoplayer.ExoPlayer
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.withContext
 import com.nikhil.yt.db.MusicDatabase
 import kotlin.math.abs
 import kotlin.math.min
 import kotlin.math.pow
+
+/** Keep the fine clock near a fade, but sleep through the quiet middle of a song. */
+internal fun crossfadeWaitBeforePreloadMs(remainingMs: Long, preloadWindowMs: Long): Long =
+    (remainingMs - preloadWindowMs).coerceIn(100L, 10_000L)
 
 internal class CrossfadeAudio(
     private val player: ExoPlayer,
@@ -37,6 +43,15 @@ internal class CrossfadeAudio(
     private val overlapPlayerFactory: () -> ExoPlayer,
 ) {
     private var loopJob: Job? = null
+    private val playbackWakeups = Channel<Unit>(Channel.CONFLATED)
+
+    fun onPlaybackEvent() {
+        playbackWakeups.trySend(Unit)
+    }
+
+    private suspend fun waitForPlaybackEventOrTimeout(timeoutMs: Long) {
+        withTimeoutOrNull(timeoutMs) { playbackWakeups.receive() }
+    }
 
     private var overlapPlayer: ExoPlayer? = null
     private var overlapPrimedIndex: Int = C.INDEX_UNSET
@@ -104,7 +119,7 @@ internal class CrossfadeAudio(
 
             if (!player.playWhenReady) {
                 stopOverlapCrossfade(resetMainFade = true)
-                delay(150)
+                waitForPlaybackEventOrTimeout(30_000L)
                 continue
             }
 
@@ -116,7 +131,7 @@ internal class CrossfadeAudio(
 
             if (!crossfadeActive && (player.playbackState != Player.STATE_READY || !player.isPlaying)) {
                 stopOverlapCrossfade(resetMainFade = true)
-                delay(150)
+                waitForPlaybackEventOrTimeout(30_000L)
                 continue
             }
 
@@ -126,13 +141,13 @@ internal class CrossfadeAudio(
 
             if (player.repeatMode == Player.REPEAT_MODE_ONE) {
                 stopOverlapCrossfade(resetMainFade = true)
-                delay(150)
+                waitForPlaybackEventOrTimeout(30_000L)
                 continue
             }
 
             if (!crossfadeActive && (nextIndex == C.INDEX_UNSET || durationMs <= 0 || durationMs == C.TIME_UNSET)) {
                 stopOverlapCrossfade(resetMainFade = true)
-                delay(150)
+                waitForPlaybackEventOrTimeout(30_000L)
                 continue
             }
 
@@ -177,7 +192,9 @@ internal class CrossfadeAudio(
             }
 
             if (playbackFadeFactor.value != 1f) playbackFadeFactor.value = 1f
-            delay(100)
+            waitForPlaybackEventOrTimeout(
+                crossfadeWaitBeforePreloadMs(remainingMs, preloadWindowMs),
+            )
         }
     }
 

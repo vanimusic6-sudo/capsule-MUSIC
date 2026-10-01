@@ -34,6 +34,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.nikhil.yt.R
 import com.nikhil.yt.constants.ThumbnailCornerRadius
+import com.nikhil.yt.ui.player.appIsOnScreen
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlin.random.Random
@@ -56,11 +57,15 @@ fun PlayingIndicator(
             }
         }
 
-    LaunchedEffect(isPlaying, animatables) {
+    val onScreen = appIsOnScreen()
+    LaunchedEffect(isPlaying, onScreen, animatables) {
         if (!isPlaying) {
             animatables.forEach { it.snapTo(0.1f) }
             return@LaunchedEffect
         }
+        // A composed playlist row can survive while the Activity is backgrounded. Keep its
+        // three bars frozen instead of driving three frame clocks behind the lock screen.
+        if (!onScreen) return@LaunchedEffect
 
         delay(300)
         animatables.forEach { animatable ->

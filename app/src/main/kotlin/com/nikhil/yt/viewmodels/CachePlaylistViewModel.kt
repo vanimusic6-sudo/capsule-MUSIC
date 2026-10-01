@@ -20,7 +20,9 @@ import com.nikhil.yt.utils.get
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.*
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 import com.nikhil.yt.di.PlayerCache
@@ -40,10 +42,12 @@ class CachePlaylistViewModel @Inject constructor(
 
     private val _cachedSongs = MutableStateFlow<List<Song>>(emptyList())
     val cachedSongs: StateFlow<List<Song>> = _cachedSongs
+    private var refreshJob: Job? = null
 
-    init {
-        viewModelScope.launch(Dispatchers.IO) {
-            while (true) {
+    fun startRefreshing() {
+        if (refreshJob?.isActive == true) return
+        refreshJob = viewModelScope.launch(Dispatchers.IO) {
+            while (isActive) {
                 val hideExplicit = context.dataStore.get(HideExplicitKey, false)
                 val cachedIds = playerCache.keys.map(AudioCacheIdentity::mediaId).toSet()
                 val downloadedIds = downloadCache.keys.filter { AudioCacheIdentity.isComplete(downloadCache, it) }.toSet()
@@ -60,12 +64,11 @@ class CachePlaylistViewModel @Inject constructor(
                     AudioCacheIdentity.completeKey(playerCache, it.song.id, contentLength) != null
                 }
 
-                if (completeSongs.isNotEmpty()) {
+                val undatedSongs = completeSongs.filter { it.song.dateDownload == null }
+                if (undatedSongs.isNotEmpty()) {
                     database.query {
-                        completeSongs.forEach {
-                            if (it.song.dateDownload == null) {
-                                update(it.song.copy(dateDownload = LocalDateTime.now()))
-                            }
+                        undatedSongs.forEach {
+                            update(it.song.copy(dateDownload = LocalDateTime.now()))
                         }
                     }
                 }
@@ -78,6 +81,11 @@ class CachePlaylistViewModel @Inject constructor(
                 delay(1000)
             }
         }
+    }
+
+    fun stopRefreshing() {
+        refreshJob?.cancel()
+        refreshJob = null
     }
 
     fun removeSongFromCache(songId: String) {
