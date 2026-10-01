@@ -587,21 +587,20 @@ internal fun CapsuleImmersiveContent(
         val pageEdge = frame?.edge ?: IMMERSIVE_NEUTRAL_COLOR
         val pageFloor = frame?.floor ?: IMMERSIVE_NEUTRAL_COLOR
         val seamColor = immersiveSeamColor(pageEdge, pageFloor)
-        val pageBackground = Brush.verticalGradient(
-            0f to seamColor,
-            seam to seamColor,
-            settled to pageFloor,
-            1f to pageFloor,
-        )
+        val pageBackground = remember(seamColor, pageFloor, seam, settled) {
+            Brush.verticalGradient(
+                0f to seamColor,
+                seam to seamColor,
+                settled to pageFloor,
+                1f to pageFloor,
+            )
+        }
 
         // Preload the NEXT image invisibly. Coil must finish decoding this exact URL
         // before the frame is allowed to replace the old one. It is never rendered early.
         if (artworkTone.ready && artworkTone.displayUrl != null) {
             AsyncImage(
-                model = ImageRequest.Builder(LocalContext.current)
-                    .data(artworkTone.displayUrl)
-                    .crossfade(false)
-                    .build(),
+                model = rememberImmersiveArtworkRequest(artworkTone.displayUrl),
                 contentDescription = null,
                 contentScale = ContentScale.Crop,
                 onSuccess = { coverImageReady = true },
@@ -621,7 +620,8 @@ internal fun CapsuleImmersiveContent(
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .graphicsLayer(alpha = if (presentingVideo) 0f else gradientAlpha.value),
+                    // Alpha is a layer update; it must not recompose the artwork or controls.
+                    .graphicsLayer { alpha = if (presentingVideo) 0f else gradientAlpha.value },
             ) {
                 Box(modifier = Modifier.fillMaxSize().background(pageBackground))
                 Box(
@@ -637,10 +637,7 @@ internal fun CapsuleImmersiveContent(
                         ),
                 ) {
                     AsyncImage(
-                        model = ImageRequest.Builder(LocalContext.current)
-                            .data(frame.imageUrl)
-                            .crossfade(false)
-                            .build(),
+                        model = rememberImmersiveArtworkRequest(frame.imageUrl),
                         contentDescription = null,
                         contentScale = ContentScale.Crop,
                         modifier = Modifier
@@ -654,7 +651,7 @@ internal fun CapsuleImmersiveContent(
                         modifier = Modifier
                             .fillMaxSize()
                             .background(
-                                run {
+                                remember(frame.edge, frame.bottomTexture, frame.landscape, seamColor) {
                                     val fade =
                                         immersiveFadeProfile(
                                             bottomTexture = frame.bottomTexture,
@@ -1208,4 +1205,14 @@ internal fun CapsuleImmersiveContent(
     }
 }
 
-
+/** Stable Coil models prevent progress updates from rebuilding identical image requests. */
+@Composable
+private fun rememberImmersiveArtworkRequest(url: String?): ImageRequest {
+    val context = LocalContext.current
+    return remember(context, url) {
+        ImageRequest.Builder(context)
+            .data(url)
+            .crossfade(false)
+            .build()
+    }
+}

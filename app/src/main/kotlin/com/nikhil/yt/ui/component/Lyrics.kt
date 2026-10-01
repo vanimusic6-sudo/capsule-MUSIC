@@ -73,6 +73,9 @@ import androidx.compose.material3.LocalTextStyle
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.State
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.structuralEqualityPolicy
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -274,6 +277,19 @@ private fun KaraokeWord(
     modifier: Modifier = Modifier
 ) {
     val duration = endTime - startTime
+    // Future/completed words no longer invalidate their render layers on every lyric tick.
+    // Include both tails so the soft mask (200ms) and nudge (370ms) finish exactly as before.
+    val sampledTime = remember(currentTimeProvider, startTime, endTime) {
+        derivedStateOf(structuralEqualityPolicy()) {
+            currentTimeProvider().coerceIn(
+                minOf(startTime, endTime) - 1L,
+                maxOf(endTime + 200L, startTime + 370L),
+            )
+        }
+    }
+    val isDone = remember(sampledTime, endTime) {
+        derivedStateOf(structuralEqualityPolicy()) { sampledTime.value >= endTime }
+    }
     val glowPadding = 10.dp // Reduced to 10dp for tighter spacing
 
     Box(
@@ -297,7 +313,7 @@ private fun KaraokeWord(
             }
             .graphicsLayer {
                 clip = false
-                val currentTime = currentTimeProvider()
+                val currentTime = sampledTime.value
                 
                 // Nudge parameters
                 val maxShift = 5f
@@ -344,9 +360,7 @@ private fun KaraokeWord(
             modifier = Modifier
                 .padding(glowPadding)
                 .drawWithContent {
-                    val currentTime = currentTimeProvider()
-                    val isDone = currentTime >= endTime
-                    if (isDone) {
+                    if (isDone.value) {
                         drawContent()
                     }
                 }
@@ -357,12 +371,19 @@ private fun KaraokeWord(
             modifier = Modifier
                 .fillMaxSize()
                 .graphicsLayer {
-                     compositingStrategy = CompositingStrategy.Offscreen
-                     
-                    val currentTime = currentTimeProvider()
+                    val currentTime = sampledTime.value
                     val fadeDuration = 200L
-                    
-                    if (currentTime >= endTime) {
+                    // Allocate the soft-mask buffer only during the actual fill/fade.
+                    // Future words and finished tails contain no overlay to composite.
+                    compositingStrategy =
+                        if (currentTime >= minOf(startTime, endTime) && currentTime < endTime + fadeDuration) {
+                            CompositingStrategy.Offscreen
+                        } else {
+                            CompositingStrategy.Auto
+                        }
+                    if (currentTime < minOf(startTime, endTime)) {
+                        alpha = 0f
+                    } else if (currentTime >= endTime) {
                         val timeSinceEnd = currentTime - endTime
                         val fadeProgress = (timeSinceEnd.toFloat() / fadeDuration.toFloat()).coerceIn(0f, 1f)
                         alpha = 1f - fadeProgress
@@ -371,7 +392,7 @@ private fun KaraokeWord(
                     }
                 }
                 .drawWithContent {
-                    val currentTime = currentTimeProvider()
+                    val currentTime = sampledTime.value
                     val progress = if (duration > 0) {
                         val elapsed = currentTime - startTime
                         (elapsed.toFloat() / duration.toFloat()).coerceIn(0f, 1f)
@@ -445,16 +466,29 @@ private fun ArchiveTuneWord(
     text: String,
     startTime: Long,
     endTime: Long,
-    currentTime: Long,
+    playbackPosition: State<Long>,
     isRtl: Boolean,
     fontSize: TextUnit,
     textColor: Color,
     isBackground: Boolean,
-    lineFocus: Float,
+    lineFocus: State<Float>,
     motionEnabled: Boolean,
     releaseCompleted: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
+    // Subscribe inside the word, not its FlowRow, and only while timing can change its paint.
+    val currentTime by remember(playbackPosition, startTime, endTime, releaseCompleted) {
+        derivedStateOf(structuralEqualityPolicy()) {
+            if (releaseCompleted) {
+                Long.MIN_VALUE
+            } else {
+                playbackPosition.value.coerceIn(
+                    minOf(startTime, endTime) - 1L,
+                    maxOf(startTime, endTime),
+                )
+            }
+        }
+    }
     val duration = (endTime - startTime).coerceAtLeast(1L)
     val isComplete = releaseCompleted || currentTime >= endTime
     val isActive = !releaseCompleted && currentTime in startTime until endTime
@@ -464,7 +498,7 @@ private fun ArchiveTuneWord(
             currentTime <= startTime -> 0f
             else -> ((currentTime - startTime).toFloat() / duration).coerceIn(0f, 1f)
         }
-    val safeLineFocus = lineFocus.coerceIn(0f, 1f)
+    val safeLineFocus = lineFocus.value.coerceIn(0f, 1f)
     val wave = sin(progress * Math.PI).toFloat()
     // The word is always measured at its maximum size, so FlowRow never needs to reflow when
     // focus moves to this line. Only the already-reserved visual layer moves from 96% -> 100%.
@@ -784,9 +818,8 @@ fun Lyrics(
         mutableIntStateOf(0)
     }
 
-    var currentPlaybackPosition by remember {
-        mutableLongStateOf(0L)
-    }
+    val playbackPositionState = remember { mutableLongStateOf(0L) }
+    var currentPlaybackPosition by playbackPositionState
     var pausedSeekLineIndex by remember(mediaMetadata?.id, lyrics) {
         mutableIntStateOf(-1)
     }
@@ -1767,7 +1800,7 @@ fun Lyrics(
 
                     // The light hand-off is intentionally asymmetric: the new line lights up
                     // quickly, while the old one leaves a long soft tail.
-                    val archiveLineFocus by animateFloatAsState(
+                    val archiveLineFocus = animateFloatAsState(
                         targetValue = if (archiveLineIsFocused) 1f else 0f,
                         animationSpec =
                             tween(
@@ -2145,12 +2178,7 @@ fun Lyrics(
                                             text = displayText,
                                             startTime = (word.startTime * 1000).toLong(),
                                             endTime = (word.endTime * 1000).toLong(),
-                                            currentTime =
-                                                if (isActiveLine) {
-                                                    currentPlaybackPosition
-                                                } else {
-                                                    Long.MIN_VALUE
-                                                },
+                                            playbackPosition = playbackPositionState,
                                             isRtl = lineIsRtl,
                                             fontSize = archiveTuneMaxFontSize,
                                             textColor = lyricsBaseColor,
@@ -2159,9 +2187,8 @@ fun Lyrics(
                                             motionEnabled = isActiveLine && !reduceMotionDuringScroll,
                                             // Keep the old line's reveal layer alive during the
                                             // focus tail without subscribing every visible line to
-                                            // the 20 Hz playback clock.
-                                            releaseCompleted =
-                                                !isActiveLine && archiveLineFocus > 0.001f,
+                                            // the playback clock.
+                                            releaseCompleted = !isActiveLine,
                                         )
                                     }
                                 }

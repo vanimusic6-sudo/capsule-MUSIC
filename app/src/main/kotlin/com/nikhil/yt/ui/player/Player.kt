@@ -295,6 +295,9 @@ fun BottomSheetPlayer(
         }
     val backdropTimelineRunning =
         backdropNeedsClock &&
+            effectivePlayerDesign != CapsulePlayerDesign.IMMERSIVE &&
+            !state.isCollapsed &&
+            !state.isDismissed &&
             onScreen &&
             isPlaying &&
             playbackState == Player.STATE_READY &&

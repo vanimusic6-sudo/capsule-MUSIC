@@ -201,6 +201,10 @@ internal fun rememberArtworkGradientColors(
         resolvedKey = cacheKey
     }
 
+    // Remove hidden palette animations from the frame clock altogether. Keep the decoded
+    // target above so the same colors are immediately available when the surface returns.
+    if (!enabled) return emptyList()
+
     val first by
         animateColorAsState(
             targetValue = targetColors.getOrElse(0) { fallback[0] },
@@ -232,5 +236,5 @@ internal fun rememberArtworkGradientColors(
             label = "capsuleArtworkTertiary",
         )
 
-    return if (enabled) listOf(first, second, third) else emptyList()
+    return listOf(first, second, third)
 }
