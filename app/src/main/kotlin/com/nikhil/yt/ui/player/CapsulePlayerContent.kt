@@ -1506,7 +1506,7 @@ fun CapsulePlayerContent(
 
                 Spacer(
                     Modifier.height(
-                        14.dp,
+                        if (isLight) 14.dp else 10.dp,
                     ),
                 )
 
@@ -1592,7 +1592,7 @@ fun CapsulePlayerContent(
                 }
 
                 Row(
-                    Modifier.fillMaxWidth().padding(top = 6.dp),
+                    Modifier.fillMaxWidth().padding(top = if (isLight) 6.dp else 0.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.Center,
                 ) {
@@ -1642,7 +1642,7 @@ fun CapsulePlayerContent(
 
                 Spacer(
                     Modifier.height(
-                        if (isLight) 16.dp else 4.dp,
+                        if (isLight) 16.dp else 8.dp,
                     ),
                 )
 
