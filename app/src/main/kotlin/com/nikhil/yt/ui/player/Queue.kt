@@ -326,7 +326,7 @@ fun Queue(
                         playerConnection.service.toggleLike("queue_header")
                     },
                     onMenuClick = {
-                        menuState.show(sheetGesturesEnabled = false) {
+                        menuState.show {
                             PlayerMenu(
                                 mediaMetadata = mediaMetadata,
                                 navController = navController,
@@ -532,7 +532,7 @@ fun Queue(
                                     trailingContent = {
                                         IconButton(
                                             onClick = {
-                                                menuState.show(sheetGesturesEnabled = false) {
+                                                menuState.show {
                                                     PlayerMenu(
                                                         mediaMetadata = window.mediaItem.metadata!!,
                                                         navController = navController,
@@ -704,7 +704,7 @@ fun Queue(
                                     .combinedClickable(
                                         onClick = {},
                                         onLongClick = {
-                                            menuState.show(sheetGesturesEnabled = false) {
+                                            menuState.show {
                                                 PlayerMenu(
                                                     mediaMetadata = item.metadata!!,
                                                     navController = navController,
