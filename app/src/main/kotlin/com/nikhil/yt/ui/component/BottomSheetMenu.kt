@@ -18,6 +18,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.compositionLocalOf
@@ -39,8 +40,13 @@ class MenuState(
 ) {
     var isVisible by mutableStateOf(isVisible)
     var content by mutableStateOf(content)
+    var expandFully by mutableStateOf(false)
 
-    fun show(content: @Composable ColumnScope.() -> Unit) {
+    fun show(
+        expandFully: Boolean = false,
+        content: @Composable ColumnScope.() -> Unit,
+    ) {
+        this.expandFully = expandFully
         isVisible = true
         this.content = content
     }
@@ -60,7 +66,11 @@ fun BottomSheetMenu(
     val focusManager = LocalFocusManager.current
 
     if (state.isVisible) {
+        val sheetState = rememberModalBottomSheetState(
+            skipPartiallyExpanded = state.expandFully,
+        )
         ModalBottomSheet(
+            sheetState = sheetState,
             onDismissRequest = {
                 focusManager.clearFocus()
                 state.isVisible = false
@@ -83,6 +93,7 @@ fun BottomSheetMenu(
                 modifier =
                     Modifier
                         .fillMaxWidth()
+                        .then(if (state.expandFully) Modifier.fillMaxHeight() else Modifier)
                         .padding(horizontal = 20.dp),
             ) {
                 state.content(this)

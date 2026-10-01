@@ -143,7 +143,7 @@ import kotlin.math.roundToInt
 import java.util.UUID
 
 @Composable
-fun PlayerMenu(
+fun ColumnScope.PlayerMenu(
     mediaMetadata: MediaMetadata?,
     navController: NavController,
     playerBottomSheetState: BottomSheetState,
@@ -398,7 +398,7 @@ fun PlayerMenu(
     Spacer(modifier = Modifier.height(16.dp))
 
     LazyColumn(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier.fillMaxWidth().weight(1f),
         contentPadding = PaddingValues(
             start = 0.dp,
             top = 0.dp,
