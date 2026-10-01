@@ -468,9 +468,10 @@ private const val LyricsCloseTravelMillis = 300
 private const val LyricsForegroundOpenDelayMillis = 145
 private const val LyricsForegroundOpenFadeMillis = 330
 private const val LyricsForegroundCloseFadeMillis = 210
-// Match the existing fully contracted close, and start opening from that slightly smaller card.
+// Keep the accepted closing size; opening offsets these insets to restore its lighter expansion.
 private const val LyricsFrameWidthInset = 0.052f
 private const val LyricsFrameHeightInset = 0.042f
+private const val LyricsOpeningScaleCorrection = 0.024f
 private const val LyricsCloseAccentMillis = 160
 private const val LyricsCloseAlphaLoss = 0.03f
 private val LyricsFrameCornerRadius = 32.dp
@@ -518,6 +519,9 @@ private fun CapsulePlayerLyricsHost(
     val sheetOffset = remember { Animatable(if (showLyrics) 0f else 1f) }
     val foregroundOpacity = remember { Animatable(if (showLyrics) 1f else 0f) }
     val frameRelease = remember { Animatable(if (showLyrics) 0f else 1f) }
+    val openingScaleCorrection = remember {
+        Animatable(if (showLyrics) 0f else LyricsOpeningScaleCorrection)
+    }
     val closeAccent = remember { Animatable(0f) }
     var lyricsLayerMounted by remember { mutableStateOf(showLyrics) }
     var lyricsForegroundMounted by remember { mutableStateOf(showLyrics) }
@@ -534,6 +538,7 @@ private fun CapsulePlayerLyricsHost(
                 sheetOffset.snapTo(1f)
                 foregroundOpacity.snapTo(0f)
                 frameRelease.snapTo(1f)
+                openingScaleCorrection.snapTo(LyricsOpeningScaleCorrection)
                 closeAccent.snapTo(0f)
             }
             lyricsLayerMounted = true
@@ -545,6 +550,9 @@ private fun CapsulePlayerLyricsHost(
                 }
                 launch {
                     frameRelease.animateTo(0f, tween(LyricsOpenTravelMillis, easing = LyricsFrameEasing))
+                }
+                launch {
+                    openingScaleCorrection.animateTo(0f, tween(LyricsOpenTravelMillis, easing = LyricsFrameEasing))
                 }
                 launch {
                     // Restore an interrupted close from its current opacity.
@@ -567,6 +575,12 @@ private fun CapsulePlayerLyricsHost(
                 }
                 launch {
                     frameRelease.animateTo(1f, tween(LyricsCloseTravelMillis, easing = LyricsFrameEasing))
+                }
+                launch {
+                    // Only needed if closing interrupts an opening that has not finished.
+                    if (openingScaleCorrection.value != 0f) {
+                        openingScaleCorrection.animateTo(0f, tween(LyricsCloseTravelMillis, easing = LyricsFrameEasing))
+                    }
                 }
                 launch {
                     closeAccent.animateTo(1f, tween(LyricsCloseAccentMillis, easing = LyricsForegroundAcquireEasing))
@@ -695,9 +709,10 @@ private fun CapsulePlayerLyricsHost(
             // measured on every transition frame, and the rounded outline needs no blur/mask pass.
             val lyricsFrame = Modifier.graphicsLayer {
                 val release = frameRelease.value
+                val openingCorrection = openingScaleCorrection.value
                 translationY = sheetOffset.value * fullHeightPx
-                scaleX = 1f - LyricsFrameWidthInset * release
-                scaleY = 1f - LyricsFrameHeightInset * release
+                scaleX = 1f - LyricsFrameWidthInset * release + openingCorrection
+                scaleY = 1f - LyricsFrameHeightInset * release + openingCorrection
                 transformOrigin = LyricsFrameOrigin
                 // A smooth profile retains rounded opening edges without a clamp/max handoff.
                 shape = RoundedCornerShape(
@@ -721,8 +736,9 @@ private fun CapsulePlayerLyricsHost(
                         Box(
                             modifier = Modifier.fillMaxSize().graphicsLayer {
                                 val release = frameRelease.value
-                                scaleX = 1f / (1f - LyricsFrameWidthInset * release)
-                                scaleY = 1f / (1f - LyricsFrameHeightInset * release)
+                                val openingCorrection = openingScaleCorrection.value
+                                scaleX = 1f / (1f - LyricsFrameWidthInset * release + openingCorrection)
+                                scaleY = 1f / (1f - LyricsFrameHeightInset * release + openingCorrection)
                                 transformOrigin = LyricsFrameOrigin
                                 translationY = -sheetOffset.value * fullHeightPx * scaleY
                             },
