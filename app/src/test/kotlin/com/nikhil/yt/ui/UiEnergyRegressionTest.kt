@@ -26,7 +26,9 @@ class UiEnergyRegressionTest {
         val source = source("com/nikhil/yt/ui/player/CapsuleMiniPlayer.kt")
         assertTrue(
             source.contains(
-                "animated = isPlaying && playbackState == Player.STATE_READY",
+                Regex(
+                    """animated\s*=\s*visualsActive\s*&&\s*isPlaying\s*&&\s*playbackState\s*==\s*Player.STATE_READY""",
+                ),
             ),
         )
     }
