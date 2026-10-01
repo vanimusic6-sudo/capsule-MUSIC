@@ -102,7 +102,7 @@ class PlayerMenuGestureTest {
         // the next swipe must be able to dismiss, without Back or a long press.
         repeat(2) {
             if (menu.isVisible) {
-                compose.onNodeWithTag("sheet").performTouchInput { swipeDown(durationMillis = 180) }
+                compose.onNodeWithTag("items").performTouchInput { swipeDown(durationMillis = 180) }
                 compose.waitForIdle()
             }
         }
