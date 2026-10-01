@@ -71,3 +71,7 @@ internal fun instrumentalFillFraction(positionMs: Long, startMs: Long, durationM
         positionMs - startMs >= durationMs -> 1f
         else -> ((positionMs - startMs).toDouble() / durationMs).toFloat()
     }
+
+/** Half-open interval: no preview before the pause and no stale note after the next vocal. */
+internal fun isInstrumentalInterval(positionMs: Long, startMs: Long, durationMs: Long): Boolean =
+    durationMs > 0L && positionMs >= startMs && positionMs - startMs < durationMs

@@ -25,6 +25,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import com.nikhil.yt.R
 import com.nikhil.yt.lyrics.instrumentalFillFraction
+import com.nikhil.yt.lyrics.isInstrumentalInterval
 import com.nikhil.yt.ui.motion.CapsuleStandardEasing
 
 @Composable
@@ -34,40 +35,48 @@ internal fun InstrumentalLyricNote(
     playbackPosition: State<Long>,
     clockOffsetMs: Long,
     textColor: Color,
-    active: Boolean,
-    completed: Boolean,
+    trackPlayback: Boolean,
 ) {
     val painter = painterResource(R.drawable.music_note)
     val tint = remember(textColor) { ColorFilter.tint(textColor) }
     val description = stringResource(R.string.instrumental_pause)
+    val inPause = remember(startMs, durationMs, playbackPosition, clockOffsetMs, trackPlayback) {
+        derivedStateOf(structuralEqualityPolicy()) {
+            trackPlayback && isInstrumentalInterval(
+                playbackPosition.value + clockOffsetMs, startMs, durationMs,
+            )
+        }
+    }
+    // Only interval boundaries recompose this row. Filling is a drawing-only clock read.
+    val visible = inPause.value
+    val opacity = animateFloatAsState(
+        targetValue = if (visible) 1f else 0f,
+        animationSpec = tween(if (visible) 330 else 250, easing = CapsuleStandardEasing),
+        label = "instrumentalNoteOpacity",
+    )
     val scale = animateFloatAsState(
-        targetValue = if (active) 1f else 0.96f,
+        targetValue = if (visible) 1f else 0.96f,
         animationSpec = tween(330, easing = CapsuleStandardEasing),
         label = "instrumentalNoteScale",
     )
-    // Reuse the existing lyric clock. Future/completed notes do not subscribe to it; fill
-    // updates invalidate drawing only, without rebuilding the lyric list or spawning springs.
-    val fill = remember(startMs, durationMs, playbackPosition, clockOffsetMs, active, completed) {
+    val fill = remember(startMs, durationMs, playbackPosition, clockOffsetMs, trackPlayback) {
         derivedStateOf(structuralEqualityPolicy()) {
-            when {
-                active -> instrumentalFillFraction(
-                    playbackPosition.value + clockOffsetMs,
-                    startMs,
-                    durationMs,
-                )
-                completed -> 1f
-                else -> 0f
-            }
+            if (trackPlayback) instrumentalFillFraction(
+                playbackPosition.value + clockOffsetMs, startMs, durationMs,
+            ) else 0f
         }
     }
     Canvas(
         Modifier.size(48.dp)
-            .semantics { contentDescription = description }
+            .semantics { if (visible) contentDescription = description }
             .graphicsLayer {
+                alpha = opacity.value
                 scaleX = scale.value
                 scaleY = scale.value
             },
     ) {
+        // Keep row geometry stable for auto-scroll, but do no vector drawing when hidden.
+        if (opacity.value <= 0f) return@Canvas
         with(painter) { draw(size = size, alpha = 0.42f, colorFilter = tint) }
         val fraction = fill.value
         if (fraction > 0f) {

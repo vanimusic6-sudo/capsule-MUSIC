@@ -6,6 +6,8 @@
 
 package com.nikhil.yt.ui.player
 
+import androidx.compose.animation.Crossfade
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.animateFloatAsState
@@ -41,6 +43,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.State
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -50,6 +53,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
@@ -77,6 +81,7 @@ import com.nikhil.yt.R
 import com.nikhil.yt.extensions.togglePlayPause
 import com.nikhil.yt.models.MediaMetadata
 import com.nikhil.yt.ui.component.Lyrics
+import com.nikhil.yt.ui.motion.CapsuleStandardEasing
 import com.nikhil.yt.ui.theme.PlayerBackgroundColorUtils
 import com.nikhil.yt.utils.makeTimeString
 import com.nikhil.yt.utils.rememberEnumPreference
@@ -146,76 +151,80 @@ internal fun CapsuleLyricsBackdropLayer(
                     needsArtworkColors &&
                     playerArtworkColors.isEmpty(),
         )
-    val artworkColors =
+    val resolvedArtworkColors =
         if (playerArtworkColors.isNotEmpty()) {
             playerArtworkColors
         } else {
             localArtworkColors
         }
 
-    val baseBackgroundColor =
-        when (lyricsBackdrop) {
-            CapsuleLyricsBackdrop.Solid ->
-                CapsuleLyricsBackground
+    // Preserve the outgoing palette during a style crossfade after its sampler is disabled.
+    val retainedArtworkColors = remember { arrayOf(emptyList<Color>()) }
+    SideEffect {
+        if (resolvedArtworkColors.isNotEmpty()) retainedArtworkColors[0] = resolvedArtworkColors
+    }
+    val artworkColors = resolvedArtworkColors.ifEmpty { retainedArtworkColors[0] }
 
-            is CapsuleLyricsBackdrop.PlayerTheme ->
-                if (lyricsBackdrop.style == PlayerBackgroundStyle.DEFAULT) {
-                    MaterialTheme.colorScheme.background
-                } else {
-                    CapsuleLyricsBackground
-                }
-
-            CapsuleLyricsBackdrop.ImmersiveColoring ->
-                CapsuleLyricsBackground
-        }
-
-    BoxWithConstraints(
-        modifier =
-            modifier
-                .fillMaxSize()
-                .background(baseBackgroundColor),
-    ) {
-        when (val backdrop = lyricsBackdrop) {
-            CapsuleLyricsBackdrop.Solid ->
-                Unit
-
-            CapsuleLyricsBackdrop.ImmersiveColoring -> {
-                // Standalone Lyrics has no player host; use the same crop/sampler there too.
-                val tone = immersiveArtworkTone ?: rememberImmersiveEdgeColor(
-                    mediaMetadata = mediaMetadata,
-                    enabled = onScreen && isVisible,
-                    visibleArtworkAspectRatio =
-                        maxWidth.value / immersiveArtworkHeight(maxHeight).value.coerceAtLeast(1f),
-                )
-                val coloringStops =
-                    remember(tone.edge) {
-                        PlayerBackgroundColorUtils.buildImmersiveLyricsColoringStops(tone.edge)
+    BoxWithConstraints(modifier = modifier.fillMaxSize().background(CapsuleLyricsBackground)) {
+        // Crossfade only changes of layout/style. Track palettes keep the same renderer and
+        // the same 1400ms interpolation as the player; no permanent second backdrop layer.
+        Crossfade(
+            targetState = lyricsBackdrop,
+            animationSpec = tween(630, easing = CapsuleStandardEasing),
+            label = "lyricsBackdropStyle",
+        ) { backdrop ->
+            val base = if (
+                backdrop is CapsuleLyricsBackdrop.PlayerTheme &&
+                backdrop.style == PlayerBackgroundStyle.DEFAULT
+            ) MaterialTheme.colorScheme.background else CapsuleLyricsBackground
+            Box(Modifier.fillMaxSize().background(base)) {
+                when (backdrop) {
+                    CapsuleLyricsBackdrop.Solid -> Unit
+                    CapsuleLyricsBackdrop.ImmersiveColoring -> {
+                        // Standalone Lyrics uses the same crop and sampler as the player host.
+                        val tone = immersiveArtworkTone ?: rememberImmersiveEdgeColor(
+                            mediaMetadata = mediaMetadata,
+                            enabled = onScreen && isVisible &&
+                                lyricsBackdrop == CapsuleLyricsBackdrop.ImmersiveColoring,
+                            visibleArtworkAspectRatio = maxWidth.value /
+                                immersiveArtworkHeight(maxHeight).value.coerceAtLeast(1f),
+                        )
+                        ImmersiveLyricsColoring(tone.edge)
                     }
-                Box(
-                    modifier =
-                        Modifier
-                            .fillMaxSize()
-                            .background(
-                                Brush.verticalGradient(
-                                    colorStops = coloringStops,
-                                ),
-                            ),
-                )
+                    is CapsuleLyricsBackdrop.PlayerTheme -> PlayerBackground(
+                        playerBackground = backdrop.style,
+                        gradientColors = artworkColors,
+                        animated = isVisible && onScreen && isPlaying &&
+                            playbackState == Player.STATE_READY && backdrop == lyricsBackdrop,
+                        sharedAnimationTime = backdropAnimationTime,
+                    )
+                }
             }
-
-            is CapsuleLyricsBackdrop.PlayerTheme ->
-                PlayerBackground(
-                    playerBackground = backdrop.style,
-                    gradientColors = artworkColors,
-                    animated =
-                        isVisible &&
-                            onScreen &&
-                            isPlaying &&
-                            playbackState == Player.STATE_READY,
-                    sharedAnimationTime = backdropAnimationTime,
-                )
         }
     }
+}
+
+@Composable
+private fun ImmersiveLyricsColoring(edge: Color) {
+    val stops = remember(edge) {
+        PlayerBackgroundColorUtils.buildImmersiveLyricsColoringStops(edge)
+    }
+    // Build the colour policy once per cover, not once per animation frame. Read the animated
+    // colours in drawing so a background fade never recomposes the lyrics or player controls.
+    val colors = stops.mapIndexed { index, stop ->
+        animateColorAsState(
+            targetValue = stop.second,
+            animationSpec = tween(1400, easing = CapsuleStandardEasing),
+            label = "immersiveLyricsColor$index",
+        )
+    }
+    Box(Modifier.fillMaxSize().drawWithCache {
+        val brush = Brush.verticalGradient(
+            colorStops = stops.mapIndexed { index, stop -> stop.first to colors[index].value }
+                .toTypedArray(),
+        )
+        onDrawBehind { drawRect(brush) }
+    })
 }
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)

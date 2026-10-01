@@ -20,6 +20,7 @@ import androidx.compose.foundation.gestures.animateScrollBy
 import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.border
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.isSystemInDarkTheme
@@ -1075,7 +1076,8 @@ fun Lyrics(
         isVisible,
         pausedSeekLineIndex,
     ) {
-        if (!isVisible || isAppMinimized) return@LaunchedEffect
+        // Return-to-sync samples its own target; restart this clock only after it finishes.
+        if (!isVisible || isAppMinimized || isReturningToSync) return@LaunchedEffect
         if (lyrics.isNullOrEmpty() || (!lyrics.startsWith("[") && !isTtml(lyrics))) {
             currentLineIndex = -1
             currentPlaybackPosition = 0L
@@ -1099,17 +1101,6 @@ fun Lyrics(
             val seekingNow = sliderPosition != null
             if (isSeeking != seekingNow) {
                 isSeeking = seekingNow
-            }
-
-            /*
-             * Return-to-sync owns its own target sampling. Do zero periodic line/word work while
-             * it is running: the hidden midpoint reads player.currentPosition directly, which is
-             * both fresher than this polling loop and much cheaper than waking Compose throughout
-             * the transition.
-             */
-            if (isReturningToSync) {
-                delay(260L)
-                continue
             }
 
             val position = sliderPosition ?: playerConnection.player.currentPosition
@@ -1902,11 +1893,10 @@ fun Lyrics(
                                 startMs = item.time,
                                 durationMs = item.durationMs,
                                 playbackPosition = playbackPositionState,
-                                // Align the countdown with the line hand-off, not word anticipation.
-                                clockOffsetMs = lineSyncLeadMs - wordSyncLeadMs,
+                                // The note starts at the actual pause, without the vocal lead-in.
+                                clockOffsetMs = userOffsetMs - wordSyncLeadMs,
                                 textColor = lyricsBaseColor,
-                                active = index == displayedCurrentLineIndex && !hasPausedSeekPreview,
-                                completed = index < displayedCurrentLineIndex && !hasPausedSeekPreview,
+                                trackPlayback = !hasPausedSeekPreview,
                             )
                         }
                         return@itemsIndexed
@@ -3103,7 +3093,10 @@ fun Lyrics(
                             color = MaterialTheme.colorScheme.primaryContainer,
                             shape = RoundedCornerShape(24.dp)
                         )
-                        .clickable {
+                        .clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null,
+                        ) {
                             if (
                                 !isReturningToSync &&
                                 currentLineIndex in lines.indices

@@ -101,4 +101,16 @@ class InstrumentalLyricsTest {
         assertEquals(0.2f, instrumentalFillFraction(12_000, 10_000, 10_000), 0f)
         assertEquals(0f, instrumentalFillFraction(15_000, 10_000, 0), 0f)
     }
+    @Test
+    fun `note appears at pause start and disappears at the next vocal`() {
+        assertFalse(isInstrumentalInterval(9_700, 10_000, 5_000)) // 300ms lyric lead
+        assertFalse(isInstrumentalInterval(9_999, 10_000, 5_000))
+        assertTrue(isInstrumentalInterval(10_000, 10_000, 5_000))
+        assertTrue(isInstrumentalInterval(14_999, 10_000, 5_000))
+        assertFalse(isInstrumentalInterval(15_000, 10_000, 5_000))
+        assertFalse(isInstrumentalInterval(50_000, 10_000, 5_000))
+        assertFalse(isInstrumentalInterval(12_000, 10_000, 0))
+        assertTrue(isInstrumentalInterval(12_000, 10_000, 5_000)) // backward seek
+    }
+
 }
