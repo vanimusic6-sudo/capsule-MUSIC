@@ -9,12 +9,6 @@
 
 package com.nikhil.yt.ui.player
 
-import com.nikhil.yt.ui.component.CapsuleFavoriteIcon
-import androidx.compose.foundation.LocalIndication
-import androidx.compose.foundation.interaction.MutableInteractionSource
-import com.nikhil.yt.ui.component.CapsuleFavoriteColors
-import android.content.Context
-import android.content.Intent
 import android.content.res.Configuration
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.LinearEasing
@@ -154,7 +148,6 @@ fun CapsulePlayerContent(
     onArtistSelected: (MediaMetadata.Artist) -> Unit,
     onMenuClick: () -> Unit,
     onCollapse: () -> Unit,
-    context: Context,
     bottomPadding: Dp,
     /**
      * Whether the player is open — anywhere above the collapsed anchor, not only fully expanded.
@@ -1416,7 +1409,7 @@ fun CapsulePlayerContent(
                     Modifier
                         .fillMaxWidth()
                         .padding(
-                            horizontal = if (isLight) 24.dp else 18.dp,
+                            horizontal = if (isLight) 24.dp else 22.dp,
                         ),
             ) {
                 Row(
@@ -1508,26 +1501,7 @@ fun CapsulePlayerContent(
                         }
                     }
 
-                    if (isLight) {
-                        CapsuleLightFavorite(liked, textColor, onToggleLike)
-                    } else {
-                        CapsuleShareFavoriteButtons(
-                            textColor =
-                                textColor,
-                            outlineColor =
-                                outline,
-                            panelColor =
-                                panel,
-                            liked =
-                                liked,
-                            mediaId =
-                                mediaMetadata.id,
-                            onToggleLike =
-                                onToggleLike,
-                            context =
-                                context,
-                        )
-                    }
+                    CapsuleLightFavorite(liked, textColor, onToggleLike)
                 }
 
                 Spacer(
@@ -1635,6 +1609,7 @@ fun CapsulePlayerContent(
                     }
                     CapsuleAudioVideoToggle(
                         lightStyle = isLight,
+                        cosmoStyle = !isLight,
                         state = videoPlaybackState,
                         textColor = textColor,
                         enabled = !isListenTogetherGuest,
@@ -1649,7 +1624,7 @@ fun CapsulePlayerContent(
                             )
                         },
                         modifier =
-                            if (isLight) Modifier.weight(1f) else Modifier,
+                            if (isLight) Modifier.weight(1f) else Modifier.width(200.dp),
                     )
     
                     if (isLight) {
@@ -2109,134 +2084,6 @@ internal fun CapsuleThinSlider(
                     centerY,
                 ),
         )
-    }
-}
-
-@Composable
-private fun CapsuleShareFavoriteButtons(
-    textColor: Color,
-    outlineColor: Color,
-    panelColor: Color,
-    liked: Boolean,
-    mediaId: String,
-    onToggleLike: () -> Unit,
-    context: Context,
-) {
-    val shareShape =
-        RoundedCornerShape(
-            topStart = 18.dp,
-            bottomStart = 18.dp,
-            topEnd = 3.dp,
-            bottomEnd = 3.dp,
-        )
-
-    val favoriteInteraction = remember { MutableInteractionSource() }
-    val favoriteShape =
-        RoundedCornerShape(
-            topStart = 3.dp,
-            bottomStart = 3.dp,
-            topEnd = 18.dp,
-            bottomEnd = 18.dp,
-        )
-
-    Row(
-        horizontalArrangement =
-            Arrangement.spacedBy(
-                3.dp,
-            ),
-    ) {
-        Box(
-            modifier =
-                Modifier
-                    .size(
-                        52.dp,
-                    )
-                    .clip(
-                        shareShape,
-                    )
-                    .border(
-                        1.dp,
-                        outlineColor,
-                        shareShape,
-                    )
-                    .background(
-                        panelColor,
-                    )
-                    .clickable {
-                        val intent =
-                            Intent(
-                                Intent.ACTION_SEND,
-                            ).apply {
-                                type =
-                                    "text/plain"
-
-                                putExtra(
-                                    Intent.EXTRA_TEXT,
-                                    "https://music.youtube.com/watch?v=$mediaId",
-                                )
-                            }
-
-                        context.startActivity(
-                            Intent.createChooser(
-                                intent,
-                                null,
-                            ),
-                        )
-                    },
-            contentAlignment =
-                Alignment.Center,
-        ) {
-            Icon(
-                painter =
-                    painterResource(
-                        R.drawable.share,
-                    ),
-                contentDescription =
-                    null,
-                tint =
-                    textColor,
-                modifier =
-                    Modifier.size(
-                        24.dp,
-                    ),
-            )
-        }
-
-        Box(
-            modifier =
-                Modifier
-                    .size(
-                        52.dp,
-                    )
-                    .clip(
-                        favoriteShape,
-                    )
-                    .border(
-                        1.dp,
-                        outlineColor,
-                        favoriteShape,
-                    )
-                    .background(
-                        panelColor,
-                    )
-                    .clickable(
-                        interactionSource = favoriteInteraction,
-                        indication = LocalIndication.current,
-                        onClick = onToggleLike,
-                    ),
-            contentAlignment =
-                Alignment.Center,
-        ) {
-            CapsuleFavoriteIcon(
-                liked = liked,
-                interactionSource = favoriteInteraction,
-                tint = CapsuleFavoriteColors.selected(textColor),
-                modifier =
-                    Modifier.size(
-                        25.dp,
-                    ),
-            )
-        }
     }
 }
 

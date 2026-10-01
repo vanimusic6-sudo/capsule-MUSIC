@@ -714,7 +714,6 @@ private fun CapsulePlayerLyricsHost(
                     }
                 },
                 onMenuClick = onShowMenu,
-                context = LocalContext.current,
                 bottomPadding = 0.dp,
                 open =
                     !playerState.isCollapsed &&
