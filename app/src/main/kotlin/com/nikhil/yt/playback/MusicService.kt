@@ -1556,7 +1556,7 @@ class MusicService :
                 .build()
                 .apply {
                     addListener(this@MusicService)
-                    sleepTimer = SleepTimer(scope, this)
+                    sleepTimer = SleepTimer(scope, this, this@MusicService::pauseFromSleepTimer)
                     addListener(sleepTimer)
                     addAnalyticsListener(PlaybackStatsListener(false, this@MusicService))
                     setOffloadEnabled(dataStore.get(AudioOffload, false))
@@ -3310,6 +3310,14 @@ class MusicService :
                 putExtra(AudioEffect.EXTRA_PACKAGE_NAME, packageName)
             },
         )
+    }
+
+    private fun pauseFromSleepTimer() {
+        // An overlapping crossfade has its own player; pausing the primary alone
+        // would let that audio continue after the timer has expired.
+        crossfadeAudio?.stop(resetMainFade = true)
+        player.pause()
+        player.playWhenReady = false
     }
 
     override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {

@@ -532,7 +532,16 @@ fun CapsulePlayerContent(
         CapsuleSleepTimerDialog(
             minutes = sleepTimerValue,
             enabled = !isListenTogetherGuest,
+            active = sleepTimerEnabled,
             onMinutesChange = { sleepTimerValue = it },
+            onEndOfSong = {
+                if (!isListenTogetherGuest) playerConnection.service.sleepTimer.start(-1)
+                showSleepTimerDialog = false
+            },
+            onClear = {
+                if (!isListenTogetherGuest) playerConnection.service.sleepTimer.clear()
+                showSleepTimerDialog = false
+            },
             onConfirm = {
                 if (!isListenTogetherGuest) playerConnection.service.sleepTimer.start(sleepTimerValue.toInt())
                 showSleepTimerDialog = false

@@ -22,6 +22,7 @@ import kotlin.time.Duration.Companion.minutes
 class SleepTimer(
     private val scope: CoroutineScope,
     val player: Player,
+    private val pausePlayback: () -> Unit = { player.pause() },
 ) : Player.Listener {
     private var sleepTimerJob: Job? = null
     var triggerTime by mutableStateOf(-1L)
@@ -32,17 +33,16 @@ class SleepTimer(
         get() = triggerTime != -1L || pauseWhenSongEnd
 
     fun start(minute: Int) {
-        sleepTimerJob?.cancel()
-        sleepTimerJob = null
+        clear()
         if (minute == -1) {
             pauseWhenSongEnd = true
-        } else {
+        } else if (minute > 0) {
             triggerTime = System.currentTimeMillis() + minute.minutes.inWholeMilliseconds
             sleepTimerJob =
                 scope.launch {
                     delay(minute.minutes)
-                    player.pause()
-                    triggerTime = -1L
+                    clear()
+                    pausePlayback()
                 }
         }
     }
@@ -58,9 +58,9 @@ class SleepTimer(
         mediaItem: MediaItem?,
         reason: Int,
     ) {
-        if (pauseWhenSongEnd) {
-            pauseWhenSongEnd = false
-            player.pause()
+        if (pauseWhenSongEnd && reason != Player.MEDIA_ITEM_TRANSITION_REASON_PLAYLIST_CHANGED) {
+            clear()
+            pausePlayback()
         }
     }
 
@@ -68,8 +68,8 @@ class SleepTimer(
         @Player.State playbackState: Int,
     ) {
         if (playbackState == Player.STATE_ENDED && pauseWhenSongEnd) {
-            pauseWhenSongEnd = false
-            player.pause()
+            clear()
+            pausePlayback()
         }
     }
 }

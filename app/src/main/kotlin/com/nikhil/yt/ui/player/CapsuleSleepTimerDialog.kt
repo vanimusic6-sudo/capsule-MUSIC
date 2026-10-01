@@ -14,7 +14,10 @@ import com.nikhil.yt.R
 internal fun CapsuleSleepTimerDialog(
     minutes: Float,
     enabled: Boolean,
+    active: Boolean,
     onMinutesChange: (Float) -> Unit,
+    onEndOfSong: () -> Unit,
+    onClear: () -> Unit,
     onConfirm: () -> Unit,
     onDismiss: () -> Unit,
 ) {
@@ -23,8 +26,16 @@ internal fun CapsuleSleepTimerDialog(
         title = { Text(stringResource(R.string.sleep_timer)) },
         text = {
             Column {
+                TextButton(onClick = onEndOfSong, enabled = enabled) {
+                    Text(stringResource(R.string.end_of_song))
+                }
                 Text(stringResource(R.string.capsule_timer_minutes, minutes.toInt()))
                 Slider(minutes, onMinutesChange, enabled = enabled, valueRange = 5f..120f, steps = 22)
+                if (active) {
+                    TextButton(onClick = onClear, enabled = enabled) {
+                        Text(stringResource(R.string.capsule_timer_turn_off))
+                    }
+                }
             }
         },
         confirmButton = {

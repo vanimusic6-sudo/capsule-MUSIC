@@ -14,7 +14,6 @@ import com.nikhil.yt.together.TogetherSessionState
 import com.nikhil.yt.ui.component.ArtistSelectionItem
 import com.nikhil.yt.ui.component.VeluneLoader
 import android.content.Intent
-import android.content.res.Configuration
 import android.media.audiofx.AudioEffect
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -83,7 +82,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalResources
-import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -293,7 +291,16 @@ fun PlayerMenu(
         CapsuleSleepTimerDialog(
             minutes = sleepMinutes,
             enabled = canSetSleepTimer,
+            active = playerConnection.service.sleepTimer.isActive,
             onMinutesChange = { sleepMinutes = it },
+            onEndOfSong = {
+                if (canSetSleepTimer) playerConnection.service.sleepTimer.start(-1)
+                showSleepTimer = false
+            },
+            onClear = {
+                if (canSetSleepTimer) playerConnection.service.sleepTimer.clear()
+                showSleepTimer = false
+            },
             onConfirm = {
                 if (canSetSleepTimer) playerConnection.service.sleepTimer.start(sleepMinutes.toInt())
                 showSleepTimer = false
@@ -390,11 +397,7 @@ fun PlayerMenu(
 
     Spacer(modifier = Modifier.height(16.dp))
 
-    val configuration = LocalConfiguration.current
-    val isPortrait = configuration.orientation == Configuration.ORIENTATION_PORTRAIT
-
     LazyColumn(
-        userScrollEnabled = !isPortrait,
         contentPadding = PaddingValues(
             start = 0.dp,
             top = 0.dp,

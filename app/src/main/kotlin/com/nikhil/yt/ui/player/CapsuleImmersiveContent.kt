@@ -417,7 +417,16 @@ internal fun CapsuleImmersiveContent(
         CapsuleSleepTimerDialog(
             minutes = sleepTimerValue,
             enabled = true,
+            active = sleepTimerEnabled,
             onMinutesChange = { sleepTimerValue = it },
+            onEndOfSong = {
+                playerConnection.service.sleepTimer.start(-1)
+                showSleepTimerDialog = false
+            },
+            onClear = {
+                playerConnection.service.sleepTimer.clear()
+                showSleepTimerDialog = false
+            },
             onConfirm = {
                 playerConnection.service.sleepTimer.start(sleepTimerValue.toInt())
                 showSleepTimerDialog = false
@@ -525,6 +534,7 @@ internal fun CapsuleImmersiveContent(
         // switched its metadata to the NEXT song.
         val visualKey = "${mediaMetadata.id}|${mediaMetadata.thumbnailUrl}|${artworkAspect}"
         var shownGradient by remember { mutableStateOf<ImmersiveGradientFrame?>(null) }
+        var hasShownGradient by remember { mutableStateOf(false) }
         val gradientAlpha = remember { Animatable(0f) }
         // Selection changes must START the outgoing fade immediately. Crucially, its
         // coroutine is keyed only by whether the OLD frame is still on screen, not by
@@ -571,10 +581,17 @@ internal fun CapsuleImmersiveContent(
             // Also handles reopening the sheet while its previous fade-out was being
             // cancelled. Alpha carries on from its current value, not a new zero.
             if (shownGradient?.key == visualKey) {
-                gradientAlpha.animateTo(
-                    1f,
-                    animationSpec = tween(durationMillis = 630, easing = FastOutSlowInEasing),
-                )
+                if (!hasShownGradient) {
+                    // The first frame has no previous artwork to dissolve from.
+                    // Reveal it directly instead of flashing the neutral sheet.
+                    gradientAlpha.snapTo(1f)
+                } else {
+                    gradientAlpha.animateTo(
+                        1f,
+                        animationSpec = tween(durationMillis = 630, easing = FastOutSlowInEasing),
+                    )
+                }
+                hasShownGradient = true
             }
         }
         /*

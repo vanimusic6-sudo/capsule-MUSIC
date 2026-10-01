@@ -618,7 +618,7 @@ private fun CapsulePlayerLyricsHost(
             if (design == CapsulePlayerDesign.IMMERSIVE) {
                 rememberImmersiveEdgeColor(
                     mediaMetadata = mediaMetadata,
-                    enabled = onScreen && !playerState.isCollapsed && !playerState.isDismissed,
+                    enabled = onScreen && !playerState.isDismissed,
                     visibleArtworkAspectRatio =
                         maxWidth.value / immersiveArtworkHeight(maxHeight).value.coerceAtLeast(1f),
                 )
