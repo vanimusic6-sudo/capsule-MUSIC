@@ -45,6 +45,12 @@ jobs:
           unqualifiedResLocale=en-US
           EOF
 
+      - name: Test instrumental lyrics intervals
+        run: |
+          gradle :app:testUniversalDebugUnitTest \
+            --tests 'com.nikhil.yt.lyrics.InstrumentalLyricsTest' \
+            --stacktrace --no-daemon
+
       - name: Build Universal Debug APK
         run: |
           gradle :app:assembleUniversalDebug --stacktrace --no-daemon

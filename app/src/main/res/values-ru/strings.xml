@@ -234,6 +234,7 @@
     <string name="queue_continue_playing">Продолжение воспроизведения</string>
     <string name="queue_autoplaying_similar">Автовоспроизведение похожей музыки</string>
     <string name="music_player">Плеер</string>
+    <string name="instrumental_pause">Инструментальная пауза</string>
     <string name="settings">Настройки</string>
     <string name="appearance">Внешний вид</string>
     <string name="theme">Тема</string>

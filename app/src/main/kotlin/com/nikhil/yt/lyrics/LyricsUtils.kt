@@ -16,7 +16,7 @@ import com.nikhil.yt.betterlyrics.TTMLParser
 
 @Suppress("RegExpRedundantEscape")
 object LyricsUtils {
-    val LINE_REGEX = "((\\[\\d\\d:\\d\\d\\.\\d{2,3}\\] ?)+)(.+)".toRegex()
+    val LINE_REGEX = "((\\[\\d\\d:\\d\\d\\.\\d{2,3}\\] ?)+)(.*)".toRegex()
     val TIME_REGEX = "\\[(\\d\\d):(\\d\\d)\\.(\\d{2,3})\\]".toRegex()
 
     /** A word stamp inside a line: <mm:ss.xx> or <mm:ss.xxx>. */
@@ -147,6 +147,8 @@ object LyricsUtils {
                 text = line.text,
                 words = words,
                 agent = line.agent,
+                durationMs = ((line.endTime - line.startTime) * scale * 1000.0)
+                    .toLong().coerceAtLeast(0L),
             )
         }.sorted()
     }

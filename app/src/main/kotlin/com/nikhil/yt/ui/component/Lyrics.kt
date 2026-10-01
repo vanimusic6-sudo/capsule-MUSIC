@@ -175,6 +175,7 @@ import com.nikhil.yt.constants.PlayerBackgroundStyleKey
 import com.nikhil.yt.constants.UseSystemFontKey
 import com.nikhil.yt.db.entities.LyricsEntity.Companion.LYRICS_NOT_FOUND
 import com.nikhil.yt.lyrics.LyricsEntry
+import com.nikhil.yt.lyrics.withInstrumentalBreaks
 import com.nikhil.yt.lyrics.LyricsUtils.isChinese
 import com.nikhil.yt.lyrics.LyricsUtils.findCurrentLineIndex
 import com.nikhil.yt.lyrics.LyricsUtils.isJapanese
@@ -691,7 +692,7 @@ fun Lyrics(
         } else if (lyrics.startsWith("[")) {
             val parsedLines = parseLyrics(lyrics)
             parsedLines.map { entry ->
-                val newEntry = LyricsEntry(entry.time, entry.text, entry.words)
+                val newEntry = entry
                 if (romanizeJapaneseLyrics) {
                     if (isJapanese(entry.text) && !isChinese(entry.text)) {
                         scope.launch {
@@ -716,12 +717,15 @@ fun Lyrics(
                 }
                 newEntry
             }.let {
-                listOf(LyricsEntry.HEAD_LYRICS_ENTRY) + it
+                listOf(LyricsEntry.HEAD_LYRICS_ENTRY) + withInstrumentalBreaks(
+                    it,
+                    songDurationMs = (mediaMetadata?.duration?.toLong() ?: 0L) * 1000L,
+                )
             }
         } else if (isTtml(lyrics)) {
             val parsedLines = parseTtml(lyrics, mediaMetadata?.duration)
             parsedLines.map { entry ->
-                val newEntry = LyricsEntry(entry.time, entry.text, entry.words)
+                val newEntry = entry
                 if (romanizeJapaneseLyrics) {
                     if (isJapanese(entry.text) && !isChinese(entry.text)) {
                         scope.launch {
@@ -746,7 +750,10 @@ fun Lyrics(
                 }
                 newEntry
             }.let {
-                listOf(LyricsEntry.HEAD_LYRICS_ENTRY) + it
+                listOf(LyricsEntry.HEAD_LYRICS_ENTRY) + withInstrumentalBreaks(
+                    it,
+                    songDurationMs = (mediaMetadata?.duration?.toLong() ?: 0L) * 1000L,
+                )
             }
         } else {
             lyrics.lines().mapIndexed { index, line ->
@@ -1131,7 +1138,8 @@ fun Lyrics(
             val activeLineHasWords =
                 lines.getOrNull(newLineIndex)?.words?.isNotEmpty() == true
             val needsFineProgress =
-                lyricsAnimationStyle == LyricsAnimationStyle.KARAOKE ||
+                lines.getOrNull(newLineIndex)?.isInstrumental == true ||
+                    lyricsAnimationStyle == LyricsAnimationStyle.KARAOKE ||
                     (
                         lyricsAnimationStyle != LyricsAnimationStyle.NONE &&
                             activeLineHasWords
@@ -1666,7 +1674,9 @@ fun Lyrics(
                 itemsIndexed(
                     items = lines,
                     key = { index, item -> "${index}_${item.time}_${item.text.hashCode()}" }, // Stable keys for better recycling
-                    contentType = { _, _ -> "lyric_line" } // Enables better item recycling
+                    contentType = { _, item ->
+                        if (item.isInstrumental) "instrumental_note" else "lyric_line"
+                    }
                 ) { index, item ->
                     val isSelected = selectedIndices.contains(index)
 
@@ -1798,29 +1808,15 @@ fun Lyrics(
                             label = "lyricAlpha",
                         )
 
-                    // The light hand-off is intentionally asymmetric: the new line lights up
-                    // quickly, while the old one leaves a long soft tail.
-                    val archiveLineFocus = animateFloatAsState(
-                        targetValue = if (archiveLineIsFocused) 1f else 0f,
-                        animationSpec =
-                            tween(
-                                durationMillis = when {
-                                    hasPausedSeekPreview -> 180
-                                    archiveLineIsFocused -> 500
-                                    else -> 1_100
-                                },
-                                easing = AppleMusicEasing,
-                            ),
-                        label = "archiveLineFocus",
-                    )
-
                     val itemModifier = Modifier
                         .fillMaxWidth()
                         // Removed .clip() to prevent glow clipping
                         .combinedClickable(
                             enabled = !isReturningToSync,
                             onClick = {
-                                if (isSelectionModeActive) {
+                                if (isSelectionModeActive && item.isInstrumental) {
+                                    // A timing marker is not text that can be shared.
+                                } else if (isSelectionModeActive) {
                                     if (isSelected) {
                                         selectedIndices.remove(index)
                                         if (selectedIndices.isEmpty()) {
@@ -1864,6 +1860,7 @@ fun Lyrics(
                                 }
                             },
                             onLongClick = {
+                                if (item.isInstrumental) return@combinedClickable
                                 if (!isSelectionModeActive) {
                                     isSelectionModeActive = true
                                     selectedIndices.add(index)
@@ -1891,6 +1888,45 @@ fun Lyrics(
                         .graphicsLayer {
                             alpha = animatedAlphaState.value
                         }
+
+                    if (item.isInstrumental && isSynced) {
+                        Column(
+                            modifier = itemModifier,
+                            horizontalAlignment = when (lyricsTextPosition) {
+                                LyricsPosition.LEFT -> Alignment.Start
+                                LyricsPosition.CENTER -> Alignment.CenterHorizontally
+                                LyricsPosition.RIGHT -> Alignment.End
+                            },
+                        ) {
+                            InstrumentalLyricNote(
+                                startMs = item.time,
+                                durationMs = item.durationMs,
+                                playbackPosition = playbackPositionState,
+                                // Align the countdown with the line hand-off, not word anticipation.
+                                clockOffsetMs = lineSyncLeadMs - wordSyncLeadMs,
+                                textColor = lyricsBaseColor,
+                                active = index == displayedCurrentLineIndex && !hasPausedSeekPreview,
+                                completed = index < displayedCurrentLineIndex && !hasPausedSeekPreview,
+                            )
+                        }
+                        return@itemsIndexed
+                    }
+
+                    // The light hand-off is intentionally asymmetric: the new line lights up
+                    // quickly, while the old one leaves a long soft tail.
+                    val archiveLineFocus = animateFloatAsState(
+                        targetValue = if (archiveLineIsFocused) 1f else 0f,
+                        animationSpec =
+                            tween(
+                                durationMillis = when {
+                                    hasPausedSeekPreview -> 180
+                                    archiveLineIsFocused -> 500
+                                    else -> 1_100
+                                },
+                                easing = AppleMusicEasing,
+                            ),
+                        label = "archiveLineFocus",
+                    )
 
                     val baseLayoutDirection = LocalLayoutDirection.current
                     val lineIsRtl = remember(item.text) { isRtlText(item.text) }
