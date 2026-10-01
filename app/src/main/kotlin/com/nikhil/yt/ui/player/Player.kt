@@ -464,21 +464,22 @@ fun BottomSheetPlayer(
  * display, while the foreground rides with the sheet. This keeps the physical "canvas" motion
  * without reintroducing the colour sweep that moving procedural backgrounds used to cause.
  */
-private const val LyricsTravelMillis = 590
-private const val LyricsForegroundDelayMillis = 160
-private const val LyricsForegroundFadeMillis = 360
+private const val LyricsTravelMillis = 260
+private const val LyricsForegroundDelayMillis = 70
+private const val LyricsForegroundFadeMillis = 160
 private const val LyricsForegroundCloseDelayMillis =
     LyricsTravelMillis - LyricsForegroundDelayMillis - LyricsForegroundFadeMillis
 private const val LyricsFrameWidthInset = 0.028f
 private const val LyricsFrameHeightInset = 0.018f
+private const val LyricsCloseAccentMillis = 140
+private const val LyricsCloseScaleInset = 0.024f
+private const val LyricsCloseAlphaLoss = 0.03f
+private val LyricsFrameCornerRadius = 32.dp
 private val LyricsFrameOrigin = TransformOrigin(0.5f, 0f)
 
 /**
- * Softer off the mark than the player's, and a touch longer.
- *
- * The sheet should feel lighter than the thing it covers: the player is a slab being moved, the
- * lyrics are a page being drawn out. Spending even less distance in the first frames is what carries
- * that difference in time as well as in shape.
+ * Keep the established page motion, compressed into a short transition. Closing reverses the
+ * travel curve; its small early contraction makes the departing sheet feel like a lifted card.
  */
 private val LyricsEasing = CubicBezierEasing(0.38f, 0.04f, 0.22f, 1f)
 private val LyricsForegroundAcquireEasing = CubicBezierEasing(0.32f, 0f, 0.26f, 1f)
@@ -516,6 +517,7 @@ private fun CapsulePlayerLyricsHost(
     val sheetOffset = remember { Animatable(if (showLyrics) 0f else 1f) }
     val foregroundOpacity = remember { Animatable(if (showLyrics) 1f else 0f) }
     val frameRelease = remember { Animatable(if (showLyrics) 0f else 1f) }
+    val closeAccent = remember { Animatable(0f) }
     var lyricsLayerMounted by remember { mutableStateOf(showLyrics) }
     var lyricsForegroundMounted by remember { mutableStateOf(showLyrics) }
     var lyricsRuntimeActive by remember { mutableStateOf(showLyrics) }
@@ -531,6 +533,7 @@ private fun CapsulePlayerLyricsHost(
                 sheetOffset.snapTo(1f)
                 foregroundOpacity.snapTo(0f)
                 frameRelease.snapTo(1f)
+                closeAccent.snapTo(0f)
             }
             lyricsLayerMounted = true
             lyricsForegroundMounted = true
@@ -543,6 +546,10 @@ private fun CapsulePlayerLyricsHost(
                     frameRelease.animateTo(0f, tween(LyricsTravelMillis, easing = LyricsEasing))
                 }
                 launch {
+                    // Restore an interrupted close from its current size and opacity.
+                    closeAccent.animateTo(0f, tween(LyricsCloseAccentMillis, easing = LyricsForegroundAcquireEasing))
+                }
+                launch {
                     // Centre the list while it is still transparent, then reveal the entire UI.
                     delay(LyricsForegroundDelayMillis.toLong())
                     lyricsRuntimeActive = true
@@ -551,14 +558,17 @@ private fun CapsulePlayerLyricsHost(
             }
         } else if (lyricsLayerMounted) {
             lyricsRuntimeActive = false
-            // Replay the opening backwards: same geometry, reversed curves and mirrored reveal
-            // interval. The opaque page uncovers the player by travelling, rather than fading.
+            // Preserve reverse-opening travel, adding only an early, slight contraction and 3%
+            // transparency. The page still uncovers the player primarily through its movement.
             coroutineScope {
                 launch {
                     sheetOffset.animateTo(1f, tween(LyricsTravelMillis, easing = LyricsCloseEasing))
                 }
                 launch {
                     frameRelease.animateTo(1f, tween(LyricsTravelMillis, easing = LyricsCloseEasing))
+                }
+                launch {
+                    closeAccent.animateTo(1f, tween(LyricsCloseAccentMillis, easing = LyricsForegroundAcquireEasing))
                 }
                 launch {
                     foregroundOpacity.animateTo(
@@ -685,17 +695,26 @@ private fun CapsulePlayerLyricsHost(
             // measured on every transition frame, and the rounded outline needs no blur/mask pass.
             val lyricsFrame = Modifier.graphicsLayer {
                 val release = frameRelease.value
+                val accent = closeAccent.value
                 translationY = sheetOffset.value * fullHeightPx
-                scaleX = 1f - LyricsFrameWidthInset * release
-                scaleY = 1f - LyricsFrameHeightInset * release
+                scaleX = 1f - LyricsFrameWidthInset * release - LyricsCloseScaleInset * accent
+                scaleY = 1f - LyricsFrameHeightInset * release - LyricsCloseScaleInset * accent
                 transformOrigin = LyricsFrameOrigin
-                shape = RoundedCornerShape(28.dp * release)
+                // Hold a rounded edge through the visible travel, then flatten as opening settles.
+                shape = RoundedCornerShape(
+                    LyricsFrameCornerRadius * maxOf((release * 6f).coerceIn(0f, 1f), accent),
+                )
                 clip = true
             }
 
             if (lyricsLayerMounted) {
                 Box(
-                    modifier = Modifier.fillMaxSize(),
+                    modifier = Modifier.fillMaxSize().graphicsLayer {
+                        alpha = 1f - LyricsCloseAlphaLoss * closeAccent.value
+                        // Group opacity avoids seams between overlapping background/UI commands.
+                        // Auto needs a buffer only during this short transition, never at rest.
+                        compositingStrategy = CompositingStrategy.Auto
+                    },
                 ) {
                     // Background and foreground share the rounded frame. The background itself
                     // keeps its colours fixed to the display through both transitions.
@@ -703,8 +722,9 @@ private fun CapsulePlayerLyricsHost(
                         Box(
                             modifier = Modifier.fillMaxSize().graphicsLayer {
                                 val release = frameRelease.value
-                                scaleX = 1f / (1f - LyricsFrameWidthInset * release)
-                                scaleY = 1f / (1f - LyricsFrameHeightInset * release)
+                                val accent = closeAccent.value
+                                scaleX = 1f / (1f - LyricsFrameWidthInset * release - LyricsCloseScaleInset * accent)
+                                scaleY = 1f / (1f - LyricsFrameHeightInset * release - LyricsCloseScaleInset * accent)
                                 transformOrigin = LyricsFrameOrigin
                                 translationY = -sheetOffset.value * fullHeightPx * scaleY
                             },
