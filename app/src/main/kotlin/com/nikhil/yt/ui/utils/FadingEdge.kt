@@ -9,6 +9,8 @@
 package com.nikhil.yt.ui.utils
 
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.graphics.BlendMode
@@ -145,17 +147,24 @@ fun Modifier.smoothFadingEdge(
                 )
             }
 
+        // Outside these strips the mask is fully opaque. Blending the whole viewport there
+        // writes the same pixels back and wastes fill rate on every moving word/scroll frame.
+        val topHeight = top?.toPx()?.coerceIn(0f, size.height) ?: 0f
+        val bottomHeight = bottom?.toPx()?.coerceIn(0f, size.height) ?: 0f
         onDrawWithContent {
             drawContent()
             topBrush?.let { brush ->
                 drawRect(
                     brush = brush,
+                    size = Size(size.width, topHeight),
                     blendMode = BlendMode.DstIn,
                 )
             }
             bottomBrush?.let { brush ->
                 drawRect(
                     brush = brush,
+                    topLeft = Offset(0f, size.height - bottomHeight),
+                    size = Size(size.width, bottomHeight),
                     blendMode = BlendMode.DstIn,
                 )
             }

@@ -307,6 +307,7 @@ internal fun CapsuleImmersiveContent(
     onExpandQueue: () -> Unit,
     bottomPadding: Dp,
     open: Boolean = true,
+    controlsActive: Boolean = true,
     /**
      * Raw bottom-sheet travel from collapsed (0) to expanded (1).
      *
@@ -1135,7 +1136,7 @@ internal fun CapsuleImmersiveContent(
                                     CapsuleOrbitButton(
                                         isPlaying = isPlaying,
                                         isLoading = isLoading,
-                                        visible = visible,
+                                        visible = visible && controlsActive,
                                         color = textColor,
                                         onClick = {
                                             playerConnection.player.togglePlayPause()

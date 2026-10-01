@@ -113,4 +113,31 @@ class InstrumentalLyricsTest {
         assertTrue(isInstrumentalInterval(12_000, 10_000, 5_000)) // backward seek
     }
 
+    @Test
+    fun `note has no future row then expands and becomes a replay marker`() {
+        assertEquals(InstrumentalNotePhase.UPCOMING, instrumentalNotePhase(9_999, 10_000, 5_000))
+        assertEquals(InstrumentalNotePhase.ACTIVE, instrumentalNotePhase(10_000, 10_000, 5_000))
+        assertEquals(InstrumentalNotePhase.COMPLETED, instrumentalNotePhase(15_000, 10_000, 5_000))
+        // Replaying a completed marker resets its phase and fill, including while previously paused.
+        assertEquals(InstrumentalNotePhase.ACTIVE, instrumentalNotePhase(10_000, 10_000, 5_000))
+        assertEquals(0f, instrumentalFillFraction(10_000, 10_000, 5_000), 0f)
+    }
+
+    @Test
+    fun `vocal anticipation never centers a future note or leaves a break early`() {
+        val rows = listOf(
+            LyricsEntry(1_000, "First"),
+            LyricsEntry(10_000, "", durationMs = 5_000, isInstrumental = true),
+            LyricsEntry(15_000, "Next"),
+        )
+        assertEquals(0, findInstrumentalAwareLineIndex(rows, 9_800))
+        assertEquals(1, findInstrumentalAwareLineIndex(rows, 10_000))
+        assertEquals(1, findInstrumentalAwareLineIndex(rows, 14_999))
+        assertEquals(2, findInstrumentalAwareLineIndex(rows, 15_000))
+        assertEquals(1, findInstrumentalAwareLineIndex(rows, 10_000)) // replay
+        assertEquals(0, findInstrumentalAwareLineIndex(rows, 9_000)) // rewind before break
+        assertEquals(1, findInstrumentalAwareLineIndex(rows, 9_800, leadMs = 500, instrumentalLeadMs = 200))
+        assertEquals(1, findInstrumentalAwareLineIndex(rows, 10_200, leadMs = 100, instrumentalLeadMs = -200))
+    }
+
 }

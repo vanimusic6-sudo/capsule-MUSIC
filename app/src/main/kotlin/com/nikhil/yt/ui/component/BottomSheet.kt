@@ -245,6 +245,8 @@ fun BottomSheet(
     modifier: Modifier = Modifier,
     backgroundColor: Color,
     onDismiss: (() -> Unit)? = null,
+    gesturesEnabled: Boolean = true,
+    allowSwipeDismiss: Boolean = true,
     collapsedContent: @Composable BoxScope.() -> Unit,
     content: @Composable BoxScope.() -> Unit,
 ) {
@@ -291,9 +293,13 @@ fun BottomSheet(
                  * moment the sheet left its dock, which is a blink at the exact instant the player
                  * opens. A boundary that does not exist cannot be crossed badly.
                  */
-                .bottomSheetDraggable(state, onDismiss),
+                .then(
+                    if (gesturesEnabled) Modifier.bottomSheetDraggable(
+                        state, if (allowSwipeDismiss) onDismiss else null,
+                    ) else Modifier,
+                ),
     ) {
-        if (!state.isCollapsed && !state.isDismissed) {
+        if (gesturesEnabled && !state.isCollapsed && !state.isDismissed) {
             BackHandler(onBack = state::collapseSoft)
         }
 
@@ -319,7 +325,7 @@ fun BottomSheet(
                             transformOrigin = TransformOrigin(0.5f, 0f)
                         }
                         .clickable(
-                            enabled = canReopen,
+                            enabled = canReopen && gesturesEnabled,
                             interactionSource = remember { MutableInteractionSource() },
                             indication = null,
                             onClick = state::expandSoft,
@@ -666,13 +672,20 @@ fun Modifier.bottomSheetDraggable(
     state: BottomSheetState,
     onDismiss: (() -> Unit)? = null,
 ): Modifier =
-    pointerInput(state) {
+    pointerInput(state, onDismiss) {
         val velocityTracker = VelocityTracker()
 
         detectVerticalDragGestures(
             onVerticalDrag = { change, dragAmount ->
                 velocityTracker.addPointerInputChange(change)
-                state.dispatchRawDelta(dragAmount)
+                state.dispatchRawDelta(
+                    constrainBottomSheetDragDelta(
+                        valuePx = state.value.toPx(),
+                        collapsedPx = state.collapsedBound.toPx(),
+                        deltaPx = dragAmount,
+                        allowDismiss = onDismiss != null,
+                    ),
+                )
             },
             onDragCancel = {
                 velocityTracker.resetTracking()
@@ -685,3 +698,12 @@ fun Modifier.bottomSheetDraggable(
             },
         )
     }
+
+/** A non-dismissable sheet can reach its dock, but a drag cannot carry it below that dock. */
+internal fun constrainBottomSheetDragDelta(
+    valuePx: Float,
+    collapsedPx: Float,
+    deltaPx: Float,
+    allowDismiss: Boolean,
+): Float = if (allowDismiss || deltaPx <= 0f) deltaPx
+    else deltaPx.coerceAtMost((valuePx - collapsedPx).coerceAtLeast(0f))

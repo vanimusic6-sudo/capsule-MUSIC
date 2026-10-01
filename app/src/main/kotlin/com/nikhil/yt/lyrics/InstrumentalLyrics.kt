@@ -75,3 +75,29 @@ internal fun instrumentalFillFraction(positionMs: Long, startMs: Long, durationM
 /** Half-open interval: no preview before the pause and no stale note after the next vocal. */
 internal fun isInstrumentalInterval(positionMs: Long, startMs: Long, durationMs: Long): Boolean =
     durationMs > 0L && positionMs >= startMs && positionMs - startMs < durationMs
+
+internal enum class InstrumentalNotePhase { UPCOMING, ACTIVE, COMPLETED }
+
+internal fun instrumentalNotePhase(positionMs: Long, startMs: Long, durationMs: Long): InstrumentalNotePhase =
+    when {
+        durationMs <= 0L || positionMs < startMs -> InstrumentalNotePhase.UPCOMING
+        isInstrumentalInterval(positionMs, startMs, durationMs) -> InstrumentalNotePhase.ACTIVE
+        else -> InstrumentalNotePhase.COMPLETED
+    }
+
+/** Vocal anticipation must neither focus a collapsed future note nor leave a playing break early. */
+internal fun findInstrumentalAwareLineIndex(
+    lines: List<LyricsEntry>,
+    position: Long,
+    leadMs: Long = 300L,
+    instrumentalLeadMs: Long = 0L,
+): Int {
+    val anticipated = LyricsUtils.findCurrentLineIndex(lines, position, leadMs)
+    // The existing vocal lookup is exclusive at a timestamp; breaks start inclusively.
+    val actual = LyricsUtils.findCurrentLineIndex(lines, position, instrumentalLeadMs + 1L)
+    return when {
+        lines.getOrNull(actual)?.isInstrumental == true -> actual
+        lines.getOrNull(anticipated)?.isInstrumental == true -> actual
+        else -> anticipated
+    }
+}

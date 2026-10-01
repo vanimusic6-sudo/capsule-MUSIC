@@ -335,6 +335,8 @@ fun BottomSheetPlayer(
         state = state,
         modifier = modifier,
         backgroundColor = playerSurfaceColor(useBlackBackground),
+        gesturesEnabled = !showInlineLyrics && !freezeBackdropAfterLyricsSettles,
+        allowSwipeDismiss = false,
         onDismiss = {
             playerConnection.service.stopAndClearPlayback()
         },
@@ -671,6 +673,7 @@ private fun CapsulePlayerLyricsHost(
                     },
                     bottomPadding = 0.dp,
                     open = !playerState.isCollapsed && !playerState.isDismissed,
+                    controlsActive = !lyricsLayerMounted,
                     expansionProgress = playerState.rawProgress,
                 )
                 return@Box

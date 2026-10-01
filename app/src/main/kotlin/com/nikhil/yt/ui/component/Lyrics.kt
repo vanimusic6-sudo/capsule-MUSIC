@@ -178,7 +178,10 @@ import com.nikhil.yt.db.entities.LyricsEntity.Companion.LYRICS_NOT_FOUND
 import com.nikhil.yt.lyrics.LyricsEntry
 import com.nikhil.yt.lyrics.withInstrumentalBreaks
 import com.nikhil.yt.lyrics.LyricsUtils.isChinese
-import com.nikhil.yt.lyrics.LyricsUtils.findCurrentLineIndex
+import com.nikhil.yt.lyrics.findInstrumentalAwareLineIndex as findCurrentLineIndex
+import com.nikhil.yt.lyrics.InstrumentalNotePhase
+import com.nikhil.yt.lyrics.instrumentalNotePhase
+import androidx.media3.common.Player
 import com.nikhil.yt.lyrics.LyricsUtils.isJapanese
 import com.nikhil.yt.lyrics.LyricsUtils.isKorean
 import com.nikhil.yt.lyrics.LyricsUtils.isTtml
@@ -984,8 +987,27 @@ fun Lyrics(
 
             val anchorY =
                 layout.viewportStartOffset + viewportHeight / 2
-            val itemCenter =
-                measuredItem.offset + measuredItem.size / 2
+            // Aim at the final expanded note centre while its neighbours are still moving.
+            val target = lines[targetIndex]
+            val targetHeight = if (target.isInstrumental && instrumentalNotePhase(
+                    playerConnection.player.currentPosition + userOffsetMs,
+                    target.time, target.durationMs,
+                ) == InstrumentalNotePhase.ACTIVE
+            ) with(density) { ActiveInstrumentalRowHeight.roundToPx() } else measuredItem.size
+            val previous = lines.getOrNull(targetIndex - 1)
+            val previousNoteShrink = if (previous?.isInstrumental == true &&
+                instrumentalNotePhase(
+                    playerConnection.player.currentPosition + userOffsetMs,
+                    previous.time, previous.durationMs,
+                ) == InstrumentalNotePhase.COMPLETED
+            ) {
+                val previousHeight = layout.visibleItemsInfo
+                    .firstOrNull { it.index == targetIndex - 1 }?.size
+                previousHeight?.let {
+                    (it - with(density) { CompletedInstrumentalRowHeight.roundToPx() }).coerceAtLeast(0)
+                } ?: 0
+            } else 0
+            val itemCenter = measuredItem.offset - previousNoteShrink + targetHeight / 2
             val offset = itemCenter - anchorY
             if (abs(offset) <= 2) return
 
@@ -1050,6 +1072,7 @@ fun Lyrics(
                 lines,
                 playerConnection.player.currentPosition,
                 leadMs = lineSyncLeadMs,
+                instrumentalLeadMs = userOffsetMs,
             )
         if (targetIndex >= 0) {
             isManualScrolling = false
@@ -1063,6 +1086,20 @@ fun Lyrics(
         }
     }
 
+    var seekRevision by remember(playerConnection.player) { mutableIntStateOf(0) }
+    DisposableEffect(playerConnection.player) {
+        val listener = object : Player.Listener {
+            override fun onPositionDiscontinuity(
+                oldPosition: Player.PositionInfo,
+                newPosition: Player.PositionInfo,
+                reason: Int,
+            ) { seekRevision++ }
+        }
+        playerConnection.player.addListener(listener)
+        onDispose { playerConnection.player.removeListener(listener) }
+    }
+    val sliderPreviewPosition = sliderPositionProvider()
+
     LaunchedEffect(
         lyrics,
         lines,
@@ -1075,6 +1112,8 @@ fun Lyrics(
         isPlaying,
         isVisible,
         pausedSeekLineIndex,
+        seekRevision,
+        sliderPreviewPosition,
     ) {
         // Return-to-sync samples its own target; restart this clock only after it finishes.
         if (!isVisible || isAppMinimized || isReturningToSync) return@LaunchedEffect
@@ -1088,9 +1127,8 @@ fun Lyrics(
          * Update first, sleep second. Velune did the opposite, so reopening lyrics or returning
          * from the background could show the stale line until the next polling/animation beat.
          *
-         * Word motion gets 20 Hz; line-only tracking gets ~12.5 Hz. Those rates are well above the
-         * visual bandwidth of these slow lyric effects but substantially reduce wakeups versus the
-         * old permanent 25 Hz loop.
+         * Word/note motion gets 25 Hz; line-only tracking gets 10 Hz. Paused playback sleeps
+         * until a player seek, slider change or resume event supplies a new position.
          */
         while (isActive) {
             val sliderPosition = sliderPositionProvider()
@@ -1112,6 +1150,7 @@ fun Lyrics(
                         lines,
                         position,
                         leadMs = lineSyncLeadMs,
+                        instrumentalLeadMs = userOffsetMs,
                     )
                 }
 
@@ -1136,10 +1175,11 @@ fun Lyrics(
                             activeLineHasWords
                     )
 
+            // Seek/listener and slider changes restart this effect with an immediate sample.
+            if (!isPlaying) return@LaunchedEffect
+
             val delayMs =
                 when {
-                    // Nothing visual is advancing while paused.
-                    !isPlaying && sliderPosition == null -> 900L
                     // Manual scrolling intentionally suppresses lyric motion, so a slower clock is
                     // enough to keep the current-line bookkeeping fresh.
                     isManualScrolling -> 240L
@@ -1259,6 +1299,7 @@ fun Lyrics(
                         lines,
                         playerConnection.player.currentPosition,
                         leadMs = lineSyncLeadMs,
+                        instrumentalLeadMs = userOffsetMs,
                     )
             }
             if (targetIndex !in lines.indices) {
@@ -1330,6 +1371,7 @@ fun Lyrics(
                         lines,
                         playerConnection.player.currentPosition,
                         leadMs = lineSyncLeadMs,
+                        instrumentalLeadMs = userOffsetMs,
                     )
                 if (midpointTarget in lines.indices) {
                     targetIndex = midpointTarget
@@ -1799,11 +1841,23 @@ fun Lyrics(
                             label = "lyricAlpha",
                         )
 
+                    val notePhase = if (item.isInstrumental) {
+                        val phase by remember(item, playbackPositionState, userOffsetMs, wordSyncLeadMs) {
+                            derivedStateOf(structuralEqualityPolicy()) {
+                                instrumentalNotePhase(
+                                    playbackPositionState.longValue + userOffsetMs - wordSyncLeadMs,
+                                    item.time, item.durationMs,
+                                )
+                            }
+                        }
+                        phase
+                    } else null
+
                     val itemModifier = Modifier
                         .fillMaxWidth()
                         // Removed .clip() to prevent glow clipping
                         .combinedClickable(
-                            enabled = !isReturningToSync,
+                            enabled = !isReturningToSync && notePhase != InstrumentalNotePhase.UPCOMING,
                             onClick = {
                                 if (isSelectionModeActive && item.isInstrumental) {
                                     // A timing marker is not text that can be shared.
@@ -1820,25 +1874,29 @@ fun Lyrics(
                                             showMaxSelectionToast = true
                                         }
                                     }
-                                } else if (isSynced && changeLyrics) {
+                                } else if (isSynced && (changeLyrics || item.isInstrumental)) {
                                     isManualScrolling = false
                                     // An explicit seek supersedes the previous return-to-sync hold.
                                     // Otherwise that held line wins over currentLineIndex below.
                                     returnFocusHoldIndex = -1
                                     returnVisualFocusIndex = -1
                                     isSeeking = false
-                                    pausedSeekLineIndex = if (isPlaying) -1 else index
+                                    pausedSeekLineIndex = if (isPlaying || item.isInstrumental) -1 else index
                                     lastPreviewTime = 0L
                                     currentLineIndex = index
                                     deferredCurrentLineIndex = index
                                     previousLineIndex = index
-                                    currentPlaybackPosition = (item.time + wordSyncLeadMs)
+                                    val seekPosition = if (item.isInstrumental) {
+                                        (item.time - userOffsetMs).coerceAtLeast(0L)
+                                    } else item.time
+                                    currentPlaybackPosition = (seekPosition + wordSyncLeadMs)
                                         .coerceAtLeast(0L)
                                     initialScrollDone = true
-                                    playerConnection.player.seekTo(item.time)
+                                    playerConnection.player.seekTo(seekPosition)
+                                    if (item.isInstrumental) playerConnection.player.play()
                                     // The player seek and the visible progress readout must share
                                     // the same event. A paused track has no running display clock.
-                                    onLineSeek(item.time)
+                                    onLineSeek(seekPosition)
                                     scope.launch {
                                         anchorLyricLine(
                                             targetIndex = index,
@@ -1869,7 +1927,7 @@ fun Lyrics(
                         )
                         .padding(
                             horizontal = 24.dp,
-                            vertical = 8.dp
+                            vertical = if (item.isInstrumental) 0.dp else 8.dp
                         )
                         /*
                          * One layer for both opacity and the tiny return-focus scale. Reading the
@@ -1896,7 +1954,7 @@ fun Lyrics(
                                 // The note starts at the actual pause, without the vocal lead-in.
                                 clockOffsetMs = userOffsetMs - wordSyncLeadMs,
                                 textColor = lyricsBaseColor,
-                                trackPlayback = !hasPausedSeekPreview,
+                                phase = requireNotNull(notePhase),
                             )
                         }
                         return@itemsIndexed
