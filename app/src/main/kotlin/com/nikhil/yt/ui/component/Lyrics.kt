@@ -792,6 +792,10 @@ fun Lyrics(
         remember(lyrics) {
             !lyrics.isNullOrEmpty() && (lyrics.startsWith("[") || isTtml(lyrics))
         }
+    val hasDisplayableLyrics = remember(lyrics, lines) {
+        !lyrics.isNullOrBlank() && lyrics != LYRICS_NOT_FOUND &&
+            lines.any { it.text.isNotBlank() }
+    }
 
     val lyricsUsesDarkSurface =
         lyricsUsePlayerTheme &&
@@ -930,6 +934,12 @@ fun Lyrics(
     }
     var isReturningToSync by remember {
         mutableStateOf(false)
+    }
+    LaunchedEffect(mediaMetadata?.id, isSynced, hasDisplayableLyrics) {
+        if (!isSynced || !hasDisplayableLyrics) {
+            isManualScrolling = false
+            isReturningToSync = false
+        }
     }
     val returnBridgeProgress = remember { Animatable(0f) }
     var returnBridgeDirection by remember {
@@ -1508,7 +1518,7 @@ fun Lyrics(
         } else {
             LazyColumn(
             state = lazyListState,
-            userScrollEnabled = !isReturningToSync,
+            userScrollEnabled = hasDisplayableLyrics && !isReturningToSync,
             contentPadding = WindowInsets.systemBarsIgnoringVisibility
                 .only(WindowInsetsSides.Top)
                 .add(WindowInsets(top = maxHeight / 2, bottom = maxHeight / 2))
@@ -1550,6 +1560,8 @@ fun Lyrics(
                     remember(
                         manualScrollThresholdPx,
                         scrollLyrics,
+                        isSynced,
+                        hasDisplayableLyrics,
                         isReturningToSync,
                         mediaMetadata?.id,
                     ) {
@@ -1559,6 +1571,8 @@ fun Lyrics(
                         fun registerUserDrag(deltaPx: Float) {
                             if (
                                 deltaPx <= 0f ||
+                                !isSynced ||
+                                !hasDisplayableLyrics ||
                                 enteredManualMode ||
                                 isSelectionModeActive ||
                                 isReturningToSync
@@ -1678,7 +1692,10 @@ fun Lyrics(
             val displayedCurrentLineIndex =
                 when {
                     hasPausedSeekPreview -> pausedSeekLineIndex
-                    isReturningToSync -> returnVisualFocusIndex
+                    // A local return keeps the current focus while the list glides into place.
+                    // Only the distant bridge temporarily hands focus to its hidden midpoint.
+                    isReturningToSync && returnBridgeDirection != 0 -> returnVisualFocusIndex
+                    isReturningToSync -> currentLineIndex
                     returnFocusHoldIndex in lines.indices -> returnFocusHoldIndex
                     isSeeking || isSelectionModeActive -> deferredCurrentLineIndex
                     else -> currentLineIndex
@@ -1686,8 +1703,8 @@ fun Lyrics(
 
             if (lyrics == null) {
                 item {
-                    ShimmerHost {
-                        repeat(10) {
+                    ShimmerHost(fadeToSurface = false) {
+                        repeat(10) { index ->
                             Box(
                                 contentAlignment = when (lyricsTextPosition) {
                                     LyricsPosition.LEFT -> Alignment.CenterStart
@@ -1698,7 +1715,13 @@ fun Lyrics(
                                     .fillMaxWidth()
                                     .padding(horizontal = 24.dp, vertical = 4.dp)
                             ) {
-                                TextPlaceholder()
+                                // The bars fade individually; the artwork gradient remains
+                                // visible in every gap and behind the entire loading column.
+                                TextPlaceholder(
+                                    color = lyricsBaseColor.copy(
+                                        alpha = 0.32f * (1f - index / 12f),
+                                    ),
+                                )
                             }
                         }
                     }
@@ -1725,9 +1748,9 @@ fun Lyrics(
                             distance == 2 -> 0.22f
                             else -> 0.10f
                         }
-                        isReturningToSync &&
+                        isReturningToSync && returnBridgeDirection != 0 &&
                             index == returnVisualFocusIndex -> 1f
-                        isReturningToSync -> 0.56f
+                        isReturningToSync && returnBridgeDirection != 0 -> 0.56f
                         isManualScrolling && archiveTuneStyle -> when {
                             index == displayedCurrentLineIndex -> 1f
                             distance == 1 -> 0.72f
@@ -1820,7 +1843,7 @@ fun Lyrics(
                                     durationMillis =
                                         when {
                                             hasPausedSeekPreview -> 180
-                                            isReturningToSync ->
+                                            isReturningToSync && returnBridgeDirection != 0 ->
                                                 if (index == returnVisualFocusIndex) 520 else 260
                                             archiveTuneStyle ->
                                                 if (archiveLineIsFocused) 500 else 1_100
@@ -1830,7 +1853,7 @@ fun Lyrics(
                                                 520
                                         },
                                     easing =
-                                        if (isReturningToSync) {
+                                        if (isReturningToSync && returnBridgeDirection != 0) {
                                             AppleMusicEasing
                                         } else if (lyricsAnimationStyle != LyricsAnimationStyle.NONE) {
                                             AppleMusicEasing
@@ -3126,6 +3149,8 @@ fun Lyrics(
             AnimatedVisibility(
                 visible =
                     isManualScrolling &&
+                        isSynced &&
+                        hasDisplayableLyrics &&
                         scrollLyrics &&
                         !isSelectionModeActive &&
                         !isReturningToSync,

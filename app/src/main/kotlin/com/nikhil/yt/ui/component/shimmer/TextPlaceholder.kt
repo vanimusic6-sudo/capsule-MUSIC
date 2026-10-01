@@ -20,6 +20,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import kotlin.random.Random
@@ -28,7 +29,8 @@ import kotlin.random.Random
 fun TextPlaceholder(
     modifier: Modifier = Modifier,
     height: Dp = 16.dp,
-    shape: CornerBasedShape = RoundedCornerShape(0.dp)
+    shape: CornerBasedShape = RoundedCornerShape(0.dp),
+    color: Color = MaterialTheme.colorScheme.onSurface,
 ) {
     Box(
         modifier = modifier
@@ -36,6 +38,6 @@ fun TextPlaceholder(
             .height(height)
             .fillMaxWidth(remember { 0.25f + Random.nextFloat() * 0.5f })
             .clip(shape)
-            .background(MaterialTheme.colorScheme.onSurface)
+            .background(color)
     )
 }

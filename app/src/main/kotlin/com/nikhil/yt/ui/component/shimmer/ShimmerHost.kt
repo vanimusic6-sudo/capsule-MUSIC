@@ -30,6 +30,7 @@ fun ShimmerHost(
     modifier: Modifier = Modifier,
     horizontalAlignment: Alignment.Horizontal = Alignment.Start,
     verticalArrangement: Arrangement.Vertical = Arrangement.Top,
+    fadeToSurface: Boolean = true,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     /*
@@ -55,15 +56,16 @@ fun ShimmerHost(
         modifier =
         modifier
             .shimmer()
-            .drawWithContent {
-                drawContent()
-                drawRect(
-                    brush =
-                        Brush.verticalGradient(
+            .then(
+                if (fadeToSurface) Modifier.drawWithContent {
+                    drawContent()
+                    drawRect(
+                        brush = Brush.verticalGradient(
                             colors = listOf(Color.Transparent, surface),
                         ),
-                )
-            },
+                    )
+                } else Modifier,
+            ),
         content = content,
     )
 }
