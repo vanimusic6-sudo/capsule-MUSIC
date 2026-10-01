@@ -19,6 +19,7 @@ import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -100,6 +101,7 @@ private val lyricsPanelColorShape =
 @Composable
 internal fun CapsuleLyricsBackdropLayer(
     mediaMetadata: MediaMetadata,
+    immersiveArtworkTone: ImmersiveArtworkTone? = null,
     playerArtworkColors: List<Color> = emptyList(),
     backdropAnimationTime: State<Long>? = null,
     isVisible: Boolean = true,
@@ -126,13 +128,16 @@ internal fun CapsuleLyricsBackdropLayer(
             defaultValue = CapsulePlayerDesign.SUPER,
         )
 
+    val lyricsBackdrop =
+        capsuleLyricsBackdrop(
+            usePlayerTheme = lyricsUsePlayerTheme,
+            playerDesign = playerDesign,
+            playerBackground = playerBackground,
+        )
+    // Immersion uses its cropped lower-edge sample, never the whole-cover palette.
     val needsArtworkColors =
-        lyricsUsePlayerTheme &&
-            (
-                playerDesign == CapsulePlayerDesign.IMMERSIVE ||
-                    playerBackground != PlayerBackgroundStyle.DEFAULT
-            )
-
+        lyricsBackdrop is CapsuleLyricsBackdrop.PlayerTheme &&
+            lyricsBackdrop.style != PlayerBackgroundStyle.DEFAULT
     val localArtworkColors =
         rememberCapsuleArtworkColors(
             mediaMetadata = mediaMetadata,
@@ -147,13 +152,6 @@ internal fun CapsuleLyricsBackdropLayer(
         } else {
             localArtworkColors
         }
-
-    val lyricsBackdrop =
-        capsuleLyricsBackdrop(
-            usePlayerTheme = lyricsUsePlayerTheme,
-            playerDesign = playerDesign,
-            playerBackground = playerBackground,
-        )
 
     val baseBackgroundColor =
         when (lyricsBackdrop) {
@@ -171,7 +169,7 @@ internal fun CapsuleLyricsBackdropLayer(
                 CapsuleLyricsBackground
         }
 
-    Box(
+    BoxWithConstraints(
         modifier =
             modifier
                 .fillMaxSize()
@@ -182,9 +180,16 @@ internal fun CapsuleLyricsBackdropLayer(
                 Unit
 
             CapsuleLyricsBackdrop.ImmersiveColoring -> {
+                // Standalone Lyrics has no player host; use the same crop/sampler there too.
+                val tone = immersiveArtworkTone ?: rememberImmersiveEdgeColor(
+                    mediaMetadata = mediaMetadata,
+                    enabled = onScreen && isVisible,
+                    visibleArtworkAspectRatio =
+                        maxWidth.value / immersiveArtworkHeight(maxHeight).value.coerceAtLeast(1f),
+                )
                 val coloringStops =
-                    remember(artworkColors) {
-                        PlayerBackgroundColorUtils.buildImmersiveLyricsColoringStops(artworkColors)
+                    remember(tone.edge) {
+                        PlayerBackgroundColorUtils.buildImmersiveLyricsColoringStops(tone.edge)
                     }
                 Box(
                     modifier =

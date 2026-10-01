@@ -249,10 +249,8 @@ fun BottomSheetPlayer(
         onScreen &&
             !state.isCollapsed &&
             !state.isDismissed &&
-            (
-                playerBackground != PlayerBackgroundStyle.DEFAULT ||
-                    effectivePlayerDesign == CapsulePlayerDesign.IMMERSIVE
-            )
+            effectivePlayerDesign != CapsulePlayerDesign.IMMERSIVE &&
+            playerBackground != PlayerBackgroundStyle.DEFAULT
     val gradientColors =
         rememberCapsuleArtworkColors(
             mediaMetadata = enrichedMetadata,
@@ -607,7 +605,21 @@ private fun CapsulePlayerLyricsHost(
         }
     }
 
-    Box(modifier = Modifier.fillMaxSize()) {
+    BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+        // Both surfaces consume one sample of the player's actual visible cover crop.
+        // Hoisting it also avoids a second decode/extraction when Lyrics opens.
+        val onScreen = appIsOnScreen()
+        val immersiveArtworkTone =
+            if (design == CapsulePlayerDesign.IMMERSIVE) {
+                rememberImmersiveEdgeColor(
+                    mediaMetadata = mediaMetadata,
+                    enabled = onScreen && !playerState.isCollapsed && !playerState.isDismissed,
+                    visibleArtworkAspectRatio =
+                        maxWidth.value / immersiveArtworkHeight(maxHeight).value.coerceAtLeast(1f),
+                )
+            } else {
+                null
+            }
         Box(
             modifier =
                 Modifier
@@ -622,6 +634,7 @@ private fun CapsulePlayerLyricsHost(
                  */
                 CapsuleImmersiveContent(
                     mediaMetadata = mediaMetadata,
+                    artworkTone = requireNotNull(immersiveArtworkTone),
                     sliderPosition = sliderPosition,
                     positionMs = position,
                     durationMs = duration,
@@ -748,6 +761,7 @@ private fun CapsulePlayerLyricsHost(
                         ) {
                             CapsuleLyricsBackdropLayer(
                                 mediaMetadata = mediaMetadata,
+                                immersiveArtworkTone = immersiveArtworkTone,
                                 playerArtworkColors = playerArtworkColors,
                                 backdropAnimationTime = backdropAnimationTime,
                                 isVisible = showLyrics,

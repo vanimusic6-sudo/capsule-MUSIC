@@ -289,8 +289,9 @@ internal fun immersiveEditorHeight(
  * near-enough colour is what drew the line across the screen the first time.
  */
 @Composable
-fun CapsuleImmersiveContent(
+internal fun CapsuleImmersiveContent(
     mediaMetadata: MediaMetadata,
+    artworkTone: ImmersiveArtworkTone,
     sliderPosition: Long?,
     positionMs: Long,
     durationMs: Long,
@@ -504,14 +505,8 @@ fun CapsuleImmersiveContent(
         val videoFrameWidth = (maxWidth - videoSidePadding * 2).coerceAtLeast(120.dp)
         val videoFrameHeight = (videoFrameWidth * (9f / 16f)).coerceAtMost(artworkHeight)
         val videoFrameTop = ((artworkHeight - videoFrameHeight) / 2f).coerceAtLeast(0.dp)
-        // Colour is sampled from the EXACT centre crop visible in this viewport, not
-        // the full image or another song's palette. This also keeps landscape layouts sane.
+        // The host samples this exact visible crop once for the player and Lyrics.
         val artworkAspect = maxWidth.value / artworkHeight.value.coerceAtLeast(1f)
-        val artworkTone = rememberImmersiveEdgeColor(
-            mediaMetadata = mediaMetadata,
-            enabled = visible,
-            visibleArtworkAspectRatio = artworkAspect,
-        )
         val edge = artworkTone.edge
         // Keep the entire fade in the lower background's hue. Never mix in a vibrant
         // foreground accent (a green logo on white paper is not a green background).

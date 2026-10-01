@@ -50,29 +50,20 @@ object PlayerBackgroundColorUtils {
     }
 
     /**
-     * ArchiveTune-style Coloring adapted for Capsule Immersive lyrics.
-     *
-     * Compared with the player variant this keeps the top color richer, folds a secondary artwork
-     * color into the middle, and reaches the dark floor sooner. White lyrics therefore keep strong
-     * contrast without flattening the artwork palette into a single muddy tone.
+     * Darken the Immersion player's sampled gradient base for white lyrics.
+     * Preserve its hue and saturation: white/grey artwork must remain neutral rather than
+     * acquiring an unrelated vibrant accent or a fabricated tint from minimum saturation.
      */
-    fun buildImmersiveLyricsColoringStops(colors: List<Color>): Array<Pair<Float, Color>> {
+    fun buildImmersiveLyricsColoringStops(baseColor: Color): Array<Pair<Float, Color>> {
         val first =
             ensureComfortableColor(
-                colors.firstOrNull() ?: Color(0xFF242424),
+                baseColor,
                 minBrightness = 0.20f,
                 maxBrightness = 0.46f,
-                minSaturation = 0.38f,
+                minSaturation = 0f,
             )
-        val second =
-            ensureComfortableColor(
-                colors.getOrNull(1) ?: first,
-                minBrightness = 0.16f,
-                maxBrightness = 0.40f,
-                minSaturation = 0.34f,
-            )
-        val middle = darkenColor(lerp(first, second, 0.38f), 0.82f)
-        val deep = darkenColor(lerp(first, second, 0.62f), 0.58f)
+        val middle = darkenColor(first, 0.82f)
+        val deep = darkenColor(first, 0.58f)
         return arrayOf(
             0f to first.copy(alpha = 0.98f),
             0.36f to middle.copy(alpha = 0.96f),
