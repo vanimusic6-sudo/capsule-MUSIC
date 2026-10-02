@@ -24,12 +24,14 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -48,6 +50,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.zIndex
 import com.nikhil.yt.constants.BottomSheetAnimationSpec
 import com.nikhil.yt.constants.BottomSheetCollapseAnimationSpec
 import com.nikhil.yt.constants.BottomSheetSoftAnimationSpec
@@ -132,6 +135,14 @@ internal fun playerFrameCornerRadius(progress: Float): Dp {
     return (PlayerFrameCornerRadius * (1f - eased)).coerceAtLeast(0.dp)
 }
 
+/** Below this fraction the full surface is visually indistinguishable from the collapsed anchor. */
+internal const val SheetExpandedRenderFloor = 0.0025f
+
+internal fun shouldRenderExpandedSurface(rawProgress: Float, targetAnchor: Int): Boolean {
+    val p = if (rawProgress.isFinite()) rawProgress.coerceIn(0f, 1f) else 0f
+    return targetAnchor == EXPANDED_ANCHOR || p > SheetExpandedRenderFloor
+}
+
 /**
  * A single physical Capsule sheet.
  *
@@ -146,6 +157,8 @@ fun BottomSheet(
     onDismiss: (() -> Unit)? = null,
     gesturesEnabled: Boolean = true,
     allowSwipeDismiss: Boolean = true,
+    backHandlerEnabled: Boolean = true,
+    collapsedContentHeight: Dp? = null,
     collapsedContent: @Composable BoxScope.() -> Unit,
     content: @Composable BoxScope.() -> Unit,
 ) {
@@ -159,7 +172,8 @@ fun BottomSheet(
     val canReopen by
         remember(state, onDismiss) {
             derivedStateOf {
-                (onDismiss == null || !state.isDismissed) && state.progress < 0.46f
+                (onDismiss == null || !state.isDismissed) &&
+                    state.targetAnchor == COLLAPSED_ANCHOR
             }
         }
     val miniBackgroundMotionEnabled by
@@ -167,6 +181,12 @@ fun BottomSheet(
             derivedStateOf {
                 miniPlayerClockShouldRun(state.isExpanded, state.isDismissed) &&
                     state.rawProgress < PlayerMorphHandoffWindow
+            }
+        }
+    val renderExpandedSurface by
+        remember(state) {
+            derivedStateOf {
+                shouldRenderExpandedSurface(state.rawProgress, state.targetAnchor)
             }
         }
 
@@ -199,7 +219,7 @@ fun BottomSheet(
                     ) else Modifier,
                 ),
     ) {
-        if (gesturesEnabled && !state.isCollapsed && !state.isDismissed) {
+        if (backHandlerEnabled && gesturesEnabled && state.isExpandedOrExpanding) {
             BackHandler(onBack = state::collapseSoft)
         }
 
@@ -216,14 +236,17 @@ fun BottomSheet(
                         .graphicsLayer {
                             alpha = 1f - playerMorphHandoff(state.rawProgress)
                         }
+                        // When closing, the returning mini owns its own small hit region even if
+                        // the almost-transparent full surface has not been unmounted yet.
+                        .zIndex(if (state.isCollapsedOrCollapsing) 1f else 0f)
                         .clickable(
-                            enabled = canReopen && gesturesEnabled,
+                            enabled = canReopen,
                             interactionSource = remember { MutableInteractionSource() },
                             indication = null,
                             onClick = state::expandSoft,
                         )
                         .fillMaxWidth()
-                        .height(state.collapsedBound),
+                        .height(collapsedContentHeight ?: state.collapsedBound),
             ) {
                 CompositionLocalProvider(
                     LocalCapsuleBackgroundMotionEnabled provides miniBackgroundMotionEnabled,
@@ -233,7 +256,7 @@ fun BottomSheet(
             }
         }
 
-        if (!state.isCollapsed) {
+        if (renderExpandedSurface) {
             Box(
                 modifier =
                     Modifier
@@ -268,8 +291,56 @@ class BottomSheetState(
     private val coroutineScope: CoroutineScope,
     private val animatable: Animatable<Dp, AnimationVector1D>,
     private val onAnchorChanged: (Int) -> Unit,
-    val collapsedBound: Dp,
+    collapsedBound: Dp,
+    initialAnchor: Int,
 ) : DraggableState by draggableState {
+    private val collapsedBoundState = mutableStateOf(collapsedBound)
+
+    val collapsedBound: Dp
+        get() = collapsedBoundState.value
+
+    var targetAnchor by mutableIntStateOf(initialAnchor)
+        private set
+
+    private var lastAnimationSpec: AnimationSpec<Dp> = BottomSheetAnimationSpec
+
+    val isExpandedOrExpanding: Boolean
+        get() = targetAnchor == EXPANDED_ANCHOR
+
+    val isCollapsedOrCollapsing: Boolean
+        get() = targetAnchor == COLLAPSED_ANCHOR
+
+    val isDismissedOrDismissing: Boolean
+        get() = targetAnchor == DISMISSED_ANCHOR
+
+    val shouldLayerAboveCollapsedChrome: Boolean
+        get() = shouldRenderExpandedSurface(rawProgress, targetAnchor)
+
+    private fun updateAnchor(anchor: Int) {
+        targetAnchor = anchor
+        onAnchorChanged(anchor)
+    }
+
+    internal fun updateCollapsedBound(newBound: Dp) {
+        val clamped = newBound.coerceIn(animatable.lowerBound!!, animatable.upperBound!!)
+        val previous = collapsedBoundState.value
+        if (clamped == previous) return
+
+        val wasRestingAtCollapsed =
+            !animatable.isRunning &&
+                (animatable.value - previous).value.absoluteValue <= 0.5f
+        collapsedBoundState.value = clamped
+
+        if (targetAnchor == COLLAPSED_ANCHOR) {
+            coroutineScope.launch(start = CoroutineStart.UNDISPATCHED) {
+                if (wasRestingAtCollapsed) {
+                    animatable.snapTo(clamped)
+                } else {
+                    animatable.animateTo(clamped, lastAnimationSpec)
+                }
+            }
+        }
+    }
     val dismissedBound: Dp
         get() = animatable.lowerBound!!
 
@@ -312,14 +383,16 @@ class BottomSheetState(
         }
 
     fun collapse(animationSpec: AnimationSpec<Dp>) {
-        onAnchorChanged(COLLAPSED_ANCHOR)
+        updateAnchor(COLLAPSED_ANCHOR)
+        lastAnimationSpec = animationSpec
         coroutineScope.launch(start = CoroutineStart.UNDISPATCHED) {
             animatable.animateTo(collapsedBound, animationSpec)
         }
     }
 
     fun expand(animationSpec: AnimationSpec<Dp>) {
-        onAnchorChanged(EXPANDED_ANCHOR)
+        updateAnchor(EXPANDED_ANCHOR)
+        lastAnimationSpec = animationSpec
         coroutineScope.launch(start = CoroutineStart.UNDISPATCHED) {
             animatable.animateTo(animatable.upperBound!!, animationSpec)
         }
@@ -354,7 +427,8 @@ class BottomSheetState(
     }
 
     fun dismiss() {
-        onAnchorChanged(DISMISSED_ANCHOR)
+        updateAnchor(DISMISSED_ANCHOR)
+        lastAnimationSpec = BottomSheetAnimationSpec
         coroutineScope.launch(start = CoroutineStart.UNDISPATCHED) {
             animatable.animateTo(animatable.lowerBound!!, BottomSheetAnimationSpec)
         }
@@ -494,10 +568,9 @@ fun rememberBottomSheetState(
             Animatable(0.dp, Dp.VectorConverter)
         }
 
-    return remember(
+    val state = remember(
         dismissedBound,
         expandedBound,
-        collapsedBound,
         coroutineScope,
     ) {
         val initialValue =
@@ -529,8 +602,15 @@ fun rememberBottomSheetState(
             coroutineScope = coroutineScope,
             animatable = animatable,
             collapsedBound = collapsedBound,
+            initialAnchor = previousAnchor,
         )
     }
+
+    LaunchedEffect(state, collapsedBound) {
+        state.updateCollapsedBound(collapsedBound)
+    }
+
+    return state
 }
 
 @Composable
