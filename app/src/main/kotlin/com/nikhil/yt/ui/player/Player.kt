@@ -55,6 +55,7 @@ import com.nikhil.yt.LocalPlayerConnection
 import com.nikhil.yt.constants.CapsulePlayerDesign
 import com.nikhil.yt.constants.CapsulePlayerDesignKey
 import com.nikhil.yt.constants.DarkModeKey
+import com.nikhil.yt.constants.MiniPlayerHeight
 import com.nikhil.yt.constants.PlayerBackgroundStyle
 import com.nikhil.yt.constants.PlayerBackgroundStyleKey
 import com.nikhil.yt.models.MediaMetadata
@@ -247,8 +248,7 @@ fun BottomSheetPlayer(
 
     val needsArtworkPalette =
         onScreen &&
-            !state.isCollapsed &&
-            !state.isDismissed &&
+            state.shouldLayerAboveCollapsedChrome &&
             effectivePlayerDesign != CapsulePlayerDesign.IMMERSIVE &&
             playerBackground != PlayerBackgroundStyle.DEFAULT
     val gradientColors =
@@ -296,8 +296,7 @@ fun BottomSheetPlayer(
     val backdropTimelineRunning =
         backdropNeedsClock &&
             effectivePlayerDesign != CapsulePlayerDesign.IMMERSIVE &&
-            !state.isCollapsed &&
-            !state.isDismissed &&
+            state.shouldLayerAboveCollapsedChrome &&
             onScreen &&
             isPlaying &&
             playbackState == Player.STATE_READY &&
@@ -319,14 +318,14 @@ fun BottomSheetPlayer(
     BackHandler(
         enabled =
             showInlineLyrics ||
-                (!queueSheetState.isCollapsed && !queueSheetState.isDismissed) ||
-                (!state.isCollapsed && !state.isDismissed),
+                queueSheetState.isExpandedOrExpanding ||
+                state.isExpandedOrExpanding,
     ) {
         when {
             showInlineLyrics -> showInlineLyrics = false
-            !queueSheetState.isCollapsed && !queueSheetState.isDismissed ->
+            queueSheetState.isExpandedOrExpanding ->
                 queueSheetState.collapseSoft()
-            !state.isCollapsed && !state.isDismissed ->
+            state.isExpandedOrExpanding ->
                 state.collapseSoft()
         }
     }
@@ -337,14 +336,13 @@ fun BottomSheetPlayer(
         backgroundColor = playerSurfaceColor(useBlackBackground),
         gesturesEnabled = !showInlineLyrics && !freezeBackdropAfterLyricsSettles,
         allowSwipeDismiss = false,
+        backHandlerEnabled = false,
+        collapsedContentHeight = MiniPlayerHeight,
         onDismiss = {
             playerConnection.service.stopAndClearPlayback()
         },
         collapsedContent = {
-            val miniVisible =
-                onScreen &&
-                    !state.isExpanded &&
-                    !state.isDismissed
+            val miniVisible = onScreen && state.compactSurfaceVisible
             MiniPlayer(
                 // Avoid propagating the full-player's 300ms progress clock into a subtree that is
                 // completely covered. As soon as the collapse animation leaves the expanded
@@ -362,8 +360,7 @@ fun BottomSheetPlayer(
              * would be a second picture competing with the cover.
              */
             if (
-                !state.isCollapsed &&
-                !state.isDismissed &&
+                state.shouldLayerAboveCollapsedChrome &&
                 effectivePlayerDesign != CapsulePlayerDesign.IMMERSIVE
             ) {
                 /*
