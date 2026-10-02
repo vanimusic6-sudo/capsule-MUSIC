@@ -363,6 +363,10 @@ fun BottomSheetPlayer(
                     miniPlayerForegroundAlpha(state.rawProgress)
                 },
                 foregroundInteractive = state.compactForegroundAcceptsInput,
+                playerState = state,
+                onVerticalDismiss = {
+                    playerConnection.service.stopAndClearPlayback()
+                },
             )
         },
     ) {
