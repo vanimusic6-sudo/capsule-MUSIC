@@ -120,6 +120,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.util.fastAny
 import androidx.compose.ui.util.fastForEach
 import androidx.compose.ui.window.Dialog
@@ -208,6 +209,7 @@ import com.nikhil.yt.ui.component.LocalMenuState
 import com.nikhil.yt.ui.component.StarDialog
 import com.nikhil.yt.ui.component.TopSearch
 import com.nikhil.yt.ui.component.rememberBottomSheetState
+import com.nikhil.yt.ui.component.playerNavigationForegroundAlpha
 import com.nikhil.yt.ui.component.shimmer.ShimmerTheme
 import com.nikhil.yt.ui.menu.YouTubeSongMenu
 import com.nikhil.yt.ui.player.BottomSheetPlayer
@@ -1609,6 +1611,19 @@ class MainActivity : ComponentActivity() {
                                                 Modifier
                                                     .align(Alignment.BottomCenter)
                                                     .height(navSlideDistance)
+                                                    /*
+                                                     * Navigation is the foreground lip of the dock.
+                                                     * The player slides behind it near the compact
+                                                     * anchor, then the fixed bar softly yields as
+                                                     * the full player clears the dock.
+                                                     */
+                                                    .zIndex(3f)
+                                                    .graphicsLayer {
+                                                        alpha =
+                                                            playerNavigationForegroundAlpha(
+                                                                playerBottomSheetState.rawProgress,
+                                                            )
+                                                    }
                                                     .offset {
                                                         /*
                                                          * The player no longer drives navigation
@@ -1646,6 +1661,7 @@ class MainActivity : ComponentActivity() {
                                                 currentRoute = navBackStackEntry?.destination?.route ?: "",
                                                 pureBlack = pureBlack,
                                                 capsuleMiniPlayerVisible = capsuleMiniPlayerActuallyVisible,
+                                                interactionEnabled = playerBottomSheetState.navigationAcceptsInput,
                                                 onTabSelected = { screen ->
                                                     if (screen.route == Screens.Search.route) {
                                                         onActiveChange(true)
