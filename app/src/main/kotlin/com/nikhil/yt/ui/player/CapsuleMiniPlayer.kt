@@ -138,21 +138,6 @@ fun CapsuleMiniPlayer(
     val mediaMetadata by
         playerConnection.mediaMetadata.collectAsState()
 
-    val playbackState by
-        playerConnection.playbackState.collectAsState()
-
-    val isPlaying by
-        playerConnection.isPlaying.collectAsState()
-
-    LaunchedEffect(isPlaying, playbackState) {
-        // The mini-player has no visible comet, but it owns playback while the full player is
-        // collapsed. Updating the shared phase on play/pause state changes costs no frames and
-        // keeps the next visible player/lyrics comet temporally continuous.
-        CapsuleCometPhaseClock.setRunning(
-            isPlaying && playbackState == Player.STATE_READY,
-        )
-    }
-
     val miniPlayerBackground by
         rememberEnumPreference(
             MiniPlayerBackgroundStyleKey,
@@ -182,6 +167,20 @@ fun CapsuleMiniPlayer(
                     .height(MiniPlayerHeight),
         )
         return
+    }
+
+    val playbackState by
+        playerConnection.playbackState.collectAsState()
+
+    val isPlaying by
+        playerConnection.isPlaying.collectAsState()
+
+    LaunchedEffect(isPlaying, playbackState) {
+        // The compact surface only owns the mathematical comet phase while it is actually visible.
+        // The full player/lyrics renderer takes over when the compact surface leaves composition.
+        CapsuleCometPhaseClock.setRunning(
+            isPlaying && playbackState == Player.STATE_READY,
+        )
     }
 
     val database =
