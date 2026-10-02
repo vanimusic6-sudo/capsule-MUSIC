@@ -69,6 +69,7 @@ fun FluidSlidingNavigationBar(
     pureBlack: Boolean,
     onTabSelected: (Screens) -> Unit,
     capsuleMiniPlayerVisible: Boolean = false,
+    interactionEnabled: Boolean = true,
 ) {
     val capsuleBottomBarEnabled by
         rememberPreference(
@@ -85,6 +86,8 @@ fun FluidSlidingNavigationBar(
             onTabSelected = onTabSelected,
             connectedToMiniPlayer =
                 capsuleMiniPlayerVisible,
+            interactionEnabled =
+                interactionEnabled,
         )
     } else {
         StandardNavigationBar(
@@ -92,6 +95,7 @@ fun FluidSlidingNavigationBar(
             items = items,
             currentRoute = currentRoute,
             onTabSelected = onTabSelected,
+            interactionEnabled = interactionEnabled,
         )
     }
 }
@@ -183,6 +187,7 @@ private fun CapsuleNavigationBar(
     pureBlack: Boolean,
     onTabSelected: (Screens) -> Unit,
     connectedToMiniPlayer: Boolean,
+    interactionEnabled: Boolean,
 ) {
     val playerConnection = LocalPlayerConnection.current
     val mediaMetadata =
@@ -419,6 +424,7 @@ private fun CapsuleNavigationBar(
                                     ),
                                 )
                                 .clickable(
+                                    enabled = interactionEnabled,
                                     interactionSource =
                                         interactionSource,
                                     indication =
@@ -493,6 +499,7 @@ internal fun StandardNavigationBar(
     items: List<Screens>,
     currentRoute: String,
     onTabSelected: (Screens) -> Unit,
+    interactionEnabled: Boolean,
 ) {
     val selectedIndex = selectedTabIndex(currentRoute, items)
     BoxWithConstraints(
@@ -521,6 +528,7 @@ internal fun StandardNavigationBar(
                     modifier = Modifier.weight(1f).fillMaxHeight()
                         .selectable(
                             selected = selected,
+                            enabled = interactionEnabled,
                             role = Role.Tab,
                             interactionSource = remember { MutableInteractionSource() },
                             indication = null,
