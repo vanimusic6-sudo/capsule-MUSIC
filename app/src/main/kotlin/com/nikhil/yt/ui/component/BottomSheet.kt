@@ -119,6 +119,9 @@ internal fun playerMorphHandoff(progress: Float): Float {
     )
 }
 
+internal fun compactPlayerSurfaceAlpha(progress: Float): Float =
+    (1f - playerMorphHandoff(progress)).coerceIn(0f, 1f)
+
 /** Capsule navigation and the moving player sheet share the same upper-corner language. */
 internal val PlayerFrameCornerRadius = 26.dp
 
@@ -303,7 +306,7 @@ fun BottomSheet(
                          * unrelated objects. Only opacity changes during the first half of travel.
                          */
                         .graphicsLayer {
-                            alpha = 1f - playerMorphHandoff(state.rawProgress)
+                            alpha = compactPlayerSurfaceAlpha(state.rawProgress)
                         }
                         // When closing, the returning mini owns its own small hit region even if
                         // the almost-transparent full surface has not been unmounted yet.
