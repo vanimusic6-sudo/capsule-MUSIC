@@ -152,7 +152,8 @@ fun BottomSheet(
     val miniBackgroundMotionEnabled by
         remember(state) {
             derivedStateOf {
-                miniPlayerClockShouldRun(state.isExpanded, state.isDismissed)
+                miniPlayerClockShouldRun(state.isExpanded, state.isDismissed) &&
+                    state.rawProgress < PlayerMorphHandoffWindow
             }
         }
 
