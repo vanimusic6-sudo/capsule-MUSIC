@@ -98,7 +98,7 @@ internal fun isAtSheetAnchor(
     (value - anchor).value.absoluteValue <= ANCHOR_EPSILON_DP
 
 /**
- * The visible handoff between the compact and full player occupies only the first third of the
+ * The visible handoff between the compact and full player occupies a little under the first half
  * sheet travel. The important part is that neither surface invents a second trajectory: both ride
  * the same BottomSheet, so the mini-player literally becomes the leading edge of the opening page.
  */
@@ -211,7 +211,7 @@ fun BottomSheet(
                          * Do not counter-translate the mini-player. It now rides the very same
                          * BottomSheet that becomes the full player, which is what creates the
                          * ArchiveTune-style "lift and flow" instead of a dock handoff between two
-                         * unrelated objects. Only opacity changes during the first third of travel.
+                         * unrelated objects. Only opacity changes during the first half of travel.
                          */
                         .graphicsLayer {
                             alpha = 1f - playerMorphHandoff(state.rawProgress)
