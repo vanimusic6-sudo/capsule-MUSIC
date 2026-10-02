@@ -64,6 +64,8 @@ import com.nikhil.yt.ui.component.BottomSheetState
 import com.nikhil.yt.ui.component.LocalBottomSheetPageState
 import com.nikhil.yt.ui.component.LocalMenuState
 import com.nikhil.yt.ui.component.rememberBottomSheetState
+import com.nikhil.yt.ui.component.miniPlayerForegroundAlpha
+import com.nikhil.yt.ui.component.fullPlayerForegroundAlpha
 import com.nikhil.yt.ui.menu.PlayerMenu
 import com.nikhil.yt.ui.screens.settings.DarkMode
 import com.nikhil.yt.ui.utils.ShowMediaInfo
@@ -335,7 +337,9 @@ fun BottomSheetPlayer(
         modifier = modifier,
         backgroundColor = playerSurfaceColor(useBlackBackground),
         gesturesEnabled = !showInlineLyrics && !freezeBackdropAfterLyricsSettles,
-        allowSwipeDismiss = false,
+        // Restored original Capsule gesture: pulling the compact player below its dock dismisses
+        // the playback surface and stopAndClearPlayback() clears the active song and queue.
+        allowSwipeDismiss = true,
         backHandlerEnabled = false,
         collapsedContentHeight = MiniPlayerHeight,
         expandedContentInteractive = state.expandedSurfaceAcceptsInput,
@@ -352,6 +356,12 @@ fun BottomSheetPlayer(
                 duration = if (miniVisible) duration else 0L,
                 pureBlack = pureBlack,
                 visible = miniVisible,
+                // Controls/text vanish before the compact shell itself starts handing off.
+                // Read alpha in the render layer so this does not recompose MiniPlayer every frame.
+                foregroundAlpha = {
+                    miniPlayerForegroundAlpha(state.rawProgress)
+                },
+                foregroundInteractive = state.compactForegroundAcceptsInput,
             )
         },
     ) {
@@ -382,7 +392,18 @@ fun BottomSheetPlayer(
             }
 
             enrichedMetadata?.let { metadata ->
-                CapsulePlayerLyricsHost(
+                Box(
+                    modifier =
+                        Modifier
+                            .fillMaxSize()
+                            .graphicsLayer {
+                                // On close the full controls/artwork disappear early, leaving only
+                                // the player surface/background to travel back toward the dock.
+                                // Opening is the reverse: the surface arrives first, controls later.
+                                alpha = fullPlayerForegroundAlpha(state.rawProgress)
+                            },
+                ) {
+                    CapsulePlayerLyricsHost(
                     design = effectivePlayerDesign,
                     showLyrics = showInlineLyrics,
                     mediaMetadata = metadata,
@@ -433,7 +454,8 @@ fun BottomSheetPlayer(
                             )
                         }
                     },
-                )
+                    )
+                }
             }
         }
 
