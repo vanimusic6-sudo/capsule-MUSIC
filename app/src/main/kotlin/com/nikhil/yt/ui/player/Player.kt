@@ -339,7 +339,6 @@ fun BottomSheetPlayer(
         backHandlerEnabled = false,
         collapsedContentHeight = MiniPlayerHeight,
         expandedContentInteractive = state.expandedSurfaceAcceptsInput,
-        expandedContentDockUnderlap = MiniPlayerHeight,
         onDismiss = {
             playerConnection.service.stopAndClearPlayback()
         },
