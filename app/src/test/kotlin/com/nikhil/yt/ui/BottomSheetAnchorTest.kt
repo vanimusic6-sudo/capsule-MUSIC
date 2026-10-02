@@ -4,6 +4,8 @@ import androidx.compose.ui.unit.dp
 import com.nikhil.yt.ui.component.ANCHOR_EPSILON_DP
 import com.nikhil.yt.ui.component.isAtSheetAnchor
 import com.nikhil.yt.ui.component.constrainBottomSheetDragDelta
+import com.nikhil.yt.ui.component.canStartMiniDismissGesture
+import com.nikhil.yt.ui.component.MiniDismissStartProgressCeiling
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -51,6 +53,14 @@ class BottomSheetAnchorTest {
             assertFalse(isAtSheetAnchor(anchor + 1.dp, anchor))
         }
     }
+    @Test fun `swipe to clear can only begin from the physical mini player`() {
+        assertTrue(canStartMiniDismissGesture(0f))
+        assertTrue(canStartMiniDismissGesture(MiniDismissStartProgressCeiling))
+        assertFalse(canStartMiniDismissGesture(MiniDismissStartProgressCeiling + 0.01f))
+        assertFalse(canStartMiniDismissGesture(0.5f))
+        assertFalse(canStartMiniDismissGesture(1f))
+    }
+
     @Test fun `mini player drag cannot cross its dock when dismissal is disabled`() {
         assertEquals(0f, constrainBottomSheetDragDelta(64f, 64f, 50f, false), 0f)
         assertEquals(16f, constrainBottomSheetDragDelta(80f, 64f, 200f, false), 0f)
