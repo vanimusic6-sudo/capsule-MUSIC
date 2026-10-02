@@ -228,6 +228,7 @@ fun BottomSheet(
     onDismiss: (() -> Unit)? = null,
     gesturesEnabled: Boolean = true,
     allowSwipeDismiss: Boolean = true,
+    dismissOnlyFromCollapsed: Boolean = false,
     backHandlerEnabled: Boolean = true,
     collapsedContentHeight: Dp? = null,
     expandedContentInteractive: Boolean = true,
@@ -286,9 +287,15 @@ fun BottomSheet(
                  * opens. A boundary that does not exist cannot be crossed badly.
                  */
                 .then(
-                    if (gesturesEnabled) Modifier.bottomSheetDraggable(
-                        state, if (allowSwipeDismiss) onDismiss else null,
-                    ) else Modifier,
+                    if (gesturesEnabled) {
+                        Modifier.bottomSheetDraggable(
+                            state = state,
+                            onDismiss = if (allowSwipeDismiss) onDismiss else null,
+                            dismissOnlyFromCollapsed = dismissOnlyFromCollapsed,
+                        )
+                    } else {
+                        Modifier
+                    },
                 ),
     ) {
         if (backHandlerEnabled && gesturesEnabled && state.isExpandedOrExpanding) {
@@ -735,15 +742,33 @@ fun rememberBottomSheetState(
     return state
 }
 
+internal const val MiniDismissStartProgressCeiling = 0.03f
+
+internal fun canStartMiniDismissGesture(rawProgress: Float): Boolean {
+    val p = if (rawProgress.isFinite()) rawProgress.coerceIn(0f, 1f) else 1f
+    return p <= MiniDismissStartProgressCeiling
+}
+
 @Composable
 fun Modifier.bottomSheetDraggable(
     state: BottomSheetState,
     onDismiss: (() -> Unit)? = null,
+    dismissOnlyFromCollapsed: Boolean = false,
 ): Modifier =
-    pointerInput(state, onDismiss) {
+    pointerInput(state, onDismiss, dismissOnlyFromCollapsed) {
         val velocityTracker = VelocityTracker()
+        var dismissEnabledForGesture = false
 
         detectVerticalDragGestures(
+            onDragStart = {
+                velocityTracker.resetTracking()
+                dismissEnabledForGesture =
+                    onDismiss != null &&
+                        (
+                            !dismissOnlyFromCollapsed ||
+                                canStartMiniDismissGesture(state.rawProgress)
+                        )
+            },
             onVerticalDrag = { change, dragAmount ->
                 velocityTracker.addPointerInputChange(change)
                 state.dispatchRawDelta(
@@ -751,18 +776,32 @@ fun Modifier.bottomSheetDraggable(
                         valuePx = state.value.toPx(),
                         collapsedPx = state.collapsedBound.toPx(),
                         deltaPx = dragAmount,
-                        allowDismiss = onDismiss != null,
+                        allowDismiss = dismissEnabledForGesture,
                     ),
                 )
             },
             onDragCancel = {
                 velocityTracker.resetTracking()
-                state.settle(onDismiss)
+                val gestureDismiss =
+                    if (dismissEnabledForGesture) {
+                        onDismiss
+                    } else {
+                        null
+                    }
+                dismissEnabledForGesture = false
+                state.settle(gestureDismiss)
             },
             onDragEnd = {
                 val velocity = -velocityTracker.calculateVelocity().y
                 velocityTracker.resetTracking()
-                state.performFling(velocity, onDismiss)
+                val gestureDismiss =
+                    if (dismissEnabledForGesture) {
+                        onDismiss
+                    } else {
+                        null
+                    }
+                dismissEnabledForGesture = false
+                state.performFling(velocity, gestureDismiss)
             },
         )
     }
