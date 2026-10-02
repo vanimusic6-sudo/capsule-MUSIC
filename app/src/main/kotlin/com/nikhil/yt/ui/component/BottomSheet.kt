@@ -316,6 +316,11 @@ class BottomSheetState(
     val shouldLayerAboveCollapsedChrome: Boolean
         get() = shouldRenderExpandedSurface(rawProgress, targetAnchor)
 
+    val compactSurfaceVisible: Boolean
+        get() =
+            targetAnchor != DISMISSED_ANCHOR &&
+                rawProgress.coerceIn(0f, 1f) < PlayerMorphHandoffWindow
+
     private fun updateAnchor(anchor: Int) {
         targetAnchor = anchor
         onAnchorChanged(anchor)
