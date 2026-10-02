@@ -154,6 +154,30 @@ internal fun shouldShowCompactSurface(rawProgress: Float, targetAnchor: Int): Bo
 }
 
 /**
+ * Foreground navigation handoff.
+ *
+ * Near the dock the navigation stays fully in front, so the moving player physically disappears
+ * behind it on close and rises from behind it on open. Once the sheet has clearly cleared the dock,
+ * the fixed navigation softly yields to the full player instead of z-order popping in one frame.
+ */
+internal const val PlayerNavigationOcclusionHold = 0.12f
+internal const val PlayerNavigationOcclusionEnd = 0.28f
+
+internal fun playerNavigationForegroundAlpha(rawProgress: Float): Float {
+    val p = if (rawProgress.isFinite()) rawProgress.coerceIn(0f, 1f) else 1f
+    val span = PlayerNavigationOcclusionEnd - PlayerNavigationOcclusionHold
+    if (span <= 0f) return if (p <= PlayerNavigationOcclusionHold) 1f else 0f
+    val t = ((p - PlayerNavigationOcclusionHold) / span).coerceIn(0f, 1f)
+    return (1f - CapsuleMotion.smooth(t)).coerceIn(0f, 1f)
+}
+
+internal fun navigationCanAcceptInput(rawProgress: Float, targetAnchor: Int): Boolean {
+    if (targetAnchor == EXPANDED_ANCHOR) return false
+    val p = if (rawProgress.isFinite()) rawProgress.coerceIn(0f, 1f) else 1f
+    return p <= PlayerNavigationOcclusionHold
+}
+
+/**
  * A single physical Capsule sheet.
  *
  * Animated values are consumed from layout/layer lambdas so a drag invalidates position or the GPU
