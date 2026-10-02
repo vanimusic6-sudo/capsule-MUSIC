@@ -66,6 +66,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalDensity
@@ -128,6 +129,8 @@ fun CapsuleMiniPlayer(
     pureBlack: Boolean,
     standardStyle: Boolean = false,
     visible: Boolean = true,
+    foregroundAlpha: Float = 1f,
+    foregroundInteractive: Boolean = true,
 ) {
     val playerConnection =
         LocalPlayerConnection.current ?: return
@@ -215,7 +218,8 @@ fun CapsuleMiniPlayer(
 
     val swipeThumbnail =
         swipeThumbnailPref &&
-            !isListenTogetherGuest
+            !isListenTogetherGuest &&
+            foregroundInteractive
 
     val layoutDirection =
         LocalLayoutDirection.current
@@ -563,6 +567,9 @@ fun CapsuleMiniPlayer(
                 modifier =
                     Modifier
                         .fillMaxSize()
+                        .graphicsLayer {
+                            alpha = foregroundAlpha.coerceIn(0f, 1f)
+                        }
                         .padding(
                             horizontal = 10.dp,
                             vertical = 8.dp,
@@ -580,6 +587,7 @@ fun CapsuleMiniPlayer(
                     playerConnection =
                         playerConnection,
                     standardStyle = standardStyle,
+                    interactionEnabled = foregroundInteractive,
                 )
 
                 Spacer(
@@ -609,6 +617,7 @@ fun CapsuleMiniPlayer(
                             metadata =
                                 mediaMetadata!!,
                             standardStyle = standardStyle,
+                            interactionEnabled = foregroundInteractive,
                         )
 
                         Spacer(
@@ -625,6 +634,7 @@ fun CapsuleMiniPlayer(
                     onClick =
                         playerConnection::toggleLike,
                     standardStyle = standardStyle,
+                    interactionEnabled = foregroundInteractive,
                 )
             }
         }
@@ -761,6 +771,7 @@ private fun CapsuleMiniPlayButton(
     playerConnection:
         com.nikhil.yt.playback.PlayerConnection,
     standardStyle: Boolean = false,
+    interactionEnabled: Boolean = true,
 ) {
     val playLabel = stringResource(if (isPlaying) androidx.media3.ui.R.string.exo_controls_pause_description else R.string.play)
 
@@ -787,7 +798,10 @@ private fun CapsuleMiniPlayButton(
                         CircleShape,
                     )
                     .semantics { contentDescription = playLabel }
-                    .clickable(role = Role.Button) {
+                    .clickable(
+                        enabled = interactionEnabled,
+                        role = Role.Button,
+                    ) {
                         if (
                             playbackState ==
                             Player.STATE_ENDED
@@ -982,6 +996,7 @@ private fun CapsuleSubscribeButton(
     artistId: String,
     metadata: MediaMetadata,
     standardStyle: Boolean = false,
+    interactionEnabled: Boolean = true,
 ) {
     val database =
         LocalDatabase.current
@@ -1046,7 +1061,7 @@ private fun CapsuleSubscribeButton(
                         CircleShape,
                 )
                 .semantics { contentDescription = subscribeLabel }
-                .clickable {
+                .clickable(enabled = interactionEnabled) {
                     val artistInfo =
                         metadata.artists.firstOrNull { it.id == artistId }
                             ?: metadata.artists.firstOrNull()
@@ -1086,6 +1101,7 @@ private fun CapsuleFavoriteButton(
     liked: Boolean,
     onClick: () -> Unit,
     standardStyle: Boolean = false,
+    interactionEnabled: Boolean = true,
 ) {
     val favoriteTint = CapsuleFavoriteColors.selected(LocalContentColor.current)
     val favoriteInteraction = remember { MutableInteractionSource() }
@@ -1130,6 +1146,7 @@ private fun CapsuleFavoriteButton(
                         CircleShape,
                 )
                 .clickable(
+                    enabled = interactionEnabled,
                     interactionSource = favoriteInteraction,
                     indication = null,
                     onClick = onClick,
