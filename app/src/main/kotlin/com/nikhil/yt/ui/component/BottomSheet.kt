@@ -139,8 +139,12 @@ internal fun playerFrameCornerRadius(progress: Float): Dp {
 internal const val SheetExpandedRenderFloor = 0.0025f
 
 internal fun shouldRenderExpandedSurface(rawProgress: Float, targetAnchor: Int): Boolean {
+    if (targetAnchor == DISMISSED_ANCHOR) return false
     val p = if (rawProgress.isFinite()) rawProgress.coerceIn(0f, 1f) else 0f
-    return targetAnchor == EXPANDED_ANCHOR || p > SheetExpandedRenderFloor
+    // Never mount a full-screen hit surface while the sheet is still physically at the compact
+    // anchor. This keeps the mini tappable even if an expand coroutine is cancelled before its
+    // first movement frame. Once travel actually starts, targetAnchor still owns the lifecycle.
+    return p > SheetExpandedRenderFloor
 }
 
 internal fun shouldShowCompactSurface(rawProgress: Float, targetAnchor: Int): Boolean {
