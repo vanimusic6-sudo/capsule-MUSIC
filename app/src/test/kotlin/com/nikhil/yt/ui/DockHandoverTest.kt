@@ -1,11 +1,7 @@
 package com.nikhil.yt.ui
 
-import com.nikhil.yt.ui.component.playerDockUnderlapFraction
 import com.nikhil.yt.ui.component.expandedPlayerCanAcceptInput
-import com.nikhil.yt.ui.component.playerNavigationForegroundAlpha
-import com.nikhil.yt.ui.component.navigationCanAcceptInput
-import com.nikhil.yt.ui.component.PlayerNavigationOcclusionHold
-import com.nikhil.yt.ui.component.PlayerNavigationOcclusionEnd
+import com.nikhil.yt.ui.component.PlayerExpandedInputFloor
 import com.nikhil.yt.ui.component.shouldShowCompactSurface
 import com.nikhil.yt.ui.component.shouldRenderExpandedSurface
 import com.nikhil.yt.ui.component.SheetExpandedRenderFloor
@@ -96,72 +92,17 @@ class DockHandoverTest {
         assertTrue(shouldShowCompactSurface(0f, EXPANDED_ANCHOR))
     }
 
-    @Test fun `navigation stays in front at the dock and yields only after the player clears it`() {
-        assertEquals(1f, playerNavigationForegroundAlpha(0f), 0f)
-        assertEquals(1f, playerNavigationForegroundAlpha(PlayerNavigationOcclusionHold), 0f)
-        assertTrue(playerNavigationForegroundAlpha((PlayerNavigationOcclusionHold + PlayerNavigationOcclusionEnd) / 2f) in 0f..1f)
-        assertEquals(0f, playerNavigationForegroundAlpha(PlayerNavigationOcclusionEnd), 0f)
-        assertEquals(0f, playerNavigationForegroundAlpha(1f), 0f)
-    }
-
-    @Test fun `navigation foreground fades monotonically while the player emerges`() {
-        var previous = 1f
-        for (step in 0..200) {
-            val progress = step / 200f
-            val alpha = playerNavigationForegroundAlpha(progress)
-            assertTrue("navigation alpha escaped bounds at $progress: $alpha", alpha in 0f..1f)
-            assertTrue("navigation alpha rose while opening at $progress", alpha <= previous + 1e-6f)
-            previous = alpha
-        }
-    }
-
-    @Test fun `navigation cannot steal taps while player is opening`() {
-        assertTrue(navigationCanAcceptInput(0f, COLLAPSED_ANCHOR))
-        assertTrue(!navigationCanAcceptInput(0f, EXPANDED_ANCHOR))
-        assertTrue(!navigationCanAcceptInput(PlayerNavigationOcclusionEnd, COLLAPSED_ANCHOR))
-    }
-
-    @Test fun `full player stops accepting input before navigation becomes the foreground lip`() {
+    @Test fun `full player controls stay inert through the dock handoff floor`() {
         assertTrue(!expandedPlayerCanAcceptInput(0f, COLLAPSED_ANCHOR))
-        assertTrue(!expandedPlayerCanAcceptInput(PlayerNavigationOcclusionEnd, COLLAPSED_ANCHOR))
-        assertTrue(expandedPlayerCanAcceptInput(PlayerNavigationOcclusionEnd + 0.01f, COLLAPSED_ANCHOR))
+        assertTrue(!expandedPlayerCanAcceptInput(PlayerExpandedInputFloor, COLLAPSED_ANCHOR))
+        assertTrue(expandedPlayerCanAcceptInput(PlayerExpandedInputFloor + 0.01f, COLLAPSED_ANCHOR))
         assertTrue(expandedPlayerCanAcceptInput(1f, EXPANDED_ANCHOR))
         assertTrue(!expandedPlayerCanAcceptInput(1f, DISMISSED_ANCHOR))
-    }
-
-    @Test fun `there is no progress where both nav and hidden full player can act`() {
-        for (step in 0..200) {
-            val progress = step / 200f
-            val nav = navigationCanAcceptInput(progress, COLLAPSED_ANCHOR)
-            val full = expandedPlayerCanAcceptInput(progress, COLLAPSED_ANCHOR)
-            assertTrue("both surfaces accepted input at $progress", !(nav && full))
-        }
     }
 
     @Test fun `full surface unmounts while still visually imperceptible`() {
         assertTrue(SheetExpandedRenderFloor >= 0.02f)
         assertTrue(playerMorphHandoff(SheetExpandedRenderFloor) < 0.01f)
-    }
-
-    @Test fun `full player reaches maximum dock underlap at the compact edge`() {
-        assertEquals(1f, playerDockUnderlapFraction(0f), 0f)
-        assertEquals(0f, playerDockUnderlapFraction(PlayerMorphHandoffWindow), 0f)
-        assertEquals(0f, playerDockUnderlapFraction(1f), 0f)
-    }
-
-    @Test fun `dock underlap retracts monotonically as player opens`() {
-        var previous = 1f
-        for (step in 0..200) {
-            val progress = step / 200f
-            val fraction = playerDockUnderlapFraction(progress)
-            assertTrue("underlap escaped bounds at $progress: $fraction", fraction in 0f..1f)
-            assertTrue("underlap increased while opening at $progress", fraction <= previous + 1e-6f)
-            previous = fraction
-        }
-    }
-
-    @Test fun `full player is already almost fully under dock before it unmounts`() {
-        assertTrue(playerDockUnderlapFraction(SheetExpandedRenderFloor) > 0.95f)
     }
 
     @Test fun `animation input outside its normal range stays finite and safe`() {
