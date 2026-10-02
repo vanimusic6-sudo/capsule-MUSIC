@@ -14,7 +14,12 @@ import androidx.compose.animation.core.VectorConverter
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.DraggableState
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.awaitVerticalTouchSlopOrCancellation
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
+import androidx.compose.foundation.gestures.verticalDrag
+import androidx.compose.foundation.gestures.waitForUpOrCancellation
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
@@ -43,6 +48,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.input.pointer.util.VelocityTracker
 import androidx.compose.ui.input.pointer.util.addPointerInputChange
 import androidx.compose.ui.platform.LocalDensity
@@ -756,54 +762,69 @@ fun Modifier.bottomSheetDraggable(
     dismissOnlyFromCollapsed: Boolean = false,
 ): Modifier =
     pointerInput(state, onDismiss, dismissOnlyFromCollapsed) {
-        val velocityTracker = VelocityTracker()
-        var dismissEnabledForGesture = false
+        /*
+         * Gesture ownership is decided once, on DOWN.
+         *
+         * A physically docked compact player owns its complete pointer stream. Its coordinator
+         * decides horizontal track swipe vs vertical sheet drag after one shared touch-slop gate.
+         * The parent sheet deliberately observes that gesture without consuming it. This removes
+         * the old race between detectVerticalDragGestures here and detectHorizontalDragGestures in
+         * CapsuleMiniPlayer.
+         *
+         * Once the player is away from the compact dock, the sheet owns vertical dragging as
+         * before. Ownership never changes half-way through one pointer sequence.
+         */
+        awaitEachGesture {
+            val down = awaitFirstDown(requireUnconsumed = false)
+            if (canStartMiniDismissGesture(state.rawProgress)) {
+                waitForUpOrCancellation()
+                return@awaitEachGesture
+            }
 
-        detectVerticalDragGestures(
-            onDragStart = {
-                velocityTracker.resetTracking()
-                dismissEnabledForGesture =
-                    onDismiss != null &&
-                        (
-                            !dismissOnlyFromCollapsed ||
-                                canStartMiniDismissGesture(state.rawProgress)
-                        )
-            },
-            onVerticalDrag = { change, dragAmount ->
-                velocityTracker.addPointerInputChange(change)
-                state.dispatchRawDelta(
-                    constrainBottomSheetDragDelta(
-                        valuePx = state.value.toPx(),
-                        collapsedPx = state.collapsedBound.toPx(),
-                        deltaPx = dragAmount,
-                        allowDismiss = dismissEnabledForGesture,
-                    ),
-                )
-            },
-            onDragCancel = {
-                velocityTracker.resetTracking()
-                val gestureDismiss =
-                    if (dismissEnabledForGesture) {
-                        onDismiss
-                    } else {
-                        null
+            val velocityTracker = VelocityTracker()
+            velocityTracker.resetTracking()
+
+            var accepted = false
+            val dragStart =
+                awaitVerticalTouchSlopOrCancellation(down.id) { change, overSlop ->
+                    if (!change.isConsumed) {
+                        accepted = true
+                        change.consume()
+                        velocityTracker.addPointerInputChange(change)
+                        state.dispatchRawDelta(overSlop)
                     }
-                dismissEnabledForGesture = false
-                state.settle(gestureDismiss)
-            },
-            onDragEnd = {
-                val velocity = -velocityTracker.calculateVelocity().y
+                }
+
+            if (!accepted || dragStart == null) {
                 velocityTracker.resetTracking()
-                val gestureDismiss =
-                    if (dismissEnabledForGesture) {
-                        onDismiss
-                    } else {
-                        null
-                    }
-                dismissEnabledForGesture = false
-                state.performFling(velocity, gestureDismiss)
-            },
-        )
+                return@awaitEachGesture
+            }
+
+            val completed =
+                verticalDrag(dragStart.id) { change ->
+                    if (change.isConsumed) return@verticalDrag
+                    velocityTracker.addPointerInputChange(change)
+                    val dragAmount = change.positionChange().y
+                    change.consume()
+                    state.dispatchRawDelta(
+                        constrainBottomSheetDragDelta(
+                            valuePx = state.value.toPx(),
+                            collapsedPx = state.collapsedBound.toPx(),
+                            deltaPx = dragAmount,
+                            allowDismiss = false,
+                        ),
+                    )
+                }
+
+            val velocity =
+                if (completed) {
+                    -velocityTracker.calculateVelocity().y
+                } else {
+                    0f
+                }
+            velocityTracker.resetTracking()
+            state.performFling(velocity, null)
+        }
     }
 
 /** A non-dismissable sheet can reach its dock, but a drag cannot carry it below that dock. */
