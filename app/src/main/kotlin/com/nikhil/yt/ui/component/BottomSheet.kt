@@ -154,42 +154,56 @@ internal fun shouldShowCompactSurface(rawProgress: Float, targetAnchor: Int): Bo
 }
 
 /**
- * Foreground content leaves much faster than the physical player surfaces.
+ * Foreground and physical-surface motion are deliberately different.
  *
- * Opening: mini controls/text disappear almost immediately, leaving only the compact shell and
- * its background to participate in the handoff.
- * Closing: full-player artwork/controls disappear near the start of the return trip, leaving the
- * full background/surface to travel back toward the dock before compact content comes back.
+ * Mini opening holds its content for a short beat, then releases it while the compact shell keeps
+ * travelling. Full-player opening does NOT have a shell-only stage: its UI rides in with the
+ * surface. The shell-only moment exists only on close, very late in the return trip.
  */
-internal const val MiniPlayerForegroundFadeWindow = 0.14f
-internal const val FullPlayerForegroundAcquireStart = 0.76f
-internal const val FullPlayerForegroundInputStart = 0.84f
+internal const val MiniPlayerForegroundFadeStart = 0.06f
+internal const val MiniPlayerForegroundFadeEnd = 0.20f
+internal const val FullPlayerCloseForegroundFadeStart = 0.22f
+internal const val FullPlayerCloseForegroundFadeEnd = 0.08f
 
 internal fun miniPlayerForegroundAlpha(rawProgress: Float): Float {
     val p = if (rawProgress.isFinite()) rawProgress.coerceIn(0f, 1f) else 1f
-    return (1f - CapsuleMotion.smooth((p / MiniPlayerForegroundFadeWindow).coerceIn(0f, 1f)))
-        .coerceIn(0f, 1f)
+    val span = (MiniPlayerForegroundFadeEnd - MiniPlayerForegroundFadeStart)
+        .coerceAtLeast(0.0001f)
+    val t = ((p - MiniPlayerForegroundFadeStart) / span).coerceIn(0f, 1f)
+    return (1f - CapsuleMotion.smooth(t)).coerceIn(0f, 1f)
 }
 
-internal fun fullPlayerForegroundAlpha(rawProgress: Float): Float {
-    val p = if (rawProgress.isFinite()) rawProgress.coerceIn(0f, 1f) else 1f
-    val span = (1f - FullPlayerForegroundAcquireStart).coerceAtLeast(0.0001f)
+internal fun fullPlayerForegroundAlpha(
+    rawProgress: Float,
+    targetAnchor: Int,
+): Float {
+    if (targetAnchor == EXPANDED_ANCHOR) return 1f
+    if (targetAnchor == DISMISSED_ANCHOR) return 0f
+
+    val p = if (rawProgress.isFinite()) rawProgress.coerceIn(0f, 1f) else 0f
+    val span = (FullPlayerCloseForegroundFadeStart - FullPlayerCloseForegroundFadeEnd)
+        .coerceAtLeast(0.0001f)
     return CapsuleMotion.smooth(
-        ((p - FullPlayerForegroundAcquireStart) / span).coerceIn(0f, 1f),
+        ((p - FullPlayerCloseForegroundFadeEnd) / span).coerceIn(0f, 1f),
     ).coerceIn(0f, 1f)
 }
 
-internal fun miniPlayerForegroundCanAcceptInput(rawProgress: Float, targetAnchor: Int): Boolean {
-    if (targetAnchor != COLLAPSED_ANCHOR) return false
+internal fun miniPlayerForegroundCanAcceptInput(
+    rawProgress: Float,
+    targetAnchor: Int,
+): Boolean {
+    if (targetAnchor == DISMISSED_ANCHOR) return false
     val p = if (rawProgress.isFinite()) rawProgress.coerceIn(0f, 1f) else 1f
-    return p <= MiniPlayerForegroundFadeWindow * 0.2f
+    // Physical position is the source of truth. This keeps pause/like/subscription and horizontal
+    // swipe alive at a visually docked mini even if a target anchor changed a frame earlier.
+    return p <= MiniPlayerForegroundFadeStart
 }
 
 /**
- * Full-player controls stay inert through the lowest part of the handoff. The surface can still
- * finish drawing there, but taps belong to neither an almost-hidden player nor an off-screen dock.
+ * Full controls become interactive once enough of the full surface is physically present.
+ * Keep this independent from the late close-only visual fade.
  */
-internal const val PlayerExpandedInputFloor = FullPlayerForegroundInputStart
+internal const val PlayerExpandedInputFloor = 0.28f
 
 internal fun expandedPlayerCanAcceptInput(rawProgress: Float, targetAnchor: Int): Boolean {
     if (targetAnchor == DISMISSED_ANCHOR) return false
