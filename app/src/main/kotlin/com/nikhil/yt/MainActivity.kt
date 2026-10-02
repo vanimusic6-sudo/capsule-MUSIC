@@ -1941,12 +1941,28 @@ class MainActivity : ComponentActivity() {
             isAppearanceLightStatusBars = !isDark
             isAppearanceLightNavigationBars = !isDark
         }
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) {
-            window.statusBarColor =
+
+        /*
+         * The app navigation (Home / Search / Library) physically leaves the window while the
+         * player opens. The system gesture-navigation area therefore becomes visible underneath
+         * it. Keep that area truly edge-to-edge: the player/background is already drawn behind
+         * system bars and its controls separately respect the navigation-bar inset.
+         *
+         * Without this, modern Android can provide a black navigation-bar scrim/colour after the
+         * app dock slides away, which looks like a detached black strip under Cosmo/Light.
+         */
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            window.navigationBarColor = Color.Transparent.toArgb()
+        } else {
+            window.navigationBarColor =
                 (if (isDark) Color.Transparent else Color.Black.copy(alpha = 0.2f)).toArgb()
         }
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
-            window.navigationBarColor =
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            window.isNavigationBarContrastEnforced = false
+        }
+
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) {
+            window.statusBarColor =
                 (if (isDark) Color.Transparent else Color.Black.copy(alpha = 0.2f)).toArgb()
         }
     }
