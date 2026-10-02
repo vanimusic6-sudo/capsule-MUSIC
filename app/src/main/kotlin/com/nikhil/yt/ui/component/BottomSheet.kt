@@ -444,6 +444,14 @@ class BottomSheetState(
     }
 
     fun snapTo(value: Dp) {
+        updateAnchor(
+            when {
+                isAtSheetAnchor(value, expandedBound) -> EXPANDED_ANCHOR
+                isAtSheetAnchor(value, collapsedBound) -> COLLAPSED_ANCHOR
+                isAtSheetAnchor(value, dismissedBound) -> DISMISSED_ANCHOR
+                else -> COLLAPSED_ANCHOR
+            },
+        )
         coroutineScope.launch(start = CoroutineStart.UNDISPATCHED) {
             animatable.snapTo(value)
         }
