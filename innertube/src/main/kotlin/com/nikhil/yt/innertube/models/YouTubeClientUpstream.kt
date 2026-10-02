@@ -3,7 +3,7 @@
  *
  * Source: yt-dlp/yt-dlp master, yt_dlp/extractor/youtube/_base.py
  * Source commit: 51bab8a0116f4d8004c315706d809782607d5847
- * Snapshot: 2026-10-01
+ * Snapshot: 2026-10-02
  *
  * Do not hand-edit during normal maintenance. The
  * youtube-client-policy-update.yml workflow regenerates this file and opens a
@@ -18,7 +18,7 @@ object YouTubeClientUpstream {
     const val SOURCE_REPOSITORY = "yt-dlp/yt-dlp"
     const val SOURCE_PATH = "yt_dlp/extractor/youtube/_base.py"
     const val SOURCE_COMMIT = "51bab8a0116f4d8004c315706d809782607d5847"
-    const val SOURCE_SNAPSHOT = "2026-10-01"
+    const val SOURCE_SNAPSHOT = "2026-10-02"
 
     const val WEB_VERSION = "2.20260708.00.00"
     const val WEB_MUSIC_VERSION = "1.20260707.12.00"
