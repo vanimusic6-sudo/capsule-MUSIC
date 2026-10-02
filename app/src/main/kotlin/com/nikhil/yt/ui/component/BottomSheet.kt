@@ -403,6 +403,11 @@ class BottomSheetState(
     val compactSurfaceVisible: Boolean
         get() = shouldShowCompactSurface(rawProgress, targetAnchor)
 
+    val compactForegroundAcceptsInput by
+        derivedStateOf {
+            miniPlayerForegroundCanAcceptInput(rawProgress, targetAnchor)
+        }
+
     val expandedSurfaceAcceptsInput by
         derivedStateOf {
             expandedPlayerCanAcceptInput(rawProgress, targetAnchor)
