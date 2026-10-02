@@ -102,7 +102,7 @@ internal fun isAtSheetAnchor(
  * sheet travel. The important part is that neither surface invents a second trajectory: both ride
  * the same BottomSheet, so the mini-player literally becomes the leading edge of the opening page.
  */
-internal const val PlayerMorphHandoffWindow = 0.32f
+internal const val PlayerMorphHandoffWindow = 0.44f
 
 /**
  * 0 while docked, 1 once the full player has visually taken over. This is deliberately pure and
@@ -118,6 +118,19 @@ internal fun playerMorphHandoff(progress: Float): Float {
 
 /** Capsule navigation and the moving player sheet share the same upper-corner language. */
 internal val PlayerFrameCornerRadius = 26.dp
+
+/**
+ * Safe rounded edge for the moving player frame.
+ *
+ * This is intentionally a geometry boundary rather than an inline expression. Even a legal 0..1
+ * easing can land one floating-point ULP past an endpoint on a device/JIT combination. Compose
+ * rejects negative corner sizes, so clamp both the eased fraction and the final Dp defensively.
+ */
+internal fun playerFrameCornerRadius(progress: Float): Dp {
+    val p = if (progress.isFinite()) progress.coerceIn(0f, 1f) else 1f
+    val eased = CapsuleMotion.smooth(p).coerceIn(0f, 1f)
+    return (PlayerFrameCornerRadius * (1f - eased)).coerceAtLeast(0.dp)
+}
 
 /**
  * A single physical Capsule sheet.
@@ -234,8 +247,7 @@ fun BottomSheet(
                             val raw = state.rawProgress.coerceIn(0f, 1f)
                             alpha = playerMorphHandoff(raw)
 
-                            val topCornerRadius =
-                                PlayerFrameCornerRadius * (1f - CapsuleMotion.smooth(raw))
+                            val topCornerRadius = playerFrameCornerRadius(raw)
                             shape =
                                 RoundedCornerShape(
                                     topStart = topCornerRadius,
