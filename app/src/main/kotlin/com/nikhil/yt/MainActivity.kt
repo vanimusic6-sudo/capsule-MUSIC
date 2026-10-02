@@ -119,6 +119,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.zIndex
 import androidx.compose.ui.util.fastAny
 import androidx.compose.ui.util.fastForEach
 import androidx.compose.ui.window.Dialog
@@ -209,7 +210,6 @@ import com.nikhil.yt.ui.component.TopSearch
 import com.nikhil.yt.ui.component.rememberBottomSheetState
 import com.nikhil.yt.ui.component.shimmer.ShimmerTheme
 import com.nikhil.yt.ui.menu.YouTubeSongMenu
-import com.nikhil.yt.ui.motion.CapsuleMotion
 import com.nikhil.yt.ui.player.BottomSheetPlayer
 import com.nikhil.yt.ui.player.LocalCapsuleDockVisible
 import com.nikhil.yt.ui.screens.Screens
@@ -1588,7 +1588,18 @@ class MainActivity : ComponentActivity() {
                                         BottomSheetPlayer(
                                             state = playerBottomSheetState,
                                             navController = navController,
-                                            pureBlack = pureBlack
+                                            modifier =
+                                                Modifier.zIndex(
+                                                    if (
+                                                        !playerBottomSheetState.isCollapsed &&
+                                                        !playerBottomSheetState.isDismissed
+                                                    ) {
+                                                        2f
+                                                    } else {
+                                                        0f
+                                                    },
+                                                ),
+                                            pureBlack = pureBlack,
                                         )
 
                                         if(useRail) return@Box
@@ -1603,34 +1614,13 @@ class MainActivity : ComponentActivity() {
                                                     .height(navSlideDistance)
                                                     .offset {
                                                         /*
-                                                         * One position, from two reasons to be out
-                                                         * of the way: the player expanding over the
-                                                         * bar, and the bar itself being taken away.
-                                                         *
-                                                         * These used to be added together, with a
-                                                         * branch on the bar's animated height being
-                                                         * exactly zero to stop the sum running past
-                                                         * the end of the travel. Both parts of that
-                                                         * were felt. The sum meant the two springs
-                                                         * drove the bar at once and it moved at
-                                                         * neither one's speed; the branch meant that
-                                                         * the instant the height left zero the bar
-                                                         * jumped by its whole travel. Closing the
-                                                         * player while the bar comes back does both
-                                                         * at the same time, which is why the swap
-                                                         * with the mini-player was the worst of it.
-                                                         *
-                                                         * CapsuleMotion.either keeps whichever is
-                                                         * happening in charge, stays within the
-                                                         * travel, and changes speed continuously
-                                                         * when the two overlap, so there is nothing
-                                                         * left to snap or to tear.
+                                                         * The player no longer drives navigation
+                                                         * position. The bar stays physically still
+                                                         * and the rising player sheet covers it from
+                                                         * above. Route/search visibility can still
+                                                         * move the bar out on its own timeline.
                                                          */
-                                                        val hidden =
-                                                            CapsuleMotion.either(
-                                                                playerBottomSheetState.progress,
-                                                                1f - navigationBarReveal,
-                                                            )
+                                                        val hidden = 1f - navigationBarReveal
                                                         IntOffset(
                                                             x = 0,
                                                             y = (navSlideDistance * hidden).roundToPx(),
