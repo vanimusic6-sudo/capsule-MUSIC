@@ -1,5 +1,6 @@
 package com.nikhil.yt.ui
 
+import com.nikhil.yt.ui.component.expandedPlayerCanAcceptInput
 import com.nikhil.yt.ui.component.playerNavigationForegroundAlpha
 import com.nikhil.yt.ui.component.navigationCanAcceptInput
 import com.nikhil.yt.ui.component.PlayerNavigationOcclusionHold
@@ -117,6 +118,28 @@ class DockHandoverTest {
         assertTrue(navigationCanAcceptInput(0f, COLLAPSED_ANCHOR))
         assertTrue(!navigationCanAcceptInput(0f, EXPANDED_ANCHOR))
         assertTrue(!navigationCanAcceptInput(PlayerNavigationOcclusionEnd, COLLAPSED_ANCHOR))
+    }
+
+    @Test fun `full player stops accepting input before navigation becomes the foreground lip`() {
+        assertTrue(!expandedPlayerCanAcceptInput(0f, COLLAPSED_ANCHOR))
+        assertTrue(!expandedPlayerCanAcceptInput(PlayerNavigationOcclusionEnd, COLLAPSED_ANCHOR))
+        assertTrue(expandedPlayerCanAcceptInput(PlayerNavigationOcclusionEnd + 0.01f, COLLAPSED_ANCHOR))
+        assertTrue(expandedPlayerCanAcceptInput(1f, EXPANDED_ANCHOR))
+        assertTrue(!expandedPlayerCanAcceptInput(1f, DISMISSED_ANCHOR))
+    }
+
+    @Test fun `there is no progress where both nav and hidden full player can act`() {
+        for (step in 0..200) {
+            val progress = step / 200f
+            val nav = navigationCanAcceptInput(progress, COLLAPSED_ANCHOR)
+            val full = expandedPlayerCanAcceptInput(progress, COLLAPSED_ANCHOR)
+            assertTrue("both surfaces accepted input at $progress", !(nav && full))
+        }
+    }
+
+    @Test fun `full surface unmounts while still visually imperceptible`() {
+        assertTrue(SheetExpandedRenderFloor >= 0.02f)
+        assertTrue(playerMorphHandoff(SheetExpandedRenderFloor) < 0.01f)
     }
 
     @Test fun `animation input outside its normal range stays finite and safe`() {
