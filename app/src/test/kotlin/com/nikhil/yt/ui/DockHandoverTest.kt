@@ -1,5 +1,10 @@
 package com.nikhil.yt.ui
 
+import com.nikhil.yt.ui.component.miniPlayerForegroundCanAcceptInput
+import com.nikhil.yt.ui.component.miniPlayerForegroundAlpha
+import com.nikhil.yt.ui.component.fullPlayerForegroundAlpha
+import com.nikhil.yt.ui.component.MiniPlayerForegroundFadeWindow
+import com.nikhil.yt.ui.component.FullPlayerForegroundAcquireStart
 import com.nikhil.yt.ui.component.expandedPlayerCanAcceptInput
 import com.nikhil.yt.ui.component.PlayerExpandedInputFloor
 import com.nikhil.yt.ui.component.shouldShowCompactSurface
@@ -90,6 +95,46 @@ class DockHandoverTest {
         assertTrue(!shouldShowCompactSurface(PlayerMorphHandoffWindow, COLLAPSED_ANCHOR))
         assertTrue(!shouldShowCompactSurface(0f, DISMISSED_ANCHOR))
         assertTrue(shouldShowCompactSurface(0f, EXPANDED_ANCHOR))
+    }
+
+    @Test fun `mini foreground disappears before compact surface handoff completes`() {
+        assertEquals(1f, miniPlayerForegroundAlpha(0f), 0f)
+        assertEquals(0f, miniPlayerForegroundAlpha(MiniPlayerForegroundFadeWindow), 0f)
+        assertTrue(1f - playerMorphHandoff(MiniPlayerForegroundFadeWindow) > 0f)
+    }
+
+    @Test fun `full foreground appears only after full surface owns the screen`() {
+        assertEquals(0f, fullPlayerForegroundAlpha(FullPlayerForegroundAcquireStart), 0f)
+        assertEquals(1f, fullPlayerForegroundAlpha(1f), 0f)
+        assertEquals(1f, playerMorphHandoff(0.5f), 0f)
+        assertEquals(0f, fullPlayerForegroundAlpha(0.5f), 0f)
+    }
+
+    @Test fun `foreground fades are monotonic and bounded`() {
+        var previousMini = 1f
+        var previousFull = 0f
+        for (step in 0..200) {
+            val progress = step / 200f
+            val mini = miniPlayerForegroundAlpha(progress)
+            val full = fullPlayerForegroundAlpha(progress)
+            assertTrue(mini in 0f..1f)
+            assertTrue(full in 0f..1f)
+            assertTrue("mini foreground rose while opening at $progress", mini <= previousMini + 1e-6f)
+            assertTrue("full foreground fell while opening at $progress", full + 1e-6f >= previousFull)
+            previousMini = mini
+            previousFull = full
+        }
+    }
+
+    @Test fun `mini foreground controls cannot fire during opening handoff`() {
+        assertTrue(miniPlayerForegroundCanAcceptInput(0f, COLLAPSED_ANCHOR))
+        assertTrue(!miniPlayerForegroundCanAcceptInput(0f, EXPANDED_ANCHOR))
+        assertTrue(
+            !miniPlayerForegroundCanAcceptInput(
+                MiniPlayerForegroundFadeWindow,
+                COLLAPSED_ANCHOR,
+            ),
+        )
     }
 
     @Test fun `full player controls stay inert through the dock handoff floor`() {
