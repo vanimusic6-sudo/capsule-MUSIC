@@ -308,6 +308,7 @@ internal fun CapsuleImmersiveContent(
     bottomPadding: Dp,
     open: Boolean = true,
     controlsActive: Boolean = true,
+    transitionForegroundAlpha: () -> Float = { 1f },
     /**
      * Raw bottom-sheet travel from collapsed (0) to expanded (1).
      *
@@ -768,7 +769,10 @@ internal fun CapsuleImmersiveContent(
                 Modifier
                     .fillMaxWidth()
                     .padding(top = artworkHeight)
-                    .height(editorHeight),
+                    .height(editorHeight)
+                    .graphicsLayer {
+                        alpha = transitionForegroundAlpha().coerceIn(0f, 1f)
+                    },
         ) {
             CapsuleLightCanvasV2(
                 order = immersiveOrder,
@@ -1208,6 +1212,9 @@ internal fun CapsuleImmersiveContent(
                     .fillMaxWidth()
                     .padding(bottom = bottomPadding + ImmersiveQueueRailLift)
                     .height(ImmersiveQueueRailTouchHeight)
+                    .graphicsLayer {
+                        alpha = transitionForegroundAlpha().coerceIn(0f, 1f)
+                    }
                     .clickable(
                         interactionSource = remember { MutableInteractionSource() },
                         indication = null,
