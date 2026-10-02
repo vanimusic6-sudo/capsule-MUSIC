@@ -210,6 +210,7 @@ import com.nikhil.yt.ui.component.TopSearch
 import com.nikhil.yt.ui.component.rememberBottomSheetState
 import com.nikhil.yt.ui.component.shimmer.ShimmerTheme
 import com.nikhil.yt.ui.menu.YouTubeSongMenu
+import com.nikhil.yt.ui.motion.CapsuleMotion
 import com.nikhil.yt.ui.player.BottomSheetPlayer
 import com.nikhil.yt.ui.player.LocalCapsuleDockVisible
 import com.nikhil.yt.ui.screens.Screens
