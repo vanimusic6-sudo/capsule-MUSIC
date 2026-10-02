@@ -971,7 +971,11 @@ internal fun CapsuleImmersiveContent(
                                     fontSize = 13.sp,
                                 )
                                 Text(
-                                    makeTimeString(safeDuration),
+                                    if (safeDuration > 0L) {
+                                        "-${makeTimeString((safeDuration - shownPosition).coerceAtLeast(0L))}"
+                                    } else {
+                                        ""
+                                    },
                                     color = textColor.copy(alpha = 0.55f),
                                     fontSize = 13.sp,
                                 )

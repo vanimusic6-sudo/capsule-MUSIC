@@ -1201,7 +1201,7 @@ fun CapsulePlayerContent(
                                         fontSize = 12.sp,
                                     )
                                     Text(
-                                        text = if (safeDuration > 0L) makeTimeString(safeDuration) else "",
+                                        text = if (safeDuration > 0L) "-${makeTimeString(remaining)}" else "",
                                         color = secondaryText,
                                         fontFamily = FontFamily.SansSerif,
                                         fontSize = 12.sp,
@@ -1567,7 +1567,7 @@ fun CapsulePlayerContent(
                                 safeDuration >
                                 0L
                             ) {
-                                if (isLight) makeTimeString(safeDuration) else "-${makeTimeString(remaining)}"
+                                "-${makeTimeString(remaining)}"
                             } else {
                                 ""
                             },
