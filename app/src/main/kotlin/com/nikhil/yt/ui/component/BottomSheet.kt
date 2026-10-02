@@ -102,11 +102,12 @@ internal fun isAtSheetAnchor(
 
 /**
  * The last stretch of travel, where the player reads as folding into the mini-player rather than
- * merely sliding off: it shrinks towards the dock and keeps descending, so what is left behind is
- * the mini-player arriving instead of something that was underneath all along.
+ * merely sliding off. The frame contraction mirrors the Lyrics close: width gives slightly more
+ * than height, and the top edge stays planted while the lower body recedes.
  */
 internal const val PlayerFoldWindow = 0.76f
-internal const val PlayerFoldScale = 0.05f
+internal const val PlayerFoldWidthInset = 0.052f
+internal const val PlayerFoldHeightInset = 0.042f
 
 /**
  * How far the player keeps descending after it has folded, expressed in dock heights.
@@ -153,11 +154,15 @@ internal const val PlayerCloseFadeBias = 0.8f
  * as a sheet that never quite left. [PlayerCloseFadeBias] keeps it visible until shortly before. */
 internal const val PlayerCloseMinAlpha = 0f
 
-/** How grey it has gone by then. Full grey reads as a dead rectangle; this is a drain of colour. */
-internal const val PlayerCloseMaxGrey = 0.72f
+/**
+ * Maximum darkening at the dock. This replaces the old grey colour-drain with the same visual idea
+ * used by the Lyrics transition: the sheet keeps its own colours and simply loses a little light.
+ * A single black draw over the existing layer is cheaper and avoids the washed-out grey flash.
+ */
+internal const val PlayerCloseMaxDim = 0.16f
 
-/** A neutral the artwork's colours drain into, dark enough to belong to a sheet being put away. */
-internal val PlayerCloseGrey = Color(0xFF6E6E6E)
+/** The player frame uses the same corner language as Capsule's bottom navigation surface. */
+internal val PlayerFrameCornerRadius = 26.dp
 
 /**
  * Geometry and going-out for the full-player -> mini-player handoff.
@@ -173,10 +178,11 @@ internal val PlayerCloseGrey = Color(0xFF6E6E6E)
  * being the thing you were looking at.
  */
 internal data class PlayerFoldTransform(
-    val scale: Float,
+    val scaleX: Float,
+    val scaleY: Float,
     val descentInDockHeights: Float,
     val alpha: Float,
-    val greyness: Float,
+    val dimness: Float,
 )
 
 internal fun playerFoldTransform(progress: Float): PlayerFoldTransform {
@@ -198,39 +204,38 @@ internal fun playerFoldTransform(progress: Float): PlayerFoldTransform {
     val remaining = present.coerceIn(0f, 1f).pow(PlayerCloseFadeBias)
 
     return PlayerFoldTransform(
-        scale = 1f - PlayerFoldScale * folded,
+        scaleX = 1f - PlayerFoldWidthInset * folded,
+        scaleY = 1f - PlayerFoldHeightInset * folded,
         descentInDockHeights = folded * PlayerDescentBeyondDock,
         alpha =
             (PlayerCloseMinAlpha + (1f - PlayerCloseMinAlpha) * remaining)
                 .let { if (it.isFinite()) it.coerceIn(0f, 1f) else 1f },
-        greyness = (PlayerCloseMaxGrey * leaving).coerceIn(0f, 1f),
+        dimness = (PlayerCloseMaxDim * leaving).coerceIn(0f, PlayerCloseMaxDim),
     )
 }
 
 /**
- * How far the mini-player is pushed down as the player lands on it, as a fraction of its height.
+ * How far the mini-player yields downward during the handoff, as a fraction of its own height.
  *
- * The handoff used to be one-sided: the player folded towards a dock that took no notice of it.
- * Giving the mini-player a little give makes the two read as touching — the player comes down, the
- * thing underneath yields, and then both settle. Small on purpose; this is weight, not a bounce.
+ * The old version achieved the same contact depth by stretching the card vertically. That changed
+ * its silhouette and made the opening look rubbery. Translation preserves the card pixel-for-pixel
+ * and costs only one GPU transform: it dips, then comes back to its dock without deforming.
  */
-internal const val MiniHandoverStretch = 0.07f
+internal const val MiniHandoverDrop = 0.07f
 
-/** Where in the travel the give is deepest. Low, because the contact happens near the dock. */
+/** Where in the travel the downward give is deepest. Low, because contact happens near the dock. */
 internal const val MiniHandoverPeak = 0.22f
 
 /**
- * The mini-player's vertical scale during the handoff, anchored at its top so it stretches down.
- *
- * Exactly 1 at both ends of the travel, which is the property that matters: a resting mini-player
- * must be pixel-for-pixel itself, never left carrying a residue of a gesture that finished.
+ * Mini-player downward travel in its own heights. Exactly zero at both anchors, so opening and
+ * closing are perfect reverses and an interrupted gesture cannot leave a residual displacement.
  */
-internal fun miniHandoverStretch(progress: Float): Float {
-    if (!progress.isFinite()) return 1f
+internal fun miniHandoverDrop(progress: Float): Float {
+    if (!progress.isFinite()) return 0f
     val p = progress.coerceIn(0f, 1f)
     val rising = CapsuleMotion.smooth(p / MiniHandoverPeak)
     val falling = CapsuleMotion.smooth((1f - p) / (1f - MiniHandoverPeak))
-    return 1f + MiniHandoverStretch * rising * falling
+    return MiniHandoverDrop * rising * falling
 }
 
 /**
@@ -317,12 +322,13 @@ fun BottomSheet(
                             )
                         }
                         /*
-                         * Read from a layer lambda, like the rest of the handoff: a drag
-                         * invalidates the GPU layer rather than recomposing the mini-player.
+                         * Read from a layer lambda, like the rest of the handoff: a drag only
+                         * invalidates the GPU layer. The mini-player stays rigid and briefly dips
+                         * by the same ~7% depth the former stretch used to reach.
                          */
                         .graphicsLayer {
-                            scaleY = miniHandoverStretch(state.progress)
-                            transformOrigin = TransformOrigin(0.5f, 0f)
+                            translationY =
+                                miniHandoverDrop(state.progress) * state.collapsedBound.toPx()
                         }
                         .clickable(
                             enabled = canReopen && gesturesEnabled,
@@ -357,37 +363,39 @@ fun BottomSheet(
                         }
                         .graphicsLayer {
                             val fold = playerFoldTransform(state.progress)
-                            scaleX = fold.scale
-                            scaleY = fold.scale
+                            scaleX = fold.scaleX
+                            scaleY = fold.scaleY
                             translationY =
                                 fold.descentInDockHeights * state.collapsedBound.toPx()
-                            transformOrigin = TransformOrigin(0.5f, 1f)
+                            // Match the Lyrics close: the top edge is the hinge while the frame
+                            // contracts. Opening naturally plays the exact same geometry backwards.
+                            transformOrigin = TransformOrigin(0.5f, 0f)
                             alpha = fold.alpha
 
-                            // The rounded top is the player's own, and this Box is composed only
-                            // while the player is off its dock — so nothing rounds a mini-player
-                            // that is sitting still, and nothing clips one that is being swiped.
+                            // Keep the player's top corners in the same family as the 26dp Capsule
+                            // navigation surface. The radius melts away as the player becomes the
+                            // full screen, so the expanded resting state still has no clipping tax.
                             val motionProgress = state.progress.coerceIn(0f, 1f)
                             val topCornerRadius =
-                                (22.dp * (1f - motionProgress)).coerceAtLeast(0.dp)
+                                PlayerFrameCornerRadius * (1f - motionProgress)
                             shape =
                                 RoundedCornerShape(
                                     topStart = topCornerRadius,
                                     topEnd = topCornerRadius,
                                 )
-                            clip = true
+                            clip = topCornerRadius > 0.dp
                         }
                         .background(backgroundColor)
                         /*
-                         * The colour drains in the same pass that draws the content, rather than
-                         * in a layer of its own: one grey rectangle over the top, opacity read
-                         * from the same progress the rest of the motion uses.
+                         * Lyrics-style light loss without blur, RenderEffect, or a second surface.
+                         * This replaces the previous grey wash with one black draw in the pass that
+                         * already renders the sheet. Opening brightens it; closing is the reverse.
                          */
                         .drawWithContent {
                             drawContent()
-                            val greyness = playerFoldTransform(state.progress).greyness
-                            if (greyness > 0f) {
-                                drawRect(color = PlayerCloseGrey.copy(alpha = greyness))
+                            val dimness = playerFoldTransform(state.progress).dimness
+                            if (dimness > 0f) {
+                                drawRect(color = Color.Black.copy(alpha = dimness))
                             }
                         },
                 content = content,
