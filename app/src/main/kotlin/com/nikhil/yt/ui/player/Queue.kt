@@ -88,6 +88,7 @@ import com.nikhil.yt.ui.component.BottomSheetState
 import com.nikhil.yt.ui.component.LocalBottomSheetPageState
 import com.nikhil.yt.ui.component.LocalMenuState
 import com.nikhil.yt.ui.component.MediaMetadataListItem
+import com.nikhil.yt.ui.component.shouldRenderExpandedSurface
 import com.nikhil.yt.ui.menu.PlayerMenu
 import com.nikhil.yt.ui.menu.SelectionMediaMetadataMenu
 import com.nikhil.yt.ui.utils.ShowMediaInfo
@@ -113,8 +114,10 @@ fun Queue(
     val onScreen = appIsOnScreen()
     val queueVisible =
         onScreen &&
-            !state.isCollapsed &&
-            !state.isDismissed
+            shouldRenderExpandedSurface(
+                rawProgress = state.rawProgress,
+                targetAnchor = state.targetAnchor,
+            )
 
     if (!queueVisible) {
         // Queue used to keep its database/player/automix/reorder subscriptions alive for the whole
