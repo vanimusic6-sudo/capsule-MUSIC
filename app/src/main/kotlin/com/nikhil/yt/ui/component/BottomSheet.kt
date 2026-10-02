@@ -185,6 +185,14 @@ internal fun expandedPlayerCanAcceptInput(rawProgress: Float, targetAnchor: Int)
     return p > PlayerNavigationOcclusionEnd
 }
 
+internal fun playerDockUnderlapFraction(rawProgress: Float): Float {
+    val p = if (rawProgress.isFinite()) rawProgress.coerceIn(0f, 1f) else 1f
+    val handoffProgress =
+        (p / PlayerMorphHandoffWindow)
+            .coerceIn(0f, 1f)
+    return (1f - CapsuleMotion.smooth(handoffProgress)).coerceIn(0f, 1f)
+}
+
 /**
  * A single physical Capsule sheet.
  *
@@ -202,6 +210,7 @@ fun BottomSheet(
     backHandlerEnabled: Boolean = true,
     collapsedContentHeight: Dp? = null,
     expandedContentInteractive: Boolean = true,
+    expandedContentDockUnderlap: Dp = 0.dp,
     collapsedContent: @Composable BoxScope.() -> Unit,
     content: @Composable BoxScope.() -> Unit,
 ) {
@@ -312,6 +321,9 @@ fun BottomSheet(
                         .graphicsLayer {
                             val raw = state.rawProgress.coerceIn(0f, 1f)
                             alpha = playerMorphHandoff(raw)
+                            translationY =
+                                expandedContentDockUnderlap.toPx() *
+                                    playerDockUnderlapFraction(raw)
 
                             val topCornerRadius = playerFrameCornerRadius(raw)
                             shape =
