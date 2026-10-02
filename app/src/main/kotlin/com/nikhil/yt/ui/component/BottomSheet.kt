@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.matchParentSize
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
@@ -136,7 +137,7 @@ internal fun playerFrameCornerRadius(progress: Float): Dp {
 }
 
 /** Below this fraction the full surface is visually indistinguishable from the collapsed anchor. */
-internal const val SheetExpandedRenderFloor = 0.0025f
+internal const val SheetExpandedRenderFloor = 0.025f
 
 internal fun shouldRenderExpandedSurface(rawProgress: Float, targetAnchor: Int): Boolean {
     if (targetAnchor == DISMISSED_ANCHOR) return false
@@ -177,6 +178,14 @@ internal fun navigationCanAcceptInput(rawProgress: Float, targetAnchor: Int): Bo
     return p <= PlayerNavigationOcclusionHold
 }
 
+internal fun expandedPlayerCanAcceptInput(rawProgress: Float, targetAnchor: Int): Boolean {
+    if (targetAnchor == DISMISSED_ANCHOR) return false
+    val p = if (rawProgress.isFinite()) rawProgress.coerceIn(0f, 1f) else 0f
+    // While navigation is the foreground lip, the full player may still be drawn underneath it,
+    // but none of its controls are allowed to win hit testing.
+    return p > PlayerNavigationOcclusionEnd
+}
+
 /**
  * A single physical Capsule sheet.
  *
@@ -193,6 +202,7 @@ fun BottomSheet(
     allowSwipeDismiss: Boolean = true,
     backHandlerEnabled: Boolean = true,
     collapsedContentHeight: Dp? = null,
+    expandedContentInteractive: Boolean = true,
     collapsedContent: @Composable BoxScope.() -> Unit,
     content: @Composable BoxScope.() -> Unit,
 ) {
@@ -313,8 +323,31 @@ fun BottomSheet(
                             clip = topCornerRadius > 0.dp
                         }
                         .background(backgroundColor),
-                content = content,
-            )
+            ) {
+                content()
+
+                if (!expandedContentInteractive) {
+                    /*
+                     * Visuals are allowed to finish travelling underneath navigation, but invisible
+                     * player controls must never remain a hit target. This sibling shield wins hit
+                     * testing over the player content while leaving the parent sheet's drag
+                     * detector in the pointer path, so swipe/reverse gestures still work.
+                     */
+                    Box(
+                        modifier =
+                            Modifier
+                                .matchParentSize()
+                                .zIndex(1_000f)
+                                .pointerInput(Unit) {
+                                    awaitPointerEventScope {
+                                        while (true) {
+                                            awaitPointerEvent()
+                                        }
+                                    }
+                                },
+                    )
+                }
+            }
         }
     }
 }
@@ -356,6 +389,11 @@ class BottomSheetState(
     val navigationAcceptsInput by
         derivedStateOf {
             navigationCanAcceptInput(rawProgress, targetAnchor)
+        }
+
+    val expandedSurfaceAcceptsInput by
+        derivedStateOf {
+            expandedPlayerCanAcceptInput(rawProgress, targetAnchor)
         }
 
     private fun updateAnchor(anchor: Int) {
