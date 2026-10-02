@@ -120,7 +120,6 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.util.fastAny
 import androidx.compose.ui.util.fastForEach
 import androidx.compose.ui.window.Dialog
@@ -209,7 +208,6 @@ import com.nikhil.yt.ui.component.LocalMenuState
 import com.nikhil.yt.ui.component.StarDialog
 import com.nikhil.yt.ui.component.TopSearch
 import com.nikhil.yt.ui.component.rememberBottomSheetState
-import com.nikhil.yt.ui.component.playerNavigationForegroundAlpha
 import com.nikhil.yt.ui.component.shimmer.ShimmerTheme
 import com.nikhil.yt.ui.menu.YouTubeSongMenu
 import com.nikhil.yt.ui.player.BottomSheetPlayer
@@ -1612,27 +1610,20 @@ class MainActivity : ComponentActivity() {
                                                     .align(Alignment.BottomCenter)
                                                     .height(navSlideDistance)
                                                     /*
-                                                     * Navigation is the foreground lip of the dock.
-                                                     * The player slides behind it near the compact
-                                                     * anchor, then the fixed bar softly yields as
-                                                     * the full player clears the dock.
+                                                     * Restore the original physical dock motion:
+                                                     * opening the player sends the app navigation
+                                                     * down out of the window; closing brings it
+                                                     * back up over the descending player. Route
+                                                     * visibility and player travel share one
+                                                     * bounded motion instead of fading the bar.
                                                      */
                                                     .zIndex(3f)
-                                                    .graphicsLayer {
-                                                        alpha =
-                                                            playerNavigationForegroundAlpha(
-                                                                playerBottomSheetState.rawProgress,
-                                                            )
-                                                    }
                                                     .offset {
-                                                        /*
-                                                         * The player no longer drives navigation
-                                                         * position. The bar stays physically still
-                                                         * and the rising player sheet covers it from
-                                                         * above. Route/search visibility can still
-                                                         * move the bar out on its own timeline.
-                                                         */
-                                                        val hidden = 1f - navigationBarReveal
+                                                        val hidden =
+                                                            CapsuleMotion.either(
+                                                                playerBottomSheetState.progress,
+                                                                1f - navigationBarReveal,
+                                                            )
                                                         IntOffset(
                                                             x = 0,
                                                             y = (navSlideDistance * hidden).roundToPx(),
@@ -1661,7 +1652,7 @@ class MainActivity : ComponentActivity() {
                                                 currentRoute = navBackStackEntry?.destination?.route ?: "",
                                                 pureBlack = pureBlack,
                                                 capsuleMiniPlayerVisible = capsuleMiniPlayerActuallyVisible,
-                                                interactionEnabled = playerBottomSheetState.navigationAcceptsInput,
+                                                interactionEnabled = !playerBottomSheetState.isExpandedOrExpanding,
                                                 onTabSelected = { screen ->
                                                     if (screen.route == Screens.Search.route) {
                                                         onActiveChange(true)
