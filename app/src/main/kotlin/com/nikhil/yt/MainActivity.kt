@@ -900,7 +900,7 @@ class MainActivity : ComponentActivity() {
 
                     val capsuleMiniPlayerActuallyVisible =
                         playerConnection != null &&
-                                !playerBottomSheetState.isDismissedOrDismissing
+                                !playerBottomSheetState.isDismissed
 
                     var yearInMusicSavedPlayerAnchor by rememberSaveable { mutableIntStateOf(-1) }
                     var immersiveStatusBarRequested by remember { mutableStateOf(false) }
