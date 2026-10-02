@@ -900,7 +900,7 @@ class MainActivity : ComponentActivity() {
 
                     val capsuleMiniPlayerActuallyVisible =
                         playerConnection != null &&
-                                !playerBottomSheetState.isDismissed
+                                !playerBottomSheetState.isDismissedOrDismissing
 
                     var yearInMusicSavedPlayerAnchor by rememberSaveable { mutableIntStateOf(-1) }
                     var immersiveStatusBarRequested by remember { mutableStateOf(false) }
@@ -1590,10 +1590,7 @@ class MainActivity : ComponentActivity() {
                                             navController = navController,
                                             modifier =
                                                 Modifier.zIndex(
-                                                    if (
-                                                        !playerBottomSheetState.isCollapsed &&
-                                                        !playerBottomSheetState.isDismissed
-                                                    ) {
+                                                    if (playerBottomSheetState.shouldLayerAboveCollapsedChrome) {
                                                         2f
                                                     } else {
                                                         0f
