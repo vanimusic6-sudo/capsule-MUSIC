@@ -1,5 +1,11 @@
 package com.nikhil.yt.ui
 
+import com.nikhil.yt.ui.component.shouldShowCompactSurface
+import com.nikhil.yt.ui.component.shouldRenderExpandedSurface
+import com.nikhil.yt.ui.component.SheetExpandedRenderFloor
+import com.nikhil.yt.ui.component.EXPANDED_ANCHOR
+import com.nikhil.yt.ui.component.DISMISSED_ANCHOR
+import com.nikhil.yt.ui.component.COLLAPSED_ANCHOR
 import com.nikhil.yt.ui.component.PlayerMorphHandoffWindow
 import com.nikhil.yt.ui.component.playerMorphHandoff
 import com.nikhil.yt.ui.component.playerFrameCornerRadius
@@ -66,6 +72,21 @@ class DockHandoverTest {
             val radius = playerFrameCornerRadius(progress)
             assertTrue("negative corner for $progress: $radius", radius.value >= 0f)
         }
+    }
+
+    @Test fun `closing unmounts the full hit surface before microscopic spring residue can trap taps`() {
+        assertTrue(shouldRenderExpandedSurface(0f, EXPANDED_ANCHOR))
+        assertTrue(shouldRenderExpandedSurface(SheetExpandedRenderFloor * 2f, COLLAPSED_ANCHOR))
+        assertTrue(!shouldRenderExpandedSurface(SheetExpandedRenderFloor * 0.5f, COLLAPSED_ANCHOR))
+        assertTrue(!shouldRenderExpandedSurface(0f, COLLAPSED_ANCHOR))
+    }
+
+    @Test fun `compact surface returns on every collapse and never survives dismissal`() {
+        assertTrue(shouldShowCompactSurface(0f, COLLAPSED_ANCHOR))
+        assertTrue(shouldShowCompactSurface(PlayerMorphHandoffWindow * 0.5f, COLLAPSED_ANCHOR))
+        assertTrue(!shouldShowCompactSurface(PlayerMorphHandoffWindow, COLLAPSED_ANCHOR))
+        assertTrue(!shouldShowCompactSurface(0f, DISMISSED_ANCHOR))
+        assertTrue(shouldShowCompactSurface(0f, EXPANDED_ANCHOR))
     }
 
     @Test fun `animation input outside its normal range stays finite and safe`() {
