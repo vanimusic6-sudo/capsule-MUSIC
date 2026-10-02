@@ -1119,14 +1119,11 @@ fun CapsulePlayerContent(
                                                     .clipToBounds()
                                                     .padding(end = 10.dp),
                                         ) {
-                                            Text(
-                                                text = mediaMetadata.title,
+                                            CapsuleTrackTitle(
+                                                mediaId = mediaMetadata.id,
+                                                title = mediaMetadata.title,
                                                 color = textColor,
-                                                fontSize = 24.sp,
-                                                lineHeight = 29.sp,
-                                                fontWeight = FontWeight.SemiBold,
-                                                maxLines = 1,
-                                                overflow = TextOverflow.Ellipsis,
+                                                enabled = !lightEditorEnabled,
                                                 modifier = Modifier.fillMaxWidth(),
                                             )
 
@@ -1139,8 +1136,9 @@ fun CapsulePlayerContent(
                                                 Text(
                                                     text = mediaMetadata.artists.joinToString { it.name },
                                                     color = secondaryText,
-                                                    fontSize = 17.sp,
-                                                    lineHeight = 21.sp,
+                                                    fontSize = CapsulePlayerArtistFontSize,
+                                                    lineHeight = CapsulePlayerArtistLineHeight,
+                                                    fontWeight = FontWeight.Normal,
                                                     maxLines = 1,
                                                     overflow = TextOverflow.Ellipsis,
                                                     modifier =
@@ -1427,19 +1425,11 @@ fun CapsulePlayerContent(
                                     end = 10.dp,
                                 ),
                     ) {
-                        Text(
-                            text =
-                                mediaMetadata.title,
+                        CapsuleTrackTitle(
+                            mediaId = mediaMetadata.id,
+                            title = mediaMetadata.title,
                             color =
                                 textColor,
-                            fontSize = if (isLight) 24.sp else 28.sp,
-                            lineHeight =
-                                if (isLight) 29.sp else 31.sp,
-                            fontWeight =
-                                if (isLight) FontWeight.SemiBold else FontWeight.Bold,
-                            maxLines = 1,
-                            overflow =
-                                TextOverflow.Ellipsis,
                             modifier =
                                 Modifier.fillMaxWidth(),
                         )
@@ -1472,10 +1462,9 @@ fun CapsulePlayerContent(
                                         },
                                 color =
                                     secondaryText,
-                                fontSize =
-                                    17.sp,
-                                lineHeight =
-                                    21.sp,
+                                fontSize = CapsulePlayerArtistFontSize,
+                                lineHeight = CapsulePlayerArtistLineHeight,
+                                fontWeight = FontWeight.Normal,
                                 maxLines = 1,
                                 overflow =
                                     TextOverflow.Ellipsis,

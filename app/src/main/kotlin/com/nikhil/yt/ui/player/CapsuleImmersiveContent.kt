@@ -846,14 +846,12 @@ internal fun CapsuleImmersiveContent(
                                 when (item) {
                                     CapsuleLightMetadataItem.TEXT -> {
                                         Column(modifier = Modifier.fillMaxWidth()) {
-                                            Text(
-                                                text = mediaMetadata.title,
+                                            CapsuleTrackTitle(
+                                                mediaId = mediaMetadata.id,
+                                                title = mediaMetadata.title,
                                                 color = textColor,
-                                                fontSize = 28.sp,
-                                                lineHeight = 33.sp,
-                                                fontWeight = FontWeight.Bold,
-                                                maxLines = 1,
-                                                overflow = TextOverflow.Ellipsis,
+                                                enabled = !immersiveEditEnabled,
+                                                modifier = Modifier.fillMaxWidth(),
                                             )
                                             Spacer(Modifier.height(2.dp))
                                             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -868,7 +866,9 @@ internal fun CapsuleImmersiveContent(
                                                         mediaMetadata.artists
                                                             .joinToString { it.name },
                                                     color = textColor.copy(alpha = 0.62f),
-                                                    fontSize = 17.sp,
+                                                    fontSize = CapsulePlayerArtistFontSize,
+                                                    lineHeight = CapsulePlayerArtistLineHeight,
+                                                    fontWeight = FontWeight.Normal,
                                                     maxLines = 1,
                                                     overflow = TextOverflow.Ellipsis,
                                                     modifier =
