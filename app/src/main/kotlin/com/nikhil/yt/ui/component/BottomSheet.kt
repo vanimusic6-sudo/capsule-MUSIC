@@ -154,43 +154,15 @@ internal fun shouldShowCompactSurface(rawProgress: Float, targetAnchor: Int): Bo
 }
 
 /**
- * Foreground navigation handoff.
- *
- * Near the dock the navigation stays fully in front, so the moving player physically disappears
- * behind it on close and rises from behind it on open. Once the sheet has clearly cleared the dock,
- * the fixed navigation softly yields to the full player instead of z-order popping in one frame.
+ * Full-player controls stay inert through the lowest part of the handoff. The surface can still
+ * finish drawing there, but taps belong to neither an almost-hidden player nor an off-screen dock.
  */
-internal const val PlayerNavigationOcclusionHold = 0.12f
-internal const val PlayerNavigationOcclusionEnd = 0.28f
-
-internal fun playerNavigationForegroundAlpha(rawProgress: Float): Float {
-    val p = if (rawProgress.isFinite()) rawProgress.coerceIn(0f, 1f) else 1f
-    val span = PlayerNavigationOcclusionEnd - PlayerNavigationOcclusionHold
-    if (span <= 0f) return if (p <= PlayerNavigationOcclusionHold) 1f else 0f
-    val t = ((p - PlayerNavigationOcclusionHold) / span).coerceIn(0f, 1f)
-    return (1f - CapsuleMotion.smooth(t)).coerceIn(0f, 1f)
-}
-
-internal fun navigationCanAcceptInput(rawProgress: Float, targetAnchor: Int): Boolean {
-    if (targetAnchor == EXPANDED_ANCHOR) return false
-    val p = if (rawProgress.isFinite()) rawProgress.coerceIn(0f, 1f) else 1f
-    return p <= PlayerNavigationOcclusionHold
-}
+internal const val PlayerExpandedInputFloor = 0.28f
 
 internal fun expandedPlayerCanAcceptInput(rawProgress: Float, targetAnchor: Int): Boolean {
     if (targetAnchor == DISMISSED_ANCHOR) return false
     val p = if (rawProgress.isFinite()) rawProgress.coerceIn(0f, 1f) else 0f
-    // While navigation is the foreground lip, the full player may still be drawn underneath it,
-    // but none of its controls are allowed to win hit testing.
-    return p > PlayerNavigationOcclusionEnd
-}
-
-internal fun playerDockUnderlapFraction(rawProgress: Float): Float {
-    val p = if (rawProgress.isFinite()) rawProgress.coerceIn(0f, 1f) else 1f
-    val handoffProgress =
-        (p / PlayerMorphHandoffWindow)
-            .coerceIn(0f, 1f)
-    return (1f - CapsuleMotion.smooth(handoffProgress)).coerceIn(0f, 1f)
+    return p > PlayerExpandedInputFloor
 }
 
 /**
@@ -210,7 +182,6 @@ fun BottomSheet(
     backHandlerEnabled: Boolean = true,
     collapsedContentHeight: Dp? = null,
     expandedContentInteractive: Boolean = true,
-    expandedContentDockUnderlap: Dp = 0.dp,
     collapsedContent: @Composable BoxScope.() -> Unit,
     content: @Composable BoxScope.() -> Unit,
 ) {
@@ -321,10 +292,13 @@ fun BottomSheet(
                         .graphicsLayer {
                             val raw = state.rawProgress.coerceIn(0f, 1f)
                             alpha = playerMorphHandoff(raw)
-                            translationY =
-                                expandedContentDockUnderlap.toPx() *
-                                    playerDockUnderlapFraction(raw)
 
+                            /*
+                             * No independent Y shift here. Mini and full surface share the exact
+                             * same leading edge; the app navigation itself moves over that edge on
+                             * close and away from it on open. This prevents the mini from sitting
+                             * lower than the visual sheet edge during the handoff.
+                             */
                             val topCornerRadius = playerFrameCornerRadius(raw)
                             shape =
                                 RoundedCornerShape(
@@ -396,11 +370,6 @@ class BottomSheetState(
 
     val compactSurfaceVisible: Boolean
         get() = shouldShowCompactSurface(rawProgress, targetAnchor)
-
-    val navigationAcceptsInput by
-        derivedStateOf {
-            navigationCanAcceptInput(rawProgress, targetAnchor)
-        }
 
     val expandedSurfaceAcceptsInput by
         derivedStateOf {
