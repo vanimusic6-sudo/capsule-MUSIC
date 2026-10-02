@@ -36,9 +36,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
@@ -59,7 +57,6 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.launch
 import kotlin.math.absoluteValue
-import kotlin.math.pow
 
 /**
  * Lets a mounted child keep its state while suspending purely decorative procedural clocks.
@@ -101,142 +98,26 @@ internal fun isAtSheetAnchor(
     (value - anchor).value.absoluteValue <= ANCHOR_EPSILON_DP
 
 /**
- * The last stretch of travel, where the player reads as folding into the mini-player rather than
- * merely sliding off. The frame contraction mirrors the Lyrics close: width gives slightly more
- * than height, and the top edge stays planted while the lower body recedes.
+ * The visible handoff between the compact and full player occupies only the first third of the
+ * sheet travel. The important part is that neither surface invents a second trajectory: both ride
+ * the same BottomSheet, so the mini-player literally becomes the leading edge of the opening page.
  */
-internal const val PlayerFoldWindow = 0.76f
-internal const val PlayerFoldWidthInset = 0.052f
-internal const val PlayerFoldHeightInset = 0.042f
+internal const val PlayerMorphHandoffWindow = 0.32f
 
 /**
- * How far the player keeps descending after it has folded, expressed in dock heights.
- *
- * Without it the player stopped at the dock line, and that is what read as "disappearing at a
- * certain height" rather than leaving. A sheet that is pulled down does not evaporate — it goes
- * *under* whatever is fixed in front of it.
- *
- * The navigation bar is a later sibling in the same Box, so it already draws on top; all the player
- * needed was somewhere to go. Travelling on past the dock lets the bar occlude it, which is the
- * difference between a screen vanishing and a screen being put away.
+ * 0 while docked, 1 once the full player has visually taken over. This is deliberately pure and
+ * bounded: the mini uses 1 - this value and the full player uses this value, so their opacity never
+ * leaves a hole during a fast reverse gesture.
  */
-internal const val PlayerDescentBeyondDock = 0.9f
-
-/**
- * Over how much of the travel the player goes out.
- *
- * The whole of it, and wider than the fold's 0.76 on purpose. In this family of curves the window
- * is the progress at which the effect is already complete, so a *larger* window is one that
- * starts sooner — a fact worth writing down, because setting this below the fold's number was an
- * attempt to make the fade begin earlier and did exactly the opposite.
- *
- * Earlier is what it has to be. The fold is the last quarter and is about arriving at the dock;
- * going out is about leaving, and leaving that only begins near the bottom reads as a blink
- * rather than a departure.
- */
-internal const val PlayerCloseFadeWindow = 1f
-
-/**
- * How long the player is held up before it lets go.
- *
- * An exponent on what is left of it, and it runs the opposite way to the intuition: values *below*
- * one raise the curve, keeping the player substantial through the middle of the travel, while
- * values above one would dim it everywhere and so make it fade sooner, not later. Getting that
- * backwards is easy and was — hence the number being under 1 and a test pinning both ends.
- *
- * The smootherstep underneath already collapses steeply near the dock, so a light hold is all this
- * needs: the middle of the descent stays a picture, and the dissolve happens in the last stretch.
- */
-internal const val PlayerCloseFadeBias = 0.8f
-
-/** What is left of the player at the moment it reaches the dock. Nothing: the descent past the
- * dock is the mini-player's arrival, and the player still being faintly drawn over it is what read
- * as a sheet that never quite left. [PlayerCloseFadeBias] keeps it visible until shortly before. */
-internal const val PlayerCloseMinAlpha = 0f
-
-/**
- * Maximum darkening at the dock. This replaces the old grey colour-drain with the same visual idea
- * used by the Lyrics transition: the sheet keeps its own colours and simply loses a little light.
- * A single black draw over the existing layer is cheaper and avoids the washed-out grey flash.
- */
-internal const val PlayerCloseMaxDim = 0.16f
-
-/** The player frame uses the same corner language as Capsule's bottom navigation surface. */
-internal val PlayerFrameCornerRadius = 26.dp
-
-/**
- * Geometry and going-out for the full-player -> mini-player handoff.
- *
- * This used to be geometry alone, deliberately: shrinking an opaque foreground reveals the
- * mini-player behind it for free, and a screen-sized alpha layer is the kind of thing that made
- * this app warm once. That reasoning still holds for anything continuous — and closing a sheet is
- * not continuous. It is a few hundred milliseconds, once, on a layer the clip already created, so
- * the blend costs a fraction of one gesture rather than every frame of every hour.
- *
- * What it buys is the difference between a screen sliding away and a screen being let go of: the
- * player dims and drains of colour as it descends, so what lands in the dock has already stopped
- * being the thing you were looking at.
- */
-internal data class PlayerFoldTransform(
-    val scaleX: Float,
-    val scaleY: Float,
-    val descentInDockHeights: Float,
-    val alpha: Float,
-    val dimness: Float,
-)
-
-internal fun playerFoldTransform(progress: Float): PlayerFoldTransform {
-    val fold =
-        CapsuleMotion.approach(
-            progress = progress,
-            window = PlayerFoldWindow,
-        )
-    val folded = 1f - fold
-
-    // Its own window, so the fade is not tied to the fold's much later start.
-    val present =
-        CapsuleMotion.approach(
-            progress = progress,
-            window = PlayerCloseFadeWindow,
-        )
-    val leaving = 1f - present
-
-    val remaining = present.coerceIn(0f, 1f).pow(PlayerCloseFadeBias)
-
-    return PlayerFoldTransform(
-        scaleX = 1f - PlayerFoldWidthInset * folded,
-        scaleY = 1f - PlayerFoldHeightInset * folded,
-        descentInDockHeights = folded * PlayerDescentBeyondDock,
-        alpha =
-            (PlayerCloseMinAlpha + (1f - PlayerCloseMinAlpha) * remaining)
-                .let { if (it.isFinite()) it.coerceIn(0f, 1f) else 1f },
-        dimness = (PlayerCloseMaxDim * leaving).coerceIn(0f, PlayerCloseMaxDim),
+internal fun playerMorphHandoff(progress: Float): Float {
+    if (!progress.isFinite()) return 1f
+    return CapsuleMotion.smooth(
+        (progress.coerceIn(0f, 1f) / PlayerMorphHandoffWindow).coerceIn(0f, 1f),
     )
 }
 
-/**
- * How far the mini-player yields downward during the handoff, as a fraction of its own height.
- *
- * The old version achieved the same contact depth by stretching the card vertically. That changed
- * its silhouette and made the opening look rubbery. Translation preserves the card pixel-for-pixel
- * and costs only one GPU transform: it dips, then comes back to its dock without deforming.
- */
-internal const val MiniHandoverDrop = 0.07f
-
-/** Where in the travel the downward give is deepest. Low, because contact happens near the dock. */
-internal const val MiniHandoverPeak = 0.22f
-
-/**
- * Mini-player downward travel in its own heights. Exactly zero at both anchors, so opening and
- * closing are perfect reverses and an interrupted gesture cannot leave a residual displacement.
- */
-internal fun miniHandoverDrop(progress: Float): Float {
-    if (!progress.isFinite()) return 0f
-    val p = progress.coerceIn(0f, 1f)
-    val rising = CapsuleMotion.smooth(p / MiniHandoverPeak)
-    val falling = CapsuleMotion.smooth((1f - p) / (1f - MiniHandoverPeak))
-    return MiniHandoverDrop * rising * falling
-}
+/** Capsule navigation and the moving player sheet share the same upper-corner language. */
+internal val PlayerFrameCornerRadius = 26.dp
 
 /**
  * A single physical Capsule sheet.
@@ -312,23 +193,14 @@ fun BottomSheet(
             Box(
                 modifier =
                     Modifier
-                        .offset {
-                            val miniPinOffset =
-                                (state.value - state.collapsedBound)
-                                    .coerceAtLeast(0.dp)
-                            IntOffset(
-                                x = 0,
-                                y = miniPinOffset.roundToPx(),
-                            )
-                        }
                         /*
-                         * Read from a layer lambda, like the rest of the handoff: a drag only
-                         * invalidates the GPU layer. The mini-player stays rigid and briefly dips
-                         * by the same ~7% depth the former stretch used to reach.
+                         * Do not counter-translate the mini-player. It now rides the very same
+                         * BottomSheet that becomes the full player, which is what creates the
+                         * ArchiveTune-style "lift and flow" instead of a dock handoff between two
+                         * unrelated objects. Only opacity changes during the first third of travel.
                          */
                         .graphicsLayer {
-                            translationY =
-                                miniHandoverDrop(state.progress) * state.collapsedBound.toPx()
+                            alpha = 1f - playerMorphHandoff(state.rawProgress)
                         }
                         .clickable(
                             enabled = canReopen && gesturesEnabled,
@@ -352,32 +224,17 @@ fun BottomSheet(
                 modifier =
                     Modifier
                         .fillMaxSize()
-                        .offset {
-                            val motionProgress = state.progress.coerceIn(0f, 1f)
-                            val revealOffset =
-                                state.collapsedBound * (1f - motionProgress)
-                            IntOffset(
-                                x = 0,
-                                y = revealOffset.roundToPx(),
-                            )
-                        }
+                        /*
+                         * The outer BottomSheet already supplies the only translation we need. The
+                         * full player therefore appears inside the exact surface the mini-player is
+                         * riding instead of adding a second offset/scale/descent on top of it.
+                         */
                         .graphicsLayer {
-                            val fold = playerFoldTransform(state.progress)
-                            scaleX = fold.scaleX
-                            scaleY = fold.scaleY
-                            translationY =
-                                fold.descentInDockHeights * state.collapsedBound.toPx()
-                            // Match the Lyrics close: the top edge is the hinge while the frame
-                            // contracts. Opening naturally plays the exact same geometry backwards.
-                            transformOrigin = TransformOrigin(0.5f, 0f)
-                            alpha = fold.alpha
+                            val raw = state.rawProgress.coerceIn(0f, 1f)
+                            alpha = playerMorphHandoff(raw)
 
-                            // Keep the player's top corners in the same family as the 26dp Capsule
-                            // navigation surface. The radius melts away as the player becomes the
-                            // full screen, so the expanded resting state still has no clipping tax.
-                            val motionProgress = state.progress.coerceIn(0f, 1f)
                             val topCornerRadius =
-                                PlayerFrameCornerRadius * (1f - motionProgress)
+                                PlayerFrameCornerRadius * (1f - CapsuleMotion.smooth(raw))
                             shape =
                                 RoundedCornerShape(
                                     topStart = topCornerRadius,
@@ -385,19 +242,7 @@ fun BottomSheet(
                                 )
                             clip = topCornerRadius > 0.dp
                         }
-                        .background(backgroundColor)
-                        /*
-                         * Lyrics-style light loss without blur, RenderEffect, or a second surface.
-                         * This replaces the previous grey wash with one black draw in the pass that
-                         * already renders the sheet. Opening brightens it; closing is the reverse.
-                         */
-                        .drawWithContent {
-                            drawContent()
-                            val dimness = playerFoldTransform(state.progress).dimness
-                            if (dimness > 0f) {
-                                drawRect(color = Color.Black.copy(alpha = dimness))
-                            }
-                        },
+                        .background(backgroundColor),
                 content = content,
             )
         }
