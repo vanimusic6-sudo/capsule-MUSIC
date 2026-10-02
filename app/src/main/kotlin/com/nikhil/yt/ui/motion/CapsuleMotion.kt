@@ -62,6 +62,9 @@ object CapsuleMotion {
     fun smooth(value: Float): Float {
         if (!value.isFinite()) return 1f
         val x = value.coerceIn(0f, 1f)
-        return x * x * x * (x * (x * 6f - 15f) + 10f)
+        // Float rounding can make the polynomial land microscopically above 1 at x == 1.
+        // That is harmless for colour/alpha, but fatal when a caller turns (1 - smooth) into
+        // geometry such as a Compose corner radius. Keep the primitive true to its 0..1 contract.
+        return (x * x * x * (x * (x * 6f - 15f) + 10f)).coerceIn(0f, 1f)
     }
 }
