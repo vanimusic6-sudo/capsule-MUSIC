@@ -353,6 +353,11 @@ class BottomSheetState(
     val compactSurfaceVisible: Boolean
         get() = shouldShowCompactSurface(rawProgress, targetAnchor)
 
+    val navigationAcceptsInput by
+        derivedStateOf {
+            navigationCanAcceptInput(rawProgress, targetAnchor)
+        }
+
     private fun updateAnchor(anchor: Int) {
         targetAnchor = anchor
         onAnchorChanged(anchor)
