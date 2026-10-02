@@ -798,7 +798,14 @@ fun Modifier.bottomSheetDraggable(
                         accepted = true
                         change.consume()
                         velocityTracker.addPointerInputChange(change)
-                        state.dispatchRawDelta(overSlop)
+                        state.dispatchRawDelta(
+                            constrainBottomSheetDragDelta(
+                                valuePx = state.value.toPx(),
+                                collapsedPx = state.collapsedBound.toPx(),
+                                deltaPx = overSlop,
+                                allowDismiss = false,
+                            ),
+                        )
                     }
                 }
 
