@@ -107,21 +107,23 @@ internal fun isAtSheetAnchor(
     (value - anchor).value.absoluteValue <= ANCHOR_EPSILON_DP
 
 /**
- * The visible handoff between the compact and full player occupies a little under the first half
- * sheet travel. The important part is that neither surface invents a second trajectory: both ride
- * the same BottomSheet, so the mini-player literally becomes the leading edge of the opening page.
+ * The compact shell is an overlay on the leading edge of one physical player sheet.
+ *
+ * The old implementation cross-faded the entire full-screen surface against the mini surface.
+ * That made the transition read as two screens dissolving through each other and amplified tiny
+ * background colour differences into brightness flashes. The full sheet is now opaque as soon as
+ * it physically enters the viewport; only the compact shell releases its ownership over the first
+ * part of travel.
  */
-internal const val PlayerMorphHandoffWindow = 0.44f
+internal const val PlayerMorphHandoffWindow = 0.32f
+private const val CompactShellReleaseStart = 0.10f
 
-/**
- * 0 while docked, 1 once the full player has visually taken over. This is deliberately pure and
- * bounded: the mini uses 1 - this value and the full player uses this value, so their opacity never
- * leaves a hole during a fast reverse gesture.
- */
 internal fun playerMorphHandoff(progress: Float): Float {
     if (!progress.isFinite()) return 1f
+    val p = progress.coerceIn(0f, 1f)
+    val span = (PlayerMorphHandoffWindow - CompactShellReleaseStart).coerceAtLeast(0.0001f)
     return CapsuleMotion.smooth(
-        (progress.coerceIn(0f, 1f) / PlayerMorphHandoffWindow).coerceIn(0f, 1f),
+        ((p - CompactShellReleaseStart) / span).coerceIn(0f, 1f),
     )
 }
 
@@ -353,7 +355,12 @@ fun BottomSheet(
                          */
                         .graphicsLayer {
                             val raw = state.rawProgress.coerceIn(0f, 1f)
-                            alpha = playerMorphHandoff(raw)
+                            /*
+                             * This is the same physical sheet that was below the compact card.
+                             * Never fade the whole page: doing so reveals unrelated chrome/colors
+                             * underneath and makes opening/closing look like a dissolve.
+                             */
+                            alpha = 1f
 
                             /*
                              * No independent Y shift here. Mini and full surface share the exact
