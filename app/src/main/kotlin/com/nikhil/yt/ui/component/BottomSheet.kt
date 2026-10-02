@@ -154,10 +154,42 @@ internal fun shouldShowCompactSurface(rawProgress: Float, targetAnchor: Int): Bo
 }
 
 /**
+ * Foreground content leaves much faster than the physical player surfaces.
+ *
+ * Opening: mini controls/text disappear almost immediately, leaving only the compact shell and
+ * its background to participate in the handoff.
+ * Closing: full-player artwork/controls disappear near the start of the return trip, leaving the
+ * full background/surface to travel back toward the dock before compact content comes back.
+ */
+internal const val MiniPlayerForegroundFadeWindow = 0.14f
+internal const val FullPlayerForegroundAcquireStart = 0.76f
+internal const val FullPlayerForegroundInputStart = 0.84f
+
+internal fun miniPlayerForegroundAlpha(rawProgress: Float): Float {
+    val p = if (rawProgress.isFinite()) rawProgress.coerceIn(0f, 1f) else 1f
+    return (1f - CapsuleMotion.smooth((p / MiniPlayerForegroundFadeWindow).coerceIn(0f, 1f)))
+        .coerceIn(0f, 1f)
+}
+
+internal fun fullPlayerForegroundAlpha(rawProgress: Float): Float {
+    val p = if (rawProgress.isFinite()) rawProgress.coerceIn(0f, 1f) else 1f
+    val span = (1f - FullPlayerForegroundAcquireStart).coerceAtLeast(0.0001f)
+    return CapsuleMotion.smooth(
+        ((p - FullPlayerForegroundAcquireStart) / span).coerceIn(0f, 1f),
+    ).coerceIn(0f, 1f)
+}
+
+internal fun miniPlayerForegroundCanAcceptInput(rawProgress: Float, targetAnchor: Int): Boolean {
+    if (targetAnchor != COLLAPSED_ANCHOR) return false
+    val p = if (rawProgress.isFinite()) rawProgress.coerceIn(0f, 1f) else 1f
+    return p <= MiniPlayerForegroundFadeWindow * 0.2f
+}
+
+/**
  * Full-player controls stay inert through the lowest part of the handoff. The surface can still
  * finish drawing there, but taps belong to neither an almost-hidden player nor an off-screen dock.
  */
-internal const val PlayerExpandedInputFloor = 0.28f
+internal const val PlayerExpandedInputFloor = FullPlayerForegroundInputStart
 
 internal fun expandedPlayerCanAcceptInput(rawProgress: Float, targetAnchor: Int): Boolean {
     if (targetAnchor == DISMISSED_ANCHOR) return false
