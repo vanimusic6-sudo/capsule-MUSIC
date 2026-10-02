@@ -179,7 +179,7 @@ fun BottomSheet(
         remember(state, onDismiss) {
             derivedStateOf {
                 (onDismiss == null || !state.isDismissed) &&
-                    state.targetAnchor == COLLAPSED_ANCHOR
+                    state.compactSurfaceVisible
             }
         }
     val miniBackgroundMotionEnabled by
