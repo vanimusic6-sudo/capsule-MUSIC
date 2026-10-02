@@ -61,6 +61,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -97,6 +98,7 @@ import com.nikhil.yt.models.MediaMetadata
 import com.nikhil.yt.together.TogetherRole
 import com.nikhil.yt.together.TogetherSessionState
 import com.nikhil.yt.ui.component.BottomSheetState
+import com.nikhil.yt.ui.component.canStartMiniDismissGesture
 import com.nikhil.yt.ui.screens.settings.DiscordPresenceManager
 import com.nikhil.yt.utils.rememberEnumPreference
 import com.nikhil.yt.utils.rememberPreference
@@ -231,6 +233,11 @@ fun CapsuleMiniPlayer(
             !isListenTogetherGuest &&
             foregroundInteractive
 
+    // Do not key the pointer coroutine to this value: foreground alpha/input changes while a
+    // vertical open gesture is already in flight. Restarting pointerInput there cancels the exact
+    // gesture that is moving the sheet.
+    val currentSwipeThumbnail by rememberUpdatedState(swipeThumbnail)
+
     val layoutDirection =
         LocalLayoutDirection.current
 
@@ -339,10 +346,9 @@ fun CapsuleMiniPlayer(
                 )
                 .padding(horizontal = if (standardStyle) 12.dp else 10.dp)
                 .let { baseModifier ->
-                    if (foregroundInteractive && visualsActive && playerState != null) {
+                    if (visualsActive && playerState != null) {
                         baseModifier.pointerInput(
                             mediaMetadata?.id,
-                            swipeThumbnail,
                             swipeDistanceThresholdPx,
                             swipeVelocityThresholdPxPerMs,
                             layoutDirection,
@@ -351,6 +357,15 @@ fun CapsuleMiniPlayer(
                         ) {
                             awaitEachGesture {
                                 val down = awaitFirstDown(requireUnconsumed = false)
+                                if (!canStartMiniDismissGesture(playerState.rawProgress)) {
+                                    // Expanded/transitioning gestures belong to BottomSheet.
+                                    // This compact coordinator must remain a passive observer.
+                                    while (true) {
+                                        val event = awaitPointerEvent()
+                                        if (event.changes.none { it.pressed }) break
+                                    }
+                                    return@awaitEachGesture
+                                }
                                 var axis: MiniDragAxis? = null
                                 var dragTargetOffset = offsetXAnimatable.value
                                 var motionJob: Job? = null
@@ -369,7 +384,7 @@ fun CapsuleMiniPlayer(
                                                 MiniDragAxis.VERTICAL
                                             }
 
-                                        if (candidate == MiniDragAxis.HORIZONTAL && !swipeThumbnail) {
+                                        if (candidate == MiniDragAxis.HORIZONTAL && !currentSwipeThumbnail) {
                                             return@awaitTouchSlopOrCancellation
                                         }
 
