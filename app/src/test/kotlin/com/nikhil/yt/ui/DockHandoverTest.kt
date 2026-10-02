@@ -2,6 +2,7 @@ package com.nikhil.yt.ui
 
 import com.nikhil.yt.ui.component.PlayerMorphHandoffWindow
 import com.nikhil.yt.ui.component.playerMorphHandoff
+import com.nikhil.yt.ui.component.playerFrameCornerRadius
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -48,6 +49,23 @@ class DockHandoverTest {
     @Test fun `handoff completes early so the rest of travel is one full player`() {
         assertTrue(PlayerMorphHandoffWindow < 0.5f)
         assertEquals(1f, playerMorphHandoff(0.5f), 0f)
+    }
+
+    @Test fun `player frame corner can never become negative`() {
+        val inputs = listOf(
+            -1f,
+            0f,
+            0.9999f,
+            0.99999994f,
+            1f,
+            1.0001f,
+            Float.NaN,
+            Float.POSITIVE_INFINITY,
+        )
+        inputs.forEach { progress ->
+            val radius = playerFrameCornerRadius(progress)
+            assertTrue("negative corner for $progress: $radius", radius.value >= 0f)
+        }
     }
 
     @Test fun `animation input outside its normal range stays finite and safe`() {
