@@ -340,6 +340,7 @@ fun BottomSheetPlayer(
         // Restored original Capsule gesture: pulling the compact player below its dock dismisses
         // the playback surface and stopAndClearPlayback() clears the active song and queue.
         allowSwipeDismiss = true,
+        dismissOnlyFromCollapsed = true,
         backHandlerEnabled = false,
         collapsedContentHeight = MiniPlayerHeight,
         expandedContentInteractive = state.expandedSurfaceAcceptsInput,
@@ -397,9 +398,8 @@ fun BottomSheetPlayer(
                         Modifier
                             .fillMaxSize()
                             .graphicsLayer {
-                                // On close the full controls/artwork disappear early, leaving only
-                                // the player surface/background to travel back toward the dock.
-                                // Opening is the reverse: the surface arrives first, controls later.
+                                // Opening keeps the UI attached to the arriving player surface.
+                                // Only closing gets a late shell-only stage near the dock.
                                 alpha =
                                     if (effectivePlayerDesign == CapsulePlayerDesign.IMMERSIVE) {
                                         1f
