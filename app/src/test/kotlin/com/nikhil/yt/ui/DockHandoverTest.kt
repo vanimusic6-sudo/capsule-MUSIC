@@ -75,7 +75,8 @@ class DockHandoverTest {
     }
 
     @Test fun `closing unmounts the full hit surface before microscopic spring residue can trap taps`() {
-        assertTrue(shouldRenderExpandedSurface(0f, EXPANDED_ANCHOR))
+        assertTrue(!shouldRenderExpandedSurface(0f, EXPANDED_ANCHOR))
+        assertTrue(shouldRenderExpandedSurface(SheetExpandedRenderFloor * 2f, EXPANDED_ANCHOR))
         assertTrue(shouldRenderExpandedSurface(SheetExpandedRenderFloor * 2f, COLLAPSED_ANCHOR))
         assertTrue(!shouldRenderExpandedSurface(SheetExpandedRenderFloor * 0.5f, COLLAPSED_ANCHOR))
         assertTrue(!shouldRenderExpandedSurface(0f, COLLAPSED_ANCHOR))
