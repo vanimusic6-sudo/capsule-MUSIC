@@ -60,6 +60,16 @@ class CapsuleMotionTest {
         assertTrue(CapsuleMotion.smooth(0.98f) > 0.98f)
     }
 
+    @Test fun `smoothstep never escapes geometry safe bounds near one`() {
+        // The player corner crash came from a value only a few ULP above 1. Dense sampling of the
+        // dangerous tail catches that class of failure instead of merely checking the exact anchor.
+        (0..10000).forEach { step ->
+            val input = 0.95f + (0.05f * step / 10000f)
+            val result = CapsuleMotion.smooth(input)
+            assertTrue("smooth($input) escaped with $result", result in 0f..1f)
+        }
+    }
+
     /**
      * The navigation bar has two independent reasons to be out of the way, and they overlap every
      * time the player is closed onto a bar that is coming back. What used to happen there is pinned
