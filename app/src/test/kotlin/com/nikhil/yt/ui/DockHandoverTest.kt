@@ -1,5 +1,6 @@
 package com.nikhil.yt.ui
 
+import com.nikhil.yt.ui.component.playerDockUnderlapFraction
 import com.nikhil.yt.ui.component.expandedPlayerCanAcceptInput
 import com.nikhil.yt.ui.component.playerNavigationForegroundAlpha
 import com.nikhil.yt.ui.component.navigationCanAcceptInput
@@ -140,6 +141,27 @@ class DockHandoverTest {
     @Test fun `full surface unmounts while still visually imperceptible`() {
         assertTrue(SheetExpandedRenderFloor >= 0.02f)
         assertTrue(playerMorphHandoff(SheetExpandedRenderFloor) < 0.01f)
+    }
+
+    @Test fun `full player reaches maximum dock underlap at the compact edge`() {
+        assertEquals(1f, playerDockUnderlapFraction(0f), 0f)
+        assertEquals(0f, playerDockUnderlapFraction(PlayerMorphHandoffWindow), 0f)
+        assertEquals(0f, playerDockUnderlapFraction(1f), 0f)
+    }
+
+    @Test fun `dock underlap retracts monotonically as player opens`() {
+        var previous = 1f
+        for (step in 0..200) {
+            val progress = step / 200f
+            val fraction = playerDockUnderlapFraction(progress)
+            assertTrue("underlap escaped bounds at $progress: $fraction", fraction in 0f..1f)
+            assertTrue("underlap increased while opening at $progress", fraction <= previous + 1e-6f)
+            previous = fraction
+        }
+    }
+
+    @Test fun `full player is already almost fully under dock before it unmounts`() {
+        assertTrue(playerDockUnderlapFraction(SheetExpandedRenderFloor) > 0.95f)
     }
 
     @Test fun `animation input outside its normal range stays finite and safe`() {
