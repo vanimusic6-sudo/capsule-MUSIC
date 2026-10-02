@@ -127,6 +127,8 @@ private val CapsuleMiniMuted =
 private val CapsuleMiniError =
     Color(0xFFFF8A8A)
 
+private enum class MiniDragAxis { HORIZONTAL, VERTICAL }
+
 @Composable
 fun CapsuleMiniPlayer(
     position: Long,
@@ -347,11 +349,9 @@ fun CapsuleMiniPlayer(
                             playerState,
                             onVerticalDismiss,
                         ) {
-                            enum class DragAxis { HORIZONTAL, VERTICAL }
-
                             awaitEachGesture {
                                 val down = awaitFirstDown(requireUnconsumed = false)
-                                var axis: DragAxis? = null
+                                var axis: MiniDragAxis? = null
                                 var dragTargetOffset = offsetXAnimatable.value
                                 var motionJob: Job? = null
                                 val verticalVelocity = VelocityTracker()
@@ -364,12 +364,12 @@ fun CapsuleMiniPlayer(
                                         val vertical = kotlin.math.abs(overSlop.y)
                                         val candidate =
                                             if (horizontal > vertical) {
-                                                DragAxis.HORIZONTAL
+                                                MiniDragAxis.HORIZONTAL
                                             } else {
-                                                DragAxis.VERTICAL
+                                                MiniDragAxis.VERTICAL
                                             }
 
-                                        if (candidate == DragAxis.HORIZONTAL && !swipeThumbnail) {
+                                        if (candidate == MiniDragAxis.HORIZONTAL && !swipeThumbnail) {
                                             return@awaitTouchSlopOrCancellation
                                         }
 
@@ -377,7 +377,7 @@ fun CapsuleMiniPlayer(
                                         change.consume()
 
                                         when (candidate) {
-                                            DragAxis.HORIZONTAL -> {
+                                            MiniDragAxis.HORIZONTAL -> {
                                                 motionJob?.cancel()
                                                 dragTargetOffset = offsetXAnimatable.value
                                                 motionJob =
@@ -388,7 +388,7 @@ fun CapsuleMiniPlayer(
                                                 totalDragDistance = 0f
                                             }
 
-                                            DragAxis.VERTICAL -> {
+                                            MiniDragAxis.VERTICAL -> {
                                                 verticalVelocity.resetTracking()
                                                 verticalVelocity.addPointerInputChange(change)
                                                 playerState.dispatchRawDelta(overSlop.y)
@@ -406,7 +406,7 @@ fun CapsuleMiniPlayer(
                                         val delta = change.positionChange()
 
                                         when (axis) {
-                                            DragAxis.HORIZONTAL -> {
+                                            MiniDragAxis.HORIZONTAL -> {
                                                 val adjustedDragAmount =
                                                     if (layoutDirection == LayoutDirection.Rtl) {
                                                         -delta.x
@@ -443,7 +443,7 @@ fun CapsuleMiniPlayer(
                                                 }
                                             }
 
-                                            DragAxis.VERTICAL -> {
+                                            MiniDragAxis.VERTICAL -> {
                                                 change.consume()
                                                 verticalVelocity.addPointerInputChange(change)
                                                 playerState.dispatchRawDelta(delta.y)
@@ -454,7 +454,7 @@ fun CapsuleMiniPlayer(
                                     }
 
                                 when (axis) {
-                                    DragAxis.HORIZONTAL -> {
+                                    MiniDragAxis.HORIZONTAL -> {
                                         val dragDuration =
                                             SystemClock.uptimeMillis() - dragStartTime
                                         val velocity =
@@ -497,7 +497,7 @@ fun CapsuleMiniPlayer(
                                             }
                                     }
 
-                                    DragAxis.VERTICAL -> {
+                                    MiniDragAxis.VERTICAL -> {
                                         val velocity =
                                             if (completed) {
                                                 -verticalVelocity.calculateVelocity().y
