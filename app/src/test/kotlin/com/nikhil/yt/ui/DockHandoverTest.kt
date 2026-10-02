@@ -1,5 +1,9 @@
 package com.nikhil.yt.ui
 
+import com.nikhil.yt.ui.component.playerNavigationForegroundAlpha
+import com.nikhil.yt.ui.component.navigationCanAcceptInput
+import com.nikhil.yt.ui.component.PlayerNavigationOcclusionHold
+import com.nikhil.yt.ui.component.PlayerNavigationOcclusionEnd
 import com.nikhil.yt.ui.component.shouldShowCompactSurface
 import com.nikhil.yt.ui.component.shouldRenderExpandedSurface
 import com.nikhil.yt.ui.component.SheetExpandedRenderFloor
@@ -88,6 +92,31 @@ class DockHandoverTest {
         assertTrue(!shouldShowCompactSurface(PlayerMorphHandoffWindow, COLLAPSED_ANCHOR))
         assertTrue(!shouldShowCompactSurface(0f, DISMISSED_ANCHOR))
         assertTrue(shouldShowCompactSurface(0f, EXPANDED_ANCHOR))
+    }
+
+    @Test fun `navigation stays in front at the dock and yields only after the player clears it`() {
+        assertEquals(1f, playerNavigationForegroundAlpha(0f), 0f)
+        assertEquals(1f, playerNavigationForegroundAlpha(PlayerNavigationOcclusionHold), 0f)
+        assertTrue(playerNavigationForegroundAlpha((PlayerNavigationOcclusionHold + PlayerNavigationOcclusionEnd) / 2f) in 0f..1f)
+        assertEquals(0f, playerNavigationForegroundAlpha(PlayerNavigationOcclusionEnd), 0f)
+        assertEquals(0f, playerNavigationForegroundAlpha(1f), 0f)
+    }
+
+    @Test fun `navigation foreground fades monotonically while the player emerges`() {
+        var previous = 1f
+        for (step in 0..200) {
+            val progress = step / 200f
+            val alpha = playerNavigationForegroundAlpha(progress)
+            assertTrue("navigation alpha escaped bounds at $progress: $alpha", alpha in 0f..1f)
+            assertTrue("navigation alpha rose while opening at $progress", alpha <= previous + 1e-6f)
+            previous = alpha
+        }
+    }
+
+    @Test fun `navigation cannot steal taps while player is opening`() {
+        assertTrue(navigationCanAcceptInput(0f, COLLAPSED_ANCHOR))
+        assertTrue(!navigationCanAcceptInput(0f, EXPANDED_ANCHOR))
+        assertTrue(!navigationCanAcceptInput(PlayerNavigationOcclusionEnd, COLLAPSED_ANCHOR))
     }
 
     @Test fun `animation input outside its normal range stays finite and safe`() {
