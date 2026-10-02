@@ -129,7 +129,7 @@ fun CapsuleMiniPlayer(
     pureBlack: Boolean,
     standardStyle: Boolean = false,
     visible: Boolean = true,
-    foregroundAlpha: Float = 1f,
+    foregroundAlpha: () -> Float = { 1f },
     foregroundInteractive: Boolean = true,
 ) {
     val playerConnection =
@@ -568,7 +568,7 @@ fun CapsuleMiniPlayer(
                     Modifier
                         .fillMaxSize()
                         .graphicsLayer {
-                            alpha = foregroundAlpha.coerceIn(0f, 1f)
+                            alpha = foregroundAlpha().coerceIn(0f, 1f)
                         }
                         .padding(
                             horizontal = 10.dp,
