@@ -404,7 +404,10 @@ fun BottomSheetPlayer(
                                     if (effectivePlayerDesign == CapsulePlayerDesign.IMMERSIVE) {
                                         1f
                                     } else {
-                                        fullPlayerForegroundAlpha(state.rawProgress)
+                                        fullPlayerForegroundAlpha(
+                                            state.rawProgress,
+                                            state.targetAnchor,
+                                        )
                                     }
                             },
                 ) {
@@ -445,7 +448,10 @@ fun BottomSheetPlayer(
                         }
                     },
                     transitionForegroundAlpha = {
-                        fullPlayerForegroundAlpha(state.rawProgress)
+                        fullPlayerForegroundAlpha(
+                            state.rawProgress,
+                            state.targetAnchor,
+                        )
                     },
                     onShowMenu = {
                         menuState.show {
