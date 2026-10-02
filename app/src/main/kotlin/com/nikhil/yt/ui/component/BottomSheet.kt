@@ -143,6 +143,12 @@ internal fun shouldRenderExpandedSurface(rawProgress: Float, targetAnchor: Int):
     return targetAnchor == EXPANDED_ANCHOR || p > SheetExpandedRenderFloor
 }
 
+internal fun shouldShowCompactSurface(rawProgress: Float, targetAnchor: Int): Boolean {
+    if (targetAnchor == DISMISSED_ANCHOR) return false
+    val p = if (rawProgress.isFinite()) rawProgress.coerceIn(0f, 1f) else 1f
+    return p < PlayerMorphHandoffWindow
+}
+
 /**
  * A single physical Capsule sheet.
  *
@@ -317,9 +323,7 @@ class BottomSheetState(
         get() = shouldRenderExpandedSurface(rawProgress, targetAnchor)
 
     val compactSurfaceVisible: Boolean
-        get() =
-            targetAnchor != DISMISSED_ANCHOR &&
-                rawProgress.coerceIn(0f, 1f) < PlayerMorphHandoffWindow
+        get() = shouldShowCompactSurface(rawProgress, targetAnchor)
 
     private fun updateAnchor(anchor: Int) {
         targetAnchor = anchor
