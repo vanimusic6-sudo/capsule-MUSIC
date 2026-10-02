@@ -400,7 +400,12 @@ fun BottomSheetPlayer(
                                 // On close the full controls/artwork disappear early, leaving only
                                 // the player surface/background to travel back toward the dock.
                                 // Opening is the reverse: the surface arrives first, controls later.
-                                alpha = fullPlayerForegroundAlpha(state.rawProgress)
+                                alpha =
+                                    if (effectivePlayerDesign == CapsulePlayerDesign.IMMERSIVE) {
+                                        1f
+                                    } else {
+                                        fullPlayerForegroundAlpha(state.rawProgress)
+                                    }
                             },
                 ) {
                     CapsulePlayerLyricsHost(
@@ -438,6 +443,9 @@ fun BottomSheetPlayer(
                         if (!showInlineLyrics) {
                             freezeBackdropAfterLyricsSettles = false
                         }
+                    },
+                    transitionForegroundAlpha = {
+                        fullPlayerForegroundAlpha(state.rawProgress)
                     },
                     onShowMenu = {
                         menuState.show {
@@ -534,6 +542,7 @@ private fun CapsulePlayerLyricsHost(
     onShowLyrics: () -> Unit,
     onHideLyrics: () -> Unit,
     onLyricsCloseSettled: () -> Unit,
+    transitionForegroundAlpha: () -> Float,
     onShowMenu: () -> Unit,
 ) {
     // Each property keeps its current value on cancellation. A quick reverse therefore starts
@@ -694,6 +703,7 @@ private fun CapsulePlayerLyricsHost(
                     bottomPadding = 0.dp,
                     open = !playerState.isCollapsed && !playerState.isDismissed,
                     controlsActive = !lyricsLayerMounted,
+                    transitionForegroundAlpha = transitionForegroundAlpha,
                     expansionProgress = playerState.rawProgress,
                 )
                 return@Box
