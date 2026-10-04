@@ -58,11 +58,15 @@ class StandardChromeTest {
                 Column {
                     Spacer(Modifier.height(240.dp))
                     StandardNavigationBar(
-                        Modifier.fillMaxWidth().height(80.dp).testTag("bar"), Screens.MainScreens, route,
-                    ) {
-                        clicks++
-                        route = it.route
-                    }
+                        modifier = Modifier.fillMaxWidth().height(80.dp).testTag("bar"),
+                        items = Screens.MainScreens,
+                        currentRoute = route,
+                        onTabSelected = {
+                            clicks++
+                            route = it.route
+                        },
+                        interactionEnabled = true,
+                    )
                 }
             }
         }
@@ -107,7 +111,13 @@ class StandardChromeTest {
                     }
                     StandardHomeChips(listOf("Energy" to "Energy", "On the road" to "On the road"), chip) { chip = it }
                     Spacer(Modifier.height(48.dp))
-                    StandardNavigationBar(Modifier.fillMaxWidth().height(80.dp), Screens.MainScreens, route) { route = it.route }
+                    StandardNavigationBar(
+                        modifier = Modifier.fillMaxWidth().height(80.dp),
+                        items = Screens.MainScreens,
+                        currentRoute = route,
+                        onTabSelected = { route = it.route },
+                        interactionEnabled = true,
+                    )
                 }
             }
         }
