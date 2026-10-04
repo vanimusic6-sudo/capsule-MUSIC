@@ -1653,7 +1653,6 @@ class MainActivity : ComponentActivity() {
                                                 currentRoute = navBackStackEntry?.destination?.route ?: "",
                                                 pureBlack = pureBlack,
                                                 capsuleMiniPlayerVisible = capsuleMiniPlayerActuallyVisible,
-                                                interactionEnabled = !playerBottomSheetState.isExpandedOrExpanding,
                                                 onTabSelected = { screen ->
                                                     if (screen.route == Screens.Search.route) {
                                                         onActiveChange(true)

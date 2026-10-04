@@ -64,7 +64,6 @@ import com.nikhil.yt.ui.component.BottomSheetState
 import com.nikhil.yt.ui.component.LocalBottomSheetPageState
 import com.nikhil.yt.ui.component.LocalMenuState
 import com.nikhil.yt.ui.component.rememberBottomSheetState
-import com.nikhil.yt.ui.component.miniPlayerForegroundAlpha
 import com.nikhil.yt.ui.menu.PlayerMenu
 import com.nikhil.yt.ui.screens.settings.DarkMode
 import com.nikhil.yt.ui.utils.ShowMediaInfo
@@ -349,7 +348,6 @@ fun BottomSheetPlayer(
         // instead of appearing as an unrelated full-width page behind it.
         collapsedHorizontalInset = if (capsuleDock) 10.dp else 12.dp,
         collapsedTopCornerRadius = if (capsuleDock) 24.dp else 14.dp,
-        expandedContentInteractive = state.expandedSurfaceAcceptsInput,
         onDismiss = {
             playerConnection.service.stopAndClearPlayback()
         },
@@ -363,11 +361,8 @@ fun BottomSheetPlayer(
                 duration = if (miniVisible) duration else 0L,
                 pureBlack = pureBlack,
                 visible = miniVisible,
-                // Controls/text vanish before the compact shell itself starts handing off.
-                // Read alpha in the render layer so this does not recompose MiniPlayer every frame.
-                foregroundAlpha = {
-                    miniPlayerForegroundAlpha(state.rawProgress)
-                },
+                // BottomSheet fades compact artwork + controls as one UI tree.
+                foregroundAlpha = { 1f },
                 foregroundInteractive = state.compactForegroundAcceptsInput,
             )
         },

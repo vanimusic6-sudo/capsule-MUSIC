@@ -27,6 +27,7 @@ import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.matchParentSize
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
@@ -48,7 +49,6 @@ import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
@@ -106,28 +106,15 @@ internal fun isAtSheetAnchor(
 /**
  * Player transition policy.
  *
- * The visual illusion is continuous, but Mini Player and full Player stay separate composables.
- * One physical sheet supplies the changing container bounds. Mini rides that sheet upward like a
- * real compact surface; full content takes over visually from the same progress.
+ * Physical motion has one source: the anchored sheet progress. Visual ownership is split at one
+ * handoff point so Mini UI and full Player UI are never visible at the same time. The moving
+ * container stays present through that handoff, which prevents an empty frame.
  *
- * No visual rule depends on a requested target/direction. Every value below is a pure function of
- * the one normalized Collapsed -> Expanded progress, so reversing a drag is exactly reversible.
+ * This follows the useful part of ArchiveTune's current BottomSheet: compact content yields before
+ * expanded content appears, while the sheet/background itself remains continuous.
  */
-internal const val MiniPlayerForegroundFadeStart = 0.02f
-internal const val MiniPlayerForegroundFadeEnd = 0.16f
-
-/*
- * One visual handoff for the physical player surface.
- *
- * The previous refactor kept the full sheet fully opaque and faded only child foreground. That
- * made closing end as a hard disappearance and made opening reveal a full-width sheet behind a
- * still-compact Mini Player. Surface ownership now changes gradually over a broad, reversible
- * section of the same physical progress.
- */
-internal const val PlayerContentHandoffStart = 0.06f
-internal const val PlayerContentHandoffEnd = 0.40f
-internal const val MiniSurfaceFadeStart = PlayerContentHandoffStart
-internal const val MiniSurfaceFadeEnd = PlayerContentHandoffEnd
+internal const val PlayerContentHandoffPoint = 0.25f
+internal const val FullPlayerContentFadeEnd = 0.50f
 
 private fun transitionWindow(
     progress: Float,
@@ -139,32 +126,66 @@ private fun transitionWindow(
     return CapsuleMotion.smooth(((p - start) / span).coerceIn(0f, 1f))
 }
 
-internal fun miniPlayerForegroundAlpha(progress: Float): Float =
+/** Entire compact UI, including artwork and controls. */
+internal fun miniPlayerContentAlpha(progress: Float): Float =
     (1f - transitionWindow(
         progress = progress,
-        start = MiniPlayerForegroundFadeStart,
-        end = MiniPlayerForegroundFadeEnd,
+        start = 0f,
+        end = PlayerContentHandoffPoint,
     )).coerceIn(0f, 1f)
 
-internal fun playerContentHandoff(progress: Float): Float =
+/** Full Player UI starts only after compact UI has completely yielded. */
+internal fun fullPlayerContentAlpha(progress: Float): Float =
     transitionWindow(
         progress = progress,
-        start = PlayerContentHandoffStart,
-        end = PlayerContentHandoffEnd,
+        start = PlayerContentHandoffPoint,
+        end = FullPlayerContentFadeEnd,
     )
 
-internal fun miniPlayerSurfaceAlpha(progress: Float): Float =
-    (1f - playerContentHandoff(progress)).coerceIn(0f, 1f)
+/** Non-interactive shared container that bridges the content handoff. */
+internal fun playerContainerAlpha(progress: Float): Float =
+    transitionWindow(
+        progress = progress,
+        start = 0f,
+        end = PlayerContentHandoffPoint,
+    )
 
-internal fun fullPlayerSurfaceAlpha(progress: Float): Float =
-    playerContentHandoff(progress)
+internal fun shouldRenderExpandedSurface(
+    rawProgress: Float,
+    isDismissed: Boolean,
+): Boolean {
+    if (isDismissed) return false
+    val p = if (rawProgress.isFinite()) rawProgress.coerceIn(0f, 1f) else 0f
+    return p > SHEET_PROGRESS_EPSILON
+}
 
-/**
- * Compatibility name for tests/callers that still describe this as foreground. The transition is
- * now owned by the full physical surface, not by a second child-alpha layer.
- */
-internal fun fullPlayerForegroundAlpha(progress: Float): Float =
-    fullPlayerSurfaceAlpha(progress)
+internal fun shouldRenderExpandedContent(
+    rawProgress: Float,
+    isDismissed: Boolean,
+): Boolean {
+    if (isDismissed) return false
+    val p = if (rawProgress.isFinite()) rawProgress.coerceIn(0f, 1f) else 0f
+    return p > PlayerContentHandoffPoint
+}
+
+internal fun shouldShowCompactSurface(
+    rawProgress: Float,
+    isDismissed: Boolean,
+): Boolean {
+    if (isDismissed) return false
+    val p = if (rawProgress.isFinite()) rawProgress.coerceIn(0f, 1f) else 1f
+    return p < PlayerContentHandoffPoint
+}
+
+internal fun miniPlayerForegroundCanAcceptInput(
+    rawProgress: Float,
+    isDismissed: Boolean,
+): Boolean = shouldShowCompactSurface(rawProgress, isDismissed)
+
+internal fun expandedPlayerCanAcceptInput(
+    rawProgress: Float,
+    isDismissed: Boolean,
+): Boolean = shouldRenderExpandedContent(rawProgress, isDismissed)
 
 /** Capsule navigation and the moving player sheet share the same upper-corner language. */
 internal val PlayerFrameCornerRadius = 26.dp
@@ -198,51 +219,6 @@ internal fun playerFrameHorizontalScale(
 }
 
 /**
- * Mount full content before Mini starts yielding. This is a pre-compose window, not a second
- * transition threshold: it prevents the first visible Player frame from also being its first
- * composition frame.
- */
-internal const val SheetExpandedRenderFloor = 0.025f
-
-internal fun shouldRenderExpandedSurface(
-    rawProgress: Float,
-    isDismissed: Boolean,
-): Boolean {
-    if (isDismissed) return false
-    val p = if (rawProgress.isFinite()) rawProgress.coerceIn(0f, 1f) else 0f
-    return p > SheetExpandedRenderFloor
-}
-
-internal fun shouldShowCompactSurface(
-    rawProgress: Float,
-    isDismissed: Boolean,
-): Boolean {
-    if (isDismissed) return false
-    val p = if (rawProgress.isFinite()) rawProgress.coerceIn(0f, 1f) else 1f
-    return p < MiniSurfaceFadeEnd
-}
-
-internal fun miniPlayerForegroundCanAcceptInput(
-    rawProgress: Float,
-    isDismissed: Boolean,
-): Boolean {
-    if (isDismissed) return false
-    val p = if (rawProgress.isFinite()) rawProgress.coerceIn(0f, 1f) else 1f
-    return p <= MiniPlayerForegroundFadeEnd
-}
-
-internal const val PlayerExpandedInputFloor = PlayerContentHandoffEnd
-
-internal fun expandedPlayerCanAcceptInput(
-    rawProgress: Float,
-    isDismissed: Boolean,
-): Boolean {
-    if (isDismissed) return false
-    val p = if (rawProgress.isFinite()) rawProgress.coerceIn(0f, 1f) else 0f
-    return p >= PlayerExpandedInputFloor
-}
-
-/**
  * One moving container, two independent content trees.
  *
  * The full Player sheet owns the physical trajectory. Mini Player rides the same trajectory and
@@ -262,7 +238,6 @@ fun BottomSheet(
     collapsedContentHeight: Dp? = null,
     collapsedHorizontalInset: Dp = 0.dp,
     collapsedTopCornerRadius: Dp = PlayerFrameCornerRadius,
-    expandedContentInteractive: Boolean = true,
     collapsedContent: @Composable BoxScope.() -> Unit,
     content: @Composable BoxScope.() -> Unit,
 ) {
@@ -284,13 +259,19 @@ fun BottomSheet(
         remember(state) {
             derivedStateOf {
                 miniPlayerClockShouldRun(state.isExpanded, state.isDismissed) &&
-                    state.rawProgress < MiniSurfaceFadeEnd
+                    state.compactSurfaceVisible
             }
         }
     val renderExpandedSurface by
         remember(state) {
             derivedStateOf {
                 shouldRenderExpandedSurface(state.rawProgress, state.isDismissed)
+            }
+        }
+    val renderExpandedContent by
+        remember(state) {
+            derivedStateOf {
+                shouldRenderExpandedContent(state.rawProgress, state.isDismissed)
             }
         }
 
@@ -341,7 +322,7 @@ fun BottomSheet(
                         // physically travels upward and the opacity handoff only softens the morph
                         // instead of replacing movement with a dissolve.
                         .graphicsLayer {
-                            alpha = miniPlayerSurfaceAlpha(state.rawProgress)
+                            alpha = miniPlayerContentAlpha(state.rawProgress)
                         }
                         // Mini visually yields over the same moving frame. Input has its own
                         // progress gate, so an almost-gone Mini cannot steal full-player controls.
@@ -368,12 +349,8 @@ fun BottomSheet(
                 modifier =
                     Modifier
                         .fillMaxSize()
-                        // One physical container transform: its top follows the anchored sheet,
-                        // its width grows from Mini Player geometry, its corners flatten, and its
-                        // opacity hands visual ownership over without an empty frame.
                         .graphicsLayer {
                             val raw = state.rawProgress.coerceIn(0f, 1f)
-                            alpha = fullPlayerSurfaceAlpha(raw)
                             scaleX =
                                 playerFrameHorizontalScale(
                                     progress = raw,
@@ -392,31 +369,29 @@ fun BottomSheet(
                                     topEnd = topCornerRadius,
                                 )
                             clip = topCornerRadius > 0.dp
-                        }
-                        .background(backgroundColor),
+                        },
             ) {
-                content()
+                Box(
+                    modifier =
+                        Modifier
+                            .matchParentSize()
+                            .graphicsLayer {
+                                alpha = playerContainerAlpha(state.rawProgress)
+                            }
+                            .background(backgroundColor),
+                )
 
-                if (!expandedContentInteractive) {
-                    /*
-                     * Visuals are allowed to finish travelling underneath navigation, but invisible
-                     * player controls must never remain a hit target. This sibling shield wins hit
-                     * testing over the player content while leaving the parent sheet's drag
-                     * detector in the pointer path, so swipe/reverse gestures still work.
-                     */
+                if (renderExpandedContent) {
                     Box(
                         modifier =
                             Modifier
-                                .matchParentSize()
-                                .zIndex(1_000f)
-                                .pointerInput(Unit) {
-                                    awaitPointerEventScope {
-                                        while (true) {
-                                            awaitPointerEvent()
-                                        }
-                                    }
+                                .fillMaxSize()
+                                .graphicsLayer {
+                                    alpha = fullPlayerContentAlpha(state.rawProgress)
                                 },
-                    )
+                    ) {
+                        content()
+                    }
                 }
             }
         }
@@ -552,9 +527,14 @@ class BottomSheetState internal constructor(
     val isAnimationRunning: Boolean
         get() = anchoredState.isAnimationRunning
 
-    /** Kept for compatibility with callers that store a legacy anchor id; visuals never read it. */
+    /*
+     * Semantic intent used by Back/navigation. Physical progress remains the only visual source.
+     * This prevents a closing spring from leaving Player as owner after close is requested.
+     */
+    private var requestedAnchor by mutableStateOf(anchoredState.targetValue)
+
     val targetAnchor: Int
-        get() = anchoredState.targetValue.legacyId()
+        get() = requestedAnchor.legacyId()
 
     val isDismissed by
         derivedStateOf {
@@ -593,28 +573,17 @@ class BottomSheetState internal constructor(
         }
 
     val isExpandedOrExpanding: Boolean
-        get() =
-            progress > SHEET_PROGRESS_EPSILON ||
-                anchoredState.targetValue == SheetAnchor.Expanded
+        get() = requestedAnchor == SheetAnchor.Expanded
 
     val isCollapsedOrCollapsing: Boolean
-        get() =
-            !isDismissed &&
-                (progress < 1f - SHEET_PROGRESS_EPSILON ||
-                    anchoredState.targetValue == SheetAnchor.Collapsed)
+        get() = requestedAnchor == SheetAnchor.Collapsed
 
     val isDismissedOrDismissing: Boolean
-        get() =
-            isDismissed ||
-                (
-                    hasDismissedAnchor &&
-                        value < collapsedBound &&
-                        anchoredState.targetValue == SheetAnchor.Dismissed
-                )
+        get() = requestedAnchor == SheetAnchor.Dismissed
 
     val shouldLayerAboveCollapsedChrome by
         derivedStateOf {
-            shouldRenderExpandedSurface(rawProgress, isDismissed)
+            shouldRenderExpandedContent(rawProgress, isDismissed)
         }
 
     val compactSurfaceVisible by
@@ -627,10 +596,19 @@ class BottomSheetState internal constructor(
             miniPlayerForegroundCanAcceptInput(rawProgress, isDismissed)
         }
 
-    val expandedSurfaceAcceptsInput by
-        derivedStateOf {
-            expandedPlayerCanAcceptInput(rawProgress, isDismissed)
+    private fun resolveRequestedAnchor(anchor: SheetAnchor): SheetAnchor =
+        if (anchor == SheetAnchor.Dismissed && !hasDismissedAnchor) {
+            SheetAnchor.Collapsed
+        } else {
+            anchor
         }
+
+    private fun requestAnchor(anchor: SheetAnchor): SheetAnchor {
+        val resolved = resolveRequestedAnchor(anchor)
+        requestedAnchor = resolved
+        onAnchorChanged(resolved.legacyId())
+        return resolved
+    }
 
     internal fun updateBounds(
         newDismissedBound: Dp,
@@ -651,10 +629,10 @@ class BottomSheetState internal constructor(
 
         val newHasDismissedAnchor = !isAtSheetAnchor(newDismissedBound, newCollapsedBound)
         val requestedTarget =
-            when {
-                anchoredState.targetValue == SheetAnchor.Dismissed && !newHasDismissedAnchor ->
-                    SheetAnchor.Collapsed
-                else -> anchoredState.targetValue
+            if (requestedAnchor == SheetAnchor.Dismissed && !newHasDismissedAnchor) {
+                requestAnchor(SheetAnchor.Collapsed)
+            } else {
+                requestedAnchor
             }
 
         anchoredState.updateAnchors(
@@ -675,14 +653,7 @@ class BottomSheetState internal constructor(
         initialVelocity: Float = anchoredState.lastVelocity,
         priority: MutatePriority = MutatePriority.Default,
     ) {
-        val resolvedTarget =
-            if (target == SheetAnchor.Dismissed && !hasDismissedAnchor) {
-                SheetAnchor.Collapsed
-            } else {
-                target
-            }
-
-        onAnchorChanged(resolvedTarget.legacyId())
+        val resolvedTarget = resolveRequestedAnchor(target)
         anchoredState.anchoredDrag(
             targetValue = resolvedTarget,
             dragPriority = priority,
@@ -712,10 +683,12 @@ class BottomSheetState internal constructor(
         animationSpec: AnimationSpec<Float>,
         priority: MutatePriority = MutatePriority.Default,
     ) {
+        val requested = requestAnchor(target)
         coroutineScope.launch {
+            if (requestedAnchor != requested) return@launch
             try {
                 animateToAnchor(
-                    target = target,
+                    target = requested,
                     animationSpec = animationSpec,
                     priority = priority,
                 )
@@ -767,11 +740,12 @@ class BottomSheetState internal constructor(
                 else -> SheetAnchor.Collapsed
             }
 
-        onAnchorChanged(target.legacyId())
+        val requested = requestAnchor(target)
         coroutineScope.launch {
+            if (requestedAnchor != requested) return@launch
             try {
                 anchoredState.anchoredDrag(
-                    targetValue = target,
+                    targetValue = requested,
                     dragPriority = MutatePriority.PreventUserInput,
                 ) { anchors, latestTarget ->
                     val targetOffset = anchors.positionOf(latestTarget)
@@ -854,7 +828,7 @@ class BottomSheetState internal constructor(
                 velocityThresholdPxPerSecond = velocityThresholdPx,
                 allowDismiss = allowDismiss && onDismiss != null,
             )
-        val target = legacyAnchor(targetId, hasDismissedAnchor)
+        val target = requestAnchor(legacyAnchor(targetId, hasDismissedAnchor))
 
         animateToAnchor(
             target = target,
@@ -1112,9 +1086,9 @@ fun Modifier.bottomSheetDraggable(
         state = verticalDragState,
         orientation = Orientation.Vertical,
         enabled = true,
-        // Match AnchoredDraggable's own policy: an animating surface can be caught on DOWN
-        // and the UserInput mutation takes over from the exact current offset.
-        startDragImmediately = state.isAnimationRunning,
+        // Child controls own taps. Vertical drag takes ownership only after touch slop, then
+        // AnchoredDraggable cancels the running settle at its current physical offset.
+        startDragImmediately = false,
         onDragStarted = {
             gesturePolicy.allowDismiss =
                 onDismiss != null &&

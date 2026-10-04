@@ -15,6 +15,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.assertDoesNotExist
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTouchInput
@@ -22,6 +23,7 @@ import androidx.compose.ui.unit.dp
 import com.nikhil.yt.ui.component.BottomSheet
 import com.nikhil.yt.ui.component.BottomSheetState
 import com.nikhil.yt.ui.component.COLLAPSED_ANCHOR
+import com.nikhil.yt.ui.component.PlayerContentHandoffPoint
 import com.nikhil.yt.ui.component.rememberBottomSheetState
 import kotlin.math.abs
 import org.junit.Assert.assertEquals
@@ -239,6 +241,67 @@ class PlayerTransitionGestureTest {
             assertTrue(state.isDismissed)
             assertEquals(1, dismisses)
         }
+    }
+
+    @Test fun `close request releases expanded ownership before spring settles`() {
+        showSheet()
+        compose.runOnIdle { state.expandSoft() }
+        compose.waitForIdle()
+        compose.mainClock.autoAdvance = false
+        try {
+            compose.runOnIdle { state.collapseSoft() }
+            compose.runOnIdle {
+                assertTrue(state.rawProgress > 0.9f)
+                assertTrue(!state.isExpandedOrExpanding)
+                assertTrue(state.isCollapsedOrCollapsing)
+            }
+        } finally {
+            compose.mainClock.autoAdvance = true
+        }
+        compose.waitForIdle()
+    }
+
+    @Test fun `mini child accepts tap while closing spring is still running`() {
+        showSheet()
+        compose.runOnIdle { state.expandSoft() }
+        compose.waitForIdle()
+        compose.mainClock.autoAdvance = false
+        try {
+            compose.runOnIdle { state.collapseSoft() }
+            advanceUntilProgress(
+                min = PlayerContentHandoffPoint * 0.35f,
+                max = PlayerContentHandoffPoint * 0.75f,
+            )
+            compose.onNodeWithTag("childButton").performTouchInput {
+                down(center)
+                up()
+            }
+            compose.runOnIdle {
+                assertEquals(1, childClicks)
+                assertTrue(state.isAnimationRunning)
+            }
+        } finally {
+            compose.mainClock.autoAdvance = true
+        }
+        compose.waitForIdle()
+    }
+
+    @Test fun `full player content leaves hit tree when mini owns handoff`() {
+        showSheet()
+        compose.runOnIdle { state.expandSoft() }
+        compose.waitForIdle()
+        compose.mainClock.autoAdvance = false
+        try {
+            compose.runOnIdle { state.collapseSoft() }
+            advanceUntilProgress(
+                min = PlayerContentHandoffPoint * 0.35f,
+                max = PlayerContentHandoffPoint * 0.75f,
+            )
+            compose.onNodeWithTag("full", useUnmergedTree = true).assertDoesNotExist()
+        } finally {
+            compose.mainClock.autoAdvance = true
+        }
+        compose.waitForIdle()
     }
 
     @Test fun `latest rapid programmatic request owns the transition`() {
