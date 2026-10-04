@@ -107,28 +107,40 @@ internal fun isAtSheetAnchor(
     (value - anchor).value.absoluteValue <= ANCHOR_EPSILON_DP
 
 /**
- * The compact shell is an overlay on the leading edge of one physical player sheet.
+ * Mini Player and full Player are deliberately separate visual surfaces.
  *
- * The old implementation cross-faded the entire full-screen surface against the mini surface.
- * That made the transition read as two screens dissolving through each other and amplified tiny
- * background colour differences into brightness flashes. The full sheet is now opaque as soon as
- * it physically enters the viewport; only the compact shell releases its ownership over the first
- * part of travel.
+ * They share only this transition progress. The compact card stays physically pinned to its dock
+ * while the full player travels independently from below the viewport. This keeps Mini controls,
+ * track swipes and dismissal ownership independent from the full player's composition/lifecycle.
  */
-internal const val PlayerMorphHandoffWindow = 0.32f
-private const val CompactShellReleaseStart = 0.10f
+internal const val MiniSurfaceFadeStart = 0.08f
+internal const val MiniSurfaceFadeEnd = 0.30f
 
-internal fun playerMorphHandoff(progress: Float): Float {
-    if (!progress.isFinite()) return 1f
-    val p = progress.coerceIn(0f, 1f)
-    val span = (PlayerMorphHandoffWindow - CompactShellReleaseStart).coerceAtLeast(0.0001f)
-    return CapsuleMotion.smooth(
-        ((p - CompactShellReleaseStart) / span).coerceIn(0f, 1f),
-    )
+internal fun miniPlayerSurfaceAlpha(progress: Float): Float {
+    val p = if (progress.isFinite()) progress.coerceIn(0f, 1f) else 1f
+    val span = (MiniSurfaceFadeEnd - MiniSurfaceFadeStart).coerceAtLeast(0.0001f)
+    return (
+        1f -
+            CapsuleMotion.smooth(
+                ((p - MiniSurfaceFadeStart) / span).coerceIn(0f, 1f),
+            )
+        ).coerceIn(0f, 1f)
 }
 
-internal fun compactPlayerSurfaceAlpha(progress: Float): Float =
-    (1f - playerMorphHandoff(progress)).coerceIn(0f, 1f)
+/** Counter-translation that keeps Mini Player fixed at the dock while Player travels upward. */
+internal fun miniPlayerPinOffset(
+    value: Dp,
+    collapsedBound: Dp,
+): Dp = (value - collapsedBound).coerceAtLeast(0.dp)
+
+/** Full Player starts below the viewport and independently loses this offset as it opens. */
+internal fun fullPlayerRevealOffset(
+    collapsedBound: Dp,
+    progress: Float,
+): Dp {
+    val p = if (progress.isFinite()) progress.coerceIn(0f, 1f) else 0f
+    return collapsedBound * (1f - p)
+}
 
 /** Capsule navigation and the moving player sheet share the same upper-corner language. */
 internal val PlayerFrameCornerRadius = 26.dp
@@ -161,7 +173,7 @@ internal fun shouldRenderExpandedSurface(rawProgress: Float, targetAnchor: Int):
 internal fun shouldShowCompactSurface(rawProgress: Float, targetAnchor: Int): Boolean {
     if (targetAnchor == DISMISSED_ANCHOR) return false
     val p = if (rawProgress.isFinite()) rawProgress.coerceIn(0f, 1f) else 1f
-    return p < PlayerMorphHandoffWindow
+    return p < MiniSurfaceFadeEnd
 }
 
 /**
@@ -201,6 +213,20 @@ internal fun fullPlayerForegroundAlpha(
 
 internal const val MiniGestureCoordinatorProgressCeiling = MiniPlayerForegroundFadeEnd
 
+internal const val MiniOpenCommitProgress = 0.12f
+internal const val MiniOpenFlingVelocity = 420f
+internal const val MiniOpenReverseVelocity = -220f
+
+internal fun shouldExpandMiniGesture(
+    rawProgress: Float,
+    velocity: Float,
+): Boolean {
+    if (velocity >= MiniOpenFlingVelocity) return true
+    if (velocity <= MiniOpenReverseVelocity) return false
+    val p = if (rawProgress.isFinite()) rawProgress.coerceIn(0f, 1f) else 0f
+    return p >= MiniOpenCommitProgress
+}
+
 internal fun canStartMiniGestureCoordinator(rawProgress: Float): Boolean {
     val p = if (rawProgress.isFinite()) rawProgress.coerceIn(0f, 1f) else 1f
     // The compact surface owns input for as long as its foreground is still visibly present.
@@ -230,10 +256,11 @@ internal fun expandedPlayerCanAcceptInput(rawProgress: Float, targetAnchor: Int)
 }
 
 /**
- * A single physical Capsule sheet.
+ * Shared motion controller for two independent surfaces.
  *
- * Animated values are consumed from layout/layer lambdas so a drag invalidates position or the GPU
- * layer rather than recomposing the whole player tree.
+ * The outer state owns only the open/close progress. Mini Player is counter-translated to remain
+ * docked; full Player has its own reveal offset. Animated values stay in layout/layer lambdas so a
+ * drag invalidates position or the GPU layer rather than recomposing either player tree.
  */
 @Composable
 fun BottomSheet(
@@ -261,14 +288,14 @@ fun BottomSheet(
         remember(state, onDismiss) {
             derivedStateOf {
                 (onDismiss == null || !state.isDismissed) &&
-                    state.compactSurfaceVisible
+                    state.compactForegroundAcceptsInput
             }
         }
     val miniBackgroundMotionEnabled by
         remember(state) {
             derivedStateOf {
                 miniPlayerClockShouldRun(state.isExpanded, state.isDismissed) &&
-                    state.rawProgress < PlayerMorphHandoffWindow
+                    state.rawProgress < MiniSurfaceFadeEnd
             }
         }
     val renderExpandedSurface by
@@ -321,18 +348,26 @@ fun BottomSheet(
             Box(
                 modifier =
                     Modifier
-                        /*
-                         * Do not counter-translate the mini-player. It now rides the very same
-                         * BottomSheet that becomes the full player, which is what creates the
-                         * ArchiveTune-style "lift and flow" instead of a dock handoff between two
-                         * unrelated objects. Only opacity changes during the first half of travel.
-                         */
-                        .graphicsLayer {
-                            alpha = compactPlayerSurfaceAlpha(state.rawProgress)
+                        // Counter the parent sheet's upward travel: Mini Player remains a docked,
+                        // independent surface instead of being physically dragged into Player.
+                        .offset {
+                            IntOffset(
+                                x = 0,
+                                y =
+                                    miniPlayerPinOffset(
+                                        value = state.value,
+                                        collapsedBound = state.collapsedBound,
+                                    ).roundToPx(),
+                            )
                         }
-                        // When closing, the returning mini owns its own small hit region even if
-                        // the almost-transparent full surface has not been unmounted yet.
-                        .zIndex(if (state.isCollapsedOrCollapsing) 1f else 0f)
+                        .graphicsLayer {
+                            alpha = miniPlayerSurfaceAlpha(state.rawProgress)
+                        }
+                        // Keep the fading Mini above the arriving Player, but input is separately
+                        // gated and turns off before the visual surface is completely gone.
+                        .zIndex(
+                            if (state.rawProgress < MiniSurfaceFadeEnd) 2f else 0f,
+                        )
                         .clickable(
                             enabled = canReopen,
                             interactionSource = remember { MutableInteractionSource() },
@@ -355,26 +390,21 @@ fun BottomSheet(
                 modifier =
                     Modifier
                         .fillMaxSize()
-                        /*
-                         * The outer BottomSheet already supplies the only translation we need. The
-                         * full player therefore appears inside the exact surface the mini-player is
-                         * riding instead of adding a second offset/scale/descent on top of it.
-                         */
+                        // Full Player is its own travelling canvas. At the compact anchor its top
+                        // edge is below the viewport; opening removes this offset independently of
+                        // the Mini Player, which remains pinned to the dock above it.
+                        .offset {
+                            IntOffset(
+                                x = 0,
+                                y =
+                                    fullPlayerRevealOffset(
+                                        collapsedBound = state.collapsedBound,
+                                        progress = state.progress,
+                                    ).roundToPx(),
+                            )
+                        }
                         .graphicsLayer {
                             val raw = state.rawProgress.coerceIn(0f, 1f)
-                            /*
-                             * This is the same physical sheet that was below the compact card.
-                             * Never fade the whole page: doing so reveals unrelated chrome/colors
-                             * underneath and makes opening/closing look like a dissolve.
-                             */
-                            alpha = 1f
-
-                            /*
-                             * No independent Y shift here. Mini and full surface share the exact
-                             * same leading edge; the app navigation itself moves over that edge on
-                             * close and away from it on open. This prevents the mini from sitting
-                             * lower than the visual sheet edge during the handoff.
-                             */
                             val topCornerRadius = playerFrameCornerRadius(raw)
                             shape =
                                 RoundedCornerShape(
