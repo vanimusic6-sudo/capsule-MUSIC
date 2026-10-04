@@ -102,6 +102,7 @@ import com.nikhil.yt.ui.component.BottomSheetState
 import com.nikhil.yt.ui.component.canStartMiniDismissGesture
 import com.nikhil.yt.ui.component.canStartMiniGestureCoordinator
 import com.nikhil.yt.ui.component.constrainBottomSheetDragDelta
+import com.nikhil.yt.ui.component.shouldExpandMiniGesture
 import com.nikhil.yt.ui.screens.settings.DiscordPresenceManager
 import com.nikhil.yt.utils.rememberEnumPreference
 import com.nikhil.yt.utils.rememberPreference
@@ -544,15 +545,30 @@ fun CapsuleMiniPlayer(
                                             }
                                         verticalVelocity.resetTracking()
                                         if (completed) {
-                                            playerState.performFling(
-                                                velocity = velocity,
-                                                onDismiss =
-                                                    if (dismissAllowedForGesture) {
-                                                        onVerticalDismiss
-                                                    } else {
-                                                        null
-                                                    },
-                                            )
+                                            val movedAboveDock =
+                                                playerState.value > playerState.collapsedBound
+                                            if (
+                                                movedAboveDock &&
+                                                shouldExpandMiniGesture(
+                                                    rawProgress = playerState.rawProgress,
+                                                    velocity = velocity,
+                                                )
+                                            ) {
+                                                // Compact drag has a deliberate, short commit
+                                                // distance. It should not require pulling a phone-
+                                                // height sheet past its global 50% midpoint.
+                                                playerState.expandSoft()
+                                            } else {
+                                                playerState.performFling(
+                                                    velocity = velocity,
+                                                    onDismiss =
+                                                        if (dismissAllowedForGesture) {
+                                                            onVerticalDismiss
+                                                        } else {
+                                                            null
+                                                        },
+                                                )
+                                            }
                                         } else {
                                             // Cancellation is never interpreted as a destructive
                                             // dismiss. Return to the compact anchor instead.
