@@ -179,7 +179,7 @@ class PlayerTransitionGestureTest {
         }
     }
 
-    @Test fun `downward action dismisses only when gesture begins at mini dock`() {
+    @Test fun `downward action from mini dock dismisses playback surface`() {
         showSheet()
         miniNode().performTouchInput {
             down(center)
@@ -193,7 +193,9 @@ class PlayerTransitionGestureTest {
             assertTrue(state.isDismissed)
             assertEquals(1, dismisses)
         }
+    }
 
+    @Test fun `downward action that begins expanded cannot destructively dismiss`() {
         showSheet()
         compose.runOnIdle { state.expandSoft() }
         compose.waitForIdle()
