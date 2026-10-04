@@ -9,6 +9,15 @@ import com.nikhil.yt.ui.component.canStartMiniGestureCoordinator
 import com.nikhil.yt.ui.component.miniPlayerForegroundCanAcceptInput
 import com.nikhil.yt.ui.component.MiniDismissStartProgressCeiling
 import com.nikhil.yt.ui.component.MiniGestureCoordinatorProgressCeiling
+import com.nikhil.yt.ui.component.MiniOpenCommitProgress
+import com.nikhil.yt.ui.component.MiniOpenFlingVelocity
+import com.nikhil.yt.ui.component.MiniOpenReverseVelocity
+import com.nikhil.yt.ui.component.MiniSurfaceFadeStart
+import com.nikhil.yt.ui.component.MiniSurfaceFadeEnd
+import com.nikhil.yt.ui.component.fullPlayerRevealOffset
+import com.nikhil.yt.ui.component.miniPlayerPinOffset
+import com.nikhil.yt.ui.component.miniPlayerSurfaceAlpha
+import com.nikhil.yt.ui.component.shouldExpandMiniGesture
 import com.nikhil.yt.ui.component.COLLAPSED_ANCHOR
 import com.nikhil.yt.ui.component.DISMISSED_ANCHOR
 import org.junit.Assert.assertEquals
@@ -94,6 +103,34 @@ class BottomSheetAnchorTest {
             ),
         )
         assertFalse(miniPlayerForegroundCanAcceptInput(0f, DISMISSED_ANCHOR))
+    }
+
+
+    @Test fun `mini and full player use independent transition geometry`() {
+        val collapsed = 80.dp
+        // Mini counter-translation grows exactly with sheet travel, so its screen position stays
+        // fixed. Full Player instead owns a separate reveal offset that falls to zero.
+        assertEquals(0.dp, miniPlayerPinOffset(80.dp, collapsed))
+        assertEquals(40.dp, miniPlayerPinOffset(120.dp, collapsed))
+        assertEquals(80.dp, fullPlayerRevealOffset(collapsed, 0f))
+        assertEquals(40.dp, fullPlayerRevealOffset(collapsed, 0.5f))
+        assertEquals(0.dp, fullPlayerRevealOffset(collapsed, 1f))
+    }
+
+    @Test fun `mini surface visibly fades instead of riding into full player`() {
+        assertEquals(1f, miniPlayerSurfaceAlpha(0f), 0f)
+        assertEquals(1f, miniPlayerSurfaceAlpha(MiniSurfaceFadeStart), 0f)
+        val middle = miniPlayerSurfaceAlpha((MiniSurfaceFadeStart + MiniSurfaceFadeEnd) / 2f)
+        assertTrue(middle in 0.01f..0.99f)
+        assertEquals(0f, miniPlayerSurfaceAlpha(MiniSurfaceFadeEnd), 0f)
+        assertEquals(0f, miniPlayerSurfaceAlpha(1f), 0f)
+    }
+
+    @Test fun `short intentional upward mini drag commits open`() {
+        assertFalse(shouldExpandMiniGesture(MiniOpenCommitProgress - 0.01f, 0f))
+        assertTrue(shouldExpandMiniGesture(MiniOpenCommitProgress, 0f))
+        assertTrue(shouldExpandMiniGesture(0.01f, MiniOpenFlingVelocity))
+        assertFalse(shouldExpandMiniGesture(0.8f, MiniOpenReverseVelocity))
     }
 
     @Test fun `mini player drag cannot cross its dock when dismissal is disabled`() {
