@@ -99,6 +99,8 @@ import com.nikhil.yt.models.MediaMetadata
 import com.nikhil.yt.together.TogetherRole
 import com.nikhil.yt.together.TogetherSessionState
 import com.nikhil.yt.ui.component.BottomSheetState
+import com.nikhil.yt.ui.component.COLLAPSED_ANCHOR
+import com.nikhil.yt.ui.component.EXPANDED_ANCHOR
 import com.nikhil.yt.ui.component.canStartMiniDismissGesture
 import com.nikhil.yt.ui.component.canStartMiniGestureCoordinator
 import com.nikhil.yt.ui.component.constrainBottomSheetDragDelta
@@ -414,6 +416,13 @@ fun CapsuleMiniPlayer(
                                             }
 
                                             MiniDragAxis.VERTICAL -> {
+                                                playerState.beginInteractiveDrag(
+                                                    if (overSlop.y < 0f) {
+                                                        EXPANDED_ANCHOR
+                                                    } else {
+                                                        COLLAPSED_ANCHOR
+                                                    },
+                                                )
                                                 verticalVelocity.resetTracking()
                                                 verticalVelocity.addPointerInputChange(change)
                                                 playerState.dispatchRawDelta(
