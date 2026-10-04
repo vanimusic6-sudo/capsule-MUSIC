@@ -399,7 +399,7 @@ fun BottomSheet(
                                 y =
                                     fullPlayerRevealOffset(
                                         collapsedBound = state.collapsedBound,
-                                        progress = state.progress,
+                                        progress = state.rawProgress,
                                     ).roundToPx(),
                             )
                         }
