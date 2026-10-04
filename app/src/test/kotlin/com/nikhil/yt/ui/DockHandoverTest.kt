@@ -10,6 +10,8 @@ import com.nikhil.yt.ui.component.PlayerExpandedInputFloor
 import com.nikhil.yt.ui.component.SheetExpandedRenderFloor
 import com.nikhil.yt.ui.component.expandedPlayerCanAcceptInput
 import com.nikhil.yt.ui.component.fullPlayerForegroundAlpha
+import com.nikhil.yt.ui.component.fullPlayerSurfaceAlpha
+import com.nikhil.yt.ui.component.playerFrameHorizontalScale
 import com.nikhil.yt.ui.component.miniPlayerForegroundAlpha
 import com.nikhil.yt.ui.component.miniPlayerForegroundCanAcceptInput
 import com.nikhil.yt.ui.component.miniPlayerPinOffset
@@ -56,6 +58,37 @@ class DockHandoverTest {
         assertEquals(0f, fullPlayerForegroundAlpha(PlayerContentHandoffStart), 0f)
         assertEquals(0f, miniPlayerSurfaceAlpha(MiniSurfaceFadeEnd), 0f)
         assertEquals(1f, fullPlayerForegroundAlpha(MiniSurfaceFadeEnd), 0f)
+    }
+
+
+    @Test fun `full physical surface fades exactly opposite the mini shell`() {
+        for (step in 0..100) {
+            val progress = step / 100f
+            assertEquals(
+                "surface ownership gap at $progress",
+                1f,
+                miniPlayerSurfaceAlpha(progress) + fullPlayerSurfaceAlpha(progress),
+                0.0001f,
+            )
+        }
+        assertEquals(0f, fullPlayerSurfaceAlpha(0f), 0f)
+        assertEquals(1f, fullPlayerSurfaceAlpha(1f), 0f)
+    }
+
+    @Test fun `full surface widens monotonically from mini inset to screen width`() {
+        val width = 400f
+        val inset = 12f
+        val collapsed = (width - inset * 2f) / width
+        assertEquals(collapsed, playerFrameHorizontalScale(0f, width, inset), 0.0001f)
+        assertEquals(1f, playerFrameHorizontalScale(1f, width, inset), 0.0001f)
+
+        var previous = collapsed
+        for (step in 0..100) {
+            val scale = playerFrameHorizontalScale(step / 100f, width, inset)
+            assertTrue(scale + 1e-6f >= previous)
+            assertTrue(scale in collapsed..1f)
+            previous = scale
+        }
     }
 
     @Test fun `full player is composed before it becomes visually responsible`() {

@@ -52,6 +52,7 @@ jobs:
             --tests 'com.nikhil.yt.ui.BottomSheetAnchorTest' \
             --tests 'com.nikhil.yt.ui.DockHandoverTest' \
             --tests 'com.nikhil.yt.ui.PlayerTransitionGestureTest' \
+            --tests 'com.nikhil.yt.ui.CapsuleFavoriteAnimationTest' \
             --tests 'com.nikhil.yt.ui.PlayerMenuGestureTest' \
             --tests 'com.nikhil.yt.ui.MiniPlayerSwipeMotionTest' \
             --tests 'com.nikhil.yt.ui.CapsuleBackgroundMotionTest' \

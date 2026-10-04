@@ -44,6 +44,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
@@ -113,9 +114,18 @@ internal fun isAtSheetAnchor(
  * the one normalized Collapsed -> Expanded progress, so reversing a drag is exactly reversible.
  */
 internal const val MiniPlayerForegroundFadeStart = 0.02f
-internal const val MiniPlayerForegroundFadeEnd = 0.12f
-internal const val PlayerContentHandoffStart = 0.08f
-internal const val PlayerContentHandoffEnd = 0.24f
+internal const val MiniPlayerForegroundFadeEnd = 0.16f
+
+/*
+ * One visual handoff for the physical player surface.
+ *
+ * The previous refactor kept the full sheet fully opaque and faded only child foreground. That
+ * made closing end as a hard disappearance and made opening reveal a full-width sheet behind a
+ * still-compact Mini Player. Surface ownership now changes gradually over a broad, reversible
+ * section of the same physical progress.
+ */
+internal const val PlayerContentHandoffStart = 0.03f
+internal const val PlayerContentHandoffEnd = 0.38f
 internal const val MiniSurfaceFadeStart = PlayerContentHandoffStart
 internal const val MiniSurfaceFadeEnd = PlayerContentHandoffEnd
 
@@ -146,8 +156,15 @@ internal fun playerContentHandoff(progress: Float): Float =
 internal fun miniPlayerSurfaceAlpha(progress: Float): Float =
     (1f - playerContentHandoff(progress)).coerceIn(0f, 1f)
 
-internal fun fullPlayerForegroundAlpha(progress: Float): Float =
+internal fun fullPlayerSurfaceAlpha(progress: Float): Float =
     playerContentHandoff(progress)
+
+/**
+ * Compatibility name for tests/callers that still describe this as foreground. The transition is
+ * now owned by the full physical surface, not by a second child-alpha layer.
+ */
+internal fun fullPlayerForegroundAlpha(progress: Float): Float =
+    fullPlayerSurfaceAlpha(progress)
 
 /** Counter-translation keeps Mini Player pinned while the shared player sheet rises behind it. */
 internal fun miniPlayerPinOffset(
@@ -158,10 +175,32 @@ internal fun miniPlayerPinOffset(
 /** Capsule navigation and the moving player sheet share the same upper-corner language. */
 internal val PlayerFrameCornerRadius = 26.dp
 
-internal fun playerFrameCornerRadius(progress: Float): Dp {
+internal fun playerFrameCornerRadius(
+    progress: Float,
+    collapsedRadius: Dp = PlayerFrameCornerRadius,
+): Dp {
     val p = if (progress.isFinite()) progress.coerceIn(0f, 1f) else 1f
     val eased = CapsuleMotion.smooth(p).coerceIn(0f, 1f)
-    return (PlayerFrameCornerRadius * (1f - eased)).coerceAtLeast(0.dp)
+    return (collapsedRadius * (1f - eased)).coerceAtLeast(0.dp)
+}
+
+/**
+ * Horizontal container morph from the actual Mini Player inset to full-screen width.
+ *
+ * This is a GPU transform, not a layout animation: the full player tree keeps stable measurement
+ * while its physical shell widens around the top-centre origin.
+ */
+internal fun playerFrameHorizontalScale(
+    progress: Float,
+    widthPx: Float,
+    collapsedInsetPx: Float,
+): Float {
+    if (!widthPx.isFinite() || widthPx <= 0f) return 1f
+    val safeInset = collapsedInsetPx.coerceIn(0f, widthPx * 0.25f)
+    val collapsedScale = ((widthPx - safeInset * 2f) / widthPx).coerceIn(0.5f, 1f)
+    val p = if (progress.isFinite()) progress.coerceIn(0f, 1f) else 1f
+    val eased = CapsuleMotion.smooth(p).coerceIn(0f, 1f)
+    return collapsedScale + (1f - collapsedScale) * eased
 }
 
 /**
@@ -227,6 +266,8 @@ fun BottomSheet(
     dismissOnlyFromCollapsed: Boolean = false,
     backHandlerEnabled: Boolean = true,
     collapsedContentHeight: Dp? = null,
+    collapsedHorizontalInset: Dp = 0.dp,
+    collapsedTopCornerRadius: Dp = PlayerFrameCornerRadius,
     expandedContentInteractive: Boolean = true,
     collapsedContent: @Composable BoxScope.() -> Unit,
     content: @Composable BoxScope.() -> Unit,
@@ -342,12 +383,24 @@ fun BottomSheet(
                 modifier =
                     Modifier
                         .fillMaxSize()
-                        // No second reveal offset here. The parent sheet already starts exactly
-                        // at Mini Player's top edge and travels to the expanded anchor. Keeping one
-                        // trajectory is what removes the Mini-fades-before-Player gap.
+                        // One physical container transform: its top follows the anchored sheet,
+                        // its width grows from Mini Player geometry, its corners flatten, and its
+                        // opacity hands visual ownership over without an empty frame.
                         .graphicsLayer {
                             val raw = state.rawProgress.coerceIn(0f, 1f)
-                            val topCornerRadius = playerFrameCornerRadius(raw)
+                            alpha = fullPlayerSurfaceAlpha(raw)
+                            scaleX =
+                                playerFrameHorizontalScale(
+                                    progress = raw,
+                                    widthPx = size.width,
+                                    collapsedInsetPx = collapsedHorizontalInset.toPx(),
+                                )
+                            transformOrigin = TransformOrigin(0.5f, 0f)
+                            val topCornerRadius =
+                                playerFrameCornerRadius(
+                                    progress = raw,
+                                    collapsedRadius = collapsedTopCornerRadius,
+                                )
                             shape =
                                 RoundedCornerShape(
                                     topStart = topCornerRadius,

@@ -65,11 +65,12 @@ import com.nikhil.yt.ui.component.LocalBottomSheetPageState
 import com.nikhil.yt.ui.component.LocalMenuState
 import com.nikhil.yt.ui.component.rememberBottomSheetState
 import com.nikhil.yt.ui.component.miniPlayerForegroundAlpha
-import com.nikhil.yt.ui.component.fullPlayerForegroundAlpha
 import com.nikhil.yt.ui.menu.PlayerMenu
 import com.nikhil.yt.ui.screens.settings.DarkMode
 import com.nikhil.yt.ui.utils.ShowMediaInfo
+import com.nikhil.yt.ui.theme.CapsuleBottomBarEnabledKey
 import com.nikhil.yt.utils.rememberEnumPreference
+import com.nikhil.yt.utils.rememberPreference
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.isActive
@@ -103,6 +104,7 @@ fun BottomSheetPlayer(
     }
 
     val playerDesign by rememberEnumPreference(CapsulePlayerDesignKey, CapsulePlayerDesign.SUPER)
+    val capsuleDock by rememberPreference(CapsuleBottomBarEnabledKey, false)
     val configuration = LocalConfiguration.current
     val isLandscape =
         configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
@@ -343,6 +345,10 @@ fun BottomSheetPlayer(
         dismissOnlyFromCollapsed = true,
         backHandlerEnabled = false,
         collapsedContentHeight = MiniPlayerHeight,
+        // Match CapsuleMiniPlayer's real geometry so the full surface grows out of the card
+        // instead of appearing as an unrelated full-width page behind it.
+        collapsedHorizontalInset = if (capsuleDock) 10.dp else 12.dp,
+        collapsedTopCornerRadius = if (capsuleDock) 24.dp else 14.dp,
         expandedContentInteractive = state.expandedSurfaceAcceptsInput,
         onDismiss = {
             playerConnection.service.stopAndClearPlayback()
@@ -394,19 +400,7 @@ fun BottomSheetPlayer(
 
             enrichedMetadata?.let { metadata ->
                 Box(
-                    modifier =
-                        Modifier
-                            .fillMaxSize()
-                            .graphicsLayer {
-                                // Opening keeps the UI attached to the arriving player surface.
-                                // Only closing gets a late shell-only stage near the dock.
-                                alpha =
-                                    if (effectivePlayerDesign == CapsulePlayerDesign.IMMERSIVE) {
-                                        1f
-                                    } else {
-                                        fullPlayerForegroundAlpha(state.rawProgress)
-                                    }
-                            },
+                    modifier = Modifier.fillMaxSize(),
                 ) {
                     CapsulePlayerLyricsHost(
                     design = effectivePlayerDesign,
@@ -444,9 +438,10 @@ fun BottomSheetPlayer(
                             freezeBackdropAfterLyricsSettles = false
                         }
                     },
-                    transitionForegroundAlpha = {
-                        fullPlayerForegroundAlpha(state.rawProgress)
-                    },
+                    // BottomSheet owns the one transition alpha for every player design.
+                    // Immersive keeps this hook for its internal layout, but a second fade here
+                    // would square the opacity and desynchronise it from Light/Cosmo.
+                    transitionForegroundAlpha = { 1f },
                     onShowMenu = {
                         menuState.show {
                             PlayerMenu(

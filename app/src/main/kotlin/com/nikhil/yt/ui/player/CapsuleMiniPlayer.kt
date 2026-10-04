@@ -57,6 +57,7 @@ import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
@@ -1105,6 +1106,7 @@ private fun CapsuleFavoriteButton(
 ) {
     val favoriteTint = CapsuleFavoriteColors.selected(LocalContentColor.current)
     val favoriteInteraction = remember { MutableInteractionSource() }
+    var userActionToken by remember { mutableIntStateOf(0) }
     Box(
         contentAlignment =
             Alignment.Center,
@@ -1149,7 +1151,13 @@ private fun CapsuleFavoriteButton(
                     enabled = interactionEnabled,
                     interactionSource = favoriteInteraction,
                     indication = null,
-                    onClick = onClick,
+                    onClick = {
+                        // Parent vertical draggable may win/cancel PressInteraction on some touch
+                        // streams. Arm the morph explicitly before the Room-backed liked state
+                        // arrives, just like the full Light player does.
+                        userActionToken += 1
+                        onClick()
+                    },
                 ),
     ) {
         CapsuleFavoriteIcon(
@@ -1163,6 +1171,7 @@ private fun CapsuleFavoriteButton(
                 },
             modifier =
                 Modifier.size(if (standardStyle) 26.dp else 20.dp),
+            userActionToken = userActionToken,
         )
     }
 }

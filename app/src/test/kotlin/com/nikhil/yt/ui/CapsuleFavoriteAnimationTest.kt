@@ -93,6 +93,39 @@ class CapsuleFavoriteAnimationTest {
         compose.mainClock.autoAdvance = true
     }
 
+
+    @Test fun explicitUserActionTokenKeepsDelayedStateChangeAnimated() {
+        var liked by mutableStateOf(false)
+        var actionToken by mutableStateOf(0)
+        compose.setContent {
+            MaterialTheme {
+                Box(Modifier.background(Color.Black)) {
+                    CapsuleFavoriteIcon(
+                        liked = liked,
+                        tint = Color.White,
+                        modifier = Modifier.size(48.dp).testTag("heart-token"),
+                        userActionToken = actionToken,
+                    )
+                }
+            }
+        }
+
+        compose.mainClock.autoAdvance = false
+        compose.runOnIdle { actionToken += 1 }
+        compose.mainClock.advanceTimeBy(400)
+        compose.runOnIdle { liked = true }
+        compose.mainClock.advanceTimeBy(100)
+        val midway = captureTag("heart-token")
+        val midwayRed = AndroidColor.red(midway.getPixel(midway.width / 2, midway.height / 2))
+        compose.mainClock.advanceTimeBy(600)
+        val settled = captureTag("heart-token")
+        val settledRed = AndroidColor.red(settled.getPixel(settled.width / 2, settled.height / 2))
+        compose.mainClock.autoAdvance = true
+
+        assertTrue("explicit action token must animate instead of snapping", midwayRed < settledRed)
+        assertTrue("favorite must finish filled", settledRed > 100)
+    }
+
     private fun inkWidth(image: Bitmap): Int {
         val columns = (0 until image.width).filter { x ->
             (0 until image.height).any { y -> AndroidColor.red(image.getPixel(x, y)) > 200 }
@@ -107,9 +140,11 @@ class CapsuleFavoriteAnimationTest {
         return rows.last() - rows.first() + 1
     }
 
-    private fun capture(): Bitmap {
+    private fun capture(): Bitmap = captureTag("heart")
+
+    private fun captureTag(tag: String): Bitmap {
         compose.waitForIdle()
-        val bounds = compose.onNodeWithTag("heart", useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
+        val bounds = compose.onNodeWithTag(tag, useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
         lateinit var bitmap: Bitmap
         compose.runOnIdle {
             bitmap = Bitmap.createBitmap(bounds.width.roundToInt(), bounds.height.roundToInt(), Bitmap.Config.ARGB_8888)
