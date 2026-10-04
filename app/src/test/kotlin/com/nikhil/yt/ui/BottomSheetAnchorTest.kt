@@ -5,7 +5,12 @@ import com.nikhil.yt.ui.component.ANCHOR_EPSILON_DP
 import com.nikhil.yt.ui.component.isAtSheetAnchor
 import com.nikhil.yt.ui.component.constrainBottomSheetDragDelta
 import com.nikhil.yt.ui.component.canStartMiniDismissGesture
+import com.nikhil.yt.ui.component.canStartMiniGestureCoordinator
+import com.nikhil.yt.ui.component.miniPlayerForegroundCanAcceptInput
 import com.nikhil.yt.ui.component.MiniDismissStartProgressCeiling
+import com.nikhil.yt.ui.component.MiniGestureCoordinatorProgressCeiling
+import com.nikhil.yt.ui.component.COLLAPSED_ANCHOR
+import com.nikhil.yt.ui.component.DISMISSED_ANCHOR
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -59,6 +64,36 @@ class BottomSheetAnchorTest {
         assertFalse(canStartMiniDismissGesture(MiniDismissStartProgressCeiling + 0.01f))
         assertFalse(canStartMiniDismissGesture(0.5f))
         assertFalse(canStartMiniDismissGesture(1f))
+    }
+
+    @Test fun `compact gesture ownership lasts while compact controls are visible`() {
+        assertTrue(canStartMiniGestureCoordinator(0f))
+        assertTrue(canStartMiniGestureCoordinator(MiniDismissStartProgressCeiling + 0.01f))
+        assertTrue(canStartMiniGestureCoordinator(MiniGestureCoordinatorProgressCeiling))
+        assertFalse(canStartMiniGestureCoordinator(MiniGestureCoordinatorProgressCeiling + 0.01f))
+    }
+
+    @Test fun `mini controls stay interactive throughout their visible handoff`() {
+        assertTrue(miniPlayerForegroundCanAcceptInput(0f, COLLAPSED_ANCHOR))
+        assertTrue(
+            miniPlayerForegroundCanAcceptInput(
+                MiniDismissStartProgressCeiling + 0.01f,
+                COLLAPSED_ANCHOR,
+            ),
+        )
+        assertTrue(
+            miniPlayerForegroundCanAcceptInput(
+                MiniGestureCoordinatorProgressCeiling,
+                COLLAPSED_ANCHOR,
+            ),
+        )
+        assertFalse(
+            miniPlayerForegroundCanAcceptInput(
+                MiniGestureCoordinatorProgressCeiling + 0.01f,
+                COLLAPSED_ANCHOR,
+            ),
+        )
+        assertFalse(miniPlayerForegroundCanAcceptInput(0f, DISMISSED_ANCHOR))
     }
 
     @Test fun `mini player drag cannot cross its dock when dismissal is disabled`() {
