@@ -375,8 +375,13 @@ class PlayerTransitionGestureTest {
 
             miniNode().performTouchInput {
                 down(center)
-                advanceEventTime(16)
-                moveBy(Offset(0f, 160f))
+                // First movement intentionally crosses vertical touch slop without stealing DOWN
+                // from Mini child controls. Subsequent deltas must take over the same anchored
+                // mutation and move from the live in-flight offset.
+                repeat(4) {
+                    advanceEventTime(16)
+                    moveBy(Offset(0f, 80f))
+                }
                 advanceEventTime(16)
                 up()
             }
@@ -404,8 +409,10 @@ class PlayerTransitionGestureTest {
 
             compose.onNodeWithTag("full", useUnmergedTree = true).performTouchInput {
                 down(Offset(center.x, 40f))
-                advanceEventTime(16)
-                moveBy(Offset(0f, -220f))
+                repeat(4) {
+                    advanceEventTime(16)
+                    moveBy(Offset(0f, -100f))
+                }
                 advanceEventTime(16)
                 up()
             }
