@@ -511,6 +511,9 @@ class BottomSheetState internal constructor(
     val value: Dp
         get() = with(density) { offsetPx().toDp() }
 
+    val isAnimationRunning: Boolean
+        get() = anchoredState.isAnimationRunning
+
     /** Kept for compatibility with callers that store a legacy anchor id; visuals never read it. */
     val targetAnchor: Int
         get() = anchoredState.targetValue.legacyId()
@@ -1063,7 +1066,9 @@ fun Modifier.bottomSheetDraggable(
         state = verticalDragState,
         orientation = Orientation.Vertical,
         enabled = true,
-        startDragImmediately = false,
+        // Match AnchoredDraggable's own policy: an animating surface can be caught on DOWN
+        // and the UserInput mutation takes over from the exact current offset.
+        startDragImmediately = state.isAnimationRunning,
         onDragStarted = {
             gesturePolicy.allowDismiss =
                 onDismiss != null &&
