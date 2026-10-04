@@ -36,6 +36,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -902,6 +903,9 @@ internal fun CapsuleImmersiveContent(
                                     CapsuleLightMetadataItem.FAVORITE -> {
                                         val favoriteInteraction =
                                             remember { MutableInteractionSource() }
+                                        var favoriteActionToken by remember {
+                                            mutableIntStateOf(0)
+                                        }
                                         Box(
                                             modifier =
                                                 Modifier
@@ -912,7 +916,10 @@ internal fun CapsuleImmersiveContent(
                                                         interactionSource = favoriteInteraction,
                                                         indication = null,
                                                         enabled = !immersiveEditEnabled,
-                                                        onClick = onToggleLike,
+                                                        onClick = {
+                                                            favoriteActionToken += 1
+                                                            onToggleLike()
+                                                        },
                                                     ),
                                             contentAlignment = Alignment.Center,
                                         ) {
@@ -926,6 +933,7 @@ internal fun CapsuleImmersiveContent(
                                                         textColor
                                                     },
                                                 modifier = Modifier.size(28.dp),
+                                                userActionToken = favoriteActionToken,
                                             )
                                         }
                                     }
