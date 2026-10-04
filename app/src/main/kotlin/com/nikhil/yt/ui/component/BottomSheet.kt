@@ -16,11 +16,11 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.MutatePriority
 import androidx.compose.foundation.gestures.AnchoredDraggableState
+import androidx.compose.foundation.gestures.DragScope
 import androidx.compose.foundation.gestures.DraggableAnchors
-import androidx.compose.foundation.gestures.awaitEachGesture
-import androidx.compose.foundation.gestures.awaitFirstDown
-import androidx.compose.foundation.gestures.awaitVerticalTouchSlopOrCancellation
-import androidx.compose.foundation.gestures.verticalDrag
+import androidx.compose.foundation.gestures.DraggableState
+import androidx.compose.foundation.gestures.Orientation
+import androidx.compose.foundation.gestures.draggable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
@@ -40,6 +40,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
@@ -47,9 +48,6 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.input.pointer.positionChange
-import androidx.compose.ui.input.pointer.util.VelocityTracker
-import androidx.compose.ui.input.pointer.util.addPointerInputChange
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
@@ -387,7 +385,7 @@ fun BottomSheet(
     }
 }
 
-private enum class SheetAnchor {
+internal enum class SheetAnchor {
     Dismissed,
     Collapsed,
     Expanded,
@@ -750,9 +748,10 @@ class BottomSheetState internal constructor(
      */
     internal suspend fun dragUserInput(
         allowDismiss: Boolean,
+        dragPriority: MutatePriority = MutatePriority.UserInput,
         block: suspend BottomSheetDragScope.() -> Unit,
     ) {
-        anchoredState.anchoredDrag(MutatePriority.UserInput) { anchors ->
+        anchoredState.anchoredDrag(dragPriority) { anchors ->
             val minOffset =
                 if (allowDismiss && hasDismissedAnchor) {
                     anchors.positionOf(SheetAnchor.Dismissed)
@@ -772,6 +771,30 @@ class BottomSheetState internal constructor(
                 }
             scope.block()
         }
+    }
+
+    /**
+     * DraggableState requires a raw-delta escape hatch. Normal pointer gestures do not use it:
+     * they enter [dragUserInput] and therefore share AnchoredDraggable's mutation lock.
+     */
+    internal fun dispatchRawUserDelta(
+        deltaPx: Float,
+        allowDismiss: Boolean,
+    ): Float {
+        val minOffset =
+            with(density) {
+                (
+                    if (allowDismiss && hasDismissedAnchor) {
+                        dismissedBound
+                    } else {
+                        collapsedBound
+                    }
+                ).toPx()
+            }
+        val maxOffset = with(density) { expandedBound.toPx() }
+        val current = anchoredState.requireOffset()
+        val next = (current + deltaPx).coerceIn(minOffset, maxOffset)
+        return anchoredState.dispatchRawDelta(next - current)
     }
 
     internal suspend fun settleUserInput(
@@ -982,6 +1005,18 @@ internal fun canStartMiniDismissGesture(rawProgress: Float): Boolean {
  * consume after the axis is known; if a child has already consumed the stream for a horizontal
  * swipe/control interaction, this handler never takes ownership.
  */
+private class BottomSheetGesturePolicy {
+    var allowDismiss: Boolean = false
+}
+
+/**
+ * One vertical gesture owner for the player sheet.
+ *
+ * Foundation's vertical draggable waits for vertical touch slop. Mini Player's horizontal detector
+ * waits for horizontal touch slop, while child clickables keep their tap stream until an axis wins.
+ * The full vertical drag is one AnchoredDraggable mutation, so a new drag interrupts a settle at
+ * the exact current offset instead of racing a queue of snap coroutines.
+ */
 @Composable
 fun Modifier.bottomSheetDraggable(
     state: BottomSheetState,
@@ -990,85 +1025,66 @@ fun Modifier.bottomSheetDraggable(
 ): Modifier {
     val density = LocalDensity.current
     val velocityThresholdPx = with(density) { BottomSheetVelocityThreshold.toPx() }
+    val gesturePolicy = remember(state) { BottomSheetGesturePolicy() }
 
-    return pointerInput(state, onDismiss, dismissOnlyFromCollapsed, velocityThresholdPx) {
-        awaitEachGesture {
-            val down = awaitFirstDown(requireUnconsumed = false)
-            val allowDismissForGesture =
+    val verticalDragState =
+        remember(state, gesturePolicy) {
+            object : DraggableState {
+                override suspend fun drag(
+                    dragPriority: MutatePriority,
+                    block: suspend DragScope.() -> Unit,
+                ) {
+                    state.dragUserInput(
+                        allowDismiss = gesturePolicy.allowDismiss,
+                        dragPriority = dragPriority,
+                    ) {
+                        val sheetScope = this
+                        val pointerScope =
+                            object : DragScope {
+                                override fun dragBy(pixels: Float) {
+                                    // Pointer Y grows downward; sheet offset grows toward Expanded.
+                                    sheetScope.dragBy(-pixels)
+                                }
+                            }
+                        block.invoke(pointerScope)
+                    }
+                }
+
+                override fun dispatchRawDelta(delta: Float) {
+                    state.dispatchRawUserDelta(
+                        deltaPx = -delta,
+                        allowDismiss = gesturePolicy.allowDismiss,
+                    )
+                }
+            }
+        }
+
+    return draggable(
+        state = verticalDragState,
+        orientation = Orientation.Vertical,
+        enabled = true,
+        startDragImmediately = false,
+        onDragStarted = {
+            gesturePolicy.allowDismiss =
                 onDismiss != null &&
                     (
                         !dismissOnlyFromCollapsed ||
                             canStartMiniDismissGesture(state.rawProgress)
                     )
-
-            val velocityTracker = VelocityTracker()
-            velocityTracker.resetTracking()
-            velocityTracker.addPointerInputChange(down)
-
-            var accepted = false
-            var initialStateDelta = 0f
-            val dragStart =
-                awaitVerticalTouchSlopOrCancellation(down.id) { change, overSlop ->
-                    if (!change.isConsumed) {
-                        accepted = true
-                        // Pointer Y grows downward; sheet offset grows toward Expanded.
-                        initialStateDelta = -overSlop
-                        velocityTracker.addPointerInputChange(change)
-                        change.consume()
-                    }
-                }
-
-            if (!accepted || dragStart == null) {
-                velocityTracker.resetTracking()
-                return@awaitEachGesture
-            }
-
-            var completed = false
-            try {
-                state.dragUserInput(allowDismiss = allowDismissForGesture) {
-                    dragBy(initialStateDelta)
-                    completed =
-                        verticalDrag(dragStart.id) { change ->
-                            if (change.isConsumed) return@verticalDrag
-                            velocityTracker.addPointerInputChange(change)
-                            val stateDelta = -change.positionChange().y
-                            change.consume()
-                            dragBy(stateDelta)
-                        }
-                }
-            } catch (_: CancellationException) {
-                // A newer authoritative state change interrupted this gesture.
-                velocityTracker.resetTracking()
-                return@awaitEachGesture
-            }
-
-            val velocity =
-                if (completed) {
-                    -velocityTracker.calculateVelocity().y
-                } else {
-                    0f
-                }
-            velocityTracker.resetTracking()
-
+        },
+        onDragStopped = { pointerVelocity ->
+            val allowDismissForGesture = gesturePolicy.allowDismiss
+            gesturePolicy.allowDismiss = false
             try {
                 state.settleUserInput(
-                    velocity = velocity,
+                    velocity = -pointerVelocity,
                     velocityThresholdPx = velocityThresholdPx,
                     allowDismiss = allowDismissForGesture,
                     onDismiss = if (allowDismissForGesture) onDismiss else null,
                 )
             } catch (_: CancellationException) {
-                // A new touch/programmatic transition continues from the current offset.
+                // A newer touch or authoritative transition owns the same anchored offset.
             }
-        }
-    }
+        },
+    )
 }
-
-/** A non-dismissable sheet can reach its dock, but a drag cannot carry it below that dock. */
-internal fun constrainBottomSheetDragDelta(
-    valuePx: Float,
-    collapsedPx: Float,
-    deltaPx: Float,
-    allowDismiss: Boolean,
-): Float = if (allowDismiss || deltaPx <= 0f) deltaPx
-    else deltaPx.coerceAtMost((valuePx - collapsedPx).coerceAtLeast(0f))

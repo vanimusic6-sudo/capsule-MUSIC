@@ -116,7 +116,7 @@ fun Queue(
         onScreen &&
             shouldRenderExpandedSurface(
                 rawProgress = state.rawProgress,
-                targetAnchor = state.targetAnchor,
+                isDismissed = state.isDismissed,
             )
 
     if (!queueVisible) {
