@@ -15,7 +15,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
-import androidx.compose.ui.test.assertDoesNotExist
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTouchInput
@@ -309,7 +308,11 @@ class PlayerTransitionGestureTest {
                 min = PlayerContentHandoffPoint * 0.35f,
                 max = PlayerContentHandoffPoint * 0.75f,
             )
-            compose.onNodeWithTag("full", useUnmergedTree = true).assertDoesNotExist()
+            val fullPlayerMissing =
+                runCatching {
+                    compose.onNodeWithTag("full", useUnmergedTree = true).fetchSemanticsNode()
+                }.isFailure
+            assertTrue(fullPlayerMissing)
         } finally {
             compose.mainClock.autoAdvance = true
         }
