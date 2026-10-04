@@ -105,7 +105,7 @@ class PlayerTransitionGestureTest {
     @Test fun `tap on mini background opens player`() {
         showSheet()
         compose.onNodeWithTag("mini").performTouchInput {
-            down(Offset(size.width * 0.85f, size.height * 0.5f))
+            down(center)
             up()
         }
         compose.waitForIdle()
