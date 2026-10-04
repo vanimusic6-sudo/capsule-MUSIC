@@ -86,6 +86,7 @@ internal fun miniPlayerClockShouldRun(
 
 /** Sub-pixel at every density: only a rest that is already invisible counts as being on an anchor. */
 internal const val ANCHOR_EPSILON_DP = 0.05f
+internal const val SHEET_PROGRESS_EPSILON = 0.0001f
 
 /**
  * Whether a sheet resting at [value] should be treated as sitting on [anchor].
@@ -482,7 +483,7 @@ internal interface BottomSheetDragScope {
 
 @Stable
 @OptIn(ExperimentalFoundationApi::class)
-class BottomSheetState(
+class BottomSheetState internal constructor(
     private val coroutineScope: CoroutineScope,
     private val anchoredState: AnchoredDraggableState<SheetAnchor>,
     private val density: Density,
@@ -554,13 +555,13 @@ class BottomSheetState(
 
     val isExpandedOrExpanding: Boolean
         get() =
-            progress > ANCHOR_EPSILON_DP ||
+            progress > SHEET_PROGRESS_EPSILON ||
                 anchoredState.targetValue == SheetAnchor.Expanded
 
     val isCollapsedOrCollapsing: Boolean
         get() =
             !isDismissed &&
-                (progress < 1f - ANCHOR_EPSILON_DP ||
+                (progress < 1f - SHEET_PROGRESS_EPSILON ||
                     anchoredState.targetValue == SheetAnchor.Collapsed)
 
     val isDismissedOrDismissing: Boolean
