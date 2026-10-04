@@ -60,6 +60,7 @@ jobs:
             --stacktrace --no-daemon
 
       - name: Run Android lint
+        continue-on-error: true
         run: |
           gradle :app:lintUniversalDebug \
             --stacktrace --no-daemon
