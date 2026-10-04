@@ -107,8 +107,8 @@ internal fun isAtSheetAnchor(
  * Player transition policy.
  *
  * The visual illusion is continuous, but Mini Player and full Player stay separate composables.
- * One physical sheet supplies the changing container bounds. Mini is counter-translated to remain
- * at the dock and fades over that same sheet; full content fades in inside the moving sheet.
+ * One physical sheet supplies the changing container bounds. Mini rides that sheet upward like a
+ * real compact surface; full content takes over visually from the same progress.
  *
  * No visual rule depends on a requested target/direction. Every value below is a pure function of
  * the one normalized Collapsed -> Expanded progress, so reversing a drag is exactly reversible.
@@ -165,12 +165,6 @@ internal fun fullPlayerSurfaceAlpha(progress: Float): Float =
  */
 internal fun fullPlayerForegroundAlpha(progress: Float): Float =
     fullPlayerSurfaceAlpha(progress)
-
-/** Counter-translation keeps Mini Player pinned while the shared player sheet rises behind it. */
-internal fun miniPlayerPinOffset(
-    value: Dp,
-    collapsedBound: Dp,
-): Dp = (value - collapsedBound).coerceAtLeast(0.dp)
 
 /** Capsule navigation and the moving player sheet share the same upper-corner language. */
 internal val PlayerFrameCornerRadius = 26.dp
@@ -251,9 +245,9 @@ internal fun expandedPlayerCanAcceptInput(
 /**
  * One moving container, two independent content trees.
  *
- * The full Player sheet owns the physical trajectory. Mini Player is pinned to the dock and only
- * participates visually through progress-derived opacity. This creates one morphing surface without
- * making Mini controls or gesture ownership depend on the full Player composable.
+ * The full Player sheet owns the physical trajectory. Mini Player rides the same trajectory and
+ * hands visual ownership to the full surface through progress-derived opacity. Mini controls and
+ * gesture ownership still remain independent from the full Player composable.
  */
 @Composable
 fun BottomSheet(
@@ -343,18 +337,9 @@ fun BottomSheet(
             Box(
                 modifier =
                     Modifier
-                        // Counter the parent sheet's upward travel: Mini Player remains a docked,
-                        // independent surface instead of being physically dragged into Player.
-                        .offset {
-                            IntOffset(
-                                x = 0,
-                                y =
-                                    miniPlayerPinOffset(
-                                        value = state.value,
-                                        collapsedBound = state.collapsedBound,
-                                    ).roundToPx(),
-                            )
-                        }
+                        // Ride the parent sheet itself. This is the ArchiveTune-style lift: Mini
+                        // physically travels upward and the opacity handoff only softens the morph
+                        // instead of replacing movement with a dissolve.
                         .graphicsLayer {
                             alpha = miniPlayerSurfaceAlpha(state.rawProgress)
                         }
@@ -1047,12 +1032,20 @@ fun rememberBottomSheetState(
     return state
 }
 
-internal const val MiniDismissStartProgressCeiling = 0.03f
-
-internal fun canStartMiniDismissGesture(rawProgress: Float): Boolean {
-    val p = if (rawProgress.isFinite()) rawProgress else 1f
-    return p <= MiniDismissStartProgressCeiling
-}
+/**
+ * Destructive swipe-down belongs to the compact interaction state, not to an arbitrary numeric
+ * distance from the dock. Insets/navigation can move the collapsed anchor while the Mini still
+ * looks and behaves fully docked; using rawProgress alone made that real-device state unable to
+ * move downward even though synthetic tests started at exact zero.
+ */
+internal fun canStartCompactDismissGesture(
+    rawProgress: Float,
+    isDismissed: Boolean,
+    targetAnchor: Int,
+): Boolean =
+    !isDismissed &&
+        targetAnchor == COLLAPSED_ANCHOR &&
+        miniPlayerForegroundCanAcceptInput(rawProgress, isDismissed = false)
 
 /**
  * Vertical gesture owner for the entire sheet.
@@ -1127,7 +1120,11 @@ fun Modifier.bottomSheetDraggable(
                 onDismiss != null &&
                     (
                         !dismissOnlyFromCollapsed ||
-                            canStartMiniDismissGesture(state.rawProgress)
+                            canStartCompactDismissGesture(
+                                rawProgress = state.rawProgress,
+                                isDismissed = state.isDismissed,
+                                targetAnchor = state.targetAnchor,
+                            )
                     )
         },
         onDragStopped = { pointerVelocity ->

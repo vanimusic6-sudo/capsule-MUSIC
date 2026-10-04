@@ -215,6 +215,32 @@ class PlayerTransitionGestureTest {
         }
     }
 
+    @Test fun `near dock closing gesture can continue downward into dismiss`() {
+        showSheet()
+        compose.runOnIdle { state.expandSoft() }
+        compose.waitForIdle()
+        compose.mainClock.autoAdvance = false
+        try {
+            compose.runOnIdle { state.collapseSoft() }
+            advanceUntilProgress(min = 0.08f, max = 0.14f)
+
+            miniNode().performTouchInput {
+                down(center)
+                advanceEventTime(16)
+                moveBy(Offset(0f, 600f))
+                advanceEventTime(16)
+                up()
+            }
+        } finally {
+            compose.mainClock.autoAdvance = true
+        }
+        compose.waitForIdle()
+        compose.runOnIdle {
+            assertTrue(state.isDismissed)
+            assertEquals(1, dismisses)
+        }
+    }
+
     @Test fun `latest rapid programmatic request owns the transition`() {
         showSheet()
         compose.runOnIdle {

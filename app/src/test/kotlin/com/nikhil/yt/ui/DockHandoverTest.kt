@@ -14,7 +14,6 @@ import com.nikhil.yt.ui.component.fullPlayerSurfaceAlpha
 import com.nikhil.yt.ui.component.playerFrameHorizontalScale
 import com.nikhil.yt.ui.component.miniPlayerForegroundAlpha
 import com.nikhil.yt.ui.component.miniPlayerForegroundCanAcceptInput
-import com.nikhil.yt.ui.component.miniPlayerPinOffset
 import com.nikhil.yt.ui.component.miniPlayerSurfaceAlpha
 import com.nikhil.yt.ui.component.playerFrameCornerRadius
 import com.nikhil.yt.ui.component.shouldRenderExpandedSurface
@@ -29,20 +28,22 @@ import org.junit.Test
  * progress. No assertion here depends on requested direction or a second transition clock.
  */
 class DockHandoverTest {
-    @Test fun `mini stays pinned while the full sheet rises from the same leading edge`() {
+    @Test fun `mini rides upward on the same physical sheet instead of staying pinned`() {
         val expanded = 800.dp
         val collapsed = 80.dp
-        val dockTop = expanded - collapsed
+        var previousTop = (expanded - collapsed).value
 
         for (step in 0..20) {
             val progress = step / 20f
             val value = collapsed + (expanded - collapsed) * progress
-            val sheetTop = expanded - value
-            val miniTop = sheetTop + miniPlayerPinOffset(value, collapsed)
+            val sheetTop = (expanded - value).value
+            val miniTop = sheetTop
 
-            assertEquals("mini moved at progress=$progress", dockTop.value, miniTop.value, 0.001f)
-            assertTrue("full sheet crossed below mini at $progress", sheetTop <= miniTop)
+            assertEquals("mini must share sheet top at progress=$progress", sheetTop, miniTop, 0.001f)
+            assertTrue("mini must never move downward while opening", miniTop <= previousTop + 0.001f)
+            previousTop = miniTop
         }
+        assertEquals(0f, previousTop, 0.001f)
     }
 
     @Test fun `mini shell and full foreground form one complementary handoff`() {

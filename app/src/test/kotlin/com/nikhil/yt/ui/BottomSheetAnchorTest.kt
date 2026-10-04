@@ -6,8 +6,7 @@ import com.nikhil.yt.ui.component.BOTTOM_SHEET_POSITIONAL_THRESHOLD_FRACTION
 import com.nikhil.yt.ui.component.COLLAPSED_ANCHOR
 import com.nikhil.yt.ui.component.DISMISSED_ANCHOR
 import com.nikhil.yt.ui.component.EXPANDED_ANCHOR
-import com.nikhil.yt.ui.component.MiniDismissStartProgressCeiling
-import com.nikhil.yt.ui.component.canStartMiniDismissGesture
+import com.nikhil.yt.ui.component.canStartCompactDismissGesture
 import com.nikhil.yt.ui.component.isAtSheetAnchor
 import com.nikhil.yt.ui.component.resolveBottomSheetTarget
 import org.junit.Assert.assertEquals
@@ -25,12 +24,43 @@ class BottomSheetAnchorTest {
         assertTrue(ANCHOR_EPSILON_DP in 0f..0.1f)
     }
 
-    @Test fun `dismiss can only arm at the physical mini dock`() {
-        assertTrue(canStartMiniDismissGesture(0f))
-        assertTrue(canStartMiniDismissGesture(MiniDismissStartProgressCeiling))
-        assertFalse(canStartMiniDismissGesture(MiniDismissStartProgressCeiling + 0.01f))
-        assertFalse(canStartMiniDismissGesture(0.5f))
-        assertFalse(canStartMiniDismissGesture(1f))
+    @Test fun `dismiss arms from compact interaction ownership not a magic dock epsilon`() {
+        assertTrue(
+            canStartCompactDismissGesture(
+                rawProgress = 0f,
+                isDismissed = false,
+                targetAnchor = COLLAPSED_ANCHOR,
+            ),
+        )
+        // A visually docked Mini can sit slightly above zero while bounds/insets settle.
+        assertTrue(
+            canStartCompactDismissGesture(
+                rawProgress = 0.10f,
+                isDismissed = false,
+                targetAnchor = COLLAPSED_ANCHOR,
+            ),
+        )
+        assertFalse(
+            canStartCompactDismissGesture(
+                rawProgress = 0.10f,
+                isDismissed = false,
+                targetAnchor = EXPANDED_ANCHOR,
+            ),
+        )
+        assertFalse(
+            canStartCompactDismissGesture(
+                rawProgress = 0.40f,
+                isDismissed = false,
+                targetAnchor = COLLAPSED_ANCHOR,
+            ),
+        )
+        assertFalse(
+            canStartCompactDismissGesture(
+                rawProgress = 0f,
+                isDismissed = true,
+                targetAnchor = COLLAPSED_ANCHOR,
+            ),
+        )
     }
 
     @Test fun `vertical velocity uses one target resolver`() {
