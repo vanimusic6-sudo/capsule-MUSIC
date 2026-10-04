@@ -45,9 +45,17 @@ jobs:
           unqualifiedResLocale=en-US
           EOF
 
-      - name: Run Universal Debug unit tests
+      - name: Test player transition and energy regressions
         run: |
           gradle :app:testUniversalDebugUnitTest \
+            --tests 'com.nikhil.yt.lyrics.InstrumentalLyricsTest' \
+            --tests 'com.nikhil.yt.ui.BottomSheetAnchorTest' \
+            --tests 'com.nikhil.yt.ui.DockHandoverTest' \
+            --tests 'com.nikhil.yt.ui.PlayerTransitionGestureTest' \
+            --tests 'com.nikhil.yt.ui.PlayerMenuGestureTest' \
+            --tests 'com.nikhil.yt.ui.MiniPlayerSwipeMotionTest' \
+            --tests 'com.nikhil.yt.ui.CapsuleBackgroundMotionTest' \
+            --tests 'com.nikhil.yt.ui.UiEnergyRegressionTest' \
             --stacktrace --no-daemon
 
       - name: Run Android lint

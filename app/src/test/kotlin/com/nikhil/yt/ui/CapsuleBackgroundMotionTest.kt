@@ -69,10 +69,19 @@ class CapsuleBackgroundMotionTest {
             candidates.firstOrNull(File::isFile)?.readText()
                 ?: error("Could not find CapsuleBackgroundEffects.kt")
 
-        assertTrue(source.contains("running: Boolean = true"))
-        assertTrue(source.contains("if (!isVisible || !running) return@LaunchedEffect"))
-        assertTrue(source.contains("time.longValue += delta"))
-        assertTrue(source.contains("running = animated && motionEnabled"))
-        assertFalse(source.contains("animated &&\n            motionEnabled &&\n            capsuleBackgroundNeedsClock(effect)"))
+        val normalized = source.replace(Regex("\\s+"), " ")
+        assertTrue(normalized.contains("running: Boolean = true"))
+        assertTrue(
+            normalized.contains(
+                "if (!isVisible || !running || !motionEnabled) return@LaunchedEffect",
+            ),
+        )
+        assertTrue(normalized.contains("time.longValue += delta"))
+        assertTrue(normalized.contains("running = animated && motionEnabled"))
+        assertFalse(
+            normalized.contains(
+                "animated && motionEnabled && capsuleBackgroundNeedsClock(effect)",
+            ),
+        )
     }
 }
