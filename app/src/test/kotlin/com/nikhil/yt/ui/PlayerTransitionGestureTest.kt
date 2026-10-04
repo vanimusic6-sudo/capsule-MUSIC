@@ -201,7 +201,7 @@ class PlayerTransitionGestureTest {
         compose.waitForIdle()
         compose.runOnIdle { assertTrue(state.isExpanded) }
 
-        compose.onNodeWithTag("sheet").performTouchInput {
+        compose.onNodeWithTag("full", useUnmergedTree = true).performTouchInput {
             down(Offset(center.x, 40f))
             advanceEventTime(16)
             moveBy(Offset(0f, 1200f))
@@ -273,7 +273,7 @@ class PlayerTransitionGestureTest {
             advanceUntilProgress(min = 0.35f, max = 0.80f)
             val beforeReverse = compose.runOnIdle { state.rawProgress }
 
-            compose.onNodeWithTag("sheet").performTouchInput {
+            compose.onNodeWithTag("full", useUnmergedTree = true).performTouchInput {
                 down(Offset(center.x, 40f))
                 advanceEventTime(16)
                 moveBy(Offset(0f, -220f))
