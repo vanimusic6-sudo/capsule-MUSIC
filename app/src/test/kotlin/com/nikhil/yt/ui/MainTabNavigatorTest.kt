@@ -95,9 +95,13 @@ class MainTabNavigatorTest {
                             }
                         }
                     }
-                    StandardNavigationBar(Modifier.fillMaxWidth().height(80.dp), Screens.MainScreens, entry?.destination?.route.orEmpty()) {
-                        tabs.select(it.route) { reselected++ }
-                    }
+                    StandardNavigationBar(
+                        modifier = Modifier.fillMaxWidth().height(80.dp),
+                        items = Screens.MainScreens,
+                        currentRoute = entry?.destination?.route.orEmpty(),
+                        onTabSelected = { tabs.select(it.route) { reselected++ } },
+                        interactionEnabled = true,
+                    )
                 }
             }
         }
