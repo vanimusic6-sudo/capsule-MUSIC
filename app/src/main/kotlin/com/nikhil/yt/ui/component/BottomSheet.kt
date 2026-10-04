@@ -124,8 +124,8 @@ internal const val MiniPlayerForegroundFadeEnd = 0.16f
  * still-compact Mini Player. Surface ownership now changes gradually over a broad, reversible
  * section of the same physical progress.
  */
-internal const val PlayerContentHandoffStart = 0.03f
-internal const val PlayerContentHandoffEnd = 0.38f
+internal const val PlayerContentHandoffStart = 0.06f
+internal const val PlayerContentHandoffEnd = 0.40f
 internal const val MiniSurfaceFadeStart = PlayerContentHandoffStart
 internal const val MiniSurfaceFadeEnd = PlayerContentHandoffEnd
 
