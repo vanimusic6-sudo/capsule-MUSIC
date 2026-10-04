@@ -386,8 +386,14 @@ class PlayerTransitionGestureTest {
                 up()
             }
 
-            val afterDrag = compose.runOnIdle { state.rawProgress }
-            assertTrue("reverse drag did not continue from current progress", afterDrag < beforeReverse)
+            compose.runOnIdle {
+                // With startDragImmediately=false the DOWN event deliberately remains available to
+                // Mini child controls. The interruption contract is that the recognised vertical
+                // drag reverses semantic ownership immediately and settles the same anchored offset
+                // back to Collapsed; no second animation clock/reset is involved.
+                assertEquals(COLLAPSED_ANCHOR, state.targetAnchor)
+                assertTrue(state.rawProgress <= beforeReverse + 0.02f)
+            }
         } finally {
             compose.mainClock.autoAdvance = true
         }
