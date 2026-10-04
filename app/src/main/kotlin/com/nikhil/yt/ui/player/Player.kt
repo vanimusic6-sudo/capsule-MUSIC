@@ -85,6 +85,15 @@ internal fun capsulePlayerDesignForOrientation(
         selected
     }
 
+internal fun playerBackHandlerEnabled(
+    showInlineLyrics: Boolean,
+    playerExpandedOrExpanding: Boolean,
+    queueExpandedOrExpanding: Boolean,
+): Boolean =
+    queueExpandedOrExpanding ||
+        playerExpandedOrExpanding ||
+        (showInlineLyrics && playerExpandedOrExpanding)
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun BottomSheetPlayer(
@@ -320,12 +329,14 @@ fun BottomSheetPlayer(
 
     BackHandler(
         enabled =
-            showInlineLyrics ||
-                queueSheetState.isExpandedOrExpanding ||
-                state.isExpandedOrExpanding,
+            playerBackHandlerEnabled(
+                showInlineLyrics = showInlineLyrics,
+                playerExpandedOrExpanding = state.isExpandedOrExpanding,
+                queueExpandedOrExpanding = queueSheetState.isExpandedOrExpanding,
+            ),
     ) {
         when {
-            showInlineLyrics -> showInlineLyrics = false
+            showInlineLyrics && state.isExpandedOrExpanding -> showInlineLyrics = false
             queueSheetState.isExpandedOrExpanding ->
                 queueSheetState.collapseSoft()
             state.isExpandedOrExpanding ->
@@ -815,6 +826,8 @@ private fun CapsulePlayerLyricsHost(
                                 backdropAnimationTime = backdropAnimationTime,
                                 drawBackdrop = false,
                                 isVisible = lyricsRuntimeActive,
+                                backHandlerEnabled =
+                                    showLyrics && playerState.isExpandedOrExpanding,
                                 modifier = Modifier.fillMaxSize(),
                             )
                         }
