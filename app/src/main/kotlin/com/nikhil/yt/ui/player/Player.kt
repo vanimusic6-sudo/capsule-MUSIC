@@ -16,6 +16,7 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.background
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -56,11 +57,14 @@ import com.nikhil.yt.constants.CapsulePlayerDesign
 import com.nikhil.yt.constants.CapsulePlayerDesignKey
 import com.nikhil.yt.constants.DarkModeKey
 import com.nikhil.yt.constants.MiniPlayerHeight
+import com.nikhil.yt.constants.MiniPlayerBackgroundStyle
+import com.nikhil.yt.constants.MiniPlayerBackgroundStyleKey
 import com.nikhil.yt.constants.PlayerBackgroundStyle
 import com.nikhil.yt.constants.PlayerBackgroundStyleKey
 import com.nikhil.yt.models.MediaMetadata
 import com.nikhil.yt.ui.component.BottomSheet
 import com.nikhil.yt.ui.component.BottomSheetState
+import com.nikhil.yt.ui.component.PlayerContentHandoffPoint
 import com.nikhil.yt.ui.component.LocalBottomSheetPageState
 import com.nikhil.yt.ui.component.LocalMenuState
 import com.nikhil.yt.ui.component.rememberBottomSheetState
@@ -121,6 +125,11 @@ fun BottomSheetPlayer(
         rememberEnumPreference(
             key = PlayerBackgroundStyleKey,
             defaultValue = PlayerBackgroundStyle.CAPSULE_STAR,
+        )
+    val miniPlayerBackground by
+        rememberEnumPreference(
+            MiniPlayerBackgroundStyleKey,
+            MiniPlayerBackgroundStyle.CAPSULE_STAR,
         )
 
     val systemDark = isSystemInDarkTheme()
@@ -251,9 +260,10 @@ fun BottomSheetPlayer(
 
     val needsArtworkPalette =
         onScreen &&
-            state.shouldLayerAboveCollapsedChrome &&
-            effectivePlayerDesign != CapsulePlayerDesign.IMMERSIVE &&
-            playerBackground != PlayerBackgroundStyle.DEFAULT
+            enrichedMetadata != null &&
+            (miniPlayerBackground != MiniPlayerBackgroundStyle.THEME ||
+                (effectivePlayerDesign != CapsulePlayerDesign.IMMERSIVE &&
+                    playerBackground != PlayerBackgroundStyle.DEFAULT))
     val gradientColors =
         rememberCapsuleArtworkColors(
             mediaMetadata = enrichedMetadata,
@@ -363,33 +373,41 @@ fun BottomSheetPlayer(
                 foregroundInteractive = state.compactForegroundAcceptsInput,
             )
         },
-    ) {
-        Box(modifier = Modifier.fillMaxSize()) {
-            /*
-             * Immersion paints its own floor from the artwork, and a chosen backdrop behind it
-             * would be a second picture competing with the cover.
-             */
-            if (
-                state.shouldLayerAboveCollapsedChrome &&
-                effectivePlayerDesign != CapsulePlayerDesign.IMMERSIVE
-            ) {
-                /*
-                 * Keep the already-rendered player backdrop under the lyrics travel. Lyrics opens
-                 * from off-screen, so unmounting PlayerBackground as soon as showLyrics=true
-                 * exposed the BottomSheet's neutral Surface color through the uncovered area and
-                 * looked like the player suddenly turned grey.
-                 *
-                 * The expensive part still sleeps: once Lyrics owns the screen the backdrop is
-                 * rendered as a static cached frame, with no procedural animation clock.
-                 */
-                PlayerBackground(
-                    playerBackground = playerBackground,
-                    gradientColors = gradientColors,
-                    animated = backdropTimelineRunning,
-                    sharedAnimationTime = sharedBackdropAnimationTime,
+        backgroundContent = {
+            // Carry the compact card's actual palette through the empty part of the sheet.
+            // The chosen full-player backdrop then replaces it as the full UI arrives, instead
+            // of exposing the neutral Surface for a quarter of the opening travel.
+            if (state.rawProgress < 0.5f) {
+                CapsuleCompactSurfaceBackground(
+                    style = miniPlayerBackground,
+                    pureBlack = pureBlack,
+                    colors = gradientColors,
+                    modifier = Modifier.fillMaxSize(),
+                    animated = false,
                 )
             }
-
+            if (effectivePlayerDesign != CapsulePlayerDesign.IMMERSIVE &&
+                state.rawProgress > PlayerContentHandoffPoint
+            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .graphicsLayer {
+                            alpha = com.nikhil.yt.ui.component.fullPlayerContentAlpha(state.rawProgress)
+                        }
+                        .background(playerSurfaceColor(useBlackBackground)),
+                ) {
+                    PlayerBackground(
+                        playerBackground = playerBackground,
+                        gradientColors = gradientColors,
+                        animated = backdropTimelineRunning,
+                        sharedAnimationTime = sharedBackdropAnimationTime,
+                    )
+                }
+            }
+        },
+    ) {
+        Box(modifier = Modifier.fillMaxSize()) {
             enrichedMetadata?.let { metadata ->
                 Box(
                     modifier = Modifier.fillMaxSize(),

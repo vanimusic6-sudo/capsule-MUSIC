@@ -826,11 +826,10 @@ class MainActivity : ComponentActivity() {
                      * snapping the mini-player to a new resting place. Keeping the bar means the
                      * bound is the same everywhere and that snap cannot happen at all.
                      *
-                     * Two things still take it away, and neither is a destination. The search
-                     * overlay is a full-screen input mode with a keyboard over everything, and Year
-                     * in Music is a full-bleed story that hides the system bars as well.
+                     * Search keeps the same dock and collapsed anchor as the rest of the app.
+                     * Year in Music is the full-bleed story that hides the system bars.
                      */
-                    val shouldShowNavigationBar = !active && !isYearInMusicScreen
+                    val shouldShowNavigationBar = !isYearInMusicScreen
 
                     fun getBottomNavPadding(): Dp {
                         return if (shouldShowNavigationBar && !useRail) {
@@ -1547,7 +1546,15 @@ class MainActivity : ComponentActivity() {
                                                 modifier =
                                                     Modifier
                                                         .fillMaxSize()
-                                                        .padding(bottom = if(!playerBottomSheetState.isDismissed) MiniPlayerHeight else 0.dp)
+                                                        .padding(
+                                                            bottom = getBottomNavPadding() +
+                                                                (if (!playerBottomSheetState.isDismissed) {
+                                                                    MiniPlayerHeight +
+                                                                        (if (capsuleConnected) 0.dp else MiniPlayerBottomSpacing)
+                                                                } else {
+                                                                    0.dp
+                                                                }),
+                                                        )
                                                         .navigationBarsPadding(),
                                             ) { searchSource ->
                                                 when (searchSource) {

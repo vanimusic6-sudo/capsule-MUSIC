@@ -238,6 +238,7 @@ fun BottomSheet(
     collapsedHorizontalInset: Dp = 0.dp,
     collapsedTopCornerRadius: Dp = PlayerFrameCornerRadius,
     collapsedContent: @Composable BoxScope.() -> Unit,
+    backgroundContent: @Composable BoxScope.() -> Unit = {},
     content: @Composable BoxScope.() -> Unit,
 ) {
     /* Keep the mini-player composition alive so Room-backed state and icon morph state survive. */
@@ -378,7 +379,9 @@ fun BottomSheet(
                                 alpha = playerContainerAlpha(state.rawProgress)
                             }
                             .background(backgroundColor),
-                )
+                ) {
+                    backgroundContent()
+                }
 
                 if (renderExpandedContent) {
                     Box(
