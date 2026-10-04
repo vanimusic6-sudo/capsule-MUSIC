@@ -85,15 +85,6 @@ internal fun capsulePlayerDesignForOrientation(
         selected
     }
 
-internal fun playerBackHandlerEnabled(
-    showInlineLyrics: Boolean,
-    playerExpandedOrExpanding: Boolean,
-    queueExpandedOrExpanding: Boolean,
-): Boolean =
-    queueExpandedOrExpanding ||
-        playerExpandedOrExpanding ||
-        (showInlineLyrics && playerExpandedOrExpanding)
-
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun BottomSheetPlayer(
@@ -327,14 +318,9 @@ fun BottomSheetPlayer(
             initialAnchor = 1,
         )
 
-    BackHandler(
-        enabled =
-            playerBackHandlerEnabled(
-                showInlineLyrics = showInlineLyrics,
-                playerExpandedOrExpanding = state.isExpandedOrExpanding,
-                queueExpandedOrExpanding = queueSheetState.isExpandedOrExpanding,
-            ),
-    ) {
+    // Parent Player owns BACK as one unit. Lyrics/Queue may choose what BACK does only while
+    // the Player's semantic target is Expanded.
+    BackHandler(enabled = state.isExpandedOrExpanding) {
         when {
             showInlineLyrics && state.isExpandedOrExpanding -> showInlineLyrics = false
             queueSheetState.isExpandedOrExpanding ->
