@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
@@ -40,11 +41,13 @@ class PlayerTransitionGestureTest {
     private var childClicks = 0
     private var horizontalDistance = 0f
     private var dismisses = 0
+    private var fullBottomClicks = 0
 
     private fun showSheet() {
         childClicks = 0
         horizontalDistance = 0f
         dismisses = 0
+        fullBottomClicks = 0
 
         compose.setContent {
             MaterialTheme {
@@ -59,6 +62,7 @@ class PlayerTransitionGestureTest {
 
                     BottomSheet(
                         state = state,
+                        modifier = Modifier.testTag("sheet"),
                         backgroundColor = Color.Black,
                         onDismiss = { dismisses++ },
                         dismissOnlyFromCollapsed = true,
@@ -84,12 +88,40 @@ class PlayerTransitionGestureTest {
                             }
                         },
                     ) {
-                        Box(Modifier.fillMaxSize().testTag("full"))
+                        Box(Modifier.fillMaxSize().testTag("full")) {
+                            Button(
+                                modifier =
+                                    Modifier
+                                        .align(Alignment.BottomCenter)
+                                        .testTag("fullBottomButton"),
+                                onClick = { fullBottomClicks++ },
+                            ) {
+                                Text("Queue")
+                            }
+                        }
                     }
                 }
             }
         }
         compose.waitForIdle()
+    }
+
+    private fun miniNode() = compose.onNodeWithTag("mini", useUnmergedTree = true)
+
+    private fun advanceUntilProgress(
+        min: Float,
+        max: Float,
+        maxFrames: Int = 90,
+    ) {
+        repeat(maxFrames) {
+            compose.mainClock.advanceTimeByFrame()
+            val progress = compose.runOnIdle { state.rawProgress }
+            if (progress in min..max) return
+        }
+        throw AssertionError(
+            "transition never entered [" + min + ", " + max + "], last=" +
+                compose.runOnIdle { state.rawProgress },
+        )
     }
 
     @Test fun `child click is not stolen by vertical sheet gesture`() {
@@ -104,7 +136,7 @@ class PlayerTransitionGestureTest {
 
     @Test fun `tap on mini background opens player`() {
         showSheet()
-        compose.onNodeWithTag("mini").performTouchInput {
+        miniNode().performTouchInput {
             down(center)
             up()
         }
@@ -114,7 +146,7 @@ class PlayerTransitionGestureTest {
 
     @Test fun `horizontal mini swipe wins without moving vertical transition`() {
         showSheet()
-        compose.onNodeWithTag("mini").performTouchInput {
+        miniNode().performTouchInput {
             down(center)
             advanceEventTime(16)
             moveBy(Offset(120f, 0f))
@@ -131,7 +163,7 @@ class PlayerTransitionGestureTest {
 
     @Test fun `vertical mini drag opens without mini owning vertical state`() {
         showSheet()
-        compose.onNodeWithTag("mini").performTouchInput {
+        miniNode().performTouchInput {
             down(center)
             advanceEventTime(16)
             moveBy(Offset(0f, -90f))
@@ -149,7 +181,7 @@ class PlayerTransitionGestureTest {
 
     @Test fun `downward action dismisses only when gesture begins at mini dock`() {
         showSheet()
-        compose.onNodeWithTag("mini").performTouchInput {
+        miniNode().performTouchInput {
             down(center)
             advanceEventTime(16)
             moveBy(Offset(0f, 120f))
@@ -167,8 +199,8 @@ class PlayerTransitionGestureTest {
         compose.waitForIdle()
         compose.runOnIdle { assertTrue(state.isExpanded) }
 
-        compose.onNodeWithTag("full").performTouchInput {
-            down(center)
+        compose.onNodeWithTag("sheet").performTouchInput {
+            down(Offset(center.x, 40f))
             advanceEventTime(16)
             moveBy(Offset(0f, 1200f))
             advanceEventTime(16)
@@ -179,5 +211,94 @@ class PlayerTransitionGestureTest {
             assertTrue(state.isCollapsed)
             assertEquals(0, dismisses)
         }
+    }
+
+    @Test fun `latest rapid programmatic request owns the transition`() {
+        showSheet()
+        compose.runOnIdle {
+            state.expandSoft()
+            state.collapseSoft()
+            state.expandSoft()
+        }
+        compose.waitForIdle()
+        compose.runOnIdle { assertTrue(state.isExpanded) }
+    }
+
+    @Test fun `authoritative dismiss cancels an in flight open`() {
+        showSheet()
+        compose.runOnIdle {
+            state.expandSoft()
+            state.dismiss()
+        }
+        compose.waitForIdle()
+        compose.runOnIdle { assertTrue(state.isDismissed) }
+    }
+
+    @Test fun `opening settle can be reversed from its current visual position`() {
+        showSheet()
+        compose.mainClock.autoAdvance = false
+        try {
+            compose.runOnIdle { state.expandSoft() }
+            advanceUntilProgress(min = 0.08f, max = 0.20f)
+            val beforeReverse = compose.runOnIdle { state.rawProgress }
+
+            miniNode().performTouchInput {
+                down(center)
+                advanceEventTime(16)
+                moveBy(Offset(0f, 160f))
+                advanceEventTime(16)
+                up()
+            }
+
+            val afterDrag = compose.runOnIdle { state.rawProgress }
+            assertTrue("reverse drag did not continue from current progress", afterDrag < beforeReverse)
+        } finally {
+            compose.mainClock.autoAdvance = true
+        }
+        compose.waitForIdle()
+        compose.runOnIdle { assertTrue(state.isCollapsed) }
+    }
+
+    @Test fun `closing settle can be reversed back to expanded`() {
+        showSheet()
+        compose.runOnIdle { state.expandSoft() }
+        compose.waitForIdle()
+        compose.runOnIdle { assertTrue(state.isExpanded) }
+
+        compose.mainClock.autoAdvance = false
+        try {
+            compose.runOnIdle { state.collapseSoft() }
+            advanceUntilProgress(min = 0.35f, max = 0.80f)
+            val beforeReverse = compose.runOnIdle { state.rawProgress }
+
+            compose.onNodeWithTag("sheet").performTouchInput {
+                down(Offset(center.x, 40f))
+                advanceEventTime(16)
+                moveBy(Offset(0f, -220f))
+                advanceEventTime(16)
+                up()
+            }
+
+            val afterDrag = compose.runOnIdle { state.rawProgress }
+            assertTrue("reopen drag did not continue from current progress", afterDrag > beforeReverse)
+        } finally {
+            compose.mainClock.autoAdvance = true
+        }
+        compose.waitForIdle()
+        compose.runOnIdle { assertTrue(state.isExpanded) }
+    }
+
+    @Test fun `hidden mini cannot block full player bottom controls`() {
+        showSheet()
+        compose.runOnIdle { state.expandSoft() }
+        compose.waitForIdle()
+        compose.runOnIdle { assertTrue(state.isExpanded) }
+
+        compose.onNodeWithTag("fullBottomButton").performTouchInput {
+            down(center)
+            up()
+        }
+        compose.waitForIdle()
+        compose.runOnIdle { assertEquals(1, fullBottomClicks) }
     }
 }

@@ -319,7 +319,7 @@ fun BottomSheet(
                         }
                         // Mini visually yields over the same moving frame. Input has its own
                         // progress gate, so an almost-gone Mini cannot steal full-player controls.
-                        .zIndex(2f)
+                        .zIndex(if (state.compactSurfaceVisible) 2f else 0f)
                         .clickable(
                             enabled = canReopen,
                             interactionSource = remember { MutableInteractionSource() },
