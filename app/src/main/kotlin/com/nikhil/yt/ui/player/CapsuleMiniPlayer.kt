@@ -25,10 +25,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.awaitEachGesture
-import androidx.compose.foundation.gestures.awaitFirstDown
-import androidx.compose.foundation.gestures.awaitTouchSlopOrCancellation
-import androidx.compose.foundation.gestures.drag
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -61,7 +58,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -72,9 +68,6 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.input.pointer.positionChange
-import androidx.compose.ui.input.pointer.util.VelocityTracker
-import androidx.compose.ui.input.pointer.util.addPointerInputChange
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
@@ -98,13 +91,6 @@ import com.nikhil.yt.db.entities.ArtistEntity
 import com.nikhil.yt.models.MediaMetadata
 import com.nikhil.yt.together.TogetherRole
 import com.nikhil.yt.together.TogetherSessionState
-import com.nikhil.yt.ui.component.BottomSheetState
-import com.nikhil.yt.ui.component.COLLAPSED_ANCHOR
-import com.nikhil.yt.ui.component.EXPANDED_ANCHOR
-import com.nikhil.yt.ui.component.canStartMiniDismissGesture
-import com.nikhil.yt.ui.component.canStartMiniGestureCoordinator
-import com.nikhil.yt.ui.component.constrainBottomSheetDragDelta
-import com.nikhil.yt.ui.component.shouldExpandMiniGesture
 import com.nikhil.yt.ui.screens.settings.DiscordPresenceManager
 import com.nikhil.yt.utils.rememberEnumPreference
 import com.nikhil.yt.utils.rememberPreference
@@ -135,8 +121,6 @@ private val CapsuleMiniMuted =
 private val CapsuleMiniError =
     Color(0xFFFF8A8A)
 
-private enum class MiniDragAxis { HORIZONTAL, VERTICAL }
-
 @Composable
 fun CapsuleMiniPlayer(
     position: Long,
@@ -147,8 +131,6 @@ fun CapsuleMiniPlayer(
     visible: Boolean = true,
     foregroundAlpha: () -> Float = { 1f },
     foregroundInteractive: Boolean = true,
-    playerState: BottomSheetState? = null,
-    onVerticalDismiss: (() -> Unit)? = null,
 ) {
     val playerConnection =
         LocalPlayerConnection.current ?: return
@@ -238,11 +220,6 @@ fun CapsuleMiniPlayer(
         swipeThumbnailPref &&
             !isListenTogetherGuest &&
             foregroundInteractive
-
-    // Do not key the pointer coroutine to this value: foreground alpha/input changes while a
-    // vertical open gesture is already in flight. Restarting pointerInput there cancels the exact
-    // gesture that is moving the sheet.
-    val currentSwipeThumbnail by rememberUpdatedState(swipeThumbnail)
 
     val layoutDirection =
         LocalLayoutDirection.current
@@ -352,242 +329,172 @@ fun CapsuleMiniPlayer(
                 )
                 .padding(horizontal = if (standardStyle) 12.dp else 10.dp)
                 .let { baseModifier ->
-                    if (visualsActive && playerState != null) {
+                    if (swipeThumbnail && visualsActive) {
                         baseModifier.pointerInput(
                             mediaMetadata?.id,
                             swipeDistanceThresholdPx,
                             swipeVelocityThresholdPxPerMs,
                             layoutDirection,
-                            playerState,
-                            onVerticalDismiss,
                         ) {
-                            awaitEachGesture {
-                                val down = awaitFirstDown(requireUnconsumed = false)
-                                val rawProgressAtDown = playerState.rawProgress
-                                if (!canStartMiniGestureCoordinator(rawProgressAtDown)) {
-                                    // Once the compact foreground is gone, the full sheet owns the
-                                    // gesture. Stay passive without stealing the pointer stream.
-                                    while (true) {
-                                        val event = awaitPointerEvent()
-                                        if (event.changes.none { it.pressed }) break
-                                    }
-                                    return@awaitEachGesture
-                                }
-                                // Clearing playback is much stricter than owning compact gestures.
-                                // A near-dock/reversing mini may swipe tracks and reopen/close, but
-                                // only a gesture that actually began on the dock can dismiss it.
-                                val dismissAllowedForGesture =
-                                    canStartMiniDismissGesture(rawProgressAtDown)
-                                var axis: MiniDragAxis? = null
-                                var dragTargetOffset = offsetXAnimatable.value
-                                var motionJob: Job? = null
-                                val verticalVelocity = VelocityTracker()
+                            var dragTargetOffset = offsetXAnimatable.value
+                            var motionJob: Job? = null
 
-                                val slopChange =
-                                    awaitTouchSlopOrCancellation(down.id) { change, overSlop ->
-                                        if (change.isConsumed) return@awaitTouchSlopOrCancellation
+                            detectHorizontalDragGestures(
+                                onDragStart = {
+                                    motionJob?.cancel()
+                                    dragTargetOffset = offsetXAnimatable.value
+                                    motionJob =
+                                        coroutineScope.launch {
+                                            offsetXAnimatable.stop()
+                                        }
+                                    dragStartTime =
+                                        SystemClock.uptimeMillis()
 
-                                        val horizontal = kotlin.math.abs(overSlop.x)
-                                        val vertical = kotlin.math.abs(overSlop.y)
-                                        val candidate =
-                                            if (horizontal > vertical) {
-                                                MiniDragAxis.HORIZONTAL
-                                            } else {
-                                                MiniDragAxis.VERTICAL
-                                            }
-
-                                        if (candidate == MiniDragAxis.HORIZONTAL && !currentSwipeThumbnail) {
-                                            return@awaitTouchSlopOrCancellation
+                                    totalDragDistance =
+                                        0f
+                                },
+                                onDragCancel = {
+                                    val settleFrom = dragTargetOffset
+                                    motionJob?.cancel()
+                                    motionJob =
+                                        coroutineScope.launch {
+                                            offsetXAnimatable.snapTo(settleFrom)
+                                            offsetXAnimatable.animateTo(
+                                                0f,
+                                                animationSpec,
+                                            )
+                                        }
+                                },
+                                onHorizontalDrag = {
+                                        change,
+                                        dragAmount,
+                                    ->
+                                    change.consume()
+                                    val adjustedDragAmount =
+                                        if (
+                                            layoutDirection ==
+                                            LayoutDirection.Rtl
+                                        ) {
+                                            -dragAmount
+                                        } else {
+                                            dragAmount
                                         }
 
-                                        axis = candidate
-                                        change.consume()
+                                    val tryingToSwipeRight =
+                                        adjustedDragAmount > 0f
 
-                                        when (candidate) {
-                                            MiniDragAxis.HORIZONTAL -> {
-                                                motionJob?.cancel()
-                                                dragTargetOffset = offsetXAnimatable.value
-                                                motionJob =
-                                                    coroutineScope.launch {
-                                                        offsetXAnimatable.stop()
-                                                    }
-                                                dragStartTime = SystemClock.uptimeMillis()
-                                                totalDragDistance = 0f
-                                            }
+                                    val tryingToSwipeLeft =
+                                        adjustedDragAmount < 0f
 
-                                            MiniDragAxis.VERTICAL -> {
-                                                playerState.beginInteractiveDrag(
-                                                    if (overSlop.y < 0f) {
-                                                        EXPANDED_ANCHOR
-                                                    } else {
-                                                        COLLAPSED_ANCHOR
-                                                    },
-                                                )
-                                                verticalVelocity.resetTracking()
-                                                verticalVelocity.addPointerInputChange(change)
-                                                playerState.dispatchRawDelta(
-                                                    constrainBottomSheetDragDelta(
-                                                        valuePx = playerState.value.toPx(),
-                                                        collapsedPx = playerState.collapsedBound.toPx(),
-                                                        deltaPx = overSlop.y,
-                                                        allowDismiss = dismissAllowedForGesture,
-                                                    ),
-                                                )
-                                            }
-                                        }
-                                    }
+                                    val canSkipPrevious =
+                                        playerConnection.player.previousMediaItemIndex != -1
+                                    val canSkipNext =
+                                        playerConnection.player.nextMediaItemIndex != -1
 
-                                if (slopChange == null || axis == null) {
-                                    return@awaitEachGesture
-                                }
+                                    val allowLeft =
+                                        tryingToSwipeLeft &&
+                                            canSkipNext
 
-                                val completed =
-                                    drag(slopChange.id) { change ->
-                                        if (change.isConsumed) return@drag
-                                        val delta = change.positionChange()
+                                    val allowRight =
+                                        tryingToSwipeRight &&
+                                            canSkipPrevious
 
-                                        when (axis) {
-                                            MiniDragAxis.HORIZONTAL -> {
-                                                val adjustedDragAmount =
-                                                    if (layoutDirection == LayoutDirection.Rtl) {
-                                                        -delta.x
-                                                    } else {
-                                                        delta.x
-                                                    }
-                                                val tryingToSwipeRight = adjustedDragAmount > 0f
-                                                val tryingToSwipeLeft = adjustedDragAmount < 0f
-                                                val canSkipPrevious =
-                                                    playerConnection.player.previousMediaItemIndex != -1
-                                                val canSkipNext =
-                                                    playerConnection.player.nextMediaItemIndex != -1
-                                                val allowLeft = tryingToSwipeLeft && canSkipNext
-                                                val allowRight = tryingToSwipeRight && canSkipPrevious
-                                                val canReturnToCenter =
-                                                    (tryingToSwipeRight &&
-                                                        !canSkipPrevious &&
-                                                        dragTargetOffset < 0f) ||
-                                                        (tryingToSwipeLeft &&
-                                                            !canSkipNext &&
-                                                            dragTargetOffset > 0f)
+                                    /*
+                                     * Important donor behaviour:
+                                     * even at the edge of the queue the card may
+                                     * return toward the center. It never gets stuck.
+                                     */
+                                    val returningFromLeftEdge =
+                                        tryingToSwipeRight &&
+                                            !canSkipPrevious &&
+                                            dragTargetOffset < 0f
+                                    val returningFromRightEdge =
+                                        tryingToSwipeLeft &&
+                                            !canSkipNext &&
+                                            dragTargetOffset > 0f
+                                    val canReturnToCenter =
+                                        returningFromLeftEdge ||
+                                            returningFromRightEdge
 
-                                                if (allowLeft || allowRight || canReturnToCenter) {
-                                                    change.consume()
-                                                    totalDragDistance +=
-                                                        kotlin.math.abs(adjustedDragAmount)
-                                                    dragTargetOffset += adjustedDragAmount
-                                                    val nextOffset = dragTargetOffset
-                                                    motionJob?.cancel()
-                                                    motionJob =
-                                                        coroutineScope.launch {
-                                                            offsetXAnimatable.snapTo(nextOffset)
-                                                        }
-                                                }
-                                            }
+                                    if (
+                                        allowLeft ||
+                                        allowRight ||
+                                        canReturnToCenter
+                                    ) {
+                                        totalDragDistance +=
+                                            kotlin.math.abs(
+                                                adjustedDragAmount,
+                                            )
 
-                                            MiniDragAxis.VERTICAL -> {
-                                                change.consume()
-                                                verticalVelocity.addPointerInputChange(change)
-                                                playerState.dispatchRawDelta(
-                                                    constrainBottomSheetDragDelta(
-                                                        valuePx = playerState.value.toPx(),
-                                                        collapsedPx = playerState.collapsedBound.toPx(),
-                                                        deltaPx = delta.y,
-                                                        allowDismiss = dismissAllowedForGesture,
-                                                    ),
-                                                )
-                                            }
-
-                                            null -> Unit
-                                        }
-                                    }
-
-                                when (axis) {
-                                    MiniDragAxis.HORIZONTAL -> {
-                                        val dragDuration =
-                                            SystemClock.uptimeMillis() - dragStartTime
-                                        val velocity =
-                                            if (dragDuration > 0L) {
-                                                totalDragDistance / dragDuration
-                                            } else {
-                                                0f
-                                            }
-                                        val currentOffset = dragTargetOffset
-                                        val shouldChangeSong =
-                                            completed &&
-                                                (
-                                                    (
-                                                        kotlin.math.abs(currentOffset) >
-                                                            fastSwipeMinDistancePx &&
-                                                            velocity >
-                                                            swipeVelocityThresholdPxPerMs
-                                                    ) ||
-                                                        kotlin.math.abs(currentOffset) >
-                                                            swipeDistanceThresholdPx
-                                                )
-
-                                        if (shouldChangeSong) {
-                                            val canSkipPrevious =
-                                                playerConnection.player.previousMediaItemIndex != -1
-                                            val canSkipNext =
-                                                playerConnection.player.nextMediaItemIndex != -1
-                                            if (currentOffset > 0f && canSkipPrevious) {
-                                                seekPreviousPreservingPlayback()
-                                            } else if (currentOffset <= 0f && canSkipNext) {
-                                                seekNextPreservingPlayback()
-                                            }
-                                        }
-
+                                        dragTargetOffset += adjustedDragAmount
+                                        val nextOffset = dragTargetOffset
                                         motionJob?.cancel()
                                         motionJob =
                                             coroutineScope.launch {
-                                                offsetXAnimatable.snapTo(currentOffset)
-                                                offsetXAnimatable.animateTo(0f, animationSpec)
+                                                offsetXAnimatable.snapTo(nextOffset)
                                             }
                                     }
+                                },
+                                onDragEnd = {
+                                    val dragDuration =
+                                        SystemClock.uptimeMillis() -
+                                            dragStartTime
 
-                                    MiniDragAxis.VERTICAL -> {
-                                        val velocity =
-                                            if (completed) {
-                                                -verticalVelocity.calculateVelocity().y
-                                            } else {
-                                                0f
-                                            }
-                                        verticalVelocity.resetTracking()
-                                        if (completed) {
-                                            val movedAboveDock =
-                                                playerState.value > playerState.collapsedBound
-                                            if (
-                                                movedAboveDock &&
-                                                shouldExpandMiniGesture(
-                                                    rawProgress = playerState.rawProgress,
-                                                    velocity = velocity,
-                                                )
-                                            ) {
-                                                // Compact drag has a deliberate, short commit
-                                                // distance. It should not require pulling a phone-
-                                                // height sheet past its global 50% midpoint.
-                                                playerState.expandSoft()
-                                            } else {
-                                                playerState.performFling(
-                                                    velocity = velocity,
-                                                    onDismiss =
-                                                        if (dismissAllowedForGesture) {
-                                                            onVerticalDismiss
-                                                        } else {
-                                                            null
-                                                        },
-                                                )
-                                            }
+                                    val velocity =
+                                        if (dragDuration > 0L) {
+                                            totalDragDistance /
+                                                dragDuration
                                         } else {
-                                            // Cancellation is never interpreted as a destructive
-                                            // dismiss. Return to the compact anchor instead.
-                                            playerState.collapseSoft()
+                                            0f
+                                        }
+
+                                    val currentOffset = dragTargetOffset
+
+                                    val shouldChangeSong =
+                                        (
+                                            kotlin.math.abs(
+                                                currentOffset,
+                                            ) >
+                                                fastSwipeMinDistancePx &&
+                                                velocity >
+                                                swipeVelocityThresholdPxPerMs
+                                        ) ||
+                                            (
+                                                kotlin.math.abs(
+                                                    currentOffset,
+                                                ) >
+                                                    swipeDistanceThresholdPx
+                                            )
+
+                                    if (shouldChangeSong) {
+                                        val canSkipPrevious =
+                                            playerConnection.player.previousMediaItemIndex != -1
+                                        val canSkipNext =
+                                            playerConnection.player.nextMediaItemIndex != -1
+                                        if (
+                                            currentOffset > 0f &&
+                                            canSkipPrevious
+                                        ) {
+                                            seekPreviousPreservingPlayback()
+                                        } else if (
+                                            currentOffset <= 0f &&
+                                            canSkipNext
+                                        ) {
+                                            seekNextPreservingPlayback()
                                         }
                                     }
 
-                                    null -> Unit
-                                }
-                            }
+                                    motionJob?.cancel()
+                                    motionJob =
+                                        coroutineScope.launch {
+                                            offsetXAnimatable.snapTo(currentOffset)
+                                            offsetXAnimatable.animateTo(
+                                                0f,
+                                                animationSpec,
+                                            )
+                                        }
+                                },
+                            )
                         }
                     } else {
                         baseModifier
