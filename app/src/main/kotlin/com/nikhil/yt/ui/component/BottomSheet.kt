@@ -199,15 +199,22 @@ internal fun fullPlayerForegroundAlpha(
     ).coerceIn(0f, 1f)
 }
 
+internal const val MiniGestureCoordinatorProgressCeiling = MiniPlayerForegroundFadeEnd
+
+internal fun canStartMiniGestureCoordinator(rawProgress: Float): Boolean {
+    val p = if (rawProgress.isFinite()) rawProgress.coerceIn(0f, 1f) else 1f
+    // The compact surface owns input for as long as its foreground is still visibly present.
+    // This is deliberately wider than the destructive dismiss window below: horizontal track
+    // swipes and taps must not disappear just because the sheet moved a few percent off its dock.
+    return p <= MiniGestureCoordinatorProgressCeiling
+}
+
 internal fun miniPlayerForegroundCanAcceptInput(
     rawProgress: Float,
     targetAnchor: Int,
 ): Boolean {
     if (targetAnchor == DISMISSED_ANCHOR) return false
-    val p = if (rawProgress.isFinite()) rawProgress.coerceIn(0f, 1f) else 1f
-    // Physical position is the source of truth. This keeps pause/like/subscription and horizontal
-    // swipe alive at a visually docked mini even if a target anchor changed a frame earlier.
-    return p <= MiniPlayerForegroundFadeStart
+    return canStartMiniGestureCoordinator(rawProgress)
 }
 
 /**
@@ -783,7 +790,7 @@ fun Modifier.bottomSheetDraggable(
          */
         awaitEachGesture {
             val down = awaitFirstDown(requireUnconsumed = false)
-            if (canStartMiniDismissGesture(state.rawProgress)) {
+            if (canStartMiniGestureCoordinator(state.rawProgress)) {
                 waitForUpOrCancellation()
                 return@awaitEachGesture
             }
