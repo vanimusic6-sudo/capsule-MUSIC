@@ -363,10 +363,6 @@ fun BottomSheetPlayer(
                     miniPlayerForegroundAlpha(state.rawProgress)
                 },
                 foregroundInteractive = state.compactForegroundAcceptsInput,
-                playerState = state,
-                onVerticalDismiss = {
-                    playerConnection.service.stopAndClearPlayback()
-                },
             )
         },
     ) {
@@ -408,10 +404,7 @@ fun BottomSheetPlayer(
                                     if (effectivePlayerDesign == CapsulePlayerDesign.IMMERSIVE) {
                                         1f
                                     } else {
-                                        fullPlayerForegroundAlpha(
-                                            state.rawProgress,
-                                            state.targetAnchor,
-                                        )
+                                        fullPlayerForegroundAlpha(state.rawProgress)
                                     }
                             },
                 ) {
@@ -452,10 +445,7 @@ fun BottomSheetPlayer(
                         }
                     },
                     transitionForegroundAlpha = {
-                        fullPlayerForegroundAlpha(
-                            state.rawProgress,
-                            state.targetAnchor,
-                        )
+                        fullPlayerForegroundAlpha(state.rawProgress)
                     },
                     onShowMenu = {
                         menuState.show {
@@ -714,7 +704,6 @@ private fun CapsulePlayerLyricsHost(
                     open = !playerState.isCollapsed && !playerState.isDismissed,
                     controlsActive = !lyricsLayerMounted,
                     transitionForegroundAlpha = transitionForegroundAlpha,
-                    expansionProgress = playerState.rawProgress,
                 )
                 return@Box
             }
@@ -759,7 +748,6 @@ private fun CapsulePlayerLyricsHost(
                     !playerState.isCollapsed &&
                         !playerState.isDismissed &&
                         !showLyrics,
-                expansionProgress = playerState.rawProgress,
             )
         }
 
