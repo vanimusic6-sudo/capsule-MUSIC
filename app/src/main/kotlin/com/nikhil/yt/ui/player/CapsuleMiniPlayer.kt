@@ -100,6 +100,8 @@ import com.nikhil.yt.together.TogetherRole
 import com.nikhil.yt.together.TogetherSessionState
 import com.nikhil.yt.ui.component.BottomSheetState
 import com.nikhil.yt.ui.component.canStartMiniDismissGesture
+import com.nikhil.yt.ui.component.canStartMiniGestureCoordinator
+import com.nikhil.yt.ui.component.constrainBottomSheetDragDelta
 import com.nikhil.yt.ui.screens.settings.DiscordPresenceManager
 import com.nikhil.yt.utils.rememberEnumPreference
 import com.nikhil.yt.utils.rememberPreference
@@ -358,15 +360,21 @@ fun CapsuleMiniPlayer(
                         ) {
                             awaitEachGesture {
                                 val down = awaitFirstDown(requireUnconsumed = false)
-                                if (!canStartMiniDismissGesture(playerState.rawProgress)) {
-                                    // Expanded/transitioning gestures belong to BottomSheet.
-                                    // This compact coordinator must remain a passive observer.
+                                val rawProgressAtDown = playerState.rawProgress
+                                if (!canStartMiniGestureCoordinator(rawProgressAtDown)) {
+                                    // Once the compact foreground is gone, the full sheet owns the
+                                    // gesture. Stay passive without stealing the pointer stream.
                                     while (true) {
                                         val event = awaitPointerEvent()
                                         if (event.changes.none { it.pressed }) break
                                     }
                                     return@awaitEachGesture
                                 }
+                                // Clearing playback is much stricter than owning compact gestures.
+                                // A near-dock/reversing mini may swipe tracks and reopen/close, but
+                                // only a gesture that actually began on the dock can dismiss it.
+                                val dismissAllowedForGesture =
+                                    canStartMiniDismissGesture(rawProgressAtDown)
                                 var axis: MiniDragAxis? = null
                                 var dragTargetOffset = offsetXAnimatable.value
                                 var motionJob: Job? = null
@@ -407,7 +415,14 @@ fun CapsuleMiniPlayer(
                                             MiniDragAxis.VERTICAL -> {
                                                 verticalVelocity.resetTracking()
                                                 verticalVelocity.addPointerInputChange(change)
-                                                playerState.dispatchRawDelta(overSlop.y)
+                                                playerState.dispatchRawDelta(
+                                                    constrainBottomSheetDragDelta(
+                                                        valuePx = playerState.value.toPx(),
+                                                        collapsedPx = playerState.collapsedBound.toPx(),
+                                                        deltaPx = overSlop.y,
+                                                        allowDismiss = dismissAllowedForGesture,
+                                                    ),
+                                                )
                                             }
                                         }
                                     }
@@ -462,7 +477,14 @@ fun CapsuleMiniPlayer(
                                             MiniDragAxis.VERTICAL -> {
                                                 change.consume()
                                                 verticalVelocity.addPointerInputChange(change)
-                                                playerState.dispatchRawDelta(delta.y)
+                                                playerState.dispatchRawDelta(
+                                                    constrainBottomSheetDragDelta(
+                                                        valuePx = playerState.value.toPx(),
+                                                        collapsedPx = playerState.collapsedBound.toPx(),
+                                                        deltaPx = delta.y,
+                                                        allowDismiss = dismissAllowedForGesture,
+                                                    ),
+                                                )
                                             }
 
                                             null -> Unit
@@ -524,7 +546,12 @@ fun CapsuleMiniPlayer(
                                         if (completed) {
                                             playerState.performFling(
                                                 velocity = velocity,
-                                                onDismiss = onVerticalDismiss,
+                                                onDismiss =
+                                                    if (dismissAllowedForGesture) {
+                                                        onVerticalDismiss
+                                                    } else {
+                                                        null
+                                                    },
                                             )
                                         } else {
                                             // Cancellation is never interpreted as a destructive
