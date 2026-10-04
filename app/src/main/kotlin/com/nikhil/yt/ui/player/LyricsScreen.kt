@@ -44,6 +44,7 @@ fun LyricsScreen(
     backdropAnimationTime: State<Long>? = null,
     drawBackdrop: Boolean = true,
     isVisible: Boolean = true,
+    backHandlerEnabled: Boolean = true,
     modifier: Modifier = Modifier,
 ) {
     val playerConnection = LocalPlayerConnection.current ?: return
@@ -91,7 +92,7 @@ fun LyricsScreen(
         }
     }
 
-    BackHandler(onBack = onBackClick)
+    BackHandler(enabled = backHandlerEnabled, onBack = onBackClick)
 
     CapsuleLyricsContent(
         mediaMetadata = mediaMetadata,
