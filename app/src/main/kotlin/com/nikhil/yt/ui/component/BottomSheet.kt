@@ -366,7 +366,7 @@ fun BottomSheet(
                         // Keep the fading Mini above the arriving Player, but input is separately
                         // gated and turns off before the visual surface is completely gone.
                         .zIndex(
-                            if (state.rawProgress < MiniSurfaceFadeEnd) 2f else 0f,
+                            if (state.targetAnchor == EXPANDED_ANCHOR) 2f else 0f,
                         )
                         .clickable(
                             enabled = canReopen,
@@ -490,6 +490,17 @@ class BottomSheetState(
     private fun updateAnchor(anchor: Int) {
         targetAnchor = anchor
         onAnchorChanged(anchor)
+    }
+
+    /**
+     * Declare the direction of an interactive drag without starting an animation.
+     *
+     * Visual ownership must follow the gesture from the moment touch-slop is crossed, not from the
+     * later UP event. Otherwise an upward open drag is rendered with closing rules until release.
+     */
+    internal fun beginInteractiveDrag(towardAnchor: Int) {
+        require(towardAnchor == EXPANDED_ANCHOR || towardAnchor == COLLAPSED_ANCHOR)
+        updateAnchor(towardAnchor)
     }
 
     internal fun updateCollapsedBound(newBound: Dp) {
@@ -833,6 +844,9 @@ fun Modifier.bottomSheetDraggable(
                 awaitVerticalTouchSlopOrCancellation(down.id) { change, overSlop ->
                     if (!change.isConsumed) {
                         accepted = true
+                        state.beginInteractiveDrag(
+                            if (overSlop < 0f) EXPANDED_ANCHOR else COLLAPSED_ANCHOR,
+                        )
                         change.consume()
                         velocityTracker.addPointerInputChange(change)
                         state.dispatchRawDelta(
