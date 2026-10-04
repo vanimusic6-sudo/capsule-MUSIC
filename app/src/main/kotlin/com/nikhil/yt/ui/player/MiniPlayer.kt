@@ -13,7 +13,6 @@ import androidx.compose.runtime.getValue
 import com.nikhil.yt.ui.theme.CapsuleBottomBarEnabledKey
 import com.nikhil.yt.utils.rememberPreference
 import androidx.compose.ui.Modifier
-import com.nikhil.yt.ui.component.BottomSheetState
 
 @Composable
 fun MiniPlayer(
@@ -24,8 +23,6 @@ fun MiniPlayer(
     visible: Boolean = true,
     foregroundAlpha: () -> Float = { 1f },
     foregroundInteractive: Boolean = true,
-    playerState: BottomSheetState? = null,
-    onVerticalDismiss: (() -> Unit)? = null,
 ) {
     val capsuleDock by rememberPreference(CapsuleBottomBarEnabledKey, false)
     CapsuleMiniPlayer(
@@ -37,7 +34,5 @@ fun MiniPlayer(
         visible = visible,
         foregroundAlpha = foregroundAlpha,
         foregroundInteractive = foregroundInteractive,
-        playerState = playerState,
-        onVerticalDismiss = onVerticalDismiss,
     )
 }
