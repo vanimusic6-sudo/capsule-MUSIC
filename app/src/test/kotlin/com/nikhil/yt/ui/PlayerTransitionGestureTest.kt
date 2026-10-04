@@ -44,12 +44,14 @@ class PlayerTransitionGestureTest {
     private var horizontalDistance = 0f
     private var dismisses = 0
     private var fullBottomClicks = 0
+    private var mainScreenClicks = 0
 
     private fun showSheet() {
         childClicks = 0
         horizontalDistance = 0f
         dismisses = 0
         fullBottomClicks = 0
+        mainScreenClicks = 0
 
         compose.setContent {
             MaterialTheme {
@@ -61,6 +63,16 @@ class PlayerTransitionGestureTest {
                             expandedBound = 851.dp,
                             initialAnchor = COLLAPSED_ANCHOR,
                         )
+
+                    Button(
+                        modifier =
+                            Modifier
+                                .align(Alignment.Center)
+                                .testTag("mainScreenButton"),
+                        onClick = { mainScreenClicks++ },
+                    ) {
+                        Text("Main")
+                    }
 
                     BottomSheet(
                         state = state,
@@ -298,6 +310,31 @@ class PlayerTransitionGestureTest {
                 max = PlayerContentHandoffPoint * 0.75f,
             )
             compose.onNodeWithTag("full", useUnmergedTree = true).assertDoesNotExist()
+        } finally {
+            compose.mainClock.autoAdvance = true
+        }
+        compose.waitForIdle()
+    }
+
+    @Test fun `main screen receives input as soon as mini owns closing handoff`() {
+        showSheet()
+        compose.runOnIdle { state.expandSoft() }
+        compose.waitForIdle()
+        compose.mainClock.autoAdvance = false
+        try {
+            compose.runOnIdle { state.collapseSoft() }
+            advanceUntilProgress(
+                min = PlayerContentHandoffPoint * 0.35f,
+                max = PlayerContentHandoffPoint * 0.75f,
+            )
+            compose.onNodeWithTag("mainScreenButton").performTouchInput {
+                down(center)
+                up()
+            }
+            compose.runOnIdle {
+                assertEquals(1, mainScreenClicks)
+                assertTrue(!state.isExpandedOrExpanding)
+            }
         } finally {
             compose.mainClock.autoAdvance = true
         }
