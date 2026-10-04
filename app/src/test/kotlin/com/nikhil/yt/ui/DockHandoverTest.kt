@@ -1,70 +1,166 @@
 package com.nikhil.yt.ui
 
-import com.nikhil.yt.ui.component.compactPlayerSurfaceAlpha
+import androidx.compose.ui.unit.dp
+import com.nikhil.yt.ui.component.COLLAPSED_ANCHOR
+import com.nikhil.yt.ui.component.DISMISSED_ANCHOR
+import com.nikhil.yt.ui.component.EXPANDED_ANCHOR
 import com.nikhil.yt.ui.component.FullPlayerCloseForegroundFadeEnd
 import com.nikhil.yt.ui.component.FullPlayerCloseForegroundFadeStart
 import com.nikhil.yt.ui.component.MiniPlayerForegroundFadeEnd
 import com.nikhil.yt.ui.component.MiniPlayerForegroundFadeStart
-import com.nikhil.yt.ui.component.miniPlayerForegroundCanAcceptInput
-import com.nikhil.yt.ui.component.miniPlayerForegroundAlpha
-import com.nikhil.yt.ui.component.fullPlayerForegroundAlpha
-import com.nikhil.yt.ui.component.expandedPlayerCanAcceptInput
+import com.nikhil.yt.ui.component.MiniSurfaceFadeEnd
+import com.nikhil.yt.ui.component.MiniSurfaceFadeStart
 import com.nikhil.yt.ui.component.PlayerExpandedInputFloor
-import com.nikhil.yt.ui.component.shouldShowCompactSurface
-import com.nikhil.yt.ui.component.shouldRenderExpandedSurface
 import com.nikhil.yt.ui.component.SheetExpandedRenderFloor
-import com.nikhil.yt.ui.component.EXPANDED_ANCHOR
-import com.nikhil.yt.ui.component.DISMISSED_ANCHOR
-import com.nikhil.yt.ui.component.COLLAPSED_ANCHOR
-import com.nikhil.yt.ui.component.PlayerMorphHandoffWindow
-import com.nikhil.yt.ui.component.playerMorphHandoff
+import com.nikhil.yt.ui.component.expandedPlayerCanAcceptInput
+import com.nikhil.yt.ui.component.fullPlayerForegroundAlpha
+import com.nikhil.yt.ui.component.fullPlayerRevealOffset
+import com.nikhil.yt.ui.component.miniPlayerForegroundAlpha
+import com.nikhil.yt.ui.component.miniPlayerForegroundCanAcceptInput
+import com.nikhil.yt.ui.component.miniPlayerPinOffset
+import com.nikhil.yt.ui.component.miniPlayerSurfaceAlpha
 import com.nikhil.yt.ui.component.playerFrameCornerRadius
+import com.nikhil.yt.ui.component.shouldRenderExpandedSurface
+import com.nikhil.yt.ui.component.shouldShowCompactSurface
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * Regression tests for the shared-surface player transition.
+ * Regression tests for the independent Mini Player <-> Player transition.
  *
- * Mini and full player ride the same BottomSheet. Only their opacity trades during the first part
- * of the travel, so there is no stretch, squash, extra descent or second trajectory to leave a
- * residue after an interrupted gesture.
+ * Mini Player stays pinned to the dock. Full Player is a separate canvas that travels from below
+ * the viewport. They share only the scalar open progress; neither surface is the other's layout.
  */
 class DockHandoverTest {
-    @Test fun `docked state belongs completely to the mini player`() {
-        assertEquals(0f, playerMorphHandoff(0f), 0f)
+    @Test fun `mini stays pinned while full player travels independently`() {
+        val expanded = 800.dp
+        val collapsed = 80.dp
+
+        for (step in 0..20) {
+            val progress = step / 20f
+            val value = collapsed + (expanded - collapsed) * progress
+            val parentOffset = expanded - value
+
+            val miniScreenTop =
+                parentOffset + miniPlayerPinOffset(value, collapsed)
+            assertEquals(
+                "mini moved at progress=$progress",
+                (expanded - collapsed).value,
+                miniScreenTop.value,
+                0.001f,
+            )
+
+            val fullScreenTop =
+                parentOffset + fullPlayerRevealOffset(collapsed, progress)
+            assertEquals(
+                "full player did not own its own trajectory at progress=$progress",
+                (expanded * (1f - progress)).value,
+                fullScreenTop.value,
+                0.001f,
+            )
+        }
     }
 
-    @Test fun `full player has completely taken over after the handoff window`() {
-        assertEquals(1f, playerMorphHandoff(PlayerMorphHandoffWindow), 0f)
-        assertEquals(1f, playerMorphHandoff(1f), 0f)
+    @Test fun `dismiss drag does not counter pin mini below its dock`() {
+        assertEquals(0.dp, miniPlayerPinOffset(80.dp, 80.dp))
+        assertEquals(20.dp, miniPlayerPinOffset(100.dp, 80.dp))
+        assertEquals(0.dp, miniPlayerPinOffset(40.dp, 80.dp))
     }
 
-    @Test fun `handoff is monotonic and bounded`() {
-        var previous = 0f
+    @Test fun `mini surface fades on its own timeline`() {
+        assertEquals(1f, miniPlayerSurfaceAlpha(0f), 0f)
+        assertEquals(1f, miniPlayerSurfaceAlpha(MiniSurfaceFadeStart), 0f)
+        assertEquals(0f, miniPlayerSurfaceAlpha(MiniSurfaceFadeEnd), 0f)
+        assertEquals(0f, miniPlayerSurfaceAlpha(1f), 0f)
+
+        var previous = 1f
         for (step in 0..200) {
             val progress = step / 200f
-            val handoff = playerMorphHandoff(progress)
-            assertTrue("handoff escaped bounds at $progress: $handoff", handoff in 0f..1f)
-            assertTrue("handoff reversed at $progress", handoff + 1e-6f >= previous)
-            previous = handoff
+            val alpha = miniPlayerSurfaceAlpha(progress)
+            assertTrue(alpha in 0f..1f)
+            assertTrue("mini surface became brighter at $progress", alpha <= previous + 1e-6f)
+            previous = alpha
         }
     }
 
-    @Test fun `mini and full opacity are exact complements`() {
-        for (step in 0..100) {
-            val progress = step / 100f
-            val full = playerMorphHandoff(progress)
-            val mini = 1f - full
-            assertEquals("opacity hole at $progress", 1f, mini + full, 1e-6f)
+    @Test fun `compact lifecycle follows mini fade rather than full player geometry`() {
+        assertTrue(shouldShowCompactSurface(0f, COLLAPSED_ANCHOR))
+        assertTrue(shouldShowCompactSurface(MiniSurfaceFadeEnd * 0.5f, COLLAPSED_ANCHOR))
+        assertTrue(!shouldShowCompactSurface(MiniSurfaceFadeEnd, COLLAPSED_ANCHOR))
+        assertTrue(!shouldShowCompactSurface(0f, DISMISSED_ANCHOR))
+        assertTrue(shouldShowCompactSurface(0f, EXPANDED_ANCHOR))
+    }
+
+    @Test fun `mini controls dissolve before the independent mini surface is gone`() {
+        assertEquals(1f, miniPlayerForegroundAlpha(0f), 0f)
+        assertEquals(1f, miniPlayerForegroundAlpha(MiniPlayerForegroundFadeStart), 0f)
+        assertEquals(0f, miniPlayerForegroundAlpha(MiniPlayerForegroundFadeEnd), 0f)
+        assertTrue(miniPlayerSurfaceAlpha(MiniPlayerForegroundFadeEnd) > 0f)
+    }
+
+    @Test fun `mini foreground fade is monotonic and bounded`() {
+        var previousMini = 1f
+        for (step in 0..200) {
+            val progress = step / 200f
+            val mini = miniPlayerForegroundAlpha(progress)
             assertTrue(mini in 0f..1f)
-            assertTrue(full in 0f..1f)
+            assertTrue("mini foreground rose while opening at $progress", mini <= previousMini + 1e-6f)
+            previousMini = mini
         }
     }
 
-    @Test fun `handoff completes early so the rest of travel is one full player`() {
-        assertTrue(PlayerMorphHandoffWindow < 0.5f)
-        assertEquals(1f, playerMorphHandoff(0.5f), 0f)
+    @Test fun `full foreground arrives with the independent full canvas on opening`() {
+        for (progress in listOf(0f, 0.05f, 0.2f, 0.5f, 1f)) {
+            assertEquals(
+                "opening foreground detached at $progress",
+                1f,
+                fullPlayerForegroundAlpha(progress, EXPANDED_ANCHOR),
+                0f,
+            )
+        }
+    }
+
+    @Test fun `full foreground releases only near the end of closing`() {
+        assertEquals(
+            1f,
+            fullPlayerForegroundAlpha(FullPlayerCloseForegroundFadeStart, COLLAPSED_ANCHOR),
+            0f,
+        )
+        assertEquals(
+            0f,
+            fullPlayerForegroundAlpha(FullPlayerCloseForegroundFadeEnd, COLLAPSED_ANCHOR),
+            0f,
+        )
+        assertEquals(1f, fullPlayerForegroundAlpha(0.5f, COLLAPSED_ANCHOR), 0f)
+    }
+
+    @Test fun `docked mini controls remain alive when an opening drag declares its target`() {
+        assertTrue(miniPlayerForegroundCanAcceptInput(0f, COLLAPSED_ANCHOR))
+        assertTrue(miniPlayerForegroundCanAcceptInput(0f, EXPANDED_ANCHOR))
+        assertTrue(
+            !miniPlayerForegroundCanAcceptInput(
+                MiniPlayerForegroundFadeEnd + 0.01f,
+                EXPANDED_ANCHOR,
+            ),
+        )
+        assertTrue(!miniPlayerForegroundCanAcceptInput(0f, DISMISSED_ANCHOR))
+    }
+
+    @Test fun `full player controls stay inert through the dock floor`() {
+        assertTrue(!expandedPlayerCanAcceptInput(0f, COLLAPSED_ANCHOR))
+        assertTrue(!expandedPlayerCanAcceptInput(PlayerExpandedInputFloor, COLLAPSED_ANCHOR))
+        assertTrue(expandedPlayerCanAcceptInput(PlayerExpandedInputFloor + 0.01f, COLLAPSED_ANCHOR))
+        assertTrue(expandedPlayerCanAcceptInput(1f, EXPANDED_ANCHOR))
+        assertTrue(!expandedPlayerCanAcceptInput(1f, DISMISSED_ANCHOR))
+    }
+
+    @Test fun `full hit surface mounts only after real travel begins`() {
+        assertTrue(!shouldRenderExpandedSurface(0f, EXPANDED_ANCHOR))
+        assertTrue(shouldRenderExpandedSurface(SheetExpandedRenderFloor * 2f, EXPANDED_ANCHOR))
+        assertTrue(shouldRenderExpandedSurface(SheetExpandedRenderFloor * 2f, COLLAPSED_ANCHOR))
+        assertTrue(!shouldRenderExpandedSurface(SheetExpandedRenderFloor * 0.5f, COLLAPSED_ANCHOR))
+        assertTrue(!shouldRenderExpandedSurface(0f, COLLAPSED_ANCHOR))
     }
 
     @Test fun `player frame corner can never become negative`() {
@@ -84,106 +180,14 @@ class DockHandoverTest {
         }
     }
 
-    @Test fun `closing unmounts the full hit surface before microscopic spring residue can trap taps`() {
-        assertTrue(!shouldRenderExpandedSurface(0f, EXPANDED_ANCHOR))
-        assertTrue(shouldRenderExpandedSurface(SheetExpandedRenderFloor * 2f, EXPANDED_ANCHOR))
-        assertTrue(shouldRenderExpandedSurface(SheetExpandedRenderFloor * 2f, COLLAPSED_ANCHOR))
-        assertTrue(!shouldRenderExpandedSurface(SheetExpandedRenderFloor * 0.5f, COLLAPSED_ANCHOR))
-        assertTrue(!shouldRenderExpandedSurface(0f, COLLAPSED_ANCHOR))
-    }
-
-    @Test fun `compact surface returns on every collapse and never survives dismissal`() {
-        assertTrue(shouldShowCompactSurface(0f, COLLAPSED_ANCHOR))
-        assertTrue(shouldShowCompactSurface(PlayerMorphHandoffWindow * 0.5f, COLLAPSED_ANCHOR))
-        assertTrue(!shouldShowCompactSurface(PlayerMorphHandoffWindow, COLLAPSED_ANCHOR))
-        assertTrue(!shouldShowCompactSurface(0f, DISMISSED_ANCHOR))
-        assertTrue(shouldShowCompactSurface(0f, EXPANDED_ANCHOR))
-    }
-
-    @Test fun `mini foreground waits before releasing and shell keeps fading independently`() {
-        assertEquals(1f, miniPlayerForegroundAlpha(0f), 0f)
-        assertEquals(1f, miniPlayerForegroundAlpha(MiniPlayerForegroundFadeStart), 0f)
-        assertEquals(0f, miniPlayerForegroundAlpha(MiniPlayerForegroundFadeEnd), 0f)
-        assertTrue(compactPlayerSurfaceAlpha(MiniPlayerForegroundFadeEnd) > 0f)
-    }
-
-    @Test fun `full foreground rides with the surface on opening`() {
-        for (progress in listOf(0f, 0.05f, 0.2f, 0.5f, 1f)) {
-            assertEquals(
-                "opening foreground detached at $progress",
-                1f,
-                fullPlayerForegroundAlpha(progress, EXPANDED_ANCHOR),
-                0f,
-            )
-        }
-    }
-
-    @Test fun `full foreground only releases near eighty percent of closing travel`() {
-        assertEquals(
-            1f,
-            fullPlayerForegroundAlpha(FullPlayerCloseForegroundFadeStart, COLLAPSED_ANCHOR),
-            0f,
-        )
-        assertEquals(
-            0f,
-            fullPlayerForegroundAlpha(FullPlayerCloseForegroundFadeEnd, COLLAPSED_ANCHOR),
-            0f,
-        )
-        assertEquals(1f, fullPlayerForegroundAlpha(0.5f, COLLAPSED_ANCHOR), 0f)
-    }
-
-    @Test fun `mini foreground fade is monotonic and bounded`() {
-        var previousMini = 1f
-        for (step in 0..200) {
-            val progress = step / 200f
-            val mini = miniPlayerForegroundAlpha(progress)
-            assertTrue(mini in 0f..1f)
-            assertTrue("mini foreground rose while opening at $progress", mini <= previousMini + 1e-6f)
-            previousMini = mini
-        }
-    }
-
-    @Test fun `docked mini controls remain alive even if logical target moved early`() {
-        assertTrue(miniPlayerForegroundCanAcceptInput(0f, COLLAPSED_ANCHOR))
-        assertTrue(miniPlayerForegroundCanAcceptInput(0f, EXPANDED_ANCHOR))
-        assertTrue(
-            !miniPlayerForegroundCanAcceptInput(
-                MiniPlayerForegroundFadeEnd,
-                EXPANDED_ANCHOR,
-            ),
-        )
-        assertTrue(!miniPlayerForegroundCanAcceptInput(0f, DISMISSED_ANCHOR))
-    }
-
-    @Test fun `mini shell opacity exactly complements the full surface`() {
-        for (step in 0..100) {
-            val progress = step / 100f
-            assertEquals(
-                1f,
-                compactPlayerSurfaceAlpha(progress) + playerMorphHandoff(progress),
-                1e-6f,
-            )
-        }
-    }
-
-    @Test fun `full player controls stay inert through the dock handoff floor`() {
-        assertTrue(!expandedPlayerCanAcceptInput(0f, COLLAPSED_ANCHOR))
-        assertTrue(!expandedPlayerCanAcceptInput(PlayerExpandedInputFloor, COLLAPSED_ANCHOR))
-        assertTrue(expandedPlayerCanAcceptInput(PlayerExpandedInputFloor + 0.01f, COLLAPSED_ANCHOR))
-        assertTrue(expandedPlayerCanAcceptInput(1f, EXPANDED_ANCHOR))
-        assertTrue(!expandedPlayerCanAcceptInput(1f, DISMISSED_ANCHOR))
-    }
-
-    @Test fun `full surface unmounts while still visually imperceptible`() {
-        assertTrue(SheetExpandedRenderFloor >= 0.02f)
-        assertTrue(playerMorphHandoff(SheetExpandedRenderFloor) < 0.01f)
-    }
-
-    @Test fun `animation input outside its normal range stays finite and safe`() {
+    @Test fun `independent transition functions survive hostile input`() {
         for (progress in listOf(-0.4f, 1.6f, Float.NaN, Float.POSITIVE_INFINITY)) {
-            val value = playerMorphHandoff(progress)
-            assertTrue("$progress produced $value", value.isFinite())
-            assertTrue("$progress escaped bounds: $value", value in 0f..1f)
+            val alpha = miniPlayerSurfaceAlpha(progress)
+            val reveal = fullPlayerRevealOffset(80.dp, progress)
+            assertTrue("$progress produced alpha=$alpha", alpha.isFinite())
+            assertTrue("$progress escaped alpha bounds: $alpha", alpha in 0f..1f)
+            assertTrue("$progress produced reveal=$reveal", reveal.value.isFinite())
+            assertTrue("$progress produced negative reveal=$reveal", reveal >= 0.dp)
         }
     }
 }
