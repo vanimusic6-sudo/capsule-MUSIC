@@ -45,15 +45,14 @@ jobs:
           unqualifiedResLocale=en-US
           EOF
 
-      - name: Test lyrics and player gestures
+      - name: Run Universal Debug unit tests
         run: |
           gradle :app:testUniversalDebugUnitTest \
-            --tests 'com.nikhil.yt.lyrics.InstrumentalLyricsTest' \
-            --tests 'com.nikhil.yt.ui.BottomSheetAnchorTest' \
-            --tests 'com.nikhil.yt.ui.DockHandoverTest' \
-            --tests 'com.nikhil.yt.ui.PlayerTransitionGestureTest' \
-            --tests 'com.nikhil.yt.ui.PlayerMenuGestureTest' \
-            --tests 'com.nikhil.yt.ui.MiniPlayerSwipeMotionTest' \
+            --stacktrace --no-daemon
+
+      - name: Run Android lint
+        run: |
+          gradle :app:lintUniversalDebug \
             --stacktrace --no-daemon
 
       - name: Build Universal Debug APK
