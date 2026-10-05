@@ -67,6 +67,7 @@ import com.nikhil.yt.innertube.pages.SearchSuggestionPage
 import com.nikhil.yt.innertube.pages.SearchSummary
 import com.nikhil.yt.innertube.pages.SearchSummaryPage
 import com.nikhil.yt.innertube.pages.enrichSearchSummaryArtists
+import com.nikhil.yt.innertube.pages.extractSearchCardArtists
 import io.ktor.client.call.body
 import io.ktor.client.statement.bodyAsText
 
@@ -166,10 +167,11 @@ object YouTube {
                         section.musicCardShelfRenderer != null -> {
                             val renderer = section.musicCardShelfRenderer
                             val topItem = SearchSummaryPage.fromMusicCardShelfRenderer(renderer)
+                            val cardArtists = extractSearchCardArtists(renderer)
                             val subItems = renderer.contents?.mapNotNull { content ->
                                 try {
                                     content.musicResponsiveListItemRenderer?.let {
-                                        SearchSummaryPage.fromMusicResponsiveListItemRenderer(it)
+                                        SearchSummaryPage.fromMusicResponsiveListItemRenderer(it, cardArtists)
                                     }
                                 } catch (e: Exception) { null }
                             }.orEmpty()

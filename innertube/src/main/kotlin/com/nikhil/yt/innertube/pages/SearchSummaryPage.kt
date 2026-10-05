@@ -49,6 +49,16 @@ internal fun extractSearchSongDuration(runs: List<Run>): Int? =
         run.text.trim().takeIf(searchDurationPattern::matches)?.parseTime()
     }
 
+internal fun extractSearchCardArtists(renderer: MusicCardShelfRenderer): List<Artist> {
+    val browseEndpoint = renderer.onTap.browseEndpoint
+    return if (browseEndpoint?.isArtistEndpoint == true) {
+        renderer.title.runs?.firstOrNull()?.text?.trim()?.takeIf { it.isNotEmpty() }
+            ?.let { listOf(Artist(name = it, id = browseEndpoint.browseId)) }.orEmpty()
+    } else {
+        extractSearchSongArtists(renderer.subtitle.runs.orEmpty())
+    }
+}
+
 internal fun enrichSearchSummaryArtists(summaries: List<SearchSummary>): List<SearchSummary> {
     val knownArtists = summaries.flatMap { it.items }
         .filterIsInstance<SongItem>()
@@ -223,7 +233,10 @@ data class SearchSummaryPage(
             }
         }
 
-        fun fromMusicResponsiveListItemRenderer(renderer: MusicResponsiveListItemRenderer): YTItem? {
+        fun fromMusicResponsiveListItemRenderer(
+            renderer: MusicResponsiveListItemRenderer,
+            fallbackArtists: List<Artist> = emptyList(),
+        ): YTItem? {
             val secondaryLine =
                 renderer.flexColumns
                     .getOrNull(1)
@@ -247,7 +260,7 @@ data class SearchSummaryPage(
                                 ?.runs
                                 ?.firstOrNull()
                                 ?.text ?: return null,
-                        artists = extractSearchSongArtists(metadataRuns),
+                        artists = extractSearchSongArtists(metadataRuns).ifEmpty { fallbackArtists },
                         album = metadataRuns.firstOrNull {
                             it.navigationEndpoint?.browseEndpoint?.isAlbumEndpoint == true
                         }?.let {
