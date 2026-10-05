@@ -59,6 +59,12 @@ jobs:
             --tests 'com.nikhil.yt.ui.UiEnergyRegressionTest' \
             --stacktrace --no-daemon
 
+      - name: Test search summary metadata
+        run: |
+          gradle :innertube:test \
+            --tests 'com.nikhil.yt.innertube.pages.SearchSummaryMetadataTest' \
+            --stacktrace --no-daemon
+
       - name: Run Android lint
         continue-on-error: true
         run: |

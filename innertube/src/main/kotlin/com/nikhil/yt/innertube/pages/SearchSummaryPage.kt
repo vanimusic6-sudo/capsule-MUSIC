@@ -14,18 +14,54 @@ import com.nikhil.yt.innertube.models.Artist
 import com.nikhil.yt.innertube.models.ArtistItem
 import com.nikhil.yt.innertube.models.BrowseEndpoint.BrowseEndpointContextSupportedConfigs.BrowseEndpointContextMusicConfig.Companion.MUSIC_PAGE_TYPE_ALBUM
 import com.nikhil.yt.innertube.models.BrowseEndpoint.BrowseEndpointContextSupportedConfigs.BrowseEndpointContextMusicConfig.Companion.MUSIC_PAGE_TYPE_ARTIST
+import com.nikhil.yt.innertube.models.BrowseEndpoint.BrowseEndpointContextSupportedConfigs.BrowseEndpointContextMusicConfig.Companion.MUSIC_PAGE_TYPE_LIBRARY_ARTIST
 import com.nikhil.yt.innertube.models.BrowseEndpoint.BrowseEndpointContextSupportedConfigs.BrowseEndpointContextMusicConfig.Companion.MUSIC_PAGE_TYPE_USER_CHANNEL
 import com.nikhil.yt.innertube.models.MusicCardShelfRenderer
 import com.nikhil.yt.innertube.models.MusicResponsiveListItemRenderer
 import com.nikhil.yt.innertube.models.PlaylistItem
+import com.nikhil.yt.innertube.models.Run
 import com.nikhil.yt.innertube.models.SongItem
 import com.nikhil.yt.innertube.models.YTItem
-import com.nikhil.yt.innertube.models.clean
 import com.nikhil.yt.innertube.models.filterExplicit
 import com.nikhil.yt.innertube.models.filterVideo
 import com.nikhil.yt.innertube.models.oddElements
 import com.nikhil.yt.innertube.models.splitBySeparator
 import com.nikhil.yt.innertube.utils.parseTime
+
+private val searchDurationPattern = Regex("""\d{1,2}:\d{2}(?::\d{2})?""")
+
+internal fun extractSearchSongArtists(runs: List<Run>): List<Artist> =
+    runs.mapNotNull { run ->
+        val endpoint = run.navigationEndpoint?.browseEndpoint ?: return@mapNotNull null
+        val pageType = endpoint.browseEndpointContextSupportedConfigs
+            ?.browseEndpointContextMusicConfig?.pageType
+        if (run.text.isBlank() ||
+            !(endpoint.isArtistEndpoint ||
+                pageType == MUSIC_PAGE_TYPE_USER_CHANNEL ||
+                pageType == MUSIC_PAGE_TYPE_LIBRARY_ARTIST ||
+                (pageType == null && endpoint.browseId.startsWith("UC")))
+        ) return@mapNotNull null
+        Artist(name = run.text.trim(), id = endpoint.browseId)
+    }.distinctBy { it.id ?: it.name }
+
+internal fun extractSearchSongDuration(runs: List<Run>): Int? =
+    runs.firstNotNullOfOrNull { run ->
+        run.text.trim().takeIf(searchDurationPattern::matches)?.parseTime()
+    }
+
+internal fun enrichSearchSummaryArtists(summaries: List<SearchSummary>): List<SearchSummary> {
+    val knownArtists = summaries.flatMap { it.items }
+        .filterIsInstance<SongItem>()
+        .filter { it.artists.isNotEmpty() }
+        .associate { it.id to it.artists }
+    return summaries.map { summary ->
+        summary.copy(items = summary.items.map { item ->
+            if (item is SongItem && item.artists.isEmpty()) {
+                item.copy(artists = knownArtists[item.id].orEmpty())
+            } else item
+        })
+    }
+}
 
 data class SearchSummary(
     val title: String,
@@ -77,26 +113,17 @@ data class SearchSummaryPage(
                             renderer.title.runs
                                 ?.firstOrNull()
                                 ?.text ?: return null,
-                        artists =
-                            subtitle?.getOrNull(1)?.oddElements()?.map {
-                                Artist(
-                                    name = it.text,
-                                    id = it.navigationEndpoint?.browseEndpoint?.browseId,
-                                )
-                            } ?: return null,
+                        artists = extractSearchSongArtists(renderer.subtitle.runs.orEmpty()),
                         album =
-                            subtitle.getOrNull(2)?.firstOrNull()?.takeIf { it.navigationEndpoint?.browseEndpoint != null }?.let {
+                            renderer.subtitle.runs?.firstOrNull {
+                                it.navigationEndpoint?.browseEndpoint?.isAlbumEndpoint == true
+                            }?.let {
                                 Album(
                                     name = it.text,
                                     id = it.navigationEndpoint?.browseEndpoint?.browseId!!,
                                 )
                             },
-                        duration =
-                            subtitle
-                                .lastOrNull()
-                                ?.firstOrNull()
-                                ?.text
-                                ?.parseTime(),
+                        duration = extractSearchSongDuration(renderer.subtitle.runs.orEmpty()),
                         thumbnail = renderer.thumbnail.musicThumbnailRenderer?.getThumbnailUrl() ?: return null,
                         explicit =
                             renderer.subtitleBadges?.find {
@@ -205,17 +232,11 @@ data class SearchSummaryPage(
                     ?.runs
                     ?.splitBySeparator()
                     ?: return null
-            val thirdLine =
-                renderer.flexColumns
-                    .getOrNull(2)
-                    ?.musicResponsiveListItemFlexColumnRenderer
-                    ?.text
-                    ?.runs
-                    ?.splitBySeparator()
-                    ?: emptyList()
-            val listRun = (secondaryLine + thirdLine).clean()
             return when {
                 renderer.isSong -> {
+                    val metadataRuns = renderer.flexColumns.drop(1).flatMap {
+                        it.musicResponsiveListItemFlexColumnRenderer.text?.runs.orEmpty()
+                    }
                     SongItem(
                         id = renderer.playlistItemData?.videoId ?: return null,
                         title =
@@ -226,24 +247,16 @@ data class SearchSummaryPage(
                                 ?.runs
                                 ?.firstOrNull()
                                 ?.text ?: return null,
-                        artists = listRun.getOrNull(0)?.oddElements()?.map {
-                            Artist(
-                                name = it.text,
-                                id = it.navigationEndpoint?.browseEndpoint?.browseId
-                            )
-                        } ?: return null,
-                        album = listRun.getOrNull(1)?.firstOrNull()?.takeIf { it.navigationEndpoint?.browseEndpoint != null }?.let {
+                        artists = extractSearchSongArtists(metadataRuns),
+                        album = metadataRuns.firstOrNull {
+                            it.navigationEndpoint?.browseEndpoint?.isAlbumEndpoint == true
+                        }?.let {
                             Album(
                                 name = it.text,
                                 id = it.navigationEndpoint?.browseEndpoint?.browseId!!
                             )
                         },
-                        duration =
-                            secondaryLine
-                                .lastOrNull()
-                                ?.firstOrNull()
-                                ?.text
-                                ?.parseTime(),
+                        duration = extractSearchSongDuration(metadataRuns),
                         thumbnail = renderer.thumbnail?.musicThumbnailRenderer?.getThumbnailUrl() ?: return null,
                         explicit =
                             renderer.badges?.find {
