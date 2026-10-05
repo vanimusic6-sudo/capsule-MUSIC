@@ -753,8 +753,7 @@ private fun CapsulePlayerLyricsHost(
                 bottomPadding = 0.dp,
                 open =
                     !playerState.isCollapsed &&
-                        !playerState.isDismissed &&
-                        !showLyrics,
+                        !playerState.isDismissed,
             )
         }
 
