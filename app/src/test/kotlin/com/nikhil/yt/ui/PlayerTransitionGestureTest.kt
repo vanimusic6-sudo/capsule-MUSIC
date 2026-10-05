@@ -186,7 +186,13 @@ class PlayerTransitionGestureTest {
         compose.waitForIdle()
         compose.runOnIdle {
             assertEquals(112.dp, state.collapsedBound)
-            assertEquals(0f, state.rawProgress, 0.001f)
+            assertEquals(
+                "offset=${state.value} anchor=${state.collapsedBound} target=${state.targetAnchor} " +
+                    "running=${state.isAnimationRunning} visual=${state.visualProgress}",
+                0f,
+                state.rawProgress,
+                0.001f,
+            )
             assertEquals(0f, state.visualProgress, 0f)
             assertEquals(1f, miniPlayerContentAlpha(state.visualProgress), 0f)
         }
