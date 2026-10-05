@@ -8,6 +8,9 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
@@ -24,6 +27,7 @@ import com.nikhil.yt.ui.component.BottomSheetState
 import com.nikhil.yt.ui.component.COLLAPSED_ANCHOR
 import com.nikhil.yt.ui.component.PlayerContentHandoffPoint
 import com.nikhil.yt.ui.component.rememberBottomSheetState
+import com.nikhil.yt.ui.component.miniPlayerContentAlpha
 import kotlin.math.abs
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -44,6 +48,7 @@ class PlayerTransitionGestureTest {
     private var dismisses = 0
     private var fullBottomClicks = 0
     private var mainScreenClicks = 0
+    private var compactDockHeight by mutableStateOf(80.dp)
 
     private fun showSheet() {
         childClicks = 0
@@ -51,6 +56,7 @@ class PlayerTransitionGestureTest {
         dismisses = 0
         fullBottomClicks = 0
         mainScreenClicks = 0
+        compactDockHeight = 80.dp
 
         compose.setContent {
             MaterialTheme {
@@ -58,7 +64,7 @@ class PlayerTransitionGestureTest {
                     state =
                         rememberBottomSheetState(
                             dismissedBound = 0.dp,
-                            collapsedBound = 80.dp,
+                            collapsedBound = compactDockHeight,
                             expandedBound = 851.dp,
                             initialAnchor = COLLAPSED_ANCHOR,
                         )
@@ -171,6 +177,27 @@ class PlayerTransitionGestureTest {
             assertTrue(abs(horizontalDistance) > 1f)
             assertTrue(state.isCollapsed)
             assertEquals(0f, state.rawProgress, 0.001f)
+        }
+    }
+
+    @Test fun `compact stays fully opaque when its navigation dock changes height`() {
+        showSheet()
+        compose.runOnIdle { compactDockHeight = 112.dp }
+        compose.waitForIdle()
+        compose.runOnIdle {
+            assertEquals(112.dp, state.collapsedBound)
+            assertEquals(0f, state.rawProgress, 0.001f)
+            assertEquals(0f, state.visualProgress, 0f)
+            assertEquals(1f, miniPlayerContentAlpha(state.visualProgress), 0f)
+        }
+
+        compose.runOnIdle { state.expandSoft() }
+        compose.waitForIdle()
+        compose.runOnIdle { state.collapseSoft() }
+        compose.waitForIdle()
+        compose.runOnIdle {
+            assertEquals(0f, state.rawProgress, 0.001f)
+            assertEquals(1f, miniPlayerContentAlpha(state.visualProgress), 0f)
         }
     }
 

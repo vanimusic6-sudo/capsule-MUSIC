@@ -1629,7 +1629,7 @@ class MainActivity : ComponentActivity() {
                                                     .offset {
                                                         val hidden =
                                                             CapsuleMotion.either(
-                                                                playerBottomSheetState.progress,
+                                                                playerBottomSheetState.visualProgress,
                                                                 1f - navigationBarReveal,
                                                             )
                                                         IntOffset(

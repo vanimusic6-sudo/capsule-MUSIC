@@ -379,7 +379,7 @@ fun BottomSheetPlayer(
             // Carry the compact card's actual palette through the empty part of the sheet.
             // The chosen full-player backdrop then replaces it as the full UI arrives, instead
             // of exposing the neutral Surface for a quarter of the opening travel.
-            if (state.rawProgress < 0.5f) {
+            if (state.visualProgress < 0.5f) {
                 CapsuleCompactSurfaceBackground(
                     style = miniPlayerBackground,
                     pureBlack = pureBlack,
@@ -389,13 +389,13 @@ fun BottomSheetPlayer(
                 )
             }
             if (effectivePlayerDesign != CapsulePlayerDesign.IMMERSIVE &&
-                state.rawProgress > PlayerContentHandoffPoint
+                state.visualProgress > PlayerContentHandoffPoint
             ) {
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
                         .graphicsLayer {
-                            alpha = com.nikhil.yt.ui.component.fullPlayerContentAlpha(state.rawProgress)
+                            alpha = com.nikhil.yt.ui.component.fullPlayerContentAlpha(state.visualProgress)
                         }
                         .background(playerSurfaceColor(useBlackBackground)),
                 ) {

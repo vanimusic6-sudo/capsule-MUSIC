@@ -270,13 +270,13 @@ fun BottomSheet(
     val renderExpandedSurface by
         remember(state) {
             derivedStateOf {
-                shouldRenderExpandedSurface(state.rawProgress, state.isDismissed)
+                shouldRenderExpandedSurface(state.visualProgress, state.isDismissed)
             }
         }
     val renderExpandedContent by
         remember(state) {
             derivedStateOf {
-                shouldRenderExpandedContent(state.rawProgress, state.isDismissed)
+                shouldRenderExpandedContent(state.visualProgress, state.isDismissed)
             }
         }
 
@@ -327,7 +327,7 @@ fun BottomSheet(
                         // physically travels upward and the opacity handoff only softens the morph
                         // instead of replacing movement with a dissolve.
                         .graphicsLayer {
-                            alpha = miniPlayerContentAlpha(state.rawProgress)
+                            alpha = miniPlayerContentAlpha(state.visualProgress)
                         }
                         // Mini visually yields over the same moving frame. Input has its own
                         // progress gate, so an almost-gone Mini cannot steal full-player controls.
@@ -355,7 +355,7 @@ fun BottomSheet(
                     Modifier
                         .fillMaxSize()
                         .graphicsLayer {
-                            val raw = state.rawProgress.coerceIn(0f, 1f)
+                            val raw = state.visualProgress
                             scaleX =
                                 playerFrameHorizontalScale(
                                     progress = raw,
@@ -381,7 +381,7 @@ fun BottomSheet(
                         Modifier
                             .fillMaxSize()
                             .graphicsLayer {
-                                alpha = surfaceAlpha(state.rawProgress)
+                                alpha = surfaceAlpha(state.visualProgress)
                             }
                             .background(backgroundColor),
                 ) {
@@ -394,7 +394,7 @@ fun BottomSheet(
                             Modifier
                                 .fillMaxSize()
                                 .graphicsLayer {
-                                    alpha = fullPlayerContentAlpha(state.rawProgress)
+                                    alpha = fullPlayerContentAlpha(state.visualProgress)
                                 },
                     ) {
                         content()
@@ -539,6 +539,11 @@ class BottomSheetState internal constructor(
      * This prevents a closing spring from leaving Player as owner after close is requested.
      */
     private var requestedAnchor by mutableStateOf(anchoredState.targetValue)
+    private var userGestureInProgress by mutableStateOf(false)
+
+    internal fun setUserGestureInProgress(inProgress: Boolean) {
+        userGestureInProgress = inProgress
+    }
 
     val targetAnchor: Int
         get() = requestedAnchor.legacyId()
@@ -579,6 +584,21 @@ class BottomSheetState internal constructor(
             rawProgress.coerceIn(0f, 1f)
         }
 
+    /** An idle compact sheet starts its visual transition at the dock, even after inset changes. */
+    val visualProgress by
+        derivedStateOf {
+            if (
+                requestedAnchor == SheetAnchor.Collapsed &&
+                    anchoredState.currentValue == SheetAnchor.Collapsed &&
+                    !anchoredState.isAnimationRunning &&
+                    !userGestureInProgress
+            ) {
+                0f
+            } else {
+                progress
+            }
+        }
+
     val isExpandedOrExpanding: Boolean
         get() = requestedAnchor == SheetAnchor.Expanded
 
@@ -590,17 +610,17 @@ class BottomSheetState internal constructor(
 
     val shouldLayerAboveCollapsedChrome by
         derivedStateOf {
-            shouldRenderExpandedContent(rawProgress, isDismissed)
+            shouldRenderExpandedContent(visualProgress, isDismissed)
         }
 
     val compactSurfaceVisible by
         derivedStateOf {
-            shouldShowCompactSurface(rawProgress, isDismissed)
+            shouldShowCompactSurface(visualProgress, isDismissed)
         }
 
     val compactForegroundAcceptsInput by
         derivedStateOf {
-            miniPlayerForegroundCanAcceptInput(rawProgress, isDismissed)
+            miniPlayerForegroundCanAcceptInput(visualProgress, isDismissed)
         }
 
     private fun resolveRequestedAnchor(anchor: SheetAnchor): SheetAnchor =
@@ -682,6 +702,9 @@ class BottomSheetState internal constructor(
             ) { animatedValue, animatedVelocity ->
                 dragTo(animatedValue, animatedVelocity)
             }
+            // Spring completion can leave a small residual pixel offset. The next gesture and
+            // the compact opacity must start from the same physical anchor.
+            dragTo(targetOffset, 0f)
         }
     }
 
@@ -1097,6 +1120,7 @@ fun Modifier.bottomSheetDraggable(
         // AnchoredDraggable cancels the running settle at its current physical offset.
         startDragImmediately = false,
         onDragStarted = {
+            state.setUserGestureInProgress(true)
             gesturePolicy.allowDismiss =
                 onDismiss != null &&
                     (
@@ -1120,6 +1144,8 @@ fun Modifier.bottomSheetDraggable(
                 )
             } catch (_: CancellationException) {
                 // A newer touch or authoritative transition owns the same anchored offset.
+            } finally {
+                state.setUserGestureInProgress(false)
             }
         },
     )
