@@ -161,6 +161,7 @@ fun CapsulePlayerContent(
      * row would pop in late and vanish early and the layout would visibly reset on both.
      */
     open: Boolean = true,
+    motionActive: Boolean = true,
     expansionProgress: Float = if (open) 1f else 0f,
 ) {
     // Keep the full player alive through its collapse/open transition, but once the sheet has
@@ -428,7 +429,7 @@ fun CapsulePlayerContent(
      * mode so it cannot steal artwork budget.
      */
     val lyricLineConfigured = isLight && showLyricLine
-    val lyricLineActive = lyricLineConfigured && visible
+    val lyricLineActive = lyricLineConfigured && visible && motionActive
 
     val lyricsEntity by
         if (lyricLineActive) {
@@ -1364,7 +1365,7 @@ fun CapsulePlayerContent(
                                         CapsuleOrbitButton(
                                             isPlaying,
                                             isLoading,
-                                            visible,
+                                            visible && motionActive,
                                             textColor,
                                             onPlayPause,
                                             // Transport editing disables the surrounding actions,
@@ -1647,7 +1648,7 @@ fun CapsulePlayerContent(
                         onPrevious = playerConnection::seekToPrevious,
                         onNext = playerConnection::seekToNext,
                         onRepeat = { playerConnection.player.toggleRepeatMode() },
-                        orbit = { CapsuleOrbitButton(isPlaying, isLoading, visible, textColor, onPlayPause) },
+                        orbit = { CapsuleOrbitButton(isPlaying, isLoading, visible && motionActive, textColor, onPlayPause) },
                     )
                 } else {
                     Column(
@@ -1703,7 +1704,7 @@ fun CapsulePlayerContent(
                                         isPlaying,
                                     isLoading =
                                         isLoading,
-                                    visible = visible,
+                                    visible = visible && motionActive,
                                     color =
                                         textColor,
                                     onClick = onPlayPause,

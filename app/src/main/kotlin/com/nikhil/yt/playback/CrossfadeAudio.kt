@@ -25,6 +25,9 @@ import kotlin.math.abs
 import kotlin.math.min
 import kotlin.math.pow
 
+internal fun crossfadeIdlePollDelay(remainingMs: Long, preloadWindowMs: Long): Long =
+    ((remainingMs - preloadWindowMs).coerceAtLeast(0L) / 2L).coerceIn(100L, 500L)
+
 internal class CrossfadeAudio(
     private val player: ExoPlayer,
     private val database: MusicDatabase,
@@ -104,7 +107,7 @@ internal class CrossfadeAudio(
 
             if (!player.playWhenReady) {
                 stopOverlapCrossfade(resetMainFade = true)
-                delay(150)
+                delay(500)
                 continue
             }
 
@@ -116,7 +119,7 @@ internal class CrossfadeAudio(
 
             if (!crossfadeActive && (player.playbackState != Player.STATE_READY || !player.isPlaying)) {
                 stopOverlapCrossfade(resetMainFade = true)
-                delay(150)
+                delay(500)
                 continue
             }
 
@@ -126,13 +129,13 @@ internal class CrossfadeAudio(
 
             if (player.repeatMode == Player.REPEAT_MODE_ONE) {
                 stopOverlapCrossfade(resetMainFade = true)
-                delay(150)
+                delay(500)
                 continue
             }
 
             if (!crossfadeActive && (nextIndex == C.INDEX_UNSET || durationMs <= 0 || durationMs == C.TIME_UNSET)) {
                 stopOverlapCrossfade(resetMainFade = true)
-                delay(150)
+                delay(500)
                 continue
             }
 
@@ -177,9 +180,12 @@ internal class CrossfadeAudio(
             }
 
             if (playbackFadeFactor.value != 1f) playbackFadeFactor.value = 1f
-            delay(100)
+            // Sleep through the middle of the song. Approach the preload window in smaller
+            // steps so a seek/skip still reacts quickly and the first overlap is not late.
+            delay(crossfadeIdlePollDelay(remainingMs, preloadWindowMs))
         }
     }
+
 
     private suspend fun primeOverlapForNext(nextIndex: Int) {
         val nextItem = player.getMediaItemAt(nextIndex)

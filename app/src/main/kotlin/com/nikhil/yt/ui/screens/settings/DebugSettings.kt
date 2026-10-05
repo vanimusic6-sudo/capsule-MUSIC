@@ -955,6 +955,7 @@ private fun LogLevelBadge(level: Int, compact: Boolean = false) {
 @Composable
 private fun NerdStatsSection(playerConnection: com.nikhil.yt.playback.PlayerConnection?) {
     if (playerConnection == null) return
+    val onScreen = com.nikhil.yt.ui.player.appIsOnScreen()
 
     val currentFormat by playerConnection.currentFormat.collectAsState(initial = null)
     val mediaMetadata by playerConnection.mediaMetadata.collectAsState()
@@ -965,7 +966,8 @@ private fun NerdStatsSection(playerConnection: com.nikhil.yt.playback.PlayerConn
     var currentPosition by remember { mutableStateOf(0L) }
     var playbackSpeed by remember { mutableStateOf(1.0f) }
 
-    LaunchedEffect(Unit) {
+    LaunchedEffect(player, onScreen) {
+        if (!onScreen) return@LaunchedEffect
         while (isActive) {
             bufferPercentage = player.bufferedPercentage
             bufferedPosition = player.bufferedPosition

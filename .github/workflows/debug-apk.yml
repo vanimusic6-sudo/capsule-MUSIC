@@ -56,6 +56,7 @@ jobs:
             --tests 'com.nikhil.yt.ui.PlayerMenuGestureTest' \
             --tests 'com.nikhil.yt.ui.MiniPlayerSwipeMotionTest' \
             --tests 'com.nikhil.yt.ui.CapsuleBackgroundMotionTest' \
+            --tests 'com.nikhil.yt.playback.CrossfadeIdlePollTest' \
             --tests 'com.nikhil.yt.ui.UiEnergyRegressionTest' \
             --stacktrace --no-daemon
 

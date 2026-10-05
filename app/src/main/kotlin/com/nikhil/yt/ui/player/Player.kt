@@ -32,6 +32,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.State
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -560,6 +561,11 @@ private fun CapsulePlayerLyricsHost(
     val frameScaleX = remember { Animatable(1f) }
     val frameScaleY = remember { Animatable(1f) }
     val closeAccent = remember { Animatable(0f) }
+    // The outgoing player stays fully present while Lyrics travels across it. Once the page has
+    // covered the last pixel, its lyric row and decorative orbit can sleep until closing starts.
+    val playerMotionActive by remember(showLyrics) {
+        derivedStateOf { !showLyrics || sheetOffset.value > 0.001f }
+    }
     var lyricsLayerMounted by remember { mutableStateOf(showLyrics) }
     var lyricsForegroundMounted by remember { mutableStateOf(showLyrics) }
     var lyricsRuntimeActive by remember { mutableStateOf(showLyrics) }
@@ -709,7 +715,7 @@ private fun CapsulePlayerLyricsHost(
                     },
                     bottomPadding = 0.dp,
                     open = !playerState.isCollapsed && !playerState.isDismissed,
-                    controlsActive = !lyricsLayerMounted,
+                    controlsActive = playerMotionActive,
                     transitionForegroundAlpha = transitionForegroundAlpha,
                 )
                 return@Box
@@ -751,6 +757,7 @@ private fun CapsulePlayerLyricsHost(
                 },
                 onMenuClick = onShowMenu,
                 bottomPadding = 0.dp,
+                motionActive = playerMotionActive,
                 open =
                     !playerState.isCollapsed &&
                         !playerState.isDismissed,

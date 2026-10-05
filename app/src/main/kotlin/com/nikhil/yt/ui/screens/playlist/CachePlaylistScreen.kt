@@ -41,6 +41,7 @@ import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.TopAppBarScrollBehavior
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
@@ -84,6 +85,7 @@ import com.nikhil.yt.ui.component.SongListItem
 import com.nikhil.yt.ui.component.SortHeader
 import com.nikhil.yt.ui.menu.SelectionSongMenu
 import com.nikhil.yt.ui.menu.SongMenu
+import com.nikhil.yt.ui.player.appIsOnScreen
 import com.nikhil.yt.ui.utils.ItemWrapper
 import com.nikhil.yt.ui.utils.backToMain
 import com.nikhil.yt.utils.rememberEnumPreference
@@ -102,6 +104,11 @@ fun CachePlaylistScreen(
     val context = LocalContext.current
     val menuState = LocalMenuState.current
     val playerConnection = LocalPlayerConnection.current ?: return
+    val onScreen = appIsOnScreen()
+    DisposableEffect(viewModel, onScreen) {
+        viewModel.setScreenVisible(onScreen)
+        onDispose { viewModel.setScreenVisible(false) }
+    }
     val haptic = LocalHapticFeedback.current
     val focusManager = LocalFocusManager.current
 

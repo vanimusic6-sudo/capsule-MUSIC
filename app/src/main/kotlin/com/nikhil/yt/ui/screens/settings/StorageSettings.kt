@@ -36,6 +36,7 @@ import com.nikhil.yt.di.CAPSULE_VIDEO_CACHE_DIRECTORY
 import com.nikhil.yt.extensions.directorySizeBytes
 import com.nikhil.yt.extensions.tryOrNull
 import com.nikhil.yt.ui.component.ActionPromptDialog
+import com.nikhil.yt.ui.player.appIsOnScreen
 import com.nikhil.yt.ui.utils.formatFileSize
 import com.nikhil.yt.utils.rememberPreference
 import kotlinx.coroutines.Dispatchers
@@ -56,6 +57,7 @@ fun StorageSettings(
     val playerCache = service.playerCache
     val videoCache = service.videoCache
     val downloadCache = service.downloadCache
+    val onScreen = appIsOnScreen()
 
     val downloadCacheDir = remember { context.filesDir.resolve("download") }
     val playerCacheDir = remember { context.filesDir.resolve("exoplayer") }
@@ -88,7 +90,7 @@ fun StorageSettings(
     var showSongCacheSizeDialog by remember { mutableStateOf(false) }
     var showImageCacheSizeDialog by remember { mutableStateOf(false) }
 
-    var imageCacheSize by remember { mutableStateOf(imageDiskCache.size) }
+    var imageCacheSize by remember { mutableStateOf(0L) }
     var playerCacheSize by remember { mutableStateOf(0L) }
     var videoCacheSize by remember { mutableStateOf(0L) }
     var downloadCacheSize by remember { mutableStateOf(0L) }
@@ -161,16 +163,17 @@ fun StorageSettings(
         }
     }
 
-    LaunchedEffect(imageDiskCache) {
+    LaunchedEffect(imageDiskCache, onScreen) {
+        if (!onScreen) return@LaunchedEffect
         while (isActive) {
-            delay(500)
-            imageCacheSize = imageDiskCache.size
+            imageCacheSize = withContext(Dispatchers.IO) { imageDiskCache.size }
+            delay(3_000L)
         }
     }
 
-    LaunchedEffect(playerCache, playerCacheDir) {
+    LaunchedEffect(playerCache, playerCacheDir, onScreen) {
+        if (!onScreen) return@LaunchedEffect
         while (isActive) {
-            delay(500)
             playerCacheSize =
                 withContext(Dispatchers.IO) {
                     val cacheSpace =
@@ -181,12 +184,13 @@ fun StorageSettings(
                         cacheSpace
                     }
                 }
+            delay(3_000L)
         }
     }
 
-    LaunchedEffect(videoCache, videoCacheDir) {
+    LaunchedEffect(videoCache, videoCacheDir, onScreen) {
+        if (!onScreen) return@LaunchedEffect
         while (isActive) {
-            delay(500)
             videoCacheSize =
                 withContext(Dispatchers.IO) {
                     val cacheSpace =
@@ -197,12 +201,13 @@ fun StorageSettings(
                         cacheSpace
                     }
                 }
+            delay(3_000L)
         }
     }
 
-    LaunchedEffect(downloadCache, downloadCacheDir) {
+    LaunchedEffect(downloadCache, downloadCacheDir, onScreen) {
+        if (!onScreen) return@LaunchedEffect
         while (isActive) {
-            delay(500)
             downloadCacheSize =
                 withContext(Dispatchers.IO) {
                     val cacheSpace =
@@ -213,6 +218,7 @@ fun StorageSettings(
                         cacheSpace
                     }
                 }
+            delay(3_000L)
         }
     }
 
