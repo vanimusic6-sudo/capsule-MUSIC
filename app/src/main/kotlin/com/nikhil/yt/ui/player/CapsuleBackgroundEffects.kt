@@ -7,7 +7,6 @@
 package com.nikhil.yt.ui.player
 
 import android.os.SystemClock
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Box
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
@@ -233,52 +232,49 @@ internal fun CapsuleGlassSurface(
     @Suppress("UNUSED_VARIABLE")
     val ignoredArtworkColors = colors
 
-    Canvas(modifier = modifier) {
-        // Keep the compact player and its dock opaque at rest. The transition itself owns
-        // opacity; a translucent resting GLASS card reveals list artwork underneath it.
-        drawRect(Color(0xFF141414))
-        drawRect(Color(0xB80A0B10))
-        drawRect(
-            brush =
-                Brush.linearGradient(
-                    colors =
-                        listOf(
-                            Color.White.copy(alpha = 0.045f),
-                            Color(0xFF15161D).copy(alpha = 0.28f),
-                            Color.Black.copy(alpha = 0.2f),
-                        ),
-                    start = Offset.Zero,
-                    end = Offset(size.width, size.height),
-                ),
+    Box(modifier = modifier.drawWithCache {
+        // GLASS is stationary on every tab. Reuse its shaders while the player sheet moves;
+        // only a size or density change needs to rebuild them.
+        val sheen = Brush.linearGradient(
+            colors = listOf(
+                Color.White.copy(alpha = 0.045f),
+                Color(0xFF15161D).copy(alpha = 0.28f),
+                Color.Black.copy(alpha = 0.2f),
+            ),
+            start = Offset.Zero,
+            end = Offset(size.width, size.height),
         )
-        drawRect(
-            brush =
-                Brush.radialGradient(
-                    colors =
-                        listOf(
-                            Color.White.copy(alpha = 0.065f),
-                            Color.White.copy(alpha = 0.025f),
-                            Color.Transparent,
-                        ),
-                    center = Offset(size.width * 0.16f, 0f),
-                    radius = max(size.width, size.height) * 0.8f,
-                ),
+        val light = Brush.radialGradient(
+            colors = listOf(
+                Color.White.copy(alpha = 0.065f),
+                Color.White.copy(alpha = 0.025f),
+                Color.Transparent,
+            ),
+            center = Offset(size.width * 0.16f, 0f),
+            radius = max(size.width, size.height) * 0.8f,
         )
-        drawLine(
-            color = Color.White.copy(alpha = 0.1f),
-            start = Offset(size.width * 0.08f, 0.7f * density),
-            end = Offset(size.width * 0.92f, 0.7f * density),
-            strokeWidth = 0.7f * density,
-            cap = StrokeCap.Round,
-        )
-        drawLine(
-            color = Color.Black.copy(alpha = 0.18f),
-            start = Offset(size.width * 0.1f, size.height - 0.7f * density),
-            end = Offset(size.width * 0.9f, size.height - 0.7f * density),
-            strokeWidth = 0.7f * density,
-            cap = StrokeCap.Round,
-        )
-    }
+        onDrawBehind {
+            // Keep the card opaque at rest. The transition itself owns opacity.
+            drawRect(Color(0xFF141414))
+            drawRect(Color(0xB80A0B10))
+            drawRect(brush = sheen)
+            drawRect(brush = light)
+            drawLine(
+                color = Color.White.copy(alpha = 0.1f),
+                start = Offset(size.width * 0.08f, 0.7f * density),
+                end = Offset(size.width * 0.92f, 0.7f * density),
+                strokeWidth = 0.7f * density,
+                cap = StrokeCap.Round,
+            )
+            drawLine(
+                color = Color.Black.copy(alpha = 0.18f),
+                start = Offset(size.width * 0.1f, size.height - 0.7f * density),
+                end = Offset(size.width * 0.9f, size.height - 0.7f * density),
+                strokeWidth = 0.7f * density,
+                cap = StrokeCap.Round,
+            )
+        }
+    })
 }
 
 /** Reduce saturation and cap brightness before a cover colour reaches UI. */

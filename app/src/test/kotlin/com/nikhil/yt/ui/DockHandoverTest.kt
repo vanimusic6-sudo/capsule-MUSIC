@@ -2,12 +2,14 @@ package com.nikhil.yt.ui
 
 import androidx.compose.ui.unit.dp
 import com.nikhil.yt.ui.component.FullPlayerContentFadeEnd
+import com.nikhil.yt.ui.component.PlayerBackdropFadeEnd
 import com.nikhil.yt.ui.component.PlayerContentHandoffPoint
 import com.nikhil.yt.ui.component.expandedPlayerCanAcceptInput
 import com.nikhil.yt.ui.component.fullPlayerContentAlpha
 import com.nikhil.yt.ui.component.miniPlayerContentAlpha
 import com.nikhil.yt.ui.component.miniPlayerForegroundCanAcceptInput
 import com.nikhil.yt.ui.component.playerContainerAlpha
+import com.nikhil.yt.ui.component.playerBackdropContentAlpha
 import com.nikhil.yt.ui.component.playerHandoffSurfaceAlpha
 import com.nikhil.yt.ui.component.playerFrameCornerRadius
 import com.nikhil.yt.ui.component.playerFrameHorizontalScale
@@ -64,6 +66,25 @@ class DockHandoverTest {
             0f,
         )
         assertEquals(1f, playerHandoffSurfaceAlpha(1f), 0f)
+    }
+
+    @Test fun `artwork and controls fade through the collapse behind a settled surface`() {
+        var previousContent = 0f
+        var previousSurface = 0f
+        for (step in 0..200) {
+            val progress = step / 200f
+            val content = fullPlayerContentAlpha(progress)
+            val surface = playerHandoffSurfaceAlpha(progress)
+            assertTrue("full UI brighter than its surface at $progress", content <= surface + 0.0001f)
+            assertTrue(content + 0.0001f >= previousContent)
+            assertTrue(surface + 0.0001f >= previousSurface)
+            previousContent = content
+            previousSurface = surface
+        }
+        assertEquals(1f, playerBackdropContentAlpha(PlayerBackdropFadeEnd), 0f)
+        assertEquals(1f, playerHandoffSurfaceAlpha(PlayerBackdropFadeEnd), 0f)
+        assertTrue(fullPlayerContentAlpha(0.5f) in 0.1f..0.5f)
+        assertTrue(fullPlayerContentAlpha(0.75f) in 0.5f..1f)
     }
 
     @Test fun `hit tree ownership follows the same handoff point`() {

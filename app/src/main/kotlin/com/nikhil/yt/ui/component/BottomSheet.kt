@@ -113,7 +113,8 @@ internal fun isAtSheetAnchor(
  * expanded content appears, while the sheet/background itself remains continuous.
  */
 internal const val PlayerContentHandoffPoint = 0.25f
-internal const val FullPlayerContentFadeEnd = 0.50f
+internal const val PlayerBackdropFadeEnd = 0.55f
+internal const val FullPlayerContentFadeEnd = 0.88f
 
 private fun transitionWindow(
     progress: Float,
@@ -141,6 +142,10 @@ internal fun fullPlayerContentAlpha(progress: Float): Float =
         end = FullPlayerContentFadeEnd,
     )
 
+/** The backdrop settles ahead of the cover and controls, so bright UI never floats on a weak sheet. */
+internal fun playerBackdropContentAlpha(progress: Float): Float =
+    transitionWindow(progress, PlayerContentHandoffPoint, PlayerBackdropFadeEnd)
+
 /** Non-interactive shared container that bridges the content handoff. */
 internal fun playerContainerAlpha(progress: Float): Float =
     transitionWindow(
@@ -149,9 +154,19 @@ internal fun playerContainerAlpha(progress: Float): Float =
         end = PlayerContentHandoffPoint,
     )
 
-/** ArchiveTune-style surface reveal: at the UI handoff the backdrop is still translucent. */
+/** The surface remains continuous at the handoff, then becomes opaque before the UI brightens. */
 internal fun playerHandoffSurfaceAlpha(progress: Float): Float =
-    if (progress.isFinite()) progress.coerceIn(0f, 1f) else 0f
+    if (!progress.isFinite()) {
+        0f
+    } else {
+        val p = progress.coerceIn(0f, 1f)
+        if (p <= PlayerContentHandoffPoint) {
+            p
+        } else {
+            PlayerContentHandoffPoint +
+                (1f - PlayerContentHandoffPoint) * playerBackdropContentAlpha(p)
+        }
+    }
 
 internal fun shouldRenderExpandedSurface(
     rawProgress: Float,
