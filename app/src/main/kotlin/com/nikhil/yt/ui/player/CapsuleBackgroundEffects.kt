@@ -234,6 +234,9 @@ internal fun CapsuleGlassSurface(
     val ignoredArtworkColors = colors
 
     Canvas(modifier = modifier) {
+        // Keep the compact player and its dock opaque at rest. The transition itself owns
+        // opacity; a translucent resting GLASS card reveals list artwork underneath it.
+        drawRect(Color(0xFF141414))
         drawRect(Color(0xB80A0B10))
         drawRect(
             brush =

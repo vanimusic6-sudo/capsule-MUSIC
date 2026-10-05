@@ -1657,13 +1657,16 @@ class MainActivity : ComponentActivity() {
                                                             .height(bottomInset + navVisibleHeight)
                                                     },
                                                 items = navigationItems,
-                                                currentRoute = navBackStackEntry?.destination?.route ?: "",
+                                                currentRoute =
+                                                    if (active) Screens.Search.route
+                                                    else navBackStackEntry?.destination?.route ?: "",
                                                 pureBlack = pureBlack,
                                                 capsuleMiniPlayerVisible = capsuleMiniPlayerActuallyVisible,
                                                 onTabSelected = { screen ->
                                                     if (screen.route == Screens.Search.route) {
                                                         onActiveChange(true)
                                                     } else {
+                                                        if (active) onActiveChange(false)
                                                         mainTabNavigator.select(screen.route) {
                                                             navController.currentBackStackEntry?.liveSavedStateHandle()?.set("scrollToTop", true)
                                                             coroutineScope.launch {

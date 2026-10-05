@@ -3,13 +3,12 @@ package com.nikhil.yt.ui
 import androidx.compose.ui.unit.dp
 import com.nikhil.yt.ui.component.FullPlayerContentFadeEnd
 import com.nikhil.yt.ui.component.PlayerContentHandoffPoint
-import com.nikhil.yt.ui.component.auditMiniHandoverStretch
-import com.nikhil.yt.ui.component.auditPlayerFoldFraction
 import com.nikhil.yt.ui.component.expandedPlayerCanAcceptInput
 import com.nikhil.yt.ui.component.fullPlayerContentAlpha
 import com.nikhil.yt.ui.component.miniPlayerContentAlpha
 import com.nikhil.yt.ui.component.miniPlayerForegroundCanAcceptInput
 import com.nikhil.yt.ui.component.playerContainerAlpha
+import com.nikhil.yt.ui.component.playerHandoffSurfaceAlpha
 import com.nikhil.yt.ui.component.playerFrameCornerRadius
 import com.nikhil.yt.ui.component.playerFrameHorizontalScale
 import com.nikhil.yt.ui.component.shouldRenderExpandedContent
@@ -21,30 +20,18 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class DockHandoverTest {
-    @Test fun `mini stays at its dock as the sheet travels`() {
+    @Test fun `mini rides upward on the same physical sheet`() {
         val expanded = 800.dp
         val collapsed = 80.dp
+        var previousTop = (expanded - collapsed).value
         for (step in 0..20) {
             val progress = step / 20f
             val value = collapsed + (expanded - collapsed) * progress
             val sheetTop = (expanded - value).value
-            val miniPinOffset = (value - collapsed).value.coerceAtLeast(0f)
-            assertEquals((expanded - collapsed).value, sheetTop + miniPinOffset, 0.001f)
+            assertTrue(sheetTop <= previousTop + 0.001f)
+            previousTop = sheetTop
         }
-    }
-
-    @Test fun `audit fold and mini give return exactly to their resting geometry`() {
-        assertEquals(1f, auditPlayerFoldFraction(0f), 0f)
-        assertEquals(0f, auditPlayerFoldFraction(1f), 0f)
-        assertEquals(1f, auditMiniHandoverStretch(0f), 0f)
-        assertEquals(1f, auditMiniHandoverStretch(1f), 0f)
-        assertTrue(auditMiniHandoverStretch(0.22f) > 1f)
-        var previous = auditPlayerFoldFraction(0f)
-        for (step in 1..100) {
-            val fold = auditPlayerFoldFraction(step / 100f)
-            assertTrue(fold <= previous + 0.00001f)
-            previous = fold
-        }
+        assertEquals(0f, previousTop, 0.001f)
     }
 
     @Test fun `compact and full UI never overlap visually`() {
@@ -66,6 +53,17 @@ class DockHandoverTest {
         assertTrue(playerContainerAlpha(PlayerContentHandoffPoint - 0.01f) > 0f)
         assertTrue(playerContainerAlpha(PlayerContentHandoffPoint + 0.01f) > 0f)
         assertEquals(1f, fullPlayerContentAlpha(FullPlayerContentFadeEnd), 0f)
+    }
+
+    @Test fun `player backdrop remains translucent at the empty UI handoff`() {
+        assertEquals(0f, miniPlayerContentAlpha(PlayerContentHandoffPoint), 0f)
+        assertEquals(0f, fullPlayerContentAlpha(PlayerContentHandoffPoint), 0f)
+        assertEquals(
+            PlayerContentHandoffPoint,
+            playerHandoffSurfaceAlpha(PlayerContentHandoffPoint),
+            0f,
+        )
+        assertEquals(1f, playerHandoffSurfaceAlpha(1f), 0f)
     }
 
     @Test fun `hit tree ownership follows the same handoff point`() {

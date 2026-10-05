@@ -65,6 +65,7 @@ import com.nikhil.yt.models.MediaMetadata
 import com.nikhil.yt.ui.component.BottomSheet
 import com.nikhil.yt.ui.component.BottomSheetState
 import com.nikhil.yt.ui.component.PlayerContentHandoffPoint
+import com.nikhil.yt.ui.component.playerHandoffSurfaceAlpha
 import com.nikhil.yt.ui.component.LocalBottomSheetPageState
 import com.nikhil.yt.ui.component.LocalMenuState
 import com.nikhil.yt.ui.component.rememberBottomSheetState
@@ -355,6 +356,7 @@ fun BottomSheetPlayer(
         // instead of appearing as an unrelated full-width page behind it.
         collapsedHorizontalInset = if (capsuleDock) 10.dp else 12.dp,
         collapsedTopCornerRadius = if (capsuleDock) 24.dp else 14.dp,
+        surfaceAlpha = ::playerHandoffSurfaceAlpha,
         onDismiss = {
             playerConnection.service.stopAndClearPlayback()
         },

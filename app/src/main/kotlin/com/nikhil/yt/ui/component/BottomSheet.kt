@@ -11,8 +11,6 @@ import androidx.compose.animation.core.AnimationSpec
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animate
 import androidx.compose.animation.core.spring
-import androidx.compose.animation.core.CubicBezierEasing
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -151,6 +149,10 @@ internal fun playerContainerAlpha(progress: Float): Float =
         end = PlayerContentHandoffPoint,
     )
 
+/** ArchiveTune-style surface reveal: at the UI handoff the backdrop is still translucent. */
+internal fun playerHandoffSurfaceAlpha(progress: Float): Float =
+    if (progress.isFinite()) progress.coerceIn(0f, 1f) else 0f
+
 internal fun shouldRenderExpandedSurface(
     rawProgress: Float,
     isDismissed: Boolean,
@@ -219,25 +221,12 @@ internal fun playerFrameHorizontalScale(
     return collapsedScale + (1f - collapsedScale) * eased
 }
 
-/** The audit branch's compact-player give and full-player fold, driven by the current sheet. */
-internal fun auditMiniHandoverStretch(progress: Float): Float {
-    if (!progress.isFinite()) return 1f
-    val p = progress.coerceIn(0f, 1f)
-    val rising = CapsuleMotion.smooth(p / 0.22f)
-    val falling = CapsuleMotion.smooth((1f - p) / 0.78f)
-    return 1f + 0.07f * rising * falling
-}
-
-internal fun auditPlayerFoldFraction(progress: Float): Float =
-    1f - CapsuleMotion.approach(progress, 0.76f)
-
 /**
  * One moving container, two independent content trees.
  *
- * The full Player sheet owns the physical trajectory. Mini Player stays pinned to its dock while
- * the full foreground folds toward it, using the audit branch's geometry. The backdrop carries
- * the colour handoff without the audit branch's grey overlay. Mini controls and gesture ownership
- * remain independent from the full Player composable.
+ * The full Player sheet owns the physical trajectory. Mini Player rides the same trajectory and
+ * hands visual ownership to the full surface through progress-derived opacity. Mini controls and
+ * gesture ownership still remain independent from the full Player composable.
  */
 @Composable
 fun BottomSheet(
@@ -252,6 +241,7 @@ fun BottomSheet(
     collapsedContentHeight: Dp? = null,
     collapsedHorizontalInset: Dp = 0.dp,
     collapsedTopCornerRadius: Dp = PlayerFrameCornerRadius,
+    surfaceAlpha: (Float) -> Float = ::playerContainerAlpha,
     collapsedContent: @Composable BoxScope.() -> Unit,
     backgroundContent: @Composable BoxScope.() -> Unit = {},
     content: @Composable BoxScope.() -> Unit,
@@ -333,20 +323,11 @@ fun BottomSheet(
             Box(
                 modifier =
                     Modifier
-                        // The audit branch kept Mini anchored to its dock while the full sheet
-                        // traveled independently. Keep that geometry, including its small give.
-                        .offset {
-                            IntOffset(
-                                x = 0,
-                                y = (state.value - state.collapsedBound)
-                                    .coerceAtLeast(0.dp)
-                                    .roundToPx(),
-                            )
-                        }
+                        // Ride the parent sheet itself. This is the ArchiveTune-style lift: Mini
+                        // physically travels upward and the opacity handoff only softens the morph
+                        // instead of replacing movement with a dissolve.
                         .graphicsLayer {
                             alpha = miniPlayerContentAlpha(state.rawProgress)
-                            scaleY = auditMiniHandoverStretch(state.rawProgress)
-                            transformOrigin = TransformOrigin(0.5f, 0f)
                         }
                         // Mini visually yields over the same moving frame. Input has its own
                         // progress gate, so an almost-gone Mini cannot steal full-player controls.
@@ -400,7 +381,7 @@ fun BottomSheet(
                         Modifier
                             .fillMaxSize()
                             .graphicsLayer {
-                                alpha = playerContainerAlpha(state.rawProgress)
+                                alpha = surfaceAlpha(state.rawProgress)
                             }
                             .background(backgroundColor),
                 ) {
@@ -414,13 +395,6 @@ fun BottomSheet(
                                 .fillMaxSize()
                                 .graphicsLayer {
                                     alpha = fullPlayerContentAlpha(state.rawProgress)
-                                    val fold = auditPlayerFoldFraction(state.rawProgress)
-                                    scaleX = 1f - 0.05f * fold
-                                    scaleY = 1f - 0.05f * fold
-                                    translationY =
-                                        fold * 0.9f *
-                                            (collapsedContentHeight ?: state.collapsedBound).toPx()
-                                    transformOrigin = TransformOrigin(0.5f, 1f)
                                 },
                     ) {
                         content()
@@ -447,9 +421,9 @@ private val BottomSheetSettleAnimationSpec: AnimationSpec<Float> =
     )
 
 private val BottomSheetSoftAnimationSpecPx: AnimationSpec<Float> =
-    tween(
-        durationMillis = 460,
-        easing = CubicBezierEasing(0.44f, 0f, 0.26f, 1f),
+    spring(
+        dampingRatio = Spring.DampingRatioNoBouncy,
+        stiffness = Spring.StiffnessLow,
     )
 
 private fun SheetAnchor.legacyId(): Int =
