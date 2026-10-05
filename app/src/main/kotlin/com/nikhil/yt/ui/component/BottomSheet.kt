@@ -568,7 +568,7 @@ class BottomSheetState internal constructor(
             val collapsedPx = with(density) { collapsedBound.toPx() }
             val expandedPx = with(density) { expandedBound.toPx() }
             val range = expandedPx - collapsedPx
-            if (range <= 0f) {
+            return if (range <= 0f) {
                 0f
             } else {
                 (offsetPx() - collapsedPx) / range
