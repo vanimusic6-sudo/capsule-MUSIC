@@ -650,6 +650,18 @@ class BottomSheetState internal constructor(
             return
         }
 
+        val restingAnchor =
+            if (!anchoredState.isAnimationRunning && !userGestureInProgress) {
+                when {
+                    requestedAnchor == SheetAnchor.Collapsed && isCollapsed -> SheetAnchor.Collapsed
+                    requestedAnchor == SheetAnchor.Expanded && isExpanded -> SheetAnchor.Expanded
+                    requestedAnchor == SheetAnchor.Dismissed && isDismissed -> SheetAnchor.Dismissed
+                    else -> null
+                }
+            } else {
+                null
+            }
+
         dismissedBoundState.value = newDismissedBound
         collapsedBoundState.value = newCollapsedBound
         expandedBoundState.value = newExpandedBound
@@ -672,6 +684,16 @@ class BottomSheetState internal constructor(
                 ),
             newTarget = requestedTarget,
         )
+
+        // Foundation may retain the old physical offset after replacing anchors. In particular,
+        // changing navigation/inset height leaves the compact card above its new dock, which
+        // makes raw progress positive while the user has not opened the player at all.
+        when (restingAnchor) {
+            SheetAnchor.Collapsed -> snapTo(newCollapsedBound)
+            SheetAnchor.Expanded -> snapTo(newExpandedBound)
+            SheetAnchor.Dismissed -> if (newHasDismissedAnchor) snapTo(newDismissedBound)
+            null -> Unit
+        }
     }
 
     private suspend fun animateToAnchor(
