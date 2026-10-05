@@ -563,8 +563,8 @@ class BottomSheetState internal constructor(
             isAtSheetAnchor(value, expandedBound)
         }
 
-    val rawProgress by
-        derivedStateOf {
+    val rawProgress: Float
+        get() {
             val collapsedPx = with(density) { collapsedBound.toPx() }
             val expandedPx = with(density) { expandedBound.toPx() }
             val range = expandedPx - collapsedPx
@@ -579,10 +579,8 @@ class BottomSheetState internal constructor(
      * The only Mini <-> Player transition progress. It is linear under the finger; animation specs
      * shape programmatic/settling motion instead of warping the same drag a second time.
      */
-    val progress by
-        derivedStateOf {
-            rawProgress.coerceIn(0f, 1f)
-        }
+    val progress: Float
+        get() = rawProgress.coerceIn(0f, 1f)
 
     /** An idle compact sheet starts its visual transition at the dock, even after inset changes. */
     val visualProgress by
@@ -650,18 +648,6 @@ class BottomSheetState internal constructor(
             return
         }
 
-        val restingAnchor =
-            if (!anchoredState.isAnimationRunning && !userGestureInProgress) {
-                when {
-                    requestedAnchor == SheetAnchor.Collapsed && isCollapsed -> SheetAnchor.Collapsed
-                    requestedAnchor == SheetAnchor.Expanded && isExpanded -> SheetAnchor.Expanded
-                    requestedAnchor == SheetAnchor.Dismissed && isDismissed -> SheetAnchor.Dismissed
-                    else -> null
-                }
-            } else {
-                null
-            }
-
         dismissedBoundState.value = newDismissedBound
         collapsedBoundState.value = newCollapsedBound
         expandedBoundState.value = newExpandedBound
@@ -684,16 +670,6 @@ class BottomSheetState internal constructor(
                 ),
             newTarget = requestedTarget,
         )
-
-        // Foundation may retain the old physical offset after replacing anchors. In particular,
-        // changing navigation/inset height leaves the compact card above its new dock, which
-        // makes raw progress positive while the user has not opened the player at all.
-        when (restingAnchor) {
-            SheetAnchor.Collapsed -> snapTo(newCollapsedBound)
-            SheetAnchor.Expanded -> snapTo(newExpandedBound)
-            SheetAnchor.Dismissed -> if (newHasDismissedAnchor) snapTo(newDismissedBound)
-            null -> Unit
-        }
     }
 
     private suspend fun animateToAnchor(
@@ -724,9 +700,6 @@ class BottomSheetState internal constructor(
             ) { animatedValue, animatedVelocity ->
                 dragTo(animatedValue, animatedVelocity)
             }
-            // Spring completion can leave a small residual pixel offset. The next gesture and
-            // the compact opacity must start from the same physical anchor.
-            dragTo(targetOffset, 0f)
         }
     }
 
