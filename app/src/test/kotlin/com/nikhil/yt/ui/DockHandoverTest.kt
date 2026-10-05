@@ -3,6 +3,8 @@ package com.nikhil.yt.ui
 import androidx.compose.ui.unit.dp
 import com.nikhil.yt.ui.component.FullPlayerContentFadeEnd
 import com.nikhil.yt.ui.component.PlayerContentHandoffPoint
+import com.nikhil.yt.ui.component.auditMiniHandoverStretch
+import com.nikhil.yt.ui.component.auditPlayerFoldFraction
 import com.nikhil.yt.ui.component.expandedPlayerCanAcceptInput
 import com.nikhil.yt.ui.component.fullPlayerContentAlpha
 import com.nikhil.yt.ui.component.miniPlayerContentAlpha
@@ -19,18 +21,30 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class DockHandoverTest {
-    @Test fun `mini rides upward on the same physical sheet`() {
+    @Test fun `mini stays at its dock as the sheet travels`() {
         val expanded = 800.dp
         val collapsed = 80.dp
-        var previousTop = (expanded - collapsed).value
         for (step in 0..20) {
             val progress = step / 20f
             val value = collapsed + (expanded - collapsed) * progress
             val sheetTop = (expanded - value).value
-            assertTrue(sheetTop <= previousTop + 0.001f)
-            previousTop = sheetTop
+            val miniPinOffset = (value - collapsed).value.coerceAtLeast(0f)
+            assertEquals((expanded - collapsed).value, sheetTop + miniPinOffset, 0.001f)
         }
-        assertEquals(0f, previousTop, 0.001f)
+    }
+
+    @Test fun `audit fold and mini give return exactly to their resting geometry`() {
+        assertEquals(1f, auditPlayerFoldFraction(0f), 0f)
+        assertEquals(0f, auditPlayerFoldFraction(1f), 0f)
+        assertEquals(1f, auditMiniHandoverStretch(0f), 0f)
+        assertEquals(1f, auditMiniHandoverStretch(1f), 0f)
+        assertTrue(auditMiniHandoverStretch(0.22f) > 1f)
+        var previous = auditPlayerFoldFraction(0f)
+        for (step in 1..100) {
+            val fold = auditPlayerFoldFraction(step / 100f)
+            assertTrue(fold <= previous + 0.00001f)
+            previous = fold
+        }
     }
 
     @Test fun `compact and full UI never overlap visually`() {
