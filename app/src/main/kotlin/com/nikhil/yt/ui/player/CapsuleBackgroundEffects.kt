@@ -320,6 +320,10 @@ internal fun CapsuleGlassSurface(
                         shape = glassShape,
                         effects = glassEffects,
                         highlight = glassHighlight,
+                        // Backdrop's default shadow allocates a separate offscreen layer and applies
+                        // a 24dp BlurMaskFilter every draw. The mini-player already has depth from
+                        // refraction + cached edge shading, so paying for that shadow is wasted GPU.
+                        shadow = null,
                         onDrawSurface = glassTint,
                     )
                     .drawWithCache {
@@ -339,17 +343,6 @@ internal fun CapsuleGlassSurface(
                                 center = Offset(size.width * 0.07f, size.height * 0.02f),
                                 radius = max(size.width, size.height) * 0.64f,
                             )
-                        val upperRightBloom =
-                            Brush.radialGradient(
-                                colors =
-                                    listOf(
-                                        Color.White.copy(alpha = 0.026f),
-                                        Color.White.copy(alpha = 0.007f),
-                                        Color.Transparent,
-                                    ),
-                                center = Offset(size.width * 0.93f, size.height * 0.1f),
-                                radius = max(size.width, size.height) * 0.48f,
-                            )
                         val edgeDepth =
                             Brush.verticalGradient(
                                 0f to Color.White.copy(alpha = 0.018f),
@@ -357,20 +350,13 @@ internal fun CapsuleGlassSurface(
                                 0.7f to Color.Transparent,
                                 1f to Color.Black.copy(alpha = 0.085f),
                             )
-                        val sideCaustic =
-                            Brush.horizontalGradient(
-                                0f to Color.White.copy(alpha = 0.014f),
-                                0.12f to Color.Transparent,
-                                0.84f to Color.Transparent,
-                                1f to Color.Black.copy(alpha = 0.025f),
-                            )
 
                         onDrawWithContent {
                             drawContent()
+                            // Two cached fields are enough now that the library owns the real rim.
+                            // This removes two full-surface blend passes from every glass redraw.
                             drawRect(edgeDepth)
-                            drawRect(sideCaustic)
                             drawRect(upperLeftBloom)
-                            drawRect(upperRightBloom)
                         }
                     },
         )
