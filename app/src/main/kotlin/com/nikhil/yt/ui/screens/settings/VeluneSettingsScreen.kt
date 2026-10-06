@@ -48,13 +48,17 @@ fun VeluneSettingsScreen(
     var showLogoutDialog by remember { mutableStateOf(false) }
     val (innerTubeCookie, onInnerTubeCookieChange) = rememberPreference(InnerTubeCookieKey, "")
     val listState = rememberLazyListState()
+    val playerAwareInsets = LocalPlayerAwareWindowInsets.current
+    val playerAwareBottomPadding = playerAwareInsets.asPaddingValues().calculateBottomPadding()
 
 
     Scaffold(
-        // Content stops above the dock and the navigation bar instead of running under them.
+        // Keep the viewport edge-to-edge at the bottom so the settings rows remain a real
+        // backdrop source for the floating mini-player. The list gets equivalent trailing padding
+        // below, so the last setting can still be scrolled fully above player/navigation chrome.
         contentWindowInsets =
-            LocalPlayerAwareWindowInsets.current
-                .only(WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom),
+            playerAwareInsets
+                .only(WindowInsetsSides.Horizontal),
         topBar = {
             TopAppBar(
                 title = { Text(stringResource(R.string.capsule_settings_title), fontSize = 20.sp) },
@@ -80,7 +84,8 @@ fun VeluneSettingsScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(paddingValues)
-                .padding(horizontal = 16.dp)
+                .padding(horizontal = 16.dp),
+            contentPadding = PaddingValues(bottom = playerAwareBottomPadding + 32.dp),
         ) {
             item(key = "appearance") {
                 SettingsItemScreenshotStyle(
@@ -207,7 +212,6 @@ fun VeluneSettingsScreen(
                 )
             }
 
-            item(key = "bottom_spacer") { Spacer(Modifier.height(32.dp)) }
         }
 
         if (showLogoutDialog) {
