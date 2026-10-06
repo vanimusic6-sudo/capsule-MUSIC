@@ -37,6 +37,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -211,6 +212,8 @@ fun SettingsScreen(
     val focusManager = LocalFocusManager.current
     val isAndroid12OrLater = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
     val listState = rememberLazyListState()
+    val playerAwareInsets = LocalPlayerAwareWindowInsets.current
+    val playerAwareBottomPadding = playerAwareInsets.asPaddingValues().calculateBottomPadding()
 
     val viewModel: HomeViewModel = hiltViewModel(context as androidx.activity.ComponentActivity)
     val accountName by viewModel.accountName.collectAsState()
@@ -740,11 +743,12 @@ fun SettingsScreen(
                 modifier = Modifier
                     .fillMaxSize()
                     .windowInsetsPadding(
-                        LocalPlayerAwareWindowInsets.current.only(
-                            WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom
-                        )
+                        playerAwareInsets.only(WindowInsetsSides.Horizontal)
                     ),
-                contentPadding = PaddingValues(bottom = 32.dp),
+                // Keep the viewport edge-to-edge so the scrolling settings cards can actually
+                // pass behind liquid glass. The trailing padding still lets the last row scroll
+                // fully above the player/navigation chrome.
+                contentPadding = PaddingValues(bottom = playerAwareBottomPadding + 32.dp),
             ) {
                 item(key = "topSpacer") {
                     Spacer(
@@ -964,11 +968,9 @@ fun SettingsScreen(
                     modifier = Modifier
                         .fillMaxWidth()
                         .windowInsetsPadding(
-                            LocalPlayerAwareWindowInsets.current.only(
-                                WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom
-                            )
+                            playerAwareInsets.only(WindowInsetsSides.Horizontal)
                         ),
-                    contentPadding = PaddingValues(bottom = 32.dp),
+                    contentPadding = PaddingValues(bottom = playerAwareBottomPadding + 32.dp),
                 ) {
                     if (queryText.isNotBlank() && !hasSearchResults) {
                         item {
