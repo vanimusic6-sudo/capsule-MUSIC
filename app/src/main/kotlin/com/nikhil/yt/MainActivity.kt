@@ -106,6 +106,8 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.graphics.drawscope.ContentDrawScope
+import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
@@ -868,7 +870,29 @@ class MainActivity : ComponentActivity() {
                             MiniPlayerBackgroundStyleKey,
                             MiniPlayerBackgroundStyle.CAPSULE_STAR,
                         )
-                    val miniPlayerGlassBackdrop = rememberLayerBackdrop()
+
+                    /*
+                     * The glass only samples the lower part of the route. Recording an entire
+                     * phone/tablet frame into the backdrop layer wastes fill-rate while the upper
+                     * two thirds can never be read by the collapsed mini-player. Keep a generous
+                     * band (player + nav + system inset + refraction margin) and scissor the rest.
+                     */
+                    val miniPlayerGlassCaptureDepthPx =
+                        with(LocalDensity.current) {
+                            (MiniPlayerHeight + navVisibleHeight + bottomInset + 96.dp).toPx()
+                        }
+                    val miniPlayerGlassSourceDraw: ContentDrawScope.() -> Unit =
+                        remember(miniPlayerGlassCaptureDepthPx) {
+                            {
+                                val captureTop =
+                                    (size.height - miniPlayerGlassCaptureDepthPx).coerceAtLeast(0f)
+                                clipRect(top = captureTop) {
+                                    drawContent()
+                                }
+                            }
+                        }
+                    val miniPlayerGlassBackdrop =
+                        rememberLayerBackdrop(onDraw = miniPlayerGlassSourceDraw)
 
                     /*
                      * How much of the navigation bar is on screen, 1 fully shown and 0 fully gone.
