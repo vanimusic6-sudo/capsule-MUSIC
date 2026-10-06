@@ -1718,8 +1718,36 @@ class MainActivity : ComponentActivity() {
                                     .fillMaxSize()
                                     .nestedScroll(searchBarScrollBehavior.nestedScrollConnection)
                             ) {
-
-                                 NavHost(
+                                /*
+                                 * Record one stable full-size source for liquid glass instead of
+                                 * recording NavHost itself. Settings/detail routes use nested
+                                 * Scaffolds, insets and route transitions; attaching the recorder to
+                                 * the animated NavHost made the source go effectively empty in some
+                                 * of those states. This mirrors the robust sibling-source layout used
+                                 * by mature Backdrop integrations: source box here, mini-player in
+                                 * Scaffold.bottomBar.
+                                 */
+                                Box(
+                                    modifier =
+                                        Modifier
+                                            .fillMaxSize()
+                                            .then(
+                                                if (miniPlayerLiquidGlassActive) {
+                                                    Modifier
+                                                        .layerBackdrop(miniPlayerGlassBackdrop)
+                                                        .background(
+                                                            if (pureBlack) {
+                                                                Color.Black
+                                                            } else {
+                                                                MaterialTheme.colorScheme.background
+                                                            },
+                                                        )
+                                                } else {
+                                                    Modifier
+                                                },
+                                            ),
+                                ) {
+                                    NavHost(
                                     navController = navController,
                                     startDestination = initialMainRoute,
                                     enterTransition = {
@@ -1737,13 +1765,6 @@ class MainActivity : ComponentActivity() {
                                     modifier =
                                         Modifier
                                             .clipToBounds()
-                                            .then(
-                                                if (miniPlayerLiquidGlassActive) {
-                                                    Modifier.layerBackdrop(miniPlayerGlassBackdrop)
-                                                } else {
-                                                    Modifier
-                                                },
-                                            )
                                             .nestedScroll(
                                         if (navigationItems.fastAny { it.route == navBackStackEntry?.destination?.route } ||
                                             navBackStackEntry?.destination?.route?.startsWith("search/") == true
@@ -1768,7 +1789,8 @@ class MainActivity : ComponentActivity() {
                                  * registered *before* navigation's own callback and never see a
                                  * back event at all.
                                  */
-                                BackRepeatGuard(enabled = canPopBack)
+                                    BackRepeatGuard(enabled = canPopBack)
+                                }
                             }
                         }
 
