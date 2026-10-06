@@ -245,31 +245,30 @@ internal fun CapsuleGlassSurface(
     val ignoredArtworkColors = colors
 
     /*
-     * Android 12+ can blur a captured Compose layer. Android 13+ additionally gets the AGSL lens
-     * distortion that gives Liquid Glass its refractive edge. There is deliberately no animation
-     * clock here: the shader only redraws when the source or the mini-player itself redraws.
+     * The liquid read comes from real backdrop refraction, not painted shine lines:
+     * - less blur keeps the source legible enough to bend instead of turning into frosted glass;
+     * - a taller/stronger lens concentrates distortion near the perimeter;
+     * - static corner/edge light fields describe material thickness without any animation clock.
      *
-     * Chromatic aberration and depthEffect are intentionally disabled. They are attractive in a
-     * demo, but they add shader work to a surface that lives on screen for hours while music plays.
+     * Chromatic aberration and depthEffect stay disabled deliberately. They cost extra GPU work
+     * and are not needed to make the mini-player feel liquid on a surface that can remain visible
+     * for hours.
      */
     if (backdrop != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
         val localDensity = LocalDensity.current
         val blurRadiusPx =
             remember(localDensity) {
-                with(localDensity) { 5.dp.toPx() }
+                with(localDensity) { 3.25.dp.toPx() }
             }
         val refractionHeightPx =
             remember(localDensity) {
-                with(localDensity) { 8.dp.toPx() }
+                with(localDensity) { 12.dp.toPx() }
             }
         val refractionAmountPx =
             remember(localDensity) {
-                with(localDensity) { 11.dp.toPx() }
+                with(localDensity) { 18.dp.toPx() }
             }
 
-        // Stable callbacks prevent progress/time recompositions from rebuilding the RenderEffect
-        // chain. Runtime shaders in Backdrop are cached as well, so the steady-state cost is draw
-        // work rather than shader allocation.
         val glassShape =
             remember(shape) {
                 { shape }
@@ -283,8 +282,8 @@ internal fun CapsuleGlassSurface(
                 {
                     blur(blurRadiusPx)
                     colorControls(
-                        contrast = 1.06f,
-                        saturation = 1.14f,
+                        contrast = 1.08f,
+                        saturation = 1.12f,
                     )
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                         lens(
@@ -299,9 +298,9 @@ internal fun CapsuleGlassSurface(
         val glassTint: DrawScope.() -> Unit =
             remember {
                 {
-                    // A restrained dark scrim keeps titles/buttons readable while preserving the
-                    // actual page colours and movement underneath the material.
-                    drawRect(Color(0x52101116))
+                    // Keep the centre cleaner than the previous frosted treatment. Readability is
+                    // preserved by a restrained neutral scrim while the refracted page stays alive.
+                    drawRect(Color(0x36101116))
                 }
             }
 
@@ -316,47 +315,54 @@ internal fun CapsuleGlassSurface(
                     )
                     .drawWithCache {
                         /*
-                         * These two cheap, cached light fields supply the specular "wet" read that
-                         * plain blur lacks. They never animate and are rebuilt only when geometry
+                         * Broad, static light volumes replace the old fake top/bottom shine lines.
+                         * Their job is to make the perimeter feel thicker and wetter while leaving
+                         * the centre optically quieter. They are cached and only rebuild on geometry
                          * changes.
                          */
-                        val crown =
-                            Brush.verticalGradient(
-                                0f to Color.White.copy(alpha = 0.115f),
-                                0.16f to Color.White.copy(alpha = 0.04f),
-                                0.52f to Color.Transparent,
-                                1f to Color.Black.copy(alpha = 0.09f),
+                        val upperLeftBloom =
+                            Brush.radialGradient(
+                                colors =
+                                    listOf(
+                                        Color.White.copy(alpha = 0.105f),
+                                        Color.White.copy(alpha = 0.032f),
+                                        Color.Transparent,
+                                    ),
+                                center = Offset(size.width * 0.08f, size.height * 0.02f),
+                                radius = max(size.width, size.height) * 0.62f,
                             )
-                        val grazingLight =
-                            Brush.linearGradient(
+                        val upperRightBloom =
+                            Brush.radialGradient(
                                 colors =
                                     listOf(
                                         Color.White.copy(alpha = 0.052f),
+                                        Color.White.copy(alpha = 0.014f),
                                         Color.Transparent,
-                                        Color.White.copy(alpha = 0.018f),
                                     ),
-                                start = Offset.Zero,
-                                end = Offset(size.width, size.height),
+                                center = Offset(size.width * 0.92f, size.height * 0.12f),
+                                radius = max(size.width, size.height) * 0.5f,
+                            )
+                        val edgeDepth =
+                            Brush.verticalGradient(
+                                0f to Color.White.copy(alpha = 0.032f),
+                                0.18f to Color.Transparent,
+                                0.7f to Color.Transparent,
+                                1f to Color.Black.copy(alpha = 0.115f),
+                            )
+                        val sideCaustic =
+                            Brush.horizontalGradient(
+                                0f to Color.White.copy(alpha = 0.024f),
+                                0.12f to Color.Transparent,
+                                0.84f to Color.Transparent,
+                                1f to Color.Black.copy(alpha = 0.04f),
                             )
 
                         onDrawWithContent {
                             drawContent()
-                            drawRect(crown)
-                            drawRect(grazingLight)
-                            drawLine(
-                                color = Color.White.copy(alpha = 0.16f),
-                                start = Offset(size.width * 0.08f, 0.65f * density),
-                                end = Offset(size.width * 0.92f, 0.65f * density),
-                                strokeWidth = 0.65f * density,
-                                cap = StrokeCap.Round,
-                            )
-                            drawLine(
-                                color = Color.Black.copy(alpha = 0.22f),
-                                start = Offset(size.width * 0.1f, size.height - 0.65f * density),
-                                end = Offset(size.width * 0.9f, size.height - 0.65f * density),
-                                strokeWidth = 0.65f * density,
-                                cap = StrokeCap.Round,
-                            )
+                            drawRect(edgeDepth)
+                            drawRect(sideCaustic)
+                            drawRect(upperLeftBloom)
+                            drawRect(upperRightBloom)
                         }
                     },
         )
@@ -364,8 +370,8 @@ internal fun CapsuleGlassSurface(
     }
 
     /*
-     * Compatibility/fallback path. It mirrors the same highlight hierarchy but performs no layer
-     * capture or RenderEffect work, so older devices do not pay for a broken imitation of lensing.
+     * Compatibility/fallback path keeps the same hierarchy without pretending to refract a layer.
+     * There are intentionally no painted highlight lines here either.
      */
     Box(
         modifier =
@@ -374,42 +380,36 @@ internal fun CapsuleGlassSurface(
                     Brush.linearGradient(
                         colors =
                             listOf(
-                                Color(0xFF1B1C22),
-                                Color(0xFF111218),
-                                Color(0xFF0B0C10),
+                                Color(0xE61A1B20),
+                                Color(0xD9121318),
+                                Color(0xE00B0C10),
                             ),
                         start = Offset.Zero,
                         end = Offset(size.width, size.height),
                     )
-                val crown =
+                val upperLeftBloom =
                     Brush.radialGradient(
                         colors =
                             listOf(
-                                Color.White.copy(alpha = 0.09f),
-                                Color.White.copy(alpha = 0.025f),
+                                Color.White.copy(alpha = 0.085f),
+                                Color.White.copy(alpha = 0.022f),
                                 Color.Transparent,
                             ),
-                        center = Offset(size.width * 0.16f, 0f),
-                        radius = max(size.width, size.height) * 0.82f,
+                        center = Offset(size.width * 0.1f, size.height * 0.03f),
+                        radius = max(size.width, size.height) * 0.65f,
+                    )
+                val edgeDepth =
+                    Brush.verticalGradient(
+                        0f to Color.White.copy(alpha = 0.025f),
+                        0.2f to Color.Transparent,
+                        0.72f to Color.Transparent,
+                        1f to Color.Black.copy(alpha = 0.12f),
                     )
 
                 onDrawBehind {
                     drawRect(body)
-                    drawRect(crown)
-                    drawLine(
-                        color = Color.White.copy(alpha = 0.13f),
-                        start = Offset(size.width * 0.08f, 0.7f * density),
-                        end = Offset(size.width * 0.92f, 0.7f * density),
-                        strokeWidth = 0.7f * density,
-                        cap = StrokeCap.Round,
-                    )
-                    drawLine(
-                        color = Color.Black.copy(alpha = 0.2f),
-                        start = Offset(size.width * 0.1f, size.height - 0.7f * density),
-                        end = Offset(size.width * 0.9f, size.height - 0.7f * density),
-                        strokeWidth = 0.7f * density,
-                        cap = StrokeCap.Round,
-                    )
+                    drawRect(edgeDepth)
+                    drawRect(upperLeftBloom)
                 }
             },
     )
@@ -441,7 +441,7 @@ internal fun capsuleSurfaceOutline(
     glass: Boolean = false,
 ): Color {
     if (glass) {
-        return Color.White.copy(alpha = 0.24f)
+        return Color.White.copy(alpha = 0.14f)
     }
 
     val accent =
