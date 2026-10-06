@@ -253,18 +253,18 @@ internal fun CapsuleGlassSurface(
      * demo, but they add shader work to a surface that lives on screen for hours while music plays.
      */
     if (backdrop != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-        val density = LocalDensity.current
+        val localDensity = LocalDensity.current
         val blurRadiusPx =
-            remember(density) {
-                with(density) { 5.dp.toPx() }
+            remember(localDensity) {
+                with(localDensity) { 5.dp.toPx() }
             }
         val refractionHeightPx =
-            remember(density) {
-                with(density) { 8.dp.toPx() }
+            remember(localDensity) {
+                with(localDensity) { 8.dp.toPx() }
             }
         val refractionAmountPx =
-            remember(density) {
-                with(density) { 11.dp.toPx() }
+            remember(localDensity) {
+                with(localDensity) { 11.dp.toPx() }
             }
 
         // Stable callbacks prevent progress/time recompositions from rebuilding the RenderEffect
