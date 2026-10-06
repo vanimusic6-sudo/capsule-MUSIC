@@ -34,10 +34,11 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import com.kyant.backdrop.Backdrop
 import com.kyant.backdrop.BackdropEffectScope
-import com.kyant.backdrop.drawPlainBackdrop
+import com.kyant.backdrop.drawBackdrop
 import com.kyant.backdrop.effects.blur
 import com.kyant.backdrop.effects.colorControls
 import com.kyant.backdrop.effects.lens
+import com.kyant.backdrop.highlight.Highlight
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -258,37 +259,45 @@ internal fun CapsuleGlassSurface(
         val localDensity = LocalDensity.current
         val blurRadiusPx =
             remember(localDensity) {
-                with(localDensity) { 3.25.dp.toPx() }
-            }
-        val refractionHeightPx =
-            remember(localDensity) {
-                with(localDensity) { 12.dp.toPx() }
-            }
-        val refractionAmountPx =
-            remember(localDensity) {
-                with(localDensity) { 18.dp.toPx() }
+                with(localDensity) { 3.5.dp.toPx() }
             }
 
         val glassShape =
             remember(shape) {
                 { shape }
             }
-        val glassEffects: BackdropEffectScope.() -> Unit =
-            remember(
-                blurRadiusPx,
-                refractionHeightPx,
-                refractionAmountPx,
-            ) {
+        val glassHighlight =
+            remember {
                 {
-                    blur(blurRadiusPx)
-                    colorControls(
-                        contrast = 1.08f,
-                        saturation = 1.12f,
+                    // Kyant's directional rim follows the rounded outline instead of painting a
+                    // straight fake shine. Keep it restrained: it should appear when the material
+                    // catches light, not read as a white border.
+                    Highlight.Default.copy(
+                        width = 0.6.dp,
+                        blurRadius = 0.35.dp,
+                        alpha = 0.62f,
                     )
+                }
+            }
+        val glassEffects: BackdropEffectScope.() -> Unit =
+            remember(blurRadiusPx) {
+                {
+                    /*
+                     * SimpMusic's successful glass stack is lens-first: preserve enough source
+                     * detail for refraction to read, enrich it a little, then bend the perimeter.
+                     * A single colour-control pass is cheaper than stacking multiple colour filters.
+                     */
+                    colorControls(
+                        brightness = 0.015f,
+                        contrast = 1.04f,
+                        saturation = 1.42f,
+                    )
+                    blur(blurRadiusPx)
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                        val shortSide = size.minDimension
                         lens(
-                            refractionHeight = refractionHeightPx,
-                            refractionAmount = refractionAmountPx,
+                            refractionHeight = shortSide * 0.23f,
+                            refractionAmount = shortSide * 0.47f,
                             depthEffect = false,
                             chromaticAberration = false,
                         )
@@ -298,63 +307,62 @@ internal fun CapsuleGlassSurface(
         val glassTint: DrawScope.() -> Unit =
             remember {
                 {
-                    // Keep the centre cleaner than the previous frosted treatment. Readability is
-                    // preserved by a restrained neutral scrim while the refracted page stays alive.
-                    drawRect(Color(0x36101116))
+                    // Less milk, more lens. The page underneath supplies the colour and movement.
+                    drawRect(Color(0x2C101116))
                 }
             }
 
         Box(
             modifier =
                 modifier
-                    .drawPlainBackdrop(
+                    .drawBackdrop(
                         backdrop = backdrop,
                         shape = glassShape,
                         effects = glassEffects,
+                        highlight = glassHighlight,
                         onDrawSurface = glassTint,
                     )
                     .drawWithCache {
                         /*
-                         * Broad, static light volumes replace the old fake top/bottom shine lines.
-                         * Their job is to make the perimeter feel thicker and wetter while leaving
-                         * the centre optically quieter. They are cached and only rebuild on geometry
-                         * changes.
+                         * The library now owns the actual rim. These broad cached fields only give
+                         * the material a little volume; there are deliberately no straight shine
+                         * lines and no animation clock.
                          */
                         val upperLeftBloom =
                             Brush.radialGradient(
                                 colors =
                                     listOf(
-                                        Color.White.copy(alpha = 0.105f),
-                                        Color.White.copy(alpha = 0.032f),
+                                        Color.White.copy(alpha = 0.055f),
+                                        Color.White.copy(alpha = 0.015f),
                                         Color.Transparent,
                                     ),
-                                center = Offset(size.width * 0.08f, size.height * 0.02f),
-                                radius = max(size.width, size.height) * 0.62f,
+                                center = Offset(size.width * 0.07f, size.height * 0.02f),
+                                radius = max(size.width, size.height) * 0.64f,
                             )
                         val upperRightBloom =
                             Brush.radialGradient(
                                 colors =
                                     listOf(
-                                        Color.White.copy(alpha = 0.052f),
-                                        Color.White.copy(alpha = 0.014f),
+                                        Color.White.copy(alpha = 0.026f),
+                                        Color.White.copy(alpha = 0.007f),
                                         Color.Transparent,
                                     ),
-                                center = Offset(size.width * 0.92f, size.height * 0.12f),
-                                radius = max(size.width, size.height) * 0.5f,
+                                center = Offset(size.width * 0.93f, size.height * 0.1f),
+                                radius = max(size.width, size.height) * 0.48f,
                             )
                         val edgeDepth =
                             Brush.verticalGradient(
-                                0f to Color.White.copy(alpha = 0.032f),
-                                0.18f to Color.Transparent,
+                                0f to Color.White.copy(alpha = 0.018f),
+                                0.2f to Color.Transparent,
                                 0.7f to Color.Transparent,
-                                1f to Color.Black.copy(alpha = 0.115f),
+                                1f to Color.Black.copy(alpha = 0.085f),
                             )
                         val sideCaustic =
                             Brush.horizontalGradient(
-                                0f to Color.White.copy(alpha = 0.024f),
+                                0f to Color.White.copy(alpha = 0.014f),
                                 0.12f to Color.Transparent,
                                 0.84f to Color.Transparent,
-                                1f to Color.Black.copy(alpha = 0.04f),
+                                1f to Color.Black.copy(alpha = 0.025f),
                             )
 
                         onDrawWithContent {
