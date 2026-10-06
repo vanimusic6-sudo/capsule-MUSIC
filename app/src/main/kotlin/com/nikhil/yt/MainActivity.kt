@@ -883,11 +883,11 @@ class MainActivity : ComponentActivity() {
                         }
                     val miniPlayerGlassSourceDraw: ContentDrawScope.() -> Unit =
                         remember(miniPlayerGlassCaptureDepthPx) {
-                            {
+                            glassSource@{
                                 val captureTop =
                                     (size.height - miniPlayerGlassCaptureDepthPx).coerceAtLeast(0f)
                                 clipRect(top = captureTop) {
-                                    drawContent()
+                                    this@glassSource.drawContent()
                                 }
                             }
                         }
