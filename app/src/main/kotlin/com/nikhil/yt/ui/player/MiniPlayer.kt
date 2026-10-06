@@ -13,6 +13,7 @@ import androidx.compose.runtime.getValue
 import com.nikhil.yt.ui.theme.CapsuleBottomBarEnabledKey
 import com.nikhil.yt.utils.rememberPreference
 import androidx.compose.ui.Modifier
+import com.kyant.backdrop.Backdrop
 
 @Composable
 fun MiniPlayer(
@@ -23,6 +24,7 @@ fun MiniPlayer(
     visible: Boolean = true,
     foregroundAlpha: () -> Float = { 1f },
     foregroundInteractive: Boolean = true,
+    glassBackdrop: Backdrop? = null,
 ) {
     val capsuleDock by rememberPreference(CapsuleBottomBarEnabledKey, false)
     CapsuleMiniPlayer(
@@ -34,5 +36,6 @@ fun MiniPlayer(
         visible = visible,
         foregroundAlpha = foregroundAlpha,
         foregroundInteractive = foregroundInteractive,
+        glassBackdrop = glassBackdrop,
     )
 }

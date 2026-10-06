@@ -52,6 +52,7 @@ import androidx.compose.ui.unit.dp
 import androidx.media3.common.C
 import androidx.media3.common.Player
 import androidx.navigation.NavController
+import com.kyant.backdrop.Backdrop
 import com.nikhil.yt.LocalPlayerConnection
 import com.nikhil.yt.constants.CapsulePlayerDesign
 import com.nikhil.yt.constants.CapsulePlayerDesignKey
@@ -98,6 +99,7 @@ fun BottomSheetPlayer(
     navController: NavController,
     modifier: Modifier = Modifier,
     pureBlack: Boolean,
+    miniPlayerBackdrop: Backdrop? = null,
 ) {
     val context = LocalContext.current
     val menuState = LocalMenuState.current
@@ -371,6 +373,7 @@ fun BottomSheetPlayer(
                 duration = if (miniVisible) duration else 0L,
                 pureBlack = pureBlack,
                 visible = miniVisible,
+                glassBackdrop = miniPlayerBackdrop,
                 // BottomSheet fades compact artwork + controls as one UI tree.
                 foregroundAlpha = { 1f },
                 foregroundInteractive = state.compactForegroundAcceptsInput,

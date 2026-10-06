@@ -144,6 +144,8 @@ import coil3.request.ImageRequest
 import coil3.request.allowHardware
 import coil3.toBitmap
 import com.valentinilk.shimmer.LocalShimmerTheme
+import com.kyant.backdrop.backdrops.layerBackdrop
+import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -166,6 +168,8 @@ import com.nikhil.yt.constants.HasPressedStarKey
 import com.nikhil.yt.constants.LaunchCountKey
 import com.nikhil.yt.constants.MiniPlayerBottomSpacing
 import com.nikhil.yt.constants.MiniPlayerHeight
+import com.nikhil.yt.constants.MiniPlayerBackgroundStyle
+import com.nikhil.yt.constants.MiniPlayerBackgroundStyleKey
 import com.nikhil.yt.constants.NavigationBarAnimationSpec
 import com.nikhil.yt.constants.NavigationBarHeight
 import com.nikhil.yt.constants.PauseSearchHistoryKey
@@ -855,6 +859,18 @@ class MainActivity : ComponentActivity() {
                         }
 
                     /*
+                     * Liquid glass is opt-in and owns no animation clock. The backdrop layer is
+                     * recorded only while GLASS is selected; otherwise this remembered layer is
+                     * completely detached from the UI tree.
+                     */
+                    val miniPlayerBackground by
+                        rememberEnumPreference(
+                            MiniPlayerBackgroundStyleKey,
+                            MiniPlayerBackgroundStyle.CAPSULE_STAR,
+                        )
+                    val miniPlayerGlassBackdrop = rememberLayerBackdrop()
+
+                    /*
                      * How much of the navigation bar is on screen, 1 fully shown and 0 fully gone.
                      *
                      * This used to be an animated Dp that was then divided back into a fraction at
@@ -901,6 +917,18 @@ class MainActivity : ComponentActivity() {
                     val capsuleMiniPlayerActuallyVisible =
                         playerConnection != null &&
                                 !playerBottomSheetState.isDismissed
+
+                    /*
+                     * Keep the expensive part of liquid glass scoped to the compact player.
+                     * During the short expand/collapse travel we keep the source alive so the
+                     * material does not snap; once the full player reaches its anchor the source
+                     * detaches and the hidden mini-player costs nothing.
+                     */
+                    val miniPlayerLiquidGlassActive =
+                        Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
+                            miniPlayerBackground == MiniPlayerBackgroundStyle.GLASS &&
+                            capsuleMiniPlayerActuallyVisible &&
+                            !playerBottomSheetState.isExpanded
 
                     var yearInMusicSavedPlayerAnchor by rememberSaveable { mutableIntStateOf(-1) }
                     var immersiveStatusBarRequested by remember { mutableStateOf(false) }
@@ -1605,6 +1633,12 @@ class MainActivity : ComponentActivity() {
                                                     },
                                                 ),
                                             pureBlack = pureBlack,
+                                            miniPlayerBackdrop =
+                                                if (miniPlayerLiquidGlassActive) {
+                                                    miniPlayerGlassBackdrop
+                                                } else {
+                                                    null
+                                                },
                                         )
 
                                         if(useRail) return@Box
@@ -1700,7 +1734,17 @@ class MainActivity : ComponentActivity() {
                                     popExitTransition = {
                                         ScreenTransitions.exit(initialState.destination.route, targetState.destination.route, isPop = true)
                                     },
-                                    modifier = Modifier.clipToBounds().nestedScroll(
+                                    modifier =
+                                        Modifier
+                                            .clipToBounds()
+                                            .then(
+                                                if (miniPlayerLiquidGlassActive) {
+                                                    Modifier.layerBackdrop(miniPlayerGlassBackdrop)
+                                                } else {
+                                                    Modifier
+                                                },
+                                            )
+                                            .nestedScroll(
                                         if (navigationItems.fastAny { it.route == navBackStackEntry?.destination?.route } ||
                                             navBackStackEntry?.destination?.route?.startsWith("search/") == true
                                         ) {

@@ -6,8 +6,10 @@
 
 package com.nikhil.yt.ui.player
 
+import android.os.Build
 import android.os.SystemClock
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -24,9 +26,18 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.scale
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.dp
+import com.kyant.backdrop.Backdrop
+import com.kyant.backdrop.BackdropEffectScope
+import com.kyant.backdrop.drawPlainBackdrop
+import com.kyant.backdrop.effects.blur
+import com.kyant.backdrop.effects.colorControls
+import com.kyant.backdrop.effects.lens
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -220,61 +231,188 @@ internal fun CapsuleProceduralBackground(
     })
 }
 
-/** Dedicated neutral translucent option. Every other compact style stays opaque. */
+/** Dedicated neutral liquid-glass option. Every other compact style stays opaque. */
 @Composable
 internal fun CapsuleGlassSurface(
     colors: List<Color>,
     modifier: Modifier = Modifier,
+    backdrop: Backdrop? = null,
+    shape: Shape = RoundedCornerShape(24.dp),
 ) {
-    // Keep the public signature shared by the player/dock, but deliberately do
-    // not use artwork colours here. GLASS must remain the same neutral panel for
-    // every song instead of changing tint whenever the cover changes.
+    // Keep the public signature shared by the player/dock, but deliberately do not tint the
+    // material from artwork. The content behind the glass already supplies colour naturally.
     @Suppress("UNUSED_VARIABLE")
     val ignoredArtworkColors = colors
 
-    Box(modifier = modifier.drawWithCache {
-        // GLASS is stationary on every tab. Reuse its shaders while the player sheet moves;
-        // only a size or density change needs to rebuild them.
-        val sheen = Brush.linearGradient(
-            colors = listOf(
-                Color.White.copy(alpha = 0.045f),
-                Color(0xFF15161D).copy(alpha = 0.28f),
-                Color.Black.copy(alpha = 0.2f),
-            ),
-            start = Offset.Zero,
-            end = Offset(size.width, size.height),
+    /*
+     * Android 12+ can blur a captured Compose layer. Android 13+ additionally gets the AGSL lens
+     * distortion that gives Liquid Glass its refractive edge. There is deliberately no animation
+     * clock here: the shader only redraws when the source or the mini-player itself redraws.
+     *
+     * Chromatic aberration and depthEffect are intentionally disabled. They are attractive in a
+     * demo, but they add shader work to a surface that lives on screen for hours while music plays.
+     */
+    if (backdrop != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+        val density = LocalDensity.current
+        val blurRadiusPx =
+            remember(density) {
+                with(density) { 5.dp.toPx() }
+            }
+        val refractionHeightPx =
+            remember(density) {
+                with(density) { 8.dp.toPx() }
+            }
+        val refractionAmountPx =
+            remember(density) {
+                with(density) { 11.dp.toPx() }
+            }
+
+        // Stable callbacks prevent progress/time recompositions from rebuilding the RenderEffect
+        // chain. Runtime shaders in Backdrop are cached as well, so the steady-state cost is draw
+        // work rather than shader allocation.
+        val glassShape =
+            remember(shape) {
+                { shape }
+            }
+        val glassEffects: BackdropEffectScope.() -> Unit =
+            remember(
+                blurRadiusPx,
+                refractionHeightPx,
+                refractionAmountPx,
+            ) {
+                {
+                    blur(blurRadiusPx)
+                    colorControls(
+                        contrast = 1.06f,
+                        saturation = 1.14f,
+                    )
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                        lens(
+                            refractionHeight = refractionHeightPx,
+                            refractionAmount = refractionAmountPx,
+                            depthEffect = false,
+                            chromaticAberration = false,
+                        )
+                    }
+                }
+            }
+        val glassTint: DrawScope.() -> Unit =
+            remember {
+                {
+                    // A restrained dark scrim keeps titles/buttons readable while preserving the
+                    // actual page colours and movement underneath the material.
+                    drawRect(Color(0x52101116))
+                }
+            }
+
+        Box(
+            modifier =
+                modifier
+                    .drawPlainBackdrop(
+                        backdrop = backdrop,
+                        shape = glassShape,
+                        effects = glassEffects,
+                        onDrawSurface = glassTint,
+                    )
+                    .drawWithCache {
+                        /*
+                         * These two cheap, cached light fields supply the specular "wet" read that
+                         * plain blur lacks. They never animate and are rebuilt only when geometry
+                         * changes.
+                         */
+                        val crown =
+                            Brush.verticalGradient(
+                                0f to Color.White.copy(alpha = 0.115f),
+                                0.16f to Color.White.copy(alpha = 0.04f),
+                                0.52f to Color.Transparent,
+                                1f to Color.Black.copy(alpha = 0.09f),
+                            )
+                        val grazingLight =
+                            Brush.linearGradient(
+                                colors =
+                                    listOf(
+                                        Color.White.copy(alpha = 0.052f),
+                                        Color.Transparent,
+                                        Color.White.copy(alpha = 0.018f),
+                                    ),
+                                start = Offset.Zero,
+                                end = Offset(size.width, size.height),
+                            )
+
+                        onDrawWithContent {
+                            drawContent()
+                            drawRect(crown)
+                            drawRect(grazingLight)
+                            drawLine(
+                                color = Color.White.copy(alpha = 0.16f),
+                                start = Offset(size.width * 0.08f, 0.65f * density),
+                                end = Offset(size.width * 0.92f, 0.65f * density),
+                                strokeWidth = 0.65f * density,
+                                cap = StrokeCap.Round,
+                            )
+                            drawLine(
+                                color = Color.Black.copy(alpha = 0.22f),
+                                start = Offset(size.width * 0.1f, size.height - 0.65f * density),
+                                end = Offset(size.width * 0.9f, size.height - 0.65f * density),
+                                strokeWidth = 0.65f * density,
+                                cap = StrokeCap.Round,
+                            )
+                        }
+                    },
         )
-        val light = Brush.radialGradient(
-            colors = listOf(
-                Color.White.copy(alpha = 0.065f),
-                Color.White.copy(alpha = 0.025f),
-                Color.Transparent,
-            ),
-            center = Offset(size.width * 0.16f, 0f),
-            radius = max(size.width, size.height) * 0.8f,
-        )
-        onDrawBehind {
-            // Keep the card opaque at rest. The transition itself owns opacity.
-            drawRect(Color(0xFF141414))
-            drawRect(Color(0xB80A0B10))
-            drawRect(brush = sheen)
-            drawRect(brush = light)
-            drawLine(
-                color = Color.White.copy(alpha = 0.1f),
-                start = Offset(size.width * 0.08f, 0.7f * density),
-                end = Offset(size.width * 0.92f, 0.7f * density),
-                strokeWidth = 0.7f * density,
-                cap = StrokeCap.Round,
-            )
-            drawLine(
-                color = Color.Black.copy(alpha = 0.18f),
-                start = Offset(size.width * 0.1f, size.height - 0.7f * density),
-                end = Offset(size.width * 0.9f, size.height - 0.7f * density),
-                strokeWidth = 0.7f * density,
-                cap = StrokeCap.Round,
-            )
-        }
-    })
+        return
+    }
+
+    /*
+     * Compatibility/fallback path. It mirrors the same highlight hierarchy but performs no layer
+     * capture or RenderEffect work, so older devices do not pay for a broken imitation of lensing.
+     */
+    Box(
+        modifier =
+            modifier.drawWithCache {
+                val body =
+                    Brush.linearGradient(
+                        colors =
+                            listOf(
+                                Color(0xFF1B1C22),
+                                Color(0xFF111218),
+                                Color(0xFF0B0C10),
+                            ),
+                        start = Offset.Zero,
+                        end = Offset(size.width, size.height),
+                    )
+                val crown =
+                    Brush.radialGradient(
+                        colors =
+                            listOf(
+                                Color.White.copy(alpha = 0.09f),
+                                Color.White.copy(alpha = 0.025f),
+                                Color.Transparent,
+                            ),
+                        center = Offset(size.width * 0.16f, 0f),
+                        radius = max(size.width, size.height) * 0.82f,
+                    )
+
+                onDrawBehind {
+                    drawRect(body)
+                    drawRect(crown)
+                    drawLine(
+                        color = Color.White.copy(alpha = 0.13f),
+                        start = Offset(size.width * 0.08f, 0.7f * density),
+                        end = Offset(size.width * 0.92f, 0.7f * density),
+                        strokeWidth = 0.7f * density,
+                        cap = StrokeCap.Round,
+                    )
+                    drawLine(
+                        color = Color.Black.copy(alpha = 0.2f),
+                        start = Offset(size.width * 0.1f, size.height - 0.7f * density),
+                        end = Offset(size.width * 0.9f, size.height - 0.7f * density),
+                        strokeWidth = 0.7f * density,
+                        cap = StrokeCap.Round,
+                    )
+                }
+            },
+    )
 }
 
 /** Reduce saturation and cap brightness before a cover colour reaches UI. */

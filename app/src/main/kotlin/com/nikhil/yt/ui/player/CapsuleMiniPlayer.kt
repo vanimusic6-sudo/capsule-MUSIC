@@ -67,6 +67,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.graphics.Shape
+import com.kyant.backdrop.Backdrop
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
@@ -132,6 +134,7 @@ fun CapsuleMiniPlayer(
     visible: Boolean = true,
     foregroundAlpha: () -> Float = { 1f },
     foregroundInteractive: Boolean = true,
+    glassBackdrop: Backdrop? = null,
 ) {
     val playerConnection =
         LocalPlayerConnection.current ?: return
@@ -539,6 +542,8 @@ fun CapsuleMiniPlayer(
                 visualsActive &&
                     isPlaying &&
                     playbackState == Player.STATE_READY,
+            glassBackdrop = glassBackdrop,
+            glassShape = miniPlayerShape,
             modifier =
                 Modifier
                     .fillMaxWidth()
@@ -649,6 +654,8 @@ internal fun MiniPlayerSurface(
     colors: List<Color>,
     modifier: Modifier = Modifier,
     animated: Boolean = true,
+    glassBackdrop: Backdrop? = null,
+    glassShape: Shape = RoundedCornerShape(24.dp),
     content: @Composable () -> Unit,
 ) {
     // Layout (standard or connected dock) must not override the chosen background.
@@ -658,7 +665,22 @@ internal fun MiniPlayerSurface(
         CapsuleMiniText
     }
     Box(modifier) {
-        CapsuleCompactSurfaceBackground(style, pureBlack, colors, Modifier.matchParentSize(), animated)
+        if (style == MiniPlayerBackgroundStyle.GLASS) {
+            CapsuleGlassSurface(
+                colors = colors,
+                modifier = Modifier.matchParentSize(),
+                backdrop = glassBackdrop,
+                shape = glassShape,
+            )
+        } else {
+            CapsuleCompactSurfaceBackground(
+                style = style,
+                pureBlack = pureBlack,
+                colors = colors,
+                modifier = Modifier.matchParentSize(),
+                animated = animated,
+            )
+        }
         CompositionLocalProvider(LocalContentColor provides contentColor, content = content)
     }
 }
