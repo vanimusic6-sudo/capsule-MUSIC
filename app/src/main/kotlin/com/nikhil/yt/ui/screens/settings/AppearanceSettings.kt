@@ -11,7 +11,11 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
@@ -436,10 +440,17 @@ fun AppearanceSettings(
             defaultValue = LibraryFilter.LIBRARY,
         )
 
+    val playerAwareInsets = LocalPlayerAwareWindowInsets.current
+    val playerAwareBottomPadding = playerAwareInsets.asPaddingValues().calculateBottomPadding()
+
     Column(
         Modifier
+            // Keep only the top/horizontal safe area on the scrolling viewport. The bottom safe
+            // area is a trailing spacer so rows can travel behind liquid glass while scrolling.
             .windowInsetsPadding(
-                LocalPlayerAwareWindowInsets.current,
+                playerAwareInsets.only(
+                    WindowInsetsSides.Horizontal + WindowInsetsSides.Top,
+                ),
             )
             .verticalScroll(rememberScrollState(), flingBehavior = rememberSettingsFlingBehavior()),
     ) {
@@ -1902,6 +1913,9 @@ fun AppearanceSettings(
             onCheckedChange =
                 onShowCachedPlaylistChange,
         )
+
+        // Preserve the old safe scroll range without cutting the backdrop off above the player.
+        Spacer(Modifier.height(playerAwareBottomPadding))
     }
 
     TopAppBar(
