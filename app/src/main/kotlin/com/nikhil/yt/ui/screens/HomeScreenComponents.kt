@@ -97,6 +97,7 @@ import com.nikhil.yt.ui.component.NavigationTitle
 import com.nikhil.yt.ui.component.SongGridItem
 import com.nikhil.yt.ui.component.SongListItem
 import com.nikhil.yt.ui.component.YouTubeGridItem
+import com.nikhil.yt.ui.component.YouTubeListItem
 import com.nikhil.yt.ui.component.shimmer.GridItemPlaceHolder
 import com.nikhil.yt.ui.component.shimmer.ShimmerHost
 import com.nikhil.yt.ui.component.shimmer.TextPlaceholder
@@ -1336,60 +1337,139 @@ fun CommunityPlaylistsSection(
 }
 
 /**
- * For You suggestions section — 50 personalized songs
+ * One unified taste shelf. It intentionally does not expose individual seed titles; the user sees
+ * a coherent recommendation set rather than a stack of noisy "Similar to X" rows.
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-fun ForYouSection(
-    suggestions: List<com.nikhil.yt.innertube.models.SongItem>,
+fun TasteRecommendationsSection(
+    suggestions: List<SongItem>,
     mediaMetadata: MediaMetadata?,
     isPlaying: Boolean,
     navController: NavController,
     playerConnection: PlayerConnection,
     menuState: MenuState,
     haptic: HapticFeedback,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
 ) {
-    if (suggestions.isEmpty()) return
+    val distinctSuggestions = remember(suggestions) { suggestions.distinctBy { it.id } }
+    if (distinctSuggestions.isEmpty()) return
+
+    val pages = remember(distinctSuggestions) { distinctSuggestions.chunked(4) }
+    val pagerState = androidx.compose.foundation.pager.rememberPagerState { pages.size }
 
     Column(modifier = modifier.fillMaxWidth()) {
-        Row(
+        Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically
+                .padding(horizontal = 16.dp, vertical = 10.dp)
         ) {
             Text(
-                text = "✨ For You",
+                text = stringResource(R.string.taste_recommendations),
                 style = MaterialTheme.typography.titleLarge,
-                modifier = Modifier.weight(1f)
+                color = MaterialTheme.colorScheme.onSurface,
             )
             Text(
-                text = "${suggestions.size} songs",
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
+                text = stringResource(R.string.taste_recommendations_subtitle),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 2.dp),
             )
         }
 
-        LazyRow(
+        androidx.compose.foundation.pager.HorizontalPager(
+            state = pagerState,
             contentPadding = PaddingValues(horizontal = 12.dp),
-            horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(8.dp),
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            items(
-                items = suggestions,
-                key = { it.id }
-            ) { song ->
-                Box(modifier = Modifier.width(160.dp)) {
-                    YouTubeGridItemWrapper(
+            pageSpacing = 8.dp,
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(ListItemHeight * 4 + 8.dp)
+        ) { pageIndex ->
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(24.dp))
+                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.18f))
+                    .padding(vertical = 4.dp)
+            ) {
+                pages.getOrNull(pageIndex).orEmpty().forEach { song ->
+                    val isActive = song.id == mediaMetadata?.id
+                    YouTubeListItem(
                         item = song,
-                        mediaMetadata = mediaMetadata,
+                        isActive = isActive,
                         isPlaying = isPlaying,
-                        navController = navController,
-                        playerConnection = playerConnection,
-                        menuState = menuState,
-                        haptic = haptic,
-                        scope = rememberCoroutineScope()
+                        isSwipeable = true,
+                        trailingContent = {
+                            IconButton(
+                                onClick = {
+                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                    menuState.show {
+                                        YouTubeSongMenu(
+                                            song = song,
+                                            navController = navController,
+                                            onDismiss = menuState::dismiss
+                                        )
+                                    }
+                                }
+                            ) {
+                                Icon(
+                                    painter = painterResource(R.drawable.more_vert),
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                        },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .combinedClickable(
+                                onClick = {
+                                    if (isActive) {
+                                        playerConnection.player.togglePlayPause()
+                                    } else {
+                                        playerConnection.playQueue(
+                                            YouTubeQueue(
+                                                song.endpoint ?: WatchEndpoint(videoId = song.id),
+                                                song.toMediaMetadata()
+                                            )
+                                        )
+                                    }
+                                },
+                                onLongClick = {
+                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                    menuState.show {
+                                        YouTubeSongMenu(
+                                            song = song,
+                                            navController = navController,
+                                            onDismiss = menuState::dismiss
+                                        )
+                                    }
+                                }
+                            )
+                    )
+                }
+            }
+        }
+
+        if (pages.size > 1) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 8.dp, bottom = 2.dp),
+                horizontalArrangement = androidx.compose.foundation.layout.Arrangement.Center,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                repeat(pages.size) { index ->
+                    val selected = pagerState.currentPage == index
+                    Box(
+                        modifier = Modifier
+                            .padding(horizontal = 3.dp)
+                            .height(6.dp)
+                            .width(if (selected) 18.dp else 6.dp)
+                            .clip(CircleShape)
+                            .background(
+                                if (selected) MaterialTheme.colorScheme.primary
+                                else MaterialTheme.colorScheme.outlineVariant
+                            )
                     )
                 }
             }
