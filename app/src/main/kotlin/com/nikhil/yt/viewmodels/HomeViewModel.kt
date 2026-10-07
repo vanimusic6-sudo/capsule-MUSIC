@@ -12,8 +12,9 @@ import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.nikhil.yt.innertube.YouTube
+import com.nikhil.yt.innertube.models.AlbumItem
 import com.nikhil.yt.innertube.models.PlaylistItem
-import com.nikhil.yt.innertube.models.WatchEndpoint
+import com.nikhil.yt.innertube.models.SongItem
 import com.nikhil.yt.innertube.models.YTItem
 import com.nikhil.yt.innertube.models.filterExplicit
 import com.nikhil.yt.innertube.models.filterVideo
@@ -21,7 +22,6 @@ import com.nikhil.yt.innertube.pages.ExplorePage
 import com.nikhil.yt.innertube.pages.HomePage
 import com.nikhil.yt.innertube.utils.completed
 import com.nikhil.yt.innertube.utils.parseCookieString
-import com.nikhil.yt.constants.ArtistSortType
 import com.nikhil.yt.constants.HideExplicitKey
 import com.nikhil.yt.constants.HideVideoKey
 import com.nikhil.yt.constants.InnerTubeCookieKey
@@ -31,7 +31,6 @@ import com.nikhil.yt.constants.YtmSyncKey
 import com.nikhil.yt.db.MusicDatabase
 import com.nikhil.yt.db.entities.*
 import com.nikhil.yt.extensions.toEnum
-import com.nikhil.yt.models.SimilarRecommendation
 import com.nikhil.yt.utils.dataStore
 import com.nikhil.yt.utils.get
 import com.nikhil.yt.utils.SyncUtils
@@ -53,9 +52,6 @@ class HomeViewModel @Inject constructor(
     val syncUtils: SyncUtils,
     val forYouEngine: com.nikhil.yt.utils.ForYouSuggestionEngine,
 ) : ViewModel() {
-    /** How many artists seed the "more like" rows. */
-    private val ARTIST_SEEDS = 3
-
     val isRefreshing = MutableStateFlow(false)
     val isLoading = MutableStateFlow(false)
     private val isInitialLoadComplete = MutableStateFlow(false)
@@ -68,7 +64,6 @@ class HomeViewModel @Inject constructor(
     val quickPicks = MutableStateFlow<List<Song>?>(null)
     val forgottenFavorites = MutableStateFlow<List<Song>?>(null)
     val keepListening = MutableStateFlow<List<LocalItem>?>(null)
-    val similarRecommendations = MutableStateFlow<List<SimilarRecommendation>?>(null)
     val accountPlaylists = MutableStateFlow<List<PlaylistItem>?>(null)
     val homePage = MutableStateFlow<HomePage?>(null)
     val explorePage = MutableStateFlow<ExplorePage?>(null)
@@ -92,8 +87,64 @@ class HomeViewModel @Inject constructor(
     private var isProcessingAccountData = false
     private var wasLoggedIn = false
 
-    private fun filterHomeChips(chips: List<HomePage.Chip>?): List<HomePage.Chip>? {
-        return chips?.filterNot { it.title.contains("podcasts", ignoreCase = true) }
+    private fun keepYouTubeHomeSection(section: HomePage.Section): Boolean {
+        val title = section.title.lowercase()
+        val browseId = section.endpoint?.browseId.orEmpty()
+
+        val isNewRelease =
+            browseId == "FEmusic_new_releases_albums" ||
+                listOf(
+                    "new release",
+                    "new releases",
+                    "latest release",
+                    "latest releases",
+                    "новые релизы",
+                    "новинки",
+                    "свежие релизы",
+                ).any(title::contains)
+
+        val isHitSection =
+            listOf(
+                "hits",
+                " hit",
+                "хиты",
+                "хит",
+                "top ",
+                "top-",
+                "топ ",
+                "топ-",
+                "chart",
+                "charts",
+                "чарт",
+            ).any(title::contains)
+
+        return isNewRelease || isHitSection
+    }
+
+    private fun cleanYouTubeHomePage(
+        page: HomePage,
+        hideExplicit: Boolean,
+        hideVideo: Boolean,
+    ): HomePage {
+        val sections =
+            page.sections.mapNotNull { section ->
+                if (!keepYouTubeHomeSection(section)) return@mapNotNull null
+
+                val items =
+                    section.items
+                        .filterExplicit(hideExplicit)
+                        .filterVideo(hideVideo)
+                        // Home should surface music, not YouTube playlist/community clutter.
+                        .filter { it is SongItem || it is AlbumItem }
+                        .distinctBy { it.id }
+
+                section.copy(items = items).takeIf { items.isNotEmpty() }
+            }
+
+        return page.copy(
+            chips = null,
+            sections = sections,
+        )
     }
 
     private suspend fun getQuickPicks(){
@@ -137,13 +188,8 @@ class HomeViewModel @Inject constructor(
                 }
 
                 launch {
-                        YouTube.home().onSuccess { page ->
-                        homePage.value = page.copy(
-                            chips = filterHomeChips(page.chips),
-                            sections = page.sections.map { section ->
-                                section.copy(items = section.items.filterExplicit(hideExplicit).filterVideo(hideVideo))
-                            }
-                        )
+                    YouTube.home().onSuccess { page ->
+                        homePage.value = cleanYouTubeHomePage(page, hideExplicit, hideVideo)
                     }.onFailure { reportException(it) }
                 }
 
@@ -182,11 +228,8 @@ class HomeViewModel @Inject constructor(
             allLocalItems.value = (quickPicks.value.orEmpty() + forgottenFavorites.value.orEmpty() + keepListening.value.orEmpty())
                 .filter { it is Song || it is Album }
 
-            viewModelScope.launch(Dispatchers.IO) {
-                loadSimilarRecommendations()
-            }
-
-            allYtItems.value = similarRecommendations.value?.flatMap { it.items }.orEmpty() +
+            allYtItems.value =
+                forYouSuggestions.value.orEmpty() +
                     homePage.value?.sections?.flatMap { it.items }.orEmpty()
                     
             isInitialLoadComplete.value = true
@@ -195,74 +238,6 @@ class HomeViewModel @Inject constructor(
         } finally {
             isLoading.value = false
         }
-    }
-
-    private suspend fun loadSimilarRecommendations() {
-        val hideExplicit = context.dataStore.get(HideExplicitKey, false)
-        val hideVideo = context.dataStore.get(HideVideoKey, false)
-        val fromTimeStamp = System.currentTimeMillis() - 86400000 * 7 * 2
-        
-        /*
-         * Artists the feed can reason about: the ones actually listened to, topped up with the
-         * ones followed.
-         *
-         * Most-played alone is empty on a fresh install, which is the whole problem: the artists
-         * picked in the welcome flow were subscribed and then had no effect on anything, so a new
-         * user's first feed knew nothing about them. Listening still wins where there is listening
-         * to go on — it is the better signal, and it is what makes the feed drift with taste — and
-         * follows fill whatever is left, which is everything on day one and nothing much later.
-         */
-        val playedArtists = database.mostPlayedArtists(fromTimeStamp, limit = 10).first()
-            .filter { it.artist.isYouTubeArtist }
-            .shuffled()
-        val followedArtists =
-            if (playedArtists.size >= ARTIST_SEEDS) {
-                // Nothing to top up, so the query is not run at all.
-                emptyList()
-            } else {
-                database.artistsBookmarked(ArtistSortType.CREATE_DATE, descending = true)
-                    .first()
-                    .filter { it.artist.isYouTubeArtist }
-                    .shuffled()
-            }
-
-        val artistRecommendations =
-            feedArtistSeeds(playedArtists, followedArtists, ARTIST_SEEDS)
-            .mapNotNull {
-                val items = mutableListOf<YTItem>()
-                YouTube.artist(it.id).onSuccess { page ->
-                    items += page.sections.getOrNull(page.sections.size - 2)?.items.orEmpty()
-                    items += page.sections.lastOrNull()?.items.orEmpty()
-                }
-                SimilarRecommendation(
-                    title = it,
-                    items = items.filterExplicit(hideExplicit).filterVideo(hideVideo).shuffled().ifEmpty { return@mapNotNull null }
-                )
-            }
-
-        val songRecommendations = database.mostPlayedSongs(fromTimeStamp, limit = 10).first()
-            .filter { it.album != null }
-            .shuffled().take(2)
-            .mapNotNull { song ->
-                val endpoint = YouTube.next(WatchEndpoint(videoId = song.id)).getOrNull()?.relatedEndpoint
-                    ?: return@mapNotNull null
-                val page = YouTube.related(endpoint).getOrNull() ?: return@mapNotNull null
-                SimilarRecommendation(
-                    title = song,
-                    items = (page.songs.shuffled().take(8) +
-                            page.albums.shuffled().take(4) +
-                            page.artists.shuffled().take(4) +
-                            page.playlists.shuffled().take(4))
-                        .filterExplicit(hideExplicit).filterVideo(hideVideo)
-                        .shuffled()
-                        .ifEmpty { return@mapNotNull null }
-                )
-            }
-
-        similarRecommendations.value = (artistRecommendations + songRecommendations).shuffled()
-        
-        allYtItems.value = similarRecommendations.value?.flatMap { it.items }.orEmpty() +
-                homePage.value?.sections?.flatMap { it.items }.orEmpty()
     }
 
     private suspend fun songLoad() {
@@ -288,12 +263,15 @@ class HomeViewModel @Inject constructor(
                 return@launch
             }
 
-            homePage.value = nextSections.copy(
-                chips = homePage.value?.chips,
-                sections = (homePage.value?.sections.orEmpty() + nextSections.sections).map { section ->
-                    section.copy(items = section.items.filterExplicit(hideExplicit).filterVideo(hideVideo))
-                }
-            )
+            val merged =
+                nextSections.copy(
+                    chips = null,
+                    sections = homePage.value?.sections.orEmpty() + nextSections.sections,
+                )
+            homePage.value = cleanYouTubeHomePage(merged, hideExplicit, hideVideo)
+            allYtItems.value =
+                forYouSuggestions.value.orEmpty() +
+                    homePage.value?.sections?.flatMap { it.items }.orEmpty()
             _isLoadingMore.value = false
         }
     }
@@ -314,13 +292,7 @@ class HomeViewModel @Inject constructor(
             val hideExplicit = context.dataStore.get(HideExplicitKey, false)
             val hideVideo = context.dataStore.get(HideVideoKey, false)
             val nextSections = YouTube.home(params = chip?.endpoint?.params).getOrNull() ?: return@launch
-
-            homePage.value = nextSections.copy(
-                chips = homePage.value?.chips,
-                sections = nextSections.sections.map { section ->
-                    section.copy(items = section.items.filterExplicit(hideExplicit).filterVideo(hideVideo))
-                }
-            )
+            homePage.value = cleanYouTubeHomePage(nextSections, hideExplicit, hideVideo)
             selectedChip.value = chip
         }
     }
