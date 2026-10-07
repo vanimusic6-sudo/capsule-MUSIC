@@ -8,7 +8,7 @@ package com.nikhil.yt.ui.player
 
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -22,12 +22,17 @@ import com.nikhil.yt.models.MediaMetadata
 import com.nikhil.yt.ui.component.ArtistSelectionItem
 
 /**
- * The artists on a track that actually have a page to open.
- *
- * A credit without an id is a name and nothing else, and a track can list the same artist twice
- * — once as the performer, once inside a feature — so both are dropped before anything counts
- * how many there are. That count is what decides between opening a page and asking.
+ * Keep every visible credit, including guests for which YouTube omitted a browse id.
+ * Null-id rows stay visible in the chooser but ArtistSelectionItem leaves them non-clickable.
  */
+@Composable
+internal fun rememberArtistCredits(artists: List<MediaMetadata.Artist>): List<MediaMetadata.Artist> =
+    remember(artists) {
+        artists.distinctBy { artist ->
+            artist.id ?: "name:${artist.name.trim().lowercase()}"
+        }
+    }
+
 @Composable
 internal fun rememberNavigableArtists(artists: List<MediaMetadata.Artist>): List<MediaMetadata.Artist> =
     remember(artists) {
@@ -52,12 +57,18 @@ internal fun CapsuleArtistPickerDialog(
         title = { Text(text = stringResource(R.string.capsule_choose_artist)) },
         text = {
             LazyColumn(Modifier.heightIn(max = 360.dp)) {
-                items(artists, key = { it.id.orEmpty() }) { artist ->
+                itemsIndexed(
+                    items = artists,
+                    key = { index, artist ->
+                        artist.id ?: "credit:${artist.name.trim().lowercase()}:$index"
+                    },
+                ) { _, artist ->
                     ArtistSelectionItem(
                         name = artist.name,
                         artistId = artist.id,
                         thumbnailUrl = artist.thumbnailUrl,
                     ) {
+                        if (artist.id.isNullOrBlank()) return@ArtistSelectionItem
                         onDismiss()
                         onArtistSelected(artist)
                     }
