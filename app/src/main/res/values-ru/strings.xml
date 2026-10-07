@@ -862,4 +862,6 @@
     <string name="capsule_customize_import_invalid">Этот файл Capsule повреждён или имеет неподдерживаемый формат.</string>
     <string name="capsule_customize_share_failed">Не удалось создать файл дизайна Capsule.</string>
     <string name="capsule_customize_import_success">Дизайн из файла Capsule применён.</string>
+    <string name="taste_recommendations">Похоже на ваш вкус</string>
+    <string name="taste_recommendations_subtitle">По тому, что вы дослушиваете, переслушиваете и скипаете</string>
 </resources>
