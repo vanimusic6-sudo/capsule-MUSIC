@@ -249,15 +249,14 @@ fun StorageSettings(
                     .fillMaxSize()
                     .padding(innerPadding)
                     .windowInsetsPadding(
-                        LocalPlayerAwareWindowInsets.current.only(
-                            WindowInsetsSides.Horizontal +
-                                WindowInsetsSides.Bottom,
-                        ),
+                        LocalPlayerAwareWindowInsets.current.only(WindowInsetsSides.Horizontal),
                     ),
             contentPadding =
                 PaddingValues(
-                    horizontal = 16.dp,
-                    vertical = 8.dp,
+                    start = 16.dp,
+                    end = 16.dp,
+                    top = 8.dp,
+                    bottom = settingsBottomContentPadding(extra = 8.dp),
                 ),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {

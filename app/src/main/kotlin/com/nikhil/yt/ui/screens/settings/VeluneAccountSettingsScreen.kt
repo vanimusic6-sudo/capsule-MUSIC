@@ -77,10 +77,11 @@ fun VeluneAccountSettingsScreen(
     val (accountChannelHandle, onAccountChannelHandleChange) = rememberPreference(AccountChannelHandleKey, "")
 
     Scaffold(
-        // Content stops above the dock and the navigation bar instead of running under them.
+        // Keep the route drawing behind the floating mini-player; safe clearance belongs to the
+        // LazyColumn content so the final item still scrolls completely above the chrome.
         contentWindowInsets =
             LocalPlayerAwareWindowInsets.current
-                .only(WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom),
+                .only(WindowInsetsSides.Horizontal),
         topBar = {
             TopAppBar(
                 title = { Text("Account", fontWeight = FontWeight.Bold, fontSize = 20.sp) },
@@ -105,7 +106,8 @@ fun VeluneAccountSettingsScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(paddingValues)
-                .padding(horizontal = 16.dp)
+                .padding(horizontal = 16.dp),
+            contentPadding = PaddingValues(bottom = settingsBottomContentPadding() + 32.dp),
         ) {
 
             // Settings Section
@@ -181,7 +183,6 @@ fun VeluneAccountSettingsScreen(
                 )
             }
 
-            item { Spacer(Modifier.height(32.dp)) }
         }
 
         // Token Editor Dialog

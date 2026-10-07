@@ -79,7 +79,6 @@ import com.nikhil.yt.ui.screens.settings.PlayerSettings
 import com.nikhil.yt.ui.screens.settings.VideoPlaybackSettings
 import com.nikhil.yt.ui.screens.settings.PoTokenScreen
 import com.nikhil.yt.ui.screens.settings.PrivacySettings
-import com.nikhil.yt.ui.screens.settings.SettingsScreen
 import com.nikhil.yt.ui.screens.settings.StorageSettings
 import com.nikhil.yt.ui.screens.settings.ThemeCreatorScreen
 import com.nikhil.yt.ui.utils.ShowMediaInfo

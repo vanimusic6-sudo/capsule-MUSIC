@@ -148,11 +148,11 @@ fun DebugSettings(
     val playerConnection = LocalPlayerConnection.current
 
     Scaffold(
-        // The player's dock and the navigation bar sit over the bottom of every screen, so the
-        // content has to stop above them rather than scroll underneath.
+        // Draw settings all the way behind the floating player; safe clearance is part of the
+        // scroll content instead of cutting the backdrop source off at the viewport edge.
         contentWindowInsets =
             LocalPlayerAwareWindowInsets.current
-                .only(WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom),
+                .only(WindowInsetsSides.Horizontal),
         topBar = {
             TopAppBar(
                 title = {
@@ -178,7 +178,8 @@ fun DebugSettings(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
-                .verticalScroll(rememberScrollState(), flingBehavior = rememberSettingsFlingBehavior()),
+                .verticalScroll(rememberScrollState(), flingBehavior = rememberSettingsFlingBehavior())
+                .padding(bottom = settingsBottomContentPadding()),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             PreferenceGroupTitle(

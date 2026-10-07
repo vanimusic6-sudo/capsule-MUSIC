@@ -149,7 +149,7 @@ fun DiscordSettings(
     Scaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) },
         contentWindowInsets = LocalPlayerAwareWindowInsets.current.only(
-            WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom
+            WindowInsetsSides.Horizontal
         ),
     ) { innerPadding ->
         Column(
@@ -157,6 +157,7 @@ fun DiscordSettings(
                 .padding(innerPadding)
                 .consumeWindowInsets(innerPadding)
                 .verticalScroll(rememberScrollState(), flingBehavior = rememberSettingsFlingBehavior())
+                .padding(bottom = settingsBottomContentPadding())
         ) {
         Spacer(
             Modifier.windowInsetsPadding(

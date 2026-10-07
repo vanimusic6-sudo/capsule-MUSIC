@@ -305,8 +305,9 @@ fun ThemeCreatorScreen(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(paddingValues)
-                .windowInsetsPadding(LocalPlayerAwareWindowInsets.current.only(WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom))
-                .verticalScroll(rememberScrollState(), flingBehavior = rememberSettingsFlingBehavior()),
+                .windowInsetsPadding(LocalPlayerAwareWindowInsets.current.only(WindowInsetsSides.Horizontal))
+                .verticalScroll(rememberScrollState(), flingBehavior = rememberSettingsFlingBehavior())
+                .padding(bottom = settingsBottomContentPadding()),
         ) {
             ThemeHeroPreview(
                 palette = currentPalette,

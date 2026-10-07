@@ -18,6 +18,9 @@ import android.os.LocaleList
 import android.util.Log
 import android.widget.Toast
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.only
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -99,8 +102,13 @@ fun ContentSettings(
 
     Column(
         Modifier
-            .windowInsetsPadding(LocalPlayerAwareWindowInsets.current)
-            .verticalScroll(rememberScrollState(), flingBehavior = rememberSettingsFlingBehavior()),
+            .windowInsetsPadding(
+                LocalPlayerAwareWindowInsets.current.only(
+                    WindowInsetsSides.Horizontal + WindowInsetsSides.Top,
+                ),
+            )
+            .verticalScroll(rememberScrollState(), flingBehavior = rememberSettingsFlingBehavior())
+            .padding(bottom = settingsBottomContentPadding()),
     ) {
         PreferenceGroupTitle(title = stringResource(R.string.general))
         ListPreference(

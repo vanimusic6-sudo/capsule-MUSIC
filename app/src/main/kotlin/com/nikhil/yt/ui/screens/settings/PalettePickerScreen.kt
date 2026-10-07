@@ -987,7 +987,8 @@ fun PalettePickerScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(paddingValues)
-                .verticalScroll(rememberScrollState(), flingBehavior = rememberSettingsFlingBehavior()),
+                .verticalScroll(rememberScrollState(), flingBehavior = rememberSettingsFlingBehavior())
+                .padding(bottom = settingsBottomContentPadding()),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Spacer(modifier = Modifier.height(16.dp))

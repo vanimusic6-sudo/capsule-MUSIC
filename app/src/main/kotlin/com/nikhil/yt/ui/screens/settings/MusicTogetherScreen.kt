@@ -248,8 +248,9 @@ fun MusicTogetherScreen(
 
     Column(
         Modifier
-            .windowInsetsPadding(LocalPlayerAwareWindowInsets.current.only(WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom))
-            .verticalScroll(rememberScrollState(), flingBehavior = rememberSettingsFlingBehavior()),
+            .windowInsetsPadding(LocalPlayerAwareWindowInsets.current.only(WindowInsetsSides.Horizontal))
+            .verticalScroll(rememberScrollState(), flingBehavior = rememberSettingsFlingBehavior())
+            .padding(bottom = settingsBottomContentPadding()),
     ) {
         Spacer(
             Modifier.windowInsetsPadding(

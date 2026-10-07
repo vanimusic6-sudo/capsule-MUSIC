@@ -89,9 +89,7 @@ fun ChangelogScreen(
                 .fillMaxSize()
                 .padding(paddingValues)
                 .windowInsetsPadding(
-                    LocalPlayerAwareWindowInsets.current.only(
-                        WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom
-                    )
+                    LocalPlayerAwareWindowInsets.current.only(WindowInsetsSides.Horizontal)
                 )
         ) {
             when {
@@ -137,6 +135,7 @@ fun ChangelogScreen(
                         modifier = Modifier
                             .fillMaxSize()
                             .padding(horizontal = 16.dp),
+                        contentPadding = PaddingValues(bottom = settingsBottomContentPadding()),
                         verticalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
                         item { Spacer(modifier = Modifier.height(8.dp)) }

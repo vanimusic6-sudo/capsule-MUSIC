@@ -14,7 +14,9 @@ import android.view.View
 import android.view.ViewGroup
 import android.webkit.*
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
@@ -59,7 +61,11 @@ fun DiscordLoginScreen(navController: NavController) {
 
     AndroidView(
         modifier = Modifier
-            .windowInsetsPadding(LocalPlayerAwareWindowInsets.current)
+            .windowInsetsPadding(
+                LocalPlayerAwareWindowInsets.current.only(
+                    WindowInsetsSides.Horizontal + WindowInsetsSides.Top,
+                ),
+            )
             .fillMaxSize(),
         factory = { context ->
             WebView(context).apply {

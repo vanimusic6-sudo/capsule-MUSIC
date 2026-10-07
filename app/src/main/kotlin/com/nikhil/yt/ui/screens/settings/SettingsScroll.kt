@@ -3,10 +3,13 @@ package com.nikhil.yt.ui.screens.settings
 import androidx.compose.foundation.gestures.FlingBehavior
 import androidx.compose.foundation.gestures.ScrollScope
 import androidx.compose.foundation.gestures.ScrollableDefaults
+import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import com.nikhil.yt.LocalPlayerAwareWindowInsets
 
 /**
  * Consistent inertial scrolling across all Capsule settings pages.
@@ -29,3 +32,15 @@ internal fun rememberSettingsFlingBehavior(): FlingBehavior {
         }
     }
 }
+
+
+/**
+ * Full bottom safe area (mini-player + dock/navigation + system inset) expressed as
+ * scroll-content padding. Settings viewports deliberately do not consume this at the layout edge,
+ * so their pixels can continue behind liquid glass while the final row still scrolls fully clear.
+ */
+@Composable
+internal fun settingsBottomContentPadding(extra: Dp = 0.dp): Dp =
+    LocalPlayerAwareWindowInsets.current
+        .asPaddingValues()
+        .calculateBottomPadding() + extra

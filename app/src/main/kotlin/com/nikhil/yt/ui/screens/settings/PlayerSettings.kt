@@ -301,12 +301,10 @@ fun PlayerSettings(
     Column(
         Modifier
             .windowInsetsPadding(
-                LocalPlayerAwareWindowInsets.current.only(
-                    WindowInsetsSides.Horizontal +
-                        WindowInsetsSides.Bottom,
-                ),
+                LocalPlayerAwareWindowInsets.current.only(WindowInsetsSides.Horizontal),
             )
-            .verticalScroll(rememberScrollState(), flingBehavior = rememberSettingsFlingBehavior()),
+            .verticalScroll(rememberScrollState(), flingBehavior = rememberSettingsFlingBehavior())
+            .padding(bottom = settingsBottomContentPadding()),
     ) {
         Spacer(
             Modifier.windowInsetsPadding(

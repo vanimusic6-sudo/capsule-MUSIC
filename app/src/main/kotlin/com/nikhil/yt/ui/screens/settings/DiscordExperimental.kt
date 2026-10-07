@@ -41,10 +41,9 @@ fun DiscordExperimental(
     navController: NavController,
 ) {
     Scaffold(
-        // Content stops above the dock and the navigation bar instead of running under them.
         contentWindowInsets =
             LocalPlayerAwareWindowInsets.current
-                .only(WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom),
+                .only(WindowInsetsSides.Horizontal),
     ) { inner ->
         Column(Modifier.fillMaxSize()) {
             TopAppBar(
@@ -58,15 +57,8 @@ fun DiscordExperimental(
 
             LazyColumn(
                 flingBehavior = rememberSettingsFlingBehavior(),
-                /*
-                 * Bottom only, and from the real inset.
-                 *
-                 * This used to be `padding(inner.calculateBottomPadding())`, which applies a
-                 * *bottom* measurement to all four sides, plus a hardcoded 80dp guess at the
-                 * mini-player's height. The inset already knows the dock, the mini-player and the
-                 * navigation bar, and it knows when each of them is actually there.
-                 */
-                modifier = Modifier.padding(bottom = inner.calculateBottomPadding()),
+                modifier = Modifier,
+                contentPadding = PaddingValues(bottom = settingsBottomContentPadding()),
             ) {
                 item {
                     Text(
