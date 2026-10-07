@@ -1298,7 +1298,9 @@ interface DatabaseDao {
         mediaMetadata: MediaMetadata,
         block: (SongEntity) -> SongEntity = { it },
     ) {
-        if (insert(mediaMetadata.toSongEntity().let(block)) == -1L) return
+        // Artist relations are allowed to become richer even when the song row already exists.
+        // Returning here used to freeze whichever (possibly partial) credits arrived first.
+        insert(mediaMetadata.toSongEntity().let(block))
 
         if (mediaMetadata.setVideoId != null) {
             insert(
@@ -1309,23 +1311,91 @@ interface DatabaseDao {
             )
         }
 
-        mediaMetadata.artists.forEachIndexed { index, artist ->
-            val artistId = artist.id ?: artistByName(artist.name)?.id ?: ArtistEntity.generateArtistId()
-            
-            insert(
-                ArtistEntity(
-                    id = artistId,
-                    name = artist.name,
-                    channelId = artist.id,
-                )
-            )
+        mergeSongArtistCredits(mediaMetadata.id, mediaMetadata.artists)
+    }
 
+    /**
+     * Merge, never truncate, artist credits for a known song.
+     *
+     * Different YouTube surfaces can expose different amounts of metadata. Incoming order wins,
+     * while previously known credits that are missing from the current response are appended.
+     * A real browse id also upgrades an older generated LA id with the same visible name.
+     */
+    fun mergeSongArtistCredits(
+        songId: String,
+        incomingArtists: List<MediaMetadata.Artist>,
+    ) {
+        if (incomingArtists.isEmpty()) return
+
+        val existingArtists = getSongByIdBlocking(songId)?.artists.orEmpty()
+        val merged = mutableListOf<MediaMetadata.Artist>()
+
+        fun addOrEnrich(candidate: MediaMetadata.Artist) {
+            val cleanName = candidate.name.trim()
+            if (cleanName.isEmpty()) return
+
+            val index =
+                merged.indexOfFirst { current ->
+                    (candidate.id != null && current.id == candidate.id) ||
+                        current.name.equals(cleanName, ignoreCase = true)
+                }
+
+            if (index < 0) {
+                merged += candidate.copy(name = cleanName)
+            } else {
+                val current = merged[index]
+                merged[index] =
+                    current.copy(
+                        id = current.id ?: candidate.id,
+                        thumbnailUrl = current.thumbnailUrl ?: candidate.thumbnailUrl,
+                    )
+            }
+        }
+
+        incomingArtists.forEach(::addOrEnrich)
+        existingArtists.forEach { artist ->
+            addOrEnrich(
+                MediaMetadata.Artist(
+                    id = artist.id,
+                    name = artist.name,
+                    thumbnailUrl = artist.thumbnailUrl,
+                ),
+            )
+        }
+
+        val resolved =
+            merged.mapNotNull { credit ->
+                val sameName = artistByName(credit.name)
+                val artistId = credit.id ?: sameName?.id ?: ArtistEntity.generateArtistId()
+
+                insert(
+                    ArtistEntity(
+                        id = artistId,
+                        name = credit.name,
+                        thumbnailUrl = credit.thumbnailUrl ?: sameName?.thumbnailUrl,
+                        // A YT Music browse id is not automatically a channel id. Conflating the
+                        // two corrupts subscription metadata for artists whose browse id differs.
+                        channelId = null,
+                        bookmarkedAt =
+                            sameName
+                                ?.takeIf { it.id.startsWith("LA") && credit.id != null }
+                                ?.bookmarkedAt,
+                    ),
+                )
+
+                artistId
+            }.distinct()
+
+        if (resolved.isEmpty()) return
+
+        songArtistMap(songId).forEach(::delete)
+        resolved.forEachIndexed { index, artistId ->
             insert(
                 SongArtistMap(
-                    songId = mediaMetadata.id,
+                    songId = songId,
                     artistId = artistId,
                     position = index,
-                )
+                ),
             )
         }
     }
@@ -1393,25 +1463,7 @@ interface DatabaseDao {
                 albumName = mediaMetadata.album?.title,
             ),
         )
-        songArtistMap(song.id).forEach(::delete)
-        mediaMetadata.artists.forEachIndexed { index, artist ->
-            val artistId = artist.id ?: artistByName(artist.name)?.id ?: ArtistEntity.generateArtistId()
-            
-            insert(
-                ArtistEntity(
-                    id = artistId,
-                    name = artist.name,
-                    channelId = artist.id,
-                ),
-            )
-            insert(
-                SongArtistMap(
-                    songId = song.id,
-                    artistId = artistId,
-                    position = index,
-                ),
-            )
-        }
+        mergeSongArtistCredits(song.id, mediaMetadata.artists)
     }
 
     @Update
