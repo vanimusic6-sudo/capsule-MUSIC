@@ -30,19 +30,52 @@ import com.nikhil.yt.innertube.utils.parseTime
 
 private val searchDurationPattern = Regex("""\d{1,2}:\d{2}(?::\d{2})?""")
 
-internal fun extractSearchSongArtists(runs: List<Run>): List<Artist> =
-    runs.mapNotNull { run ->
-        val endpoint = run.navigationEndpoint?.browseEndpoint ?: return@mapNotNull null
-        val pageType = endpoint.browseEndpointContextSupportedConfigs
-            ?.browseEndpointContextMusicConfig?.pageType
-        if (run.text.isBlank() ||
-            !(endpoint.isArtistEndpoint ||
-                pageType == MUSIC_PAGE_TYPE_USER_CHANNEL ||
-                pageType == MUSIC_PAGE_TYPE_LIBRARY_ARTIST ||
-                (pageType == null && endpoint.browseId.startsWith("UC")))
-        ) return@mapNotNull null
-        Artist(name = run.text.trim(), id = endpoint.browseId)
-    }.distinctBy { it.id ?: it.name }
+internal fun extractSearchSongArtists(runs: List<Run>): List<Artist> {
+    val groups = runs.splitBySeparator()
+
+    for (group in groups) {
+        val linkedArtistIndexes =
+            group.indices.filter { index ->
+                val run = group[index]
+                val endpoint = run.navigationEndpoint?.browseEndpoint ?: return@filter false
+                val pageType =
+                    endpoint.browseEndpointContextSupportedConfigs
+                        ?.browseEndpointContextMusicConfig
+                        ?.pageType
+                endpoint.isArtistEndpoint ||
+                    pageType == MUSIC_PAGE_TYPE_USER_CHANNEL ||
+                    pageType == MUSIC_PAGE_TYPE_LIBRARY_ARTIST ||
+                    (pageType == null && endpoint.browseId.startsWith("UC"))
+            }
+
+        if (linkedArtistIndexes.isEmpty()) continue
+
+        val creditRuns =
+            group.filterIndexed { index, run ->
+                if (index in linkedArtistIndexes) {
+                    true
+                } else if (run.navigationEndpoint != null) {
+                    false
+                } else {
+                    val text = run.text.trim()
+                    text.isNotEmpty() &&
+                        !searchDurationPattern.matches(text) &&
+                        (group.getOrNull(index - 1)?.text.isArtistJoiner() == true ||
+                            group.getOrNull(index + 1)?.text.isArtistJoiner() == true)
+                }
+            }
+
+        return PageHelper.extractArtists(creditRuns)
+    }
+
+    return emptyList()
+}
+
+private fun String.isArtistJoiner(): Boolean {
+    val value = trim().lowercase()
+    return value in setOf(",", "&", "/", ";", "feat.", "ft.", "featuring") ||
+        (value.isNotEmpty() && value.all { it == ',' || it == '&' || it == '/' || it == ';' })
+}
 
 internal fun extractSearchSongDuration(runs: List<Run>): Int? =
     runs.firstNotNullOfOrNull { run ->
