@@ -32,6 +32,26 @@ class SearchSummaryMetadataTest {
         assertTrue(extractSearchSongArtists(listOf(Run("2:42", null))).isEmpty())
     }
 
+    @Test fun `unlinked featured credit beside a linked artist is preserved`() {
+        val metadata = listOf(
+            Run("Song", null),
+            Run("2:42", null),
+            Run("Primary", artistEndpoint("UC_primary")),
+            Run(" & ", null),
+            Run("Featured Guest", null),
+            Run(" • ", null),
+            Run("Album", albumEndpoint("MPRE_album")),
+        )
+
+        assertEquals(
+            listOf(
+                Artist("Primary", "UC_primary"),
+                Artist("Featured Guest", null),
+            ),
+            extractSearchSongArtists(metadata),
+        )
+    }
+
     @Test fun `top result inherits missing artist from the same song in Songs`() {
         val artist = Artist("Oliver Tree", "UC_oliver")
         val top = SongItem(id = "song-id", title = "Life Goes On", artists = emptyList(),
