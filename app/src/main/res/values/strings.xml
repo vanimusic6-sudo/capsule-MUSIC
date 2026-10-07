@@ -941,4 +941,6 @@ Velune will only extract your token, and everything else is stored locally.</str
     <string name="capsule_customize_import_invalid">This Capsule file is invalid or unsupported.</string>
     <string name="capsule_customize_share_failed">Could not create the Capsule design file.</string>
     <string name="capsule_customize_import_success">Capsule design file applied.</string>
+    <string name="taste_recommendations">Similar to your taste</string>
+    <string name="taste_recommendations_subtitle">Built from what you finish, replay and skip</string>
 </resources>
