@@ -721,6 +721,13 @@ fun SongMenu(
                 Column {
                     ListItem(
                         headlineContent = { Text(text = stringResource(R.string.view_artist)) },
+                        supportingContent = {
+                            Text(
+                                text = orderedArtists.joinToString(separator = " • ") { it.name },
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        },
                         leadingContent = {
                             Icon(
                                 painter = painterResource(R.drawable.artist),
