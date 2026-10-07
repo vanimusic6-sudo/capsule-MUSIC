@@ -20,6 +20,7 @@ import com.nikhil.yt.innertube.models.SectionListRenderer
 import com.nikhil.yt.innertube.models.SongItem
 import com.nikhil.yt.innertube.models.YTItem
 import com.nikhil.yt.innertube.models.oddElements
+import com.nikhil.yt.innertube.models.splitBySeparator
 import com.nikhil.yt.innertube.models.filterExplicit
 
 data class HomePage(
@@ -71,20 +72,14 @@ data class HomePage(
                 return when {
                     renderer.isSong -> {
                         val subtitleRuns = renderer.subtitle?.runs ?: return null
-                        val (artistRuns, albumRuns) = subtitleRuns.partition { run ->
-                            run.navigationEndpoint?.browseEndpoint?.browseId?.startsWith("UC") == true
-                        }
-                        val artists = artistRuns.map {
-                            Artist(
-                                name = it.text,
-                                id = it.navigationEndpoint?.browseEndpoint?.browseId ?: return null
-                            )
-                        }
+                        val subtitleGroups = subtitleRuns.splitBySeparator()
+                        val artistRuns = subtitleGroups.firstOrNull()
+                        val artists = PageHelper.extractArtists(artistRuns)
                         SongItem(
                             id = renderer.navigationEndpoint.watchEndpoint?.videoId ?: return null,
                             title = renderer.title.runs?.firstOrNull()?.text ?: return null,
                             artists = artists,
-                            album = albumRuns.firstOrNull { run ->
+                            album = subtitleRuns.firstOrNull { run ->
                                 run.navigationEndpoint?.browseEndpoint?.browseId?.startsWith("MPREb_") == true
                             }?.let { run ->
                                 val endpoint = run.navigationEndpoint?.browseEndpoint ?: return null
