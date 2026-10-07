@@ -172,6 +172,8 @@ import com.nikhil.yt.constants.MiniPlayerBottomSpacing
 import com.nikhil.yt.constants.MiniPlayerHeight
 import com.nikhil.yt.constants.MiniPlayerBackgroundStyle
 import com.nikhil.yt.constants.MiniPlayerBackgroundStyleKey
+import com.nikhil.yt.constants.PlayerBackgroundStyle
+import com.nikhil.yt.constants.PlayerBackgroundStyleKey
 import com.nikhil.yt.constants.NavigationBarAnimationSpec
 import com.nikhil.yt.constants.NavigationBarHeight
 import com.nikhil.yt.constants.PauseSearchHistoryKey
@@ -871,6 +873,12 @@ class MainActivity : ComponentActivity() {
                             MiniPlayerBackgroundStyle.CAPSULE_STAR,
                         )
 
+                    val playerBackground by
+                        rememberEnumPreference(
+                            PlayerBackgroundStyleKey,
+                            PlayerBackgroundStyle.CAPSULE_STAR,
+                        )
+
                     /*
                      * The glass only samples the lower part of the route. Recording an entire
                      * phone/tablet frame into the backdrop layer wastes fill-rate while the upper
@@ -941,6 +949,27 @@ class MainActivity : ComponentActivity() {
                     val capsuleMiniPlayerActuallyVisible =
                         playerConnection != null &&
                                 !playerBottomSheetState.isDismissed
+
+                    /*
+                     * Capsule Glow owns a very dark edge under Android navigation buttons.
+                     * Reassert the transparent system bar when the full player actually reaches
+                     * that region; some Android skins recreate their navigation scrim while the
+                     * app dock leaves the window. Other player backgrounds keep the established
+                     * system-bar behaviour unchanged.
+                     */
+                    val capsuleGlowOwnsSystemNavigation =
+                        playerBackground == PlayerBackgroundStyle.CAPSULE_GLOW &&
+                            playerBottomSheetState.shouldLayerAboveCollapsedChrome
+
+                    LaunchedEffect(
+                        useDarkTheme,
+                        capsuleGlowOwnsSystemNavigation,
+                    ) {
+                        setSystemBarAppearance(
+                            isDark = useDarkTheme,
+                            forceDarkNavigation = capsuleGlowOwnsSystemNavigation,
+                        )
+                    }
 
                     /*
                      * Keep the expensive part of liquid glass scoped to the compact player.
@@ -2035,10 +2064,13 @@ class MainActivity : ComponentActivity() {
     }
 
     @SuppressLint("ObsoleteSdkInt")
-    private fun setSystemBarAppearance(isDark: Boolean) {
+    private fun setSystemBarAppearance(
+        isDark: Boolean,
+        forceDarkNavigation: Boolean = false,
+    ) {
         WindowCompat.getInsetsController(window, window.decorView.rootView).apply {
             isAppearanceLightStatusBars = !isDark
-            isAppearanceLightNavigationBars = !isDark
+            isAppearanceLightNavigationBars = !(isDark || forceDarkNavigation)
         }
 
         /*
