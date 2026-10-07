@@ -251,7 +251,9 @@ fun QuickPicksSection(
 }
 
 /**
- * Keep Listening section - horizontal grid of local items
+ * Continue Listening keeps the swipe/page language of Quick Picks, but not its recommendation
+ * logic. Mixed local items live in compact, tappable rows so the section is fast to scan and one
+ * horizontal gesture advances a complete group instead of drifting through an endless grid.
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -266,39 +268,243 @@ fun KeepListeningSection(
     scope: CoroutineScope,
     modifier: Modifier = Modifier
 ) {
-    val rows = if (keepListening.size > 6) 2 else 1
-    val gridHeight = (GridThumbnailHeight + with(LocalDensity.current) {
-        MaterialTheme.typography.bodyLarge.lineHeight.toDp() * 2 +
-                MaterialTheme.typography.bodyMedium.lineHeight.toDp() * 2
-    }) * rows
+    val distinctItems = remember(keepListening) {
+        keepListening.distinctBy { item ->
+            when (item) {
+                is Song -> "song_${item.id}"
+                is Album -> "album_${item.id}"
+                is Artist -> "artist_${item.id}"
+                is Playlist -> "playlist_${item.id}"
+            }
+        }
+    }
+    val pages = remember(distinctItems) { distinctItems.chunked(4) }
+    val pagerState = androidx.compose.foundation.pager.rememberPagerState { pages.size }
 
-    LazyHorizontalGrid(
-        state = rememberLazyGridState(),
-        rows = GridCells.Fixed(rows),
-        modifier = modifier
-            .fillMaxWidth()
-            .height(gridHeight)
-    ) {
-        items(
-            items = keepListening,
-            key = { item -> 
-                when (item) {
-                    is Song -> "song_${item.id}"
-                    is Album -> "album_${item.id}"
-                    is Artist -> "artist_${item.id}"
-                    is Playlist -> "playlist_${item.id}"
+    Column(modifier = modifier.fillMaxWidth()) {
+        androidx.compose.foundation.pager.HorizontalPager(
+            state = pagerState,
+            contentPadding = PaddingValues(horizontal = 12.dp),
+            pageSpacing = 8.dp,
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(ListItemHeight * 4 + 8.dp)
+        ) { pageIndex ->
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(24.dp))
+                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.24f))
+                    .padding(vertical = 4.dp)
+            ) {
+                pages.getOrNull(pageIndex).orEmpty().forEach { item ->
+                    KeepListeningRow(
+                        item = item,
+                        mediaMetadata = mediaMetadata,
+                        isPlaying = isPlaying,
+                        navController = navController,
+                        playerConnection = playerConnection,
+                        menuState = menuState,
+                        haptic = haptic,
+                        scope = scope
+                    )
                 }
             }
-        ) { item ->
-            LocalGridItem(
-                item = item,
-                mediaMetadata = mediaMetadata,
-                isPlaying = isPlaying,
-                navController = navController,
-                playerConnection = playerConnection,
-                menuState = menuState,
-                haptic = haptic,
-                scope = scope
+        }
+
+        if (pages.size > 1) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 8.dp, bottom = 2.dp),
+                horizontalArrangement = androidx.compose.foundation.layout.Arrangement.Center,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                repeat(pages.size) { index ->
+                    val selected = pagerState.currentPage == index
+                    Box(
+                        modifier = Modifier
+                            .padding(horizontal = 3.dp)
+                            .height(6.dp)
+                            .width(if (selected) 18.dp else 6.dp)
+                            .clip(CircleShape)
+                            .background(
+                                if (selected) MaterialTheme.colorScheme.primary
+                                else MaterialTheme.colorScheme.outlineVariant
+                            )
+                    )
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun KeepListeningRow(
+    item: LocalItem,
+    mediaMetadata: MediaMetadata?,
+    isPlaying: Boolean,
+    navController: NavController,
+    playerConnection: PlayerConnection,
+    menuState: MenuState,
+    haptic: HapticFeedback,
+    scope: CoroutineScope,
+) {
+    val isActive = when (item) {
+        is Song -> item.id == mediaMetadata?.id
+        is Album -> item.id == mediaMetadata?.album?.id
+        else -> false
+    }
+    val subtitle = when (item) {
+        is Song -> item.artists.joinToString { it.name }
+        is Album -> item.artists.joinToString { it.name }
+        is Artist -> ""
+        is Playlist -> ""
+    }
+    val thumbnail = when (item) {
+        is Playlist -> item.thumbnails.firstOrNull()
+        else -> item.thumbnailUrl
+    }
+    val thumbnailShape =
+        if (item is Artist) CircleShape else RoundedCornerShape(14.dp)
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(ListItemHeight)
+            .padding(horizontal = 4.dp, vertical = 2.dp)
+            .clip(RoundedCornerShape(18.dp))
+            .background(
+                if (isActive) MaterialTheme.colorScheme.primary.copy(alpha = 0.10f)
+                else Color.Transparent
+            )
+            .combinedClickable(
+                onClick = {
+                    when (item) {
+                        is Song -> {
+                            if (isActive) {
+                                playerConnection.player.togglePlayPause()
+                            } else {
+                                playerConnection.playQueue(YouTubeQueue.radio(item.toMediaMetadata()))
+                            }
+                        }
+                        is Album -> navController.navigate("album/${item.id}")
+                        is Artist -> navController.navigate("artist/${item.id}")
+                        is Playlist -> Unit
+                    }
+                },
+                onLongClick = {
+                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                    menuState.show {
+                        when (item) {
+                            is Song -> SongMenu(
+                                originalSong = item,
+                                navController = navController,
+                                onDismiss = menuState::dismiss
+                            )
+                            is Album -> AlbumMenu(
+                                originalAlbum = item,
+                                navController = navController,
+                                onDismiss = menuState::dismiss
+                            )
+                            is Artist -> ArtistMenu(
+                                originalArtist = item,
+                                coroutineScope = scope,
+                                onDismiss = menuState::dismiss
+                            )
+                            is Playlist -> Unit
+                        }
+                    }
+                }
+            )
+            .padding(horizontal = 8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(
+            modifier = Modifier
+                .size(ListThumbnailSize)
+                .clip(thumbnailShape)
+                .background(MaterialTheme.colorScheme.surfaceVariant)
+        ) {
+            AsyncImage(
+                model = thumbnail,
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize()
+            )
+            if (isActive && isPlaying) {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .padding(4.dp)
+                        .size(22.dp)
+                        .clip(CircleShape)
+                        .background(MaterialTheme.colorScheme.primary),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        painter = painterResource(R.drawable.volume_up),
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onPrimary,
+                        modifier = Modifier.size(13.dp)
+                    )
+                }
+            }
+        }
+
+        Column(
+            modifier = Modifier
+                .weight(1f)
+                .padding(horizontal = 12.dp)
+        ) {
+            Text(
+                text = item.title,
+                style = MaterialTheme.typography.bodyLarge,
+                color = MaterialTheme.colorScheme.onSurface,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            if (subtitle.isNotBlank()) {
+                Text(
+                    text = subtitle,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+        }
+
+        IconButton(
+            onClick = {
+                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                menuState.show {
+                    when (item) {
+                        is Song -> SongMenu(
+                            originalSong = item,
+                            navController = navController,
+                            onDismiss = menuState::dismiss
+                        )
+                        is Album -> AlbumMenu(
+                            originalAlbum = item,
+                            navController = navController,
+                            onDismiss = menuState::dismiss
+                        )
+                        is Artist -> ArtistMenu(
+                            originalArtist = item,
+                            coroutineScope = scope,
+                            onDismiss = menuState::dismiss
+                        )
+                        is Playlist -> Unit
+                    }
+                }
+            }
+        ) {
+            Icon(
+                painter = painterResource(R.drawable.more_vert),
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
     }
