@@ -34,6 +34,7 @@ import com.nikhil.yt.innertube.models.YouTubeLocale
 import com.nikhil.yt.innertube.models.getContinuation
 import com.nikhil.yt.innertube.models.getItems
 import com.nikhil.yt.innertube.models.oddElements
+import com.nikhil.yt.innertube.models.splitBySeparator
 import com.nikhil.yt.innertube.models.response.AccountMenuResponse
 import com.nikhil.yt.innertube.models.response.BrowseResponse
 import com.nikhil.yt.innertube.models.response.CreatePlaylistResponse
@@ -58,6 +59,7 @@ import com.nikhil.yt.innertube.pages.MoodAndGenres
 import com.nikhil.yt.innertube.pages.NewReleaseAlbumPage
 import com.nikhil.yt.innertube.pages.NextPage
 import com.nikhil.yt.innertube.pages.NextResult
+import com.nikhil.yt.innertube.pages.PageHelper
 import com.nikhil.yt.innertube.pages.PlaylistContinuationPage
 import com.nikhil.yt.innertube.pages.PlaylistPage
 import com.nikhil.yt.innertube.pages.RelatedPage
@@ -941,14 +943,7 @@ object YouTube {
                     val titleRun = firstColumn.runs?.firstOrNull() ?: return null
                     val title = titleRun.text.takeIf { it.isNotBlank() } ?: return null
 
-                    val artists = secondColumn.runs?.mapNotNull { run ->
-                        run.text.takeIf { it.isNotBlank() }?.let { name ->
-                            Artist(
-                                name = name,
-                                id = run.navigationEndpoint?.browseEndpoint?.browseId
-                            )
-                        }
-                    } ?: emptyList()
+                    val artists = PageHelper.extractArtists(secondColumn.runs)
 
                     val thirdColumn = renderer.flexColumns.getOrNull(2)
                         ?.musicResponsiveListItemFlexColumnRenderer
@@ -978,14 +973,11 @@ object YouTube {
             when {
                 renderer.isSong -> {
                     val subtitle = renderer.subtitle?.runs ?: return null
+                    val artistRuns = subtitle.splitBySeparator().firstOrNull()
                     SongItem(
                         id = renderer.navigationEndpoint.watchEndpoint?.videoId ?: return null,
                         title = renderer.title.runs?.firstOrNull()?.text ?: return null,
-                        artists = subtitle.mapNotNull {
-                            it.navigationEndpoint?.browseEndpoint?.browseId?.let { id ->
-                                Artist(name = it.text, id = id)
-                            }
-                        },
+                        artists = PageHelper.extractArtists(artistRuns),
                         thumbnail = renderer.thumbnailRenderer.musicThumbnailRenderer?.getThumbnailUrl() ?: return null,
                         explicit = renderer.subtitleBadges?.any {
                             it.musicInlineBadgeRenderer?.icon?.iconType == "MUSIC_EXPLICIT_BADGE"
