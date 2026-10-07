@@ -110,7 +110,6 @@ import com.nikhil.yt.ui.menu.YouTubePlaylistMenu
 import com.nikhil.yt.ui.menu.YouTubeSongMenu
 import androidx.compose.foundation.gestures.snapping.SnapLayoutInfoProvider
 import com.nikhil.yt.innertube.pages.MoodAndGenres
-import com.nikhil.yt.models.SimilarRecommendation
 import kotlin.math.min
 
 import androidx.compose.foundation.lazy.LazyListScope
@@ -643,46 +642,6 @@ fun AccountPlaylistsSection(
 }
 
 /**
- * Similar Recommendations section
- */
-@OptIn(ExperimentalFoundationApi::class)
-@Composable
-fun SimilarRecommendationsSection(
-    recommendation: SimilarRecommendation,
-    mediaMetadata: MediaMetadata?,
-    isPlaying: Boolean,
-    navController: NavController,
-    playerConnection: PlayerConnection,
-    menuState: MenuState,
-    haptic: HapticFeedback,
-    scope: CoroutineScope,
-    modifier: Modifier = Modifier
-) {
-    LazyRow(
-        contentPadding = WindowInsets.systemBars
-            .only(WindowInsetsSides.Horizontal)
-            .asPaddingValues(),
-        modifier = modifier
-    ) {
-        items(
-            items = recommendation.items,
-            key = { it.id }
-        ) { item ->
-            YouTubeGridItemWrapper(
-                item = item,
-                mediaMetadata = mediaMetadata,
-                isPlaying = isPlaying,
-                navController = navController,
-                playerConnection = playerConnection,
-                menuState = menuState,
-                haptic = haptic,
-                scope = scope
-            )
-        }
-    }
-}
-
-/**
  * HomePage Section - a single section from YouTube home page
  */
 @OptIn(ExperimentalFoundationApi::class)
@@ -1115,43 +1074,6 @@ fun LazyListScope.AccountPlaylistsContainer(
         }
     }
 }
-
-@OptIn(ExperimentalFoundationApi::class)
-fun LazyListScope.SimilarRecommendationsContainer(
-    viewModel: HomeViewModel,
-    mediaMetadata: MediaMetadata?,
-    isPlaying: Boolean,
-    navController: NavController,
-    playerConnection: PlayerConnection,
-    menuState: MenuState,
-    haptic: HapticFeedback,
-    scope: CoroutineScope
-) {
-     item {
-        val similarRecommendations by viewModel.similarRecommendations.collectAsState()
-        
-        Column {
-            similarRecommendations?.forEach { recommendation ->
-                SimilarRecommendationsTitle(
-                    recommendation = recommendation,
-                    navController = navController,
-                    modifier = Modifier
-                )
-                SimilarRecommendationsSection(
-                    recommendation = recommendation,
-                    mediaMetadata = mediaMetadata,
-                    isPlaying = isPlaying,
-                    navController = navController,
-                    playerConnection = playerConnection,
-                    menuState = menuState,
-                    haptic = haptic,
-                    scope = scope
-                )
-            }
-        }
-    }
-}
-
 
 /**
  * Quick picks list style section (below carousel)
