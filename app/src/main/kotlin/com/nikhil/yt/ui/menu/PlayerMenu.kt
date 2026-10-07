@@ -169,7 +169,9 @@ fun PlayerMenu(
 
     val artists =
         remember(mediaMetadata.artists) {
-            mediaMetadata.artists.filter { it.id != null }
+            mediaMetadata.artists.distinctBy { artist ->
+                artist.id ?: "name:${artist.name.trim().lowercase()}"
+            }
         }
 
     // Artist separators for splitting artist names
@@ -498,6 +500,13 @@ fun PlayerMenu(
                         if (splitArtists.isNotEmpty()) {
                             ListItem(
                                 headlineContent = { Text(text = stringResource(R.string.view_artist)) },
+                                supportingContent = {
+                                    Text(
+                                        text = artists.joinToString(separator = " • ") { it.name },
+                                        maxLines = 2,
+                                        overflow = TextOverflow.Ellipsis,
+                                    )
+                                },
                                 leadingContent = {
                                     Icon(
                                         painter = painterResource(R.drawable.artist),
