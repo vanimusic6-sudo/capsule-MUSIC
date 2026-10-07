@@ -77,6 +77,40 @@ data class MediaMetadata(
         )
 }
 
+
+fun mergeArtistCredits(
+    primary: List<MediaMetadata.Artist>,
+    secondary: List<MediaMetadata.Artist>,
+): List<MediaMetadata.Artist> {
+    val merged = mutableListOf<MediaMetadata.Artist>()
+
+    fun addOrEnrich(candidate: MediaMetadata.Artist) {
+        val name = candidate.name.trim()
+        if (name.isEmpty()) return
+
+        val index =
+            merged.indexOfFirst { current ->
+                (candidate.id != null && current.id == candidate.id) ||
+                    current.name.equals(name, ignoreCase = true)
+            }
+
+        if (index < 0) {
+            merged += candidate.copy(name = name)
+        } else {
+            val current = merged[index]
+            merged[index] =
+                current.copy(
+                    id = current.id ?: candidate.id,
+                    thumbnailUrl = current.thumbnailUrl ?: candidate.thumbnailUrl,
+                )
+        }
+    }
+
+    primary.forEach(::addOrEnrich)
+    secondary.forEach(::addOrEnrich)
+    return merged
+}
+
 fun Song.toMediaMetadata() =
     MediaMetadata(
         id = song.id,
@@ -84,7 +118,9 @@ fun Song.toMediaMetadata() =
         artists =
         artists.map {
             MediaMetadata.Artist(
-                id = it.id,
+                // Generated LA ids are persistence keys for unresolved remote credits, not
+                // navigable YouTube artist pages. Real local artists remain navigable locally.
+                id = it.id.takeUnless { id -> id.startsWith("LA") && !it.isLocal },
                 name = it.name,
                 thumbnailUrl = it.thumbnailUrl,
             )
