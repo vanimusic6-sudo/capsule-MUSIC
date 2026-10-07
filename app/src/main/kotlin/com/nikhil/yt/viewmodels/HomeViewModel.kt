@@ -67,8 +67,6 @@ class HomeViewModel @Inject constructor(
     val accountPlaylists = MutableStateFlow<List<PlaylistItem>?>(null)
     val homePage = MutableStateFlow<HomePage?>(null)
     val explorePage = MutableStateFlow<ExplorePage?>(null)
-    val selectedChip = MutableStateFlow<HomePage.Chip?>(null)
-    private val previousHomePage = MutableStateFlow<HomePage?>(null)
 
     val recentActivity = MutableStateFlow<List<YTItem>?>(null)
     val recentPlaylistsDb = MutableStateFlow<List<Playlist>?>(null)
@@ -273,27 +271,6 @@ class HomeViewModel @Inject constructor(
                 forYouSuggestions.value.orEmpty() +
                     homePage.value?.sections?.flatMap { it.items }.orEmpty()
             _isLoadingMore.value = false
-        }
-    }
-
-    fun toggleChip(chip: HomePage.Chip?) {
-        if (chip == null || chip == selectedChip.value && previousHomePage.value != null) {
-            homePage.value = previousHomePage.value
-            previousHomePage.value = null
-            selectedChip.value = null
-            return
-        }
-
-        if (selectedChip.value == null) {
-            previousHomePage.value = homePage.value
-        }
-
-        viewModelScope.launch(Dispatchers.IO) {
-            val hideExplicit = context.dataStore.get(HideExplicitKey, false)
-            val hideVideo = context.dataStore.get(HideVideoKey, false)
-            val nextSections = YouTube.home(params = chip?.endpoint?.params).getOrNull() ?: return@launch
-            homePage.value = cleanYouTubeHomePage(nextSections, hideExplicit, hideVideo)
-            selectedChip.value = chip
         }
     }
 
