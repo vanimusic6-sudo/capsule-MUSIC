@@ -38,13 +38,7 @@ object NextPage {
                     ?.runs
                     ?.firstOrNull()
                     ?.text ?: return null,
-            artists =
-                longByLineRuns.firstOrNull()?.oddElements()?.map {
-                    Artist(
-                        name = it.text,
-                        id = it.navigationEndpoint?.browseEndpoint?.browseId,
-                    )
-                } ?: return null,
+            artists = PageHelper.extractArtists(longByLineRuns.firstOrNull()),
             album =
                 longByLineRuns
                     .getOrNull(1)
