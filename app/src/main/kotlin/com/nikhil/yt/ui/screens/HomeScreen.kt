@@ -8,12 +8,9 @@
 
 package com.nikhil.yt.ui.screens
 
-import com.nikhil.yt.ui.component.StandardHomeChips
 import com.nikhil.yt.ui.utils.liveSavedStateHandle
 import com.nikhil.yt.ui.component.StandardChrome
-import com.nikhil.yt.ui.theme.CapsuleBottomBarEnabledKey
 import androidx.compose.foundation.background
-import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -57,7 +54,6 @@ import com.nikhil.yt.LocalPlayerAwareWindowInsets
 import com.nikhil.yt.LocalPlayerConnection
 import com.nikhil.yt.R
 import com.nikhil.yt.constants.InnerTubeCookieKey
-import com.nikhil.yt.constants.ShowHomeCategoryChipsKey
 import com.nikhil.yt.db.entities.Album
 import com.nikhil.yt.db.entities.Artist
 import com.nikhil.yt.db.entities.Playlist
@@ -66,7 +62,6 @@ import com.nikhil.yt.models.toMediaMetadata
 import com.nikhil.yt.playback.queues.LocalAlbumRadio
 import com.nikhil.yt.playback.queues.YouTubeAlbumRadio
 import com.nikhil.yt.playback.queues.YouTubeQueue
-import com.nikhil.yt.ui.component.ChipsRow
 import com.nikhil.yt.ui.component.HideOnScrollFAB
 import com.nikhil.yt.ui.component.LocalBottomSheetPageState
 import com.nikhil.yt.ui.component.LocalMenuState
@@ -105,7 +100,6 @@ fun HomeScreen(
 
     val allLocalItems by viewModel.allLocalItems.collectAsState()
     val allYtItems by viewModel.allYtItems.collectAsState()
-    val selectedChip by viewModel.selectedChip.collectAsState()
 
     val isLoading: Boolean by viewModel.isLoading.collectAsState()
     val isMoodAndGenresLoading = isLoading && explorePage?.moodAndGenres == null
@@ -117,7 +111,6 @@ fun HomeScreen(
     val accountName by viewModel.accountName.collectAsState()
     val accountImageUrl by viewModel.accountImageUrl.collectAsState()
     val innerTubeCookie by rememberPreference(InnerTubeCookieKey, "")
-    val (showHomeCategoryChips) = rememberPreference(ShowHomeCategoryChipsKey, true)
     val isLoggedIn = remember(innerTubeCookie) {
         "SAPISID" in parseCookieString(innerTubeCookie)
     }
@@ -148,19 +141,6 @@ fun HomeScreen(
             }
     }
 
-    if (selectedChip != null) {
-        BackHandler {
-
-            viewModel.toggleChip(selectedChip)
-        }
-    }
-
-    LaunchedEffect(showHomeCategoryChips, selectedChip) {
-        if (!showHomeCategoryChips && selectedChip != null) {
-            viewModel.toggleChip(selectedChip)
-        }
-    }
-
     LaunchedEffect(forgottenFavorites) {
         forgottenFavoritesLazyGridState.scrollToItem(0)
     }
@@ -169,7 +149,6 @@ fun HomeScreen(
     val tonalStart = MaterialTheme.colorScheme.primaryContainer
     val tonalMiddle = MaterialTheme.colorScheme.secondaryContainer
 
-    val capsuleDock by rememberPreference(CapsuleBottomBarEnabledKey, false)
     Box(
         modifier =
             Modifier
@@ -223,24 +202,6 @@ fun HomeScreen(
                 state = lazylistState,
                 contentPadding = LocalPlayerAwareWindowInsets.current.asPaddingValues()
             ) {
-                if (showHomeCategoryChips) {
-                    item {
-                        if (capsuleDock) {
-                            ChipsRow(
-                                chips = homePage?.chips.orEmpty().map { it to it.title },
-                                currentValue = selectedChip,
-                                onValueUpdate = viewModel::toggleChip,
-                            )
-                        } else {
-                            StandardHomeChips(
-                                chips = homePage?.chips.orEmpty().map { it to it.title },
-                                currentValue = selectedChip,
-                                onValueUpdate = viewModel::toggleChip,
-                            )
-                        }
-                    }
-                }
-
                 quickPicks?.takeIf { it.isNotEmpty() }?.let { picks ->
             /*
                 item {
@@ -339,16 +300,20 @@ fun HomeScreen(
                 }
             }
 
-            SimilarRecommendationsContainer(
-                viewModel = viewModel,
-                mediaMetadata = mediaMetadata,
-                isPlaying = isPlaying,
-                navController = navController,
-                playerConnection = playerConnection,
-                menuState = menuState,
-                haptic = haptic,
-                scope = scope
-            )
+            forYouSuggestions?.takeIf { it.isNotEmpty() }?.let { suggestions ->
+                item {
+                    TasteRecommendationsSection(
+                        suggestions = suggestions,
+                        mediaMetadata = mediaMetadata,
+                        isPlaying = isPlaying,
+                        navController = navController,
+                        playerConnection = playerConnection,
+                        menuState = menuState,
+                        haptic = haptic,
+                        modifier = Modifier.animateItem()
+                    )
+                }
+            }
 
             homePage?.sections?.forEach { section ->
                 val isCommunity = section.title?.contains("community", ignoreCase = true) == true ||
@@ -397,21 +362,6 @@ fun HomeScreen(
             if (isLoading || homePage?.continuation != null && homePage?.sections?.isNotEmpty() == true) {
                 item {
                     HomeLoadingShimmer(modifier = Modifier.animateItem())
-                }
-            }
-
-            forYouSuggestions?.takeIf { it.isNotEmpty() }?.let { suggestions ->
-                item {
-                    ForYouSection(
-                        suggestions = suggestions,
-                        mediaMetadata = mediaMetadata,
-                        isPlaying = isPlaying,
-                        navController = navController,
-                        playerConnection = playerConnection,
-                        menuState = menuState,
-                        haptic = haptic,
-                        modifier = Modifier.animateItem()
-                    )
                 }
             }
 
