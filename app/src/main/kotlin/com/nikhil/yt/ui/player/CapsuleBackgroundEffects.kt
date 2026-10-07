@@ -248,7 +248,7 @@ internal fun CapsuleGlassSurface(
     /*
      * The liquid read comes from real backdrop refraction, not painted shine lines:
      * - less blur keeps the source legible enough to bend instead of turning into frosted glass;
-     * - a taller/stronger lens concentrates distortion near the perimeter;
+     * - a narrow edge lens gives the material depth without folding recognisable artwork;
      * - static corner/edge light fields describe material thickness without any animation clock.
      *
      * Chromatic aberration and depthEffect stay disabled deliberately. They cost extra GPU work
@@ -259,7 +259,15 @@ internal fun CapsuleGlassSurface(
         val localDensity = LocalDensity.current
         val blurRadiusPx =
             remember(localDensity) {
-                with(localDensity) { 3.5.dp.toPx() }
+                with(localDensity) { 3.75.dp.toPx() }
+            }
+        val maxRefractionHeightPx =
+            remember(localDensity) {
+                with(localDensity) { 8.dp.toPx() }
+            }
+        val maxRefractionAmountPx =
+            remember(localDensity) {
+                with(localDensity) { 13.dp.toPx() }
             }
 
         val glassShape =
@@ -280,7 +288,11 @@ internal fun CapsuleGlassSurface(
                 }
             }
         val glassEffects: BackdropEffectScope.() -> Unit =
-            remember(blurRadiusPx) {
+            remember(
+                blurRadiusPx,
+                maxRefractionHeightPx,
+                maxRefractionAmountPx,
+            ) {
                 {
                     /*
                      * SimpMusic's successful glass stack is lens-first: preserve enough source
@@ -295,9 +307,21 @@ internal fun CapsuleGlassSurface(
                     blur(blurRadiusPx)
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                         val shortSide = size.minDimension
+
+                        /*
+                         * Keep refraction in a narrow perimeter band. The previous 23% / 47%
+                         * geometry was visually impressive on abstract backgrounds, but it bent
+                         * recognisable artwork too far: circular artist cards became oval slices
+                         * and square covers looked folded across the middle.
+                         *
+                         * Roughly 78% of the centre is now optically stable. Hard dp caps also stop
+                         * the effect becoming disproportionately strong on taller layouts/tablets.
+                         */
                         lens(
-                            refractionHeight = shortSide * 0.23f,
-                            refractionAmount = shortSide * 0.47f,
+                            refractionHeight =
+                                minOf(shortSide * 0.11f, maxRefractionHeightPx),
+                            refractionAmount =
+                                minOf(shortSide * 0.20f, maxRefractionAmountPx),
                             depthEffect = false,
                             chromaticAberration = false,
                         )
