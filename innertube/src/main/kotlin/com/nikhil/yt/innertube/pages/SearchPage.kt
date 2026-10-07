@@ -47,13 +47,7 @@ object SearchPage {
                             ?.runs
                             ?.firstOrNull()
                             ?.text ?: return null,
-                    artists =
-                        secondaryLine.firstOrNull()?.oddElements()?.map {
-                            Artist(
-                                name = it.text,
-                                id = it.navigationEndpoint?.browseEndpoint?.browseId,
-                            )
-                        } ?: return null,
+                    artists = PageHelper.extractArtists(secondaryLine.firstOrNull()),
                     album =
                         secondaryLine.getOrNull(1)?.firstOrNull()?.takeIf { it.navigationEndpoint?.browseEndpoint != null }?.let {
                             Album(
