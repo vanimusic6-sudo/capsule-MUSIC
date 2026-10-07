@@ -396,12 +396,13 @@ internal fun CapsuleImmersiveContent(
      * every other screen, because a track credited to two people should not behave differently
      * depending on which player design is switched on.
      */
-    val navigableArtists = rememberNavigableArtists(mediaMetadata.artists)
+    val artistCredits = rememberArtistCredits(mediaMetadata.artists)
+    val navigableArtists = rememberNavigableArtists(artistCredits)
     var showArtistPicker by remember { mutableStateOf(false) }
 
     if (showArtistPicker) {
         CapsuleArtistPickerDialog(
-            artists = navigableArtists,
+            artists = artistCredits,
             onDismiss = { showArtistPicker = false },
             onArtistSelected = onArtistSelected,
         )
@@ -887,8 +888,9 @@ internal fun CapsuleImmersiveContent(
                                                                 navigableArtists.isNotEmpty() &&
                                                                     !immersiveEditEnabled,
                                                         ) {
-                                                            when (navigableArtists.size) {
-                                                                1 ->
+                                                            when {
+                                                                navigableArtists.isEmpty() -> Unit
+                                                                artistCredits.size == 1 ->
                                                                     onArtistSelected(
                                                                         navigableArtists.first(),
                                                                     )
