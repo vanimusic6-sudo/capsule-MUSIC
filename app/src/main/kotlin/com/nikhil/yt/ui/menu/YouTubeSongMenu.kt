@@ -108,12 +108,15 @@ fun YouTubeSongMenu(
     val download by LocalDownloadUtil.current.getDownload(song.id).collectAsState(initial = null)
     val coroutineScope = rememberCoroutineScope()
     val syncUtils = LocalSyncUtils.current
-    val artists = remember {
-        song.artists.mapNotNull {
-            it.id?.let { artistId ->
-                MediaMetadata.Artist(id = artistId, name = it.name)
+    val artists = remember(song.artists) {
+        song.artists
+            .map { artist ->
+                MediaMetadata.Artist(
+                    id = artist.id,
+                    name = artist.name,
+                )
             }
-        }
+            .distinctBy { artist -> artist.id ?: "name:${artist.name.trim().lowercase()}" }
     }
 
     // Artist separators for splitting artist names
@@ -462,6 +465,13 @@ fun YouTubeSongMenu(
             item {
                 ListItem(
                     headlineContent = { Text(text = stringResource(R.string.view_artist)) },
+                    supportingContent = {
+                        Text(
+                            text = artists.joinToString(separator = " • ") { it.name },
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    },
                     leadingContent = {
                         Icon(
                             painter = painterResource(R.drawable.artist),
