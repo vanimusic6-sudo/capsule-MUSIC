@@ -959,43 +959,6 @@ fun AccountPlaylistsTitle(
 }
 
 /**
- * Similar recommendations navigation title
- */
-@Composable
-fun SimilarRecommendationsTitle(
-    recommendation: SimilarRecommendation,
-    navController: NavController,
-    modifier: Modifier = Modifier
-) {
-    NavigationTitle(
-        label = stringResource(R.string.similar_to),
-        title = recommendation.title.title,
-        thumbnail = recommendation.title.thumbnailUrl?.let { thumbnailUrl ->
-            {
-                val shape = if (recommendation.title is Artist) CircleShape 
-                    else RoundedCornerShape(ThumbnailCornerRadius)
-                AsyncImage(
-                    model = thumbnailUrl,
-                    contentDescription = null,
-                    modifier = Modifier
-                        .size(ListThumbnailSize)
-                        .clip(shape)
-                )
-            }
-        },
-        onClick = {
-            when (recommendation.title) {
-                is Song -> navController.navigate("album/${recommendation.title.album!!.id}")
-                is Album -> navController.navigate("album/${recommendation.title.id}")
-                is Artist -> navController.navigate("artist/${recommendation.title.id}")
-                is Playlist -> {}
-            }
-        },
-        modifier = modifier
-    )
-}
-
-/**
  * HomePage section navigation title
  */
 @Composable
