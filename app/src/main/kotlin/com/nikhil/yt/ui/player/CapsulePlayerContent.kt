@@ -475,7 +475,8 @@ fun CapsulePlayerContent(
             64.dp.toPx()
         }
 
-    val navigableArtists = rememberNavigableArtists(mediaMetadata.artists)
+    val artistCredits = rememberArtistCredits(mediaMetadata.artists)
+    val navigableArtists = rememberNavigableArtists(artistCredits)
 
     var showArtistPicker by
         remember {
@@ -483,9 +484,10 @@ fun CapsulePlayerContent(
         }
 
     fun handleArtistClick() {
-        when (navigableArtists.size) {
-            0 -> Unit
-            1 -> onArtistSelected(navigableArtists.first())
+        when {
+            navigableArtists.isEmpty() -> Unit
+            artistCredits.size == 1 && artistCredits.first().id != null ->
+                onArtistSelected(navigableArtists.first())
             else -> showArtistPicker = true
         }
     }
@@ -516,7 +518,7 @@ fun CapsulePlayerContent(
 
     if (showArtistPicker) {
         CapsuleArtistPickerDialog(
-            artists = navigableArtists,
+            artists = artistCredits,
             onDismiss = { showArtistPicker = false },
             onArtistSelected = onArtistSelected,
         )
