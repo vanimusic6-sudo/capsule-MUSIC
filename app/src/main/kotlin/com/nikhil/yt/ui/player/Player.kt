@@ -63,6 +63,8 @@ import com.nikhil.yt.constants.MiniPlayerBackgroundStyleKey
 import com.nikhil.yt.constants.PlayerBackgroundStyle
 import com.nikhil.yt.constants.PlayerBackgroundStyleKey
 import com.nikhil.yt.models.MediaMetadata
+import com.nikhil.yt.models.mergeArtistCredits
+import com.nikhil.yt.models.toMediaMetadata
 import com.nikhil.yt.ui.component.BottomSheet
 import com.nikhil.yt.ui.component.BottomSheetState
 import com.nikhil.yt.ui.component.PlayerContentHandoffPoint
@@ -161,17 +163,12 @@ fun BottomSheetPlayer(
     val enrichedMetadata =
         remember(mediaMetadata, currentSong) {
             val metadata = mediaMetadata ?: return@remember null
-            val databaseArtists = currentSong?.artists?.associateBy { it.id }.orEmpty()
+            val localArtistCredits = currentSong?.toMediaMetadata()?.artists.orEmpty()
             val enrichedArtists =
-                metadata.artists.map { artist ->
-                    if (!artist.thumbnailUrl.isNullOrBlank()) {
-                        artist
-                    } else {
-                        artist.copy(
-                            thumbnailUrl = artist.id?.let { databaseArtists[it]?.thumbnailUrl },
-                        )
-                    }
-                }
+                mergeArtistCredits(
+                    primary = metadata.artists,
+                    secondary = localArtistCredits,
+                )
 
             val album =
                 metadata.album
