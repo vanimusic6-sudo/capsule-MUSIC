@@ -24,6 +24,7 @@ import com.nikhil.yt.innertube.models.YTItem
 import com.nikhil.yt.innertube.models.filterExplicit
 import com.nikhil.yt.innertube.models.getItems
 import com.nikhil.yt.innertube.models.oddElements
+import com.nikhil.yt.innertube.models.splitBySeparator
 
 data class ArtistSection(
     val title: String,
@@ -73,12 +74,13 @@ data class ArtistPage(
                 title = renderer.flexColumns.firstOrNull()
                     ?.musicResponsiveListItemFlexColumnRenderer?.text?.runs?.firstOrNull()
                     ?.text ?: return null,
-                artists = PageHelper.extractRuns(renderer.flexColumns, "MUSIC_PAGE_TYPE_ARTIST").ifEmpty { renderer.flexColumns.getOrNull(1)?.musicResponsiveListItemFlexColumnRenderer?.text?.runs }?.oddElements()?.map {
-                    Artist(
-                        name = it.text,
-                        id = it.navigationEndpoint?.browseEndpoint?.browseId
-                    )
-                } ?: return null,
+                artists = PageHelper.extractArtists(
+                    renderer.flexColumns
+                        .getOrNull(1)
+                        ?.musicResponsiveListItemFlexColumnRenderer
+                        ?.text
+                        ?.runs
+                ),
                 album = PageHelper.extractRuns(renderer.flexColumns, "MUSIC_PAGE_TYPE_ALBUM").ifEmpty { renderer.flexColumns.getOrNull(3)?.musicResponsiveListItemFlexColumnRenderer?.text?.runs }?.firstOrNull()?.let {
                     Album(
                         name = it.text,
