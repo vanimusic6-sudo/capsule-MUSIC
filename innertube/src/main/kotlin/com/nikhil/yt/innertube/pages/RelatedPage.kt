@@ -37,13 +37,13 @@ data class RelatedPage(
                         ?.runs
                         ?.firstOrNull()
                         ?.text ?: return null,
-                artists =
-                    renderer.flexColumns.getOrNull(1)?.musicResponsiveListItemFlexColumnRenderer?.text?.runs?.oddElements()?.map {
-                        Artist(
-                            name = it.text,
-                            id = it.navigationEndpoint?.browseEndpoint?.browseId,
-                        )
-                    } ?: return null,
+                artists = PageHelper.extractArtists(
+                    renderer.flexColumns
+                        .getOrNull(1)
+                        ?.musicResponsiveListItemFlexColumnRenderer
+                        ?.text
+                        ?.runs
+                ),
                 album =
                     renderer.flexColumns.getOrNull(2)?.musicResponsiveListItemFlexColumnRenderer?.text?.runs?.firstOrNull()?.let {
                         Album(
