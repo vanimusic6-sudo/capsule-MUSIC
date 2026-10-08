@@ -11,6 +11,7 @@ package com.nikhil.yt.ui.screens
 import com.nikhil.yt.ui.component.StandardHomeChips
 import com.nikhil.yt.ui.utils.liveSavedStateHandle
 import com.nikhil.yt.ui.component.StandardChrome
+import com.nikhil.yt.ui.theme.CapsuleBottomBarEnabledKey
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -56,6 +57,7 @@ import com.nikhil.yt.LocalPlayerAwareWindowInsets
 import com.nikhil.yt.LocalPlayerConnection
 import com.nikhil.yt.R
 import com.nikhil.yt.constants.InnerTubeCookieKey
+import com.nikhil.yt.constants.ShowHomeCategoryChipsKey
 import com.nikhil.yt.db.entities.Album
 import com.nikhil.yt.db.entities.Artist
 import com.nikhil.yt.db.entities.Playlist
@@ -64,6 +66,7 @@ import com.nikhil.yt.models.toMediaMetadata
 import com.nikhil.yt.playback.queues.LocalAlbumRadio
 import com.nikhil.yt.playback.queues.YouTubeAlbumRadio
 import com.nikhil.yt.playback.queues.YouTubeQueue
+import com.nikhil.yt.ui.component.ChipsRow
 import com.nikhil.yt.ui.component.HideOnScrollFAB
 import com.nikhil.yt.ui.component.LocalBottomSheetPageState
 import com.nikhil.yt.ui.component.LocalMenuState
