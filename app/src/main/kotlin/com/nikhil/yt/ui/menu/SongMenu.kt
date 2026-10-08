@@ -85,6 +85,7 @@ import com.nikhil.yt.db.entities.PlaylistSong
 import com.nikhil.yt.db.entities.Song
 import com.nikhil.yt.extensions.toMediaItem
 import com.nikhil.yt.models.toMediaMetadata
+import com.nikhil.yt.models.isArtistCreditJoiner
 import com.nikhil.yt.playback.ExoDownloadService
 import com.nikhil.yt.playback.queues.YouTubeQueue
 import com.nikhil.yt.ui.component.ListDialog
