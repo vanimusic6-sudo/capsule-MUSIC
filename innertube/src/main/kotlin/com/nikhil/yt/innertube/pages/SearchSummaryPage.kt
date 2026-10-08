@@ -60,8 +60,8 @@ internal fun extractSearchSongArtists(runs: List<Run>): List<Artist> {
                     val text = run.text.trim()
                     text.isNotEmpty() &&
                         !searchDurationPattern.matches(text) &&
-                        (group.getOrNull(index - 1)?.text.isArtistJoiner() == true ||
-                            group.getOrNull(index + 1)?.text.isArtistJoiner() == true)
+                        (group.getOrNull(index - 1)?.text?.isArtistJoiner() == true ||
+                            group.getOrNull(index + 1)?.text?.isArtistJoiner() == true)
                 }
             }
 
