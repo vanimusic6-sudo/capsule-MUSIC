@@ -316,7 +316,7 @@ fun PlayerMenu(
 
     val nowPlayingSubtitle =
         remember(mediaMetadata.artists) {
-            mediaMetadata.artists.joinToString(separator = " • ") { it.name }
+            mediaMetadata.artists.joinToString(separator = ", ") { it.name }
         }
 
     Surface(
@@ -502,7 +502,7 @@ fun PlayerMenu(
                                 headlineContent = { Text(text = stringResource(R.string.view_artist)) },
                                 supportingContent = {
                                     Text(
-                                        text = artists.joinToString(separator = " • ") { it.name },
+                                        text = artists.joinToString(separator = ", ") { it.name },
                                         maxLines = 2,
                                         overflow = TextOverflow.Ellipsis,
                                     )
