@@ -65,6 +65,19 @@ class MediaMetadataArtistMergeTest {
     }
 
     @Test
+    fun `artist credit line removes conjunction rows and uses commas`() {
+        val line =
+            listOf(
+                MediaMetadata.Artist("UC_suburban", "Sub Urban"),
+                MediaMetadata.Artist(null, "и"),
+                MediaMetadata.Artist(null, "&"),
+                MediaMetadata.Artist(null, "Bella Poarch"),
+            ).artistCreditLine()
+
+        assertEquals("Sub Urban, Bella Poarch", line)
+    }
+
+    @Test
     fun `real browse id upgrades a name-only credit`() {
         val merged =
             mergeArtistCredits(
