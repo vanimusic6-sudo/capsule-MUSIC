@@ -78,6 +78,23 @@ data class MediaMetadata(
 }
 
 
+private val artistCreditJoiners =
+    setOf(
+        "•", "·", ",", "&", "/", ";", "|",
+        "feat.", "ft.", "featuring",
+        "и", "and",
+    )
+
+fun String.isArtistCreditJoiner(): Boolean {
+    val normalized = trim().lowercase()
+    if (normalized in artistCreditJoiners) return true
+    return normalized.isNotEmpty() &&
+        normalized.all {
+            it == '•' || it == '·' || it == ',' || it == '&' ||
+                it == '/' || it == ';' || it == '|'
+        }
+}
+
 fun mergeArtistCredits(
     primary: List<MediaMetadata.Artist>,
     secondary: List<MediaMetadata.Artist>,
@@ -86,7 +103,7 @@ fun mergeArtistCredits(
 
     fun addOrEnrich(candidate: MediaMetadata.Artist) {
         val name = candidate.name.trim()
-        if (name.isEmpty()) return
+        if (name.isEmpty() || name.isArtistCreditJoiner()) return
 
         val index =
             merged.indexOfFirst { current ->
@@ -116,7 +133,9 @@ fun Song.toMediaMetadata() =
         id = song.id,
         title = song.title,
         artists =
-        artists.map {
+        artists
+            .filterNot { it.name.isArtistCreditJoiner() }
+            .map {
             MediaMetadata.Artist(
                 // Generated LA ids are persistence keys for unresolved remote credits, not
                 // navigable YouTube artist pages. Real local artists remain navigable locally.
