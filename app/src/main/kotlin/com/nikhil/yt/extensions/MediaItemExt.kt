@@ -17,6 +17,7 @@ import com.nikhil.yt.innertube.models.WatchEndpoint.WatchEndpointMusicSupportedC
 import com.nikhil.yt.innertube.models.WatchEndpoint.WatchEndpointMusicSupportedConfigs.WatchEndpointMusicConfig.Companion.MUSIC_VIDEO_TYPE_UGC
 import com.nikhil.yt.db.entities.Song
 import com.nikhil.yt.models.MediaMetadata
+import com.nikhil.yt.models.artistCreditLine
 import com.nikhil.yt.models.toMediaMetadata
 
 const val ExtraIsMusicVideo = "com.nikhil.yt.extra.IS_MUSIC_VIDEO"
@@ -24,45 +25,49 @@ const val ExtraIsMusicVideo = "com.nikhil.yt.extra.IS_MUSIC_VIDEO"
 val MediaItem.metadata: MediaMetadata?
     get() = localConfiguration?.tag as? MediaMetadata
 
-fun Song.toMediaItem() =
-    MediaItem
+fun Song.toMediaItem(): MediaItem {
+    val metadata = toMediaMetadata()
+    return MediaItem
         .Builder()
         .setMediaId(song.id)
         .setUri(song.id)
         .setCustomCacheKey(song.id)
-        .setTag(toMediaMetadata())
+        .setTag(metadata)
         .setMediaMetadata(
             androidx.media3.common.MediaMetadata
                 .Builder()
                 .setTitle(song.title)
-                .setSubtitle(artists.joinToString { it.name })
-                .setArtist(artists.joinToString { it.name })
+                .setSubtitle(metadata.artists.artistCreditLine())
+                .setArtist(metadata.artists.artistCreditLine())
                 .setArtworkUri(song.thumbnailUrl?.toUri())
                 .setAlbumTitle(song.albumName)
                 .setMediaType(MEDIA_TYPE_MUSIC)
                 .setExtras(Bundle().apply { putBoolean(ExtraIsMusicVideo, false) })
                 .build(),
         ).build()
+}
 
-fun SongItem.toMediaItem() =
-    MediaItem
+fun SongItem.toMediaItem(): MediaItem {
+    val metadata = toMediaMetadata()
+    return MediaItem
         .Builder()
         .setMediaId(id)
         .setUri(id)
         .setCustomCacheKey(id)
-        .setTag(toMediaMetadata())
+        .setTag(metadata)
         .setMediaMetadata(
             androidx.media3.common.MediaMetadata
                 .Builder()
                 .setTitle(title)
-                .setSubtitle(artists.joinToString { it.name })
-                .setArtist(artists.joinToString { it.name })
+                .setSubtitle(metadata.artists.artistCreditLine())
+                .setArtist(metadata.artists.artistCreditLine())
                 .setArtworkUri(thumbnail.toUri())
                 .setAlbumTitle(album?.name)
                 .setMediaType(MEDIA_TYPE_MUSIC)
                 .setExtras(Bundle().apply { putBoolean(ExtraIsMusicVideo, isMusicVideo()) })
                 .build(),
         ).build()
+}
 
 fun MediaMetadata.toMediaItem() =
     MediaItem
@@ -75,8 +80,8 @@ fun MediaMetadata.toMediaItem() =
             androidx.media3.common.MediaMetadata
                 .Builder()
                 .setTitle(title)
-                .setSubtitle(artists.joinToString { it.name })
-                .setArtist(artists.joinToString { it.name })
+                .setSubtitle(artists.artistCreditLine())
+                .setArtist(artists.artistCreditLine())
                 .setArtworkUri(thumbnailUrl?.toUri())
                 .setAlbumTitle(album?.title)
                 .setMediaType(MEDIA_TYPE_MUSIC)
