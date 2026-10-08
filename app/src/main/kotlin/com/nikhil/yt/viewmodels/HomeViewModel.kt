@@ -227,7 +227,14 @@ class HomeViewModel @Inject constructor(
                                         item is AlbumItem
                             }
                         }
-                        .distinctBy { item -> "${item::class.simpleName}:${item.id}" }
+                        .distinctBy { item ->
+                            when (item) {
+                                is SongItem -> "song:${item.id}"
+                                is AlbumItem -> "album:${item.id}"
+                                is PlaylistItem -> "playlist:${item.id}"
+                                else -> "item:${item.id}"
+                            }
+                        }
 
                 if (items.isEmpty()) return@mapNotNull null
 
