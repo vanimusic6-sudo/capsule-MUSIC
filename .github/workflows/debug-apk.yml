@@ -65,6 +65,7 @@ jobs:
         run: |
           gradle :innertube:test \
             --tests 'com.nikhil.yt.innertube.pages.SearchSummaryMetadataTest' \
+            --tests 'com.nikhil.yt.innertube.pages.PageHelperArtistCreditsTest' \
             --stacktrace --no-daemon
 
       - name: Run Android lint
