@@ -467,7 +467,7 @@ fun YouTubeSongMenu(
                     headlineContent = { Text(text = stringResource(R.string.view_artist)) },
                     supportingContent = {
                         Text(
-                            text = artists.joinToString(separator = " • ") { it.name },
+                            text = artists.joinToString(separator = ", ") { it.name },
                             maxLines = 2,
                             overflow = TextOverflow.Ellipsis,
                         )
