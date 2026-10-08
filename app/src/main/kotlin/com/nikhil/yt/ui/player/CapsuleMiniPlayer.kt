@@ -92,6 +92,7 @@ import com.nikhil.yt.constants.SwipeSensitivityKey
 import com.nikhil.yt.constants.SwipeThumbnailKey
 import com.nikhil.yt.db.entities.ArtistEntity
 import com.nikhil.yt.models.MediaMetadata
+import com.nikhil.yt.models.artistCreditLine
 import com.nikhil.yt.together.TogetherRole
 import com.nikhil.yt.together.TogetherSessionState
 import com.nikhil.yt.ui.screens.settings.DiscordPresenceManager
@@ -970,13 +971,7 @@ private fun CapsuleMiniSongInfo(
                 }
 
                 Text(
-                    text =
-                        metadata.artists
-                            .joinToString(
-                                separator = ", ",
-                            ) {
-                                it.name
-                            },
+                    text = metadata.artists.artistCreditLine(),
                     color =
                         LocalContentColor.current.copy(
                             alpha = 0.7f,
