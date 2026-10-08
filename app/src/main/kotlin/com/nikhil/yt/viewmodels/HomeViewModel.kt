@@ -56,6 +56,7 @@ class HomeViewModel @Inject constructor(
 ) : ViewModel() {
     val isRefreshing = MutableStateFlow(false)
     val isLoading = MutableStateFlow(false)
+    val isFilterLoading = MutableStateFlow(false)
     private val isInitialLoadComplete = MutableStateFlow(false)
     val forYouSuggestions = MutableStateFlow<List<com.nikhil.yt.innertube.models.SongItem>?>(null)
 
@@ -284,6 +285,7 @@ class HomeViewModel @Inject constructor(
 
         chipRequestJob?.cancel()
         loadMoreJob?.cancel()
+        isFilterLoading.value = false
         selectedChip.value = null
         unfilteredHomePage = null
 
@@ -441,6 +443,7 @@ class HomeViewModel @Inject constructor(
         if (chip == null || chip == selectedChip.value) {
             chipRequestJob?.cancel()
             loadMoreJob?.cancel()
+            isFilterLoading.value = false
             selectedChip.value = null
             unfilteredHomePage?.let { base ->
                 homePage.value = base
@@ -458,6 +461,15 @@ class HomeViewModel @Inject constructor(
         chipRequestJob?.cancel()
         loadMoreJob?.cancel()
         selectedChip.value = chip
+        isFilterLoading.value = true
+        base?.let { basePage ->
+            homePage.value =
+                basePage.copy(
+                    sections = emptyList(),
+                    continuation = null,
+                )
+            refreshAllYouTubeItems()
+        }
 
         chipRequestJob =
             viewModelScope.launch(Dispatchers.IO) {
@@ -476,10 +488,12 @@ class HomeViewModel @Inject constructor(
                                 filteredFeed = true,
                                 chips = base?.chips ?: page.chips,
                             )
+                        isFilterLoading.value = false
                         refreshAllYouTubeItems()
                     }
                     .onFailure { error ->
                         if (selectedChip.value == chip) {
+                            isFilterLoading.value = false
                             selectedChip.value = null
                             base?.let { homePage.value = it }
                             refreshAllYouTubeItems()
