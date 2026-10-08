@@ -52,6 +52,22 @@ class SearchSummaryMetadataTest {
         )
     }
 
+    @Test fun `russian conjunction keeps guest credit but is not an artist`() {
+        val metadata = listOf(
+            Run("Sub Urban", artistEndpoint("UC_suburban")),
+            Run(" и ", null),
+            Run("Bella Poarch", null),
+        )
+
+        assertEquals(
+            listOf(
+                Artist("Sub Urban", "UC_suburban"),
+                Artist("Bella Poarch", null),
+            ),
+            extractSearchSongArtists(metadata),
+        )
+    }
+
     @Test fun `top result inherits missing artist from the same song in Songs`() {
         val artist = Artist("Oliver Tree", "UC_oliver")
         val top = SongItem(id = "song-id", title = "Life Goes On", artists = emptyList(),
