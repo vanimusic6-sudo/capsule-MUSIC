@@ -240,7 +240,8 @@ fun HomeScreen(
                     }
                 }
 
-                quickPicks?.takeIf { it.isNotEmpty() }?.let { picks ->
+                if (selectedChip == null) {
+                    quickPicks?.takeIf { it.isNotEmpty() }?.let { picks ->
             /*
                 item {
                     NavigationTitle(
@@ -352,6 +353,7 @@ fun HomeScreen(
                     )
                 }
             }
+            }
 
             homePage?.sections?.forEach { section ->
                 val isPlaylistOnly =
@@ -411,39 +413,52 @@ fun HomeScreen(
                 }
             }
 
-            explorePage?.moodAndGenres?.let { genres ->
-                item {
-                    NavigationTitle(
-                        title = stringResource(R.string.mood_and_genres),
-                        onClick = { navController.navigate("mood_and_genres") },
-                        modifier = Modifier.animateItem()
-                    )
+            if (selectedChip == null) {
+                explorePage?.moodAndGenres?.let { genres ->
+                    item {
+                        NavigationTitle(
+                            title = stringResource(R.string.mood_and_genres),
+                            onClick = { navController.navigate("mood_and_genres") },
+                            modifier = Modifier.animateItem()
+                        )
+                    }
+                    item {
+                        MoodAndGenresSection(
+                            moodAndGenres = genres,
+                            navController = navController
+                        )
+                    }
                 }
-                item {
-                    MoodAndGenresSection(
-                        moodAndGenres = genres,
-                        navController = navController
-                    )
-                }
-            }
 
-            if (isMoodAndGenresLoading) {
-                item {
-                    MoodAndGenresLoadingShimmer(modifier = Modifier.animateItem())
+                if (isMoodAndGenresLoading) {
+                    item {
+                        MoodAndGenresLoadingShimmer(modifier = Modifier.animateItem())
+                    }
                 }
             }
             }
 
             HideOnScrollFAB(
-                visible = allLocalItems.isNotEmpty() || allYtItems.isNotEmpty(),
+                visible =
+                    if (selectedChip != null) {
+                        allYtItems.isNotEmpty()
+                    } else {
+                        allLocalItems.isNotEmpty() || allYtItems.isNotEmpty()
+                    },
                 lazyListState = lazylistState,
                 icon = R.drawable.shuffle,
                 onClick = {
-                    val local = when {
-                        allLocalItems.isNotEmpty() && allYtItems.isNotEmpty() -> Random.nextFloat() < 0.5
-                        allLocalItems.isNotEmpty() -> true
-                        else -> false
-                    }
+                    val local =
+                        if (selectedChip != null) {
+                            false
+                        } else {
+                            when {
+                                allLocalItems.isNotEmpty() && allYtItems.isNotEmpty() ->
+                                    Random.nextFloat() < 0.5
+                                allLocalItems.isNotEmpty() -> true
+                                else -> false
+                            }
+                        }
                     scope.launch(Dispatchers.Main) {
                         if (local) {
                             when (val luckyItem = allLocalItems.random()) {
