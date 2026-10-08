@@ -141,7 +141,7 @@ fun SongMenu(
             val sorted = artistMaps.mapNotNull { map ->
                 song.artists.firstOrNull { it.id == map.artistId }
             }
-            value = sorted
+            value = sorted.filterNot { it.name.isArtistCreditJoiner() }
         }
     }
 
