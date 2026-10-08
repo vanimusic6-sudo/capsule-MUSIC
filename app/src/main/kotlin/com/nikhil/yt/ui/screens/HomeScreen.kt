@@ -8,8 +8,10 @@
 
 package com.nikhil.yt.ui.screens
 
+import com.nikhil.yt.ui.component.StandardHomeChips
 import com.nikhil.yt.ui.utils.liveSavedStateHandle
 import com.nikhil.yt.ui.component.StandardChrome
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.layout.Box
@@ -100,6 +102,7 @@ fun HomeScreen(
 
     val allLocalItems by viewModel.allLocalItems.collectAsState()
     val allYtItems by viewModel.allYtItems.collectAsState()
+    val selectedChip by viewModel.selectedChip.collectAsState()
 
     val isLoading: Boolean by viewModel.isLoading.collectAsState()
     val isMoodAndGenresLoading = isLoading && explorePage?.moodAndGenres == null
@@ -111,6 +114,8 @@ fun HomeScreen(
     val accountName by viewModel.accountName.collectAsState()
     val accountImageUrl by viewModel.accountImageUrl.collectAsState()
     val innerTubeCookie by rememberPreference(InnerTubeCookieKey, "")
+    val (showHomeCategoryChips) = rememberPreference(ShowHomeCategoryChipsKey, true)
+    val capsuleDock by rememberPreference(CapsuleBottomBarEnabledKey, false)
     val isLoggedIn = remember(innerTubeCookie) {
         "SAPISID" in parseCookieString(innerTubeCookie)
     }
@@ -139,6 +144,18 @@ fun HomeScreen(
                     viewModel.loadMoreYouTubeItems(homePage?.continuation)
                 }
             }
+    }
+
+    if (selectedChip != null) {
+        BackHandler {
+            viewModel.toggleChip(selectedChip)
+        }
+    }
+
+    LaunchedEffect(showHomeCategoryChips, selectedChip) {
+        if (!showHomeCategoryChips && selectedChip != null) {
+            viewModel.toggleChip(selectedChip)
+        }
     }
 
     LaunchedEffect(forgottenFavorites) {
@@ -202,6 +219,24 @@ fun HomeScreen(
                 state = lazylistState,
                 contentPadding = LocalPlayerAwareWindowInsets.current.asPaddingValues()
             ) {
+                if (showHomeCategoryChips && homePage?.chips?.isNotEmpty() == true) {
+                    item {
+                        if (capsuleDock) {
+                            ChipsRow(
+                                chips = homePage?.chips.orEmpty().map { it to it.title },
+                                currentValue = selectedChip,
+                                onValueUpdate = viewModel::toggleChip,
+                            )
+                        } else {
+                            StandardHomeChips(
+                                chips = homePage?.chips.orEmpty().map { it to it.title },
+                                currentValue = selectedChip,
+                                onValueUpdate = viewModel::toggleChip,
+                            )
+                        }
+                    }
+                }
+
                 quickPicks?.takeIf { it.isNotEmpty() }?.let { picks ->
             /*
                 item {
