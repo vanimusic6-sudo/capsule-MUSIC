@@ -262,9 +262,14 @@ class HomeViewModel @Inject constructor(
     }
 
     private fun refreshAllYouTubeItems() {
+        val filteredItems =
+            homePage.value?.sections?.flatMap { it.items }.orEmpty()
         allYtItems.value =
-            forYouSuggestions.value.orEmpty() +
-                homePage.value?.sections?.flatMap { it.items }.orEmpty()
+            if (selectedChip.value == null) {
+                forYouSuggestions.value.orEmpty() + filteredItems
+            } else {
+                filteredItems
+            }
     }
 
     private suspend fun getQuickPicks(){
