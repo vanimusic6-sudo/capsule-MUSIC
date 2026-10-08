@@ -59,6 +59,7 @@ jobs:
             --tests 'com.nikhil.yt.ui.CapsuleBackgroundMotionTest' \
             --tests 'com.nikhil.yt.playback.CrossfadeIdlePollTest' \
             --tests 'com.nikhil.yt.ui.UiEnergyRegressionTest' \
+            --tests 'com.nikhil.yt.models.MediaMetadataArtistMergeTest' \
             --stacktrace --no-daemon
 
       - name: Test search summary metadata
