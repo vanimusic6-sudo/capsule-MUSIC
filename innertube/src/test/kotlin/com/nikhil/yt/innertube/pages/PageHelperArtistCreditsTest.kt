@@ -47,6 +47,16 @@ class PageHelperArtistCreditsTest {
     }
 
     @Test
+    fun `linked artist name matching a conjunction stays valid`() {
+        assertEquals(
+            listOf(Artist("And", "UC_and_artist")),
+            PageHelper.extractArtists(
+                listOf(Run("And", artistEndpoint("UC_and_artist"))),
+            ),
+        )
+    }
+
+    @Test
     fun `album endpoints and separators are not artists`() {
         val runs =
             listOf(
