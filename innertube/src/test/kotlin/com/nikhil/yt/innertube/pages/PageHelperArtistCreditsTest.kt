@@ -29,6 +29,24 @@ class PageHelperArtistCreditsTest {
     }
 
     @Test
+    fun `russian conjunction between artists is not emitted as an artist`() {
+        val runs =
+            listOf(
+                Run("Sub Urban", artistEndpoint("UC_suburban")),
+                Run(" и ", null),
+                Run("Bella Poarch", null),
+            )
+
+        assertEquals(
+            listOf(
+                Artist("Sub Urban", "UC_suburban"),
+                Artist("Bella Poarch", null),
+            ),
+            PageHelper.extractArtists(runs),
+        )
+    }
+
+    @Test
     fun `album endpoints and separators are not artists`() {
         val runs =
             listOf(
