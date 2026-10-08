@@ -724,7 +724,7 @@ fun SongMenu(
                         headlineContent = { Text(text = stringResource(R.string.view_artist)) },
                         supportingContent = {
                             Text(
-                                text = orderedArtists.joinToString(separator = " • ") { it.name },
+                                text = orderedArtists.joinToString(separator = ", ") { it.name },
                                 maxLines = 2,
                                 overflow = TextOverflow.Ellipsis,
                             )
