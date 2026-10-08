@@ -139,7 +139,7 @@ fun HomeScreen(
         }
     }
 
-    LaunchedEffect(Unit) {
+    LaunchedEffect(homePage?.continuation, selectedChip) {
         snapshotFlow { lazylistState.layoutInfo.visibleItemsInfo.lastOrNull()?.index }
             .collect { lastVisibleIndex ->
                 val len = lazylistState.layoutInfo.totalItemsCount
@@ -354,10 +354,18 @@ fun HomeScreen(
             }
 
             homePage?.sections?.forEach { section ->
-                val isCommunity = section.title?.contains("community", ignoreCase = true) == true ||
-                    section.title?.contains("From the", ignoreCase = true) == true ||
-                    section.title?.contains("Trending", ignoreCase = true) == true &&
-                    section.items.all { it is com.nikhil.yt.innertube.models.PlaylistItem }
+                val isPlaylistOnly =
+                    section.items.isNotEmpty() &&
+                        section.items.all { it is com.nikhil.yt.innertube.models.PlaylistItem }
+                val isCommunity =
+                    isPlaylistOnly &&
+                        (
+                            section.title.contains("community", ignoreCase = true) ||
+                                section.title.contains("From the", ignoreCase = true) ||
+                                section.title.contains("Trending", ignoreCase = true) ||
+                                section.title.contains("Listener playlists", ignoreCase = true) ||
+                                section.title.contains("Плейлисты пользователей", ignoreCase = true)
+                        )
 
                 if (isCommunity) {
                     item {
