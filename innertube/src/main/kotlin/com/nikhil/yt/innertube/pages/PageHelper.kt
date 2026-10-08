@@ -77,7 +77,14 @@ object PageHelper {
 
     private fun String.isArtistSeparator(): Boolean {
         val normalized = trim().lowercase()
-        if (normalized in setOf("•", "·", ",", "&", "/", ";", "|", "feat.", "ft.", "featuring")) {
+        if (
+            normalized in
+                setOf(
+                    "•", "·", ",", "&", "/", ";", "|",
+                    "feat.", "ft.", "featuring",
+                    "и", "and",
+                )
+        ) {
             return true
         }
         return normalized.isNotEmpty() &&
