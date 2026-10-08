@@ -108,6 +108,7 @@ fun HomeScreen(
     val selectedChip by viewModel.selectedChip.collectAsState()
 
     val isLoading: Boolean by viewModel.isLoading.collectAsState()
+    val isFilterLoading by viewModel.isFilterLoading.collectAsState()
     val isMoodAndGenresLoading = isLoading && explorePage?.moodAndGenres == null
     val isRefreshing by viewModel.isRefreshing.collectAsState()
     val pullRefreshState = rememberPullToRefreshState()
@@ -407,7 +408,11 @@ fun HomeScreen(
                 }
             }
 
-            if (isLoading || homePage?.continuation != null && homePage?.sections?.isNotEmpty() == true) {
+            if (
+                isLoading ||
+                    isFilterLoading ||
+                    (homePage?.continuation != null && homePage?.sections?.isNotEmpty() == true)
+            ) {
                 item {
                     HomeLoadingShimmer(modifier = Modifier.animateItem())
                 }
