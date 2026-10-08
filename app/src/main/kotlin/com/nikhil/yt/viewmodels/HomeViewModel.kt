@@ -11,6 +11,7 @@ package com.nikhil.yt.viewmodels
 import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.nikhil.yt.R
 import com.nikhil.yt.innertube.YouTube
 import com.nikhil.yt.innertube.models.AlbumItem
 import com.nikhil.yt.innertube.models.PlaylistItem
@@ -39,6 +40,7 @@ import com.nikhil.yt.utils.reportRecoverableException
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.supervisorScope
@@ -67,6 +69,11 @@ class HomeViewModel @Inject constructor(
     val accountPlaylists = MutableStateFlow<List<PlaylistItem>?>(null)
     val homePage = MutableStateFlow<HomePage?>(null)
     val explorePage = MutableStateFlow<ExplorePage?>(null)
+    val selectedChip = MutableStateFlow<HomePage.Chip?>(null)
+
+    private var unfilteredHomePage: HomePage? = null
+    private var chipRequestJob: Job? = null
+    private var loadMoreJob: Job? = null
 
     val recentActivity = MutableStateFlow<List<YTItem>?>(null)
     val recentPlaylistsDb = MutableStateFlow<List<Playlist>?>(null)
@@ -85,9 +92,26 @@ class HomeViewModel @Inject constructor(
     private var isProcessingAccountData = false
     private var wasLoggedIn = false
 
-    private fun keepYouTubeHomeSection(section: HomePage.Section): Boolean {
-        val title = section.title.lowercase()
+    private enum class HomeSectionKind {
+        NEW_RELEASES,
+        HITS,
+        COMMUNITY_PLAYLISTS,
+        LONG_LISTEN,
+    }
+
+    private fun classifyYouTubeHomeSection(section: HomePage.Section): HomeSectionKind? {
+        val title =
+            buildString {
+                append(section.title)
+                section.label?.let {
+                    append(' ')
+                    append(it)
+                }
+            }.lowercase()
         val browseId = section.endpoint?.browseId.orEmpty()
+        val playlistOnly =
+            section.items.isNotEmpty() &&
+                section.items.all { it is PlaylistItem }
 
         val isNewRelease =
             browseId == "FEmusic_new_releases_albums" ||
@@ -100,6 +124,8 @@ class HomeViewModel @Inject constructor(
                     "новинки",
                     "свежие релизы",
                 ).any(title::contains)
+
+        if (isNewRelease) return HomeSectionKind.NEW_RELEASES
 
         val isHitSection =
             listOf(
@@ -116,33 +142,122 @@ class HomeViewModel @Inject constructor(
                 "чарт",
             ).any(title::contains)
 
-        return isNewRelease || isHitSection
+        if (isHitSection) return HomeSectionKind.HITS
+
+        val isLongListen =
+            listOf(
+                "long listen",
+                "long listens",
+                "listen for a while",
+                "listen awhile",
+                "listen longer",
+                "for a while",
+                "want to listen for a while",
+                "if you want to listen",
+                "подольше",
+                "надолго",
+                "долго слушать",
+                "долгое прослушивание",
+                "если хочется послушать подольше",
+            ).any(title::contains)
+
+        if (isLongListen) return HomeSectionKind.LONG_LISTEN
+
+        val isCommunityPlaylists =
+            playlistOnly &&
+                listOf(
+                    "community",
+                    "from the",
+                    "trending",
+                    "user playlist",
+                    "user playlists",
+                    "listener playlist",
+                    "listener playlists",
+                    "made by listeners",
+                    "made by fans",
+                    "music fans",
+                    "сообщество",
+                    "от сообщества",
+                    "плейлисты пользователей",
+                    "пользовательские плейлисты",
+                    "от слушателей",
+                    "слушатели",
+                ).any(title::contains)
+
+        return if (isCommunityPlaylists) {
+            HomeSectionKind.COMMUNITY_PLAYLISTS
+        } else {
+            null
+        }
     }
 
     private fun cleanYouTubeHomePage(
         page: HomePage,
         hideExplicit: Boolean,
         hideVideo: Boolean,
+        filteredFeed: Boolean = false,
+        chips: List<HomePage.Chip>? = page.chips,
     ): HomePage {
         val sections =
             page.sections.mapNotNull { section ->
-                if (!keepYouTubeHomeSection(section)) return@mapNotNull null
+                val kind = classifyYouTubeHomeSection(section)
+                if (!filteredFeed && kind == null) return@mapNotNull null
 
                 val items =
                     section.items
                         .filterExplicit(hideExplicit)
                         .filterVideo(hideVideo)
-                        // Home should surface music, not YouTube playlist/community clutter.
-                        .filter { it is SongItem || it is AlbumItem }
-                        .distinctBy { it.id }
+                        .filter { item ->
+                            when {
+                                filteredFeed ->
+                                    item is SongItem ||
+                                        item is AlbumItem ||
+                                        item is PlaylistItem
 
-                section.copy(items = items).takeIf { items.isNotEmpty() }
+                                kind == HomeSectionKind.COMMUNITY_PLAYLISTS ->
+                                    item is PlaylistItem
+
+                                kind == HomeSectionKind.LONG_LISTEN ->
+                                    item is SongItem ||
+                                        item is AlbumItem ||
+                                        item is PlaylistItem
+
+                                else ->
+                                    item is SongItem ||
+                                        item is AlbumItem
+                            }
+                        }
+                        .distinctBy { item -> "${item::class.simpleName}:${item.id}" }
+
+                if (items.isEmpty()) return@mapNotNull null
+
+                val title =
+                    when (kind) {
+                        HomeSectionKind.COMMUNITY_PLAYLISTS ->
+                            context.getString(R.string.home_community_playlists)
+
+                        HomeSectionKind.LONG_LISTEN ->
+                            context.getString(R.string.home_long_listens)
+
+                        else -> section.title
+                    }
+
+                section.copy(
+                    title = title,
+                    items = items,
+                )
             }
 
         return page.copy(
-            chips = null,
+            chips = chips,
             sections = sections,
         )
+    }
+
+    private fun refreshAllYouTubeItems() {
+        allYtItems.value =
+            forYouSuggestions.value.orEmpty() +
+                homePage.value?.sections?.flatMap { it.items }.orEmpty()
     }
 
     private suspend fun getQuickPicks(){
@@ -154,6 +269,12 @@ class HomeViewModel @Inject constructor(
 
     private suspend fun load() {
         if (isLoading.value) return
+
+        chipRequestJob?.cancel()
+        loadMoreJob?.cancel()
+        selectedChip.value = null
+        unfilteredHomePage = null
+
         isLoading.value = true
         
         try {
@@ -187,7 +308,14 @@ class HomeViewModel @Inject constructor(
 
                 launch {
                     YouTube.home().onSuccess { page ->
-                        homePage.value = cleanYouTubeHomePage(page, hideExplicit, hideVideo)
+                        val cleaned =
+                            cleanYouTubeHomePage(
+                                page = page,
+                                hideExplicit = hideExplicit,
+                                hideVideo = hideVideo,
+                            )
+                        unfilteredHomePage = cleaned
+                        homePage.value = cleaned
                     }.onFailure { reportException(it) }
                 }
 
@@ -226,9 +354,7 @@ class HomeViewModel @Inject constructor(
             allLocalItems.value = (quickPicks.value.orEmpty() + forgottenFavorites.value.orEmpty() + keepListening.value.orEmpty())
                 .filter { it is Song || it is Album }
 
-            allYtItems.value =
-                forYouSuggestions.value.orEmpty() +
-                    homePage.value?.sections?.flatMap { it.items }.orEmpty()
+            refreshAllYouTubeItems()
                     
             isInitialLoadComplete.value = true
         } catch (e: Exception) {
@@ -249,29 +375,110 @@ class HomeViewModel @Inject constructor(
     }
 
     private val _isLoadingMore = MutableStateFlow(false)
+
     fun loadMoreYouTubeItems(continuation: String?) {
         if (continuation == null || _isLoadingMore.value) return
-        val hideExplicit = context.dataStore.get(HideExplicitKey, false)
-        val hideVideo = context.dataStore.get(HideVideoKey, false)
 
-        viewModelScope.launch(Dispatchers.IO) {
-            _isLoadingMore.value = true
-            val nextSections = YouTube.home(continuation).getOrNull() ?: run {
-                _isLoadingMore.value = false
-                return@launch
+        val selectedAtStart = selectedChip.value
+        val filteredFeed = selectedAtStart != null
+        val chips = homePage.value?.chips
+        val currentSections = homePage.value?.sections.orEmpty()
+
+        loadMoreJob?.cancel()
+        loadMoreJob =
+            viewModelScope.launch(Dispatchers.IO) {
+                _isLoadingMore.value = true
+                try {
+                    val hideExplicit = context.dataStore.get(HideExplicitKey, false)
+                    val hideVideo = context.dataStore.get(HideVideoKey, false)
+                    val nextSections =
+                        YouTube.home(continuation).getOrNull()
+                            ?: return@launch
+
+                    if (selectedChip.value != selectedAtStart) return@launch
+
+                    val merged =
+                        nextSections.copy(
+                            chips = chips,
+                            sections = currentSections + nextSections.sections,
+                        )
+
+                    val cleaned =
+                        cleanYouTubeHomePage(
+                            page = merged,
+                            hideExplicit = hideExplicit,
+                            hideVideo = hideVideo,
+                            filteredFeed = filteredFeed,
+                            chips = chips,
+                        )
+
+                    if (selectedChip.value != selectedAtStart) return@launch
+
+                    homePage.value = cleaned
+                    if (!filteredFeed) {
+                        unfilteredHomePage = cleaned
+                    }
+                    refreshAllYouTubeItems()
+                } finally {
+                    _isLoadingMore.value = false
+                }
             }
+    }
 
-            val merged =
-                nextSections.copy(
-                    chips = null,
-                    sections = homePage.value?.sections.orEmpty() + nextSections.sections,
-                )
-            homePage.value = cleanYouTubeHomePage(merged, hideExplicit, hideVideo)
-            allYtItems.value =
-                forYouSuggestions.value.orEmpty() +
-                    homePage.value?.sections?.flatMap { it.items }.orEmpty()
-            _isLoadingMore.value = false
+    fun toggleChip(chip: HomePage.Chip?) {
+        if (chip == null || chip == selectedChip.value) {
+            chipRequestJob?.cancel()
+            loadMoreJob?.cancel()
+            selectedChip.value = null
+            unfilteredHomePage?.let { base ->
+                homePage.value = base
+                refreshAllYouTubeItems()
+            }
+            return
         }
+
+        val params = chip.endpoint?.params ?: return
+        val base = unfilteredHomePage ?: homePage.value
+        if (unfilteredHomePage == null) {
+            unfilteredHomePage = homePage.value
+        }
+
+        chipRequestJob?.cancel()
+        loadMoreJob?.cancel()
+        selectedChip.value = chip
+
+        chipRequestJob =
+            viewModelScope.launch(Dispatchers.IO) {
+                val hideExplicit = context.dataStore.get(HideExplicitKey, false)
+                val hideVideo = context.dataStore.get(HideVideoKey, false)
+
+                YouTube.home(params = params)
+                    .onSuccess { page ->
+                        if (selectedChip.value != chip) return@onSuccess
+
+                        homePage.value =
+                            cleanYouTubeHomePage(
+                                page = page,
+                                hideExplicit = hideExplicit,
+                                hideVideo = hideVideo,
+                                filteredFeed = true,
+                                chips = base?.chips ?: page.chips,
+                            )
+                        refreshAllYouTubeItems()
+                    }
+                    .onFailure { error ->
+                        if (selectedChip.value == chip) {
+                            selectedChip.value = null
+                            base?.let { homePage.value = it }
+                            refreshAllYouTubeItems()
+                        }
+                        reportRecoverableException(
+                            "HomeViewModel",
+                            "load Home filter ${chip.title}",
+                            error,
+                        )
+                    }
+            }
     }
 
     fun refresh() {
