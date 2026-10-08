@@ -43,6 +43,28 @@ class MediaMetadataArtistMergeTest {
     }
 
     @Test
+    fun `legacy conjunction credit is removed during merge`() {
+        val merged =
+            mergeArtistCredits(
+                primary =
+                    listOf(
+                        MediaMetadata.Artist("UC_suburban", "Sub Urban"),
+                        MediaMetadata.Artist(null, "и"),
+                        MediaMetadata.Artist(null, "Bella Poarch"),
+                    ),
+                secondary = emptyList(),
+            )
+
+        assertEquals(
+            listOf(
+                MediaMetadata.Artist("UC_suburban", "Sub Urban"),
+                MediaMetadata.Artist(null, "Bella Poarch"),
+            ),
+            merged,
+        )
+    }
+
+    @Test
     fun `real browse id upgrades a name-only credit`() {
         val merged =
             mergeArtistCredits(
