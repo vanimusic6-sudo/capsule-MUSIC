@@ -73,7 +73,7 @@ internal fun extractSearchSongArtists(runs: List<Run>): List<Artist> {
 
 private fun String.isArtistJoiner(): Boolean {
     val value = trim().lowercase()
-    return value in setOf(",", "&", "/", ";", "feat.", "ft.", "featuring") ||
+    return value in setOf(",", "&", "/", ";", "feat.", "ft.", "featuring", "и", "and") ||
         (value.isNotEmpty() && value.all { it == ',' || it == '&' || it == '/' || it == ';' })
 }
 
