@@ -48,10 +48,11 @@ object PageHelper {
         runs.orEmpty()
             .mapNotNull { run ->
                 val name = run.text.trim()
-                if (name.isBlank() || name.isArtistSeparator()) return@mapNotNull null
+                if (name.isBlank()) return@mapNotNull null
 
                 val endpoint = run.navigationEndpoint?.browseEndpoint
                 if (endpoint == null) {
+                    if (name.isArtistSeparator()) return@mapNotNull null
                     return@mapNotNull Artist(name = name, id = null)
                 }
 
