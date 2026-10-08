@@ -45,12 +45,14 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.carousel.HorizontalUncontainedCarousel
 import androidx.compose.material3.carousel.rememberCarouselState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedback
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.layout.ContentScale
@@ -313,25 +315,60 @@ fun KeepListeningSection(
         }
 
         if (pages.size > 1) {
-            Row(
+            val indicatorProgress by remember(pagerState, pages.size) {
+                derivedStateOf {
+                    (pagerState.currentPage + pagerState.currentPageOffsetFraction)
+                        .coerceIn(0f, (pages.size - 1).toFloat())
+                }
+            }
+            val slotWidth = 18.dp
+            val slotGap = 6.dp
+            val indicatorWidth = slotWidth * pages.size + slotGap * (pages.size - 1)
+            val slotStepPx = with(LocalDensity.current) { (slotWidth + slotGap).toPx() }
+
+            Box(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(top = 8.dp, bottom = 2.dp),
-                horizontalArrangement = androidx.compose.foundation.layout.Arrangement.Center,
-                verticalAlignment = Alignment.CenterVertically
+                contentAlignment = Alignment.Center
             ) {
-                repeat(pages.size) { index ->
-                    val selected = pagerState.currentPage == index
+                Box(
+                    modifier = Modifier
+                        .width(indicatorWidth)
+                        .height(8.dp)
+                ) {
+                    Row(
+                        horizontalArrangement =
+                            androidx.compose.foundation.layout.Arrangement.spacedBy(slotGap),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        repeat(pages.size) {
+                            Box(
+                                modifier = Modifier
+                                    .width(slotWidth)
+                                    .height(8.dp),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(6.dp)
+                                        .clip(CircleShape)
+                                        .background(MaterialTheme.colorScheme.outlineVariant)
+                                )
+                            }
+                        }
+                    }
+
                     Box(
                         modifier = Modifier
-                            .padding(horizontal = 3.dp)
+                            .align(Alignment.CenterStart)
+                            .width(slotWidth)
                             .height(6.dp)
-                            .width(if (selected) 18.dp else 6.dp)
+                            .graphicsLayer {
+                                translationX = slotStepPx * indicatorProgress
+                            }
                             .clip(CircleShape)
-                            .background(
-                                if (selected) MaterialTheme.colorScheme.primary
-                                else MaterialTheme.colorScheme.outlineVariant
-                            )
+                            .background(MaterialTheme.colorScheme.primary)
                     )
                 }
             }
