@@ -60,6 +60,8 @@
     <string name="filter_playlists">Плейлисты</string>
     <string name="filter_community_playlists">Плейлисты сообщества</string>
     <string name="filter_featured_playlists">Избранные плейлисты</string>
+    <string name="home_community_playlists">Плейлисты пользователей</string>
+    <string name="home_long_listens">Хватит надолго</string>
     <string name="filter_bookmarked">В закладках</string>
     <string name="no_results_found">Не найдено результатов</string>
     <string name="top_results">Лучшие результаты</string>
