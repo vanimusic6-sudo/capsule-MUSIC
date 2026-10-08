@@ -58,6 +58,7 @@ import com.nikhil.yt.db.entities.PlaylistWithTags
 import com.nikhil.yt.extensions.reversed
 import com.nikhil.yt.extensions.toSQLiteQuery
 import com.nikhil.yt.models.MediaMetadata
+import com.nikhil.yt.models.isArtistCreditJoiner
 import com.nikhil.yt.models.toMediaMetadata
 import com.nikhil.yt.ui.utils.resize
 import kotlinx.coroutines.CoroutineScope
@@ -1332,7 +1333,7 @@ interface DatabaseDao {
 
         fun addOrEnrich(candidate: MediaMetadata.Artist) {
             val cleanName = candidate.name.trim()
-            if (cleanName.isEmpty()) return
+            if (cleanName.isEmpty() || cleanName.isArtistCreditJoiner()) return
 
             val index =
                 merged.indexOfFirst { current ->
