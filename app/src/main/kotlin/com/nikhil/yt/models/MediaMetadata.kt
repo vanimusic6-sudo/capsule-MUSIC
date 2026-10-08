@@ -128,6 +128,12 @@ fun mergeArtistCredits(
     return merged
 }
 
+fun List<MediaMetadata.Artist>.sanitizedArtistCredits(): List<MediaMetadata.Artist> =
+    mergeArtistCredits(this, emptyList())
+
+fun List<MediaMetadata.Artist>.artistCreditLine(): String =
+    sanitizedArtistCredits().joinToString(separator = ", ") { it.name }
+
 fun Song.toMediaMetadata() =
     MediaMetadata(
         id = song.id,
@@ -165,13 +171,15 @@ fun SongItem.toMediaMetadata() =
         id = id,
         title = title,
         artists =
-        artists.map {
-            MediaMetadata.Artist(
-                id = it.id,
-                name = it.name,
-                thumbnailUrl = null,
-            )
-        },
+        artists
+            .map {
+                MediaMetadata.Artist(
+                    id = it.id,
+                    name = it.name,
+                    thumbnailUrl = null,
+                )
+            }
+            .sanitizedArtistCredits(),
         duration = duration ?: -1,
         thumbnailUrl = thumbnail.resize(544, 544),
         album =
