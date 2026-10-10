@@ -985,6 +985,9 @@ class MusicService :
     val videoPlaybackState = MutableStateFlow(CapsuleVideoPlaybackState())
     private var videoOriginalMediaItem: MediaItem? = null
     private var videoOriginalMediaId: String? = null
+    // One automatic VIDEO attempt per explicitly selected source item.
+    // A VIDEO -> AUDIO switch on the same item never re-triggers it.
+    private var lastAutoVideoAttemptedMediaId: String? = null
     private val videoResolveCoordinator by lazy(LazyThreadSafetyMode.NONE) {
         CapsuleVideoResolveCoordinator(scopeProvider = { scope })
     }
@@ -3356,6 +3359,10 @@ class MusicService :
 
         audioCdnSkipBurstPolicy.onTransition(transitionedMediaId)
 
+        if (lastAutoVideoAttemptedMediaId != transitionedMediaId) {
+            lastAutoVideoAttemptedMediaId = null
+        }
+
         val videoState = videoPlaybackState.value
         val previousCanonicalId =
             videoOriginalMediaId
@@ -3563,6 +3570,29 @@ class MusicService :
 
     playbackPersistence.scheduleQueueSave()
     discordPresenceOwner.ensure()
+
+    // Only a typed original video/podcast or an explicit Videos search result
+    // starts in VIDEO. Ordinary songs, including ATV, keep the AUDIO pipeline.
+    // Defer until the timeline transition finishes; never enter recursively
+    // from Media3's playlist replacement callback.
+    if (
+        transitionedMediaId != null &&
+        mediaItem?.metadata?.isOriginalVideo == true &&
+        lastAutoVideoAttemptedMediaId != transitionedMediaId &&
+        !isCurrentCapsuleVideoItem()
+    ) {
+        lastAutoVideoAttemptedMediaId = transitionedMediaId
+        scope.launch(SilentHandler) {
+            if (
+                player.currentMediaItem?.mediaId == transitionedMediaId &&
+                player.currentMediaItem?.metadata?.isOriginalVideo == true &&
+                !isCurrentCapsuleVideoItem() &&
+                videoPlaybackState.value.preferredMode == CapsulePlaybackMode.AUDIO
+            ) {
+                setCapsulePlaybackMode(CapsulePlaybackMode.VIDEO)
+            }
+        }
+    }
 }
 
     override fun onPlaybackStateChanged(@Player.State playbackState: Int) {
@@ -4789,6 +4819,7 @@ class MusicService :
                     artists = sourceArtists,
                     durationSeconds = sourceDurationSeconds,
                     quality = capsuleVideoQuality,
+                    originalVideo = sourceMetadata?.isOriginalVideo == true,
                 ),
             isRelevant = {
                 player.currentMediaItem?.mediaId == canonicalMediaId &&
