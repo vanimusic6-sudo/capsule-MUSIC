@@ -184,6 +184,7 @@ import com.nikhil.yt.playback.video.CapsulePlaybackMode
 import com.nikhil.yt.playback.video.CapsuleVideoPhase
 import com.nikhil.yt.playback.video.CapsuleVideoPlaybackState
 import com.nikhil.yt.playback.video.CapsuleCacheRoutingDataSource
+import com.nikhil.yt.playback.video.CapsuleVideoChunkedDataSource
 import com.nikhil.yt.playback.video.CapsuleVideoStreamInterceptor
 import com.nikhil.yt.playback.video.YouTubeVideoResolver
 import com.nikhil.yt.playback.video.CapsuleVideoResolveCoordinator
@@ -4351,9 +4352,14 @@ class MusicService :
             .Factory()
             .setCache(videoCache)
             .setUpstreamDataSourceFactory(
-                DefaultDataSource.Factory(
-                    this,
-                    OkHttpDataSource.Factory(videoHttpClient),
+                // VIDEO only: every large CDN read is split into bounded
+                // Range requests. Media3 still receives one continuous source;
+                // the existing AUDIO cache/stream factory is untouched.
+                CapsuleVideoChunkedDataSource.Factory(
+                    DefaultDataSource.Factory(
+                        this,
+                        OkHttpDataSource.Factory(videoHttpClient),
+                    ),
                 ),
             )
             .setFlags(FLAG_IGNORE_CACHE_ON_ERROR)
