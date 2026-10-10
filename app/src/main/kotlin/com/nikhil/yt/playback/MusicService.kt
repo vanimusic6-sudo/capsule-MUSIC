@@ -1007,7 +1007,14 @@ class MusicService :
         CapsuleVideoResolveCoordinator(
             scopeProvider = { scope },
             preflight = { request, resolved ->
-                videoStreamProbe.prepare(resolved, request.quality)
+                val checked = videoStreamProbe.prepare(resolved, request.quality)
+                if (checked.isFailure) {
+                    // A failed signed CDN URL must not be reused for up to an
+                    // hour on the next user-requested VIDEO attempt.
+                    // VIDEO cache only; normal AUDIO caches are untouched.
+                    YouTubeVideoResolver.invalidate(resolved.videoId)
+                }
+                checked
             },
         )
     }
