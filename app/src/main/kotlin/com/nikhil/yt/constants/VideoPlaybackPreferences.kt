@@ -17,4 +17,5 @@ enum class CapsuleVideoQuality(
     P360(360),
     P480(480),
     P720(720),
+    P1080(1080),
 }
