@@ -41,7 +41,17 @@ data class SongItem(
     override val explicit: Boolean = false,
     val endpoint: WatchEndpoint? = null,
     val setVideoId: String? = null,
+    /** Explicit origin on the YouTube Music Videos search surface. */
+    val selectedFromVideoResults: Boolean = false,
 ) : YTItem() {
+    /** Only explicitly typed videos/podcasts or selected Videos entries opt in. */
+    val isOriginalVideo: Boolean
+        get() {
+            val type = endpoint?.watchEndpointMusicSupportedConfigs?.watchEndpointMusicConfig?.musicVideoType
+            return selectedFromVideoResults ||
+                (type != null && type != "MUSIC_VIDEO_TYPE_ATV")
+        }
+
     override val shareLink: String
         get() = "https://music.youtube.com/watch?v=$id"
 }
