@@ -95,7 +95,7 @@ class CapsuleVideoChunkedDataSourceTest {
             source.close()
         }
         assertTrue(cdn.requests.size > 10)
-        assertTrue(cdn.requests.all { it.length in 1..1024 })
+        assertTrue(cdn.requests.all { it.length >= 1L && it.length <= 1024L })
         assertEquals(0L, cdn.requests.first().position)
         assertEquals(1024L, cdn.requests[1].position)
     }
