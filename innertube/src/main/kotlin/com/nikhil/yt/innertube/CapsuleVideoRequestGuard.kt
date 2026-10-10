@@ -128,7 +128,29 @@ object CapsuleVideoRequestGuard {
 
     suspend fun beforeMetadataRequest() = acquire(Surface.API)
 
-    suspend fun beforeStreamProbe() = acquire(Surface.STREAM)
+    /**
+     * Playback bytes are not metadata probes.
+     *
+     * Media3 may reopen the same progressive video/audio URL for every cache
+     * hole, seek and HTTP Range continuation. Charging those byte-range reads
+     * to the metadata token bucket eventually exhausts the quota while the
+     * video is actively playing. Its 2.5s queue ceiling then throws on a
+     * healthy stream, and the player tears down VIDEO.
+     *
+     * Protect VIDEO playback against real server rejections (429 / repeated
+     * 403) through the same circuit breaker, but do not rate-limit ordinary
+     * CDN byte reads. Search/extraction metadata still uses the guarded,
+     * rate-limited beforeMetadataRequest() path.
+     */
+    suspend fun beforeStreamProbe() {
+        if (isBlocked()) {
+            throw RequestBlockedException(
+                "YouTube VIDEO streaming paused after a " +
+                    "${blockReason() ?: "block"} response " +
+                    "(${max(1L, remainingBackoffMs() / 1000L)}s remaining)",
+            )
+        }
+    }
 
     /*
      * Pacing by reservation, not by sleeping under the lock.
