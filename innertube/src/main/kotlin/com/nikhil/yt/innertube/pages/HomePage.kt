@@ -109,6 +109,7 @@ data class HomePage(
                                 )
                             },
                             duration = null,
+                            endpoint = renderer.navigationEndpoint.watchEndpoint,
                             thumbnail = renderer.thumbnailRenderer.musicThumbnailRenderer?.getThumbnailUrl() ?: return null,
                             explicit = renderer.subtitleBadges?.any {
                                 it.musicInlineBadgeRenderer?.icon?.iconType == "MUSIC_EXPLICIT_BADGE"
