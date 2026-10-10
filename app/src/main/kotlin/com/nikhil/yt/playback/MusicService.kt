@@ -994,7 +994,9 @@ class MusicService :
     private val videoHttpClient by lazy(LazyThreadSafetyMode.NONE) {
         mediaOkHttpClient
             .newBuilder()
-            .retryOnConnectionFailure(false)
+            // VIDEO only: OkHttp may try another DNS/proxy route after an
+            // early TLS EOF. The normal AUDIO client is not modified.
+            .retryOnConnectionFailure(true)
             .addInterceptor(CapsuleVideoStreamInterceptor())
             .build()
     }
