@@ -42,6 +42,36 @@ class CapsuleVideoRequestGuardTest {
     }
 
     @Test
+    fun continuousVideoRangeReadsDoNotExhaustMetadataQuota() =
+        kotlinx.coroutines.runBlocking {
+            // Before the fix, each of these Media3 Range reads consumed 0.34
+            // metadata tokens and hit an artificial 150ms+ gap. Playback
+            // eventually failed with "VIDEO request quota exhausted".
+            kotlinx.coroutines.withTimeout(5_000L) {
+                repeat(120) {
+                    CapsuleVideoRequestGuard.beforeStreamProbe()
+                }
+            }
+            assertFalse(CapsuleVideoRequestGuard.isBlocked())
+
+            // Metadata queries still run through their independent limiter.
+            CapsuleVideoRequestGuard.beforeMetadataRequest()
+        }
+
+    @Test
+    fun breakerStillBlocksVideoRangeReadsAfterRealServerRateLimit() =
+        kotlinx.coroutines.runBlocking {
+            CapsuleVideoRequestGuard.beforeStreamProbe()
+            CapsuleVideoRequestGuard.noteStreamStatus(429)
+            try {
+                CapsuleVideoRequestGuard.beforeStreamProbe()
+                org.junit.Assert.fail("VIDEO CDN read escaped active 429 breaker")
+            } catch (_: CapsuleVideoRequestGuard.RequestBlockedException) {
+                assertTrue(CapsuleVideoRequestGuard.isBlocked())
+            }
+        }
+
+    @Test
     fun stream429OpensBreakerImmediately() {
         assertEquals(
             CapsuleVideoRequestGuard.FailureKind.RATE_LIMITED,
