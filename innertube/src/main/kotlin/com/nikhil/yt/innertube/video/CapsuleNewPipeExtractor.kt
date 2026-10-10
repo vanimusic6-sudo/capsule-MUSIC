@@ -41,7 +41,7 @@ enum class CapsuleNewPipeFailure {
 }
 
 enum class CapsuleNewPipeQuality(val maxHeight: Int) {
-    AUTO(720), P360(360), P480(480), P720(720), P1080(1080)
+    AUTO(720), P360(360), P480(480), P720(720)
 }
 
 object CapsuleNewPipeExtractor {
@@ -175,7 +175,6 @@ object CapsuleNewPipeExtractor {
                 CapsuleNewPipeQuality.P360 -> 360
                 CapsuleNewPipeQuality.P480 -> 480
                 CapsuleNewPipeQuality.P720 -> 720
-                CapsuleNewPipeQuality.P1080 -> 1080
             }
 
         return streams
@@ -195,7 +194,6 @@ object CapsuleNewPipeExtractor {
                 CapsuleNewPipeQuality.P360 -> 360
                 CapsuleNewPipeQuality.P480 -> 480
                 CapsuleNewPipeQuality.P720 -> 720
-                CapsuleNewPipeQuality.P1080 -> 1080
             }
 
         return streams

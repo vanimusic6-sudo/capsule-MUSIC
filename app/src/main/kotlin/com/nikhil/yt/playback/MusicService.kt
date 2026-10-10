@@ -185,7 +185,6 @@ import com.nikhil.yt.playback.video.CapsuleVideoPhase
 import com.nikhil.yt.playback.video.CapsuleVideoPlaybackState
 import com.nikhil.yt.playback.video.CapsuleCacheRoutingDataSource
 import com.nikhil.yt.playback.video.CapsuleVideoStreamInterceptor
-import com.nikhil.yt.playback.video.CapsuleVideoStreamProbe
 import com.nikhil.yt.playback.video.YouTubeVideoResolver
 import com.nikhil.yt.playback.video.CapsuleVideoResolveCoordinator
 import com.nikhil.yt.playback.video.CapsuleVideoResolveRequest
@@ -986,37 +985,10 @@ class MusicService :
     val videoPlaybackState = MutableStateFlow(CapsuleVideoPlaybackState())
     private var videoOriginalMediaItem: MediaItem? = null
     private var videoOriginalMediaId: String? = null
-    // One automatic VIDEO attempt per explicitly selected source item.
-    // A VIDEO -> AUDIO switch on the same item never re-triggers it.
+    // Auto-video is attempted at most once per selected video item.
     private var lastAutoVideoAttemptedMediaId: String? = null
-    // Shared with Media3, so the probe tests the same VIDEO proxy/TLS route.
-    // Never used for normal AUDIO playback.
-    private val videoHttpClient by lazy(LazyThreadSafetyMode.NONE) {
-        mediaOkHttpClient
-            .newBuilder()
-            // VIDEO only: OkHttp may try another DNS/proxy route after an
-            // early TLS EOF. The normal AUDIO client is not modified.
-            .retryOnConnectionFailure(true)
-            .addInterceptor(CapsuleVideoStreamInterceptor())
-            .build()
-    }
-    private val videoStreamProbe by lazy(LazyThreadSafetyMode.NONE) {
-        CapsuleVideoStreamProbe(videoHttpClient)
-    }
     private val videoResolveCoordinator by lazy(LazyThreadSafetyMode.NONE) {
-        CapsuleVideoResolveCoordinator(
-            scopeProvider = { scope },
-            preflight = { request, resolved ->
-                val checked = videoStreamProbe.prepare(resolved, request.quality)
-                if (checked.isFailure) {
-                    // A failed signed CDN URL must not be reused for up to an
-                    // hour on the next user-requested VIDEO attempt.
-                    // VIDEO cache only; normal AUDIO caches are untouched.
-                    YouTubeVideoResolver.invalidate(resolved.videoId)
-                }
-                checked
-            },
-        )
+        CapsuleVideoResolveCoordinator(scopeProvider = { scope })
     }
 
     /*
@@ -3385,7 +3357,6 @@ class MusicService :
                 ?.takeIf { it.isNotBlank() }
 
         audioCdnSkipBurstPolicy.onTransition(transitionedMediaId)
-
         if (lastAutoVideoAttemptedMediaId != transitionedMediaId) {
             lastAutoVideoAttemptedMediaId = null
         }
@@ -3598,10 +3569,8 @@ class MusicService :
     playbackPersistence.scheduleQueueSave()
     discordPresenceOwner.ensure()
 
-    // Only a typed original video/podcast or an explicit Videos search result
-    // starts in VIDEO. Ordinary songs, including ATV, keep the AUDIO pipeline.
-    // Defer until the timeline transition finishes; never enter recursively
-    // from Media3's playlist replacement callback.
+    // Only explicitly marked original videos and video podcasts auto-start
+    // VIDEO. Normal AUDIO, manual VIDEO, and queue replacements stay as before.
     if (
         transitionedMediaId != null &&
         mediaItem?.metadata?.isOriginalVideo == true &&
@@ -4371,6 +4340,13 @@ class MusicService :
     }
 
     private fun createVideoCacheDataSource(): CacheDataSource.Factory {
+        val videoHttpClient =
+            mediaOkHttpClient
+                .newBuilder()
+                .retryOnConnectionFailure(false)
+                .addInterceptor(CapsuleVideoStreamInterceptor())
+                .build()
+
         return CacheDataSource
             .Factory()
             .setCache(videoCache)

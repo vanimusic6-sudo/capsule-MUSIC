@@ -36,10 +36,6 @@ internal class CapsuleVideoResolveCoordinator(
             )
         }
     },
-    private val preflight: suspend (
-        CapsuleVideoResolveRequest,
-        YouTubeVideoResolver.ResolvedVideo,
-    ) -> Result<YouTubeVideoResolver.ResolvedVideo> = { _, video -> Result.success(video) },
 ) {
     private var generation = 0L
     private var job: Job? = null
@@ -61,11 +57,7 @@ internal class CapsuleVideoResolveCoordinator(
             scopeProvider().launch(start = CoroutineStart.LAZY) {
                 val result =
                     try {
-                        val resolved = resolver(request)
-                        resolved.fold(
-                            onSuccess = { video -> preflight(request, video) },
-                            onFailure = { failure -> Result.failure(failure) },
-                        )
+                        resolver(request)
                     } catch (cancelled: CancellationException) {
                         throw cancelled
                     } catch (failure: Throwable) {

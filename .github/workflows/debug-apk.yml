@@ -61,7 +61,6 @@ jobs:
             --tests 'com.nikhil.yt.playback.CrossfadeIdlePollTest' \
             --tests 'com.nikhil.yt.ui.UiEnergyRegressionTest' \
             --tests 'com.nikhil.yt.models.MediaMetadataArtistMergeTest' \
-            --tests 'com.nikhil.yt.playback.video.CapsuleVideoStreamProbeTest' \
             --tests 'com.nikhil.yt.playback.video.CapsuleVideoResolveCoordinatorTest' \
             --stacktrace --no-daemon
 
