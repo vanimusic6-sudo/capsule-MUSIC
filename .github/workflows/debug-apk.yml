@@ -62,6 +62,7 @@ jobs:
             --tests 'com.nikhil.yt.ui.UiEnergyRegressionTest' \
             --tests 'com.nikhil.yt.models.MediaMetadataArtistMergeTest' \
             --tests 'com.nikhil.yt.playback.video.CapsuleVideoResolveCoordinatorTest' \
+            --tests 'com.nikhil.yt.playback.video.CapsuleVideoChunkedDataSourceTest' \
             --stacktrace --no-daemon
 
       - name: Test search summary metadata
