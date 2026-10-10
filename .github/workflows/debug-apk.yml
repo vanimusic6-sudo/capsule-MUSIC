@@ -76,6 +76,7 @@ jobs:
             --tests 'com.nikhil.yt.innertube.YouTubeMusicVideoMatcherTest' \
             --tests 'com.nikhil.yt.innertube.ExplicitVideoOriginTest' \
             --tests 'com.nikhil.yt.innertube.video.CapsuleNewPipeExtractorTest' \
+            --tests 'com.nikhil.yt.innertube.CapsuleVideoRequestGuardTest' \
             --stacktrace --no-daemon
 
       - name: Run Android lint
