@@ -297,8 +297,7 @@ fun HomeScreen(
                         navController = navController,
                         playerConnection = playerConnection,
                         menuState = menuState,
-                        haptic = haptic,
-                        scope = scope
+                        haptic = haptic
                     )
                 }
             }
@@ -357,20 +356,11 @@ fun HomeScreen(
             }
 
             homePage?.sections?.forEach { section ->
-                val isPlaylistOnly =
+                val isPlaylistCarousel =
                     section.items.isNotEmpty() &&
                         section.items.all { it is com.nikhil.yt.innertube.models.PlaylistItem }
-                val isCommunity =
-                    isPlaylistOnly &&
-                        (
-                            section.title.contains("community", ignoreCase = true) ||
-                                section.title.contains("From the", ignoreCase = true) ||
-                                section.title.contains("Trending", ignoreCase = true) ||
-                                section.title.contains("Listener playlists", ignoreCase = true) ||
-                                section.title.contains("Плейлисты пользователей", ignoreCase = true)
-                        )
 
-                if (isCommunity) {
+                if (isPlaylistCarousel) {
                     item {
                         CommunityPlaylistsSection(
                             section = section,

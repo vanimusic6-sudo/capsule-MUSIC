@@ -9,6 +9,9 @@
 package com.nikhil.yt.ui.screens
 
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
@@ -52,6 +55,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedback
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
@@ -253,34 +259,24 @@ fun QuickPicksSection(
 }
 
 /**
- * Continue Listening keeps the swipe/page language of Quick Picks, but not its recommendation
- * logic. Mixed local items live in compact, tappable rows so the section is fast to scan and one
- * horizontal gesture advances a complete group instead of drifting through an endless grid.
+ * Recently listened songs only. The same SongListItem used throughout Home gives the playing
+ * track the standard dimmed cover + equalizer treatment instead of a special speaker badge.
+ * Paging stays one-group-at-a-time, with a restrained native-style spring and a worm indicator.
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun KeepListeningSection(
-    keepListening: List<LocalItem>,
+    keepListening: List<Song>,
     mediaMetadata: MediaMetadata?,
     isPlaying: Boolean,
     navController: NavController,
     playerConnection: PlayerConnection,
     menuState: MenuState,
     haptic: HapticFeedback,
-    scope: CoroutineScope,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
 ) {
-    val distinctItems = remember(keepListening) {
-        keepListening.distinctBy { item ->
-            when (item) {
-                is Song -> "song_${item.id}"
-                is Album -> "album_${item.id}"
-                is Artist -> "artist_${item.id}"
-                is Playlist -> "playlist_${item.id}"
-            }
-        }
-    }
-    val pages = remember(distinctItems) { distinctItems.chunked(4) }
+    val distinctSongs = remember(keepListening) { keepListening.distinctBy { it.id } }
+    val pages = remember(distinctSongs) { distinctSongs.chunked(4) }
     val pagerState = androidx.compose.foundation.pager.rememberPagerState { pages.size }
 
     Column(modifier = modifier.fillMaxWidth()) {
@@ -288,89 +284,96 @@ fun KeepListeningSection(
             state = pagerState,
             contentPadding = PaddingValues(horizontal = 12.dp),
             pageSpacing = 8.dp,
+            flingBehavior = androidx.compose.foundation.pager.PagerDefaults.flingBehavior(
+                state = pagerState,
+                snapAnimationSpec = spring(
+                    stiffness = Spring.StiffnessMediumLow,
+                    dampingRatio = Spring.DampingRatioNoBouncy,
+                ),
+            ),
             modifier = Modifier
                 .fillMaxWidth()
-                .height(ListItemHeight * 4 + 8.dp)
+                .height(ListItemHeight * 4 + 8.dp),
         ) { pageIndex ->
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .graphicsLayer {
+                        // A very small depth cue. Updates remain in the graphics layer while
+                        // dragging; list content does not need recomposition for each frame.
+                        val distance = kotlin.math.abs(
+                            (pagerState.currentPage - pageIndex) +
+                                pagerState.currentPageOffsetFraction,
+                        ).coerceIn(0f, 1f)
+                        scaleX = 1f - 0.018f * distance
+                        scaleY = 1f - 0.018f * distance
+                        alpha = 1f - 0.10f * distance
+                    }
                     .clip(RoundedCornerShape(24.dp))
                     .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.24f))
-                    .padding(vertical = 4.dp)
+                    .padding(vertical = 4.dp),
             ) {
-                pages.getOrNull(pageIndex).orEmpty().forEach { item ->
+                pages.getOrNull(pageIndex).orEmpty().forEach { song ->
                     KeepListeningRow(
-                        item = item,
+                        song = song,
                         mediaMetadata = mediaMetadata,
                         isPlaying = isPlaying,
                         navController = navController,
                         playerConnection = playerConnection,
                         menuState = menuState,
                         haptic = haptic,
-                        scope = scope
                     )
                 }
             }
         }
 
         if (pages.size > 1) {
-            val indicatorProgress by remember(pagerState, pages.size) {
-                derivedStateOf {
-                    (pagerState.currentPage + pagerState.currentPageOffsetFraction)
-                        .coerceIn(0f, (pages.size - 1).toFloat())
-                }
-            }
+            val inactiveColor = MaterialTheme.colorScheme.outlineVariant
+            val activeColor = MaterialTheme.colorScheme.primary
             val slotWidth = 18.dp
-            val slotGap = 6.dp
-            val indicatorWidth = slotWidth * pages.size + slotGap * (pages.size - 1)
-            val slotStepPx = with(LocalDensity.current) { (slotWidth + slotGap).toPx() }
+            val slotGap = 7.dp
+            val pillHeight = 6.dp
 
-            Box(
+            // Draw-driven indicator follows the finger exactly. The pill first stretches
+            // towards the next dot and then catches up, like a smartphone page indicator.
+            Canvas(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(top = 8.dp, bottom = 2.dp),
-                contentAlignment = Alignment.Center
+                    .padding(top = 8.dp, bottom = 2.dp)
+                    .height(10.dp),
             ) {
-                Box(
-                    modifier = Modifier
-                        .width(indicatorWidth)
-                        .height(8.dp)
-                ) {
-                    Row(
-                        horizontalArrangement =
-                            androidx.compose.foundation.layout.Arrangement.spacedBy(slotGap),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        repeat(pages.size) {
-                            Box(
-                                modifier = Modifier
-                                    .width(slotWidth)
-                                    .height(8.dp),
-                                contentAlignment = Alignment.Center,
-                            ) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(6.dp)
-                                        .clip(CircleShape)
-                                        .background(MaterialTheme.colorScheme.outlineVariant)
-                                )
-                            }
-                        }
-                    }
+                val slotWidthPx = slotWidth.toPx()
+                val stepPx = (slotWidth + slotGap).toPx()
+                val trackWidth = slotWidthPx + stepPx * (pages.size - 1)
+                val trackLeft = (size.width - trackWidth) / 2f
+                val middleY = size.height / 2f
 
-                    Box(
-                        modifier = Modifier
-                            .align(Alignment.CenterStart)
-                            .width(slotWidth)
-                            .height(6.dp)
-                            .graphicsLayer {
-                                translationX = slotStepPx * indicatorProgress
-                            }
-                            .clip(CircleShape)
-                            .background(MaterialTheme.colorScheme.primary)
+                repeat(pages.size) { index ->
+                    drawCircle(
+                        color = inactiveColor,
+                        radius = 3.dp.toPx(),
+                        center = Offset(trackLeft + slotWidthPx / 2f + stepPx * index, middleY),
                     )
                 }
+
+                val progress = (
+                    pagerState.currentPage + pagerState.currentPageOffsetFraction
+                ).coerceIn(0f, (pages.size - 1).toFloat())
+                val leftPage = kotlin.math.floor(progress).toInt()
+                val fraction = progress - leftPage
+                val leftX =
+                    trackLeft + stepPx * leftPage +
+                        stepPx * ((fraction - 0.5f).coerceAtLeast(0f) * 2f)
+                val rightX =
+                    trackLeft + stepPx * leftPage + slotWidthPx +
+                        stepPx * (fraction * 2f).coerceAtMost(1f)
+
+                drawRoundRect(
+                    color = activeColor,
+                    topLeft = Offset(leftX, middleY - pillHeight.toPx() / 2f),
+                    size = Size(rightX - leftX, pillHeight.toPx()),
+                    cornerRadius = CornerRadius(pillHeight.toPx() / 2f),
+                )
             }
         }
     }
@@ -379,172 +382,55 @@ fun KeepListeningSection(
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun KeepListeningRow(
-    item: LocalItem,
+    song: Song,
     mediaMetadata: MediaMetadata?,
     isPlaying: Boolean,
     navController: NavController,
     playerConnection: PlayerConnection,
     menuState: MenuState,
     haptic: HapticFeedback,
-    scope: CoroutineScope,
 ) {
-    val isActive = when (item) {
-        is Song -> item.id == mediaMetadata?.id
-        is Album -> item.id == mediaMetadata?.album?.id
-        else -> false
-    }
-    val subtitle = when (item) {
-        is Song -> item.artists.joinToString { it.name }
-        is Album -> item.artists.joinToString { it.name }
-        is Artist -> ""
-        is Playlist -> ""
-    }
-    val thumbnail = when (item) {
-        is Playlist -> item.thumbnails.firstOrNull()
-        else -> item.thumbnailUrl
-    }
-    val thumbnailShape =
-        if (item is Artist) CircleShape else RoundedCornerShape(14.dp)
-
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(ListItemHeight)
-            .padding(horizontal = 4.dp, vertical = 2.dp)
-            .clip(RoundedCornerShape(18.dp))
-            .background(
-                if (isActive) MaterialTheme.colorScheme.primary.copy(alpha = 0.10f)
-                else Color.Transparent
+    val isActive = song.id == mediaMetadata?.id
+    val showSongMenu = {
+        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+        menuState.show {
+            SongMenu(
+                originalSong = song,
+                navController = navController,
+                onDismiss = menuState::dismiss,
             )
-            .combinedClickable(
-                onClick = {
-                    when (item) {
-                        is Song -> {
-                            if (isActive) {
-                                playerConnection.player.togglePlayPause()
-                            } else {
-                                playerConnection.playQueue(YouTubeQueue.radio(item.toMediaMetadata()))
-                            }
-                        }
-                        is Album -> navController.navigate("album/${item.id}")
-                        is Artist -> navController.navigate("artist/${item.id}")
-                        is Playlist -> Unit
-                    }
-                },
-                onLongClick = {
-                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                    menuState.show {
-                        when (item) {
-                            is Song -> SongMenu(
-                                originalSong = item,
-                                navController = navController,
-                                onDismiss = menuState::dismiss
-                            )
-                            is Album -> AlbumMenu(
-                                originalAlbum = item,
-                                navController = navController,
-                                onDismiss = menuState::dismiss
-                            )
-                            is Artist -> ArtistMenu(
-                                originalArtist = item,
-                                coroutineScope = scope,
-                                onDismiss = menuState::dismiss
-                            )
-                            is Playlist -> Unit
-                        }
-                    }
-                }
-            )
-            .padding(horizontal = 8.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Box(
-            modifier = Modifier
-                .size(ListThumbnailSize)
-                .clip(thumbnailShape)
-                .background(MaterialTheme.colorScheme.surfaceVariant)
-        ) {
-            AsyncImage(
-                model = thumbnail,
-                contentDescription = null,
-                contentScale = ContentScale.Crop,
-                modifier = Modifier.fillMaxSize()
-            )
-            if (isActive && isPlaying) {
-                Box(
-                    modifier = Modifier
-                        .align(Alignment.BottomEnd)
-                        .padding(4.dp)
-                        .size(22.dp)
-                        .clip(CircleShape)
-                        .background(MaterialTheme.colorScheme.primary),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        painter = painterResource(R.drawable.volume_up),
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.onPrimary,
-                        modifier = Modifier.size(13.dp)
-                    )
-                }
-            }
         }
+    }
 
-        Column(
-            modifier = Modifier
-                .weight(1f)
-                .padding(horizontal = 12.dp)
-        ) {
-            Text(
-                text = item.title,
-                style = MaterialTheme.typography.bodyLarge,
-                color = MaterialTheme.colorScheme.onSurface,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-            if (subtitle.isNotBlank()) {
-                Text(
-                    text = subtitle,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
+    SongListItem(
+        song = song,
+        isActive = isActive,
+        isPlaying = isPlaying,
+        // Keep horizontal gestures owned by the pager, not SwipeToSongBox.
+        isSwipeable = false,
+        trailingContent = {
+            IconButton(onClick = showSongMenu) {
+                Icon(
+                    painter = painterResource(R.drawable.more_vert),
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-        }
-
-        IconButton(
-            onClick = {
-                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                menuState.show {
-                    when (item) {
-                        is Song -> SongMenu(
-                            originalSong = item,
-                            navController = navController,
-                            onDismiss = menuState::dismiss
-                        )
-                        is Album -> AlbumMenu(
-                            originalAlbum = item,
-                            navController = navController,
-                            onDismiss = menuState::dismiss
-                        )
-                        is Artist -> ArtistMenu(
-                            originalArtist = item,
-                            coroutineScope = scope,
-                            onDismiss = menuState::dismiss
-                        )
-                        is Playlist -> Unit
+        },
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 4.dp)
+            .combinedClickable(
+                onClick = {
+                    if (isActive) {
+                        playerConnection.player.togglePlayPause()
+                    } else {
+                        playerConnection.playQueue(YouTubeQueue.radio(song.toMediaMetadata()))
                     }
-                }
-            }
-        ) {
-            Icon(
-                painter = painterResource(R.drawable.more_vert),
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        }
-    }
+                },
+                onLongClick = showSongMenu,
+            ),
+    )
 }
 
 /**

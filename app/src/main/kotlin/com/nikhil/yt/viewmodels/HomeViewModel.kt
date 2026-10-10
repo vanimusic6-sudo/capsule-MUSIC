@@ -66,7 +66,8 @@ class HomeViewModel @Inject constructor(
 
     val quickPicks = MutableStateFlow<List<Song>?>(null)
     val forgottenFavorites = MutableStateFlow<List<Song>?>(null)
-    val keepListening = MutableStateFlow<List<LocalItem>?>(null)
+    // This shelf represents songs to resume, never albums or artist pages.
+    val keepListening = MutableStateFlow<List<Song>?>(null)
     val accountPlaylists = MutableStateFlow<List<PlaylistItem>?>(null)
     val homePage = MutableStateFlow<HomePage?>(null)
     val explorePage = MutableStateFlow<ExplorePage?>(null)
@@ -98,6 +99,7 @@ class HomeViewModel @Inject constructor(
         HITS,
         COMMUNITY_PLAYLISTS,
         LONG_LISTEN,
+        PERSONALIZED,
     }
 
     private fun classifyYouTubeHomeSection(section: HomePage.Section): HomeSectionKind? {
@@ -113,6 +115,36 @@ class HomeViewModel @Inject constructor(
         val playlistOnly =
             section.items.isNotEmpty() &&
                 section.items.all { it is PlaylistItem }
+
+        // These are general recommendation shelves, not a specific mood filter.
+        // YouTube returns them under some chips too; display them on the main Home only.
+        val isPersonalized =
+            listOf(
+                "for you",
+                "made for you",
+                "recommended for",
+                "recommendations for",
+                "you might like",
+                "you may like",
+                "based on",
+                "because you listened",
+                "because you like",
+                "similar to",
+                "your mixes",
+                "mixes for",
+                "playlists for you",
+                "just for you",
+                "для вас",
+                "для тебя",
+                "похоже на",
+                "похожее на",
+                "вам понравится",
+                "по вашим вкусам",
+                "на основе",
+                "рекомендованные плейлисты",
+                "рекомендации для",
+            ).any(title::contains)
+        if (isPersonalized) return HomeSectionKind.PERSONALIZED
 
         val isNewRelease =
             browseId == "FEmusic_new_releases_albums" ||
@@ -203,6 +235,14 @@ class HomeViewModel @Inject constructor(
             page.sections.mapNotNull { section ->
                 val kind = classifyYouTubeHomeSection(section)
                 if (!filteredFeed && kind == null) return@mapNotNull null
+                // Mood chips should not turn into a duplicate of the general Home feed.
+                if (
+                    filteredFeed &&
+                        (kind == HomeSectionKind.PERSONALIZED ||
+                            kind == HomeSectionKind.COMMUNITY_PLAYLISTS ||
+                            kind == HomeSectionKind.NEW_RELEASES ||
+                            kind == HomeSectionKind.LONG_LISTEN)
+                ) return@mapNotNull null
 
                 val items =
                     section.items
@@ -217,6 +257,11 @@ class HomeViewModel @Inject constructor(
 
                                 kind == HomeSectionKind.COMMUNITY_PLAYLISTS ->
                                     item is PlaylistItem
+
+                                kind == HomeSectionKind.PERSONALIZED ->
+                                    item is SongItem ||
+                                        item is AlbumItem ||
+                                        item is PlaylistItem
 
                                 kind == HomeSectionKind.LONG_LISTEN ->
                                     item is SongItem ||
@@ -260,6 +305,48 @@ class HomeViewModel @Inject constructor(
             chips = chips,
             sections = sections,
         )
+    }
+
+    /**
+     * Some general "For you" / community shelves are returned by YouTube only while a mood
+     * chip is selected. Move the already-fetched shelves to the ordinary Home cache instead
+     * of rendering them under a misleading mood heading or firing extra network requests.
+     */
+    private fun collectGeneralShelvesFromChip(
+        page: HomePage,
+        hideExplicit: Boolean,
+        hideVideo: Boolean,
+    ) {
+        val base = unfilteredHomePage ?: return
+        val general =
+            cleanYouTubeHomePage(
+                page = page,
+                hideExplicit = hideExplicit,
+                hideVideo = hideVideo,
+                chips = base.chips,
+            ).sections.filter { section ->
+                classifyYouTubeHomeSection(section) in
+                    setOf(HomeSectionKind.PERSONALIZED, HomeSectionKind.COMMUNITY_PLAYLISTS)
+            }
+        if (general.isEmpty()) return
+
+        val combined = base.sections.toMutableList()
+        general.forEach { candidate ->
+            val index = combined.indexOfFirst {
+                it.title.equals(candidate.title, ignoreCase = true)
+            }
+            if (index < 0) {
+                combined.add(candidate)
+            } else {
+                val existing = combined[index]
+                val presentIds = existing.items.mapTo(mutableSetOf()) { it.id }
+                val additions = candidate.items.filter { presentIds.add(it.id) }
+                if (additions.isNotEmpty()) {
+                    combined[index] = existing.copy(items = (existing.items + additions).take(24))
+                }
+            }
+        }
+        unfilteredHomePage = base.copy(sections = combined)
     }
 
     private fun refreshAllYouTubeItems() {
@@ -310,14 +397,8 @@ class HomeViewModel @Inject constructor(
                 }
                 
                 launch {
-                    val keepListeningSongs = database.mostPlayedSongs(fromTimeStamp, limit = 15, offset = 5)
-                        .first().shuffled().take(10)
-                    val keepListeningAlbums = database.mostPlayedAlbums(fromTimeStamp, limit = 8, offset = 2)
-                        .first().filter { it.album.thumbnailUrl != null }.shuffled().take(5)
-                    val keepListeningArtists = database.mostPlayedArtists(fromTimeStamp)
-                        .first().filter { it.artist.isYouTubeArtist && it.artist.thumbnailUrl != null }
-                        .shuffled().take(5)
-                    keepListening.value = (keepListeningSongs + keepListeningAlbums + keepListeningArtists).shuffled()
+                    keepListening.value = database.mostPlayedSongs(fromTimeStamp, limit = 15, offset = 5)
+                        .first().distinctBy { it.id }.shuffled().take(12)
                 }
 
                 launch {
@@ -417,6 +498,10 @@ class HomeViewModel @Inject constructor(
                             sections = currentSections + nextSections.sections,
                         )
 
+                    if (filteredFeed) {
+                        collectGeneralShelvesFromChip(nextSections, hideExplicit, hideVideo)
+                    }
+
                     val cleaned =
                         cleanYouTubeHomePage(
                             page = merged,
@@ -480,6 +565,7 @@ class HomeViewModel @Inject constructor(
                     .onSuccess { page ->
                         if (selectedChip.value != chip) return@onSuccess
 
+                        collectGeneralShelvesFromChip(page, hideExplicit, hideVideo)
                         homePage.value =
                             cleanYouTubeHomePage(
                                 page = page,
