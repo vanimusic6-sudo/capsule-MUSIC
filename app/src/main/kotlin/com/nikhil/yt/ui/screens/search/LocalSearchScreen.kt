@@ -30,6 +30,7 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.Dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.navigation.NavController
 import com.nikhil.yt.LocalPlayerConnection
@@ -57,6 +58,7 @@ fun LocalSearchScreen(
     onDismiss: () -> Unit,
     isFromCache: Boolean = false,
     pureBlack: Boolean,
+    bottomContentPadding: Dp = 0.dp,
     viewModel: LocalSearchViewModel = hiltViewModel(),
 ) {
     val context = LocalContext.current
@@ -117,7 +119,7 @@ fun LocalSearchScreen(
 
         LazyColumn(
             state = lazyListState,
-            contentPadding = PaddingValues(top = 8.dp),
+            contentPadding = PaddingValues(top = 8.dp, bottom = bottomContentPadding),
             modifier = Modifier.weight(1f),
         ) {
             result.map.forEach { (filter, items) ->

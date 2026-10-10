@@ -901,6 +901,11 @@ class MainActivity : ComponentActivity() {
                         }
                     val miniPlayerGlassBackdrop =
                         rememberLayerBackdrop(onDraw = miniPlayerGlassSourceDraw)
+                    // Search is rendered in Scaffold.topBar, outside the NavHost.
+                    // A dedicated recorder avoids reusing the previous route's texture
+                    // and preserves Search's own global position for refraction.
+                    // Only the active search overlay records this full-frame layer.
+                    val miniPlayerSearchBackdrop = rememberLayerBackdrop()
 
                     /*
                      * How much of the navigation bar is on screen, 1 fully shown and 0 fully gone.
@@ -1603,7 +1608,7 @@ class MainActivity : ComponentActivity() {
                                                     // Capture its visible content while expanded.
                                                     .then(
                                                         if (miniPlayerLiquidGlassActive && active) {
-                                                            Modifier.layerBackdrop(miniPlayerGlassBackdrop)
+                                                            Modifier.layerBackdrop(miniPlayerSearchBackdrop)
                                                         } else {
                                                             Modifier
                                                         },
@@ -1631,21 +1636,20 @@ class MainActivity : ComponentActivity() {
                                                 )
                                             }
                                         ) {
+                                            // Search results must actually travel underneath
+                                            // the glass. Reserve space at the END of each list,
+                                            // not by shrinking its whole viewport above Mini Player.
+                                            val searchOverlayBottomPadding = getBottomNavPadding() +
+                                                (if (!playerBottomSheetState.isDismissed) {
+                                                    MiniPlayerHeight +
+                                                        (if (capsuleConnected) 0.dp else MiniPlayerBottomSpacing)
+                                                } else 0.dp)
                                             Crossfade(
                                                 targetState = searchSource,
                                                 label = "",
                                                 modifier =
                                                     Modifier
                                                         .fillMaxSize()
-                                                        .padding(
-                                                            bottom = getBottomNavPadding() +
-                                                                (if (!playerBottomSheetState.isDismissed) {
-                                                                    MiniPlayerHeight +
-                                                                        (if (capsuleConnected) 0.dp else MiniPlayerBottomSpacing)
-                                                                } else {
-                                                                    0.dp
-                                                                }),
-                                                        )
                                                         .navigationBarsPadding(),
                                             ) { searchSource ->
                                                 when (searchSource) {
@@ -1655,6 +1659,7 @@ class MainActivity : ComponentActivity() {
                                                             navController = navController,
                                                             onDismiss = { onActiveChange(false) },
                                                             pureBlack = pureBlack,
+                                                            bottomContentPadding = searchOverlayBottomPadding,
                                                         )
 
                                                     SearchSource.ONLINE ->
@@ -1664,7 +1669,8 @@ class MainActivity : ComponentActivity() {
                                                             navController = navController,
                                                             onSearch = { submitted -> onSearch(submitted) },
                                                             onDismiss = { onActiveChange(false) },
-                                                            pureBlack = pureBlack
+                                                            pureBlack = pureBlack,
+                                                            bottomContentPadding = searchOverlayBottomPadding,
                                                         )
                                                 }
                                             }
@@ -1697,10 +1703,10 @@ class MainActivity : ComponentActivity() {
                                                 ),
                                             pureBlack = pureBlack,
                                             miniPlayerBackdrop =
-                                                if (miniPlayerLiquidGlassActive) {
-                                                    miniPlayerGlassBackdrop
-                                                } else {
-                                                    null
+                                                when {
+                                                    !miniPlayerLiquidGlassActive -> null
+                                                    active -> miniPlayerSearchBackdrop
+                                                    else -> miniPlayerGlassBackdrop
                                                 },
                                         )
 
@@ -1795,9 +1801,8 @@ class MainActivity : ComponentActivity() {
                                         Modifier
                                             .fillMaxSize()
                                             .then(
-                                                // Only one source is active: when Search opens,
-                                                // its expanded overlay replaces the NavHost as the
-                                                // glass sampling source (not the previous screen).
+                                                // The normal source stays clipped to the bottom
+                                                // band. Search owns a separate recorder while open.
                                                 if (miniPlayerLiquidGlassActive && !active) {
                                                     Modifier
                                                         .layerBackdrop(miniPlayerGlassBackdrop)
