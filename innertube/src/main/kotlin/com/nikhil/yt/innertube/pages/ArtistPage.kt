@@ -111,6 +111,7 @@ data class ArtistPage(
                         }),
                         album = null,
                         duration = null,
+                        endpoint = renderer.navigationEndpoint.watchEndpoint,
                         thumbnail = renderer.thumbnailRenderer.musicThumbnailRenderer?.getThumbnailUrl() ?: return null,
                         explicit = renderer.subtitleBadges?.find {
                             it.musicInlineBadgeRenderer?.icon?.iconType == "MUSIC_EXPLICIT_BADGE"
