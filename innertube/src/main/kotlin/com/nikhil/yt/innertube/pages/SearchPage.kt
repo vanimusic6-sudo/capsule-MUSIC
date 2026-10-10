@@ -26,7 +26,14 @@ data class SearchResult(
 )
 
 object SearchPage {
-    fun toYTItem(renderer: MusicResponsiveListItemRenderer): YTItem? {
+    fun toYTItem(
+        renderer: MusicResponsiveListItemRenderer,
+        selectedFromVideoResults: Boolean = false,
+    ): YTItem? {
+        val videoEndpoint =
+            renderer.navigationEndpoint?.anyWatchEndpoint
+                ?: renderer.overlay?.musicItemThumbnailOverlayRenderer
+                    ?.content?.musicPlayButtonRenderer?.playNavigationEndpoint?.anyWatchEndpoint
         val secondaryLine =
             renderer.flexColumns
                 .getOrNull(1)
@@ -38,7 +45,7 @@ object SearchPage {
         return when {
             renderer.isSong -> {
                 SongItem(
-                    id = renderer.playlistItemData?.videoId ?: return null,
+                    id = renderer.playlistItemData?.videoId ?: videoEndpoint?.videoId ?: return null,
                     title =
                         renderer.flexColumns
                             .firstOrNull()
@@ -66,6 +73,8 @@ object SearchPage {
                         renderer.badges?.find {
                             it.musicInlineBadgeRenderer?.icon?.iconType == "MUSIC_EXPLICIT_BADGE"
                         } != null,
+                    endpoint = videoEndpoint,
+                    selectedFromVideoResults = selectedFromVideoResults,
                 )
             }
             renderer.isArtist -> {
