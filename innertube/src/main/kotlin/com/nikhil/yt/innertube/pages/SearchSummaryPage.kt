@@ -278,7 +278,7 @@ data class SearchSummaryPage(
                     ?.text
                     ?.runs
                     ?.splitBySeparator()
-                    ?: return null
+                    .orEmpty()
             return when {
                 renderer.isSong -> {
                     val metadataRuns = renderer.flexColumns.drop(1).flatMap {
