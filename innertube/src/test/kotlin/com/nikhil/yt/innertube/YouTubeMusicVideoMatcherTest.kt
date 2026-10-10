@@ -50,6 +50,48 @@ class YouTubeMusicVideoMatcherTest {
     }
 
     @Test
+    fun englishLyricsVideoIsNotAnOfficialClip() {
+        assertNull(
+            YouTubeMusicVideoMatcher.scoreCandidate(
+                sourceTitle = "Blinding Lights",
+                sourceTitleNorm = YouTubeMusicVideoMatcher.normalizeTitle("Blinding Lights"),
+                sourceArtistNorms = listOf("the weeknd"),
+                candidateTitle = "The Weeknd - Blinding Lights (Official Lyric Video)",
+                secondaryText = "The Weeknd • 4:21",
+                sourceDurationSeconds = 261,
+            ),
+        )
+    }
+
+    @Test
+    fun russianTextVideoIsNotAnOfficialClip() {
+        assertNull(
+            YouTubeMusicVideoMatcher.scoreCandidate(
+                sourceTitle = "Новый день",
+                sourceTitleNorm = YouTubeMusicVideoMatcher.normalizeTitle("Новый день"),
+                sourceArtistNorms = listOf("исполнитель"),
+                candidateTitle = "Исполнитель - Новый день (текст песни)",
+                secondaryText = "Исполнитель • 3:40",
+                sourceDurationSeconds = 220,
+            ),
+        )
+    }
+
+    @Test
+    fun subtitleOnlyVideoIsNotAnOfficialClip() {
+        assertNull(
+            YouTubeMusicVideoMatcher.scoreCandidate(
+                sourceTitle = "Song",
+                sourceTitleNorm = YouTubeMusicVideoMatcher.normalizeTitle("Song"),
+                sourceArtistNorms = listOf("artist"),
+                candidateTitle = "Artist - Song (Subtitled)",
+                secondaryText = "Artist • 3:40",
+                sourceDurationSeconds = 220,
+            ),
+        )
+    }
+
+    @Test
     fun durationParserHandlesMinutesAndHours() {
         assertEquals(245, YouTubeMusicVideoMatcher.extractDurationSeconds("4:05"))
         assertEquals(3723, YouTubeMusicVideoMatcher.extractDurationSeconds("1:02:03"))
