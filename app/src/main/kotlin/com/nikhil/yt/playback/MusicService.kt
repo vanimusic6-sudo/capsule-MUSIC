@@ -185,6 +185,7 @@ import com.nikhil.yt.playback.video.CapsuleVideoPhase
 import com.nikhil.yt.playback.video.CapsuleVideoPlaybackState
 import com.nikhil.yt.playback.video.CapsuleCacheRoutingDataSource
 import com.nikhil.yt.playback.video.CapsuleVideoStreamInterceptor
+import com.nikhil.yt.playback.video.CapsuleVideoStreamProbe
 import com.nikhil.yt.playback.video.YouTubeVideoResolver
 import com.nikhil.yt.playback.video.CapsuleVideoResolveCoordinator
 import com.nikhil.yt.playback.video.CapsuleVideoResolveRequest
@@ -988,8 +989,25 @@ class MusicService :
     // One automatic VIDEO attempt per explicitly selected source item.
     // A VIDEO -> AUDIO switch on the same item never re-triggers it.
     private var lastAutoVideoAttemptedMediaId: String? = null
+    // Shared with Media3, so the probe tests the same VIDEO proxy/TLS route.
+    // Never used for normal AUDIO playback.
+    private val videoHttpClient by lazy(LazyThreadSafetyMode.NONE) {
+        mediaOkHttpClient
+            .newBuilder()
+            .retryOnConnectionFailure(false)
+            .addInterceptor(CapsuleVideoStreamInterceptor())
+            .build()
+    }
+    private val videoStreamProbe by lazy(LazyThreadSafetyMode.NONE) {
+        CapsuleVideoStreamProbe(videoHttpClient)
+    }
     private val videoResolveCoordinator by lazy(LazyThreadSafetyMode.NONE) {
-        CapsuleVideoResolveCoordinator(scopeProvider = { scope })
+        CapsuleVideoResolveCoordinator(
+            scopeProvider = { scope },
+            preflight = { request, resolved ->
+                videoStreamProbe.prepare(resolved, request.quality)
+            },
+        )
     }
 
     /*
@@ -4344,13 +4362,6 @@ class MusicService :
     }
 
     private fun createVideoCacheDataSource(): CacheDataSource.Factory {
-        val videoHttpClient =
-            mediaOkHttpClient
-                .newBuilder()
-                .retryOnConnectionFailure(false)
-                .addInterceptor(CapsuleVideoStreamInterceptor())
-                .build()
-
         return CacheDataSource
             .Factory()
             .setCache(videoCache)
