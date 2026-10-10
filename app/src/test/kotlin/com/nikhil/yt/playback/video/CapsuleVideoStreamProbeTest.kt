@@ -55,7 +55,7 @@ class CapsuleVideoStreamProbeTest {
             "https://audio.example.test/stream",
         )
         val probe = CapsuleVideoStreamProbe(
-            client = client { request ->
+            httpClient = client { request ->
                 checked += request.url.host
                 assertEquals("bytes=0-1023", request.header("Range"))
             },
@@ -69,7 +69,7 @@ class CapsuleVideoStreamProbeTest {
     fun tlsFailureOnMuxedNeverPublishesUnreachableVideo() = runBlocking {
         val muxed = video("https://blocked.example.test/stream")
         val probe = CapsuleVideoStreamProbe(
-            client = client { throw SSLHandshakeException("connection closed") },
+            httpClient = client { throw SSLHandshakeException("connection closed") },
             resolveMuxed = { _, _ -> error("Muxed stream must not trigger a fallback") },
         )
         val result = probe.prepare(muxed, CapsuleVideoQuality.AUTO)
@@ -83,7 +83,7 @@ class CapsuleVideoStreamProbeTest {
         val muxed = video("https://good.example.test/muxed")
         var fallbacks = 0
         val probe = CapsuleVideoStreamProbe(
-            client = client { request ->
+            httpClient = client { request ->
                 if (request.url.host == "blocked.example.test") {
                     throw SSLHandshakeException("connection closed")
                 }
