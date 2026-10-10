@@ -177,6 +177,7 @@ private fun VideoQualityRow(
                         CapsuleVideoQuality.P360 -> "360p"
                         CapsuleVideoQuality.P480 -> "480p"
                         CapsuleVideoQuality.P720 -> "720p"
+                        CapsuleVideoQuality.P1080 -> "1080p"
                     },
                 style = MaterialTheme.typography.titleMedium,
             )
@@ -188,6 +189,7 @@ private fun VideoQualityRow(
                         CapsuleVideoQuality.P360 -> stringResource(R.string.capsule_video_low_data)
                         CapsuleVideoQuality.P480 -> stringResource(R.string.capsule_video_balanced)
                         CapsuleVideoQuality.P720 -> stringResource(R.string.capsule_video_high_quality)
+                        CapsuleVideoQuality.P1080 -> stringResource(R.string.capsule_video_high_quality)
                     },
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
