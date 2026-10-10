@@ -608,7 +608,10 @@ object YouTube {
             ?.tabRenderer?.content?.sectionListRenderer?.continuations?.getContinuation()
         val sectionListRender = response.contents?.singleColumnBrowseResultsRenderer?.tabs?.firstOrNull()
             ?.tabRenderer?.content?.sectionListRenderer
-        val sections = sectionListRender?.contents!!
+        // Browsing a category can temporarily return a response without the section
+        // renderer (login wall, slow network, or an empty filtered response). Treat it as
+        // an empty page for the caller's bounded retry instead of throwing an NPE.
+        val sections = sectionListRender?.contents.orEmpty()
             .mapNotNull { it.musicCarouselShelfRenderer }
             .mapNotNull {
                 HomePage.Section.fromMusicCarouselShelfRenderer(it)

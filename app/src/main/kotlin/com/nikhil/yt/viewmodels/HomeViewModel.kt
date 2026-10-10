@@ -41,6 +41,10 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.TimeoutCancellationException
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.supervisorScope
@@ -57,6 +61,7 @@ class HomeViewModel @Inject constructor(
     val isRefreshing = MutableStateFlow(false)
     val isLoading = MutableStateFlow(false)
     val isFilterLoading = MutableStateFlow(false)
+    val filterLoadFailed = MutableStateFlow(false)
     private val isInitialLoadComplete = MutableStateFlow(false)
     val forYouSuggestions = MutableStateFlow<List<com.nikhil.yt.innertube.models.SongItem>?>(null)
 
@@ -77,6 +82,23 @@ class HomeViewModel @Inject constructor(
     private var chipRequestJob: Job? = null
     private var loadMoreJob: Job? = null
     private var communityDiscoveryJob: Job? = null
+    private val chipRequestSerial = java.util.concurrent.atomic.AtomicLong(0L)
+
+    private data class CachedChip(val timestamp: Long, val page: HomePage)
+    private val chipCache = LinkedHashMap<String, CachedChip>(12, 0.75f, true)
+    private val chipCacheLock = Any()
+    private fun findCachedChip(params: String): HomePage? =
+        synchronized(chipCacheLock) {
+            chipCache[params]?.takeIf { System.currentTimeMillis() - it.timestamp < 8 * 60_000L }?.page
+        }
+    private fun storeChip(params: String, page: HomePage) {
+        if (page.sections.isEmpty()) return
+        synchronized(chipCacheLock) {
+            chipCache[params] = CachedChip(System.currentTimeMillis(), page)
+            while (chipCache.size > 8) chipCache.remove(chipCache.keys.first())
+        }
+    }
+
 
     val recentActivity = MutableStateFlow<List<YTItem>?>(null)
     val recentPlaylistsDb = MutableStateFlow<List<Playlist>?>(null)
@@ -275,14 +297,15 @@ class HomeViewModel @Inject constructor(
                 val kind = classifyYouTubeHomeSection(section)
                 if (kind == HomeSectionKind.SHALLOW_SIMILARITY) return@mapNotNull null
                 if (!filteredFeed && kind == null) return@mapNotNull null
-                // Mood chips should not turn into a duplicate of the general Home feed.
-                if (
-                    filteredFeed &&
-                        (kind == HomeSectionKind.PERSONALIZED ||
-                            kind == HomeSectionKind.COMMUNITY_PLAYLISTS ||
-                            kind == HomeSectionKind.NEW_RELEASES ||
-                            kind == HomeSectionKind.LONG_LISTEN)
-                ) return@mapNotNull null
+                // The selected provider endpoint already restricts tracks to the chip.
+                // Removing rows by broad names like "New releases" left valid filters empty.
+                // Route only obvious, global, playlist-only collections to normal Home.
+                val globallyRecommendedPlaylists =
+                    section.items.isNotEmpty() &&
+                        section.items.all { it is PlaylistItem } &&
+                        (kind == HomeSectionKind.COMMUNITY_PLAYLISTS ||
+                            kind == HomeSectionKind.PERSONALIZED)
+                if (filteredFeed && globallyRecommendedPlaylists) return@mapNotNull null
 
                 val items =
                     section.items
@@ -409,21 +432,39 @@ class HomeViewModel @Inject constructor(
         val chipParams = base.chips.orEmpty()
             .mapNotNull { it.endpoint?.params }
             .distinct()
-            .take(5)
+            .take(3)
         if (chipParams.isEmpty()) return
 
         communityDiscoveryJob = viewModelScope.launch(Dispatchers.IO) {
+            // Weak networks cannot handle simultaneous background browse requests.
+            // Foreground chip requests always win and cancel this deferred prefetch.
+            delay(4_000L)
             for (params in chipParams) {
+                if (selectedChip.value != null || isFilterLoading.value || isLoading.value) return@launch
                 val next = try {
-                    YouTube.home(params = params).getOrNull()
-                } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                    withTimeout(12_000L) { YouTube.home(params = params).getOrThrow() }
+                } catch (timeout: TimeoutCancellationException) {
+                    Timber.w("Home playlist discovery timed out")
+                    null
+                } catch (cancelled: CancellationException) {
                     throw cancelled
                 } catch (error: Exception) {
                     Timber.w(error, "Home playlist discovery failed")
                     null
                 } ?: continue
+                storeChip(
+                    params,
+                    cleanYouTubeHomePage(
+                        page = next,
+                        hideExplicit = hideExplicit,
+                        hideVideo = hideVideo,
+                        filteredFeed = true,
+                        chips = base.chips,
+                    ),
+                )
                 collectGeneralPlaylists(next, hideExplicit, hideVideo)
                 if (unfilteredHomePage?.sections?.any { it.title == communityTitle } == true) break
+                delay(1_500L)
             }
         }
     }
@@ -452,7 +493,10 @@ class HomeViewModel @Inject constructor(
         chipRequestJob?.cancel()
         loadMoreJob?.cancel()
         communityDiscoveryJob?.cancel()
+        chipRequestSerial.incrementAndGet()
+        synchronized(chipCacheLock) { chipCache.clear() }
         isFilterLoading.value = false
+        filterLoadFailed.value = false
         selectedChip.value = null
         unfilteredHomePage = null
 
@@ -607,9 +651,11 @@ class HomeViewModel @Inject constructor(
 
     fun toggleChip(chip: HomePage.Chip?) {
         if (chip == null || chip == selectedChip.value) {
+            chipRequestSerial.incrementAndGet()
             chipRequestJob?.cancel()
             loadMoreJob?.cancel()
             isFilterLoading.value = false
+            filterLoadFailed.value = false
             selectedChip.value = null
             unfilteredHomePage?.let { base ->
                 homePage.value = base
@@ -618,60 +664,100 @@ class HomeViewModel @Inject constructor(
             return
         }
 
+        // User intent outranks the auxiliary community-playlist discovery.
+        communityDiscoveryJob?.cancel()
+        loadFilteredChip(chip, useCache = true)
+    }
+
+    fun retrySelectedChip() {
+        val chip = selectedChip.value ?: return
+        communityDiscoveryJob?.cancel()
+        loadFilteredChip(chip, useCache = false)
+    }
+
+    private fun loadFilteredChip(chip: HomePage.Chip, useCache: Boolean) {
         val params = chip.endpoint?.params ?: return
         val base = unfilteredHomePage ?: homePage.value
-        if (unfilteredHomePage == null) {
-            unfilteredHomePage = homePage.value
-        }
+        if (unfilteredHomePage == null) unfilteredHomePage = base
 
+        chipRequestSerial.incrementAndGet()
+        val requestId = chipRequestSerial.get()
         chipRequestJob?.cancel()
         loadMoreJob?.cancel()
         selectedChip.value = chip
-        isFilterLoading.value = true
-        base?.let { basePage ->
-            homePage.value =
-                basePage.copy(
-                    sections = emptyList(),
-                    continuation = null,
-                )
+        filterLoadFailed.value = false
+
+        val cached = if (useCache) findCachedChip(params) else null
+        if (cached != null) {
+            homePage.value = cached.copy(chips = base?.chips ?: cached.chips)
+            isFilterLoading.value = false
             refreshAllYouTubeItems()
+            return
         }
 
-        chipRequestJob =
-            viewModelScope.launch(Dispatchers.IO) {
+        // Empty content is a loading state, not a completed empty filter.
+        isFilterLoading.value = true
+        homePage.value = base?.copy(sections = emptyList(), continuation = null)
+        refreshAllYouTubeItems()
+
+        chipRequestJob = viewModelScope.launch(Dispatchers.IO) {
+            try {
+                // Coalesce fast taps so only the last selected chip hits the network.
+                delay(280L)
                 val hideExplicit = context.dataStore.get(HideExplicitKey, false)
                 val hideVideo = context.dataStore.get(HideVideoKey, false)
-
-                YouTube.home(params = params)
-                    .onSuccess { page ->
-                        if (selectedChip.value != chip) return@onSuccess
-
-                        collectGeneralPlaylists(page, hideExplicit, hideVideo)
-                        homePage.value =
-                            cleanYouTubeHomePage(
-                                page = page,
-                                hideExplicit = hideExplicit,
-                                hideVideo = hideVideo,
-                                filteredFeed = true,
-                                chips = base?.chips ?: page.chips,
-                            )
-                        isFilterLoading.value = false
-                        refreshAllYouTubeItems()
-                    }
-                    .onFailure { error ->
-                        if (selectedChip.value == chip) {
-                            isFilterLoading.value = false
-                            selectedChip.value = null
-                            base?.let { homePage.value = it }
-                            refreshAllYouTubeItems()
+                var lastError: Throwable? = null
+                repeat(2) { attempt ->
+                    val page = try {
+                        withTimeout(15_000L) {
+                            YouTube.home(params = params).getOrThrow()
                         }
-                        reportRecoverableException(
-                            "HomeViewModel",
-                            "load Home filter ${chip.title}",
-                            error,
-                        )
+                    } catch (timeout: TimeoutCancellationException) {
+                        lastError = timeout
+                        null
+                    } catch (cancelled: CancellationException) {
+                        throw cancelled
+                    } catch (error: Exception) {
+                        lastError = error
+                        null
                     }
+
+                    if (requestId != chipRequestSerial.get() || selectedChip.value != chip) return@launch
+                    if (page != null && page.sections.isNotEmpty()) {
+                        val cleaned = cleanYouTubeHomePage(
+                            page = page,
+                            hideExplicit = hideExplicit,
+                            hideVideo = hideVideo,
+                            filteredFeed = true,
+                            chips = base?.chips ?: page.chips,
+                        )
+                        storeChip(params, cleaned)
+                        collectGeneralPlaylists(page, hideExplicit, hideVideo)
+                        homePage.value = cleaned
+                        filterLoadFailed.value = false
+                        refreshAllYouTubeItems()
+                        return@launch
+                    }
+                    if (attempt == 0) delay(650L)
+                }
+
+                if (requestId == chipRequestSerial.get() && selectedChip.value == chip) {
+                    filterLoadFailed.value = true
+                    lastError?.let { reportRecoverableException("HomeViewModel", "load Home filter", it) }
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                if (requestId == chipRequestSerial.get() && selectedChip.value == chip) {
+                    filterLoadFailed.value = true
+                    reportRecoverableException("HomeViewModel", "process Home filter", error)
+                }
+            } finally {
+                if (requestId == chipRequestSerial.get() && selectedChip.value == chip) {
+                    isFilterLoading.value = false
+                }
             }
+        }
     }
 
     fun refresh() {

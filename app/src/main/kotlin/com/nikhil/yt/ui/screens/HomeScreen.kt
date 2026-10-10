@@ -18,6 +18,7 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -27,6 +28,8 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Text
 import androidx.compose.material3.pulltorefresh.pullToRefresh
 import androidx.compose.material3.pulltorefresh.PullToRefreshDefaults.Indicator
 import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
@@ -110,6 +113,7 @@ fun HomeScreen(
 
     val isLoading: Boolean by viewModel.isLoading.collectAsState()
     val isFilterLoading by viewModel.isFilterLoading.collectAsState()
+    val filterLoadFailed by viewModel.filterLoadFailed.collectAsState()
     val isMoodAndGenresLoading = isLoading && explorePage?.moodAndGenres == null
     val isRefreshing by viewModel.isRefreshing.collectAsState()
     val pullRefreshState = rememberPullToRefreshState()
@@ -390,6 +394,33 @@ fun HomeScreen(
                                 haptic = haptic,
                                 scope = scope,
                             )
+                        }
+                    }
+                }
+            }
+
+            if (selectedChip != null &&
+                !isFilterLoading &&
+                (filterLoadFailed || homePage?.sections.isNullOrEmpty())
+            ) {
+                item(key = "home:filter-feedback") {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 24.dp, vertical = 60.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                    ) {
+                        Text(
+                            text = stringResource(
+                                if (filterLoadFailed) R.string.error_network_problem_description
+                                else R.string.no_results_found
+                            ),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        Spacer(modifier = Modifier.height(12.dp))
+                        OutlinedButton(onClick = viewModel::retrySelectedChip) {
+                            Text(stringResource(R.string.retry))
                         }
                     }
                 }
