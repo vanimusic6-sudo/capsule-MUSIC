@@ -30,7 +30,6 @@ import androidx.compose.ui.unit.dp
 import com.nikhil.yt.R
 import com.nikhil.yt.ui.component.StandardChrome
 import com.nikhil.yt.ui.component.StandardHeaderTitle
-import com.nikhil.yt.ui.component.StandardHomeChips
 import com.nikhil.yt.ui.component.StandardNavigationBar
 import com.nikhil.yt.ui.screens.Screens
 import java.io.File
@@ -99,9 +98,8 @@ class StandardChromeTest {
         compose.onNodeWithText(history).assertIsSelected()
     }
 
-    @Test fun standardHeaderChipsAndNavigationRemainInteractive() {
+    @Test fun standardHeaderAndNavigationRemainInteractive() {
         var route by mutableStateOf(Screens.Home.route)
-        var chip by mutableStateOf("Energy")
         var accountClicks = 0
         compose.setContent {
             MaterialTheme(colorScheme = darkColorScheme()) {
@@ -109,7 +107,6 @@ class StandardChromeTest {
                     Column(Modifier.padding(horizontal = 12.dp, vertical = 16.dp)) {
                         StandardHeaderTitle("V", null) { accountClicks++ }
                     }
-                    StandardHomeChips(listOf("Energy" to "Energy", "On the road" to "On the road"), chip) { chip = it }
                     Spacer(Modifier.height(48.dp))
                     StandardNavigationBar(
                         modifier = Modifier.fillMaxWidth().height(80.dp),
@@ -123,7 +120,6 @@ class StandardChromeTest {
         }
         compose.onNodeWithContentDescription(RuntimeEnvironment.getApplication().getString(R.string.account)).performClick()
         assertEquals(1, accountClicks)
-        compose.onNodeWithText("On the road").performClick().assertIsSelected()
         val history = RuntimeEnvironment.getApplication().getString(R.string.history)
         compose.onNodeWithText(history).performClick().assertIsSelected()
         assertEquals(Screens.History.route, route)

@@ -1598,6 +1598,16 @@ class MainActivity : ComponentActivity() {
                                             },
                                             modifier =
                                                 Modifier
+                                                    // The search overlay is composed in Scaffold.topBar,
+                                                    // outside the NavHost captured for mini-player glass.
+                                                    // Capture its visible content while expanded.
+                                                    .then(
+                                                        if (miniPlayerLiquidGlassActive && active) {
+                                                            Modifier.layerBackdrop(miniPlayerGlassBackdrop)
+                                                        } else {
+                                                            Modifier
+                                                        },
+                                                    )
                                                     .focusRequester(searchBarFocusRequester)
                                                     .let { with(this@BoxWithConstraints) { it.align(Alignment.TopCenter) } },
                                             focusRequester = searchBarFocusRequester,
@@ -1785,7 +1795,10 @@ class MainActivity : ComponentActivity() {
                                         Modifier
                                             .fillMaxSize()
                                             .then(
-                                                if (miniPlayerLiquidGlassActive) {
+                                                // Only one source is active: when Search opens,
+                                                // its expanded overlay replaces the NavHost as the
+                                                // glass sampling source (not the previous screen).
+                                                if (miniPlayerLiquidGlassActive && !active) {
                                                     Modifier
                                                         .layerBackdrop(miniPlayerGlassBackdrop)
                                                         .background(
