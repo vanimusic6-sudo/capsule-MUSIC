@@ -126,6 +126,7 @@ object YouTubeVideoResolver {
         artists: List<String>,
         durationSeconds: Int?,
         quality: CapsuleVideoQuality,
+        originalVideo: Boolean = false,
     ): Result<ResolvedVideo> {
         ensureInitialized()
         val canonicalId = sourceMediaId.trim()
@@ -133,7 +134,7 @@ object YouTubeVideoResolver {
             return Result.failure(IllegalArgumentException("Missing YouTube Music track id"))
         }
 
-        val requestKey = "$canonicalId:${quality.name}"
+        val requestKey = "$canonicalId:${quality.name}:${if (originalVideo) "original" else "matched"}"
         var isOwner = false
         val sharedResult =
             songResolveMutex.withLock {
@@ -153,24 +154,31 @@ object YouTubeVideoResolver {
             val result =
                 try {
                     withTimeoutOrNull(CapsuleVideoIpc.REQUEST_TIMEOUT_MS) {
-                        val link =
-                            YouTubeMusicVideoLinkResolver
-                                .resolve(
-                                    sourceMediaId = canonicalId,
-                                    title = title,
-                                    artists = artists,
-                                    durationSeconds = durationSeconds,
-                                )
-                                .getOrThrow()
+                        // An explicitly selected video/podcast already has the
+                        // canonical YouTube video id. Avoid searching for another
+                        // clip (two requests and possible wrong match).
+                        val videoId =
+                            if (originalVideo) {
+                                canonicalId
+                            } else {
+                                YouTubeMusicVideoLinkResolver
+                                    .resolve(
+                                        sourceMediaId = canonicalId,
+                                        title = title,
+                                        artists = artists,
+                                        durationSeconds = durationSeconds,
+                                    )
+                                    .getOrThrow()
+                                    .videoId
+                            }
 
                         val resolved =
                             resolveExact(
                                 sourceMediaId = canonicalId,
-                                videoId = link.videoId,
+                                videoId = videoId,
                                 quality = quality,
                                 muxedOnly = false,
                             )
-                        cache.put(link.videoId, cacheKey(link.videoId, quality, false), resolved)
                         CapsuleVideoRequestGuard.noteSuccess()
                         Result.success(resolved)
                     } ?: Result.failure(VideoBackendException(CapsuleVideoFailure.NETWORK, "VIDEO extraction timed out"))
