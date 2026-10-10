@@ -135,6 +135,11 @@ internal object YouTubeMusicVideoMatcher {
             listOf(
                 " live ", " concert ", " performance ", " session ",
                 " acoustic ", " cover ", " karaoke ", " lyric ", " lyrics ",
+                " lyricvideo ", " lyricsvideo ", " lyric video ", " lyrics video ",
+                " sing along ", " on screen lyrics ", " text only ", " text video ",
+                " words on screen ", " subtitles ", " subtitled ",
+                " текст песни ", " слова песни ", " видео с текстом ",
+                " субтитры ", " караоке ",
                 " visualizer ", " animated video ", " dance video ",
                 " dance practice ", " slowed ", " reverb ", " sped up ",
                 " nightcore ", " remix ", " edit ", " fanmade ", " fan made ",
