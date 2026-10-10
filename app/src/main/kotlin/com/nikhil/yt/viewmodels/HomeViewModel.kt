@@ -463,8 +463,9 @@ class HomeViewModel @Inject constructor(
                 }
             }
 
-            allLocalItems.value = (quickPicks.value.orEmpty() + forgottenFavorites.value.orEmpty() + keepListening.value.orEmpty())
-                .filter { it is Song || it is Album }
+            allLocalItems.value =
+                (quickPicks.value.orEmpty() + forgottenFavorites.value.orEmpty() + keepListening.value.orEmpty())
+                    .distinctBy { it.id }
 
             refreshAllYouTubeItems()
                     
