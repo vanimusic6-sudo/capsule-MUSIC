@@ -306,7 +306,15 @@ data class SearchSummaryPage(
                         it.musicResponsiveListItemFlexColumnRenderer.text?.runs.orEmpty()
                     }
                     SongItem(
-                        id = renderer.playlistItemData?.videoId ?: return null,
+                        // Podcast/video rows can carry a valid watch endpoint
+                        // without playlistItemData; never confuse a playlist's
+                        // setVideoId token with the playable YouTube videoId.
+                        id = renderer.playlistItemData?.videoId
+                            ?: renderer.navigationEndpoint?.anyWatchEndpoint?.videoId
+                            ?: renderer.overlay?.musicItemThumbnailOverlayRenderer
+                                ?.content?.musicPlayButtonRenderer?.playNavigationEndpoint
+                                ?.anyWatchEndpoint?.videoId
+                            ?: return null,
                         title =
                             renderer.flexColumns
                                 .firstOrNull()
