@@ -113,6 +113,9 @@ data class AlbumPage(
                     ?.musicResponsiveListItemFlexColumnRenderer?.text?.runs?.firstOrNull()
                     ?.text?.parseTime() ?: return null,
                 thumbnail = renderer.thumbnail?.musicThumbnailRenderer?.getThumbnailUrl() ?: album?.thumbnail!!,
+                endpoint = renderer.navigationEndpoint?.anyWatchEndpoint
+                    ?: renderer.overlay?.musicItemThumbnailOverlayRenderer?.content
+                        ?.musicPlayButtonRenderer?.playNavigationEndpoint?.anyWatchEndpoint,
                 explicit = renderer.badges?.find {
                     it.musicInlineBadgeRenderer?.icon?.iconType == "MUSIC_EXPLICIT_BADGE"
                 } != null
