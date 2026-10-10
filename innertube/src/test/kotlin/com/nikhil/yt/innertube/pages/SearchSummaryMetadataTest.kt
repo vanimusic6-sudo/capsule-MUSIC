@@ -13,6 +13,7 @@ import com.nikhil.yt.innertube.models.SongItem
 import com.nikhil.yt.innertube.models.Thumbnail
 import com.nikhil.yt.innertube.models.ThumbnailRenderer
 import com.nikhil.yt.innertube.models.Thumbnails
+import com.nikhil.yt.innertube.models.WatchEndpoint
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -107,6 +108,16 @@ class SearchSummaryMetadataTest {
         ) as SongItem
 
         assertEquals(listOf(featured), top.artists)
+    }
+
+    @Test fun `video podcast watch endpoint survives without playlist metadata`() {
+        val renderer = songRenderer("unused", "Podcast episode", emptyList()).copy(
+            playlistItemData = null,
+            navigationEndpoint = NavigationEndpoint(watchEndpoint = WatchEndpoint(videoId = "podcast-video-id")),
+        )
+        val item = SearchSummaryPage.fromMusicResponsiveListItemRenderer(renderer) as SongItem
+        assertEquals("podcast-video-id", item.id)
+        assertEquals("podcast-video-id", item.endpoint?.videoId)
     }
 
     private fun artistCard() = MusicCardShelfRenderer(
