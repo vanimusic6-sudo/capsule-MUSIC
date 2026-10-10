@@ -412,6 +412,12 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onStop() {
+        // Stop only the VIDEO decoder before its surface is detached.
+        // Regular audio playback remains available in the background.
+        // Configuration changes (e.g. rotation) are not a background exit.
+        if (!isChangingConfigurations) {
+            playerConnection?.service?.suspendCapsuleVideoForAppBackground()
+        }
         safeUnbindMusicService()
         super.onStop()
     }

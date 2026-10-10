@@ -986,8 +986,6 @@ class MusicService :
     val videoPlaybackState = MutableStateFlow(CapsuleVideoPlaybackState())
     private var videoOriginalMediaItem: MediaItem? = null
     private var videoOriginalMediaId: String? = null
-    // Auto-video is attempted at most once per selected video item.
-    private var lastAutoVideoAttemptedMediaId: String? = null
     private val videoResolveCoordinator by lazy(LazyThreadSafetyMode.NONE) {
         CapsuleVideoResolveCoordinator(scopeProvider = { scope })
     }
@@ -3358,9 +3356,6 @@ class MusicService :
                 ?.takeIf { it.isNotBlank() }
 
         audioCdnSkipBurstPolicy.onTransition(transitionedMediaId)
-        if (lastAutoVideoAttemptedMediaId != transitionedMediaId) {
-            lastAutoVideoAttemptedMediaId = null
-        }
 
         val videoState = videoPlaybackState.value
         val previousCanonicalId =
@@ -3570,26 +3565,8 @@ class MusicService :
     playbackPersistence.scheduleQueueSave()
     discordPresenceOwner.ensure()
 
-    // Only explicitly marked original videos and video podcasts auto-start
-    // VIDEO. Normal AUDIO, manual VIDEO, and queue replacements stay as before.
-    if (
-        transitionedMediaId != null &&
-        mediaItem?.metadata?.isOriginalVideo == true &&
-        lastAutoVideoAttemptedMediaId != transitionedMediaId &&
-        !isCurrentCapsuleVideoItem()
-    ) {
-        lastAutoVideoAttemptedMediaId = transitionedMediaId
-        scope.launch(SilentHandler) {
-            if (
-                player.currentMediaItem?.mediaId == transitionedMediaId &&
-                player.currentMediaItem?.metadata?.isOriginalVideo == true &&
-                !isCurrentCapsuleVideoItem() &&
-                videoPlaybackState.value.preferredMode == CapsulePlaybackMode.AUDIO
-            ) {
-                setCapsulePlaybackMode(CapsulePlaybackMode.VIDEO)
-            }
-        }
-    }
+    // A media item's "original video" flag must not trigger VIDEO mode.
+    // VIDEO starts only from an explicit user action on the AUDIO/VIDEO toggle.
 }
 
     override fun onPlaybackStateChanged(@Player.State playbackState: Int) {
@@ -3922,10 +3899,23 @@ class MusicService :
         }
 
         if (isCurrentCapsuleVideoItem()) {
-            Timber.tag("CapsuleVideo").w(error, "Video mode failed; restoring original audio item")
-            restoreAudioFromVideoFailure(
-                error.message ?: error.cause?.message ?: "Video stream unavailable",
-            )
+            if (error.errorCode == PlaybackException.ERROR_CODE_DECODING_FAILED) {
+                // A local MediaCodec failure (e.g. c2.android.opus.decoder after
+                // the video surface detaches) does not mean the CDN bytes are bad.
+                // Preserve the VIDEO cache and recover the normal AUDIO item.
+                Timber.tag("CapsuleVideo").w(error, "VIDEO decoder failed; returning to audio")
+                restoreOriginalAudioItem(
+                    failureMessage = error.message ?: "Video decoder unavailable",
+                    preferredModeAfter = CapsulePlaybackMode.AUDIO,
+                    failurePhase = CapsuleVideoPhase.REQUEST_ERROR,
+                    invalidateFailedVideo = false,
+                )
+            } else {
+                Timber.tag("CapsuleVideo").w(error, "Video mode failed; restoring original audio item")
+                restoreAudioFromVideoFailure(
+                    error.message ?: error.cause?.message ?: "Video stream unavailable",
+                )
+            }
             return
         }
 
@@ -4737,6 +4727,16 @@ class MusicService :
                 enterCapsuleVideoMode()
             }
         }
+    }
+
+    /**
+     * The UI's PlayerView is about to detach when the activity stops.
+     * Switch the temporary VIDEO item back to its original AUDIO item before
+     * Android tears down the surface / decoder. The queue and position stay.
+     * Returning to the app never implicitly re-enters VIDEO.
+     */
+    fun suspendCapsuleVideoForAppBackground() {
+        suspendCapsuleVideoForScreenOff()
     }
 
     private fun enterCapsuleVideoMode() {
@@ -5845,6 +5845,8 @@ class MusicService :
     }
 
     override fun onTaskRemoved(rootIntent: Intent?) {
+        // Also cover task removal when the Activity's onStop did not run first.
+        suspendCapsuleVideoForAppBackground()
         super.onTaskRemoved(rootIntent)
         discordPresenceOwner.stop()
 

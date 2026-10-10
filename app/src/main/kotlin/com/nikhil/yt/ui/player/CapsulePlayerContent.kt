@@ -612,8 +612,11 @@ fun CapsulePlayerContent(
                         AndroidView(
                             factory = { viewContext ->
                                 PlayerView(viewContext).apply {
-                                    player = playerConnection.player
+                                    // Disable Media3's built-in controls BEFORE binding
+                                    // the player: binding can schedule their initial show.
                                     useController = false
+                                    player = playerConnection.player
+                                    hideController()
 
                                     /*
                                      * Capsule already shows its own VIDEO loading
@@ -638,9 +641,12 @@ fun CapsulePlayerContent(
                                 }
                             },
                             update = { playerView ->
+                                // Keep the embedded renderer control-free across recompositions.
+                                playerView.useController = false
                                 if (playerView.player !== playerConnection.player) {
                                     playerView.player = playerConnection.player
                                 }
+                                playerView.hideController()
                             },
                             modifier = Modifier.fillMaxSize(),
                         )
