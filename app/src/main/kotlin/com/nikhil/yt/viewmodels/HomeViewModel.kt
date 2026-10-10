@@ -116,14 +116,25 @@ class HomeViewModel @Inject constructor(
             section.items.isNotEmpty() &&
                 section.items.all { it is PlaylistItem }
 
+        // A community playlist stays a community playlist even if the title says "trending hits".
+        if (
+            playlistOnly &&
+                listOf(
+                    "community", "trending", "user playlist", "listener playlist",
+                    "made by listeners", "made by fans", "плейлисты пользователей",
+                    "пользовательские плейлисты", "от других пользователей",
+                    "от слушателей", "by other users", "by listeners",
+                ).any(title::contains)
+        ) return HomeSectionKind.COMMUNITY_PLAYLISTS
+
         // These are general recommendation shelves, not a specific mood filter.
         // YouTube returns them under some chips too; display them on the main Home only.
         val isPersonalized =
-            listOf(
-                "for you",
+            (title == "for you" || title.endsWith(" for you") || title.startsWith("for you ")) ||
+                listOf(
                 "made for you",
-                "recommended for",
-                "recommendations for",
+                "recommended for you",
+                "recommendations for you",
                 "you might like",
                 "you may like",
                 "based on",
@@ -131,7 +142,7 @@ class HomeViewModel @Inject constructor(
                 "because you like",
                 "similar to",
                 "your mixes",
-                "mixes for",
+                "mixes for you",
                 "playlists for you",
                 "just for you",
                 "для вас",
@@ -214,6 +225,12 @@ class HomeViewModel @Inject constructor(
                     "плейлисты пользователей",
                     "пользовательские плейлисты",
                     "от слушателей",
+                    "от других пользователей",
+                    "от пользователей",
+                    "by other users",
+                    "by listeners",
+                    "other listeners",
+                    "playlists from",
                     "слушатели",
                 ).any(title::contains)
 
