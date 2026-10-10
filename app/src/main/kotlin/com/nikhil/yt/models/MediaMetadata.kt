@@ -38,6 +38,8 @@ data class MediaMetadata(
      * re-resolve fresh signed CDN URLs after process death.
      */
     val sourceUrl: String? = null,
+    /** Explicit playback origin; normal library songs remain AUDIO. */
+    val isOriginalVideo: Boolean = false,
 ) : Serializable {
     companion object {
         private const val serialVersionUID = 1L
@@ -190,5 +192,6 @@ fun SongItem.toMediaMetadata() =
             )
         },
         explicit = explicit,
-        setVideoId = setVideoId
+        setVideoId = setVideoId,
+        isOriginalVideo = isOriginalVideo,
     )
