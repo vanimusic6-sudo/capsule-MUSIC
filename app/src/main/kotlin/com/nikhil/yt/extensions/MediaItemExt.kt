@@ -13,8 +13,6 @@ import androidx.core.net.toUri
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata.MEDIA_TYPE_MUSIC
 import com.nikhil.yt.innertube.models.SongItem
-import com.nikhil.yt.innertube.models.WatchEndpoint.WatchEndpointMusicSupportedConfigs.WatchEndpointMusicConfig.Companion.MUSIC_VIDEO_TYPE_OMV
-import com.nikhil.yt.innertube.models.WatchEndpoint.WatchEndpointMusicSupportedConfigs.WatchEndpointMusicConfig.Companion.MUSIC_VIDEO_TYPE_UGC
 import com.nikhil.yt.db.entities.Song
 import com.nikhil.yt.models.MediaMetadata
 import com.nikhil.yt.models.artistCreditLine
@@ -68,7 +66,7 @@ fun SongItem.toMediaItem(): MediaItem {
                 .setArtworkUri(thumbnail.toUri())
                 .setAlbumTitle(album?.name)
                 .setMediaType(MEDIA_TYPE_MUSIC)
-                .setExtras(Bundle().apply { putBoolean(ExtraIsMusicVideo, isMusicVideo()) })
+                .setExtras(Bundle().apply { putBoolean(ExtraIsMusicVideo, isOriginalVideo) })
                 .build(),
         ).build()
 }
@@ -90,12 +88,8 @@ fun MediaMetadata.toMediaItem(): MediaItem {
                 .setArtworkUri(thumbnailUrl?.toUri())
                 .setAlbumTitle(album?.title)
                 .setMediaType(MEDIA_TYPE_MUSIC)
-                .setExtras(Bundle().apply { putBoolean(ExtraIsMusicVideo, false) })
+                .setExtras(Bundle().apply { putBoolean(ExtraIsMusicVideo, metadata.isOriginalVideo) })
                 .build(),
         ).build()
 }
 
-private fun SongItem.isMusicVideo(): Boolean {
-    val musicVideoType = endpoint?.watchEndpointMusicSupportedConfigs?.watchEndpointMusicConfig?.musicVideoType
-    return musicVideoType == MUSIC_VIDEO_TYPE_OMV || musicVideoType == MUSIC_VIDEO_TYPE_UGC
-}
