@@ -41,7 +41,7 @@ object SearchPage {
                 ?.text
                 ?.runs
                 ?.splitBySeparator()
-                ?: return null
+                .orEmpty()
         return when {
             renderer.isSong -> {
                 SongItem(
