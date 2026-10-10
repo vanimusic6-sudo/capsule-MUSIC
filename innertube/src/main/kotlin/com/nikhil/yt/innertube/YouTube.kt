@@ -252,7 +252,7 @@ object YouTube {
             items = response.contents?.tabbedSearchResultsRenderer?.tabs?.firstOrNull()
                 ?.tabRenderer?.content?.sectionListRenderer?.contents?.lastOrNull()
                 ?.musicShelfRenderer?.contents?.getItems()?.mapNotNull {
-                    SearchPage.toYTItem(it)
+                    SearchPage.toYTItem(it, selectedFromVideoResults = filter == SearchFilter.FILTER_VIDEO)
                 }.orEmpty(),
             continuation = response.contents?.tabbedSearchResultsRenderer?.tabs?.firstOrNull()
                 ?.tabRenderer?.content?.sectionListRenderer?.contents?.lastOrNull()
@@ -260,11 +260,14 @@ object YouTube {
         )
     }
 
-    suspend fun searchContinuation(continuation: String): Result<SearchResult> = runCatchingCancellable {
+    suspend fun searchContinuation(
+        continuation: String,
+        selectedFromVideoResults: Boolean = false,
+    ): Result<SearchResult> = runCatchingCancellable {
         val response = innerTube.search(WEB_REMIX, continuation = continuation).body<SearchResponse>()
         val items = response.continuationContents?.musicShelfContinuation?.contents
             ?.mapNotNull {
-                SearchPage.toYTItem(it.musicResponsiveListItemRenderer)
+                SearchPage.toYTItem(it.musicResponsiveListItemRenderer, selectedFromVideoResults)
             } ?: emptyList()
         SearchResult(
             items = items,
