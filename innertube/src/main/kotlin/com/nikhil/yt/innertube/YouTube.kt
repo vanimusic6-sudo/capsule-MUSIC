@@ -603,7 +603,13 @@ object YouTube {
             return@runCatchingCancellable homeContinuation(continuation).getOrThrow()
         }
 
-        val response = innerTube.browse(WEB_REMIX, browseId = "FEmusic_home", params = params).body<BrowseResponse>()
+        val response = innerTube.browse(
+            WEB_REMIX,
+            browseId = "FEmusic_home",
+            params = params,
+            // Match MetroList for chips; retain signed-in Home personalization.
+            setLogin = params == null,
+        ).body<BrowseResponse>()
         val continuation = response.contents?.singleColumnBrowseResultsRenderer?.tabs?.firstOrNull()
             ?.tabRenderer?.content?.sectionListRenderer?.continuations?.getContinuation()
         val sectionListRender = response.contents?.singleColumnBrowseResultsRenderer?.tabs?.firstOrNull()

@@ -644,7 +644,7 @@ class HomeViewModel @Inject constructor(
 
     private fun loadFilteredChip(chip: HomePage.Chip, useCache: Boolean) {
         // Same endpoint/params flow as MetroList's HomeViewModel.toggleChip.
-        val params = chip.endpoint?.params ?: return
+        val params = chip.endpoint?.params
         val base = unfilteredHomePage ?: homePage.value
         if (unfilteredHomePage == null) unfilteredHomePage = base
 
@@ -655,7 +655,7 @@ class HomeViewModel @Inject constructor(
         selectedChip.value = chip
         filterLoadFailed.value = false
 
-        val cached = if (useCache) findCachedChip(params) else null
+        val cached = if (useCache) params?.let(::findCachedChip) else null
         if (cached != null) {
             homePage.value = cached.copy(chips = base?.chips ?: cached.chips)
             isFilterLoading.value = false
@@ -684,7 +684,7 @@ class HomeViewModel @Inject constructor(
                     filterLoadFailed.value = true
                     return@launch
                 }
-                storeChip(params, cleaned)
+                params?.let { storeChip(it, cleaned) }
                 homePage.value = cleaned
                 filterLoadFailed.value = false
                 refreshAllYouTubeItems()
