@@ -111,6 +111,27 @@ data class SearchSummary(
     val items: List<YTItem>,
 )
 
+/**
+ * Only YouTube Music's explicitly labelled video/podcast shelves receive the
+ * direct-video marker. Top results and ordinary Songs remain AUDIO by default.
+ */
+internal fun markExplicitVideoShelves(summaries: List<SearchSummary>): List<SearchSummary> =
+    summaries.map { summary ->
+        val title = summary.title.trim().lowercase()
+        val isVideoShelf = listOf(
+            "videos", "music videos", "video", "клипы", "видео",
+            "podcasts", "podcast episodes", "episodes", "подкасты", "эпизоды",
+        ).any(title::startsWith)
+        if (isVideoShelf) {
+            summary.copy(items = summary.items.map { item ->
+                if (item is SongItem) item.copy(selectedFromVideoResults = true) else item
+            })
+        } else {
+            summary
+        }
+    }
+
+
 data class SearchSummaryPage(
     val summaries: List<SearchSummary>,
 ) {
