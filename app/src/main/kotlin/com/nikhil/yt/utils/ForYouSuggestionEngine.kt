@@ -37,9 +37,12 @@ class ForYouSuggestionEngine @Inject constructor(
 
     companion object {
         const val MAX_SUGGESTIONS = 24
-        private const val MAX_SEED_SONGS = 5
-        private const val MIN_SEED_SONGS = 2
-        private const val MIN_EQUIVALENT_PLAYS = 1.25
+        private const val MAX_SEED_SONGS = 6
+        private const val MIN_SEED_SONGS = 4
+        private const val MIN_UNIQUE_LISTENED_SONGS = 8
+        private const val MIN_SEED_ARTISTS = 3
+        private const val MIN_WINDOW_PLAY_TIME_MS = 20L * 60L * 1000L
+        private const val MIN_EQUIVALENT_PLAYS = 1.5
         private val MORNING = 6..11
         private val AFTERNOON = 12..17
         private val EVENING = 18..21
@@ -118,6 +121,12 @@ class ForYouSuggestionEngine @Inject constructor(
         val skipMap = database.getAllSkips().first().associateBy { it.songId }
         val recentIds = database.events().first().take(24).map { it.song.id }.toSet()
 
+        // Two recent songs cannot represent a person's taste. Wait for meaningful,
+        // varied listening history instead of pretending to have recommendations.
+        if (allSongs.distinctBy { it.id }.size < MIN_UNIQUE_LISTENED_SONGS) return emptyList()
+        val listenedMs = statsById.values.sumOf { (it.timeListened ?: 0L).coerceAtLeast(0L) }
+        if (listenedMs < MIN_WINDOW_PLAY_TIME_MS) return emptyList()
+
         val seedSongs =
             allSongs
                 .mapNotNull { song ->
@@ -142,6 +151,12 @@ class ForYouSuggestionEngine @Inject constructor(
                 .take(MAX_SEED_SONGS)
 
         if (seedSongs.size < MIN_SEED_SONGS) return emptyList()
+        val seedArtistCount =
+            seedSongs.flatMap { song -> song.artists.map { it.name.trim().lowercase() } }
+                .filter { it.isNotBlank() }
+                .distinct()
+                .size
+        if (seedArtistCount < MIN_SEED_ARTISTS) return emptyList()
 
         val seedIds = seedSongs.mapTo(mutableSetOf()) { it.id }
         val relatedBuckets = mutableListOf<List<SongItem>>()
@@ -170,7 +185,7 @@ class ForYouSuggestionEngine @Inject constructor(
             }
         }
 
-        if (relatedBuckets.size < MIN_SEED_SONGS) return emptyList()
+        if (relatedBuckets.size < MIN_SEED_ARTISTS) return emptyList()
 
         // Interleave sources so one favourite track cannot dominate the whole shelf.
         val suggestions = mutableListOf<SongItem>()

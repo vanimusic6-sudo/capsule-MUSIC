@@ -17,6 +17,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -141,13 +142,21 @@ fun HomeScreen(
     }
 
     LaunchedEffect(homePage?.continuation, selectedChip) {
-        snapshotFlow { lazylistState.layoutInfo.visibleItemsInfo.lastOrNull()?.index }
-            .collect { lastVisibleIndex ->
-                val len = lazylistState.layoutInfo.totalItemsCount
-                if (lastVisibleIndex != null && lastVisibleIndex >= len - 3) {
-                    viewModel.loadMoreYouTubeItems(homePage?.continuation)
-                }
+        // Don't paginate merely because a horizontally-scrolling carousel is near the bottom.
+        snapshotFlow {
+            Triple(
+                lazylistState.isScrollInProgress,
+                lazylistState.layoutInfo.visibleItemsInfo.lastOrNull()?.index,
+                lazylistState.layoutInfo.totalItemsCount,
+            )
+        }.collect { (verticallyScrolling, lastVisibleIndex, totalItems) ->
+            if (verticallyScrolling &&
+                lastVisibleIndex != null &&
+                lastVisibleIndex >= totalItems - 3
+            ) {
+                viewModel.loadMoreYouTubeItems(homePage?.continuation)
             }
+        }
     }
 
     if (selectedChip != null) {
@@ -224,7 +233,7 @@ fun HomeScreen(
                 contentPadding = LocalPlayerAwareWindowInsets.current.asPaddingValues()
             ) {
                 if (showHomeCategoryChips && homePage?.chips?.isNotEmpty() == true) {
-                    item {
+                    item(key = "home:chips") {
                         if (capsuleDock) {
                             ChipsRow(
                                 chips = homePage?.chips.orEmpty().map { it to it.title },
@@ -247,12 +256,12 @@ fun HomeScreen(
                 item {
                     NavigationTitle(
                         title = stringResource(R.string.quick_picks),
-                        modifier = Modifier.animateItem()
+                        modifier = Modifier
                     )
                 }
             */
 
-                item {
+                item(key = "home:quick-hero") {
                     QuickPicksSection(
                         quickPicks = picks,
                         mediaMetadata = mediaMetadata,
@@ -267,7 +276,7 @@ fun HomeScreen(
 
 
             quickPicks?.takeIf { it.isNotEmpty() }?.let { picks ->
-                item {
+                item(key = "home:quick-list") {
                     QuickPicksListSection(
                         quickPicks = picks,
                         mediaMetadata = mediaMetadata,
@@ -276,29 +285,25 @@ fun HomeScreen(
                         playerConnection = playerConnection,
                         menuState = menuState,
                         haptic = haptic,
-                        modifier = Modifier.animateItem()
+                        modifier = Modifier
                     )
                 }
             }
 
-            keepListening?.takeIf { it.isNotEmpty() }?.let { items ->
-                item {
-                    NavigationTitle(
-                        title = stringResource(R.string.keep_listening),
-                        modifier = Modifier.animateItem()
-                    )
-                }
-
-                item {
-                    KeepListeningSection(
-                        keepListening = items,
-                        mediaMetadata = mediaMetadata,
-                        isPlaying = isPlaying,
-                        navController = navController,
-                        playerConnection = playerConnection,
-                        menuState = menuState,
-                        haptic = haptic
-                    )
+            keepListening?.takeIf { it.isNotEmpty() }?.let { songs ->
+                item(key = "home:keep-listening") {
+                    Column {
+                        NavigationTitle(title = stringResource(R.string.keep_listening))
+                        KeepListeningSection(
+                            keepListening = songs,
+                            mediaMetadata = mediaMetadata,
+                            isPlaying = isPlaying,
+                            navController = navController,
+                            playerConnection = playerConnection,
+                            menuState = menuState,
+                            haptic = haptic,
+                        )
+                    }
                 }
             }
 
@@ -316,31 +321,27 @@ fun HomeScreen(
             )
 
             forgottenFavorites?.takeIf { it.isNotEmpty() }?.let { favorites ->
-                item {
-                    NavigationTitle(
-                        title = stringResource(R.string.forgotten_favorites),
-                        modifier = Modifier.animateItem()
-                    )
-                }
-
-                item {
-                    ForgottenFavoritesSection(
-                        forgottenFavorites = favorites,
-                        mediaMetadata = mediaMetadata,
-                        isPlaying = isPlaying,
-                        horizontalLazyGridItemWidth = horizontalLazyGridItemWidth,
-                        lazyGridState = forgottenFavoritesLazyGridState,
-                        snapLayoutInfoProvider = forgottenFavoritesSnapLayoutInfoProvider,
-                        navController = navController,
-                        playerConnection = playerConnection,
-                        menuState = menuState,
-                        haptic = haptic
-                    )
+                item(key = "home:forgotten") {
+                    Column {
+                        NavigationTitle(title = stringResource(R.string.forgotten_favorites))
+                        ForgottenFavoritesSection(
+                            forgottenFavorites = favorites,
+                            mediaMetadata = mediaMetadata,
+                            isPlaying = isPlaying,
+                            horizontalLazyGridItemWidth = horizontalLazyGridItemWidth,
+                            lazyGridState = forgottenFavoritesLazyGridState,
+                            snapLayoutInfoProvider = forgottenFavoritesSnapLayoutInfoProvider,
+                            navController = navController,
+                            playerConnection = playerConnection,
+                            menuState = menuState,
+                            haptic = haptic,
+                        )
+                    }
                 }
             }
 
             forYouSuggestions?.takeIf { it.isNotEmpty() }?.let { suggestions ->
-                item {
+                item(key = "home:taste") {
                     TasteRecommendationsSection(
                         suggestions = suggestions,
                         mediaMetadata = mediaMetadata,
@@ -349,19 +350,20 @@ fun HomeScreen(
                         playerConnection = playerConnection,
                         menuState = menuState,
                         haptic = haptic,
-                        modifier = Modifier.animateItem()
+                        modifier = Modifier
                     )
                 }
             }
             }
 
-            homePage?.sections?.forEach { section ->
+            homePage?.sections?.forEachIndexed { index, section ->
+                val sectionKey = "home:yt:$index:${section.endpoint?.browseId.orEmpty()}:${section.title}"
                 val isPlaylistCarousel =
                     section.items.isNotEmpty() &&
                         section.items.all { it is com.nikhil.yt.innertube.models.PlaylistItem }
 
-                if (isPlaylistCarousel) {
-                    item {
+                item(key = sectionKey) {
+                    if (isPlaylistCarousel) {
                         CommunityPlaylistsSection(
                             section = section,
                             mediaMetadata = mediaMetadata,
@@ -371,29 +373,24 @@ fun HomeScreen(
                             menuState = menuState,
                             haptic = haptic,
                             scope = scope,
-                            modifier = Modifier.animateItem()
                         )
-                    }
-                } else {
-                    item {
-                        HomePageSectionTitle(
-                            section = section,
-                            navController = navController,
-                            modifier = Modifier.animateItem()
-                        )
-                    }
-
-                    item {
-                        HomePageSectionContent(
-                            section = section,
-                            mediaMetadata = mediaMetadata,
-                            isPlaying = isPlaying,
-                            navController = navController,
-                            playerConnection = playerConnection,
-                            menuState = menuState,
-                            haptic = haptic,
-                            scope = scope
-                        )
+                    } else {
+                        Column {
+                            HomePageSectionTitle(
+                                section = section,
+                                navController = navController,
+                            )
+                            HomePageSectionContent(
+                                section = section,
+                                mediaMetadata = mediaMetadata,
+                                isPlaying = isPlaying,
+                                navController = navController,
+                                playerConnection = playerConnection,
+                                menuState = menuState,
+                                haptic = haptic,
+                                scope = scope,
+                            )
+                        }
                     }
                 }
             }
@@ -403,31 +400,30 @@ fun HomeScreen(
                     isFilterLoading ||
                     (homePage?.continuation != null && homePage?.sections?.isNotEmpty() == true)
             ) {
-                item {
-                    HomeLoadingShimmer(modifier = Modifier.animateItem())
+                item(key = "home:loading") {
+                    HomeLoadingShimmer()
                 }
             }
 
             if (selectedChip == null) {
                 explorePage?.moodAndGenres?.let { genres ->
-                    item {
-                        NavigationTitle(
-                            title = stringResource(R.string.mood_and_genres),
-                            onClick = { navController.navigate("mood_and_genres") },
-                            modifier = Modifier.animateItem()
-                        )
-                    }
-                    item {
-                        MoodAndGenresSection(
-                            moodAndGenres = genres,
-                            navController = navController
-                        )
+                    item(key = "home:genres") {
+                        Column {
+                            NavigationTitle(
+                                title = stringResource(R.string.mood_and_genres),
+                                onClick = { navController.navigate("mood_and_genres") },
+                            )
+                            MoodAndGenresSection(
+                                moodAndGenres = genres,
+                                navController = navController,
+                            )
+                        }
                     }
                 }
 
                 if (isMoodAndGenresLoading) {
-                    item {
-                        MoodAndGenresLoadingShimmer(modifier = Modifier.animateItem())
+                    item(key = "home:genre-loading") {
+                        MoodAndGenresLoadingShimmer()
                     }
                 }
             }

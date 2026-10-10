@@ -297,17 +297,7 @@ fun KeepListeningSection(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .graphicsLayer {
-                        // A very small depth cue. Updates remain in the graphics layer while
-                        // dragging; list content does not need recomposition for each frame.
-                        val distance = kotlin.math.abs(
-                            (pagerState.currentPage - pageIndex) +
-                                pagerState.currentPageOffsetFraction,
-                        ).coerceIn(0f, 1f)
-                        scaleX = 1f - 0.018f * distance
-                        scaleY = 1f - 0.018f * distance
-                        alpha = 1f - 0.10f * distance
-                    }
+                    // Don't scale individual pages: it shifts the perceived left edge.
                     .clip(RoundedCornerShape(24.dp))
                     .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.24f))
                     .padding(vertical = 4.dp),
@@ -540,10 +530,8 @@ fun AccountPlaylistsSection(
     val distinctPlaylists = remember(accountPlaylists) { accountPlaylists.distinctBy { it.id } }
     
     LazyRow(
-        contentPadding = WindowInsets.systemBars
-            .only(WindowInsetsSides.Horizontal)
-            .asPaddingValues(),
-        modifier = modifier
+        contentPadding = PaddingValues(horizontal = 4.dp),
+        modifier = modifier.fillMaxWidth().height(GridThumbnailHeight + 104.dp),
     ) {
         items(
             items = distinctPlaylists,
@@ -580,10 +568,11 @@ fun HomePageSectionContent(
     modifier: Modifier = Modifier
 ) {
     LazyRow(
-        contentPadding = WindowInsets.systemBars
-            .only(WindowInsetsSides.Horizontal)
-            .asPaddingValues(),
-        modifier = modifier
+        // GridItem already adds 12.dp; the first artwork starts at 4 + 12 = 16dp.
+        contentPadding = PaddingValues(horizontal = 4.dp),
+        // Fix the viewport height: 1- vs 2-line subtitles must not remeasure the
+        // entire LazyRow and move every section below it during horizontal swipes.
+        modifier = modifier.fillMaxWidth().height(GridThumbnailHeight + 104.dp),
     ) {
         items(
             items = section.items,
@@ -930,7 +919,7 @@ fun LazyListScope.AccountPlaylistsContainer(
     haptic: HapticFeedback,
     scope: CoroutineScope
 ) {
-    item {
+    item(key = "home:account-playlists") {
         val accountPlaylists by viewModel.accountPlaylists.collectAsState()
         
         // Check if list is not null and not empty
@@ -1005,7 +994,7 @@ fun QuickPicksListSection(
 
         androidx.compose.foundation.pager.HorizontalPager(
             state = pagerState,
-            modifier = Modifier.fillMaxWidth()
+            modifier = Modifier.fillMaxWidth().height(ListItemHeight * 4),
         ) { pageIndex ->
             val pageSongs = pages.getOrNull(pageIndex) ?: emptyList()
             Row(modifier = Modifier.fillMaxWidth()) {
@@ -1118,9 +1107,9 @@ fun CommunityPlaylistsSection(
         }
 
         LazyRow(
-            contentPadding = PaddingValues(horizontal = 12.dp),
+            contentPadding = PaddingValues(horizontal = 4.dp),
             horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(8.dp),
-            modifier = Modifier.fillMaxWidth()
+            modifier = Modifier.fillMaxWidth().height(GridThumbnailHeight + 104.dp),
         ) {
             items(
                 items = section.items,
@@ -1205,7 +1194,7 @@ fun TasteRecommendationsSection(
                         item = song,
                         isActive = isActive,
                         isPlaying = isPlaying,
-                        isSwipeable = true,
+                        isSwipeable = false,
                         trailingContent = {
                             IconButton(
                                 onClick = {

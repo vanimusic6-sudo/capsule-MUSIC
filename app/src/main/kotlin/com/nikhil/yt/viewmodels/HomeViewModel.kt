@@ -76,6 +76,7 @@ class HomeViewModel @Inject constructor(
     private var unfilteredHomePage: HomePage? = null
     private var chipRequestJob: Job? = null
     private var loadMoreJob: Job? = null
+    private var communityDiscoveryJob: Job? = null
 
     val recentActivity = MutableStateFlow<List<YTItem>?>(null)
     val recentPlaylistsDb = MutableStateFlow<List<Playlist>?>(null)
@@ -100,6 +101,7 @@ class HomeViewModel @Inject constructor(
         COMMUNITY_PLAYLISTS,
         LONG_LISTEN,
         PERSONALIZED,
+        SHALLOW_SIMILARITY,
     }
 
     private fun classifyYouTubeHomeSection(section: HomePage.Section): HomeSectionKind? {
@@ -116,13 +118,27 @@ class HomeViewModel @Inject constructor(
             section.items.isNotEmpty() &&
                 section.items.all { it is PlaylistItem }
 
+        // A one-artist "Similar to" shelf can appear after a single accidental play.
+        if (
+            listOf(
+                "похоже на", "похожее на", "similar to",
+                "because you listened to", "based on listening to",
+            ).any(title::contains)
+        ) return HomeSectionKind.SHALLOW_SIMILARITY
+
         // A community playlist stays a community playlist even if the title says "trending hits".
         if (
             playlistOnly &&
                 listOf(
                     "community", "trending", "user playlist", "listener playlist",
                     "made by listeners", "made by fans", "плейлисты пользователей",
-                    "пользовательские плейлисты", "от других пользователей",
+                    "пользовательские плейлисты", "плейлисты других пользователей",
+                    "подборки других пользователей",
+                    "плейлисты от пользователей",
+                    "playlists by other users",
+                    "other users playlists",
+                    "playlists from other users",
+                    "от других пользователей",
                     "от слушателей", "by other users", "by listeners",
                 ).any(title::contains)
         ) return HomeSectionKind.COMMUNITY_PLAYLISTS
@@ -225,6 +241,12 @@ class HomeViewModel @Inject constructor(
                     "плейлисты пользователей",
                     "пользовательские плейлисты",
                     "от слушателей",
+                    "плейлисты других пользователей",
+                    "подборки других пользователей",
+                    "плейлисты от пользователей",
+                    "playlists by other users",
+                    "other users playlists",
+                    "playlists from other users",
                     "от других пользователей",
                     "от пользователей",
                     "by other users",
@@ -251,6 +273,7 @@ class HomeViewModel @Inject constructor(
         val sections =
             page.sections.mapNotNull { section ->
                 val kind = classifyYouTubeHomeSection(section)
+                if (kind == HomeSectionKind.SHALLOW_SIMILARITY) return@mapNotNull null
                 if (!filteredFeed && kind == null) return@mapNotNull null
                 // Mood chips should not turn into a duplicate of the general Home feed.
                 if (
@@ -325,45 +348,84 @@ class HomeViewModel @Inject constructor(
     }
 
     /**
-     * Some general "For you" / community shelves are returned by YouTube only while a mood
-     * chip is selected. Move the already-fetched shelves to the ordinary Home cache instead
-     * of rendering them under a misleading mood heading or firing extra network requests.
+     * Generic community and personalised playlist-only shelves belong to normal Home.
+     * Preserve actual provider items and remove copies from themed filter responses.
      */
-    private fun collectGeneralShelvesFromChip(
+    private fun collectGeneralPlaylists(
         page: HomePage,
         hideExplicit: Boolean,
         hideVideo: Boolean,
     ) {
         val base = unfilteredHomePage ?: return
-        val general =
+        val sections =
             cleanYouTubeHomePage(
                 page = page,
                 hideExplicit = hideExplicit,
                 hideVideo = hideVideo,
-                chips = base.chips,
             ).sections.filter { section ->
-                classifyYouTubeHomeSection(section) in
-                    setOf(HomeSectionKind.PERSONALIZED, HomeSectionKind.COMMUNITY_PLAYLISTS)
+                section.items.isNotEmpty() &&
+                    section.items.all { it is PlaylistItem } &&
+                    (
+                        section.title == context.getString(R.string.home_community_playlists) ||
+                            classifyYouTubeHomeSection(section) == HomeSectionKind.PERSONALIZED
+                    )
             }
-        if (general.isEmpty()) return
+        if (sections.isEmpty()) return
 
-        val combined = base.sections.toMutableList()
-        general.forEach { candidate ->
-            val index = combined.indexOfFirst {
-                it.title.equals(candidate.title, ignoreCase = true)
-            }
-            if (index < 0) {
-                combined.add(candidate)
+        val updated = base.sections.toMutableList()
+        for (candidate in sections) {
+            val found = updated.indexOfFirst { it.title.equals(candidate.title, ignoreCase = true) }
+            if (found < 0) {
+                updated.add(candidate.copy(items = candidate.items.distinctBy { it.id }.take(30)))
             } else {
-                val existing = combined[index]
-                val presentIds = existing.items.mapTo(mutableSetOf()) { it.id }
-                val additions = candidate.items.filter { presentIds.add(it.id) }
-                if (additions.isNotEmpty()) {
-                    combined[index] = existing.copy(items = (existing.items + additions).take(24))
+                val current = updated[found]
+                val seen = current.items.mapTo(mutableSetOf()) { it.id }
+                val added = candidate.items.filter { seen.add(it.id) }
+                if (added.isNotEmpty()) {
+                    updated[found] = current.copy(items = (current.items + added).take(30))
                 }
             }
         }
-        unfilteredHomePage = base.copy(sections = combined)
+        unfilteredHomePage = base.copy(sections = updated)
+        if (selectedChip.value == null) {
+            homePage.value = unfilteredHomePage
+            refreshAllYouTubeItems()
+        }
+    }
+
+    /**
+     * The unfiltered YouTube endpoint may not include user playlists at all.
+     * Discover them once using at most five existing chip endpoints. No polling.
+     */
+    private fun discoverCommunityPlaylists(
+        base: HomePage,
+        hideExplicit: Boolean,
+        hideVideo: Boolean,
+    ) {
+        communityDiscoveryJob?.cancel()
+        val communityTitle = context.getString(R.string.home_community_playlists)
+        if (unfilteredHomePage?.sections?.any { it.title == communityTitle } == true) return
+
+        val chipParams = base.chips.orEmpty()
+            .mapNotNull { it.endpoint?.params }
+            .distinct()
+            .take(5)
+        if (chipParams.isEmpty()) return
+
+        communityDiscoveryJob = viewModelScope.launch(Dispatchers.IO) {
+            for (params in chipParams) {
+                val next = try {
+                    YouTube.home(params = params).getOrNull()
+                } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                    throw cancelled
+                } catch (error: Exception) {
+                    Timber.w(error, "Home playlist discovery failed")
+                    null
+                } ?: continue
+                collectGeneralPlaylists(next, hideExplicit, hideVideo)
+                if (unfilteredHomePage?.sections?.any { it.title == communityTitle } == true) break
+            }
+        }
     }
 
     private fun refreshAllYouTubeItems() {
@@ -389,6 +451,7 @@ class HomeViewModel @Inject constructor(
 
         chipRequestJob?.cancel()
         loadMoreJob?.cancel()
+        communityDiscoveryJob?.cancel()
         isFilterLoading.value = false
         selectedChip.value = null
         unfilteredHomePage = null
@@ -428,6 +491,7 @@ class HomeViewModel @Inject constructor(
                             )
                         unfilteredHomePage = cleaned
                         homePage.value = cleaned
+                        discoverCommunityPlaylists(page, hideExplicit, hideVideo)
                     }.onFailure { reportException(it) }
                 }
 
@@ -495,7 +559,6 @@ class HomeViewModel @Inject constructor(
         val selectedAtStart = selectedChip.value
         val filteredFeed = selectedAtStart != null
         val chips = homePage.value?.chips
-        val currentSections = homePage.value?.sections.orEmpty()
 
         loadMoreJob?.cancel()
         loadMoreJob =
@@ -513,11 +576,11 @@ class HomeViewModel @Inject constructor(
                     val merged =
                         nextSections.copy(
                             chips = chips,
-                            sections = currentSections + nextSections.sections,
+                            sections = homePage.value?.sections.orEmpty() + nextSections.sections,
                         )
 
                     if (filteredFeed) {
-                        collectGeneralShelvesFromChip(nextSections, hideExplicit, hideVideo)
+                        collectGeneralPlaylists(nextSections, hideExplicit, hideVideo)
                     }
 
                     val cleaned =
@@ -583,7 +646,7 @@ class HomeViewModel @Inject constructor(
                     .onSuccess { page ->
                         if (selectedChip.value != chip) return@onSuccess
 
-                        collectGeneralShelvesFromChip(page, hideExplicit, hideVideo)
+                        collectGeneralPlaylists(page, hideExplicit, hideVideo)
                         homePage.value =
                             cleanYouTubeHomePage(
                                 page = page,
