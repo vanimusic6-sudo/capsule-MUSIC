@@ -65,6 +65,9 @@ object NextPage {
                 renderer.badges?.find {
                     it.musicInlineBadgeRenderer?.icon?.iconType == "MUSIC_EXPLICIT_BADGE"
                 } != null,
+            // Next/queue episodes can also carry explicit video/podcast type.
+            // Preserve only their existing watch endpoint, not playlist tokens.
+            endpoint = renderer.navigationEndpoint.anyWatchEndpoint,
         )
     }
 }
