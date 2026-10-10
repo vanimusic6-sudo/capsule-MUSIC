@@ -69,6 +69,7 @@ import com.nikhil.yt.innertube.pages.SearchSuggestionPage
 import com.nikhil.yt.innertube.pages.SearchSummary
 import com.nikhil.yt.innertube.pages.SearchSummaryPage
 import com.nikhil.yt.innertube.pages.enrichSearchSummaryArtists
+import com.nikhil.yt.innertube.pages.markExplicitVideoShelves
 import com.nikhil.yt.innertube.pages.extractSearchCardArtists
 import io.ktor.client.call.body
 import io.ktor.client.statement.bodyAsText
@@ -240,7 +241,7 @@ object YouTube {
             }
         }
 
-        SearchSummaryPage(summaries = enrichSearchSummaryArtists(parsedSummaries))
+        SearchSummaryPage(summaries = enrichSearchSummaryArtists(markExplicitVideoShelves(parsedSummaries)))
     }
 
 
