@@ -50,10 +50,12 @@ object CapsuleVideoRequestGuard {
 
     private val BACKOFF_STEPS_MS =
         longArrayOf(
+            // First explicit bot/rate-limit signal: short, but real cooling-off.
+            // Repeated evidence escalates; ordinary timeouts do not trip this.
+            2 * 60 * 1000L,
             10 * 60 * 1000L,
             30 * 60 * 1000L,
             2 * 60 * 60 * 1000L,
-            6 * 60 * 60 * 1000L,
         )
 
     private const val ESCALATION_DECAY_MS = 6 * 60 * 60 * 1000L

@@ -42,6 +42,31 @@ class CapsuleVideoRequestGuardTest {
     }
 
     @Test
+    fun oneExplicitBotCheckUsesShortInitialPauseAndEscalatesOnRepeat() {
+        CapsuleVideoRequestGuard.noteApiFailure(
+            IllegalStateException("Sign in to confirm that you're not a bot"),
+        )
+        val first = CapsuleVideoRequestGuard.remainingBackoffMs()
+        assertTrue("First VIDEO bot-check pause must be under three minutes", first in 1L..180_000L)
+
+        CapsuleVideoRequestGuard.noteApiFailure(
+            IllegalStateException("Confirm you're not a bot"),
+        )
+        val second = CapsuleVideoRequestGuard.remainingBackoffMs()
+        assertTrue("Repeated VIDEO bot-check must increase protection", second > first)
+    }
+
+    @Test
+    fun genericFailedExtractionMustNotPauseEveryVideo() {
+        val kind =
+            CapsuleVideoRequestGuard.noteApiFailure(
+                java.net.SocketTimeoutException("Read timed out"),
+            )
+        assertEquals(CapsuleVideoRequestGuard.FailureKind.TRANSIENT, kind)
+        assertFalse(CapsuleVideoRequestGuard.isBlocked())
+    }
+
+    @Test
     fun stream429OpensBreakerImmediately() {
         assertEquals(
             CapsuleVideoRequestGuard.FailureKind.RATE_LIMITED,

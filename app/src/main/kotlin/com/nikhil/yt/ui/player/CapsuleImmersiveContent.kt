@@ -347,15 +347,20 @@ internal fun CapsuleImmersiveContent(
     var videoFirstFrameRendered by remember(mediaMetadata.id, videoPlaybackState.videoId) {
         mutableStateOf(false)
     }
-    DisposableEffect(playerConnection.player, isVideo, videoPlaybackState.videoId, mediaMetadata.id) {
-        if (isVideo && visible) {
+    val videoRenderer = playerConnection.service.videoPlayer
+    DisposableEffect(videoRenderer, isVideo, videoPlaybackState.videoId, mediaMetadata.id) {
+        if (isVideo && visible && videoRenderer != null) {
             val listener = object : Player.Listener {
                 override fun onRenderedFirstFrame() {
                     videoFirstFrameRendered = true
                 }
             }
-            playerConnection.player.addListener(listener)
-            onDispose { playerConnection.player.removeListener(listener) }
+            videoRenderer.addListener(listener)
+            onDispose {
+                videoRenderer.removeListener(listener)
+                // A new VIDEO session on the same song needs a fresh first frame.
+                videoFirstFrameRendered = false
+            }
         } else {
             onDispose { }
         }
@@ -703,16 +708,10 @@ internal fun CapsuleImmersiveContent(
             }
         }
 
-        // VIDEO still switches instantly on the first rendered frame, independently of
-        // the slow cover-to-neutral-to-cover animation. The request guard stays intact.
-        if (presentingVideo) {
-            Box(
-                modifier = Modifier.fillMaxSize().background(
-                    Brush.verticalGradient(
-                        listOf(IMMERSIVE_NEUTRAL_COLOR, Color(0xFF1E1E1E)),
-                    ),
-                ),
-            )
+        // The VIDEO backdrop uses exactly the same sampled artwork gradient as
+        // ordinary Immersive. Only the cover photo disappears on first frame.
+        if (presentingVideo && frame != null) {
+            Box(modifier = Modifier.fillMaxSize().background(pageBackground))
         }
         if (isVideo) {
             Box(
@@ -728,8 +727,9 @@ internal fun CapsuleImmersiveContent(
                 AndroidView(
                     factory = { viewContext ->
                         PlayerView(viewContext).apply {
-                            player = playerConnection.player
                             useController = false
+                            player = videoRenderer
+                            hideController()
                             setShowBuffering(PlayerView.SHOW_BUFFERING_NEVER)
                             resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM
                             setShutterBackgroundColor(android.graphics.Color.BLACK)
@@ -737,9 +737,11 @@ internal fun CapsuleImmersiveContent(
                         }
                     },
                     update = { playerView ->
-                        if (playerView.player !== playerConnection.player) {
-                            playerView.player = playerConnection.player
+                        playerView.useController = false
+                        if (playerView.player !== videoRenderer) {
+                            playerView.player = videoRenderer
                         }
+                        playerView.hideController()
                     },
                     modifier = Modifier.fillMaxSize(),
                 )

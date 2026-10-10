@@ -615,7 +615,7 @@ fun CapsulePlayerContent(
                                     // Disable Media3's built-in controls BEFORE binding
                                     // the player: binding can schedule their initial show.
                                     useController = false
-                                    player = playerConnection.player
+                                    player = playerConnection.service.videoPlayer
                                     hideController()
 
                                     /*
@@ -643,8 +643,8 @@ fun CapsulePlayerContent(
                             update = { playerView ->
                                 // Keep the embedded renderer control-free across recompositions.
                                 playerView.useController = false
-                                if (playerView.player !== playerConnection.player) {
-                                    playerView.player = playerConnection.player
+                                if (playerView.player !== playerConnection.service.videoPlayer) {
+                                    playerView.player = playerConnection.service.videoPlayer
                                 }
                                 playerView.hideController()
                             },

@@ -187,6 +187,7 @@ import com.nikhil.yt.playback.video.CapsuleCacheRoutingDataSource
 import com.nikhil.yt.playback.video.CapsuleVideoChunkedDataSource
 import com.nikhil.yt.playback.video.CapsuleVideoStreamInterceptor
 import com.nikhil.yt.playback.video.YouTubeVideoResolver
+import com.nikhil.yt.playback.video.CapsuleSilentVideoPlayer
 import com.nikhil.yt.playback.video.CapsuleVideoResolveCoordinator
 import com.nikhil.yt.playback.video.CapsuleVideoResolveRequest
 import androidx.media3.session.CacheBitmapLoader
@@ -984,6 +985,8 @@ class MusicService :
      * Normal queue items never use the capsule-video scheme/cache key.
      */
     val videoPlaybackState = MutableStateFlow(CapsuleVideoPlaybackState())
+    private var silentVideoPlayer: CapsuleSilentVideoPlayer? = null
+    val videoPlayer: Player? get() = silentVideoPlayer?.player
     private var videoOriginalMediaItem: MediaItem? = null
     private var videoOriginalMediaId: String? = null
     private val videoResolveCoordinator by lazy(LazyThreadSafetyMode.NONE) {
@@ -2612,6 +2615,7 @@ class MusicService :
     }
 
     fun stopAndClearPlayback() {
+        leaveCapsuleVideoMode()
         suppressAutoPlayback = true
         clearAutomix()
         currentQueue = EmptyQueue
@@ -3325,6 +3329,11 @@ class MusicService :
         super.onMediaItemTransition(mediaItem, reason)
 
         if (mediaItem?.mediaId?.startsWith(SOUNDCLOUD_MEDIA_ID_PREFIX) == true) {
+            videoResolveCoordinator.cancel()
+            silentVideoPlayer?.stop()
+            videoOriginalMediaItem = null
+            videoOriginalMediaId = null
+            videoPlaybackState.value = CapsuleVideoPlaybackState(mediaId = mediaItem.mediaId)
             // Keep SoundCloud visible in the normal player without feeding its ID
             // to YouTube metadata, prefetch, automix, 403 recovery or stream caches.
             streamRetryJob?.cancel()
@@ -3363,8 +3372,7 @@ class MusicService :
                 ?: videoState.mediaId
 
         val canonicalChanged =
-            transitionedMediaId != null &&
-                previousCanonicalId != null &&
+            previousCanonicalId != null &&
                 transitionedMediaId != previousCanonicalId
 
         /*
@@ -3379,6 +3387,7 @@ class MusicService :
             !isCurrentCapsuleVideoItem()
         ) {
             videoResolveCoordinator.cancel()
+            silentVideoPlayer?.stop()
 
             /*
              * If the old queue slot was temporarily replaced by a
@@ -4768,6 +4777,10 @@ class MusicService :
 
         val currentItem = player.currentMediaItem ?: return
         if (isCurrentCapsuleVideoItem()) return
+        // The selected VIDEO button must not restart an already-playing render.
+        if (videoPlaybackState.value.mode == CapsulePlaybackMode.VIDEO &&
+            videoPlaybackState.value.mediaId == currentItem.mediaId
+        ) return
 
         val canonicalMediaId = currentItem.mediaId.trim()
         if (canonicalMediaId.isBlank()) return
@@ -4868,9 +4881,6 @@ class MusicService :
                 }.onSuccess { video ->
                     videoSuspendedForScreenOff = false
 
-                    val position = player.currentPosition.coerceAtLeast(0L)
-                    val wasPlaying = player.playWhenReady
-
                     val videoItem =
                         MediaItem.Builder()
                             .setMediaId(canonicalMediaId)
@@ -4891,60 +4901,62 @@ class MusicService :
                             }
                             .build()
 
-                    /*
-                     * The stream has already been resolved and validated. Mark
-                     * VIDEO as active before replaceMediaItem so the 16:9 stage
-                     * appears immediately while Media3 buffers the first frame.
-                     */
-                    videoPlaybackState.value =
-                        CapsuleVideoPlaybackState(
-                            preferredMode = CapsulePlaybackMode.VIDEO,
-                            mode = CapsulePlaybackMode.VIDEO,
-                            phase = CapsuleVideoPhase.PLAYING,
-                            mediaId = canonicalMediaId,
-                            videoId = video.videoId,
-                            qualityLabel = video.qualityLabel,
-                            width = video.videoFormat.width,
-                            height = video.videoFormat.height,
-                            message = null,
+                    // Keep the already-buffered AUDIO player running. VIDEO is
+                    // decoded separately with audio tracks disabled.
+                    runCatching {
+                        val renderer = silentVideoPlayer
+                            ?: CapsuleSilentVideoPlayer(
+                                context = this@MusicService,
+                                mediaSourceFactory = createMediaSourceFactory(videoOnly = true),
+                                audioPlayer = player,
+                                scope = scope,
+                                onError = { failedId, error ->
+                                    if (player.currentMediaItem?.mediaId == failedId &&
+                                        videoPlaybackState.value.mode == CapsulePlaybackMode.VIDEO
+                                    ) {
+                                        Timber.tag("CapsuleVideo").w(error, "Silent VIDEO renderer failed")
+                                        restoreOriginalAudioItem(
+                                            failureMessage = error.message ?: "Video renderer unavailable",
+                                            preferredModeAfter = CapsulePlaybackMode.AUDIO,
+                                            failurePhase = CapsuleVideoPhase.REQUEST_ERROR,
+                                            invalidateFailedVideo = false,
+                                        )
+                                    }
+                                },
+                            ).also { silentVideoPlayer = it }
+                        renderer.start(canonicalMediaId, videoItem)
+                    }.onSuccess {
+                        videoPlaybackState.value =
+                            CapsuleVideoPlaybackState(
+                                preferredMode = CapsulePlaybackMode.VIDEO,
+                                mode = CapsulePlaybackMode.VIDEO,
+                                phase = CapsuleVideoPhase.PLAYING,
+                                mediaId = canonicalMediaId,
+                                videoId = video.videoId,
+                                qualityLabel = video.qualityLabel,
+                                width = video.videoFormat.width,
+                                height = video.videoFormat.height,
+                                message = null,
+                            )
+                    }.onFailure { error ->
+                        Timber.tag("CapsuleVideo").w(error, "Could not start silent VIDEO renderer")
+                        restoreOriginalAudioItem(
+                            failureMessage = error.message ?: "Video renderer unavailable",
+                            preferredModeAfter = CapsulePlaybackMode.AUDIO,
+                            failurePhase = CapsuleVideoPhase.REQUEST_ERROR,
+                            invalidateFailedVideo = false,
                         )
-
-                    player.replaceMediaItem(currentIndex, videoItem)
-                    player.seekTo(currentIndex, position)
-                    player.prepare()
-                    player.playWhenReady = wasPlaying
+                    }
                 }
             },
         )
     }
 
     private fun leaveCapsuleVideoMode() {
-        videoResolveCoordinator.cancel()
-
-        val currentItem = player.currentMediaItem ?: run {
-            videoPlaybackState.value =
-                CapsuleVideoPlaybackState(
-                    preferredMode = CapsulePlaybackMode.AUDIO,
-                )
-            return
-        }
-
-        if (!isCurrentCapsuleVideoItem()) {
-            videoOriginalMediaItem = null
-            videoOriginalMediaId = null
-            videoPlaybackState.value =
-                CapsuleVideoPlaybackState(
-                    preferredMode = CapsulePlaybackMode.AUDIO,
-                    mode = CapsulePlaybackMode.AUDIO,
-                    phase = CapsuleVideoPhase.IDLE,
-                    mediaId = currentItem.mediaId,
-                )
-            return
-        }
-
         restoreOriginalAudioItem(
             failureMessage = null,
             preferredModeAfter = CapsulePlaybackMode.AUDIO,
+            invalidateFailedVideo = false,
         )
     }
 
@@ -4964,30 +4976,12 @@ class MusicService :
         invalidateFailedVideo: Boolean = failureMessage != null,
     ) {
         videoResolveCoordinator.cancel()
-
-        val currentItem = player.currentMediaItem ?: return
+        // A secondary video-only renderer does not own the AUDIO MediaItem.
+        silentVideoPlayer?.stop()
+        val currentItem = player.currentMediaItem
         val canonicalMediaId =
-            videoOriginalMediaId
-                ?.takeIf { it.isNotBlank() }
-                ?: currentItem.mediaId
-        val currentIndex = player.currentMediaItemIndex
-        if (currentIndex < 0) return
-
-        val position = player.currentPosition.coerceAtLeast(0L)
-        val wasPlaying = player.playWhenReady
-        val original =
-            videoOriginalMediaItem
-                ?.takeIf { it.mediaId == canonicalMediaId }
-                ?: MediaItem.Builder()
-                    .setMediaId(canonicalMediaId)
-                    .setUri(canonicalMediaId)
-                    .setCustomCacheKey(canonicalMediaId)
-                    .setMediaMetadata(currentItem.mediaMetadata)
-                    .apply {
-                        currentItem.localConfiguration?.tag?.let(::setTag)
-                    }
-                    .build()
-
+            videoOriginalMediaId?.takeIf { it.isNotBlank() } ?: currentItem?.mediaId
+        val legacyOriginalItem = videoOriginalMediaItem
         val failedVideoId = videoPlaybackState.value.videoId
         if (invalidateFailedVideo && !failedVideoId.isNullOrBlank()) {
             YouTubeVideoResolver.invalidate(failedVideoId)
@@ -5021,21 +5015,31 @@ class MusicService :
             CapsuleVideoPlaybackState(
                 preferredMode = preferredModeAfter,
                 mode = CapsulePlaybackMode.AUDIO,
-                phase =
-                    if (failureMessage == null) {
-                        CapsuleVideoPhase.IDLE
-                    } else {
-                        failurePhase
-                    },
+                phase = if (failureMessage == null) CapsuleVideoPhase.IDLE else failurePhase,
                 mediaId = canonicalMediaId,
                 videoId = failedVideoId,
                 message = failureMessage,
             )
 
-        player.replaceMediaItem(currentIndex, original)
-        player.seekTo(currentIndex, position)
-        player.prepare()
-        player.playWhenReady = wasPlaying
+        // Migration for an old, persisted VIDEO queue item, if one survives
+        // an upgrade. Normal mode changes never enter this branch.
+        if (isCurrentCapsuleVideoItem() && currentItem != null) {
+            val index = player.currentMediaItemIndex
+            if (index >= 0) {
+                val original =
+                    legacyOriginalItem?.takeIf { it.mediaId == canonicalMediaId }
+                        ?: currentItem.buildUpon()
+                            .setUri(canonicalMediaId)
+                            .setCustomCacheKey(canonicalMediaId)
+                            .build()
+                val position = player.currentPosition.coerceAtLeast(0L)
+                val shouldPlay = player.playWhenReady
+                player.replaceMediaItem(index, original)
+                player.seekTo(index, position)
+                player.prepare()
+                player.playWhenReady = shouldPlay
+            }
+        }
     }
 
     private fun registerCapsuleScreenStateReceiver() {
@@ -5121,30 +5125,11 @@ class MusicService :
         videoSuspendedForScreenOff = false
         videoResolveCoordinator.cancel()
 
-        if (isCurrentCapsuleVideoItem()) {
-            restoreOriginalAudioItem(
-                failureMessage = null,
-                preferredModeAfter = CapsulePlaybackMode.AUDIO,
-                invalidateFailedVideo = false,
-            )
-        } else {
-            val currentId = player.currentMediaItem?.mediaId
-
-            videoOriginalMediaItem = null
-            videoOriginalMediaId = null
-            videoPlaybackState.value =
-                CapsuleVideoPlaybackState(
-                    preferredMode = CapsulePlaybackMode.AUDIO,
-                    mode = CapsulePlaybackMode.AUDIO,
-                    phase = CapsuleVideoPhase.IDLE,
-                    mediaId = currentId,
-                    videoId = null,
-                    qualityLabel = null,
-                    width = null,
-                    height = null,
-                    message = null,
-                )
-        }
+        restoreOriginalAudioItem(
+            failureMessage = null,
+            preferredModeAfter = CapsulePlaybackMode.AUDIO,
+            invalidateFailedVideo = false,
+        )
     }
 
     private fun resumeCapsuleVideoAfterUnlockIfAllowed() {
@@ -5356,7 +5341,7 @@ class MusicService :
     }
 
 
-    private fun createMediaSourceFactory(): MediaSource.Factory {
+    private fun createMediaSourceFactory(videoOnly: Boolean = false): MediaSource.Factory {
         // SoundCloud playback and SoundCloud downloads must use different
         // storage. NewPipe downloads to a dedicated file while playback stays
         // independent. Previously Capsule streamed into downloadCache using the
@@ -5484,6 +5469,8 @@ class MusicService :
                         )
                         .build()
                 val videoSource = progressive.createMediaSource(videoChild)
+                // The auxiliary VIDEO player must never fetch/decode another soundtrack.
+                if (videoOnly) return videoSource
 
                 val audioUrl = resolved.audioStreamUrl
                 val audioFormat = resolved.audioFormat
@@ -5777,6 +5764,8 @@ class MusicService :
     }
 
     override fun onDestroy() {
+        silentVideoPlayer?.release()
+        silentVideoPlayer = null
         audioBufferStallWatchJob?.cancel()
         audioBufferStallWatchJob = null
         super.onDestroy()
