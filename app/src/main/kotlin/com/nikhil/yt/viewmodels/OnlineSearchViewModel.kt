@@ -170,7 +170,10 @@ constructor(
         loadMoreJob =
             viewModelScope.launch {
                 val searchResult =
-                    YouTube.searchContinuation(continuation).getOrNull() ?: return@launch
+                    YouTube.searchContinuation(
+                        continuation,
+                        selectedFromVideoResults = filterValue == YouTube.SearchFilter.FILTER_VIDEO.value,
+                    ).getOrNull() ?: return@launch
                 viewStateMap[filterValue] =
                     ItemsPage(
                         (viewState.items + searchResult.items).distinctBy { it.id },
