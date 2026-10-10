@@ -15,6 +15,7 @@ import com.nikhil.yt.innertube.models.ArtistItem
 import com.nikhil.yt.innertube.models.BrowseEndpoint
 import com.nikhil.yt.innertube.models.MusicCarouselShelfRenderer
 import com.nikhil.yt.innertube.models.MusicTwoRowItemRenderer
+import com.nikhil.yt.innertube.models.MusicResponsiveListItemRenderer
 import com.nikhil.yt.innertube.models.PlaylistItem
 import com.nikhil.yt.innertube.models.SectionListRenderer
 import com.nikhil.yt.innertube.models.SongItem
@@ -58,13 +59,50 @@ data class HomePage(
                     label = renderer.header.musicCarouselShelfBasicHeaderRenderer.strapline?.runs?.firstOrNull()?.text,
                     thumbnail = renderer.header.musicCarouselShelfBasicHeaderRenderer.thumbnail?.musicThumbnailRenderer?.getThumbnailUrl(),
                     endpoint = renderer.header.musicCarouselShelfBasicHeaderRenderer.moreContentButton?.buttonRenderer?.navigationEndpoint?.browseEndpoint,
-                    items = renderer.contents.mapNotNull {
-                        it.musicTwoRowItemRenderer
-                    }.mapNotNull {
-                        fromMusicTwoRowItemRenderer(it)
-                    }.ifEmpty {
-                        return null
-                    }
+                    // MetroList also parses the responsive items returned by YouTube
+                    // for Quick Picks and some filtered Home carousels. Previously Capsule
+                    // silently discarded every such section as empty.
+                    items = renderer.contents.mapNotNull { content ->
+                        content.musicTwoRowItemRenderer?.let(::fromMusicTwoRowItemRenderer)
+                            ?: content.musicResponsiveListItemRenderer?.let(::fromMusicResponsiveListItemRenderer)
+                    }.ifEmpty { return null }
+                )
+            }
+
+            private fun fromMusicResponsiveListItemRenderer(
+                renderer: MusicResponsiveListItemRenderer,
+            ): SongItem? {
+                if (!renderer.isSong) return null
+                val videoId =
+                    renderer.navigationEndpoint?.watchEndpoint?.videoId
+                        ?: renderer.playlistItemData?.videoId
+                        ?: renderer.overlay?.musicItemThumbnailOverlayRenderer
+                            ?.content?.musicPlayButtonRenderer
+                            ?.playNavigationEndpoint?.watchEndpoint?.videoId
+                        ?: return null
+                val title =
+                    renderer.flexColumns.firstOrNull()
+                        ?.musicResponsiveListItemFlexColumnRenderer?.text
+                        ?.runs?.firstOrNull()?.text ?: return null
+                val artists =
+                    renderer.flexColumns.getOrNull(1)
+                        ?.musicResponsiveListItemFlexColumnRenderer?.text?.runs
+                        ?.splitBySeparator()?.firstOrNull()
+                        ?.let(PageHelper::extractArtists).orEmpty()
+                val thumbnail =
+                    renderer.thumbnail?.musicThumbnailRenderer?.getThumbnailUrl()
+                        ?: renderer.thumbnail?.croppedSquareThumbnailRenderer?.getThumbnailUrl()
+                        ?: return null
+
+                return SongItem(
+                    id = videoId,
+                    title = title,
+                    artists = artists,
+                    thumbnail = thumbnail,
+                    explicit = renderer.badges?.any {
+                        it.musicInlineBadgeRenderer?.icon?.iconType == "MUSIC_EXPLICIT_BADGE"
+                    } == true,
+                    endpoint = renderer.navigationEndpoint?.watchEndpoint,
                 )
             }
 

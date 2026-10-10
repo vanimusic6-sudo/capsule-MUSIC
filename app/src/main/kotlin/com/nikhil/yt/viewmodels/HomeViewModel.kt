@@ -81,7 +81,8 @@ class HomeViewModel @Inject constructor(
     private var unfilteredHomePage: HomePage? = null
     private var chipRequestJob: Job? = null
     private var loadMoreJob: Job? = null
-    private var communityDiscoveryJob: Job? = null
+    private var tasteRecommendationsJob: Job? = null
+    private var exploreJob: Job? = null
     private val chipRequestSerial = java.util.concurrent.atomic.AtomicLong(0L)
 
     private data class CachedChip(val timestamp: Long, val page: HomePage)
@@ -295,6 +296,15 @@ class HomeViewModel @Inject constructor(
         val sections =
             page.sections.mapNotNull { section ->
                 val kind = classifyYouTubeHomeSection(section)
+                if (filteredFeed) {
+                    // MetroList: a chip is a provider-scoped Home request, not an
+                    // invitation to reclassify or discard the provider's sections.
+                    val items = section.items
+                        .filterExplicit(hideExplicit)
+                        .filterVideo(hideVideo)
+                        .distinctBy { it.id }
+                    return@mapNotNull section.takeIf { items.isNotEmpty() }?.copy(items = items)
+                }
                 if (kind == HomeSectionKind.SHALLOW_SIMILARITY) return@mapNotNull null
                 if (!filteredFeed && kind == null) return@mapNotNull null
                 // The selected provider endpoint already restricts tracks to the chip.
@@ -416,59 +426,6 @@ class HomeViewModel @Inject constructor(
         }
     }
 
-    /**
-     * The unfiltered YouTube endpoint may not include user playlists at all.
-     * Discover them once using at most five existing chip endpoints. No polling.
-     */
-    private fun discoverCommunityPlaylists(
-        base: HomePage,
-        hideExplicit: Boolean,
-        hideVideo: Boolean,
-    ) {
-        communityDiscoveryJob?.cancel()
-        val communityTitle = context.getString(R.string.home_community_playlists)
-        if (unfilteredHomePage?.sections?.any { it.title == communityTitle } == true) return
-
-        val chipParams = base.chips.orEmpty()
-            .mapNotNull { it.endpoint?.params }
-            .distinct()
-            .take(3)
-        if (chipParams.isEmpty()) return
-
-        communityDiscoveryJob = viewModelScope.launch(Dispatchers.IO) {
-            // Weak networks cannot handle simultaneous background browse requests.
-            // Foreground chip requests always win and cancel this deferred prefetch.
-            delay(4_000L)
-            for (params in chipParams) {
-                if (selectedChip.value != null || isFilterLoading.value || isLoading.value) return@launch
-                val next = try {
-                    withTimeout(12_000L) { YouTube.home(params = params).getOrThrow() }
-                } catch (timeout: TimeoutCancellationException) {
-                    Timber.w("Home playlist discovery timed out")
-                    null
-                } catch (cancelled: CancellationException) {
-                    throw cancelled
-                } catch (error: Exception) {
-                    Timber.w(error, "Home playlist discovery failed")
-                    null
-                } ?: continue
-                storeChip(
-                    params,
-                    cleanYouTubeHomePage(
-                        page = next,
-                        hideExplicit = hideExplicit,
-                        hideVideo = hideVideo,
-                        filteredFeed = true,
-                        chips = base.chips,
-                    ),
-                )
-                collectGeneralPlaylists(next, hideExplicit, hideVideo)
-                if (unfilteredHomePage?.sections?.any { it.title == communityTitle } == true) break
-                delay(1_500L)
-            }
-        }
-    }
-
     private fun refreshAllYouTubeItems() {
         val filteredItems =
             homePage.value?.sections?.flatMap { it.items }.orEmpty()
@@ -492,7 +449,8 @@ class HomeViewModel @Inject constructor(
 
         chipRequestJob?.cancel()
         loadMoreJob?.cancel()
-        communityDiscoveryJob?.cancel()
+        tasteRecommendationsJob?.cancel()
+        exploreJob?.cancel()
         chipRequestSerial.incrementAndGet()
         synchronized(chipCacheLock) { chipCache.clear() }
         isFilterLoading.value = false
@@ -511,16 +469,6 @@ class HomeViewModel @Inject constructor(
                 launch { getQuickPicks() }
                 launch { forgottenFavorites.value = database.forgottenFavorites().first().shuffled().take(20) }
                 launch {
-                    try {
-                        val hideExplicit = context.dataStore.get(HideExplicitKey, false)
-                        val hideVideo = context.dataStore.get(HideVideoKey, false)
-                        forYouSuggestions.value = forYouEngine.getSuggestions(hideExplicit, hideVideo)
-                    } catch (error: Exception) {
-                        reportRecoverableException("HomeViewModel", "load For You suggestions", error)
-                    }
-                }
-                
-                launch {
                     keepListening.value = database.mostPlayedSongs(fromTimeStamp, limit = 15, offset = 5)
                         .first().distinctBy { it.id }.shuffled().take(12)
                 }
@@ -535,45 +483,70 @@ class HomeViewModel @Inject constructor(
                             )
                         unfilteredHomePage = cleaned
                         homePage.value = cleaned
-                        discoverCommunityPlaylists(page, hideExplicit, hideVideo)
                     }.onFailure { reportException(it) }
                 }
 
-                launch {
-                    YouTube.explore().onSuccess { page ->
-                        val artists: MutableMap<Int, String> = mutableMapOf()
-                        val favouriteArtists: MutableMap<Int, String> = mutableMapOf()
-                        database.allArtistsByPlayTime().first().let { list ->
-                            var favIndex = 0
-                            for ((artistsIndex, artist) in list.withIndex()) {
-                                artists[artistsIndex] = artist.id
-                                if (artist.artist.bookmarkedAt != null) {
-                                    favouriteArtists[favIndex] = artist.id
-                                    favIndex++
-                                }
-                            }
-                        }
-                        explorePage.value = page.copy(
-                            newReleaseAlbums = page.newReleaseAlbums
-                                .sortedBy { album ->
-                                    val artistIds = album.artists.orEmpty().mapNotNull { it.id }
-                                    val firstArtistKey = artistIds.firstNotNullOfOrNull { artistId ->
-                                        if (artistId in favouriteArtists.values) {
-                                            favouriteArtists.entries.firstOrNull { it.value == artistId }?.key
-                                        } else {
-                                            artists.entries.firstOrNull { it.value == artistId }?.key
-                                        }
-                                    } ?: Int.MAX_VALUE
-                                    firstArtistKey
-                                }.filterExplicit(hideExplicit)
-                        )
-                    }.onFailure { reportException(it) }
-                }
             }
 
             allLocalItems.value =
                 (quickPicks.value.orEmpty() + forgottenFavorites.value.orEmpty() + keepListening.value.orEmpty())
                     .distinctBy { it.id }
+
+            // MetroList's initial Home only waits for cheap DB data and the primary feed.
+            // Recommendations (up to several "related" requests) and Explore are non-critical.
+            tasteRecommendationsJob = viewModelScope.launch(Dispatchers.IO) {
+                delay(8_000L)
+                selectedChip.first { it == null }
+                try {
+                    val hideExplicit = context.dataStore.get(HideExplicitKey, false)
+                    val hideVideo = context.dataStore.get(HideVideoKey, false)
+                    forYouSuggestions.value = forYouEngine.getSuggestions(hideExplicit, hideVideo)
+                    refreshAllYouTubeItems()
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (error: Exception) {
+                    reportRecoverableException("HomeViewModel", "load For You suggestions", error)
+                }
+            }
+
+            exploreJob = viewModelScope.launch(Dispatchers.IO) {
+                delay(2_000L)
+                try {
+                    val hideExplicit = context.dataStore.get(HideExplicitKey, false)
+                YouTube.explore().onSuccess { page ->
+                    val artists: MutableMap<Int, String> = mutableMapOf()
+                    val favouriteArtists: MutableMap<Int, String> = mutableMapOf()
+                    database.allArtistsByPlayTime().first().let { list ->
+                        var favIndex = 0
+                        for ((artistsIndex, artist) in list.withIndex()) {
+                            artists[artistsIndex] = artist.id
+                            if (artist.artist.bookmarkedAt != null) {
+                                favouriteArtists[favIndex] = artist.id
+                                favIndex++
+                            }
+                        }
+                    }
+                    explorePage.value = page.copy(
+                        newReleaseAlbums = page.newReleaseAlbums
+                            .sortedBy { album ->
+                                val artistIds = album.artists.orEmpty().mapNotNull { it.id }
+                                val firstArtistKey = artistIds.firstNotNullOfOrNull { artistId ->
+                                    if (artistId in favouriteArtists.values) {
+                                        favouriteArtists.entries.firstOrNull { it.value == artistId }?.key
+                                    } else {
+                                        artists.entries.firstOrNull { it.value == artistId }?.key
+                                    }
+                                } ?: Int.MAX_VALUE
+                                firstArtistKey
+                            }.filterExplicit(hideExplicit)
+                    )
+                }.onFailure { reportException(it) }
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (error: Exception) {
+                    reportRecoverableException("HomeViewModel", "load Explore", error)
+                }
+            }
 
             refreshAllYouTubeItems()
                     
@@ -604,10 +577,9 @@ class HomeViewModel @Inject constructor(
         val filteredFeed = selectedAtStart != null
         val chips = homePage.value?.chips
 
-        loadMoreJob?.cancel()
+        _isLoadingMore.value = true
         loadMoreJob =
             viewModelScope.launch(Dispatchers.IO) {
-                _isLoadingMore.value = true
                 try {
                     val hideExplicit = context.dataStore.get(HideExplicitKey, false)
                     val hideVideo = context.dataStore.get(HideVideoKey, false)
@@ -623,9 +595,8 @@ class HomeViewModel @Inject constructor(
                             sections = homePage.value?.sections.orEmpty() + nextSections.sections,
                         )
 
-                    if (filteredFeed) {
-                        collectGeneralPlaylists(nextSections, hideExplicit, hideVideo)
-                    }
+                    // Pagination is the same scoped continuation as the requested chip.
+                    // It must not perform extra Home discovery or title-based routing.
 
                     val cleaned =
                         cleanYouTubeHomePage(
@@ -654,6 +625,7 @@ class HomeViewModel @Inject constructor(
             chipRequestSerial.incrementAndGet()
             chipRequestJob?.cancel()
             loadMoreJob?.cancel()
+            _isLoadingMore.value = false
             isFilterLoading.value = false
             filterLoadFailed.value = false
             selectedChip.value = null
@@ -663,27 +635,23 @@ class HomeViewModel @Inject constructor(
             }
             return
         }
-
-        // User intent outranks the auxiliary community-playlist discovery.
-        communityDiscoveryJob?.cancel()
         loadFilteredChip(chip, useCache = true)
     }
 
     fun retrySelectedChip() {
-        val chip = selectedChip.value ?: return
-        communityDiscoveryJob?.cancel()
-        loadFilteredChip(chip, useCache = false)
+        selectedChip.value?.let { loadFilteredChip(it, useCache = false) }
     }
 
     private fun loadFilteredChip(chip: HomePage.Chip, useCache: Boolean) {
+        // Same endpoint/params flow as MetroList's HomeViewModel.toggleChip.
         val params = chip.endpoint?.params ?: return
         val base = unfilteredHomePage ?: homePage.value
         if (unfilteredHomePage == null) unfilteredHomePage = base
 
-        chipRequestSerial.incrementAndGet()
-        val requestId = chipRequestSerial.get()
+        val requestId = chipRequestSerial.incrementAndGet()
         chipRequestJob?.cancel()
         loadMoreJob?.cancel()
+        _isLoadingMore.value = false
         selectedChip.value = chip
         filterLoadFailed.value = false
 
@@ -695,62 +663,43 @@ class HomeViewModel @Inject constructor(
             return
         }
 
-        // Empty content is a loading state, not a completed empty filter.
         isFilterLoading.value = true
-        homePage.value = base?.copy(sections = emptyList(), continuation = null)
-        refreshAllYouTubeItems()
-
+        // Keep previously loaded content on screen during the request rather than
+        // replacing it with an empty feed and animated shimmer on every chip tap.
         chipRequestJob = viewModelScope.launch(Dispatchers.IO) {
             try {
-                // Coalesce fast taps so only the last selected chip hits the network.
-                delay(280L)
                 val hideExplicit = context.dataStore.get(HideExplicitKey, false)
                 val hideVideo = context.dataStore.get(HideVideoKey, false)
-                var lastError: Throwable? = null
-                repeat(2) { attempt ->
-                    val page = try {
-                        withTimeout(15_000L) {
-                            YouTube.home(params = params).getOrThrow()
-                        }
-                    } catch (timeout: TimeoutCancellationException) {
-                        lastError = timeout
-                        null
-                    } catch (cancelled: CancellationException) {
-                        throw cancelled
-                    } catch (error: Exception) {
-                        lastError = error
-                        null
-                    }
+                val page = withTimeout(15_000L) { YouTube.home(params = params).getOrThrow() }
+                if (requestId != chipRequestSerial.get() || selectedChip.value != chip) return@launch
 
-                    if (requestId != chipRequestSerial.get() || selectedChip.value != chip) return@launch
-                    if (page != null && page.sections.isNotEmpty()) {
-                        val cleaned = cleanYouTubeHomePage(
-                            page = page,
-                            hideExplicit = hideExplicit,
-                            hideVideo = hideVideo,
-                            filteredFeed = true,
-                            chips = base?.chips ?: page.chips,
-                        )
-                        storeChip(params, cleaned)
-                        collectGeneralPlaylists(page, hideExplicit, hideVideo)
-                        homePage.value = cleaned
-                        filterLoadFailed.value = false
-                        refreshAllYouTubeItems()
-                        return@launch
-                    }
-                    if (attempt == 0) delay(650L)
-                }
-
-                if (requestId == chipRequestSerial.get() && selectedChip.value == chip) {
+                val cleaned = cleanYouTubeHomePage(
+                    page = page,
+                    hideExplicit = hideExplicit,
+                    hideVideo = hideVideo,
+                    filteredFeed = true,
+                    chips = base?.chips ?: page.chips,
+                )
+                if (page.sections.isEmpty()) {
                     filterLoadFailed.value = true
-                    lastError?.let { reportRecoverableException("HomeViewModel", "load Home filter", it) }
+                    return@launch
                 }
+                storeChip(params, cleaned)
+                homePage.value = cleaned
+                filterLoadFailed.value = false
+                refreshAllYouTubeItems()
             } catch (cancelled: CancellationException) {
-                throw cancelled
+                if (cancelled is TimeoutCancellationException &&
+                    requestId == chipRequestSerial.get() && selectedChip.value == chip
+                ) {
+                    filterLoadFailed.value = true
+                } else {
+                    throw cancelled
+                }
             } catch (error: Exception) {
                 if (requestId == chipRequestSerial.get() && selectedChip.value == chip) {
                     filterLoadFailed.value = true
-                    reportRecoverableException("HomeViewModel", "process Home filter", error)
+                    reportRecoverableException("HomeViewModel", "load Home filter", error)
                 }
             } finally {
                 if (requestId == chipRequestSerial.get() && selectedChip.value == chip) {
@@ -764,8 +713,19 @@ class HomeViewModel @Inject constructor(
         if (isRefreshing.value) return
         viewModelScope.launch(Dispatchers.IO) {
             isRefreshing.value = true
-            load()
-            isRefreshing.value = false
+            try {
+                // Same behaviour as MetroList: pull-to-refresh inside a selected
+                // category refreshes that category, never resets it to default Home.
+                val chip = selectedChip.value
+                if (chip != null) {
+                    loadFilteredChip(chip, useCache = false)
+                    chipRequestJob?.join()
+                } else {
+                    load()
+                }
+            } finally {
+                isRefreshing.value = false
+            }
         }
     }
 
@@ -786,14 +746,7 @@ class HomeViewModel @Inject constructor(
                         timber.log.Timber.w(it, "Failed to fetch account info")
                     }
 
-                    launch {
-                        YouTube.library("FEmusic_liked_playlists").completed().onSuccess {
-                            val lists = it.items.filterIsInstance<PlaylistItem>().filterNot { it.id == "SE" }
-                            accountPlaylists.value = lists
-                        }.onFailure {
-                            timber.log.Timber.w(it, "Failed to fetch playlists")
-                        }
-                    }
+                    // Home no longer fetches library playlists; Library owns that query.
                 } else {
                     accountName.value = "Guest"
                     accountImageUrl.value = null
@@ -865,18 +818,7 @@ class HomeViewModel @Inject constructor(
                                 timber.log.Timber.e(e, "Exception fetching account info")
                             }
 
-                            launch {
-                                try {
-                                    YouTube.library("FEmusic_liked_playlists").completed().onSuccess {
-                                        val lists = it.items.filterIsInstance<PlaylistItem>().filterNot { it.id == "SE" }
-                                        accountPlaylists.value = lists
-                                    }.onFailure { e ->
-                                        timber.log.Timber.w(e, "Failed to fetch account playlists")
-                                    }
-                                } catch (e: Exception) {
-                                    timber.log.Timber.e(e, "Exception fetching account playlists")
-                                }
-                            }
+                            // Library loads the user's playlists on demand, not Home.
                         } else {
                             accountName.value = "Guest"
                             accountImageUrl.value = null

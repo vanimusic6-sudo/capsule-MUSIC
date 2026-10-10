@@ -120,15 +120,8 @@ fun HomeScreen(
 
     val forgottenFavoritesLazyGridState = rememberLazyGridState()
 
-    val accountName by viewModel.accountName.collectAsState()
-    val accountImageUrl by viewModel.accountImageUrl.collectAsState()
-    val innerTubeCookie by rememberPreference(InnerTubeCookieKey, "")
     val (showHomeCategoryChips) = rememberPreference(ShowHomeCategoryChipsKey, true)
     val capsuleDock by rememberPreference(CapsuleBottomBarEnabledKey, false)
-    val isLoggedIn = remember(innerTubeCookie) {
-        "SAPISID" in parseCookieString(innerTubeCookie)
-    }
-    val url = if (isLoggedIn) accountImageUrl else null
 
     val scope = rememberCoroutineScope()
     val lazylistState = rememberLazyListState()
@@ -310,19 +303,6 @@ fun HomeScreen(
                     }
                 }
             }
-
-            AccountPlaylistsContainer(
-                viewModel = viewModel,
-                accountName = accountName,
-                accountImageUrl = url,
-                mediaMetadata = mediaMetadata,
-                isPlaying = isPlaying,
-                navController = navController,
-                playerConnection = playerConnection,
-                menuState = menuState,
-                haptic = haptic,
-                scope = scope
-            )
 
             forgottenFavorites?.takeIf { it.isNotEmpty() }?.let { favorites ->
                 item(key = "home:forgotten") {
