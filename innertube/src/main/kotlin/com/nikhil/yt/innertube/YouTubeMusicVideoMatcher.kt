@@ -134,13 +134,8 @@ internal object YouTubeMusicVideoMatcher {
         val contextualRejects =
             listOf(
                 " live ", " concert ", " performance ", " session ",
-                " acoustic ", " cover ", " karaoke ", " lyric ", " lyrics ",
-                " lyricvideo ", " lyricsvideo ", " lyric video ", " lyrics video ",
-                " sing along ", " on screen lyrics ", " text only ", " text video ",
-                " words on screen ", " subtitles ", " subtitled ",
-                " текст песни ", " слова песни ", " видео с текстом ",
-                " субтитры ", " караоке ",
-                " visualizer ", " animated video ", " dance video ",
+                " acoustic ", " cover ", " karaoke ",
+                " animated video ", " dance video ",
                 " dance practice ", " slowed ", " reverb ", " sped up ",
                 " nightcore ", " remix ", " edit ", " fanmade ", " fan made ",
                 " amv ", " reaction ", " interview ", " behind the scenes ",
@@ -156,11 +151,17 @@ internal object YouTubeMusicVideoMatcher {
             return true
         }
 
+        // A lyrics/text upload is never an acceptable replacement for a clip,
+        // even if the original AUDIO title itself contains "Lyrics".
         val alwaysReject =
             listOf(
-                " official audio ",
-                " audio only ",
-                " topic audio ",
+                " lyric ", " lyrics ", " lyricvideo ", " lyricsvideo ",
+                " lyric video ", " lyrics video ",
+                " sing along ", " on screen lyrics ", " text only ",
+                " text video ", " words on screen ", " subtitles ", " subtitled ",
+                " текст песни ", " слова песни ", " видео с текстом ",
+                " субтитры ", " караоке ", " visualizer ",
+                " official audio ", " audio only ", " topic audio ",
             )
 
         return alwaysReject.any { token -> candidate.contains(token) }
