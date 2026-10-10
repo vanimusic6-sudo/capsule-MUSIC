@@ -72,7 +72,6 @@ import com.nikhil.yt.constants.PureBlackKey
 import com.nikhil.yt.constants.RandomThemeOnStartupKey
 import com.nikhil.yt.constants.ShowCachedPlaylistKey
 import com.nikhil.yt.constants.ShowDownloadedPlaylistKey
-import com.nikhil.yt.constants.ShowHomeCategoryChipsKey
 import com.nikhil.yt.constants.ShowLikedPlaylistKey
 import com.nikhil.yt.constants.ShowTagsInLibraryKey
 import com.nikhil.yt.constants.ShowTopPlaylistKey
@@ -404,15 +403,6 @@ fun AppearanceSettings(
     ) =
         rememberPreference(
             ShowTagsInLibraryKey,
-            defaultValue = true,
-        )
-
-    val (
-        showHomeCategoryChips,
-        onShowHomeCategoryChipsChange,
-    ) =
-        rememberPreference(
-            ShowHomeCategoryChipsKey,
             defaultValue = true,
         )
 
@@ -1683,32 +1673,6 @@ fun AppearanceSettings(
             },
             onValueSelected =
                 onDefaultChipChange,
-        )
-
-        SwitchPreference(
-            title = {
-                Text(
-                    stringResource(
-                        R.string.show_home_category_chips,
-                    ),
-                )
-            },
-            description =
-                stringResource(
-                    R.string.show_home_category_chips_desc,
-                ),
-            icon = {
-                Icon(
-                    painterResource(
-                        R.drawable.home_outlined,
-                    ),
-                    null,
-                )
-            },
-            checked =
-                showHomeCategoryChips,
-            onCheckedChange =
-                onShowHomeCategoryChipsChange,
         )
 
         SwitchPreference(

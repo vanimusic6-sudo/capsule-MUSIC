@@ -598,7 +598,7 @@ object YouTube {
         )
     }
 
-    suspend fun home(continuation: String? = null, params: String? = null): Result<HomePage> = runCatchingCancellable {
+    suspend fun home(continuation: String? = null): Result<HomePage> = runCatchingCancellable {
         if (continuation != null) {
             return@runCatchingCancellable homeContinuation(continuation).getOrThrow()
         }
@@ -606,24 +606,19 @@ object YouTube {
         val response = innerTube.browse(
             WEB_REMIX,
             browseId = "FEmusic_home",
-            params = params,
-            // Match MetroList for chips; retain signed-in Home personalization.
-            setLogin = params == null,
+            setLogin = true,
         ).body<BrowseResponse>()
         val continuation = response.contents?.singleColumnBrowseResultsRenderer?.tabs?.firstOrNull()
             ?.tabRenderer?.content?.sectionListRenderer?.continuations?.getContinuation()
         val sectionListRender = response.contents?.singleColumnBrowseResultsRenderer?.tabs?.firstOrNull()
             ?.tabRenderer?.content?.sectionListRenderer
-        // Browsing a category can temporarily return a response without the section
-        // renderer (login wall, slow network, or an empty filtered response). Treat it as
-        // an empty page for the caller's bounded retry instead of throwing an NPE.
+        // Missing renderer is a valid empty response, not a reason to crash Home.
         val sections = sectionListRender?.contents.orEmpty()
             .mapNotNull { it.musicCarouselShelfRenderer }
             .mapNotNull {
                 HomePage.Section.fromMusicCarouselShelfRenderer(it)
             }.toMutableList()
-        val chips = sectionListRender?.header?.chipCloudRenderer?.chips?.mapNotNull { HomePage.Chip.fromChipCloudChipRenderer(it) }
-        HomePage(chips, sections, continuation)
+        HomePage(sections, continuation)
     }
 
     private suspend fun homeContinuation(continuation: String): Result<HomePage> = runCatchingCancellable {
@@ -638,7 +633,6 @@ object YouTube {
             response.continuationContents?.sectionListContinuation?.continuations?.getContinuation()
         }
         HomePage(
-            chips = null,
             sections = sections,
             continuation = nextContinuation
         )

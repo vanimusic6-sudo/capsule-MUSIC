@@ -17,7 +17,6 @@ import com.nikhil.yt.innertube.models.MusicCarouselShelfRenderer
 import com.nikhil.yt.innertube.models.MusicTwoRowItemRenderer
 import com.nikhil.yt.innertube.models.MusicResponsiveListItemRenderer
 import com.nikhil.yt.innertube.models.PlaylistItem
-import com.nikhil.yt.innertube.models.SectionListRenderer
 import com.nikhil.yt.innertube.models.SongItem
 import com.nikhil.yt.innertube.models.YTItem
 import com.nikhil.yt.innertube.models.oddElements
@@ -25,26 +24,9 @@ import com.nikhil.yt.innertube.models.splitBySeparator
 import com.nikhil.yt.innertube.models.filterExplicit
 
 data class HomePage(
-    val chips: List<Chip>?,
     val sections: List<Section>,
     val continuation: String? = null,
 ) {
-    data class Chip(
-        val title: String,
-        val endpoint: BrowseEndpoint?,
-        val deselectEndPoint: BrowseEndpoint?,
-    ) {
-        companion object {
-            fun fromChipCloudChipRenderer(renderer: SectionListRenderer.Header.ChipCloudRenderer.Chip): Chip? {
-                return Chip(
-                    title = renderer.chipCloudChipRenderer.text?.runs?.firstOrNull()?.text ?: return null,
-                    endpoint = renderer.chipCloudChipRenderer.navigationEndpoint.browseEndpoint,
-                    deselectEndPoint = renderer.chipCloudChipRenderer.onDeselectedCommand?.browseEndpoint,
-                )
-            }
-        }
-    }
-
     data class Section(
         val title: String,
         val label: String?,

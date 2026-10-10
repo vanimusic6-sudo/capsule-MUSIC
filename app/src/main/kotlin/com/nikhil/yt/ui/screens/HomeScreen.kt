@@ -8,17 +8,13 @@
 
 package com.nikhil.yt.ui.screens
 
-import com.nikhil.yt.ui.component.StandardHomeChips
 import com.nikhil.yt.ui.utils.liveSavedStateHandle
 import com.nikhil.yt.ui.component.StandardChrome
-import com.nikhil.yt.ui.theme.CapsuleBottomBarEnabledKey
-import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -28,8 +24,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.Text
 import androidx.compose.material3.pulltorefresh.pullToRefresh
 import androidx.compose.material3.pulltorefresh.PullToRefreshDefaults.Indicator
 import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
@@ -55,13 +49,10 @@ import com.nikhil.yt.innertube.models.AlbumItem
 import com.nikhil.yt.innertube.models.ArtistItem
 import com.nikhil.yt.innertube.models.PlaylistItem
 import com.nikhil.yt.innertube.models.SongItem
-import com.nikhil.yt.innertube.utils.parseCookieString
 import com.nikhil.yt.LocalDatabase
 import com.nikhil.yt.LocalPlayerAwareWindowInsets
 import com.nikhil.yt.LocalPlayerConnection
 import com.nikhil.yt.R
-import com.nikhil.yt.constants.InnerTubeCookieKey
-import com.nikhil.yt.constants.ShowHomeCategoryChipsKey
 import com.nikhil.yt.db.entities.Album
 import com.nikhil.yt.db.entities.Artist
 import com.nikhil.yt.db.entities.Playlist
@@ -70,13 +61,11 @@ import com.nikhil.yt.models.toMediaMetadata
 import com.nikhil.yt.playback.queues.LocalAlbumRadio
 import com.nikhil.yt.playback.queues.YouTubeAlbumRadio
 import com.nikhil.yt.playback.queues.YouTubeQueue
-import com.nikhil.yt.ui.component.ChipsRow
 import com.nikhil.yt.ui.component.HideOnScrollFAB
 import com.nikhil.yt.ui.component.LocalBottomSheetPageState
 import com.nikhil.yt.ui.component.LocalMenuState
 import com.nikhil.yt.ui.component.NavigationTitle
 import com.nikhil.yt.ui.utils.SnapLayoutInfoProvider
-import com.nikhil.yt.utils.rememberPreference
 import com.nikhil.yt.viewmodels.HomeViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
@@ -109,19 +98,13 @@ fun HomeScreen(
 
     val allLocalItems by viewModel.allLocalItems.collectAsState()
     val allYtItems by viewModel.allYtItems.collectAsState()
-    val selectedChip by viewModel.selectedChip.collectAsState()
 
     val isLoading: Boolean by viewModel.isLoading.collectAsState()
-    val isFilterLoading by viewModel.isFilterLoading.collectAsState()
-    val filterLoadFailed by viewModel.filterLoadFailed.collectAsState()
     val isMoodAndGenresLoading = isLoading && explorePage?.moodAndGenres == null
     val isRefreshing by viewModel.isRefreshing.collectAsState()
     val pullRefreshState = rememberPullToRefreshState()
 
     val forgottenFavoritesLazyGridState = rememberLazyGridState()
-
-    val (showHomeCategoryChips) = rememberPreference(ShowHomeCategoryChipsKey, true)
-    val capsuleDock by rememberPreference(CapsuleBottomBarEnabledKey, false)
 
     val scope = rememberCoroutineScope()
     val lazylistState = rememberLazyListState()
@@ -138,7 +121,7 @@ fun HomeScreen(
         }
     }
 
-    LaunchedEffect(homePage?.continuation, selectedChip) {
+    LaunchedEffect(homePage?.continuation) {
         // Don't paginate merely because a horizontally-scrolling carousel is near the bottom.
         snapshotFlow {
             Triple(
@@ -153,18 +136,6 @@ fun HomeScreen(
             ) {
                 viewModel.loadMoreYouTubeItems(homePage?.continuation)
             }
-        }
-    }
-
-    if (selectedChip != null) {
-        BackHandler {
-            viewModel.toggleChip(selectedChip)
-        }
-    }
-
-    LaunchedEffect(showHomeCategoryChips, selectedChip) {
-        if (!showHomeCategoryChips && selectedChip != null) {
-            viewModel.toggleChip(selectedChip)
         }
     }
 
@@ -229,25 +200,6 @@ fun HomeScreen(
                 state = lazylistState,
                 contentPadding = LocalPlayerAwareWindowInsets.current.asPaddingValues()
             ) {
-                if (showHomeCategoryChips && homePage?.chips?.isNotEmpty() == true) {
-                    item(key = "home:chips") {
-                        if (capsuleDock) {
-                            ChipsRow(
-                                chips = homePage?.chips.orEmpty().map { it to it.title },
-                                currentValue = selectedChip,
-                                onValueUpdate = viewModel::toggleChip,
-                            )
-                        } else {
-                            StandardHomeChips(
-                                chips = homePage?.chips.orEmpty().map { it to it.title },
-                                currentValue = selectedChip,
-                                onValueUpdate = viewModel::toggleChip,
-                            )
-                        }
-                    }
-                }
-
-                if (selectedChip == null) {
                     quickPicks?.takeIf { it.isNotEmpty() }?.let { picks ->
             /*
                 item {
@@ -338,7 +290,6 @@ fun HomeScreen(
                     )
                 }
             }
-            }
 
             homePage?.sections?.forEachIndexed { index, section ->
                 val sectionKey = "home:yt:$index:${section.endpoint?.browseId.orEmpty()}:${section.title}"
@@ -379,44 +330,15 @@ fun HomeScreen(
                 }
             }
 
-            if (selectedChip != null &&
-                !isFilterLoading &&
-                (filterLoadFailed || homePage?.sections.isNullOrEmpty())
-            ) {
-                item(key = "home:filter-feedback") {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 24.dp, vertical = 60.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                    ) {
-                        Text(
-                            text = stringResource(
-                                if (filterLoadFailed) R.string.error_network_problem_description
-                                else R.string.no_results_found
-                            ),
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                        Spacer(modifier = Modifier.height(12.dp))
-                        OutlinedButton(onClick = viewModel::retrySelectedChip) {
-                            Text(stringResource(R.string.retry))
-                        }
-                    }
-                }
-            }
-
             if (
                 isLoading ||
-                    isFilterLoading ||
-                    (homePage?.continuation != null && homePage?.sections?.isNotEmpty() == true)
+                (homePage?.continuation != null && homePage?.sections?.isNotEmpty() == true)
             ) {
                 item(key = "home:loading") {
                     HomeLoadingShimmer()
                 }
             }
 
-            if (selectedChip == null) {
                 explorePage?.moodAndGenres?.let { genres ->
                     item(key = "home:genres") {
                         Column {
@@ -438,29 +360,18 @@ fun HomeScreen(
                     }
                 }
             }
-            }
 
             HideOnScrollFAB(
-                visible =
-                    if (selectedChip != null) {
-                        allYtItems.isNotEmpty()
-                    } else {
-                        allLocalItems.isNotEmpty() || allYtItems.isNotEmpty()
-                    },
+                visible = allLocalItems.isNotEmpty() || allYtItems.isNotEmpty(),
                 lazyListState = lazylistState,
                 icon = R.drawable.shuffle,
                 onClick = {
-                    val local =
-                        if (selectedChip != null) {
-                            false
-                        } else {
-                            when {
-                                allLocalItems.isNotEmpty() && allYtItems.isNotEmpty() ->
-                                    Random.nextFloat() < 0.5
-                                allLocalItems.isNotEmpty() -> true
-                                else -> false
-                            }
-                        }
+                    val local = when {
+                        allLocalItems.isNotEmpty() && allYtItems.isNotEmpty() ->
+                            Random.nextFloat() < 0.5f
+                        allLocalItems.isNotEmpty() -> true
+                        else -> false
+                    }
                     scope.launch(Dispatchers.Main) {
                         if (local) {
                             when (val luckyItem = allLocalItems.random()) {

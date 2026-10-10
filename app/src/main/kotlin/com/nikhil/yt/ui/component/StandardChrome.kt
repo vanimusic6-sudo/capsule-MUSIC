@@ -2,16 +2,12 @@ package com.nikhil.yt.ui.component
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -67,26 +63,5 @@ fun StandardHeaderTitle(accountName: String?, accountImageUrl: String?, onAccoun
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
-    }
-}
-
-@Composable
-fun <E> StandardHomeChips(chips: List<Pair<E, String>>, currentValue: E, onValueUpdate: (E) -> Unit) {
-    Row(
-        modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 12.dp, vertical = 16.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        chips.forEach { (value, label) ->
-            val selected = value == currentValue
-            Box(
-                contentAlignment = Alignment.Center,
-                modifier = Modifier.heightIn(min = 40.dp).clip(CircleShape)
-                    .background(if (selected) StandardChrome.selected else StandardChrome.panel)
-                    .selectable(selected = selected, role = Role.RadioButton, onClick = { onValueUpdate(value) })
-                    .padding(horizontal = 18.dp, vertical = 8.dp),
-            ) {
-                Text(label, color = if (selected) StandardChrome.text else StandardChrome.muted, fontSize = 16.sp, maxLines = 1)
-            }
-        }
     }
 }
