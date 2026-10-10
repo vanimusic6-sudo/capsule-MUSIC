@@ -6,6 +6,7 @@ on:
     branches:
       - next/capsule-clay
       - perf/thermal-audit-20261005
+      - feature/video-isolated-thermal-20261010-v2
 
 permissions:
   contents: read
