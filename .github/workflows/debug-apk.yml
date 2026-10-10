@@ -8,6 +8,7 @@ on:
       - cleanup/capsule-player-only
       - next/capsule-clay
       - perf/thermal-audit-20261005
+      - feature/video-isolated-thermal-20261010-v2
 
 permissions:
   contents: read
@@ -67,6 +68,14 @@ jobs:
           gradle :innertube:test \
             --tests 'com.nikhil.yt.innertube.pages.SearchSummaryMetadataTest' \
             --tests 'com.nikhil.yt.innertube.pages.PageHelperArtistCreditsTest' \
+            --stacktrace --no-daemon
+
+      - name: Test VIDEO quality, clip matching and podcast classification
+        run: |
+          gradle :innertube:test \
+            --tests 'com.nikhil.yt.innertube.YouTubeMusicVideoMatcherTest' \
+            --tests 'com.nikhil.yt.innertube.ExplicitVideoOriginTest' \
+            --tests 'com.nikhil.yt.innertube.video.CapsuleNewPipeExtractorTest' \
             --stacktrace --no-daemon
 
       - name: Run Android lint
