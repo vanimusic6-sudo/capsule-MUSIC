@@ -78,6 +78,20 @@ class YouTubeMusicVideoMatcherTest {
     }
 
     @Test
+    fun lyricsTitleInSourceStillCannotChooseLyricUpload() {
+        assertNull(
+            YouTubeMusicVideoMatcher.scoreCandidate(
+                sourceTitle = "Song (Lyrics)",
+                sourceTitleNorm = YouTubeMusicVideoMatcher.normalizeTitle("Song (Lyrics)"),
+                sourceArtistNorms = listOf("artist"),
+                candidateTitle = "Artist - Song (Official Lyrics Video)",
+                secondaryText = "Artist • 3:30",
+                sourceDurationSeconds = 210,
+            ),
+        )
+    }
+
+    @Test
     fun subtitleOnlyVideoIsNotAnOfficialClip() {
         assertNull(
             YouTubeMusicVideoMatcher.scoreCandidate(
