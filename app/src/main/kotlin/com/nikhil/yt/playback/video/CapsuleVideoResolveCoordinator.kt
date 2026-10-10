@@ -15,6 +15,7 @@ internal data class CapsuleVideoResolveRequest(
     val artists: List<String>,
     val durationSeconds: Int?,
     val quality: CapsuleVideoQuality,
+    val originalVideo: Boolean = false,
 )
 
 /**
@@ -31,6 +32,7 @@ internal class CapsuleVideoResolveCoordinator(
                 artists = request.artists,
                 durationSeconds = request.durationSeconds,
                 quality = request.quality,
+                originalVideo = request.originalVideo,
             )
         }
     },
