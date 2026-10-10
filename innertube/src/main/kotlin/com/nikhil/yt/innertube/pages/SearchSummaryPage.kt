@@ -168,6 +168,7 @@ data class SearchSummaryPage(
                             },
                         duration = extractSearchSongDuration(renderer.subtitle.runs.orEmpty()),
                         thumbnail = renderer.thumbnail.musicThumbnailRenderer?.getThumbnailUrl() ?: return null,
+                        endpoint = renderer.onTap.watchEndpoint,
                         explicit =
                             renderer.subtitleBadges?.find {
                                 it.musicInlineBadgeRenderer?.icon?.iconType == "MUSIC_EXPLICIT_BADGE"
@@ -304,6 +305,9 @@ data class SearchSummaryPage(
                         },
                         duration = extractSearchSongDuration(metadataRuns),
                         thumbnail = renderer.thumbnail?.musicThumbnailRenderer?.getThumbnailUrl() ?: return null,
+                        endpoint = renderer.navigationEndpoint?.anyWatchEndpoint
+                            ?: renderer.overlay?.musicItemThumbnailOverlayRenderer
+                                ?.content?.musicPlayButtonRenderer?.playNavigationEndpoint?.anyWatchEndpoint,
                         explicit =
                             renderer.badges?.find {
                                 it.musicInlineBadgeRenderer?.icon?.iconType == "MUSIC_EXPLICIT_BADGE"
