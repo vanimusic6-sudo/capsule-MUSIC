@@ -18,6 +18,8 @@ import com.nikhil.yt.App
 import com.nikhil.yt.constants.CapsuleVideoQuality
 import com.nikhil.yt.innertube.CapsuleVideoRequestGuard
 import com.nikhil.yt.innertube.YouTubeMusicVideoLinkResolver
+import com.nikhil.yt.innertube.video.CapsuleVideoDelivery
+import android.os.SystemClock
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.NonCancellable
@@ -57,6 +59,8 @@ object YouTubeVideoResolver {
         val audioFormat: StreamFormat? = null,
         val expiresAtMs: Long,
         val backend: String = "newpipe",
+        val delivery: CapsuleVideoDelivery = CapsuleVideoDelivery.PROGRESSIVE,
+        val maxHeight: Int = 720,
     ) {
         val streamUrl: String
             get() = videoStreamUrl
@@ -172,6 +176,7 @@ object YouTubeVideoResolver {
             val result =
                 try {
                     withTimeoutOrNull(CapsuleVideoIpc.REQUEST_TIMEOUT_MS) {
+                        val startedAt = SystemClock.elapsedRealtime()
                         // An explicitly selected video/podcast already has the
                         // canonical YouTube video id. Avoid searching for another
                         // clip (two requests and possible wrong match).
@@ -189,6 +194,8 @@ object YouTubeVideoResolver {
                                     .getOrThrow()
                                     .videoId
                             }
+                        val matchedAt = SystemClock.elapsedRealtime()
+                        Timber.tag(TAG).i("VIDEO timing match id=%s clip=%s ms=%s", canonicalId, videoId, matchedAt - startedAt)
 
                         val resolved =
                             resolveExact(
@@ -197,6 +204,8 @@ object YouTubeVideoResolver {
                                 quality = quality,
                                 muxedOnly = false,
                             )
+                        Timber.tag(TAG).i("VIDEO timing extract clip=%s ms=%s backend=%s delivery=%s", videoId,
+                            SystemClock.elapsedRealtime() - matchedAt, resolved.backend, resolved.delivery)
                         CapsuleVideoRequestGuard.noteSuccess()
                         Result.success(resolved)
                     } ?: Result.failure(VideoBackendException(CapsuleVideoFailure.NETWORK, "VIDEO extraction timed out"))
@@ -366,6 +375,9 @@ object YouTubeVideoResolver {
             audioItag = bundle.getInt(CapsuleVideoIpc.EXTRA_AUDIO_ITAG, -1),
             expiresAtMs = bundle.getLong(CapsuleVideoIpc.EXTRA_EXPIRES_AT, System.currentTimeMillis() + 3_600_000L),
             backend = bundle.getString(CapsuleVideoIpc.EXTRA_BACKEND) ?: "newpipe",
+            delivery = runCatching { CapsuleVideoDelivery.valueOf(bundle.getString(CapsuleVideoIpc.EXTRA_DELIVERY).orEmpty()) }
+                .getOrDefault(CapsuleVideoDelivery.PROGRESSIVE),
+            maxHeight = bundle.getInt(CapsuleVideoIpc.EXTRA_MAX_HEIGHT, 720).coerceIn(1, 720),
         )
     }
 
@@ -398,6 +410,8 @@ object YouTubeVideoResolver {
             audioFormat = audioFormat,
             expiresAtMs = expiresAtMs,
             backend = backend,
+            delivery = delivery,
+            maxHeight = maxHeight,
         )
     }
 

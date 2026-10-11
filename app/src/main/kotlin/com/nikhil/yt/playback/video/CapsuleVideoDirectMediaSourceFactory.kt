@@ -8,11 +8,14 @@ package com.nikhil.yt.playback.video
 
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
+import androidx.media3.common.MimeTypes
 import androidx.media3.datasource.DataSource
 import androidx.media3.exoplayer.drm.DrmSessionManagerProvider
 import androidx.media3.exoplayer.source.MediaSource
 import androidx.media3.exoplayer.source.MergingMediaSource
 import androidx.media3.exoplayer.source.ProgressiveMediaSource
+import androidx.media3.exoplayer.hls.HlsMediaSource
+import com.nikhil.yt.innertube.video.CapsuleVideoDelivery
 import androidx.media3.exoplayer.upstream.DefaultLoadErrorHandlingPolicy
 import androidx.media3.exoplayer.upstream.LoadErrorHandlingPolicy
 import timber.log.Timber
@@ -26,6 +29,7 @@ import timber.log.Timber
  */
 internal class CapsuleVideoDirectMediaSourceFactory(
     upstream: DataSource.Factory,
+    private val hlsUpstream: DataSource.Factory = upstream,
     private val findResolved: (String) -> YouTubeVideoResolver.ResolvedVideo?,
 ) : MediaSource.Factory {
 
@@ -45,6 +49,14 @@ internal class CapsuleVideoDirectMediaSourceFactory(
         }
         check(stream.expiresAtMs > System.currentTimeMillis() + 45_000L) {
             "Resolved VIDEO signed URL is already expired"
+        }
+        if (stream.delivery == CapsuleVideoDelivery.HLS) {
+            Timber.tag("CapsuleVideo").i("source-direct segmented clip=%s maxHeight=%s", videoId, stream.maxHeight)
+            return HlsMediaSource.Factory(hlsUpstream)
+                .setPlaylistParserFactory(CapsuleHlsPlaylistParserFactory(stream.maxHeight))
+                .setLoadErrorHandlingPolicy(DefaultLoadErrorHandlingPolicy(1))
+                .createMediaSource(mediaItem.buildUpon().setUri(stream.videoStreamUrl)
+                    .setMimeType(MimeTypes.APPLICATION_M3U8).setCustomCacheKey(null).build())
         }
         val isMuxed = stream.audioStreamUrl.isNullOrBlank()
         val videoItem = mediaItem.buildUpon()

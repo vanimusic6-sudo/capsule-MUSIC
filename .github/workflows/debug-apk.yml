@@ -68,6 +68,7 @@ jobs:
             --tests 'com.nikhil.yt.playback.video.CapsuleVideoWarmupTest' \
             --tests 'com.nikhil.yt.playback.video.CapsuleVideoCompanionTest' \
             --tests 'com.nikhil.yt.playback.video.CapsuleVideoSessionTest' \
+            --tests 'com.nikhil.yt.playback.video.CapsuleHlsPlaylistParserFactoryTest' \
             --tests 'com.nikhil.yt.playback.video.CapsuleVideoDirectMediaSourceFactoryTest' \
             --tests 'com.nikhil.yt.playback.video.VideoStreamCacheTest' \
             --stacktrace --no-daemon

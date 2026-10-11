@@ -38,4 +38,26 @@ class CapsuleDirectVideoExtractorTest {
         val expired = format(360, 18, true).toMutableMap().apply { put("url", JsonPrimitive("https://rr1.googlevideo.com/videoplayback?expire=1001")) }
         assertNull(select(response(listOf(JsonObject(expired)))))
     }
+    @Test fun hlsFromSamePlayerResponseAvoidsRepeatedExtractionAndRetainsQualityCeiling() {
+        val base = response(listOf(format(360, 18, true, "&n=unsolved")))
+        val data = JsonObject(base.toMutableMap().apply {
+            put("streamingData", JsonObject(base["streamingData"]!!.jsonObject.toMutableMap().apply {
+                put("hlsManifestUrl", JsonPrimitive("https://manifest.googlevideo.com/api/manifest/hls_playlist/expire/2000/file/index.m3u8"))
+            }))
+        })
+        val resolved = select(data, CapsuleNewPipeQuality.P480)!!
+        assertEquals(CapsuleVideoDelivery.HLS, resolved.delivery)
+        assertEquals(480, resolved.maxHeight)
+        assertEquals(2_000_000L, resolved.expiresAtMs)
+        assertNull(resolved.audioUrl)
+        // A requested muxed progressive recovery must not repeat failed HLS.
+        assertNull(select(data, CapsuleNewPipeQuality.P480, muxedOnly = true))
+    }
+    @Test fun hlsRejectsExpiredUntrustedOrUnsolvedManifestUrls() {
+        val prefix = "https://manifest.googlevideo.com/api/manifest/hls_playlist/expire/"
+        assertNull(selectDirectHlsManifest(prefix + "1001/file/index.m3u8", "abcdefghijk", CapsuleNewPipeQuality.AUTO, now))
+        assertNull(selectDirectHlsManifest("https://evil.test/api/manifest/hls_playlist/expire/2000/file/index.m3u8", "abcdefghijk", CapsuleNewPipeQuality.AUTO, now))
+        assertNull(selectDirectHlsManifest(prefix + "2000/file/index.m3u8?n=unsolved", "abcdefghijk", CapsuleNewPipeQuality.AUTO, now))
+        assertNull(selectDirectHlsManifest(prefix + "2000/file/index.m3u8?range=0-1", "abcdefghijk", CapsuleNewPipeQuality.AUTO, now))
+    }
 }

@@ -97,7 +97,7 @@ class CapsuleVideoSessionTest {
     @Test fun startupAlignsToMusicAfterSlowResolveBeforeMutingIt() = runTest {
         val f = Fixture(this); f.start()
         f.music.position = 8_000L
-        f.clip.ready(); f.clip.frame()
+        f.clip.ready()
         assertEquals(listOf(8_000L), f.clip.seeks)
         assertEquals(1f, f.music.volume)
         assertTrue(f.frames.isEmpty())
@@ -114,16 +114,36 @@ class CapsuleVideoSessionTest {
         assertEquals(1f, f.music.volume)
         f.session.stop()
     }
-    @Test fun detachPreservesOriginalClipSoundAndDisablesOnlyVideoTrack() = runTest {
+    @Test fun detachAndReturnNeverReselectTracksSeekOrSwitchSoundOwner() = runTest {
         val f = Fixture(this); f.start(); f.clip.ready(); f.clip.frame()
         advanceTimeBy(116); runCurrent()
+        val selectionBefore = f.clip.selection
+        val seeksBefore = f.clip.seeks.toList()
+        val ownersBefore = f.owned.toList()
         f.session.setForeground(false); f.session.setSurfaceAttached(false)
         f.clip.event()
         assertEquals(0.8f, f.clip.volume)
         assertEquals(0f, f.music.volume)
-        assertTrue(f.clip.selection.disabledTrackTypes.contains(C.TRACK_TYPE_VIDEO))
+        assertSame(selectionBefore, f.clip.selection)
         f.session.setSurfaceAttached(true); f.session.setForeground(true)
-        assertFalse(f.clip.selection.disabledTrackTypes.contains(C.TRACK_TYPE_VIDEO))
+        f.clip.frame()
+        assertSame(selectionBefore, f.clip.selection)
+        assertEquals(seeksBefore, f.clip.seeks)
+        assertEquals(ownersBefore, f.owned)
+        assertEquals(0.8f, f.clip.volume)
+        f.session.stop()
+    }
+
+    @Test fun reopeningPlayerWhilePausedNeverSeeksOrStartsAnotherSoundSeam() = runTest {
+        val f = Fixture(this); f.start(); f.clip.ready(); f.clip.frame()
+        advanceTimeBy(116); runCurrent()
+        f.music.intent = false; f.clip.playing = false; f.music.event()
+        val seeksBefore = f.clip.seeks.toList()
+        val ownersBefore = f.owned.toList()
+        f.session.setSurfaceAttached(false); f.session.setSurfaceAttached(true)
+        assertEquals(seeksBefore, f.clip.seeks)
+        assertEquals(ownersBefore, f.owned)
+        assertFalse(f.clip.intent)
         f.session.stop()
     }
     @Test fun hiddenSurfaceNeverTimesOutAndStaleSeamNeverMutesNewSong() = runTest {

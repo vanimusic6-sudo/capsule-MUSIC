@@ -610,8 +610,8 @@ fun CapsulePlayerContent(
                                 mediaShape,
                             )
                             .background(
-                                if (videoStageReserved && visible) {
-                                    textColor.copy(alpha = 0.04f)
+                                if (videoStageReserved) {
+                                    Color.Black
                                 } else {
                                     textColor.copy(alpha = 0.045f)
                                 },
@@ -629,22 +629,9 @@ fun CapsulePlayerContent(
                             scaleY = scale
                         }) {
                         CapsuleVideoSurface(playerConnection.service, Modifier.fillMaxSize())
-                        if (!videoPlaybackState.firstFrameReady) {
-                            // Opaque themed shutter until the real VIDEO frame
-                            // is decoded. Hide renderer reattachment flashes.
-                            Box(
-                                Modifier.fillMaxSize().background(
-                                    textColor.copy(alpha = 0.06f),
-                                ),
-                            )
-                        }
                         }
                     } else if (videoStageReserved) {
-                        // Keep the chosen theme visible during extraction,
-                        // without flashing a square AUDIO thumbnail.
-                        Box(Modifier.fillMaxSize().background(
-                            textColor.copy(alpha = 0.04f),
-                        ))
+                        Box(Modifier.fillMaxSize().background(Color.Black))
                     } else if (hideArtwork) {
                         Icon(
                             painter = painterResource(R.drawable.album),

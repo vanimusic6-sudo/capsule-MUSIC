@@ -7,6 +7,7 @@ package com.nikhil.yt.playback.video
 
 import android.os.Bundle
 import com.nikhil.yt.constants.CapsuleVideoQuality
+import com.nikhil.yt.innertube.video.CapsuleVideoDelivery
 
 data class CapsuleResolvedVideo(
     val videoId: String,
@@ -19,6 +20,8 @@ data class CapsuleResolvedVideo(
     val audioItag: Int = -1,
     val expiresAtMs: Long,
     val backend: String = "newpipe",
+    val delivery: CapsuleVideoDelivery = CapsuleVideoDelivery.PROGRESSIVE,
+    val maxHeight: Int = 720,
 ) {
     val adaptive: Boolean
         get() = !audioUrl.isNullOrBlank()
@@ -49,6 +52,8 @@ internal object CapsuleVideoIpc {
     const val EXTRA_NEWPIPE_ONLY = "newpipe_only"
     const val EXTRA_REFRESH = "refresh"
     const val EXTRA_BACKEND = "backend"
+    const val EXTRA_DELIVERY = "delivery"
+    const val EXTRA_MAX_HEIGHT = "max_height"
     const val EXTRA_SUCCESS = "success"
     const val EXTRA_VIDEO_URL = "video_url"
     const val EXTRA_AUDIO_URL = "audio_url"
@@ -80,6 +85,8 @@ internal object CapsuleVideoIpc {
             putInt(EXTRA_AUDIO_ITAG, resolved.audioItag)
             putLong(EXTRA_EXPIRES_AT, resolved.expiresAtMs)
             putString(EXTRA_BACKEND, resolved.backend)
+            putString(EXTRA_DELIVERY, resolved.delivery.name)
+            putInt(EXTRA_MAX_HEIGHT, resolved.maxHeight)
         }
 
     fun failureBundle(

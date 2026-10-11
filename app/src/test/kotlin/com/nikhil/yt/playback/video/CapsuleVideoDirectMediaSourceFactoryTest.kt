@@ -5,6 +5,8 @@ import androidx.media3.common.MediaItem
 import androidx.media3.datasource.DataSource
 import androidx.media3.exoplayer.source.MergingMediaSource
 import androidx.media3.exoplayer.source.ProgressiveMediaSource
+import androidx.media3.exoplayer.hls.HlsMediaSource
+import com.nikhil.yt.innertube.video.CapsuleVideoDelivery
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -65,5 +67,18 @@ class CapsuleVideoDirectMediaSourceFactoryTest {
             DataSource.Factory { error("Unexpected CDN read") },
         ) { error("Pinned VIDEO session must not read a mutable latest-format cache") }
         assertTrue(factory.createMediaSource(item.buildUpon().setTag(resolved(false)).build()) is ProgressiveMediaSource)
+    }
+
+    @Test fun hlsUsesNativeSegmentedSourceInsteadOfProgressiveOrManualMerge() {
+        val factory = CapsuleVideoDirectMediaSourceFactory(
+            upstream = DataSource.Factory { error("Progressive Range transport must not open an HLS manifest") },
+            hlsUpstream = DataSource.Factory { error("Source construction must not start network I/O") },
+            findResolved = { error("Pinned HLS session must not re-resolve") },
+        )
+        val stream = resolved(false).copy(
+            videoStreamUrl = "https://manifest.googlevideo.com/api/manifest/hls_playlist/expire/9999999999/file/index.m3u8",
+            delivery = CapsuleVideoDelivery.HLS, maxHeight = 480,
+        )
+        assertTrue(factory.createMediaSource(item.buildUpon().setTag(stream).build()) is HlsMediaSource)
     }
 }

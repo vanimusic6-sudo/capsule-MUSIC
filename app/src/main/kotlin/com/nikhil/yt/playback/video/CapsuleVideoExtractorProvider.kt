@@ -93,6 +93,8 @@ class CapsuleVideoExtractorProvider : ContentProvider() {
                         audioItag = resolved.audioItag,
                         expiresAtMs = resolved.expiresAtMs,
                         backend = resolved.backend,
+                        delivery = resolved.delivery,
+                        maxHeight = resolved.maxHeight,
                     ),
                 )
             },

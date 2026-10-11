@@ -13,6 +13,9 @@ import org.schabi.newpipe.extractor.exceptions.ReCaptchaException
 import java.io.IOException
 import java.net.URI
 import java.util.concurrent.TimeUnit
+import java.net.SocketTimeoutException
+import java.security.SecureRandom
+import java.util.Base64
 
 /**
  * One maintained client, one request, no watch page or JavaScript bootstrap.
@@ -21,6 +24,10 @@ import java.util.concurrent.TimeUnit
  * This client/pool/session exists only in :capsule_video; AUDIO is never used.
  */
 object CapsuleDirectVideoExtractor {
+    private const val BUDGET_MS = 5_000L
+    private val nonceRandom = SecureRandom()
+    private var visitor: String? = null
+    private var visitorUntilMs = 0L
     private val client = OkHttpClient.Builder()
         .callTimeout(5, TimeUnit.SECONDS)
         .connectTimeout(3, TimeUnit.SECONDS)
@@ -28,26 +35,61 @@ object CapsuleDirectVideoExtractor {
         .retryOnConnectionFailure(false)
         .build()
 
+    @Synchronized
     fun resolve(videoId: String, quality: CapsuleNewPipeQuality, muxedOnly: Boolean): CapsuleNewPipeResolved? {
         val identity = YouTubeClient.VISIONOS
-        val payload = buildPlayerRequestPayload(
+        val deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(BUDGET_MS)
+        val base = buildPlayerRequestPayload(
             client = identity, locale = YouTubeLocale("US", "en"),
             visitorData = null, dataSyncId = null, videoId = videoId,
             playlistId = null, signatureTimestamp = null, poToken = null,
         )
+        val context = base["context"]!!.jsonObject
+        val clientContext = JsonObject(context["client"]!!.jsonObject.toMutableMap().apply {
+            put("clientScreen", JsonPrimitive("WATCH")); put("platform", JsonPrimitive("MOBILE"))
+            put("utcOffsetMinutes", JsonPrimitive(0))
+        })
+        val anonymousContext = JsonObject(context.toMutableMap().apply { put("client", clientContext) })
+        if (visitor == null || visitorUntilMs <= System.currentTimeMillis()) {
+            val bootstrap = post("https://www.youtube.com/youtubei/v1/visitor_id?prettyPrint=false",
+                buildJsonObject { put("context", anonymousContext) }, deadline, maxCallMs = 2_500L)
+            visitor = (bootstrap["responseContext"] as? JsonObject)?.get("visitorData")?.jsonPrimitive?.contentOrNull
+                ?.takeIf { it.isNotBlank() } ?: throw IOException("VIDEO anonymous visitor unavailable")
+            visitorUntilMs = System.currentTimeMillis() + TimeUnit.HOURS.toMillis(6)
+        }
+        val payload = JsonObject(base.toMutableMap().apply {
+            put("context", JsonObject(anonymousContext.toMutableMap().apply {
+                put("client", JsonObject(clientContext.toMutableMap().apply { put("visitorData", JsonPrimitive(visitor!!)) }))
+            }))
+            put("cpn", JsonPrimitive(nonce(12)))
+        })
+        val response = post("https://youtubei.googleapis.com/youtubei/v1/player?prettyPrint=false&t=${nonce(9)}&id=$videoId",
+            payload, deadline)
+        return selectDirectVideo(response, videoId, quality, muxedOnly)
+    }
+
+    private fun nonce(bytes: Int): String = Base64.getUrlEncoder().withoutPadding()
+        .encodeToString(ByteArray(bytes).also(nonceRandom::nextBytes))
+
+    private fun post(url: String, payload: JsonObject, deadline: Long, maxCallMs: Long = BUDGET_MS): JsonObject {
+        val identity = YouTubeClient.VISIONOS
+        val remainingMs = TimeUnit.NANOSECONDS.toMillis(deadline - System.nanoTime())
+        if (remainingMs <= 0L) throw SocketTimeoutException("VIDEO direct request budget elapsed")
         val request = Request.Builder()
-            .url("https://www.youtube.com/youtubei/v1/player?prettyPrint=false")
+            .url(url)
             .header("User-Agent", identity.userAgent)
+            .header("X-Goog-Api-Format-Version", "2")
             .header("X-YouTube-Client-Name", identity.clientId)
             .header("X-YouTube-Client-Version", identity.clientVersion)
             .post(payload.toString().toRequestBody("application/json".toMediaType()))
             .build()
         val call = client.newCall(request)
+        call.timeout().timeout(minOf(remainingMs, maxCallMs), TimeUnit.MILLISECONDS)
         return VideoExtractionRequests.execute(call) {
             call.execute().use { response ->
                 if (response.code == 429) throw ReCaptchaException("VIDEO HTTP 429", request.url.toString())
                 if (!response.isSuccessful) throw IOException("VIDEO direct player HTTP ${response.code}")
-                selectDirectVideo(Json.parseToJsonElement(response.body.string()).jsonObject, videoId, quality, muxedOnly)
+                Json.parseToJsonElement(response.body.string()).jsonObject
             }
         }
     }
@@ -61,6 +103,10 @@ internal fun selectDirectVideo(
     val returnedId = (response["videoDetails"] as? JsonObject)?.get("videoId")?.jsonPrimitive?.contentOrNull
     if (returnedId != null && returnedId != videoId) return null
     val data = response["streamingData"] as? JsonObject ?: return null
+    if (!muxedOnly) {
+        selectDirectHlsManifest((data["hlsManifestUrl"] as? JsonPrimitive)?.contentOrNull,
+            videoId, quality, nowMs)?.let { return it }
+    }
     fun JsonObject.number(name: String) = (get(name) as? JsonPrimitive)?.intOrNull
     fun JsonObject.string(name: String) = (get(name) as? JsonPrimitive)?.contentOrNull
     fun direct(format: JsonObject): Boolean {
@@ -104,4 +150,27 @@ internal fun selectDirectVideo(
         video.number("width") ?: 0, video.number("height") ?: 0,
         video.number("itag") ?: -1, soundtrack?.number("itag") ?: -1, expiresAt,
     )
+}
+
+/** HLS URLs encode expiry in their path, unlike progressive CDN URLs. */
+internal fun selectDirectHlsManifest(
+    url: String?, videoId: String, quality: CapsuleNewPipeQuality,
+    nowMs: Long = System.currentTimeMillis(),
+): CapsuleNewPipeResolved? {
+    val uri = runCatching { URI(url) }.getOrNull() ?: return null
+    if (uri.scheme != "https" || uri.userInfo != null ||
+        uri.host?.endsWith(".googlevideo.com", ignoreCase = true) != true ||
+        !uri.path.orEmpty().startsWith("/api/manifest/hls_")) return null
+    val query = uri.rawQuery.orEmpty().split('&').associate {
+        it.substringBefore('=') to it.substringAfter('=', "")
+    }
+    if (query.containsKey("n") || query.containsKey("range")) return null
+    val expires = query["expire"]?.toLongOrNull()
+        ?: Regex("/expire/(\\d+)(?:/|$)").find(uri.path.orEmpty())?.groupValues?.get(1)?.toLongOrNull()
+        ?: return null
+    if (expires <= nowMs / 1000L + 45L || expires > Long.MAX_VALUE / 1000L) return null
+    return CapsuleNewPipeResolved(videoId, url!!, null,
+        if (quality == CapsuleNewPipeQuality.AUTO) "AUTO" else "≤${quality.maxHeight}p",
+        0, 0, -1, -1, expires * 1000L,
+        delivery = CapsuleVideoDelivery.HLS, maxHeight = quality.maxHeight)
 }

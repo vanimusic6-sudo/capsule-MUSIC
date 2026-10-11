@@ -343,18 +343,12 @@ internal fun CapsuleImmersiveContent(
     // The VIDEO renderer has its own player and TextureView. The service
     // signals first-frame readiness; the MUSIC player must never be attached
     // as the VIDEO surface and must not be replaced.
-    val presentingVideo = isVideo && videoPlaybackState.firstFrameReady
     // A small, compositor-only reveal. No animation updates player state or
     // recreates the expensive VIDEO SurfaceView.
     val videoReveal by animateFloatAsState(
         targetValue = if (isVideo) 1f else 0f,
         animationSpec = tween(durationMillis = 260, easing = FastOutSlowInEasing),
         label = "capsule-video-window",
-    )
-    val videoMaskAlpha by animateFloatAsState(
-        targetValue = if (presentingVideo) 0f else 1f,
-        animationSpec = tween(durationMillis = 180),
-        label = "capsule-video-mask",
     )
 
     /*
@@ -719,14 +713,6 @@ internal fun CapsuleImmersiveContent(
                     .background(Color.Black),
             ) {
                 CapsuleVideoSurface(playerConnection.service, Modifier.fillMaxSize())
-                // An attached TextureView is needed to produce the first
-                // video frame. Cover it with gradient temporarily instead of
-                // setting alpha=0 on the TextureView itself.
-                Box(
-                    Modifier.fillMaxSize()
-                        .graphicsLayer { alpha = videoMaskAlpha }
-                        .background(pageBackground),
-                )
             }
         }
 

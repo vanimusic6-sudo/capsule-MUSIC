@@ -85,6 +85,8 @@ object VideoExtractionRequests {
         }
     }
 
+    internal fun checkActive() { current.get()?.checkActive() }
+
     private fun prune() {
         val oldest = System.nanoTime() - TimeUnit.MINUTES.toNanos(1)
         requests.entries.removeIf { (_, state) ->

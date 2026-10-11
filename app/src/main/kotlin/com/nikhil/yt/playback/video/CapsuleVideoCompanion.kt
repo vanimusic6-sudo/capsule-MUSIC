@@ -141,7 +141,7 @@ internal class CapsuleVideoSession(
         if (audio.currentMediaItem?.mediaId != current) { stop(); return }
         // Music has advanced during extraction/buffering. Align at readiness,
         // before silencing MUSIC, then wait for the post-seek decoded frame.
-        if (!aligned && rendering && ready && firstFrame) {
+        if (!aligned && rendering && ready) {
             aligned = true
             val target = targetPosition()
             if (abs(video.currentPosition - target) > 400L) {
@@ -250,11 +250,10 @@ internal class CapsuleVideoSession(
     }
 
     private fun updateRendering() {
-        // Keep the original clip soundtrack in background. Disable VIDEO
-        // decoding while its surface is absent, rather than changing mode or
-        // silently switching to the album's different master/mix.
-        video.trackSelectionParameters = video.trackSelectionParameters.buildUpon()
-            .setTrackTypeDisabled(C.TRACK_TYPE_VIDEO, !rendering).build()
+        // A surface transition is not a track transition. Disabling/re-enabling
+        // VIDEO here reselected the muxed/HLS period and flushed its soundtrack.
+        // Media3 handles absent output with its codec placeholder surface.
+        // Keep the selected stream, timeline and sound owner unchanged.
         video.playWhenReady = audio.playWhenReady && (rendering || committed)
     }
     private fun changeRendering(change: () -> Unit) {
@@ -264,7 +263,7 @@ internal class CapsuleVideoSession(
             firstFrame = false
             frameReported = false
             id?.let(onFrameUnavailable)
-            if (rendering && !ownsSound) {
+            if (rendering && !committed) {
                 aligned = false
                 if (id != null) video.seekTo(targetPosition())
             }

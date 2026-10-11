@@ -999,6 +999,7 @@ class MusicService :
     private var videoRecoveryAttempts = 0
     private var videoSessionGeneration = 0L
     private var effectiveAudioVolume = 1f
+    private var videoRequestedAtMs = 0L
     val videoRenderPlayer: Player?
         get() = videoCompanion?.player
 
@@ -1007,6 +1008,7 @@ class MusicService :
             context = this,
             factory = CapsuleVideoDirectMediaSourceFactory(
                 upstream = createVideoCacheDataSource(),
+                hlsUpstream = createVideoCacheDataSource(boundedProgressive = false),
                 findResolved = YouTubeVideoResolver::peekResolved,
             ),
             audio = player,
@@ -1033,6 +1035,8 @@ class MusicService :
                 }
             },
             onReady = { currentId ->
+                Timber.tag("CapsuleVideo").i("VIDEO timing first-frame id=%s totalMs=%s", currentId,
+                    android.os.SystemClock.elapsedRealtime() - videoRequestedAtMs)
                 val state = videoPlaybackState.value
                 if (state.mediaId == currentId &&
                     state.mode == CapsulePlaybackMode.VIDEO &&
@@ -4504,7 +4508,7 @@ class MusicService :
         return DataSource.Factory { AudioCacheDataSource(streaming.createDataSource(), offline.createDataSource()) }
     }
 
-    private fun createVideoCacheDataSource(warmup: Boolean = false): CacheDataSource.Factory {
+    private fun createVideoCacheDataSource(boundedProgressive: Boolean = true): CacheDataSource.Factory {
         val videoHttpClient =
             mediaOkHttpClient
                 .newBuilder()
@@ -4516,24 +4520,13 @@ class MusicService :
                     maxRequestsPerHost = 2
                 })
                 .connectionPool(okhttp3.ConnectionPool(2, 45L, TimeUnit.SECONDS))
-                .apply {
-                    if (warmup) {
-                        // Dedicated, short-lived VIDEO transport; do not
-                        // occupy AUDIO's sockets or request dispatcher.
-                        callTimeout(6, TimeUnit.SECONDS)
-                        connectTimeout(4, TimeUnit.SECONDS)
-                        readTimeout(4, TimeUnit.SECONDS)
-                        connectionPool(okhttp3.ConnectionPool(1, 30L, TimeUnit.SECONDS))
-                        dispatcher(okhttp3.Dispatcher().apply {
-                            maxRequests = 1
-                            maxRequestsPerHost = 1
-                        })
-                    }
-                }
+                .connectTimeout(5, TimeUnit.SECONDS)
+                .readTimeout(8, TimeUnit.SECONDS)
                 .retryOnConnectionFailure(false)
                 .addInterceptor(CapsuleVideoStreamInterceptor())
                 .build()
 
+        val httpUpstream = DefaultDataSource.Factory(this, OkHttpDataSource.Factory(videoHttpClient))
         return CacheDataSource
             .Factory()
             .setCache(videoCache)
@@ -4541,12 +4534,9 @@ class MusicService :
                 // VIDEO only: every large CDN read is split into bounded
                 // Range requests. Media3 still receives one continuous source;
                 // the existing AUDIO cache/stream factory is untouched.
-                CapsuleVideoChunkedDataSource.Factory(
-                    DefaultDataSource.Factory(
-                        this,
-                        OkHttpDataSource.Factory(videoHttpClient),
-                    ),
-                ),
+                // HLS already loads bounded media segments and manifests.
+                // A progressive Range wrapper must never wrap an m3u8 file.
+                if (boundedProgressive) CapsuleVideoChunkedDataSource.Factory(httpUpstream) else httpUpstream,
             )
             .setFlags(FLAG_IGNORE_CACHE_ON_ERROR)
     }
@@ -4851,6 +4841,7 @@ class MusicService :
     }
 
     private fun enterCapsuleVideoMode() {
+        videoRequestedAtMs = android.os.SystemClock.elapsedRealtime()
         cancelVideoRecovery()
         videoCompanion?.stop()
         if (!canUseCapsuleVideoForScreen()) {

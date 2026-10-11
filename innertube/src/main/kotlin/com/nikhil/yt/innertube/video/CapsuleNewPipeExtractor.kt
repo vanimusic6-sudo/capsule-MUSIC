@@ -17,7 +17,6 @@ import org.schabi.newpipe.extractor.exceptions.ExtractionException
 import org.schabi.newpipe.extractor.exceptions.ReCaptchaException
 import org.schabi.newpipe.extractor.stream.AudioStream
 import org.schabi.newpipe.extractor.stream.DeliveryMethod
-import org.schabi.newpipe.extractor.stream.StreamInfo
 import org.schabi.newpipe.extractor.stream.VideoStream
 import java.io.IOException
 import java.net.SocketTimeoutException
@@ -35,7 +34,11 @@ data class CapsuleNewPipeResolved(
     val audioItag: Int,
     val expiresAtMs: Long,
     val backend: String = "newpipe",
+    val delivery: CapsuleVideoDelivery = CapsuleVideoDelivery.PROGRESSIVE,
+    val maxHeight: Int = 720,
 )
+
+enum class CapsuleVideoDelivery { PROGRESSIVE, HLS }
 
 enum class CapsuleNewPipeFailure {
     UNAVAILABLE, NETWORK, EXTRACTOR, RATE_LIMITED, BOT_BLOCKED, UNKNOWN
@@ -50,7 +53,11 @@ object CapsuleNewPipeExtractor {
     private const val DEFAULT_URL_TTL_MS = 3_600_000L
     private val initialized = AtomicBoolean(false)
     private const val INVENTORY_TTL_MS = 60_000L
-    private data class CachedInfo(val info: StreamInfo, val untilMs: Long)
+    private data class Inventory(
+        val videoStreams: List<VideoStream>, val videoOnlyStreams: List<VideoStream>,
+        val audioStreams: List<AudioStream>, val hlsUrl: String,
+    )
+    private data class CachedInfo(val info: Inventory, val untilMs: Long)
     // At most two VIDEO items. Never shared with the MUSIC/AUDIO extractor.
     private val recentMetadata = LinkedHashMap<String, CachedInfo>(4, 0.75f, true)
 
@@ -81,7 +88,14 @@ object CapsuleNewPipeExtractor {
 
         val now = System.currentTimeMillis()
         val cached = recentMetadata[id]?.takeIf { it.untilMs > now }
-        val info = cached?.info ?: StreamInfo.getInfo("https://www.youtube.com/watch?v=$id")
+        val info = cached?.info ?: NewPipe.getServiceByUrl("https://www.youtube.com/watch?v=$id")
+            .getStreamExtractor("https://www.youtube.com/watch?v=$id").let { extractor ->
+                extractor.fetchPage()
+                // StreamInfo additionally parses related items, thumbnails,
+                // chapters and previews. VIDEO already has its metadata.
+                Inventory(extractor.videoStreams, extractor.videoOnlyStreams,
+                    extractor.audioStreams, extractor.hlsUrl)
+            }
         if (cached == null) {
             recentMetadata.remove(id)
             val signedUrls = buildList {
@@ -101,6 +115,12 @@ object CapsuleNewPipeExtractor {
                 while (recentMetadata.size > 2) {
                     recentMetadata.remove(recentMetadata.keys.first())
                 }
+            }
+        }
+
+        if (!muxedOnly) {
+            selectDirectHlsManifest(info.hlsUrl, id, quality, now)?.let {
+                return it.copy(backend = "newpipe")
             }
         }
 
@@ -168,9 +188,9 @@ object CapsuleNewPipeExtractor {
             } catch (failure: Exception) {
                 // A request-wide cancellation/deadline or HTTP 429 must stop
                 // the chain. Parser/transport failures can try NewPipe once.
-                if (failure is java.io.InterruptedIOException &&
-                    failure !is SocketTimeoutException
-                ) throw failure
+                // OkHttp's route timeout also uses InterruptedIOException.
+                // Only request cancellation/deadline should stop the chain.
+                VideoExtractionRequests.checkActive()
                 if (classify(failure) == CapsuleNewPipeFailure.RATE_LIMITED) throw failure
             }
         }
