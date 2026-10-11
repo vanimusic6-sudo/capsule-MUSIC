@@ -10,6 +10,7 @@ on:
       - perf/thermal-audit-20261005
       - feature/video-isolated-thermal-20261010-v2
       - fix/video-stable-incremental-20261011
+      - fix/video-standalone-handoff-20261011
 
 permissions:
   contents: read
@@ -65,6 +66,7 @@ jobs:
             --tests 'com.nikhil.yt.playback.video.CapsuleVideoResolveCoordinatorTest' \
             --tests 'com.nikhil.yt.playback.video.CapsuleVideoChunkedDataSourceTest' \
             --tests 'com.nikhil.yt.playback.video.CapsuleVideoWarmupTest' \
+            --tests 'com.nikhil.yt.playback.video.CapsuleVideoSoundHandoffTest' \
             --tests 'com.nikhil.yt.playback.video.VideoStreamCacheTest' \
             --stacktrace --no-daemon
 

@@ -339,42 +339,18 @@ internal fun CapsuleImmersiveContent(
 
     val isVideo =
         videoPlaybackState.mode == CapsulePlaybackMode.VIDEO &&
-            videoPlaybackState.phase == CapsuleVideoPhase.PLAYING
-
-    // Requesting VIDEO is not the same as having a video to display. Keep the complete
-    // audio artwork in place throughout RESOLVING and any request-guard backoff. The
-    // service deliberately marks PLAYING before replacing the Media3 item; even that
-    // is too early for a visible video stage until its FIRST frame is rendered.
-    var videoFirstFrameRendered by remember(mediaMetadata.id, videoPlaybackState.videoId) {
-        mutableStateOf(false)
-    }
-    DisposableEffect(playerConnection.player, isVideo, videoPlaybackState.videoId, mediaMetadata.id) {
-        if (isVideo && visible) {
-            val listener = object : Player.Listener {
-                override fun onRenderedFirstFrame() {
-                    videoFirstFrameRendered = true
-                }
-            }
-            playerConnection.player.addListener(listener)
-            onDispose { playerConnection.player.removeListener(listener) }
-        } else {
-            onDispose { }
-        }
-    }
-    // Once a video has rendered its first frame, switch surfaces in one frame. Do not
-    // animate AUDIO <-> VIDEO; only the neutral placeholder -> prepared artwork fades.
-    val presentingVideo = isVideo && videoFirstFrameRendered
-    // A small, compositor-only reveal. No animation updates player state or
-    // recreates the expensive VIDEO SurfaceView.
-    val videoReveal by animateFloatAsState(
-        targetValue = if (isVideo) 1f else 0f,
-        animationSpec = tween(durationMillis = 260, easing = FastOutSlowInEasing),
-        label = "capsule-video-window",
-    )
+            videoPlaybackState.phase in setOf(
+                CapsuleVideoPhase.BUFFERING, CapsuleVideoPhase.PLAYING,
+            )
+    // Only the VIDEO companion's real first frame AND selected audio track
+    // can mark PLAYING. The album cover is hidden when the VIDEO surface mounts.
+    val presentingVideo =
+        isVideo && videoPlaybackState.phase == CapsuleVideoPhase.PLAYING
+    val videoPlayer = playerConnection.service.capsuleVideoPlayer
     val videoMaskAlpha by animateFloatAsState(
         targetValue = if (presentingVideo) 0f else 1f,
-        animationSpec = tween(durationMillis = 180),
-        label = "capsule-video-mask",
+        animationSpec = tween(durationMillis = 190, easing = FastOutSlowInEasing),
+        label = "video-frame-reveal",
     )
 
     /*
@@ -735,18 +711,15 @@ internal fun CapsuleImmersiveContent(
                     .padding(top = videoFrameTop, start = videoSidePadding, end = videoSidePadding)
                     .fillMaxWidth()
                     .height(videoFrameHeight)
-                    .graphicsLayer {
-                        val scale = 0.985f + 0.015f * videoReveal
-                        scaleX = scale
-                        scaleY = scale
-                    }
+                    // Never transform a SurfaceView: Android may display torn
+                    // or misaligned compositor layers during a scaling animation.
                     .clip(RoundedCornerShape(28.dp))
                     .background(Color.Black),
             ) {
                 AndroidView(
                     factory = { viewContext ->
                         PlayerView(viewContext).apply {
-                            player = playerConnection.player
+                            player = videoPlayer
                             useController = false
                             setShowBuffering(PlayerView.SHOW_BUFFERING_NEVER)
                             resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM
@@ -755,8 +728,8 @@ internal fun CapsuleImmersiveContent(
                         }
                     },
                     update = { playerView ->
-                        if (playerView.player !== playerConnection.player) {
-                            playerView.player = playerConnection.player
+                        if (playerView.player !== videoPlayer) {
+                            playerView.player = videoPlayer
                         }
                     },
                     modifier = Modifier.fillMaxSize(),

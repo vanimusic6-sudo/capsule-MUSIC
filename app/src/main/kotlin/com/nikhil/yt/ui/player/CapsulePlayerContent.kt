@@ -360,11 +360,17 @@ fun CapsulePlayerContent(
     val isCapsuleVideoPlaying =
         videoPlaybackState.mode == CapsulePlaybackMode.VIDEO &&
             videoPlaybackState.phase == CapsuleVideoPhase.PLAYING
+    val videoRendererActive =
+        videoPlaybackState.mode == CapsulePlaybackMode.VIDEO &&
+            videoPlaybackState.phase in setOf(
+                CapsuleVideoPhase.BUFFERING, CapsuleVideoPhase.PLAYING,
+            )
+    val videoPlayer = playerConnection.service.capsuleVideoPlayer
     // While searching VIDEO, reserve the 16:9 stage right away. Otherwise
     // opening a player recreates a square album cover for one frame and then
     // replaces it abruptly with the video window.
     val videoStageReserved =
-        isCapsuleVideoPlaying ||
+        videoRendererActive ||
             (videoPlaybackState.preferredMode == CapsulePlaybackMode.VIDEO &&
                 videoPlaybackState.phase == CapsuleVideoPhase.RESOLVING)
 
@@ -623,19 +629,18 @@ fun CapsulePlayerContent(
                             ),
                     contentAlignment = Alignment.Center,
                 ) {
-                    if (isCapsuleVideoPlaying) {
-                        Box(Modifier.fillMaxSize().graphicsLayer {
-                            val scale = 0.985f + 0.015f * videoWindowReveal
-                            scaleX = scale
-                            scaleY = scale
-                        }) {
+                    if (videoRendererActive) {
+                        // Animate a lightweight overlay, NOT the SurfaceView
+                        // itself. Scaling a SurfaceView causes the broken colored
+                        // rectangle previously seen in Immersion.
+                        Box(Modifier.fillMaxSize()) {
                         AndroidView(
                             factory = { viewContext ->
                                 PlayerView(viewContext).apply {
                                     // Disable Media3's built-in controls BEFORE binding
                                     // the player: binding can schedule their initial show.
                                     useController = false
-                                    player = playerConnection.player
+                                    player = videoPlayer
                                     hideController()
 
                                     /*
@@ -663,12 +668,17 @@ fun CapsulePlayerContent(
                             update = { playerView ->
                                 // Keep the embedded renderer control-free across recompositions.
                                 playerView.useController = false
-                                if (playerView.player !== playerConnection.player) {
-                                    playerView.player = playerConnection.player
+                                if (playerView.player !== videoPlayer) {
+                                    playerView.player = videoPlayer
                                 }
                                 playerView.hideController()
                             },
                             modifier = Modifier.fillMaxSize(),
+                        )
+                        Box(
+                            Modifier.fillMaxSize()
+                                .graphicsLayer { alpha = 1f - videoWindowReveal }
+                                .background(textColor.copy(alpha = 0.04f)),
                         )
                         }
                     } else if (videoStageReserved) {

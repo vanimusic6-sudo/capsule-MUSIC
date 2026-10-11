@@ -14,6 +14,8 @@ enum class CapsulePlaybackMode {
 enum class CapsuleVideoPhase {
     IDLE,
     RESOLVING,
+    /** VIDEO renderer has attached a surface, but frame AND soundtrack are not ready. */
+    BUFFERING,
     PLAYING,
 
     /** No trustworthy official clip was found for this song. */
