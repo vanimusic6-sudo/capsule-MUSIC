@@ -69,10 +69,11 @@ class CapsuleVideoExtractorProvider : ContentProvider() {
 
         return runCatching {
             VideoExtractionRequests.withRequest(requestId, CapsuleVideoIpc.REQUEST_TIMEOUT_MS) {
-                CapsuleNewPipeExtractor.resolve(
+                CapsuleNewPipeExtractor.resolveWithFallback(
                     videoId,
                     CapsuleNewPipeQuality.valueOf(quality.name),
                     muxedOnly,
+                    extras?.getBoolean(CapsuleVideoIpc.EXTRA_NEWPIPE_ONLY, false) ?: false,
                 )
             }
         }.fold(
@@ -88,6 +89,7 @@ class CapsuleVideoExtractorProvider : ContentProvider() {
                         videoItag = resolved.videoItag,
                         audioItag = resolved.audioItag,
                         expiresAtMs = resolved.expiresAtMs,
+                        backend = resolved.backend,
                     ),
                 )
             },

@@ -10,6 +10,7 @@ on:
       - perf/thermal-audit-20261005
       - feature/video-isolated-thermal-20261010-v2
       - fix/video-stable-incremental-20261011
+      - refactor/video-session-rebuild-20261011
 
 permissions:
   contents: read
@@ -66,6 +67,7 @@ jobs:
             --tests 'com.nikhil.yt.playback.video.CapsuleVideoChunkedDataSourceTest' \
             --tests 'com.nikhil.yt.playback.video.CapsuleVideoWarmupTest' \
             --tests 'com.nikhil.yt.playback.video.CapsuleVideoCompanionTest' \
+            --tests 'com.nikhil.yt.playback.video.CapsuleVideoSessionTest' \
             --tests 'com.nikhil.yt.playback.video.CapsuleVideoDirectMediaSourceFactoryTest' \
             --tests 'com.nikhil.yt.playback.video.VideoStreamCacheTest' \
             --stacktrace --no-daemon
@@ -83,6 +85,7 @@ jobs:
             --tests 'com.nikhil.yt.innertube.YouTubeMusicVideoMatcherTest' \
             --tests 'com.nikhil.yt.innertube.ExplicitVideoOriginTest' \
             --tests 'com.nikhil.yt.innertube.video.CapsuleNewPipeExtractorTest' \
+            --tests 'com.nikhil.yt.innertube.video.CapsuleDirectVideoExtractorTest' \
             --tests 'com.nikhil.yt.innertube.CapsuleVideoRequestGuardTest' \
             --stacktrace --no-daemon
 

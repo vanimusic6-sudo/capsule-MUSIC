@@ -1,12 +1,4 @@
-/*
- * Capsule MUSIC — prepare VIDEO without cutting off the current AUDIO song.
- * GPL-3.0
- *
- * Separate Media3 decoder, same MediaSourceFactory as the stable VIDEO route.
- * This object does not replace a MediaSession item or touch AUDIO extraction.
- * The primary AUDIO queue remains audible until the VIDEO renderer has both
- * its first real frame and a selected original clip soundtrack.
- */
+/* Capsule MUSIC — isolated VIDEO session and sound ownership. GPL-3.0. */
 @file:Suppress("UnsafeOptInUsageError")
 package com.nikhil.yt.playback.video
 
@@ -15,6 +7,8 @@ import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
+import androidx.media3.common.Tracks
+import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.MediaSource
 import kotlinx.coroutines.CoroutineScope
@@ -22,269 +16,261 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import timber.log.Timber
+import kotlin.math.abs
 
 internal fun canSwitchToVideoSound(
-    firstFrameRendered: Boolean,
-    ready: Boolean,
-    originalAudioSelected: Boolean,
-    musicIsPlaying: Boolean,
-    clipIsPlaying: Boolean,
-): Boolean = firstFrameRendered && ready && originalAudioSelected &&
-    musicIsPlaying && clipIsPlaying
+    firstFrameRendered: Boolean, ready: Boolean, originalAudioSelected: Boolean,
+    musicIsPlaying: Boolean, clipIsPlaying: Boolean,
+): Boolean = firstFrameRendered && ready && originalAudioSelected && musicIsPlaying && clipIsPlaying
+
+internal class CapsuleVideoEndedException : IllegalStateException("VIDEO clip ended")
 
 internal class CapsuleVideoCompanion(
-    context: Context,
-    factory: MediaSource.Factory,
-    private val audio: ExoPlayer,
+    context: Context, factory: MediaSource.Factory, audio: ExoPlayer,
+    scope: CoroutineScope, onSoundOwned: (Boolean) -> Unit,
+    onReady: (String) -> Unit, onFailure: (String, Throwable) -> Unit,
+    onFrameUnavailable: (String) -> Unit,
+) {
+    val player: ExoPlayer = ExoPlayer.Builder(context)
+        .setMediaSourceFactory(factory)
+        .setLoadControl(DefaultLoadControl.Builder()
+            .setBufferDurationsMs(2_500, 12_000, 350, 750)
+            .setPrioritizeTimeOverSizeThresholds(true).build())
+        .setWakeMode(C.WAKE_MODE_LOCAL)
+        .build()
+    private val session = CapsuleVideoSession(
+        audio, player, scope, onSoundOwned, onReady, onFailure, onFrameUnavailable,
+    )
+    fun start(id: String, item: MediaItem, volume: Float) = session.start(id, item, volume)
+    fun setForeground(value: Boolean) = session.setForeground(value)
+    fun setSurfaceAttached(value: Boolean) = session.setSurfaceAttached(value)
+    fun setVolume(value: Float) = session.setVolume(value)
+    fun stop() = session.stop()
+    fun release() { session.release(); player.release() }
+}
+
+/**
+ * One owner for decoder readiness, surface lifetime, timeline alignment and
+ * sound. Callbacks do not depend on Media3's READY/tracks/frame event order.
+ * Every asynchronous completion is leased to a session generation.
+ */
+internal class CapsuleVideoSession(
+    private val audio: Player,
+    private val video: Player,
     private val scope: CoroutineScope,
     private val onSoundOwned: (Boolean) -> Unit,
     private val onReady: (String) -> Unit,
     private val onFailure: (String, Throwable) -> Unit,
+    private val onFrameUnavailable: (String) -> Unit,
 ) {
-    val player: ExoPlayer = ExoPlayer.Builder(context)
-        .setMediaSourceFactory(factory)
-        .setWakeMode(C.WAKE_MODE_LOCAL)
-        .build().apply { volume = 0f }
-
-    private var mediaId: String? = null
-    private var firstFrame = false
-    private var ownsSound = false
-    private var clipAudible = false
-    private var readyReported = false
-    private var switchGapJob: Job? = null
-    private var requestedVolume = 1f
-    private var startupTimeout: Job? = null
-    private var isFailed = false
+    private var id: String? = null
+    private var generation = 0L
     private var foreground = true
+    private var surfaceAttached = false
+    private var firstFrame = false
+    private var frameReported = false
+    private var ownsSound = false
+    private var audible = false
+    private var aligned = false
+    private var committed = false
+    private var volume = 1f
+    private var seamJob: Job? = null
+    private var watchdog: Job? = null
+    private var starting = false
+    private val rendering get() = foreground && surfaceAttached
+    private val hasAudio get() = video.currentTracks.groups.any {
+        it.type == C.TRACK_TYPE_AUDIO && it.isSelected
+    }
+    private val ready get() = video.playbackState == Player.STATE_READY && hasAudio
 
-    private fun hasAudio(): Boolean =
-        player.currentTracks.groups.any {
-            it.type == C.TRACK_TYPE_AUDIO && it.isSelected
+    private val audioListener = object : Player.Listener {
+        override fun onEvents(player: Player, events: Player.Events) {
+            if (id == null) return
+            if (audio.currentMediaItem?.mediaId != id) { stop(); return }
+            video.playWhenReady = audio.playWhenReady && (rendering || ownsSound)
+            video.playbackParameters = audio.playbackParameters
+            evaluate()
         }
+        override fun onPositionDiscontinuity(
+            oldPosition: Player.PositionInfo, newPosition: Player.PositionInfo, reason: Int,
+        ) {
+            if (id == null || audio.currentMediaItem?.mediaId != id) return
+            if (reason == Player.DISCONTINUITY_REASON_SEEK || reason == Player.DISCONTINUITY_REASON_SEEK_ADJUSTMENT) {
+                firstFrame = false
+                frameReported = false
+                onFrameUnavailable(id!!)
+                aligned = true
+                video.seekTo(targetPosition())
+            }
+        }
+        override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+            if (id != null && mediaItem?.mediaId != id) stop()
+        }
+    }
+    private val videoListener = object : Player.Listener {
+        override fun onRenderedFirstFrame() {
+            if (id == null || !rendering) return
+            firstFrame = true
+            Timber.tag("CapsuleVideo").i("first-frame session=%s generation=%s", id, generation)
+            evaluate()
+        }
+        override fun onEvents(player: Player, events: Player.Events) = evaluate()
+        override fun onPlayerError(error: PlaybackException) = fail(error)
+        override fun onPlaybackStateChanged(playbackState: Int) {
+            if (playbackState == Player.STATE_ENDED && id != null) {
+                // A clip can be shorter than the album track. Restore MUSIC
+                // once; an ordinary end is not a CDN failure to retry.
+                fail(CapsuleVideoEndedException())
+                return
+            }
+            evaluate()
+        }
+    }
+    init { video.volume = 0f; video.addListener(videoListener) }
 
-    private fun readyForSound(): Boolean =
-        foreground && firstFrame && player.playbackState == Player.STATE_READY && hasAudio()
+    private fun targetPosition(): Long {
+        val position = audio.currentPosition.coerceAtLeast(0L)
+        val duration = video.duration
+        return if (duration > 0 && duration != C.TIME_UNSET) position.coerceAtMost((duration - 1).coerceAtLeast(0L)) else position
+    }
 
     private fun evaluate() {
-        val current = mediaId ?: return
-        if (isFailed) return
-        if (audio.currentMediaItem?.mediaId != current) {
-            stop()
-            return
-        }
-        val ready = readyForSound()
-        val handoff = canSwitchToVideoSound(
-            firstFrameRendered = firstFrame,
-            ready = player.playbackState == Player.STATE_READY,
-            originalAudioSelected = hasAudio(),
-            // isPlaying may briefly turn false during AUDIO CDN buffering.
-            // VIDEO is an independent renderer; follow user intent, not the
-            // audio decoder's transient buffering/ready state.
-            musicIsPlaying = audio.playWhenReady,
-            clipIsPlaying = foreground && player.isPlaying,
-        )
-        if (handoff != ownsSound) {
-            switchGapJob?.cancel()
-            switchGapJob = null
-            ownsSound = handoff
-            clipAudible = false
-            Timber.tag("CapsuleVideo").i(
-                "sound-handoff clip=%s destination=%s",
-                current, if (handoff) "VIDEO" else "AUDIO",
-            )
-            if (handoff) {
-                // The listener is already playing the VIDEO muted. Briefly
-                // silence BOTH outputs between the two different mixes,
-                // rather than abruptly switching waves at the same instant.
-                // AUDIO must be restored immediately if VIDEO stalls or stops.
-                player.volume = 0f
-                onSoundOwned(true)
-                switchGapJob = scope.launch {
-                    delay(115L)
-                    if (mediaId == current && ownsSound && foreground && readyForSound() &&
-                        player.isPlaying && audio.playWhenReady
-                    ) {
-                        clipAudible = true
-                        player.volume = requestedVolume
-                    }
-                }
-            } else {
-                player.volume = 0f
-                onSoundOwned(false)
+        val current = id ?: return
+        if (starting) return
+        if (audio.currentMediaItem?.mediaId != current) { stop(); return }
+        // Music has advanced during extraction/buffering. Align at readiness,
+        // before silencing MUSIC, then wait for the post-seek decoded frame.
+        if (!aligned && rendering && ready && firstFrame) {
+            aligned = true
+            val target = targetPosition()
+            if (abs(video.currentPosition - target) > 400L) {
+                firstFrame = false
+                frameReported = false
+                onFrameUnavailable(current)
+                video.seekTo(target)
+                return
             }
         }
-        if (ready && !readyReported) {
-            readyReported = true
-            startupTimeout?.cancel()
-            startupTimeout = null
+        if (rendering && firstFrame && ready && !frameReported) {
+            frameReported = true
             onReady(current)
         }
-    }
-
-    private val mainListener = object : Player.Listener {
-        override fun onIsPlayingChanged(isPlaying: Boolean) {
-            // A main AUDIO CDN stall does not mean the user pressed Pause.
-            player.playWhenReady = foreground && audio.playWhenReady
-            evaluate()
-        }
-
-        override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
-            player.playWhenReady = foreground && playWhenReady
-            evaluate()
-        }
-
-        override fun onPositionDiscontinuity(
-            oldPosition: Player.PositionInfo,
-            newPosition: Player.PositionInfo,
-            reason: Int,
-        ) {
-            if (audio.currentMediaItem?.mediaId != mediaId) {
-                stop()
-            } else if (reason == Player.DISCONTINUITY_REASON_SEEK ||
-                reason == Player.DISCONTINUITY_REASON_SEEK_ADJUSTMENT
-            ) {
-                if (player.playbackState != Player.STATE_IDLE) {
-                    val duration = player.duration.takeIf { it != C.TIME_UNSET && it > 0 }
-                    val wanted = audio.currentPosition.coerceAtLeast(0)
-                    player.seekTo(duration?.let { wanted.coerceAtMost(it - 1) } ?: wanted)
+        val canOwn = ready && video.isPlaying && audio.playWhenReady &&
+            (committed || (rendering && firstFrame && aligned))
+        if (canOwn && !ownsSound) {
+            ownsSound = true
+            audible = false
+            video.volume = 0f
+            onSoundOwned(true)
+            val lease = generation
+            seamJob?.cancel()
+            seamJob = scope.launch {
+                delay(115L)
+                if (id == current && generation == lease && ownsSound && ready && video.isPlaying && audio.playWhenReady) {
+                    audible = true
+                    committed = true
+                    video.volume = volume
+                    Timber.tag("CapsuleVideo").i("sound-owner VIDEO session=%s", current)
+                } else {
+                    returnSound()
                 }
             }
-        }
-
-        override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
-            if (mediaItem?.mediaId != mediaId) stop()
-        }
-
-        override fun onPlaybackParametersChanged(playbackParameters: androidx.media3.common.PlaybackParameters) {
-            player.playbackParameters = playbackParameters
+        } else if (!canOwn && ownsSound) {
+            returnSound()
         }
     }
 
-    init {
-        player.addListener(object : Player.Listener {
-            override fun onRenderedFirstFrame() {
-                Timber.tag("CapsuleVideo").i("first-frame clip=%s", mediaId)
-                firstFrame = true
-                evaluate()
-            }
-
-            override fun onTracksChanged(tracks: androidx.media3.common.Tracks) {
-                evaluate()
-            }
-
-            override fun onIsPlayingChanged(isPlaying: Boolean) {
-                evaluate()
-            }
-
-            override fun onPlaybackStateChanged(playbackState: Int) {
-                // Media3 may publish STATE_READY before its selected
-                // audio-track callback. Don't reject a playable clip due to
-                // that observer ordering race. The 12-second foreground
-                // readiness watchdog detects genuinely missing audio.
-                if (playbackState == Player.STATE_ENDED) {
-                    mediaId?.let { fail(it, IllegalStateException("VIDEO clip ended")) }
-                    return
-                }
-                evaluate()
-            }
-
-            override fun onPlayerError(error: PlaybackException) {
-                mediaId?.let { fail(it, error) }
-            }
-        })
+    private fun returnSound() {
+        seamJob?.cancel(); seamJob = null
+        video.volume = 0f
+        audible = false
+        if (ownsSound) { ownsSound = false; onSoundOwned(false) }
     }
 
-    private fun fail(id: String, cause: Throwable) {
-        if (isFailed || mediaId != id) return
-        isFailed = true
-        Timber.tag("CapsuleVideo").w(cause, "video-failure clip=%s; AUDIO restored", id)
+    fun start(mediaId: String, item: MediaItem, outputVolume: Float) {
         stop()
-        onFailure(id, cause)
-    }
-
-    fun start(id: String, item: MediaItem, outputVolume: Float) {
-        stop()
-        mediaId = id
-        firstFrame = false
-        isFailed = false
-        readyReported = false
-        clipAudible = false
-        requestedVolume = outputVolume.coerceIn(0f, 1f)
-        audio.addListener(mainListener)
-        player.volume = 0f
-        Timber.tag("CapsuleVideo").i("prepare clip=%s; AUDIO stays running", id)
-        player.setMediaItem(item)
-        player.seekTo(audio.currentPosition.coerceAtLeast(0L))
-        player.playbackParameters = audio.playbackParameters
-        player.playWhenReady = foreground && audio.playWhenReady
-        player.prepare()
-        startupTimeout = scope.launch {
-            // A decoder may render a first frame with no selected soundtrack.
-            // That is NOT readiness. Only count active playback time, so users
-            // who enter VIDEO while paused are never timed out while idle.
-            var activeWaitMs = 0L
-            while (mediaId == id && !readyForSound()) {
-                delay(1_000L)
-                if (mediaId != id || readyForSound()) break
-                if (foreground && audio.playWhenReady) activeWaitMs += 1_000L
-                if (activeWaitMs >= 12_000L) {
-                    fail(id, IllegalStateException(
-                        "VIDEO frame/soundtrack readiness timed out; AUDIO preserved",
-                    ))
+        id = mediaId
+        val lease = generation
+        volume = outputVolume.coerceIn(0f, 1f)
+        audio.addListener(audioListener)
+        starting = true
+        try {
+            video.volume = 0f
+            video.setMediaItem(item, targetPosition())
+            video.playbackParameters = audio.playbackParameters
+            updateRendering()
+            video.prepare()
+        } catch (failure: Exception) {
+            starting = false
+            fail(failure)
+            return
+        }
+        starting = false
+        Timber.tag("CapsuleVideo").i("prepare session=%s generation=%s; MUSIC audible", mediaId, lease)
+        watchdog = scope.launch {
+            var startupMs = 0L
+            var stallMs = 0L
+            while (id == mediaId && generation == lease) {
+                delay(500L)
+                if (id != mediaId || generation != lease) break
+                evaluate()
+                // No first-frame timeout with a detached/minimized player.
+                if (rendering && audio.playWhenReady && !frameReported) startupMs += 500L
+                if (ready && frameReported) startupMs = 0L
+                if ((rendering || ownsSound) && audio.playWhenReady && video.playbackState == Player.STATE_BUFFERING) stallMs += 500L else stallMs = 0L
+                if (startupMs >= 15_000L || stallMs >= 12_000L) {
+                    fail(java.net.SocketTimeoutException("VIDEO readiness/stall timeout (surface=$surfaceAttached frame=$firstFrame audio=$hasAudio)"))
                     break
                 }
             }
         }
+        evaluate()
     }
 
-    fun setForeground(value: Boolean) {
-        if (foreground == value) return
-        foreground = value
-        if (!value) {
-            // Preserve VIDEO selection in the background, but do not render
-            // with a detached UI surface. Main AUDIO plays in the background.
-            player.playWhenReady = false
+    private fun updateRendering() {
+        // Keep the original clip soundtrack in background. Disable VIDEO
+        // decoding while its surface is absent, rather than changing mode or
+        // silently switching to the album's different master/mix.
+        video.trackSelectionParameters = video.trackSelectionParameters.buildUpon()
+            .setTrackTypeDisabled(C.TRACK_TYPE_VIDEO, !rendering).build()
+        video.playWhenReady = audio.playWhenReady && (rendering || ownsSound)
+    }
+    private fun changeRendering(change: () -> Unit) {
+        val wasRendering = rendering
+        change()
+        if (wasRendering != rendering) {
             firstFrame = false
-            evaluate()
-        } else if (mediaId != null) {
-            firstFrame = false
-            readyReported = false
-            val wanted = audio.currentPosition.coerceAtLeast(0L)
-            val duration = player.duration.takeIf { it != C.TIME_UNSET && it > 0L }
-            player.seekTo(duration?.let { wanted.coerceAtMost(it - 1) } ?: wanted)
-            player.playWhenReady = foreground && audio.playWhenReady
-            evaluate()
+            frameReported = false
+            id?.let(onFrameUnavailable)
+            if (rendering && !ownsSound) {
+                aligned = false
+                if (id != null) video.seekTo(targetPosition())
+            }
         }
+        updateRendering()
+        evaluate()
     }
+    fun setForeground(value: Boolean) { if (foreground != value) changeRendering { foreground = value } }
+    fun setSurfaceAttached(value: Boolean) { if (surfaceAttached != value) changeRendering { surfaceAttached = value } }
+    fun setVolume(value: Float) { volume = value.coerceIn(0f, 1f); video.volume = if (ownsSound && audible) volume else 0f }
 
-    fun setVolume(value: Float) {
-        requestedVolume = value.coerceIn(0f, 1f)
-        player.volume = if (ownsSound && clipAudible) requestedVolume else 0f
-    }
-
-    fun stop() {
-        switchGapJob?.cancel()
-        switchGapJob = null
-        clipAudible = false
-        readyReported = false
-        startupTimeout?.cancel()
-        startupTimeout = null
-        val hadId = mediaId != null
-        mediaId = null
-        if (hadId) audio.removeListener(mainListener)
-        if (ownsSound) {
-            player.volume = 0f
-            ownsSound = false
-            onSoundOwned(false)
-        }
-        player.playWhenReady = false
-        player.stop()
-        player.clearMediaItems()
-        firstFrame = false
-    }
-
-    fun release() {
+    private fun fail(cause: Throwable) {
+        val failed = id ?: return
+        Timber.tag("CapsuleVideo").w(cause, "session-failure id=%s; MUSIC restored", failed)
         stop()
-        player.release()
+        onFailure(failed, cause)
     }
+    fun stop() {
+        generation++
+        watchdog?.cancel(); watchdog = null
+        val wasActive = id != null
+        id = null
+        if (wasActive) audio.removeListener(audioListener)
+        returnSound()
+        firstFrame = false; frameReported = false; aligned = false; committed = false
+        video.playWhenReady = false
+        video.stop()
+        video.clearMediaItems()
+    }
+    fun release() { stop(); video.removeListener(videoListener) }
 }

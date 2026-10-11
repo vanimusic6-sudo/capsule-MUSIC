@@ -37,7 +37,10 @@ internal class CapsuleVideoDirectMediaSourceFactory(
         check(videoId.matches(Regex("[A-Za-z0-9_-]{11}"))) {
             "VIDEO source requires a previously matched video ID"
         }
-        val stream = checkNotNull(findResolved(videoId)) {
+        val stream = checkNotNull(
+            mediaItem.localConfiguration?.tag as? YouTubeVideoResolver.ResolvedVideo
+                ?: findResolved(videoId),
+        ) {
             "Resolved VIDEO URL expired before source preparation"
         }
         check(stream.expiresAtMs > System.currentTimeMillis() + 45_000L) {

@@ -338,10 +338,9 @@ internal fun CapsuleImmersiveContent(
     val isLoading = playbackState == Player.STATE_BUFFERING
 
     val isVideo =
-        videoPlaybackState.mode == CapsulePlaybackMode.VIDEO &&
-            videoPlaybackState.phase == CapsuleVideoPhase.PLAYING
+        videoPlaybackState.needsSurface
 
-    // The VIDEO renderer has its own player and SurfaceView. The service
+    // The VIDEO renderer has its own player and TextureView. The service
     // signals first-frame readiness; the MUSIC player must never be attached
     // as the VIDEO surface and must not be replaced.
     val presentingVideo = isVideo && videoPlaybackState.firstFrameReady
@@ -719,27 +718,10 @@ internal fun CapsuleImmersiveContent(
                     .clip(RoundedCornerShape(28.dp))
                     .background(Color.Black),
             ) {
-                AndroidView(
-                    factory = { viewContext ->
-                        PlayerView(viewContext).apply {
-                            player = playerConnection.service.videoRenderPlayer
-                            useController = false
-                            setShowBuffering(PlayerView.SHOW_BUFFERING_NEVER)
-                            resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM
-                            setShutterBackgroundColor(android.graphics.Color.BLACK)
-                            keepScreenOn = true
-                        }
-                    },
-                    update = { playerView ->
-                        if (playerView.player !== playerConnection.service.videoRenderPlayer) {
-                            playerView.player = playerConnection.service.videoRenderPlayer
-                        }
-                    },
-                    modifier = Modifier.fillMaxSize(),
-                )
-                // An attached SurfaceView is needed to produce the first
+                CapsuleVideoSurface(playerConnection.service, Modifier.fillMaxSize())
+                // An attached TextureView is needed to produce the first
                 // video frame. Cover it with gradient temporarily instead of
-                // setting alpha=0 on the SurfaceView itself.
+                // setting alpha=0 on the TextureView itself.
                 Box(
                     Modifier.fillMaxSize()
                         .graphicsLayer { alpha = videoMaskAlpha }

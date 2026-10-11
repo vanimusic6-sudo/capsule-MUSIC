@@ -56,6 +56,7 @@ object YouTubeVideoResolver {
         val audioStreamUrl: String? = null,
         val audioFormat: StreamFormat? = null,
         val expiresAtMs: Long,
+        val backend: String = "newpipe",
     ) {
         val streamUrl: String
             get() = videoStreamUrl
@@ -246,6 +247,7 @@ object YouTubeVideoResolver {
         videoId: String,
         quality: CapsuleVideoQuality,
         muxedOnly: Boolean,
+        newPipeOnly: Boolean = false,
     ): ResolvedVideo {
         val key = cacheKey(videoId, quality, muxedOnly)
         cache[key]?.let { return it }
@@ -261,7 +263,7 @@ object YouTubeVideoResolver {
         return resolveMutex.withLock {
             cache[key]?.let { return@withLock it }
 
-            val remote = callRemoteExtractor(videoId, quality, muxedOnly)
+            val remote = callRemoteExtractor(videoId, quality, muxedOnly, newPipeOnly)
             val resolved = remote.toResolved(sourceMediaId)
             cache.put(videoId, key, resolved)
             resolved
@@ -272,6 +274,7 @@ object YouTubeVideoResolver {
         videoId: String,
         quality: CapsuleVideoQuality,
         muxedOnly: Boolean,
+        newPipeOnly: Boolean = false,
     ): CapsuleResolvedVideo = withContext(Dispatchers.IO) {
         val context = App.instance.applicationContext
         val authority = "${context.packageName}.capsule.video.extractor"
@@ -283,6 +286,7 @@ object YouTubeVideoResolver {
                 putString(CapsuleVideoIpc.EXTRA_VIDEO_ID, videoId)
                 putString(CapsuleVideoIpc.EXTRA_QUALITY, CapsuleVideoIpc.qualityToWire(quality))
                 putBoolean(CapsuleVideoIpc.EXTRA_MUXED_ONLY, muxedOnly)
+                putBoolean(CapsuleVideoIpc.EXTRA_NEWPIPE_ONLY, newPipeOnly)
             }
 
         val bundle =
@@ -360,6 +364,7 @@ object YouTubeVideoResolver {
             videoItag = bundle.getInt(CapsuleVideoIpc.EXTRA_VIDEO_ITAG, -1),
             audioItag = bundle.getInt(CapsuleVideoIpc.EXTRA_AUDIO_ITAG, -1),
             expiresAtMs = bundle.getLong(CapsuleVideoIpc.EXTRA_EXPIRES_AT, System.currentTimeMillis() + 3_600_000L),
+            backend = bundle.getString(CapsuleVideoIpc.EXTRA_BACKEND) ?: "newpipe",
         )
     }
 
@@ -391,7 +396,23 @@ object YouTubeVideoResolver {
             audioStreamUrl = audioUrl,
             audioFormat = audioFormat,
             expiresAtMs = expiresAtMs,
+            backend = backend,
         )
+    }
+
+    /** Recovery resolves the already matched clip; it never searches again. */
+    suspend fun recover(
+        failed: ResolvedVideo, quality: CapsuleVideoQuality, muxedOnly: Boolean,
+    ): Result<ResolvedVideo> = try {
+        invalidate(failed.videoId)
+        Result.success(resolveExact(
+            failed.sourceMediaId, failed.videoId, quality, muxedOnly,
+            newPipeOnly = failed.backend == "direct-visionos",
+        ))
+    } catch (cancelled: CancellationException) {
+        throw cancelled
+    } catch (failure: Exception) {
+        Result.failure(failure)
     }
 
     private fun cacheKey(

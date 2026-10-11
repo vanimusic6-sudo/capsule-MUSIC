@@ -34,6 +34,7 @@ data class CapsuleNewPipeResolved(
     val videoItag: Int,
     val audioItag: Int,
     val expiresAtMs: Long,
+    val backend: String = "newpipe",
 )
 
 enum class CapsuleNewPipeFailure {
@@ -152,6 +153,28 @@ object CapsuleNewPipeExtractor {
         }
 
         throw ContentNotAvailableException("NewPipe returned no compatible VIDEO stream")
+    }
+
+    /** One independent direct attempt, then the maintained NewPipe parser. */
+    fun resolveWithFallback(
+        videoId: String, quality: CapsuleNewPipeQuality,
+        muxedOnly: Boolean = false, newPipeOnly: Boolean = false,
+    ): CapsuleNewPipeResolved {
+        if (!newPipeOnly) {
+            try {
+                CapsuleDirectVideoExtractor.resolve(videoId, quality, muxedOnly)?.let {
+                    return it.copy(backend = "direct-visionos")
+                }
+            } catch (failure: Exception) {
+                // A request-wide cancellation/deadline or HTTP 429 must stop
+                // the chain. Parser/transport failures can try NewPipe once.
+                if (failure is java.io.InterruptedIOException &&
+                    failure !is SocketTimeoutException
+                ) throw failure
+                if (classify(failure) == CapsuleNewPipeFailure.RATE_LIMITED) throw failure
+            }
+        }
+        return resolve(videoId, quality, muxedOnly)
     }
 
     fun classify(throwable: Throwable): CapsuleNewPipeFailure {

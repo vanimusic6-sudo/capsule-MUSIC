@@ -995,6 +995,11 @@ class MusicService :
     private var videoReturnGapActive = false
     private var videoReturnGapJob: Job? = null
     private var videoScreenVisible = true
+    private var videoSurfaceOwner: Any? = null
+    private var activeResolvedVideo: YouTubeVideoResolver.ResolvedVideo? = null
+    private var videoRecoveryJob: Job? = null
+    private var videoRecoveryAttempts = 0
+    private var videoSessionGeneration = 0L
     private var effectiveAudioVolume = 1f
     val videoRenderPlayer: Player?
         get() = videoCompanion?.player
@@ -1035,27 +1040,103 @@ class MusicService :
                     state.mode == CapsulePlaybackMode.VIDEO &&
                     state.preferredMode == CapsulePlaybackMode.VIDEO
                 ) {
-                    videoPlaybackState.value = state.copy(firstFrameReady = true)
+                    videoPlaybackState.value = state.copy(firstFrameReady = true, phase = CapsuleVideoPhase.PLAYING)
                 }
             },
-            onFailure = { failedId, failure ->
+            onFailure = { failedId, failure -> recoverVideoSession(failedId, failure) },
+            onFrameUnavailable = { currentId ->
                 val state = videoPlaybackState.value
-                if (state.mediaId == failedId &&
-                    state.preferredMode == CapsulePlaybackMode.VIDEO
-                ) {
-                    Timber.tag("CapsuleVideo").w(
-                        failure, "VIDEO companion failed; original AUDIO remains playing",
-                    )
-                    videoPlaybackState.value = state.copy(
-                        preferredMode = CapsulePlaybackMode.AUDIO,
-                        mode = CapsulePlaybackMode.AUDIO,
-                        phase = CapsuleVideoPhase.REQUEST_ERROR,
-                        firstFrameReady = false,
-                        message = "VIDEO unavailable — original AUDIO continues",
-                    )
+                if (state.mediaId == currentId && state.mode == CapsulePlaybackMode.VIDEO) {
+                    videoPlaybackState.value = state.copy(firstFrameReady = false)
                 }
             },
-        ).also { videoCompanion = it }
+        ).also {
+            videoCompanion = it
+            it.setSurfaceAttached(videoSurfaceOwner != null)
+        }
+
+    fun attachVideoSurface(owner: Any) {
+        videoSurfaceOwner = owner
+        videoCompanion?.setSurfaceAttached(true)
+    }
+
+    fun detachVideoSurface(owner: Any) {
+        // A disposed older view cannot suspend the newly attached design.
+        if (videoSurfaceOwner !== owner) return
+        videoSurfaceOwner = null
+        videoCompanion?.setSurfaceAttached(false)
+    }
+
+    private fun cancelVideoRecovery() {
+        videoSessionGeneration++
+        videoRecoveryJob?.cancel()
+        videoRecoveryJob = null
+        activeResolvedVideo = null
+        videoRecoveryAttempts = 0
+    }
+
+    private fun failVideoSession(mediaId: String, failure: Throwable) {
+        val state = videoPlaybackState.value
+        if (state.mediaId != mediaId || state.preferredMode != CapsulePlaybackMode.VIDEO) return
+        Timber.tag("CapsuleVideo").w(failure, "VIDEO session failed; original MUSIC continues")
+        videoPlaybackState.value = state.copy(
+            preferredMode = CapsulePlaybackMode.AUDIO, mode = CapsulePlaybackMode.AUDIO,
+            phase = CapsuleVideoPhase.REQUEST_ERROR, firstFrameReady = false,
+            message = failure.message ?: "VIDEO unavailable — original AUDIO continues",
+        )
+        activeResolvedVideo = null
+    }
+
+    private fun recoverVideoSession(mediaId: String, failure: Throwable) {
+        val state = videoPlaybackState.value
+        if (state.mediaId != mediaId || state.preferredMode != CapsulePlaybackMode.VIDEO) return
+        val stream = activeResolvedVideo
+        val recoverable = generateSequence(failure) { it.cause }.take(8).any {
+            it is java.io.IOException ||
+                it is androidx.media3.datasource.HttpDataSource.HttpDataSourceException
+        }
+        if (!recoverable || stream == null || videoRecoveryAttempts >= 2 ||
+            CapsuleVideoRequestGuard.isBlocked()
+        ) { failVideoSession(mediaId, failure); return }
+        val attempt = ++videoRecoveryAttempts
+        val lease = videoSessionGeneration
+        videoPlaybackState.value = state.copy(
+            phase = CapsuleVideoPhase.RECOVERING, firstFrameReady = false,
+        )
+        videoRecoveryJob?.cancel()
+        videoRecoveryJob = scope.launch {
+            Timber.tag("CapsuleVideo").i("VIDEO recover clip=%s attempt=%s backend=%s", stream.videoId, attempt, stream.backend)
+            val result = withContext(Dispatchers.IO) {
+                YouTubeVideoResolver.recover(stream, capsuleVideoQuality, muxedOnly = attempt == 2)
+            }
+            if (lease != videoSessionGeneration || player.currentMediaItem?.mediaId != mediaId ||
+                videoPlaybackState.value.preferredMode != CapsulePlaybackMode.VIDEO
+            ) return@launch
+            videoRecoveryJob = null
+            result.fold(
+                onSuccess = { refreshed -> startVideoSession(mediaId, refreshed) },
+                onFailure = { cause -> failVideoSession(mediaId, cause) },
+            )
+        }
+    }
+
+    private fun startVideoSession(mediaId: String, video: YouTubeVideoResolver.ResolvedVideo) {
+        val companion = companionForVideo()
+        activeResolvedVideo = video
+        val item = MediaItem.Builder().setMediaId(mediaId)
+            .setUri("$CAPSULE_VIDEO_SCHEME://play/${video.videoId}")
+            // Pin this session's exact formats; another quality/cache lookup
+            // cannot silently substitute a different signed URL at prepare().
+            .setTag(video).build()
+        videoPlaybackState.value = CapsuleVideoPlaybackState(
+            preferredMode = CapsulePlaybackMode.VIDEO, mode = CapsulePlaybackMode.VIDEO,
+            phase = CapsuleVideoPhase.PREPARING, mediaId = mediaId, videoId = video.videoId,
+            qualityLabel = video.qualityLabel, width = video.videoFormat.width,
+            height = video.videoFormat.height, firstFrameReady = false,
+        )
+        companion.setForeground(videoScreenVisible)
+        companion.start(mediaId, item, effectiveAudioVolume)
+    }
 
     // Activity lifecycle. VIDEO stays selected while background audio
     // continues; no NewPipe re-extraction on return.
@@ -3459,6 +3540,7 @@ class MusicService :
                 previousCanonicalId != null &&
                 transitionedMediaId != previousCanonicalId
         if (canonicalChanged) {
+            cancelVideoRecovery()
             videoCompanion?.stop()
             videoReturnGapJob?.cancel()
             videoReturnGapJob = null
@@ -4869,6 +4951,8 @@ class MusicService :
     }
 
     private fun enterCapsuleVideoMode() {
+        cancelVideoRecovery()
+        videoCompanion?.stop()
         videoWarmupSerial++
         videoWarmupJob?.cancel()
         videoWarmupJob = null
@@ -5007,35 +5091,14 @@ class MusicService :
                         videoPlaybackState.value.phase != CapsuleVideoPhase.RESOLVING
                     ) return@onSuccess
 
-                    val videoItem = MediaItem.Builder()
-                        .setMediaId(canonicalMediaId)
-                        .setUri("$CAPSULE_VIDEO_SCHEME://play/${video.videoId}")
-                        .build()
-
-                    videoPlaybackState.value = CapsuleVideoPlaybackState(
-                        preferredMode = CapsulePlaybackMode.VIDEO,
-                        mode = CapsulePlaybackMode.VIDEO,
-                        phase = CapsuleVideoPhase.PLAYING,
-                        mediaId = canonicalMediaId,
-                        videoId = video.videoId,
-                        qualityLabel = video.qualityLabel,
-                        width = video.videoFormat.width,
-                        height = video.videoFormat.height,
-                        firstFrameReady = false,
-                    )
-                    val companion = companionForVideo()
-                    companion.setForeground(videoScreenVisible)
-                    companion.start(canonicalMediaId, videoItem, effectiveAudioVolume)
-                    Timber.tag("CapsuleVideo").i(
-                        "VIDEO companion loading directly; AUDIO stays audible clip=%s",
-                        video.videoId,
-                    )
+                    startVideoSession(canonicalMediaId, video)
                 }
             },
         )
     }
 
     private fun leaveCapsuleVideoMode() {
+        cancelVideoRecovery()
         // The companion invokes the sound-handoff callback itself. Do not
         // instantly restore volume here: it would erase the 105 ms AUDIO
         // return gap when the user explicitly taps AUDIO.
@@ -5845,6 +5908,7 @@ class MusicService :
     override fun onDestroy() {
         videoReturnGapJob?.cancel()
         videoReturnGapJob = null
+        cancelVideoRecovery()
         videoCompanion?.release()
         videoCompanion = null
         videoWarmupSerial++

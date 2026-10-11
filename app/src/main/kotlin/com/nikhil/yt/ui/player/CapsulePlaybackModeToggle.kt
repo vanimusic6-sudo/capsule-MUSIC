@@ -75,7 +75,7 @@ internal fun CapsuleAudioVideoToggle(
         }
     val videoResolving =
         state.preferredMode == CapsulePlaybackMode.VIDEO &&
-            state.phase == CapsuleVideoPhase.RESOLVING
+            state.phase in setOf(CapsuleVideoPhase.RESOLVING, CapsuleVideoPhase.PREPARING, CapsuleVideoPhase.RECOVERING)
     val videoUnavailable =
         state.preferredMode == CapsulePlaybackMode.VIDEO &&
             state.phase == CapsuleVideoPhase.UNAVAILABLE

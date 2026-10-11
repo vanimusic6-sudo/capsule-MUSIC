@@ -358,8 +358,7 @@ fun CapsulePlayerContent(
         playerConnection.service.videoPlaybackState.collectAsState()
 
     val isCapsuleVideoPlaying =
-        videoPlaybackState.mode == CapsulePlaybackMode.VIDEO &&
-            videoPlaybackState.phase == CapsuleVideoPhase.PLAYING
+        videoPlaybackState.needsSurface
     // While searching VIDEO, reserve the 16:9 stage right away. Otherwise
     // opening a player recreates a square album cover for one frame and then
     // replaces it abruptly with the video window.
@@ -629,47 +628,7 @@ fun CapsulePlayerContent(
                             scaleX = scale
                             scaleY = scale
                         }) {
-                        AndroidView(
-                            factory = { viewContext ->
-                                PlayerView(viewContext).apply {
-                                    // Disable Media3's built-in controls BEFORE binding
-                                    // the player: binding can schedule their initial show.
-                                    useController = false
-                                    player = playerConnection.service.videoRenderPlayer
-                                    hideController()
-
-                                    /*
-                                     * Capsule already shows its own VIDEO loading
-                                     * state in the player controls, so Media3's
-                                     * built-in buffering spinner is deliberately
-                                     * disabled to avoid a second indicator over
-                                     * the video surface.
-                                     */
-                                    setShowBuffering(PlayerView.SHOW_BUFFERING_NEVER)
-
-                                    /*
-                                     * Fill the entire Capsule video frame while
-                                     * preserving the source aspect ratio.
-                                     * ZOOM crops only the overflowing edges instead
-                                     * of stretching the image or leaving letterbox
-                                     * gaps above/below.
-                                     */
-                                    resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM
-
-                                    setShutterBackgroundColor(android.graphics.Color.BLACK)
-                                    keepScreenOn = true
-                                }
-                            },
-                            update = { playerView ->
-                                // Keep the embedded renderer control-free across recompositions.
-                                playerView.useController = false
-                                if (playerView.player !== playerConnection.service.videoRenderPlayer) {
-                                    playerView.player = playerConnection.service.videoRenderPlayer
-                                }
-                                playerView.hideController()
-                            },
-                            modifier = Modifier.fillMaxSize(),
-                        )
+                        CapsuleVideoSurface(playerConnection.service, Modifier.fillMaxSize())
                         if (!videoPlaybackState.firstFrameReady) {
                             // Opaque themed shutter until the real VIDEO frame
                             // is decoded. Hide renderer reattachment flashes.

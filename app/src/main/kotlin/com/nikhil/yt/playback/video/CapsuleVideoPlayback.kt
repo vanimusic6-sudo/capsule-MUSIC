@@ -14,7 +14,9 @@ enum class CapsulePlaybackMode {
 enum class CapsuleVideoPhase {
     IDLE,
     RESOLVING,
+    PREPARING,
     PLAYING,
+    RECOVERING,
 
     /** No trustworthy official clip was found for this song. */
     UNAVAILABLE,
@@ -43,7 +45,10 @@ data class CapsuleVideoPlaybackState(
     val height: Int? = null,
     val firstFrameReady: Boolean = false,
     val message: String? = null,
-)
+) {
+    val needsSurface: Boolean get() = mode == CapsulePlaybackMode.VIDEO &&
+        phase in setOf(CapsuleVideoPhase.PREPARING, CapsuleVideoPhase.PLAYING, CapsuleVideoPhase.RECOVERING)
+}
 
 const val CAPSULE_VIDEO_SCHEME = "capsule-video"
 const val CAPSULE_VIDEO_CACHE_PREFIX = "capsule:video:"

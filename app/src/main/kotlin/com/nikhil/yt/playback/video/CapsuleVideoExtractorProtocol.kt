@@ -18,6 +18,7 @@ data class CapsuleResolvedVideo(
     val videoItag: Int = -1,
     val audioItag: Int = -1,
     val expiresAtMs: Long,
+    val backend: String = "newpipe",
 ) {
     val adaptive: Boolean
         get() = !audioUrl.isNullOrBlank()
@@ -45,6 +46,8 @@ internal object CapsuleVideoIpc {
     const val EXTRA_VIDEO_ID = "video_id"
     const val EXTRA_QUALITY = "quality"
     const val EXTRA_MUXED_ONLY = "muxed_only"
+    const val EXTRA_NEWPIPE_ONLY = "newpipe_only"
+    const val EXTRA_BACKEND = "backend"
     const val EXTRA_SUCCESS = "success"
     const val EXTRA_VIDEO_URL = "video_url"
     const val EXTRA_AUDIO_URL = "audio_url"
@@ -75,6 +78,7 @@ internal object CapsuleVideoIpc {
             putInt(EXTRA_VIDEO_ITAG, resolved.videoItag)
             putInt(EXTRA_AUDIO_ITAG, resolved.audioItag)
             putLong(EXTRA_EXPIRES_AT, resolved.expiresAtMs)
+            putString(EXTRA_BACKEND, resolved.backend)
         }
 
     fun failureBundle(
