@@ -177,12 +177,10 @@ internal class CapsuleVideoCompanion(
             }
 
             override fun onPlaybackStateChanged(playbackState: Int) {
-                if (playbackState == Player.STATE_READY && !hasAudio()) {
-                    mediaId?.let {
-                        fail(it, IllegalStateException("VIDEO has no selected original soundtrack"))
-                    }
-                    return
-                }
+                // Media3 may publish STATE_READY before its selected
+                // audio-track callback. Don't reject a playable clip due to
+                // that observer ordering race. The 12-second foreground
+                // readiness watchdog detects genuinely missing audio.
                 if (playbackState == Player.STATE_ENDED) {
                     mediaId?.let { fail(it, IllegalStateException("VIDEO clip ended")) }
                     return
