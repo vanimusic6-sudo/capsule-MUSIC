@@ -17,6 +17,16 @@ class VideoStreamCacheTest {
         assertEquals(3, cache.latest("c"))
     }
 
+    @Test fun cachedVideoQualityHitUpdatesSelectedFormat() {
+        val cache = VideoStreamCache<Int>(3) { true }
+        cache.put("v", "v:360", 360)
+        cache.put("v", "v:720", 720)
+        assertEquals(360, cache["v:360"])
+        assertEquals(360, cache.latest("v"))
+        assertEquals(720, cache["v:720"])
+        assertEquals(720, cache.latest("v"))
+    }
+
     @Test fun invalidationRemovesEveryQualityForOneVideo() {
         val cache = VideoStreamCache<Int>(4) { true }
         cache.put("a", "a:hd", 1)

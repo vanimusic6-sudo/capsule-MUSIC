@@ -14,7 +14,13 @@ internal class VideoStreamCache<T>(
     @Synchronized
     operator fun get(key: String): T? {
         val entry = entries[key] ?: return null
-        if (isFresh(entry.value)) return entry.value
+        if (isFresh(entry.value)) {
+            // The requested quality may already be in the LRU. A hit must
+            // become the currently selected format, not leave a stale
+            // latest() entry from a previous VIDEO quality selection.
+            latestKeys[entry.videoId] = key
+            return entry.value
+        }
         remove(key)
         return null
     }

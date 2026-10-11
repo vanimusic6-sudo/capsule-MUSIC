@@ -185,6 +185,9 @@ import com.nikhil.yt.playback.video.CapsuleVideoPhase
 import com.nikhil.yt.playback.video.CapsuleVideoPlaybackState
 import com.nikhil.yt.playback.video.CapsuleCacheRoutingDataSource
 import com.nikhil.yt.playback.video.CapsuleVideoChunkedDataSource
+import com.nikhil.yt.playback.video.CAPSULE_VIDEO_WARMUP_BYTES
+import com.nikhil.yt.playback.video.CAPSULE_VIDEO_AUDIO_WARMUP_BYTES
+import com.nikhil.yt.playback.video.warmupVideoPrefix
 import com.nikhil.yt.playback.video.CapsuleVideoStreamInterceptor
 import com.nikhil.yt.playback.video.YouTubeVideoResolver
 import com.nikhil.yt.playback.video.CapsuleVideoResolveCoordinator
@@ -984,6 +987,11 @@ class MusicService :
      * Normal queue items never use the capsule-video scheme/cache key.
      */
     val videoPlaybackState = MutableStateFlow(CapsuleVideoPlaybackState())
+    // VIDEO-only, cancellable background preflight. Never suspends or mutates
+    // the MUSIC decoder while the signed video bytes are being checked.
+    private var videoWarmupJob: Job? = null
+    private var videoWarmupSerial = 0L
+
     private var videoOriginalMediaItem: MediaItem? = null
     private var videoOriginalMediaId: String? = null
     private val videoResolveCoordinator by lazy(LazyThreadSafetyMode.NONE) {
@@ -3366,6 +3374,12 @@ class MusicService :
             transitionedMediaId != null &&
                 previousCanonicalId != null &&
                 transitionedMediaId != previousCanonicalId
+        if (canonicalChanged) {
+            // A new song must never inherit a stale video CDN warmup.
+            videoWarmupSerial++
+            videoWarmupJob?.cancel()
+            videoWarmupJob = null
+        }
 
         /*
          * FINAL CAPSULE VIDEO POLICY
@@ -4330,10 +4344,24 @@ class MusicService :
         return DataSource.Factory { AudioCacheDataSource(streaming.createDataSource(), offline.createDataSource()) }
     }
 
-    private fun createVideoCacheDataSource(): CacheDataSource.Factory {
+    private fun createVideoCacheDataSource(warmup: Boolean = false): CacheDataSource.Factory {
         val videoHttpClient =
             mediaOkHttpClient
                 .newBuilder()
+                .apply {
+                    if (warmup) {
+                        // Dedicated, short-lived VIDEO transport; do not
+                        // occupy AUDIO's sockets or request dispatcher.
+                        callTimeout(6, TimeUnit.SECONDS)
+                        connectTimeout(4, TimeUnit.SECONDS)
+                        readTimeout(4, TimeUnit.SECONDS)
+                        connectionPool(okhttp3.ConnectionPool(1, 30L, TimeUnit.SECONDS))
+                        dispatcher(okhttp3.Dispatcher().apply {
+                            maxRequests = 1
+                            maxRequestsPerHost = 1
+                        })
+                    }
+                }
                 .retryOnConnectionFailure(false)
                 .addInterceptor(CapsuleVideoStreamInterceptor())
                 .build()
@@ -4409,14 +4437,17 @@ class MusicService :
                             ?.takeIf { it.isNotBlank() }
 
                 if (videoId != null) {
+                    // Once VIDEO is resolved, NEVER fetch the same watch page
+                    // again from DataSource.open. This used to double requests.
                     val resolvedVideo =
-                        runBlocking(Dispatchers.IO) {
-                            runCatching {
-                                withTimeout(VIDEO_RESOLVE_TIMEOUT_MS) {
-                                    YouTubeVideoResolver.resolveMuxed(videoId, capsuleVideoQuality)
-                                }
-                            }.getOrElse { Result.failure(it) }
-                        }.getOrElse { throwable ->
+                        (YouTubeVideoResolver.peekResolved(videoId)?.let { Result.success(it) }
+                            ?: runBlocking(Dispatchers.IO) {
+                                runCatching {
+                                    withTimeout(VIDEO_RESOLVE_TIMEOUT_MS) {
+                                        YouTubeVideoResolver.resolveMuxed(videoId, capsuleVideoQuality)
+                                    }
+                                }.getOrElse { Result.failure(it) }
+                            }).getOrElse { throwable ->
                             videoPlaybackState.value =
                                 videoPlaybackState.value.copy(
                                     preferredMode = CapsulePlaybackMode.AUDIO,
@@ -4740,6 +4771,9 @@ class MusicService :
     }
 
     private fun enterCapsuleVideoMode() {
+        videoWarmupSerial++
+        videoWarmupJob?.cancel()
+        videoWarmupJob = null
         if (!canUseCapsuleVideoForScreen()) {
             videoSuspendedForScreenOff = true
             val currentId = player.currentMediaItem?.mediaId
@@ -4868,57 +4902,141 @@ class MusicService :
                 }.onSuccess { video ->
                     videoSuspendedForScreenOff = false
 
-                    val position = player.currentPosition.coerceAtLeast(0L)
-                    val wasPlaying = player.playWhenReady
-
-                    val videoItem =
-                        MediaItem.Builder()
-                            .setMediaId(canonicalMediaId)
-                            .setUri("$CAPSULE_VIDEO_SCHEME://play/${video.videoId}")
-                            /*
-                             * The itag belongs in the key. The resolver caches
-                             * per quality, so without it a 360p and a 720p run
-                             * of the same clip share one cache entry and get
-                             * spans from two different files stitched together.
-                             */
-                            .setCustomCacheKey(
-                                "$CAPSULE_VIDEO_CACHE_PREFIX" +
-                                    "${video.videoId}:${video.format.itag}",
+                    val serial = ++videoWarmupSerial
+                    videoWarmupJob?.cancel()
+                    videoWarmupJob = scope.launch(Dispatchers.IO) {
+                        // The existing VIDEO-only CDN DataSource is already
+                        // bounded to 4 MiB chunks. Prime just the FIRST
+                        // 256 KiB (and 64 KiB audio for adaptive video) while
+                        // the original AUDIO is still playing normally.
+                        val warmup = runCatching {
+                            val factory = createVideoCacheDataSource(warmup = true)
+                            val videoKey =
+                                if (video.isAdaptive) {
+                                    "$CAPSULE_VIDEO_STREAM_CACHE_PREFIX" +
+                                        "video:${video.videoId}:${video.videoFormat.itag}"
+                                } else {
+                                    "$CAPSULE_VIDEO_CACHE_PREFIX" +
+                                        "${video.videoId}:${video.videoFormat.itag}"
+                                }
+                            warmupVideoPrefix(
+                                factory, video.videoStreamUrl,
+                                videoKey, CAPSULE_VIDEO_WARMUP_BYTES,
                             )
-                            .setMediaMetadata(currentItem.mediaMetadata)
-                            .apply {
-                                currentItem.localConfiguration?.tag?.let(::setTag)
+                            if (video.isAdaptive) {
+                                val audioUrl = checkNotNull(video.audioStreamUrl)
+                                val audioItag = checkNotNull(video.audioFormat).itag
+                                warmupVideoPrefix(
+                                    factory, audioUrl,
+                                    "$CAPSULE_VIDEO_STREAM_CACHE_PREFIX" +
+                                        "audio:${video.videoId}:$audioItag",
+                                    CAPSULE_VIDEO_AUDIO_WARMUP_BYTES,
+                                )
                             }
-                            .build()
+                        }
 
-                    /*
-                     * The stream has already been resolved and validated. Mark
-                     * VIDEO as active before replaceMediaItem so the 16:9 stage
-                     * appears immediately while Media3 buffers the first frame.
-                     */
-                    videoPlaybackState.value =
-                        CapsuleVideoPlaybackState(
-                            preferredMode = CapsulePlaybackMode.VIDEO,
-                            mode = CapsulePlaybackMode.VIDEO,
-                            phase = CapsuleVideoPhase.PLAYING,
-                            mediaId = canonicalMediaId,
-                            videoId = video.videoId,
-                            qualityLabel = video.qualityLabel,
-                            width = video.videoFormat.width,
-                            height = video.videoFormat.height,
-                            message = null,
-                        )
+                        withContext(Dispatchers.Main.immediate) {
+                            if (serial != videoWarmupSerial ||
+                                player.currentMediaItem?.mediaId != canonicalMediaId ||
+                                videoPlaybackState.value.preferredMode != CapsulePlaybackMode.VIDEO ||
+                                videoPlaybackState.value.phase != CapsuleVideoPhase.RESOLVING
+                            ) return@withContext
 
-                    player.replaceMediaItem(currentIndex, videoItem)
-                    player.seekTo(currentIndex, position)
-                    player.prepare()
-                    player.playWhenReady = wasPlaying
+                            if (warmup.isFailure) {
+                                val failure = warmup.exceptionOrNull()
+                                val status = generateSequence(failure) { it.cause }
+                                    .filterIsInstance<HttpDataSource.InvalidResponseCodeException>()
+                                    .firstOrNull()?.responseCode
+                                // Fail closed only on real CDN denial/cooldown.
+                                // For a slow connection or a Range-quirky host,
+                                // FALL BACK to the original c77358d player path.
+                                // One optional preflight must never make an
+                                // otherwise playable VIDEO unavailable.
+                                if (status in setOf(401, 403, 429) ||
+                                    CapsuleVideoRequestGuard.isBlocked()
+                                ) {
+                                    Timber.tag("CapsuleVideo").w(
+                                        failure, "VIDEO CDN rejected signed URL; AUDIO preserved",
+                                    )
+                                    YouTubeVideoResolver.invalidate(video.videoId)
+                                    videoOriginalMediaItem = null
+                                    videoOriginalMediaId = null
+                                    videoPlaybackState.value = CapsuleVideoPlaybackState(
+                                        preferredMode = CapsulePlaybackMode.AUDIO,
+                                        mode = CapsulePlaybackMode.AUDIO,
+                                        phase = CapsuleVideoPhase.REQUEST_ERROR,
+                                        mediaId = canonicalMediaId,
+                                        videoId = video.videoId,
+                                        message = "VIDEO CDN rejected stream — AUDIO continues",
+                                    )
+                                    return@withContext
+                                }
+                                Timber.tag("CapsuleVideo").w(
+                                    failure,
+                                    "Optional VIDEO warmup skipped; using original c77358d startup",
+                                )
+                            } else {
+                                Timber.tag("CapsuleVideo").i(
+                                    "video-warmup-ready id=%s; only now switching player",
+                                    video.videoId,
+                                )
+                            }
+                            val position = player.currentPosition.coerceAtLeast(0L)
+                            val wasPlaying = player.playWhenReady
+        
+                            val videoItem =
+                                MediaItem.Builder()
+                                    .setMediaId(canonicalMediaId)
+                                    .setUri("$CAPSULE_VIDEO_SCHEME://play/${video.videoId}")
+                                    /*
+                                     * The itag belongs in the key. The resolver caches
+                                     * per quality, so without it a 360p and a 720p run
+                                     * of the same clip share one cache entry and get
+                                     * spans from two different files stitched together.
+                                     */
+                                    .setCustomCacheKey(
+                                        "$CAPSULE_VIDEO_CACHE_PREFIX" +
+                                            "${video.videoId}:${video.format.itag}",
+                                    )
+                                    .setMediaMetadata(currentItem.mediaMetadata)
+                                    .apply {
+                                        currentItem.localConfiguration?.tag?.let(::setTag)
+                                    }
+                                    .build()
+        
+                            /*
+                             * The stream has already been resolved and validated. Mark
+                             * VIDEO as active before replaceMediaItem so the 16:9 stage
+                             * appears immediately while Media3 buffers the first frame.
+                             */
+                            videoPlaybackState.value =
+                                CapsuleVideoPlaybackState(
+                                    preferredMode = CapsulePlaybackMode.VIDEO,
+                                    mode = CapsulePlaybackMode.VIDEO,
+                                    phase = CapsuleVideoPhase.PLAYING,
+                                    mediaId = canonicalMediaId,
+                                    videoId = video.videoId,
+                                    qualityLabel = video.qualityLabel,
+                                    width = video.videoFormat.width,
+                                    height = video.videoFormat.height,
+                                    message = null,
+                                )
+        
+                            player.replaceMediaItem(currentIndex, videoItem)
+                            player.seekTo(currentIndex, position)
+                            player.prepare()
+                            player.playWhenReady = wasPlaying
+                        }
+                    }
                 }
             },
         )
     }
 
     private fun leaveCapsuleVideoMode() {
+        videoWarmupSerial++
+        videoWarmupJob?.cancel()
+        videoWarmupJob = null
         videoResolveCoordinator.cancel()
 
         val currentItem = player.currentMediaItem ?: run {
@@ -5119,6 +5237,9 @@ class MusicService :
          * new extractor request by itself.
          */
         videoSuspendedForScreenOff = false
+        videoWarmupSerial++
+        videoWarmupJob?.cancel()
+        videoWarmupJob = null
         videoResolveCoordinator.cancel()
 
         if (isCurrentCapsuleVideoItem()) {
@@ -5777,6 +5898,9 @@ class MusicService :
     }
 
     override fun onDestroy() {
+        videoWarmupSerial++
+        videoWarmupJob?.cancel()
+        videoWarmupJob = null
         audioBufferStallWatchJob?.cancel()
         audioBufferStallWatchJob = null
         super.onDestroy()

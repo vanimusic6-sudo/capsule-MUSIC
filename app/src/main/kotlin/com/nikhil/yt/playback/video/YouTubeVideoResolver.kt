@@ -113,6 +113,23 @@ object YouTubeVideoResolver {
         val id = videoId.trim()
         if (id.isBlank()) return
         cache.invalidate(id)
+        // Evict the short-lived NewPipe metadata inventory as well.
+        // A rejected signed CDN URL cannot be replayed on the next attempt.
+        // This is VIDEO-only; no network call or AUDIO state change.
+        cancellationExecutor.execute {
+            runCatching {
+                val context = App.instance.applicationContext
+                context.contentResolver.call(
+                    Uri.parse("content://${context.packageName}.capsule.video.extractor"),
+                    CapsuleVideoIpc.METHOD_INVALIDATE,
+                    null,
+                    Bundle().apply {
+                        putString(CapsuleVideoIpc.EXTRA_REQUEST_ID, UUID.randomUUID().toString())
+                        putString(CapsuleVideoIpc.EXTRA_VIDEO_ID, id)
+                    },
+                )
+            }
+        }
     }
 
     fun peekResolved(videoId: String): ResolvedVideo? {

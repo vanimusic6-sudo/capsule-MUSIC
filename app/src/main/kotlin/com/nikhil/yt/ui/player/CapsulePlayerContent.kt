@@ -12,6 +12,7 @@ package com.nikhil.yt.ui.player
 import android.content.res.Configuration
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
@@ -66,6 +67,7 @@ import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotate
@@ -358,6 +360,19 @@ fun CapsulePlayerContent(
     val isCapsuleVideoPlaying =
         videoPlaybackState.mode == CapsulePlaybackMode.VIDEO &&
             videoPlaybackState.phase == CapsuleVideoPhase.PLAYING
+    // While searching VIDEO, reserve the 16:9 stage right away. Otherwise
+    // opening a player recreates a square album cover for one frame and then
+    // replaces it abruptly with the video window.
+    val videoStageReserved =
+        isCapsuleVideoPlaying ||
+            (videoPlaybackState.preferredMode == CapsulePlaybackMode.VIDEO &&
+                videoPlaybackState.phase == CapsuleVideoPhase.RESOLVING)
+
+    val videoWindowReveal by animateFloatAsState(
+        targetValue = if (isCapsuleVideoPlaying) 1f else 0f,
+        animationSpec = tween(durationMillis = 260, easing = FastOutSlowInEasing),
+        label = "capsule-video-open",
+    )
 
     LaunchedEffect(isCapsuleVideoPlaying) {
         if (isCapsuleVideoPlaying && artworkResizeActive) {
@@ -559,7 +574,7 @@ fun CapsulePlayerContent(
 
     val artworkContent: @Composable () -> Unit = {
             val mediaShape =
-                if (isCapsuleVideoPlaying) {
+                if (videoStageReserved) {
                     RoundedCornerShape(28.dp)
                 } else {
                     if (isLight) RoundedCornerShape(16.dp) else CapsuleArtworkShape
@@ -576,18 +591,18 @@ fun CapsulePlayerContent(
                     modifier =
                         Modifier
                             .then(
-                                if (useClayLayout && !isCapsuleVideoPlaying) {
+                                if (useClayLayout && !videoStageReserved) {
                                     Modifier.fillMaxSize()
                                 } else {
                                     Modifier
                                         .fillMaxWidth()
                                         .aspectRatio(
-                                            if (isCapsuleVideoPlaying) 16f / 9f else 1f,
+                                            if (videoStageReserved) 16f / 9f else 1f,
                                         )
                                 },
                             )
                             .offset(
-                                y = if (isCapsuleVideoPlaying || isLight) 0.dp else (-5).dp,
+                                y = if (videoStageReserved || isLight) 0.dp else (-5).dp,
                             )
                             .clip(mediaShape)
                             .border(
@@ -596,19 +611,24 @@ fun CapsulePlayerContent(
                                 mediaShape,
                             )
                             .background(
-                                if (isCapsuleVideoPlaying && visible) {
-                                    Color.Black
+                                if (videoStageReserved && visible) {
+                                    textColor.copy(alpha = 0.04f)
                                 } else {
                                     textColor.copy(alpha = 0.045f)
                                 },
                             )
                             .clickable(
-                                enabled = !isCapsuleVideoPlaying && !(isLight && lightEditorEnabled),
+                                enabled = !videoStageReserved && !(isLight && lightEditorEnabled),
                                 onClick = onArtworkClick,
                             ),
                     contentAlignment = Alignment.Center,
                 ) {
                     if (isCapsuleVideoPlaying) {
+                        Box(Modifier.fillMaxSize().graphicsLayer {
+                            val scale = 0.985f + 0.015f * videoWindowReveal
+                            scaleX = scale
+                            scaleY = scale
+                        }) {
                         AndroidView(
                             factory = { viewContext ->
                                 PlayerView(viewContext).apply {
@@ -650,6 +670,13 @@ fun CapsulePlayerContent(
                             },
                             modifier = Modifier.fillMaxSize(),
                         )
+                        }
+                    } else if (videoStageReserved) {
+                        // Keep the chosen theme visible during extraction,
+                        // without flashing a square AUDIO thumbnail.
+                        Box(Modifier.fillMaxSize().background(
+                            textColor.copy(alpha = 0.04f),
+                        ))
                     } else if (hideArtwork) {
                         Icon(
                             painter = painterResource(R.drawable.album),

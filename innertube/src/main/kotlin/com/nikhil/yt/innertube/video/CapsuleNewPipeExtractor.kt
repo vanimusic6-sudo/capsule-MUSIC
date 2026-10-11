@@ -48,13 +48,26 @@ object CapsuleNewPipeExtractor {
     private const val CACHE_SAFETY_MS = 45_000L
     private const val DEFAULT_URL_TTL_MS = 3_600_000L
     private val initialized = AtomicBoolean(false)
+    private const val INVENTORY_TTL_MS = 60_000L
+    private data class CachedInfo(val info: StreamInfo, val untilMs: Long)
+    // At most two VIDEO items. Never shared with the MUSIC/AUDIO extractor.
+    private val recentMetadata = LinkedHashMap<String, CachedInfo>(4, 0.75f, true)
 
+    @Synchronized
     fun initializeIfNeeded() {
-        if (initialized.compareAndSet(false, true)) {
-            NewPipe.init(CapsuleNewPipeDownloader())
-        }
+        if (initialized.get()) return
+        // Commit initialized only AFTER NewPipe really started. The previous
+        // compareAndSet-first path could poison this process on failure.
+        NewPipe.init(CapsuleNewPipeDownloader())
+        initialized.set(true)
     }
 
+    @Synchronized
+    fun invalidate(videoId: String) {
+        recentMetadata.remove(videoId)
+    }
+
+    @Synchronized
     fun resolve(
         videoId: String,
         quality: CapsuleNewPipeQuality,
@@ -65,7 +78,30 @@ object CapsuleNewPipeExtractor {
         val id = videoId.trim()
         require(id.isNotBlank()) { "Missing YouTube video id" }
 
-        val info = StreamInfo.getInfo("https://www.youtube.com/watch?v=$id")
+        val now = System.currentTimeMillis()
+        val cached = recentMetadata[id]?.takeIf { it.untilMs > now }
+        val info = cached?.info ?: StreamInfo.getInfo("https://www.youtube.com/watch?v=$id")
+        if (cached == null) {
+            recentMetadata.remove(id)
+            val signedUrls = buildList {
+                addAll(info.videoStreams.map { it.content })
+                addAll(info.videoOnlyStreams.map { it.content })
+                addAll(info.audioStreams.map { it.content })
+            }
+            val nearestSignedExpiry = signedUrls
+                .filter { it.startsWith("http", ignoreCase = true) }
+                .minOfOrNull(::extractExpiryMs)
+            val safeUntil = minOf(
+                now + INVENTORY_TTL_MS,
+                (nearestSignedExpiry ?: now + INVENTORY_TTL_MS) - CACHE_SAFETY_MS,
+            )
+            if (safeUntil > now) {
+                recentMetadata[id] = CachedInfo(info, safeUntil)
+                while (recentMetadata.size > 2) {
+                    recentMetadata.remove(recentMetadata.keys.first())
+                }
+            }
+        }
 
         val muxed =
             info.videoStreams
@@ -130,6 +166,13 @@ object CapsuleNewPipeExtractor {
          * for NewPipe API compatibility, so machine-like 429 text must win
          * before the exception class itself is treated as a bot/captcha event.
          */
+        // NewPipe's explicit LOGIN_REQUIRED anti-bot verdict is NOT a normal
+        // missing/age-restricted clip. Treat it as VIDEO-only bot cooldown;
+        // ordinary AUDIO remains unaffected.
+        if (text.contains("confirm that you're not a bot", ignoreCase = true) ||
+            text.contains("confirm you are not a bot", ignoreCase = true)
+        ) return CapsuleNewPipeFailure.BOT_BLOCKED
+
         return when (
             YouTubeFailureClassifier.classify(
                 httpStatusCode = null,
@@ -211,6 +254,9 @@ object CapsuleNewPipeExtractor {
                 extractExpiryMs(content),
                 audio?.content?.let(::extractExpiryMs),
             ).minOrNull() ?: (System.currentTimeMillis() + DEFAULT_URL_TTL_MS)
+        require(expiresAt > System.currentTimeMillis() + CACHE_SAFETY_MS) {
+            "NewPipe returned an expired VIDEO signed URL"
+        }
         return CapsuleNewPipeResolved(
             videoId = videoId,
             videoUrl = content,
@@ -234,7 +280,7 @@ object CapsuleNewPipeExtractor {
                 ?.toLongOrNull()
 
         val parsed = expireSeconds?.times(1000L)
-        return (parsed ?: now + DEFAULT_URL_TTL_MS)
-            .coerceAtLeast(now + CACHE_SAFETY_MS)
+        // Do not pretend an expired signed URL is still valid.
+        return parsed ?: now + DEFAULT_URL_TTL_MS
     }
 }

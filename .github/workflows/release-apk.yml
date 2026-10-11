@@ -7,6 +7,7 @@ on:
       - next/capsule-clay
       - perf/thermal-audit-20261005
       - feature/video-isolated-thermal-20261010-v2
+      - fix/video-stable-incremental-20261011
 
 permissions:
   contents: read

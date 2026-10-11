@@ -32,6 +32,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.runtime.mutableFloatStateOf
@@ -363,6 +364,18 @@ internal fun CapsuleImmersiveContent(
     // Once a video has rendered its first frame, switch surfaces in one frame. Do not
     // animate AUDIO <-> VIDEO; only the neutral placeholder -> prepared artwork fades.
     val presentingVideo = isVideo && videoFirstFrameRendered
+    // A small, compositor-only reveal. No animation updates player state or
+    // recreates the expensive VIDEO SurfaceView.
+    val videoReveal by animateFloatAsState(
+        targetValue = if (isVideo) 1f else 0f,
+        animationSpec = tween(durationMillis = 260, easing = FastOutSlowInEasing),
+        label = "capsule-video-window",
+    )
+    val videoMaskAlpha by animateFloatAsState(
+        targetValue = if (presentingVideo) 0f else 1f,
+        animationSpec = tween(durationMillis = 180),
+        label = "capsule-video-mask",
+    )
 
     /*
      * Request fullscreen from the Activity instead of manipulating the Window here.
@@ -605,8 +618,14 @@ internal fun CapsuleImmersiveContent(
         val settled = (seam + 0.44f).coerceAtMost(1f)
 
         val frame = shownGradient
-        val pageEdge = frame?.edge ?: IMMERSIVE_NEUTRAL_COLOR
-        val pageFloor = frame?.floor ?: IMMERSIVE_NEUTRAL_COLOR
+        // Same tone sampled for the Immersion background. VIDEO must not
+        // suddenly become hardcoded grey when its first frame arrives.
+        val pageEdge = frame?.takeIf { it.key == visualKey }?.edge
+            ?: artworkTone.edge.takeIf { artworkTone.ready }
+            ?: IMMERSIVE_NEUTRAL_COLOR
+        val pageFloor = frame?.takeIf { it.key == visualKey }?.floor
+            ?: artworkTone.accent.takeIf { artworkTone.ready }
+            ?: IMMERSIVE_NEUTRAL_COLOR
         val seamColor = immersiveSeamColor(pageEdge, pageFloor)
         val pageBackground = remember(seamColor, pageFloor, seam, settled) {
             Brush.verticalGradient(
@@ -642,7 +661,7 @@ internal fun CapsuleImmersiveContent(
                 modifier = Modifier
                     .fillMaxSize()
                     // Alpha is a layer update; it must not recompose the artwork or controls.
-                    .graphicsLayer { alpha = if (presentingVideo) 0f else gradientAlpha.value },
+                    .graphicsLayer { alpha = if (isVideo) 0f else gradientAlpha.value },
             ) {
                 Box(modifier = Modifier.fillMaxSize().background(pageBackground))
                 Box(
@@ -653,7 +672,7 @@ internal fun CapsuleImmersiveContent(
                         .clickable(
                             interactionSource = remember { MutableInteractionSource() },
                             indication = null,
-                            enabled = !presentingVideo,
+                            enabled = !isVideo,
                             onClick = onShowLyrics,
                         ),
                 ) {
@@ -703,16 +722,11 @@ internal fun CapsuleImmersiveContent(
             }
         }
 
-        // VIDEO still switches instantly on the first rendered frame, independently of
-        // the slow cover-to-neutral-to-cover animation. The request guard stays intact.
-        if (presentingVideo) {
-            Box(
-                modifier = Modifier.fillMaxSize().background(
-                    Brush.verticalGradient(
-                        listOf(IMMERSIVE_NEUTRAL_COLOR, Color(0xFF1E1E1E)),
-                    ),
-                ),
-            )
+        // VIDEO inherits the *same* calculated Immersion floor gradient.
+        // Hide the album art immediately so a recycled screen cannot flash a
+        // square thumbnail before the video surface gets its first frame.
+        if (isVideo) {
+            Box(Modifier.fillMaxSize().background(pageBackground))
         }
         if (isVideo) {
             Box(
@@ -721,7 +735,11 @@ internal fun CapsuleImmersiveContent(
                     .padding(top = videoFrameTop, start = videoSidePadding, end = videoSidePadding)
                     .fillMaxWidth()
                     .height(videoFrameHeight)
-                    .graphicsLayer(alpha = if (presentingVideo) 1f else 0f)
+                    .graphicsLayer {
+                        val scale = 0.985f + 0.015f * videoReveal
+                        scaleX = scale
+                        scaleY = scale
+                    }
                     .clip(RoundedCornerShape(28.dp))
                     .background(Color.Black),
             ) {
@@ -742,6 +760,14 @@ internal fun CapsuleImmersiveContent(
                         }
                     },
                     modifier = Modifier.fillMaxSize(),
+                )
+                // An attached SurfaceView is needed to produce the first
+                // video frame. Cover it with gradient temporarily instead of
+                // setting alpha=0 on the SurfaceView itself.
+                Box(
+                    Modifier.fillMaxSize()
+                        .graphicsLayer { alpha = videoMaskAlpha }
+                        .background(pageBackground),
                 )
             }
         }

@@ -25,6 +25,16 @@ class CapsuleNewPipeExtractorTest {
     }
 
     @Test
+    fun loginRequiredWithLiteralNotBotIsVideoBotBlock() {
+        assertEquals(
+            CapsuleNewPipeFailure.BOT_BLOCKED,
+            CapsuleNewPipeExtractor.classify(IllegalStateException(
+                """YouTube probably temporarily blocked anonymous watch access with this IP, got error LOGIN_REQUIRED: "Sign in to confirm that you're not a bot" """,
+            )),
+        )
+    }
+
+    @Test
     fun explicitBotTextIsBotBlocked() {
         assertEquals(
             CapsuleNewPipeFailure.BOT_BLOCKED,

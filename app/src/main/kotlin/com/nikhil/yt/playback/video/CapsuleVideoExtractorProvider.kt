@@ -20,10 +20,9 @@ import com.nikhil.yt.innertube.video.CapsuleNewPipeQuality
 import com.nikhil.yt.innertube.video.VideoExtractionRequests
 
 class CapsuleVideoExtractorProvider : ContentProvider() {
-    override fun onCreate(): Boolean {
-        CapsuleNewPipeExtractor.initializeIfNeeded()
-        return true
-    }
+    // A slow/upstream NewPipe initialization must NEVER crash provider startup.
+    // initializeIfNeeded() is called lazily by the isolated VIDEO resolve.
+    override fun onCreate(): Boolean = true
 
     override fun call(
         method: String,
@@ -36,6 +35,12 @@ class CapsuleVideoExtractorProvider : ContentProvider() {
         }
         if (method == CapsuleVideoIpc.METHOD_CANCEL) {
             VideoExtractionRequests.cancel(requestId)
+            return Bundle.EMPTY
+        }
+        if (method == CapsuleVideoIpc.METHOD_INVALIDATE) {
+            extras?.getString(CapsuleVideoIpc.EXTRA_VIDEO_ID)
+                ?.takeIf { it.matches(Regex("[A-Za-z0-9_-]{11}")) }
+                ?.let(CapsuleNewPipeExtractor::invalidate)
             return Bundle.EMPTY
         }
         if (method != CapsuleVideoIpc.METHOD_RESOLVE) {
