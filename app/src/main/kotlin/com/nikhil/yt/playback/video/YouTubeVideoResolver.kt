@@ -248,6 +248,7 @@ object YouTubeVideoResolver {
         quality: CapsuleVideoQuality,
         muxedOnly: Boolean,
         newPipeOnly: Boolean = false,
+        refresh: Boolean = false,
     ): ResolvedVideo {
         val key = cacheKey(videoId, quality, muxedOnly)
         cache[key]?.let { return it }
@@ -258,12 +259,10 @@ object YouTubeVideoResolver {
             )
         }
 
-        CapsuleVideoRequestGuard.beforeMetadataRequest()
-
         return resolveMutex.withLock {
             cache[key]?.let { return@withLock it }
-
-            val remote = callRemoteExtractor(videoId, quality, muxedOnly, newPipeOnly)
+            CapsuleVideoRequestGuard.beforeMetadataRequest()
+            val remote = callRemoteExtractor(videoId, quality, muxedOnly, newPipeOnly, refresh)
             val resolved = remote.toResolved(sourceMediaId)
             cache.put(videoId, key, resolved)
             resolved
@@ -275,6 +274,7 @@ object YouTubeVideoResolver {
         quality: CapsuleVideoQuality,
         muxedOnly: Boolean,
         newPipeOnly: Boolean = false,
+        refresh: Boolean = false,
     ): CapsuleResolvedVideo = withContext(Dispatchers.IO) {
         val context = App.instance.applicationContext
         val authority = "${context.packageName}.capsule.video.extractor"
@@ -287,6 +287,7 @@ object YouTubeVideoResolver {
                 putString(CapsuleVideoIpc.EXTRA_QUALITY, CapsuleVideoIpc.qualityToWire(quality))
                 putBoolean(CapsuleVideoIpc.EXTRA_MUXED_ONLY, muxedOnly)
                 putBoolean(CapsuleVideoIpc.EXTRA_NEWPIPE_ONLY, newPipeOnly)
+                putBoolean(CapsuleVideoIpc.EXTRA_REFRESH, refresh)
             }
 
         val bundle =
@@ -404,10 +405,13 @@ object YouTubeVideoResolver {
     suspend fun recover(
         failed: ResolvedVideo, quality: CapsuleVideoQuality, muxedOnly: Boolean,
     ): Result<ResolvedVideo> = try {
-        invalidate(failed.videoId)
+        // Invalidate in the very same remote request that resolves again.
+        // An asynchronous invalidate could otherwise erase the new inventory.
+        cache.invalidate(failed.videoId)
         Result.success(resolveExact(
             failed.sourceMediaId, failed.videoId, quality, muxedOnly,
-            newPipeOnly = failed.backend == "direct-visionos",
+            newPipeOnly = true,
+            refresh = true,
         ))
     } catch (cancelled: CancellationException) {
         throw cancelled

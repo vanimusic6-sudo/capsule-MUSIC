@@ -145,4 +145,18 @@ class CapsuleVideoChunkedDataSourceTest {
         assertEquals(1024L, cdn.requests.first().length)
         assertEquals(C.LENGTH_UNSET.toLong(), cdn.requests.last().length)
     }
+
+    @Test fun youtubeRangeRefusalNeverReopensTheEntireVideo() {
+        val cdn = MemoryCdn(ByteArray(7_000), supportsRanges = false)
+        val source = CapsuleVideoChunkedDataSource(cdn, chunkBytes = 1024)
+        try {
+            try {
+                source.open(DataSpec(Uri.parse("https://rr1.googlevideo.com/videoplayback")))
+                org.junit.Assert.fail("A refused YouTube range must be recoverable, not unbounded")
+            } catch (_: java.io.IOException) {
+                assertEquals(1, cdn.requests.size)
+                assertEquals(1024L, cdn.requests.single().length)
+            }
+        } finally { source.close() }
+    }
 }

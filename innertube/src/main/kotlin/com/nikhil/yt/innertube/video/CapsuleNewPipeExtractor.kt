@@ -245,8 +245,7 @@ object CapsuleNewPipeExtractor {
 
         return streams
             .filter { it.height <= maxHeight }
-            .maxWithOrNull(compareBy<VideoStream> { it.height }.thenBy { it.fps }.thenBy { it.bitrate })
-            ?: streams.minByOrNull { it.height }
+            .maxWithOrNull(compareBy<VideoStream> { it.height }.thenBy { -it.fps }.thenBy { it.bitrate })
     }
 
     private fun selectAdaptive(
@@ -264,8 +263,7 @@ object CapsuleNewPipeExtractor {
 
         return streams
             .filter { it.height <= target }
-            .maxWithOrNull(compareBy<VideoStream> { it.height }.thenBy { it.fps }.thenBy { it.bitrate })
-            ?: streams.minByOrNull { it.height }
+            .maxWithOrNull(compareBy<VideoStream> { it.height }.thenBy { -it.fps }.thenBy { it.bitrate })
     }
 
     private fun VideoStream.toResolved(

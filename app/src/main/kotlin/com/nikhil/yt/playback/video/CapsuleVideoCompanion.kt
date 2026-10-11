@@ -11,6 +11,7 @@ import androidx.media3.common.Tracks
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.MediaSource
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -87,7 +88,7 @@ internal class CapsuleVideoSession(
         override fun onEvents(player: Player, events: Player.Events) {
             if (id == null) return
             if (audio.currentMediaItem?.mediaId != id) { stop(); return }
-            video.playWhenReady = audio.playWhenReady && (rendering || ownsSound)
+            video.playWhenReady = audio.playWhenReady && (rendering || committed)
             video.playbackParameters = audio.playbackParameters
             evaluate()
         }
@@ -148,6 +149,7 @@ internal class CapsuleVideoSession(
                 frameReported = false
                 onFrameUnavailable(current)
                 video.seekTo(target)
+                ensureWatchdog()
                 return
             }
         }
@@ -178,6 +180,7 @@ internal class CapsuleVideoSession(
         } else if (!canOwn && ownsSound) {
             returnSound()
         }
+        ensureWatchdog()
     }
 
     private fun returnSound() {
@@ -207,24 +210,43 @@ internal class CapsuleVideoSession(
         }
         starting = false
         Timber.tag("CapsuleVideo").i("prepare session=%s generation=%s; MUSIC audible", mediaId, lease)
-        watchdog = scope.launch {
+        ensureWatchdog()
+        evaluate()
+    }
+
+    private fun needsWatchdog(): Boolean = id != null && audio.playWhenReady &&
+        ((rendering && !frameReported) ||
+            ((rendering || committed) && video.playbackState == Player.STATE_BUFFERING))
+
+    private fun ensureWatchdog() {
+        if (!needsWatchdog()) {
+            watchdog?.cancel(); watchdog = null
+            return
+        }
+        if (watchdog?.isActive == true) return
+        val currentId = id ?: return
+        val lease = generation
+        val launched = scope.launch(start = CoroutineStart.LAZY) {
             var startupMs = 0L
             var stallMs = 0L
-            while (id == mediaId && generation == lease) {
+            while (id == currentId && generation == lease) {
                 delay(500L)
-                if (id != mediaId || generation != lease) break
+                if (id != currentId || generation != lease) break
+                if (!needsWatchdog()) break
                 evaluate()
                 // No first-frame timeout with a detached/minimized player.
                 if (rendering && audio.playWhenReady && !frameReported) startupMs += 500L
                 if (ready && frameReported) startupMs = 0L
-                if ((rendering || ownsSound) && audio.playWhenReady && video.playbackState == Player.STATE_BUFFERING) stallMs += 500L else stallMs = 0L
+                if ((rendering || committed) && audio.playWhenReady && video.playbackState == Player.STATE_BUFFERING) stallMs += 500L else stallMs = 0L
                 if (startupMs >= 15_000L || stallMs >= 12_000L) {
                     fail(java.net.SocketTimeoutException("VIDEO readiness/stall timeout (surface=$surfaceAttached frame=$firstFrame audio=$hasAudio)"))
                     break
                 }
             }
+            if (generation == lease) watchdog = null
         }
-        evaluate()
+        watchdog = launched
+        launched.start()
     }
 
     private fun updateRendering() {
@@ -233,7 +255,7 @@ internal class CapsuleVideoSession(
         // silently switching to the album's different master/mix.
         video.trackSelectionParameters = video.trackSelectionParameters.buildUpon()
             .setTrackTypeDisabled(C.TRACK_TYPE_VIDEO, !rendering).build()
-        video.playWhenReady = audio.playWhenReady && (rendering || ownsSound)
+        video.playWhenReady = audio.playWhenReady && (rendering || committed)
     }
     private fun changeRendering(change: () -> Unit) {
         val wasRendering = rendering

@@ -44,6 +44,7 @@ internal class CapsuleVideoChunkedDataSource(
     private var nextPosition = 0L
     private var bytesLeft = 0L
     private var chunkLeft = 0L
+    private var resourceLength = 0L
     private var opened = false
 
     override fun addTransferListener(transferListener: TransferListener) {
@@ -80,6 +81,11 @@ internal class CapsuleVideoChunkedDataSource(
             val range = parseRange(upstream.responseHeaders)
 
             if (range == null || range.start != dataSpec.position) {
+                if (dataSpec.uri.host?.endsWith(".googlevideo.com", ignoreCase = true) == true || range != null) {
+                    // Do not turn a refused/malformed YouTube range into the
+                    // unbounded whole-file request that stalled large clips.
+                    throw IOException("VIDEO CDN refused the bounded byte range")
+                }
                 // Some hosts ignore Range. Rather than inventing a file size or
                 // making Media3 interpret the first 4 MiB as the entire file,
                 // revert to its unmodified streaming behaviour for this URL.
@@ -106,6 +112,7 @@ internal class CapsuleVideoChunkedDataSource(
             }
 
             original = dataSpec
+            resourceLength = range.total
             nextPosition = dataSpec.position
             bytesLeft = expected
             chunkLeft = range.size
@@ -129,7 +136,7 @@ internal class CapsuleVideoChunkedDataSource(
         upstream.open(nextSpec)
         val range = parseRange(upstream.responseHeaders)
         if (range == null || range.start != nextPosition ||
-            range.size > length || range.size <= 0L
+            range.size > length || range.size <= 0L || range.total != resourceLength
         ) {
             throw IOException("VIDEO CDN did not honor continuation byte range")
         }
@@ -172,6 +179,7 @@ internal class CapsuleVideoChunkedDataSource(
         nextPosition = 0L
         bytesLeft = 0L
         chunkLeft = 0L
+        resourceLength = 0L
         // Media3 must be able to close after a failed open as well.
         upstream.close()
     }

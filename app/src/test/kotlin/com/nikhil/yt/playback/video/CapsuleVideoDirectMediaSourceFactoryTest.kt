@@ -59,4 +59,11 @@ class CapsuleVideoDirectMediaSourceFactoryTest {
         ) { null }
         factory.createMediaSource(item)
     }
+
+    @Test fun pinnedSessionDoesNotReReadOrSubstituteLatestQualityCache() {
+        val factory = CapsuleVideoDirectMediaSourceFactory(
+            DataSource.Factory { error("Unexpected CDN read") },
+        ) { error("Pinned VIDEO session must not read a mutable latest-format cache") }
+        assertTrue(factory.createMediaSource(item.buildUpon().setTag(resolved(false)).build()) is ProgressiveMediaSource)
+    }
 }

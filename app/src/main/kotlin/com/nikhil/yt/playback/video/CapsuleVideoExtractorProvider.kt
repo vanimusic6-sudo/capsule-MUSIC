@@ -69,6 +69,9 @@ class CapsuleVideoExtractorProvider : ContentProvider() {
 
         return runCatching {
             VideoExtractionRequests.withRequest(requestId, CapsuleVideoIpc.REQUEST_TIMEOUT_MS) {
+                if (extras?.getBoolean(CapsuleVideoIpc.EXTRA_REFRESH, false) == true) {
+                    CapsuleNewPipeExtractor.invalidate(videoId)
+                }
                 CapsuleNewPipeExtractor.resolveWithFallback(
                     videoId,
                     CapsuleNewPipeQuality.valueOf(quality.name),

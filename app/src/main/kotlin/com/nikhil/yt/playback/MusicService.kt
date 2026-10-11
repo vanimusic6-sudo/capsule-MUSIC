@@ -183,11 +183,9 @@ import com.nikhil.yt.playback.video.CAPSULE_VIDEO_STREAM_CACHE_PREFIX
 import com.nikhil.yt.playback.video.CapsulePlaybackMode
 import com.nikhil.yt.playback.video.CapsuleVideoPhase
 import com.nikhil.yt.playback.video.CapsuleVideoPlaybackState
-import com.nikhil.yt.playback.video.CapsuleCacheRoutingDataSource
 import com.nikhil.yt.playback.video.CapsuleVideoChunkedDataSource
 import com.nikhil.yt.playback.video.CAPSULE_VIDEO_WARMUP_BYTES
 import com.nikhil.yt.playback.video.CAPSULE_VIDEO_AUDIO_WARMUP_BYTES
-import com.nikhil.yt.playback.video.warmupVideoPrefix
 import com.nikhil.yt.playback.video.CapsuleVideoStreamInterceptor
 import com.nikhil.yt.playback.video.CapsuleVideoCompanion
 import com.nikhil.yt.playback.video.CapsuleVideoDirectMediaSourceFactory
@@ -1150,10 +1148,6 @@ class MusicService :
             }
         }
     }
-    // VIDEO-only, cancellable background preflight. Never suspends or mutates
-    // the MUSIC decoder while the signed video bytes are being checked.
-    private var videoWarmupJob: Job? = null
-    private var videoWarmupSerial = 0L
 
     private var videoOriginalMediaItem: MediaItem? = null
     private var videoOriginalMediaId: String? = null
@@ -1171,7 +1165,6 @@ class MusicService :
      *   Normal YouTube AUDIO is never disabled by this breaker.
      */
     private var screenInteractive = true
-    private var videoSuspendedForScreenOff = false
     private var screenStateReceiverRegistered = false
 
     private val screenStateReceiver =
@@ -3547,10 +3540,6 @@ class MusicService :
             videoReturnGapActive = false
             videoAudioOwned = false
             player.volume = effectiveAudioVolume
-            // A new song must never inherit a stale video CDN warmup.
-            videoWarmupSerial++
-            videoWarmupJob?.cancel()
-            videoWarmupJob = null
         }
 
         /*
@@ -3606,7 +3595,6 @@ class MusicService :
 
             videoOriginalMediaItem = null
             videoOriginalMediaId = null
-            videoSuspendedForScreenOff = false
 
             videoPlaybackState.value =
                 CapsuleVideoPlaybackState(
@@ -4564,100 +4552,14 @@ class MusicService :
     }
 
     private fun createDataSourceFactory(): DataSource.Factory {
-        val routedCacheFactory =
-            CapsuleCacheRoutingDataSource.Factory(
-                audioFactory = createCacheDataSource(),
-                videoFactory = createVideoCacheDataSource(),
-            )
+        val audioCacheFactory = createCacheDataSource()
 
         return DataSource.Factory {
             val contract = AudioStreamContract()
-            ResolvingDataSource(routedCacheFactory.createDataSource()) { dataSpec ->
-                val splitStreamKey =
-                    dataSpec.key
-                        ?.takeIf { it.startsWith(CAPSULE_VIDEO_STREAM_CACHE_PREFIX) }
-                        ?.removePrefix(CAPSULE_VIDEO_STREAM_CACHE_PREFIX)
-
-                if (!splitStreamKey.isNullOrBlank()) {
-                    val parts = splitStreamKey.split(':', limit = 3)
-                    val kind = parts.getOrNull(0)
-                    val splitVideoId = parts.getOrNull(1)?.takeIf { it.isNotBlank() }
-                    if (splitVideoId != null) {
-                        val resolved = YouTubeVideoResolver.peekResolved(splitVideoId)
-                            ?: throw PlaybackException(
-                                "Cached video streams expired",
-                                null,
-                                PlaybackException.ERROR_CODE_REMOTE_ERROR,
-                            )
-                        val streamUrl =
-                            when (kind) {
-                                "audio" -> resolved.audioStreamUrl
-                                else -> resolved.videoStreamUrl
-                            }
-                                ?: throw PlaybackException(
-                                    "Requested video stream is unavailable",
-                                    null,
-                                    PlaybackException.ERROR_CODE_REMOTE_ERROR,
-                                )
-                        return@ResolvingDataSource dataSpec.withUri(streamUrl.toUri())
-                    }
-                }
-
-                val videoKey =
-                    dataSpec.key
-                        ?.takeIf { it.startsWith(CAPSULE_VIDEO_CACHE_PREFIX) }
-                val videoId =
-                    videoKey
-                        ?.removePrefix(CAPSULE_VIDEO_CACHE_PREFIX)
-                        ?.substringBefore(':')
-                        ?.takeIf { it.isNotBlank() }
-                        ?: dataSpec.uri
-                            .takeIf { it.scheme.equals(CAPSULE_VIDEO_SCHEME, ignoreCase = true) }
-                            ?.lastPathSegment
-                            ?.takeIf { it.isNotBlank() }
-
-                if (videoId != null) {
-                    // Once VIDEO is resolved, NEVER fetch the same watch page
-                    // again from DataSource.open. This used to double requests.
-                    val resolvedVideo =
-                        (YouTubeVideoResolver.peekResolved(videoId)?.let { Result.success(it) }
-                            ?: runBlocking(Dispatchers.IO) {
-                                runCatching {
-                                    withTimeout(VIDEO_RESOLVE_TIMEOUT_MS) {
-                                        YouTubeVideoResolver.resolveMuxed(videoId, capsuleVideoQuality)
-                                    }
-                                }.getOrElse { Result.failure(it) }
-                            }).getOrElse { throwable ->
-                            videoPlaybackState.value =
-                                videoPlaybackState.value.copy(
-                                    preferredMode = CapsulePlaybackMode.AUDIO,
-                                    mode = CapsulePlaybackMode.AUDIO,
-                                    phase = CapsuleVideoPhase.REQUEST_ERROR,
-                                    videoId = videoId,
-                                    message = "VIDEO temporarily unavailable — continuing with audio",
-                                )
-                            throw PlaybackException(
-                                throwable.message ?: "Video stream unavailable",
-                                throwable,
-                                PlaybackException.ERROR_CODE_REMOTE_ERROR,
-                            )
-                        }
-
-                    videoPlaybackState.value =
-                        videoPlaybackState.value.copy(
-                            preferredMode = CapsulePlaybackMode.VIDEO,
-                            mode = CapsulePlaybackMode.VIDEO,
-                            phase = CapsuleVideoPhase.PLAYING,
-                            videoId = videoId,
-                            qualityLabel = resolvedVideo.qualityLabel,
-                            width = resolvedVideo.format.width,
-                            height = resolvedVideo.format.height,
-                            message = null,
-                        )
-
-                    return@ResolvingDataSource dataSpec.withUri(resolvedVideo.streamUrl.toUri())
-                }
-
+            ResolvingDataSource(audioCacheFactory.createDataSource()) { dataSpec ->
+                // VIDEO never enters the MUSIC loader. A persisted old
+                // synthetic item is normalized to its canonical AUDIO ID by
+                // createMediaSourceFactory before reaching this resolver.
                 val mediaId = dataSpec.key ?: error("No media id")
                 // Only a complete legacy file can be trusted without resolving its byte format.
                 // Current format-aware caches carry their own length. Consult Room only
@@ -4941,10 +4843,8 @@ class MusicService :
     }
 
     /**
-     * The UI's PlayerView is about to detach when the activity stops.
-     * Switch the temporary VIDEO item back to its original AUDIO item before
-     * Android tears down the surface / decoder. The queue and position stay.
-     * Returning to the app never implicitly re-enters VIDEO.
+     * Activity backgrounding preserves VIDEO selection and clip soundtrack.
+     * The session disables image decoding until its surface returns.
      */
     fun suspendCapsuleVideoForAppBackground() {
         suspendCapsuleVideoForScreenOff()
@@ -4953,11 +4853,7 @@ class MusicService :
     private fun enterCapsuleVideoMode() {
         cancelVideoRecovery()
         videoCompanion?.stop()
-        videoWarmupSerial++
-        videoWarmupJob?.cancel()
-        videoWarmupJob = null
         if (!canUseCapsuleVideoForScreen()) {
-            videoSuspendedForScreenOff = true
             val currentId = player.currentMediaItem?.mediaId
             videoPlaybackState.value =
                 videoPlaybackState.value.copy(
@@ -5082,7 +4978,6 @@ class MusicService :
                                     },
                         )
                 }.onSuccess { video ->
-                    videoSuspendedForScreenOff = false
                     // No second NewPipe call and no redundant HTTP warmup.
                     // The VIDEO companion buffers its own bounded Range CDN
                     // stream while the untouched MUSIC player stays audible.
@@ -5103,9 +4998,6 @@ class MusicService :
         // instantly restore volume here: it would erase the 105 ms AUDIO
         // return gap when the user explicitly taps AUDIO.
         videoCompanion?.stop()
-        videoWarmupSerial++
-        videoWarmupJob?.cancel()
-        videoWarmupJob = null
         videoResolveCoordinator.cancel()
 
         val currentItem = player.currentMediaItem ?: run {
@@ -5528,14 +5420,8 @@ class MusicService :
                 dataSourceFactory,
                 extractorsFactory,
             )
-        val progressive =
-            ProgressiveMediaSource.Factory(
-                dataSourceFactory,
-                extractorsFactory,
-            )
         val loadErrorHandlingPolicy = CapsuleLoadErrorHandlingPolicy()
         delegate.setLoadErrorHandlingPolicy(loadErrorHandlingPolicy)
-        progressive.setLoadErrorHandlingPolicy(loadErrorHandlingPolicy)
 
         return object : MediaSource.Factory {
             override fun createMediaSource(mediaItem: MediaItem): MediaSource {
@@ -5590,53 +5476,10 @@ class MusicService :
                     )
                     return soundCloudStreamingSource.createMediaSource(mediaItem)
                 }
-                val uri = mediaItem.localConfiguration?.uri
-                val videoId =
-                    uri
-                        ?.takeIf { it.scheme.equals(CAPSULE_VIDEO_SCHEME, ignoreCase = true) }
-                        ?.lastPathSegment
-                        ?.takeIf { it.isNotBlank() }
-
-                if (videoId == null) {
-                    return delegate.createMediaSource(mediaItem)
-                }
-
-                val resolved = YouTubeVideoResolver.peekResolved(videoId)
-                    ?: return delegate.createMediaSource(mediaItem)
-
-                val videoChild =
-                    mediaItem
-                        .buildUpon()
-                        .setCustomCacheKey(
-                            "$CAPSULE_VIDEO_STREAM_CACHE_PREFIX" +
-                                "video:$videoId:${resolved.videoFormat.itag}",
-                        )
-                        .build()
-                val videoSource = progressive.createMediaSource(videoChild)
-
-                val audioUrl = resolved.audioStreamUrl
-                val audioFormat = resolved.audioFormat
-                if (audioUrl.isNullOrBlank() || audioFormat == null) {
-                    return videoSource
-                }
-
-                val audioChild =
-                    MediaItem.Builder()
-                        .setMediaId("${mediaItem.mediaId}:capsule-video-audio")
-                        .setUri("$CAPSULE_VIDEO_SCHEME://audio/$videoId")
-                        .setCustomCacheKey(
-                            "$CAPSULE_VIDEO_STREAM_CACHE_PREFIX" +
-                                "audio:$videoId:${audioFormat.itag}",
-                        )
-                        .build()
-                val audioSource = progressive.createMediaSource(audioChild)
-
-                return MergingMediaSource(
-                    true,
-                    true,
-                    videoSource,
-                    audioSource,
-                )
+                val legacyVideoItem = mediaItem.localConfiguration?.uri?.scheme == CAPSULE_VIDEO_SCHEME
+                val musicItem = if (legacyVideoItem) mediaItem.buildUpon()
+                    .setUri(mediaItem.mediaId).setCustomCacheKey(mediaItem.mediaId).build() else mediaItem
+                return delegate.createMediaSource(musicItem)
             }
 
             override fun getSupportedTypes(): IntArray =
@@ -5648,7 +5491,6 @@ class MusicService :
                 delegate.setDrmSessionManagerProvider(drmSessionManagerProvider)
                 soundCloudStreamingSource.setDrmSessionManagerProvider(drmSessionManagerProvider)
                 soundCloudOfflineSource.setDrmSessionManagerProvider(drmSessionManagerProvider)
-                progressive.setDrmSessionManagerProvider(drmSessionManagerProvider)
                 return this
             }
 
@@ -5658,7 +5500,6 @@ class MusicService :
                 delegate.setLoadErrorHandlingPolicy(loadErrorHandlingPolicy)
                 soundCloudStreamingSource.setLoadErrorHandlingPolicy(loadErrorHandlingPolicy)
                 soundCloudOfflineSource.setLoadErrorHandlingPolicy(loadErrorHandlingPolicy)
-                progressive.setLoadErrorHandlingPolicy(loadErrorHandlingPolicy)
                 return this
             }
         }
@@ -5911,9 +5752,6 @@ class MusicService :
         cancelVideoRecovery()
         videoCompanion?.release()
         videoCompanion = null
-        videoWarmupSerial++
-        videoWarmupJob?.cancel()
-        videoWarmupJob = null
         audioBufferStallWatchJob?.cancel()
         audioBufferStallWatchJob = null
         super.onDestroy()
@@ -6129,7 +5967,6 @@ class MusicService :
          * prefetch in place they should almost never be reached.
          */
         private const val AUDIO_RESOLVE_TIMEOUT_MS = 20_000L
-        private const val VIDEO_RESOLVE_TIMEOUT_MS = 20_000L
         const val MAX_CONSECUTIVE_TRACK_FAILURES = 3
     }
 }

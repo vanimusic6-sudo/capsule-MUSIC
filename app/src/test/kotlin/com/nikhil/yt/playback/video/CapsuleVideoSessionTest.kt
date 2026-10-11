@@ -2,7 +2,6 @@
 package com.nikhil.yt.playback.video
 
 import androidx.media3.common.*
-import androidx.media3.common.util.FlagSet
 import kotlinx.coroutines.test.*
 import org.junit.Assert.*
 import org.junit.Test
@@ -147,4 +146,25 @@ class CapsuleVideoSessionTest {
         assertEquals(0f, f.clip.volume)
         f.session.stop()
     }
+    @Test fun selectedTracksWithoutFirstFrameTimeOutWithoutMutingMusic() = runTest {
+        val f = Fixture(this); f.start(); f.clip.ready()
+        advanceTimeBy(15_100); runCurrent()
+        assertEquals(1, f.failures.size)
+        assertTrue(f.failures.single() is java.net.SocketTimeoutException)
+        assertEquals(1f, f.music.volume)
+        assertEquals(0f, f.clip.volume)
+        f.session.stop()
+    }
+    @Test fun volumeChangeDuringSeamUsesLatestValueAndStopCancelsIt() = runTest {
+        val f = Fixture(this); f.start(); f.clip.ready(); f.clip.frame()
+        f.session.setVolume(0.3f)
+        assertEquals(0f, f.clip.volume)
+        advanceTimeBy(116); runCurrent()
+        assertEquals(0.3f, f.clip.volume)
+        f.session.stop()
+        advanceTimeBy(1_000); runCurrent()
+        assertEquals(0f, f.clip.volume)
+        assertEquals(1f, f.music.volume)
+    }
+
 }
