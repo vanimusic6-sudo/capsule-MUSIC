@@ -53,5 +53,7 @@ class CapsuleVideoWarmupTest {
             "video",
             20L * 1024L * 1024L,
         )
+        // JUnit4 requires a void-returning test method.
+        Unit
     }
 }
