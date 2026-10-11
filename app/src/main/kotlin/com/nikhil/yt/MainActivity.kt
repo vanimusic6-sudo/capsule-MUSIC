@@ -412,12 +412,10 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onStop() {
-        // Stop only the VIDEO decoder before its surface is detached.
-        // Regular audio playback remains available in the background.
-        // Configuration changes (e.g. rotation) are not a background exit.
-        if (!isChangingConfigurations) {
-            playerConnection?.service?.suspendCapsuleVideoForAppBackground()
-        }
+        // HOME / task switching only detaches the Activity's video SurfaceView.
+        // Do NOT change the playback mode: Media3 continues the soundtrack
+        // without a visible surface and reattaches the VIDEO view on return.
+        // Screen locking is handled independently by the MusicService receiver.
         safeUnbindMusicService()
         super.onStop()
     }

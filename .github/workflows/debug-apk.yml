@@ -10,6 +10,7 @@ on:
       - perf/thermal-audit-20261005
       - feature/video-isolated-thermal-20261010-v2
       - fix/video-stable-incremental-20261011
+      - fix/video-window-lifecycle-20261011
 
 permissions:
   contents: read

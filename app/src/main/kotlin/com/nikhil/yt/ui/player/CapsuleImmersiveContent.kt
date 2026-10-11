@@ -23,6 +23,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
@@ -366,15 +367,13 @@ internal fun CapsuleImmersiveContent(
     val presentingVideo = isVideo && videoFirstFrameRendered
     // A small, compositor-only reveal. No animation updates player state or
     // recreates the expensive VIDEO SurfaceView.
-    val videoReveal by animateFloatAsState(
+    // Animate only Compose chrome. SurfaceView MUST NOT be scaled, alpha
+    // layered or covered by a full-opaque animated scrim: on Android 16
+    // that can look like an empty grey cut-out with a thin outline.
+    val videoChromeReveal by animateFloatAsState(
         targetValue = if (isVideo) 1f else 0f,
-        animationSpec = tween(durationMillis = 260, easing = FastOutSlowInEasing),
-        label = "capsule-video-window",
-    )
-    val videoMaskAlpha by animateFloatAsState(
-        targetValue = if (presentingVideo) 0f else 1f,
-        animationSpec = tween(durationMillis = 180),
-        label = "capsule-video-mask",
+        animationSpec = tween(durationMillis = 240, easing = FastOutSlowInEasing),
+        label = "capsule-video-chrome",
     )
 
     /*
@@ -735,13 +734,10 @@ internal fun CapsuleImmersiveContent(
                     .padding(top = videoFrameTop, start = videoSidePadding, end = videoSidePadding)
                     .fillMaxWidth()
                     .height(videoFrameHeight)
-                    .graphicsLayer {
-                        val scale = 0.985f + 0.015f * videoReveal
-                        scaleX = scale
-                        scaleY = scale
-                    }
+                    // Android SurfaceView is composed outside a regular
+                    // Compose graphicsLayer. Do NOT scale its parent.
                     .clip(RoundedCornerShape(28.dp))
-                    .background(Color.Black),
+                    .background(pageBackground),
             ) {
                 AndroidView(
                     factory = { viewContext ->
@@ -750,7 +746,8 @@ internal fun CapsuleImmersiveContent(
                             useController = false
                             setShowBuffering(PlayerView.SHOW_BUFFERING_NEVER)
                             resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM
-                            setShutterBackgroundColor(android.graphics.Color.BLACK)
+                            setShutterBackgroundColor(android.graphics.Color.TRANSPARENT)
+                            setKeepContentOnPlayerReset(true)
                             keepScreenOn = true
                         }
                     },
@@ -761,14 +758,15 @@ internal fun CapsuleImmersiveContent(
                     },
                     modifier = Modifier.fillMaxSize(),
                 )
-                // An attached SurfaceView is needed to produce the first
-                // video frame. Cover it with gradient temporarily instead of
-                // setting alpha=0 on the SurfaceView itself.
-                Box(
-                    Modifier.fillMaxSize()
-                        .graphicsLayer { alpha = videoMaskAlpha }
-                        .background(pageBackground),
-                )
+                // Explicit loading indication during first-frame buffering,
+                // without the opaque mask that hid the actual VIDEO SurfaceView.
+                if (!presentingVideo) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.align(Alignment.Center).size(22.dp),
+                        strokeWidth = 2.dp,
+                        color = Color.White.copy(alpha = 0.55f * videoChromeReveal),
+                    )
+                }
             }
         }
 

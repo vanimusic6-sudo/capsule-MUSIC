@@ -368,10 +368,12 @@ fun CapsulePlayerContent(
             (videoPlaybackState.preferredMode == CapsulePlaybackMode.VIDEO &&
                 videoPlaybackState.phase == CapsuleVideoPhase.RESOLVING)
 
+    // The window border reveals smoothly; its SurfaceView is NEVER animated.
+    // A graphicsLayer around the native view caused the observed grey hole.
     val videoWindowReveal by animateFloatAsState(
-        targetValue = if (isCapsuleVideoPlaying) 1f else 0f,
+        targetValue = if (videoStageReserved) 1f else 0f,
         animationSpec = tween(durationMillis = 260, easing = FastOutSlowInEasing),
-        label = "capsule-video-open",
+        label = "capsule-video-window-border",
     )
 
     LaunchedEffect(isCapsuleVideoPlaying) {
@@ -607,7 +609,10 @@ fun CapsulePlayerContent(
                             .clip(mediaShape)
                             .border(
                                 1.dp,
-                                if (isLight) Color.Transparent else outline,
+                                if (isLight) Color.Transparent
+                                else if (videoStageReserved) outline.copy(
+                                    alpha = outline.alpha * videoWindowReveal,
+                                ) else outline,
                                 mediaShape,
                             )
                             .background(
@@ -624,11 +629,9 @@ fun CapsulePlayerContent(
                     contentAlignment = Alignment.Center,
                 ) {
                     if (isCapsuleVideoPlaying) {
-                        Box(Modifier.fillMaxSize().graphicsLayer {
-                            val scale = 0.985f + 0.015f * videoWindowReveal
-                            scaleX = scale
-                            scaleY = scale
-                        }) {
+                        // Never graphicsLayer(scale/alpha) a PlayerView/SurfaceView
+                        // host: on SDK 36 it can show only a ghost border and
+                        // hide real video behind a detached surface layer.
                         AndroidView(
                             factory = { viewContext ->
                                 PlayerView(viewContext).apply {
@@ -656,7 +659,8 @@ fun CapsulePlayerContent(
                                      */
                                     resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM
 
-                                    setShutterBackgroundColor(android.graphics.Color.BLACK)
+                                    setShutterBackgroundColor(android.graphics.Color.TRANSPARENT)
+                                    setKeepContentOnPlayerReset(true)
                                     keepScreenOn = true
                                 }
                             },
@@ -670,7 +674,6 @@ fun CapsulePlayerContent(
                             },
                             modifier = Modifier.fillMaxSize(),
                         )
-                        }
                     } else if (videoStageReserved) {
                         // Keep the chosen theme visible during extraction,
                         // without flashing a square AUDIO thumbnail.

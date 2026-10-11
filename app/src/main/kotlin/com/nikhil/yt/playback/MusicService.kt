@@ -4352,9 +4352,11 @@ class MusicService :
                     if (warmup) {
                         // Dedicated, short-lived VIDEO transport; do not
                         // occupy AUDIO's sockets or request dispatcher.
-                        callTimeout(6, TimeUnit.SECONDS)
-                        connectTimeout(4, TimeUnit.SECONDS)
-                        readTimeout(4, TimeUnit.SECONDS)
+                        // Warmup is opportunistic, not permission to delay
+                        // the eventual original stable VIDEO startup.
+                        callTimeout(3, TimeUnit.SECONDS)
+                        connectTimeout(2, TimeUnit.SECONDS)
+                        readTimeout(3, TimeUnit.SECONDS)
                         connectionPool(okhttp3.ConnectionPool(1, 30L, TimeUnit.SECONDS))
                         dispatcher(okhttp3.Dispatcher().apply {
                             maxRequests = 1
@@ -5024,7 +5026,11 @@ class MusicService :
         
                             player.replaceMediaItem(currentIndex, videoItem)
                             player.seekTo(currentIndex, position)
-                            player.prepare()
+                            // The prepared Media3 timeline reloads the new
+                            // current item automatically. Calling prepare()
+                            // again here restarts its loader and extends the
+                            // AUDIO silence while VIDEO awaits a frame.
+                            if (player.playbackState == Player.STATE_IDLE) player.prepare()
                             player.playWhenReady = wasPlaying
                         }
                     }
@@ -5152,7 +5158,8 @@ class MusicService :
 
         player.replaceMediaItem(currentIndex, original)
         player.seekTo(currentIndex, position)
-        player.prepare()
+        // Do not double-reprepare the AUDIO decoder on VIDEO exit.
+        if (player.playbackState == Player.STATE_IDLE) player.prepare()
         player.playWhenReady = wasPlaying
     }
 
