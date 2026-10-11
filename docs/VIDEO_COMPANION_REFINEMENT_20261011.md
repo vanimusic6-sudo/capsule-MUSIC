@@ -27,3 +27,9 @@ User reproduction: 8963.mp4, 6.72 seconds, 592×1280. The top cover remained whi
 - yt-dlp has strong extraction breadth, but packaging Python plus frequent binary/updater maintenance in a native Android media app carries major size and stability costs.
 - Piped/Invidious are server-mediated and introduce external trust/availability requirements; not used automatically.
 - No fallback can guarantee bypass of a genuine upstream bot/IP restriction; avoid retry storms and avoid involving the AUDIO extractor.
+
+## Second-pass hardening
+
+- VIDEO now has a distinct OkHttp Dispatcher (2 concurrent requests) and 2-connection pool; AUDIO connection scheduling is not shared.
+- Returning explicitly VIDEO→AUDIO includes a ~105 ms quiet boundary. Fatal error, screen-off and next-track paths restore AUDIO promptly; the existing VIDEO switch still uses a ~115 ms gap.
+- Robolectric tests verify muxed signed video goes directly to a single ProgressiveMediaSource, split VIDEO merges two prepared signed streams, and no network extraction happens inside MediaSource creation.

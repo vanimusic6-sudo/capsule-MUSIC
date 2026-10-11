@@ -992,6 +992,8 @@ class MusicService :
     // VIDEO has no authority to replace MUSIC queue items or touch AUDIO URLs.
     private var videoCompanion: CapsuleVideoCompanion? = null
     private var videoAudioOwned = false
+    private var videoReturnGapActive = false
+    private var videoReturnGapJob: Job? = null
     private var videoScreenVisible = true
     private var effectiveAudioVolume = 1f
     val videoRenderPlayer: Player?
@@ -1007,8 +1009,25 @@ class MusicService :
             audio = player,
             scope = scope,
             onSoundOwned = { ownsVideoAudio ->
+                videoReturnGapJob?.cancel()
+                videoReturnGapJob = null
+                val videoWasAudible = videoAudioOwned
                 videoAudioOwned = ownsVideoAudio
-                player.volume = if (ownsVideoAudio) 0f else effectiveAudioVolume
+                // In both directions a tiny quiet seam keeps two different
+                // masters/mixes from snapping together. On a queue transition
+                // or screen-off, restore AUDIO without unnecessary delay.
+                val returnGap = !ownsVideoAudio && videoWasAudible &&
+                    videoScreenVisible && player.playWhenReady
+                videoReturnGapActive = returnGap
+                player.volume = if (ownsVideoAudio || returnGap) 0f else effectiveAudioVolume
+                if (returnGap) {
+                    videoReturnGapJob = scope.launch {
+                        delay(105L)
+                        videoReturnGapActive = false
+                        videoReturnGapJob = null
+                        if (!videoAudioOwned) player.volume = effectiveAudioVolume
+                    }
+                }
             },
             onReady = { currentId ->
                 val state = videoPlaybackState.value
@@ -1786,7 +1805,7 @@ class MusicService :
             playerVolume * normalizeFactor * audioFocusVolumeFactor * playbackFadeFactor
         }.collectLatest(scope) { finalVolume ->
             effectiveAudioVolume = finalVolume
-            player.volume = if (videoAudioOwned) 0f else finalVolume
+            player.volume = if (videoAudioOwned || videoReturnGapActive) 0f else finalVolume
             videoCompanion?.setVolume(finalVolume)
         }
 
@@ -3441,6 +3460,9 @@ class MusicService :
                 transitionedMediaId != previousCanonicalId
         if (canonicalChanged) {
             videoCompanion?.stop()
+            videoReturnGapJob?.cancel()
+            videoReturnGapJob = null
+            videoReturnGapActive = false
             videoAudioOwned = false
             player.volume = effectiveAudioVolume
             // A new song must never inherit a stale video CDN warmup.
@@ -4416,6 +4438,14 @@ class MusicService :
         val videoHttpClient =
             mediaOkHttpClient
                 .newBuilder()
+                // Signed VIDEO HTTP requests get their own bounded queue
+                // and sockets; one slow video host cannot occupy AUDIO's
+                // HTTP dispatcher/connection pool.
+                .dispatcher(okhttp3.Dispatcher().apply {
+                    maxRequests = 2
+                    maxRequestsPerHost = 2
+                })
+                .connectionPool(okhttp3.ConnectionPool(2, 45L, TimeUnit.SECONDS))
                 .apply {
                     if (warmup) {
                         // Dedicated, short-lived VIDEO transport; do not
@@ -5006,9 +5036,10 @@ class MusicService :
     }
 
     private fun leaveCapsuleVideoMode() {
+        // The companion invokes the sound-handoff callback itself. Do not
+        // instantly restore volume here: it would erase the 105 ms AUDIO
+        // return gap when the user explicitly taps AUDIO.
         videoCompanion?.stop()
-        videoAudioOwned = false
-        player.volume = effectiveAudioVolume
         videoWarmupSerial++
         videoWarmupJob?.cancel()
         videoWarmupJob = null
@@ -5812,6 +5843,8 @@ class MusicService :
     }
 
     override fun onDestroy() {
+        videoReturnGapJob?.cancel()
+        videoReturnGapJob = null
         videoCompanion?.release()
         videoCompanion = null
         videoWarmupSerial++
