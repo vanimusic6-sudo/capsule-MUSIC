@@ -189,6 +189,8 @@ import com.nikhil.yt.playback.video.CAPSULE_VIDEO_WARMUP_BYTES
 import com.nikhil.yt.playback.video.CAPSULE_VIDEO_AUDIO_WARMUP_BYTES
 import com.nikhil.yt.playback.video.warmupVideoPrefix
 import com.nikhil.yt.playback.video.CapsuleVideoStreamInterceptor
+import com.nikhil.yt.playback.video.CapsuleVideoCompanion
+import com.nikhil.yt.playback.video.CapsuleVideoDirectMediaSourceFactory
 import com.nikhil.yt.playback.video.YouTubeVideoResolver
 import com.nikhil.yt.playback.video.CapsuleVideoResolveCoordinator
 import com.nikhil.yt.playback.video.CapsuleVideoResolveRequest
@@ -987,6 +989,67 @@ class MusicService :
      * Normal queue items never use the capsule-video scheme/cache key.
      */
     val videoPlaybackState = MutableStateFlow(CapsuleVideoPlaybackState())
+    // VIDEO has no authority to replace MUSIC queue items or touch AUDIO URLs.
+    private var videoCompanion: CapsuleVideoCompanion? = null
+    private var videoAudioOwned = false
+    private var videoScreenVisible = true
+    private var effectiveAudioVolume = 1f
+    val videoRenderPlayer: Player?
+        get() = videoCompanion?.player
+
+    private fun companionForVideo(): CapsuleVideoCompanion =
+        videoCompanion ?: CapsuleVideoCompanion(
+            context = this,
+            factory = CapsuleVideoDirectMediaSourceFactory(
+                upstream = createVideoCacheDataSource(),
+                findResolved = YouTubeVideoResolver::peekResolved,
+            ),
+            audio = player,
+            scope = scope,
+            onSoundOwned = { ownsVideoAudio ->
+                videoAudioOwned = ownsVideoAudio
+                player.volume = if (ownsVideoAudio) 0f else effectiveAudioVolume
+            },
+            onReady = { currentId ->
+                val state = videoPlaybackState.value
+                if (state.mediaId == currentId &&
+                    state.mode == CapsulePlaybackMode.VIDEO &&
+                    state.preferredMode == CapsulePlaybackMode.VIDEO
+                ) {
+                    videoPlaybackState.value = state.copy(firstFrameReady = true)
+                }
+            },
+            onFailure = { failedId, failure ->
+                val state = videoPlaybackState.value
+                if (state.mediaId == failedId &&
+                    state.preferredMode == CapsulePlaybackMode.VIDEO
+                ) {
+                    Timber.tag("CapsuleVideo").w(
+                        failure, "VIDEO companion failed; original AUDIO remains playing",
+                    )
+                    videoPlaybackState.value = state.copy(
+                        preferredMode = CapsulePlaybackMode.AUDIO,
+                        mode = CapsulePlaybackMode.AUDIO,
+                        phase = CapsuleVideoPhase.REQUEST_ERROR,
+                        firstFrameReady = false,
+                        message = "VIDEO unavailable — original AUDIO continues",
+                    )
+                }
+            },
+        ).also { videoCompanion = it }
+
+    // Activity lifecycle. VIDEO stays selected while background audio
+    // continues; no NewPipe re-extraction on return.
+    fun setVideoAppForeground(foreground: Boolean) {
+        videoScreenVisible = foreground && screenInteractive
+        videoCompanion?.setForeground(videoScreenVisible)
+        if (!videoScreenVisible) {
+            val state = videoPlaybackState.value
+            if (state.mode == CapsulePlaybackMode.VIDEO) {
+                videoPlaybackState.value = state.copy(firstFrameReady = false)
+            }
+        }
+    }
     // VIDEO-only, cancellable background preflight. Never suspends or mutates
     // the MUSIC decoder while the signed video bytes are being checked.
     private var videoWarmupJob: Job? = null
@@ -1722,7 +1785,9 @@ class MusicService :
         combine(playerVolume, normalizeFactor, audioFocusVolumeFactor, playbackFadeFactor) { playerVolume, normalizeFactor, audioFocusVolumeFactor, playbackFadeFactor ->
             playerVolume * normalizeFactor * audioFocusVolumeFactor * playbackFadeFactor
         }.collectLatest(scope) { finalVolume ->
-            player.volume = finalVolume
+            effectiveAudioVolume = finalVolume
+            player.volume = if (videoAudioOwned) 0f else finalVolume
+            videoCompanion?.setVolume(finalVolume)
         }
 
         playerVolume.debounce(1000).collect(ioScope) { volume ->
@@ -3375,6 +3440,9 @@ class MusicService :
                 previousCanonicalId != null &&
                 transitionedMediaId != previousCanonicalId
         if (canonicalChanged) {
+            videoCompanion?.stop()
+            videoAudioOwned = false
+            player.volume = effectiveAudioVolume
             // A new song must never inherit a stale video CDN warmup.
             videoWarmupSerial++
             videoWarmupJob?.cancel()
@@ -4901,139 +4969,46 @@ class MusicService :
                         )
                 }.onSuccess { video ->
                     videoSuspendedForScreenOff = false
+                    // No second NewPipe call and no redundant HTTP warmup.
+                    // The VIDEO companion buffers its own bounded Range CDN
+                    // stream while the untouched MUSIC player stays audible.
+                    if (player.currentMediaItem?.mediaId != canonicalMediaId ||
+                        videoPlaybackState.value.preferredMode != CapsulePlaybackMode.VIDEO ||
+                        videoPlaybackState.value.phase != CapsuleVideoPhase.RESOLVING
+                    ) return@onSuccess
 
-                    val serial = ++videoWarmupSerial
-                    videoWarmupJob?.cancel()
-                    videoWarmupJob = scope.launch(Dispatchers.IO) {
-                        // The existing VIDEO-only CDN DataSource is already
-                        // bounded to 4 MiB chunks. Prime just the FIRST
-                        // 256 KiB (and 64 KiB audio for adaptive video) while
-                        // the original AUDIO is still playing normally.
-                        val warmup = runCatching {
-                            val factory = createVideoCacheDataSource(warmup = true)
-                            val videoKey =
-                                if (video.isAdaptive) {
-                                    "$CAPSULE_VIDEO_STREAM_CACHE_PREFIX" +
-                                        "video:${video.videoId}:${video.videoFormat.itag}"
-                                } else {
-                                    "$CAPSULE_VIDEO_CACHE_PREFIX" +
-                                        "${video.videoId}:${video.videoFormat.itag}"
-                                }
-                            warmupVideoPrefix(
-                                factory, video.videoStreamUrl,
-                                videoKey, CAPSULE_VIDEO_WARMUP_BYTES,
-                            )
-                            if (video.isAdaptive) {
-                                val audioUrl = checkNotNull(video.audioStreamUrl)
-                                val audioItag = checkNotNull(video.audioFormat).itag
-                                warmupVideoPrefix(
-                                    factory, audioUrl,
-                                    "$CAPSULE_VIDEO_STREAM_CACHE_PREFIX" +
-                                        "audio:${video.videoId}:$audioItag",
-                                    CAPSULE_VIDEO_AUDIO_WARMUP_BYTES,
-                                )
-                            }
-                        }
+                    val videoItem = MediaItem.Builder()
+                        .setMediaId(canonicalMediaId)
+                        .setUri("$CAPSULE_VIDEO_SCHEME://play/${video.videoId}")
+                        .build()
 
-                        withContext(Dispatchers.Main.immediate) {
-                            if (serial != videoWarmupSerial ||
-                                player.currentMediaItem?.mediaId != canonicalMediaId ||
-                                videoPlaybackState.value.preferredMode != CapsulePlaybackMode.VIDEO ||
-                                videoPlaybackState.value.phase != CapsuleVideoPhase.RESOLVING
-                            ) return@withContext
-
-                            if (warmup.isFailure) {
-                                val failure = warmup.exceptionOrNull()
-                                val status = generateSequence(failure) { it.cause }
-                                    .filterIsInstance<HttpDataSource.InvalidResponseCodeException>()
-                                    .firstOrNull()?.responseCode
-                                // Fail closed only on real CDN denial/cooldown.
-                                // For a slow connection or a Range-quirky host,
-                                // FALL BACK to the original c77358d player path.
-                                // One optional preflight must never make an
-                                // otherwise playable VIDEO unavailable.
-                                if (status in setOf(401, 403, 429) ||
-                                    CapsuleVideoRequestGuard.isBlocked()
-                                ) {
-                                    Timber.tag("CapsuleVideo").w(
-                                        failure, "VIDEO CDN rejected signed URL; AUDIO preserved",
-                                    )
-                                    YouTubeVideoResolver.invalidate(video.videoId)
-                                    videoOriginalMediaItem = null
-                                    videoOriginalMediaId = null
-                                    videoPlaybackState.value = CapsuleVideoPlaybackState(
-                                        preferredMode = CapsulePlaybackMode.AUDIO,
-                                        mode = CapsulePlaybackMode.AUDIO,
-                                        phase = CapsuleVideoPhase.REQUEST_ERROR,
-                                        mediaId = canonicalMediaId,
-                                        videoId = video.videoId,
-                                        message = "VIDEO CDN rejected stream — AUDIO continues",
-                                    )
-                                    return@withContext
-                                }
-                                Timber.tag("CapsuleVideo").w(
-                                    failure,
-                                    "Optional VIDEO warmup skipped; using original c77358d startup",
-                                )
-                            } else {
-                                Timber.tag("CapsuleVideo").i(
-                                    "video-warmup-ready id=%s; only now switching player",
-                                    video.videoId,
-                                )
-                            }
-                            val position = player.currentPosition.coerceAtLeast(0L)
-                            val wasPlaying = player.playWhenReady
-        
-                            val videoItem =
-                                MediaItem.Builder()
-                                    .setMediaId(canonicalMediaId)
-                                    .setUri("$CAPSULE_VIDEO_SCHEME://play/${video.videoId}")
-                                    /*
-                                     * The itag belongs in the key. The resolver caches
-                                     * per quality, so without it a 360p and a 720p run
-                                     * of the same clip share one cache entry and get
-                                     * spans from two different files stitched together.
-                                     */
-                                    .setCustomCacheKey(
-                                        "$CAPSULE_VIDEO_CACHE_PREFIX" +
-                                            "${video.videoId}:${video.format.itag}",
-                                    )
-                                    .setMediaMetadata(currentItem.mediaMetadata)
-                                    .apply {
-                                        currentItem.localConfiguration?.tag?.let(::setTag)
-                                    }
-                                    .build()
-        
-                            /*
-                             * The stream has already been resolved and validated. Mark
-                             * VIDEO as active before replaceMediaItem so the 16:9 stage
-                             * appears immediately while Media3 buffers the first frame.
-                             */
-                            videoPlaybackState.value =
-                                CapsuleVideoPlaybackState(
-                                    preferredMode = CapsulePlaybackMode.VIDEO,
-                                    mode = CapsulePlaybackMode.VIDEO,
-                                    phase = CapsuleVideoPhase.PLAYING,
-                                    mediaId = canonicalMediaId,
-                                    videoId = video.videoId,
-                                    qualityLabel = video.qualityLabel,
-                                    width = video.videoFormat.width,
-                                    height = video.videoFormat.height,
-                                    message = null,
-                                )
-        
-                            player.replaceMediaItem(currentIndex, videoItem)
-                            player.seekTo(currentIndex, position)
-                            player.prepare()
-                            player.playWhenReady = wasPlaying
-                        }
-                    }
+                    videoPlaybackState.value = CapsuleVideoPlaybackState(
+                        preferredMode = CapsulePlaybackMode.VIDEO,
+                        mode = CapsulePlaybackMode.VIDEO,
+                        phase = CapsuleVideoPhase.PLAYING,
+                        mediaId = canonicalMediaId,
+                        videoId = video.videoId,
+                        qualityLabel = video.qualityLabel,
+                        width = video.videoFormat.width,
+                        height = video.videoFormat.height,
+                        firstFrameReady = false,
+                    )
+                    val companion = companionForVideo()
+                    companion.setForeground(videoScreenVisible)
+                    companion.start(canonicalMediaId, videoItem, effectiveAudioVolume)
+                    Timber.tag("CapsuleVideo").i(
+                        "VIDEO companion loading directly; AUDIO stays audible clip=%s",
+                        video.videoId,
+                    )
                 }
             },
         )
     }
 
     private fun leaveCapsuleVideoMode() {
+        videoCompanion?.stop()
+        videoAudioOwned = false
+        player.volume = effectiveAudioVolume
         videoWarmupSerial++
         videoWarmupJob?.cancel()
         videoWarmupJob = null
@@ -5222,75 +5197,14 @@ class MusicService :
     }
 
     private fun suspendCapsuleVideoForScreenOff() {
-        val state = videoPlaybackState.value
-        val videoWasRequested =
-            state.preferredMode == CapsulePlaybackMode.VIDEO ||
-                state.mode == CapsulePlaybackMode.VIDEO ||
-                state.phase == CapsuleVideoPhase.RESOLVING ||
-                isCurrentCapsuleVideoItem()
-
-        if (!videoWasRequested) return
-
-        /*
-         * Screen-off is a hard end of this track's VIDEO session.
-         * Playback immediately returns to AUDIO and unlock never schedules a
-         * new extractor request by itself.
-         */
-        videoSuspendedForScreenOff = false
-        videoWarmupSerial++
-        videoWarmupJob?.cancel()
-        videoWarmupJob = null
-        videoResolveCoordinator.cancel()
-
-        if (isCurrentCapsuleVideoItem()) {
-            restoreOriginalAudioItem(
-                failureMessage = null,
-                preferredModeAfter = CapsulePlaybackMode.AUDIO,
-                invalidateFailedVideo = false,
-            )
-        } else {
-            val currentId = player.currentMediaItem?.mediaId
-
-            videoOriginalMediaItem = null
-            videoOriginalMediaId = null
-            videoPlaybackState.value =
-                CapsuleVideoPlaybackState(
-                    preferredMode = CapsulePlaybackMode.AUDIO,
-                    mode = CapsulePlaybackMode.AUDIO,
-                    phase = CapsuleVideoPhase.IDLE,
-                    mediaId = currentId,
-                    videoId = null,
-                    qualityLabel = null,
-                    width = null,
-                    height = null,
-                    message = null,
-                )
-        }
+        // Screen-off is not a request to change AUDIO/VIDEO mode.
+        // Park only VIDEO decoding. AUDIO remains the audible fallback.
+        setVideoAppForeground(false)
     }
 
     private fun resumeCapsuleVideoAfterUnlockIfAllowed() {
-        /*
-         * Deliberately no automatic VIDEO resume. Unlocking stays in AUDIO.
-         */
-        videoSuspendedForScreenOff = false
-
-        val state = videoPlaybackState.value
-        if (
-            state.preferredMode == CapsulePlaybackMode.VIDEO &&
-            state.mode != CapsulePlaybackMode.VIDEO
-        ) {
-            videoPlaybackState.value =
-                state.copy(
-                    preferredMode = CapsulePlaybackMode.AUDIO,
-                    mode = CapsulePlaybackMode.AUDIO,
-                    phase = CapsuleVideoPhase.IDLE,
-                    videoId = null,
-                    qualityLabel = null,
-                    width = null,
-                    height = null,
-                    message = null,
-                )
-        }
+        // Actual Activity foreground is signalled by its ServiceConnection.
+        // Unlocking alone must not start a hidden VIDEO SurfaceView.
     }
 
     private fun isCurrentCapsuleVideoItem(): Boolean =
@@ -5898,6 +5812,8 @@ class MusicService :
     }
 
     override fun onDestroy() {
+        videoCompanion?.release()
+        videoCompanion = null
         videoWarmupSerial++
         videoWarmupJob?.cancel()
         videoWarmupJob = null

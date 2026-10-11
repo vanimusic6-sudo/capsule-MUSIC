@@ -297,6 +297,7 @@ class MainActivity : ComponentActivity() {
                     // A normal background -> foreground cycle binds to the same live service.
                     // Keeping the same PlayerConnection prevents the whole Compose player tree,
                     // theme collectors and mini-player state from being recreated on every return.
+                    service.service.setVideoAppForeground(true)
                     playPendingDeepLinkSongIfReady()
                     joinPendingTogetherIfReady()
                 }
@@ -412,8 +413,8 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onStop() {
-        // Stop only the VIDEO decoder before its surface is detached.
-        // Regular audio playback remains available in the background.
+        // Park the VIDEO renderer before its UI SurfaceView detaches;
+        // preserve VIDEO selection and use uninterrupted main AUDIO in background.
         // Configuration changes (e.g. rotation) are not a background exit.
         if (!isChangingConfigurations) {
             playerConnection?.service?.suspendCapsuleVideoForAppBackground()

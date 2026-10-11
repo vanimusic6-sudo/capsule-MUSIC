@@ -41,6 +41,7 @@ data class CapsuleVideoPlaybackState(
     val qualityLabel: String? = null,
     val width: Int? = null,
     val height: Int? = null,
+    val firstFrameReady: Boolean = false,
     val message: String? = null,
 )
 

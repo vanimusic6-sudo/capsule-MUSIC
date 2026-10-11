@@ -635,7 +635,7 @@ fun CapsulePlayerContent(
                                     // Disable Media3's built-in controls BEFORE binding
                                     // the player: binding can schedule their initial show.
                                     useController = false
-                                    player = playerConnection.player
+                                    player = playerConnection.service.videoRenderPlayer
                                     hideController()
 
                                     /*
@@ -663,13 +663,22 @@ fun CapsulePlayerContent(
                             update = { playerView ->
                                 // Keep the embedded renderer control-free across recompositions.
                                 playerView.useController = false
-                                if (playerView.player !== playerConnection.player) {
-                                    playerView.player = playerConnection.player
+                                if (playerView.player !== playerConnection.service.videoRenderPlayer) {
+                                    playerView.player = playerConnection.service.videoRenderPlayer
                                 }
                                 playerView.hideController()
                             },
                             modifier = Modifier.fillMaxSize(),
                         )
+                        if (!videoPlaybackState.firstFrameReady) {
+                            // Opaque themed shutter until the real VIDEO frame
+                            // is decoded. Hide renderer reattachment flashes.
+                            Box(
+                                Modifier.fillMaxSize().background(
+                                    textColor.copy(alpha = 0.06f),
+                                ),
+                            )
+                        }
                         }
                     } else if (videoStageReserved) {
                         // Keep the chosen theme visible during extraction,

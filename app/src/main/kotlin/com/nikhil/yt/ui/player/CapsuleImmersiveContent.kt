@@ -341,29 +341,10 @@ internal fun CapsuleImmersiveContent(
         videoPlaybackState.mode == CapsulePlaybackMode.VIDEO &&
             videoPlaybackState.phase == CapsuleVideoPhase.PLAYING
 
-    // Requesting VIDEO is not the same as having a video to display. Keep the complete
-    // audio artwork in place throughout RESOLVING and any request-guard backoff. The
-    // service deliberately marks PLAYING before replacing the Media3 item; even that
-    // is too early for a visible video stage until its FIRST frame is rendered.
-    var videoFirstFrameRendered by remember(mediaMetadata.id, videoPlaybackState.videoId) {
-        mutableStateOf(false)
-    }
-    DisposableEffect(playerConnection.player, isVideo, videoPlaybackState.videoId, mediaMetadata.id) {
-        if (isVideo && visible) {
-            val listener = object : Player.Listener {
-                override fun onRenderedFirstFrame() {
-                    videoFirstFrameRendered = true
-                }
-            }
-            playerConnection.player.addListener(listener)
-            onDispose { playerConnection.player.removeListener(listener) }
-        } else {
-            onDispose { }
-        }
-    }
-    // Once a video has rendered its first frame, switch surfaces in one frame. Do not
-    // animate AUDIO <-> VIDEO; only the neutral placeholder -> prepared artwork fades.
-    val presentingVideo = isVideo && videoFirstFrameRendered
+    // The VIDEO renderer has its own player and SurfaceView. The service
+    // signals first-frame readiness; the MUSIC player must never be attached
+    // as the VIDEO surface and must not be replaced.
+    val presentingVideo = isVideo && videoPlaybackState.firstFrameReady
     // A small, compositor-only reveal. No animation updates player state or
     // recreates the expensive VIDEO SurfaceView.
     val videoReveal by animateFloatAsState(
@@ -655,13 +636,13 @@ internal fun CapsuleImmersiveContent(
         // One layer, one alpha: the old cover+scrim+page leave together, then the
         // new cover+scrim+page enter together. There is NO separately animated colour
         // layer that can lag behind the image.
-        Box(modifier = Modifier.fillMaxSize().background(IMMERSIVE_NEUTRAL_COLOR))
+        Box(modifier = Modifier.fillMaxSize().background(pageBackground))
         if (frame != null) {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
                     // Alpha is a layer update; it must not recompose the artwork or controls.
-                    .graphicsLayer { alpha = if (isVideo) 0f else gradientAlpha.value },
+                    .graphicsLayer { alpha = gradientAlpha.value },
             ) {
                 Box(modifier = Modifier.fillMaxSize().background(pageBackground))
                 Box(
@@ -669,6 +650,7 @@ internal fun CapsuleImmersiveContent(
                         .fillMaxWidth()
                         .height(artworkHeight)
                         .clipToBounds()
+                        .graphicsLayer { alpha = if (isVideo) 0f else 1f }
                         .clickable(
                             interactionSource = remember { MutableInteractionSource() },
                             indication = null,
@@ -722,12 +704,6 @@ internal fun CapsuleImmersiveContent(
             }
         }
 
-        // VIDEO inherits the *same* calculated Immersion floor gradient.
-        // Hide the album art immediately so a recycled screen cannot flash a
-        // square thumbnail before the video surface gets its first frame.
-        if (isVideo) {
-            Box(Modifier.fillMaxSize().background(pageBackground))
-        }
         if (isVideo) {
             Box(
                 modifier = Modifier
@@ -746,7 +722,7 @@ internal fun CapsuleImmersiveContent(
                 AndroidView(
                     factory = { viewContext ->
                         PlayerView(viewContext).apply {
-                            player = playerConnection.player
+                            player = playerConnection.service.videoRenderPlayer
                             useController = false
                             setShowBuffering(PlayerView.SHOW_BUFFERING_NEVER)
                             resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM
@@ -755,8 +731,8 @@ internal fun CapsuleImmersiveContent(
                         }
                     },
                     update = { playerView ->
-                        if (playerView.player !== playerConnection.player) {
-                            playerView.player = playerConnection.player
+                        if (playerView.player !== playerConnection.service.videoRenderPlayer) {
+                            playerView.player = playerConnection.service.videoRenderPlayer
                         }
                     },
                     modifier = Modifier.fillMaxSize(),
