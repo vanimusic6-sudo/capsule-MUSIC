@@ -337,8 +337,8 @@ internal fun CapsuleImmersiveContent(
 
     val isLoading = playbackState == Player.STATE_BUFFERING
 
-    val isVideo =
-        videoPlaybackState.needsSurface
+    val isVideo = videoPlaybackState.presentingVideo
+    val needsVideoSurface = videoPlaybackState.needsSurface
 
     // The VIDEO renderer has its own player and TextureView. The service
     // signals first-frame readiness; the MUSIC player must never be attached
@@ -643,7 +643,7 @@ internal fun CapsuleImmersiveContent(
                         .fillMaxWidth()
                         .height(artworkHeight)
                         .clipToBounds()
-                        .graphicsLayer { alpha = if (isVideo) 0f else 1f }
+                        .graphicsLayer { alpha = 1f - videoReveal }
                         .clickable(
                             interactionSource = remember { MutableInteractionSource() },
                             indication = null,
@@ -697,7 +697,7 @@ internal fun CapsuleImmersiveContent(
             }
         }
 
-        if (isVideo) {
+        if (needsVideoSurface) {
             Box(
                 modifier = Modifier
                     .align(Alignment.TopCenter)
@@ -705,6 +705,7 @@ internal fun CapsuleImmersiveContent(
                     .fillMaxWidth()
                     .height(videoFrameHeight)
                     .graphicsLayer {
+                        alpha = videoReveal
                         val scale = 0.985f + 0.015f * videoReveal
                         scaleX = scale
                         scaleY = scale

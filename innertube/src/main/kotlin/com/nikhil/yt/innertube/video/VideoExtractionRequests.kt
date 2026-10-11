@@ -41,6 +41,17 @@ object VideoExtractionRequests {
 
     private val requests = ConcurrentHashMap<String, State>()
     private val current = ThreadLocal<State>()
+    private class RouteBudget {
+        val calls = mutableSetOf<Call>()
+        var expired = false
+        @Synchronized fun checkActive() {
+            if (expired) throw SocketTimeoutException("VIDEO route budget elapsed")
+        }
+        @Synchronized fun register(call: Call) { checkActive(); calls.add(call) }
+        @Synchronized fun unregister(call: Call) { calls.remove(call) }
+        @Synchronized fun expire() { expired = true; calls.forEach(Call::cancel) }
+    }
+    private val currentRoute = ThreadLocal<RouteBudget>()
     private val timer = Executors.newSingleThreadScheduledExecutor { task ->
         Thread(task, "capsule-video-deadline").apply { isDaemon = true }
     }
@@ -75,13 +86,35 @@ object VideoExtractionRequests {
 
     internal fun <T> execute(call: Call, block: () -> T): T {
         val state = current.get()
+        val route = currentRoute.get()
         state?.register(call)
         try {
+            route?.register(call)
             val result = block()
             state?.checkActive()
+            route?.checkActive()
             return result
         } finally {
+            route?.unregister(call)
             state?.unregister(call)
+        }
+    }
+
+    /** A route timing out leaves the request alive for the next independent route. */
+    internal fun <T> withRouteBudget(timeoutMs: Long, block: () -> T): T {
+        check(currentRoute.get() == null) { "Nested VIDEO route budget" }
+        val route = RouteBudget()
+        currentRoute.set(route)
+        val timeout = timer.schedule(route::expire, timeoutMs, TimeUnit.MILLISECONDS)
+        try {
+            val result = block()
+            route.checkActive()
+            checkActive()
+            return result
+        } finally {
+            timeout.cancel(false)
+            route.expire()
+            currentRoute.remove()
         }
     }
 

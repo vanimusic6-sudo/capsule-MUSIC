@@ -88,7 +88,15 @@ class CapsuleVideoSessionTest {
         f.clip.ready()
         assertEquals(0f, f.music.volume)
         assertEquals(0f, f.clip.volume)
-        advanceTimeBy(116); runCurrent()
+        assertTrue(f.frames.isEmpty())
+        advanceTimeBy(179); runCurrent()
+        assertEquals(0f, f.music.volume)
+        assertEquals(0f, f.clip.volume)
+        assertTrue(f.frames.isEmpty())
+        advanceTimeBy(2); runCurrent()
+        assertTrue(f.clip.volume > 0f && f.clip.volume < 0.8f)
+        assertTrue(f.frames.isEmpty())
+        advanceTimeBy(80); runCurrent()
         assertEquals(0.8f, f.clip.volume)
         assertEquals(listOf("song"), f.frames)
         f.session.stop()
@@ -102,7 +110,7 @@ class CapsuleVideoSessionTest {
         assertEquals(1f, f.music.volume)
         assertTrue(f.frames.isEmpty())
         f.clip.frame()
-        advanceTimeBy(116); runCurrent()
+        advanceTimeBy(261); runCurrent()
         assertEquals(0.8f, f.clip.volume)
         f.session.stop()
     }
@@ -116,7 +124,7 @@ class CapsuleVideoSessionTest {
     }
     @Test fun detachAndReturnNeverReselectTracksSeekOrSwitchSoundOwner() = runTest {
         val f = Fixture(this); f.start(); f.clip.ready(); f.clip.frame()
-        advanceTimeBy(116); runCurrent()
+        advanceTimeBy(261); runCurrent()
         val selectionBefore = f.clip.selection
         val seeksBefore = f.clip.seeks.toList()
         val ownersBefore = f.owned.toList()
@@ -136,7 +144,7 @@ class CapsuleVideoSessionTest {
 
     @Test fun reopeningPlayerWhilePausedNeverSeeksOrStartsAnotherSoundSeam() = runTest {
         val f = Fixture(this); f.start(); f.clip.ready(); f.clip.frame()
-        advanceTimeBy(116); runCurrent()
+        advanceTimeBy(261); runCurrent()
         f.music.intent = false; f.clip.playing = false; f.music.event()
         val seeksBefore = f.clip.seeks.toList()
         val ownersBefore = f.owned.toList()
@@ -160,7 +168,7 @@ class CapsuleVideoSessionTest {
     }
     @Test fun bufferingAfterSoundHandoffImmediatelyRestoresMusic() = runTest {
         val f = Fixture(this); f.start(); f.clip.ready(); f.clip.frame()
-        advanceTimeBy(116); runCurrent()
+        advanceTimeBy(261); runCurrent()
         f.clip.state = Player.STATE_BUFFERING; f.clip.playing = false; f.clip.event()
         assertEquals(1f, f.music.volume)
         assertEquals(0f, f.clip.volume)
@@ -179,7 +187,7 @@ class CapsuleVideoSessionTest {
         val f = Fixture(this); f.start(); f.clip.ready(); f.clip.frame()
         f.session.setVolume(0.3f)
         assertEquals(0f, f.clip.volume)
-        advanceTimeBy(116); runCurrent()
+        advanceTimeBy(261); runCurrent()
         assertEquals(0.3f, f.clip.volume)
         f.session.stop()
         advanceTimeBy(1_000); runCurrent()
@@ -187,4 +195,24 @@ class CapsuleVideoSessionTest {
         assertEquals(1f, f.music.volume)
     }
 
+    @Test fun bufferingDuringSoundRampCannotRevealOrUnmuteTheClipLater() = runTest {
+        val f = Fixture(this); f.start(); f.clip.ready(); f.clip.frame()
+        advanceTimeBy(200); runCurrent()
+        assertTrue(f.frames.isEmpty())
+        f.clip.state = Player.STATE_BUFFERING; f.clip.playing = false; f.clip.event()
+        advanceTimeBy(500); runCurrent()
+        assertEquals(1f, f.music.volume)
+        assertEquals(0f, f.clip.volume)
+        assertTrue(f.frames.isEmpty())
+        f.session.stop()
+    }
+    @Test fun pausedPreparationCanRevealAStillWithoutMutingMusicOrStartingClipSound() = runTest {
+        val f = Fixture(this); f.music.intent = false; f.start()
+        f.clip.ready(); f.clip.playing = false; f.clip.frame()
+        assertEquals(listOf("song"), f.frames)
+        assertTrue(f.owned.isEmpty())
+        assertEquals(1f, f.music.volume)
+        assertEquals(0f, f.clip.volume)
+        f.session.stop()
+    }
 }

@@ -6,6 +6,13 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class CapsuleVideoCompanionTest {
+    @Test fun preparingSurfaceMustNotRevealTheVideoWindow() {
+        val preparing = CapsuleVideoPlaybackState(mode = CapsulePlaybackMode.VIDEO, phase = CapsuleVideoPhase.PREPARING)
+        assertTrue(preparing.needsSurface)
+        assertFalse(preparing.presentingVideo)
+        assertTrue(preparing.copy(firstFrameReady = true, phase = CapsuleVideoPhase.PLAYING).presentingVideo)
+        assertFalse(preparing.copy(mode = CapsulePlaybackMode.AUDIO, firstFrameReady = true).presentingVideo)
+    }
     @Test fun audioRemainsAudibleBeforeFirstVideoFrame() {
         assertFalse(canSwitchToVideoSound(
             firstFrameRendered = false,

@@ -25,6 +25,9 @@ internal fun canSwitchToVideoSound(
 ): Boolean = firstFrameRendered && ready && originalAudioSelected && musicIsPlaying && clipIsPlaying
 
 internal class CapsuleVideoEndedException : IllegalStateException("VIDEO clip ended")
+internal const val CAPSULE_VIDEO_SOUND_GAP_MS = 180L
+internal const val CAPSULE_SOUND_RAMP_STEP_MS = 16L
+internal const val CAPSULE_SOUND_RAMP_STEPS = 5
 
 internal class CapsuleVideoCompanion(
     context: Context, factory: MediaSource.Factory, audio: ExoPlayer,
@@ -72,6 +75,7 @@ internal class CapsuleVideoSession(
     private var frameReported = false
     private var ownsSound = false
     private var audible = false
+    private var soundGain = 0f
     private var aligned = false
     private var committed = false
     private var volume = 1f
@@ -100,6 +104,7 @@ internal class CapsuleVideoSession(
                 firstFrame = false
                 frameReported = false
                 onFrameUnavailable(id!!)
+                if (seamJob?.isActive == true) returnSound()
                 aligned = true
                 video.seekTo(targetPosition())
             }
@@ -153,13 +158,13 @@ internal class CapsuleVideoSession(
                 return
             }
         }
-        if (rendering && firstFrame && ready && !frameReported) {
-            frameReported = true
-            onReady(current)
-        }
         val canOwn = ready && video.isPlaying && audio.playWhenReady &&
             (committed || (rendering && firstFrame && aligned))
         if (canOwn && !ownsSound) {
+            if (frameReported) {
+                frameReported = false
+                onFrameUnavailable(current)
+            }
             ownsSound = true
             audible = false
             video.volume = 0f
@@ -167,11 +172,20 @@ internal class CapsuleVideoSession(
             val lease = generation
             seamJob?.cancel()
             seamJob = scope.launch {
-                delay(115L)
+                // Keep the decoder hidden while both outputs are quiet. A
+                // decoded frame alone must never reveal VIDEO over MUSIC.
+                delay(CAPSULE_VIDEO_SOUND_GAP_MS)
                 if (id == current && generation == lease && ownsSound && ready && video.isPlaying && audio.playWhenReady) {
                     audible = true
                     committed = true
-                    video.volume = volume
+                    for (step in 1..CAPSULE_SOUND_RAMP_STEPS) {
+                        if (id != current || generation != lease || !ownsSound || !ready ||
+                            !video.isPlaying || !audio.playWhenReady) return@launch
+                        soundGain = step.toFloat() / CAPSULE_SOUND_RAMP_STEPS
+                        video.volume = volume * soundGain
+                        delay(CAPSULE_SOUND_RAMP_STEP_MS)
+                    }
+                    reportPresentation(current)
                     Timber.tag("CapsuleVideo").i("sound-owner VIDEO session=%s", current)
                 } else {
                     returnSound()
@@ -180,14 +194,34 @@ internal class CapsuleVideoSession(
         } else if (!canOwn && ownsSound) {
             returnSound()
         }
+        // A paused clip can show its decoded still without handing off sound.
+        // Established sessions can reveal a reattached surface immediately.
+        if (!audio.playWhenReady || (ownsSound && audible && seamJob?.isActive != true)) {
+            reportPresentation(current)
+        }
         ensureWatchdog()
+    }
+
+    private fun reportPresentation(current: String) {
+        if (rendering && firstFrame && ready && !frameReported) {
+            frameReported = true
+            onReady(current)
+        }
     }
 
     private fun returnSound() {
         seamJob?.cancel(); seamJob = null
         video.volume = 0f
         audible = false
-        if (ownsSound) { ownsSound = false; onSoundOwned(false) }
+        soundGain = 0f
+        if (ownsSound) {
+            if (audio.playWhenReady && frameReported) {
+                frameReported = false
+                id?.let(onFrameUnavailable)
+            }
+            ownsSound = false
+            onSoundOwned(false)
+        }
     }
 
     fun start(mediaId: String, item: MediaItem, outputVolume: Float) {
@@ -273,7 +307,7 @@ internal class CapsuleVideoSession(
     }
     fun setForeground(value: Boolean) { if (foreground != value) changeRendering { foreground = value } }
     fun setSurfaceAttached(value: Boolean) { if (surfaceAttached != value) changeRendering { surfaceAttached = value } }
-    fun setVolume(value: Float) { volume = value.coerceIn(0f, 1f); video.volume = if (ownsSound && audible) volume else 0f }
+    fun setVolume(value: Float) { volume = value.coerceIn(0f, 1f); video.volume = if (ownsSound && audible) volume * soundGain else 0f }
 
     private fun fail(cause: Throwable) {
         val failed = id ?: return

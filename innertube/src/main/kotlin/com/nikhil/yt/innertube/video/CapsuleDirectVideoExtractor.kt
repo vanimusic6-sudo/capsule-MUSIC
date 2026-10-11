@@ -1,4 +1,8 @@
-/* Capsule MUSIC — independent, anonymous direct VIDEO route. GPL-3.0. */
+/* Capsule MUSIC — independent, anonymous direct VIDEO routes.
+ * Android Reel request adapted from PipePipeExtractor (see method attribution).
+ * Copyright (C) Christian Schabesberger 2019; NewPipe/PipePipe contributors.
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ */
 package com.nikhil.yt.innertube.video
 
 import com.nikhil.yt.innertube.buildPlayerRequestPayload
@@ -18,16 +22,16 @@ import java.security.SecureRandom
 import java.util.Base64
 
 /**
- * One maintained client, one request, no watch page or JavaScript bootstrap.
- * Only complete direct URLs are accepted. Cipher, n-challenge, HLS and SABR
- * responses go to NewPipe rather than being misrepresented as playable MP4.
+ * Independent guest player routes, no watch page or JavaScript bootstrap.
+ * Only complete direct URLs or validated HLS are accepted. Cipher/n/SABR
+ * responses go to the maintained parser instead of becoming broken MP4.
  * This client/pool/session exists only in :capsule_video; AUDIO is never used.
  */
 object CapsuleDirectVideoExtractor {
     private const val BUDGET_MS = 5_000L
     private val nonceRandom = SecureRandom()
-    private var visitor: String? = null
-    private var visitorUntilMs = 0L
+    private data class GuestVisitor(val value: String, val untilMs: Long)
+    private val visitors = mutableMapOf<String, GuestVisitor>()
     private val client = OkHttpClient.Builder()
         .callTimeout(5, TimeUnit.SECONDS)
         .connectTimeout(3, TimeUnit.SECONDS)
@@ -50,16 +54,11 @@ object CapsuleDirectVideoExtractor {
             put("utcOffsetMinutes", JsonPrimitive(0))
         })
         val anonymousContext = JsonObject(context.toMutableMap().apply { put("client", clientContext) })
-        if (visitor == null || visitorUntilMs <= System.currentTimeMillis()) {
-            val bootstrap = post("https://www.youtube.com/youtubei/v1/visitor_id?prettyPrint=false",
-                buildJsonObject { put("context", anonymousContext) }, deadline, maxCallMs = 2_500L)
-            visitor = (bootstrap["responseContext"] as? JsonObject)?.get("visitorData")?.jsonPrimitive?.contentOrNull
-                ?.takeIf { it.isNotBlank() } ?: throw IOException("VIDEO anonymous visitor unavailable")
-            visitorUntilMs = System.currentTimeMillis() + TimeUnit.HOURS.toMillis(6)
-        }
+        val visitor = guestVisitor(identity.clientId, identity.clientVersion, identity.userAgent,
+            anonymousContext, deadline)
         val payload = JsonObject(base.toMutableMap().apply {
             put("context", JsonObject(anonymousContext.toMutableMap().apply {
-                put("client", JsonObject(clientContext.toMutableMap().apply { put("visitorData", JsonPrimitive(visitor!!)) }))
+                put("client", JsonObject(clientContext.toMutableMap().apply { put("visitorData", JsonPrimitive(visitor)) }))
             }))
             put("cpn", JsonPrimitive(nonce(12)))
         })
@@ -68,19 +67,71 @@ object CapsuleDirectVideoExtractor {
         return selectDirectVideo(response, videoId, quality, muxedOnly)
     }
 
+    /**
+     * Android Reel is a different endpoint/client from VISIONOS and NewPipe's
+     * parser. Accept only a complete, exact-ID muxed clip. Request shape based
+     * on GPL-3.0 PipePipeExtractor 586325e33ed374ffddd62364dd20c26a999fb107,
+     * YoutubeStreamExtractor.fetchAndroidReelMuxedFormats (InfinityLoop1308).
+     */
+    @Synchronized
+    fun resolveReel(videoId: String, quality: CapsuleNewPipeQuality): CapsuleNewPipeResolved? {
+        val version = "21.03.36"
+        val userAgent = "com.google.android.youtube/$version (Linux; U; Android 15; US) gzip"
+        val deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(BUDGET_MS)
+        val anonymousContext = buildJsonObject {
+            put("client", buildJsonObject {
+                put("clientName", "ANDROID"); put("clientVersion", version)
+                put("hl", "en"); put("gl", "US"); put("clientScreen", "WATCH")
+                put("platform", "MOBILE"); put("osName", "Android"); put("osVersion", "16")
+                put("androidSdkVersion", 36); put("utcOffsetMinutes", 0)
+            })
+        }
+        val visitor = guestVisitor("3", version, userAgent, anonymousContext, deadline)
+        val payload = buildJsonObject {
+            put("context", JsonObject(anonymousContext.toMutableMap().apply {
+                put("client", JsonObject(anonymousContext["client"]!!.jsonObject.toMutableMap().apply {
+                    put("visitorData", JsonPrimitive(visitor))
+                }))
+            }))
+            put("playerRequest", buildJsonObject {
+                put("videoId", videoId); put("cpn", nonce(12))
+                put("contentCheckOk", true); put("racyCheckOk", true)
+            })
+            put("disablePlayerResponse", false)
+        }
+        val response = post("https://youtubei.googleapis.com/youtubei/v1/reel/reel_item_watch?prettyPrint=false&t=${nonce(9)}&id=$videoId&\$fields=playerResponse",
+            payload, deadline, clientId = "3", clientVersion = version, userAgent = userAgent)
+        return selectAndroidReelVideo(response, videoId, quality)
+    }
+
+    private fun guestVisitor(clientId: String, version: String, userAgent: String,
+                             context: JsonObject, deadline: Long): String {
+        visitors[clientId]?.takeIf { it.untilMs > System.currentTimeMillis() }?.let { return it.value }
+        val host = if (clientId == "3") "youtubei.googleapis.com" else "www.youtube.com"
+        val bootstrap = post("https://$host/youtubei/v1/visitor_id?prettyPrint=false",
+            buildJsonObject { put("context", context) }, deadline, maxCallMs = 2_000L,
+            clientId = clientId, clientVersion = version, userAgent = userAgent)
+        val visitor = (bootstrap["responseContext"] as? JsonObject)?.get("visitorData")?.jsonPrimitive?.contentOrNull
+            ?.takeIf { it.isNotBlank() } ?: throw IOException("VIDEO anonymous visitor unavailable")
+        visitors[clientId] = GuestVisitor(visitor, System.currentTimeMillis() + TimeUnit.HOURS.toMillis(6))
+        return visitor
+    }
+
     private fun nonce(bytes: Int): String = Base64.getUrlEncoder().withoutPadding()
         .encodeToString(ByteArray(bytes).also(nonceRandom::nextBytes))
 
-    private fun post(url: String, payload: JsonObject, deadline: Long, maxCallMs: Long = BUDGET_MS): JsonObject {
-        val identity = YouTubeClient.VISIONOS
+    private fun post(url: String, payload: JsonObject, deadline: Long, maxCallMs: Long = BUDGET_MS,
+                     clientId: String = YouTubeClient.VISIONOS.clientId,
+                     clientVersion: String = YouTubeClient.VISIONOS.clientVersion,
+                     userAgent: String = YouTubeClient.VISIONOS.userAgent): JsonObject {
         val remainingMs = TimeUnit.NANOSECONDS.toMillis(deadline - System.nanoTime())
         if (remainingMs <= 0L) throw SocketTimeoutException("VIDEO direct request budget elapsed")
         val request = Request.Builder()
             .url(url)
-            .header("User-Agent", identity.userAgent)
+            .header("User-Agent", userAgent)
             .header("X-Goog-Api-Format-Version", "2")
-            .header("X-YouTube-Client-Name", identity.clientId)
-            .header("X-YouTube-Client-Version", identity.clientVersion)
+            .header("X-YouTube-Client-Name", clientId)
+            .header("X-YouTube-Client-Version", clientVersion)
             .post(payload.toString().toRequestBody("application/json".toMediaType()))
             .build()
         val call = client.newCall(request)
@@ -93,6 +144,16 @@ object CapsuleDirectVideoExtractor {
             }
         }
     }
+}
+
+internal fun selectAndroidReelVideo(
+    response: JsonObject, videoId: String, quality: CapsuleNewPipeQuality,
+    nowMs: Long = System.currentTimeMillis(),
+): CapsuleNewPipeResolved? {
+    val player = response["playerResponse"] as? JsonObject ?: return null
+    // Reel responses can be substitutions; missing IDs are not trustworthy.
+    if ((player["videoDetails"] as? JsonObject)?.get("videoId")?.jsonPrimitive?.contentOrNull != videoId) return null
+    return selectDirectVideo(player, videoId, quality, muxedOnly = true, nowMs = nowMs)
 }
 
 internal fun selectDirectVideo(

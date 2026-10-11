@@ -5,6 +5,7 @@ import okhttp3.Request
 import org.junit.Assert.*
 import org.junit.Test
 import java.net.ServerSocket
+import java.io.IOException
 import java.util.UUID
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
@@ -27,6 +28,35 @@ class VideoExtractionRequestsTest {
 
     @Test fun oneDeadlineBoundsTheEntireExtractionAndAbortsItsHttpRead() {
         assertHttpReadStops(cancelExplicitly = false)
+    }
+
+    @Test fun routeDeadlineCancelsItsSocketButLeavesTheNextRouteAndRequestAlive() {
+        val server = ServerSocket(0)
+        val release = CountDownLatch(1)
+        val executor = Executors.newFixedThreadPool(2)
+        val client = OkHttpClient()
+        val call = client.newCall(Request.Builder().url("http://127.0.0.1:${server.localPort}/").build())
+        try {
+            executor.submit { server.accept().use { release.await(5, TimeUnit.SECONDS) } }
+            val result = executor.submit<String> {
+                VideoExtractionRequests.withRequest(UUID.randomUUID().toString(), 5_000L) {
+                    try {
+                        VideoExtractionRequests.withRouteBudget(500L) {
+                            VideoExtractionRequests.execute(call) { call.execute().use { it.body.string() } }
+                        }
+                        error("A stalled route must expire")
+                    } catch (expected: IOException) {
+                        VideoExtractionRequests.checkActive()
+                        VideoExtractionRequests.withRouteBudget(1_000L) { "fallback" }
+                    }
+                }
+            }
+            assertEquals("fallback", result.get(3, TimeUnit.SECONDS))
+            assertTrue(call.isCanceled())
+        } finally {
+            release.countDown(); call.cancel(); server.close(); executor.shutdownNow()
+            client.connectionPool.evictAll(); client.dispatcher.executorService.shutdownNow()
+        }
     }
 
     private fun assertHttpReadStops(cancelExplicitly: Boolean) {

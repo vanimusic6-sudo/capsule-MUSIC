@@ -114,7 +114,6 @@ import com.nikhil.yt.innertube.toHighResThumbnail
 import com.nikhil.yt.models.MediaMetadata
 import com.nikhil.yt.playback.PlayerConnection
 import com.nikhil.yt.playback.video.CapsulePlaybackMode
-import com.nikhil.yt.playback.video.CapsuleVideoPhase
 import com.nikhil.yt.together.TogetherRole
 import com.nikhil.yt.together.TogetherSessionState
 import com.nikhil.yt.utils.makeTimeString
@@ -357,15 +356,11 @@ fun CapsulePlayerContent(
     val videoPlaybackState by
         playerConnection.service.videoPlaybackState.collectAsState()
 
-    val isCapsuleVideoPlaying =
-        videoPlaybackState.needsSurface
-    // While searching VIDEO, reserve the 16:9 stage right away. Otherwise
-    // opening a player recreates a square album cover for one frame and then
-    // replaces it abruptly with the video window.
-    val videoStageReserved =
-        isCapsuleVideoPlaying ||
-            (videoPlaybackState.preferredMode == CapsulePlaybackMode.VIDEO &&
-                videoPlaybackState.phase == CapsuleVideoPhase.RESOLVING)
+    val isCapsuleVideoPlaying = videoPlaybackState.presentingVideo
+    val needsVideoSurface = videoPlaybackState.needsSurface
+    // Keep artwork and its layout until both the frame and sound handoff are
+    // ready. The invisible TextureView still prepares under the artwork.
+    val videoStageReserved = isCapsuleVideoPlaying
 
     val videoWindowReveal by animateFloatAsState(
         targetValue = if (isCapsuleVideoPlaying) 1f else 0f,
@@ -622,24 +617,26 @@ fun CapsulePlayerContent(
                             ),
                     contentAlignment = Alignment.Center,
                 ) {
-                    if (isCapsuleVideoPlaying) {
-                        Box(Modifier.fillMaxSize().graphicsLayer {
+                    if (needsVideoSurface) {
+                        Box(Modifier.fillMaxWidth().aspectRatio(16f / 9f).graphicsLayer {
+                            alpha = videoWindowReveal
                             val scale = 0.985f + 0.015f * videoWindowReveal
                             scaleX = scale
                             scaleY = scale
                         }) {
-                        CapsuleVideoSurface(playerConnection.service, Modifier.fillMaxSize())
+                            CapsuleVideoSurface(playerConnection.service, Modifier.fillMaxSize())
                         }
-                    } else if (videoStageReserved) {
-                        Box(Modifier.fillMaxSize().background(Color.Black))
-                    } else if (hideArtwork) {
+                    }
+                    if ((!isCapsuleVideoPlaying || videoWindowReveal < 1f) && hideArtwork) {
                         Icon(
                             painter = painterResource(R.drawable.album),
                             contentDescription = mediaMetadata.title,
                             tint = secondaryText,
-                            modifier = Modifier.size(72.dp),
+                            modifier = Modifier.size(72.dp).graphicsLayer {
+                                alpha = if (needsVideoSurface) 1f - videoWindowReveal else 1f
+                            },
                         )
-                    } else {
+                    } else if (!isCapsuleVideoPlaying || videoWindowReveal < 1f) {
                         AsyncImage(
                             model = mediaMetadata.thumbnailUrl?.let { artwork ->
                                 // YouTube's =w540 URL rewrite corrupts SoundCloud CDN URLs
@@ -666,7 +663,9 @@ fun CapsulePlayerContent(
                                 } else {
                                     ContentScale.Fit
                                 },
-                            modifier = Modifier.fillMaxSize(),
+                            modifier = Modifier.fillMaxSize().graphicsLayer {
+                                alpha = if (needsVideoSurface) 1f - videoWindowReveal else 1f
+                            },
                         )
                     }
                 }

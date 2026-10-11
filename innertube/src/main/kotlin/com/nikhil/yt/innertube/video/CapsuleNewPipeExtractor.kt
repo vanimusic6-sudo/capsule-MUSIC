@@ -175,26 +175,16 @@ object CapsuleNewPipeExtractor {
         throw ContentNotAvailableException("NewPipe returned no compatible VIDEO stream")
     }
 
-    /** One independent direct attempt, then the maintained NewPipe parser. */
+    /** Independent direct routes, then the maintained parser/cipher fallback. */
     fun resolveWithFallback(
         videoId: String, quality: CapsuleNewPipeQuality,
-        muxedOnly: Boolean = false, newPipeOnly: Boolean = false,
-    ): CapsuleNewPipeResolved {
-        if (!newPipeOnly) {
-            try {
-                CapsuleDirectVideoExtractor.resolve(videoId, quality, muxedOnly)?.let {
-                    return it.copy(backend = "direct-visionos")
-                }
-            } catch (failure: Exception) {
-                // A request-wide cancellation/deadline or HTTP 429 must stop
-                // the chain. Parser/transport failures can try NewPipe once.
-                // OkHttp's route timeout also uses InterruptedIOException.
-                // Only request cancellation/deadline should stop the chain.
-                VideoExtractionRequests.checkActive()
-                if (classify(failure) == CapsuleNewPipeFailure.RATE_LIMITED) throw failure
-            }
+        muxedOnly: Boolean = false, failedBackend: String? = null,
+    ): CapsuleNewPipeResolved = resolveVideoRoutes(failedBackend) { route ->
+        when (route) {
+            CapsuleVideoRoute.VISIONOS -> CapsuleDirectVideoExtractor.resolve(videoId, quality, muxedOnly)
+            CapsuleVideoRoute.ANDROID_REEL -> CapsuleDirectVideoExtractor.resolveReel(videoId, quality)
+            CapsuleVideoRoute.NEWPIPE -> resolve(videoId, quality, muxedOnly)
         }
-        return resolve(videoId, quality, muxedOnly)
     }
 
     fun classify(throwable: Throwable): CapsuleNewPipeFailure {

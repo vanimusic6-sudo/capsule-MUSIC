@@ -87,6 +87,8 @@ jobs:
             --tests 'com.nikhil.yt.innertube.ExplicitVideoOriginTest' \
             --tests 'com.nikhil.yt.innertube.video.CapsuleNewPipeExtractorTest' \
             --tests 'com.nikhil.yt.innertube.video.CapsuleDirectVideoExtractorTest' \
+            --tests 'com.nikhil.yt.innertube.video.CapsuleVideoRoutesTest' \
+            --tests 'com.nikhil.yt.innertube.video.VideoExtractionRequestsTest' \
             --tests 'com.nikhil.yt.innertube.CapsuleVideoRequestGuardTest' \
             --stacktrace --no-daemon
 

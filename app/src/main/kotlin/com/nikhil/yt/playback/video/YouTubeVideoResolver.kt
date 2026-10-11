@@ -256,7 +256,7 @@ object YouTubeVideoResolver {
         videoId: String,
         quality: CapsuleVideoQuality,
         muxedOnly: Boolean,
-        newPipeOnly: Boolean = false,
+        failedBackend: String? = null,
         refresh: Boolean = false,
     ): ResolvedVideo {
         val key = cacheKey(videoId, quality, muxedOnly)
@@ -271,7 +271,7 @@ object YouTubeVideoResolver {
         return resolveMutex.withLock {
             cache[key]?.let { return@withLock it }
             CapsuleVideoRequestGuard.beforeMetadataRequest()
-            val remote = callRemoteExtractor(videoId, quality, muxedOnly, newPipeOnly, refresh)
+            val remote = callRemoteExtractor(videoId, quality, muxedOnly, failedBackend, refresh)
             val resolved = remote.toResolved(sourceMediaId)
             cache.put(videoId, key, resolved)
             resolved
@@ -282,7 +282,7 @@ object YouTubeVideoResolver {
         videoId: String,
         quality: CapsuleVideoQuality,
         muxedOnly: Boolean,
-        newPipeOnly: Boolean = false,
+        failedBackend: String? = null,
         refresh: Boolean = false,
     ): CapsuleResolvedVideo = withContext(Dispatchers.IO) {
         val context = App.instance.applicationContext
@@ -295,7 +295,7 @@ object YouTubeVideoResolver {
                 putString(CapsuleVideoIpc.EXTRA_VIDEO_ID, videoId)
                 putString(CapsuleVideoIpc.EXTRA_QUALITY, CapsuleVideoIpc.qualityToWire(quality))
                 putBoolean(CapsuleVideoIpc.EXTRA_MUXED_ONLY, muxedOnly)
-                putBoolean(CapsuleVideoIpc.EXTRA_NEWPIPE_ONLY, newPipeOnly)
+                putString(CapsuleVideoIpc.EXTRA_FAILED_BACKEND, failedBackend)
                 putBoolean(CapsuleVideoIpc.EXTRA_REFRESH, refresh)
             }
 
@@ -424,7 +424,7 @@ object YouTubeVideoResolver {
         cache.invalidate(failed.videoId)
         Result.success(resolveExact(
             failed.sourceMediaId, failed.videoId, quality, muxedOnly,
-            newPipeOnly = true,
+            failedBackend = failed.backend,
             refresh = true,
         ))
     } catch (cancelled: CancellationException) {

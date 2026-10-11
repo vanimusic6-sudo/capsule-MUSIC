@@ -48,6 +48,8 @@ data class CapsuleVideoPlaybackState(
 ) {
     val needsSurface: Boolean get() = mode == CapsulePlaybackMode.VIDEO &&
         phase in setOf(CapsuleVideoPhase.PREPARING, CapsuleVideoPhase.PLAYING, CapsuleVideoPhase.RECOVERING)
+    // Preparing an attached decoder is distinct from revealing its window.
+    val presentingVideo: Boolean get() = needsSurface && firstFrameReady
 }
 
 const val CAPSULE_VIDEO_SCHEME = "capsule-video"

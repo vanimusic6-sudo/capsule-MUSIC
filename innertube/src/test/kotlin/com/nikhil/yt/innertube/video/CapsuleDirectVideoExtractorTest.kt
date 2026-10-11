@@ -60,4 +60,16 @@ class CapsuleDirectVideoExtractorTest {
         assertNull(selectDirectHlsManifest(prefix + "2000/file/index.m3u8?n=unsolved", "abcdefghijk", CapsuleNewPipeQuality.AUTO, now))
         assertNull(selectDirectHlsManifest(prefix + "2000/file/index.m3u8?range=0-1", "abcdefghijk", CapsuleNewPipeQuality.AUTO, now))
     }
+    @Test fun reelRequiresExactIdAndAMuxedSoundtrackWithoutCipherOrOversizedFormats() {
+        fun reel(player: JsonObject) = buildJsonObject { put("playerResponse", player) }
+        fun choose(player: JsonObject) = selectAndroidReelVideo(reel(player), "abcdefghijk", CapsuleNewPipeQuality.AUTO, now)
+        val valid = choose(response(listOf(format(360, 18, true))))!!
+        assertEquals(18, valid.videoItag)
+        assertNull(valid.audioUrl)
+        assertNull(choose(response(listOf(format(360, 18, true)), id = "differentID")))
+        assertNull(choose(JsonObject(response(listOf(format(360, 18, true))).toMutableMap().apply { remove("videoDetails") })))
+        assertNull(choose(response(emptyList(), listOf(format(720, 136), format(0, 140)))))
+        assertNull(choose(response(listOf(format(1080, 37, true)))))
+        assertNull(choose(response(listOf(format(360, 18, true, "&n=unsolved")))))
+    }
 }

@@ -49,7 +49,7 @@ internal object CapsuleVideoIpc {
     const val EXTRA_VIDEO_ID = "video_id"
     const val EXTRA_QUALITY = "quality"
     const val EXTRA_MUXED_ONLY = "muxed_only"
-    const val EXTRA_NEWPIPE_ONLY = "newpipe_only"
+    const val EXTRA_FAILED_BACKEND = "failed_backend"
     const val EXTRA_REFRESH = "refresh"
     const val EXTRA_BACKEND = "backend"
     const val EXTRA_DELIVERY = "delivery"

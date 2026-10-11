@@ -1027,7 +1027,7 @@ class MusicService :
                 player.volume = if (ownsVideoAudio || returnGap) 0f else effectiveAudioVolume
                 if (returnGap) {
                     videoReturnGapJob = scope.launch {
-                        delay(105L)
+                        delay(150L)
                         videoReturnGapActive = false
                         videoReturnGapJob = null
                         if (!videoAudioOwned) player.volume = effectiveAudioVolume
@@ -4986,7 +4986,7 @@ class MusicService :
     private fun leaveCapsuleVideoMode() {
         cancelVideoRecovery()
         // The companion invokes the sound-handoff callback itself. Do not
-        // instantly restore volume here: it would erase the 105 ms AUDIO
+        // instantly restore volume here: it would erase the 150 ms AUDIO
         // return gap when the user explicitly taps AUDIO.
         videoCompanion?.stop()
         videoResolveCoordinator.cancel()

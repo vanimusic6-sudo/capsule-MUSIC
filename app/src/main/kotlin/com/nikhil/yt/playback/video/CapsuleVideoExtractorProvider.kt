@@ -76,7 +76,7 @@ class CapsuleVideoExtractorProvider : ContentProvider() {
                     videoId,
                     CapsuleNewPipeQuality.valueOf(quality.name),
                     muxedOnly,
-                    extras?.getBoolean(CapsuleVideoIpc.EXTRA_NEWPIPE_ONLY, false) ?: false,
+                    extras?.getString(CapsuleVideoIpc.EXTRA_FAILED_BACKEND),
                 )
             }
         }.fold(
