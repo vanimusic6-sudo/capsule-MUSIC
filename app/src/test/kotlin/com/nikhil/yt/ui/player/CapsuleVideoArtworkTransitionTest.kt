@@ -1,5 +1,7 @@
 package com.nikhil.yt.ui.player
 
+import android.app.Application
+
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.size
@@ -19,7 +21,7 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [28], qualifiers = "w400dp-h800dp")
+@Config(sdk = [35], application = Application::class, qualifiers = "w400dp-h800dp")
 class CapsuleVideoArtworkTransitionTest {
     @get:Rule val compose = createComposeRule()
 
@@ -73,9 +75,9 @@ class CapsuleVideoArtworkTransitionTest {
         assertEquals(0, detaches)
         assertEquals(listOf(preparingSize), measured)
         // Only leaving the decoder lifecycle may detach it.
+        compose.mainClock.autoAdvance = true
         compose.runOnIdle { needed.value = false; presenting.value = false }
-        compose.mainClock.advanceTimeBy(400)
         compose.waitForIdle()
-        assertEquals(1, detaches)
+        compose.runOnIdle { assertEquals("AUDIO must release the renderer", 1, detaches) }
     }
 }
