@@ -32,7 +32,6 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.runtime.mutableFloatStateOf
@@ -340,17 +339,6 @@ internal fun CapsuleImmersiveContent(
     val isVideo = videoPlaybackState.presentingVideo
     val needsVideoSurface = videoPlaybackState.needsSurface
 
-    // The VIDEO renderer has its own player and TextureView. The service
-    // signals first-frame readiness; the MUSIC player must never be attached
-    // as the VIDEO surface and must not be replaced.
-    // A small, compositor-only reveal. No animation updates player state or
-    // recreates the expensive VIDEO SurfaceView.
-    val videoReveal by animateFloatAsState(
-        targetValue = if (isVideo) 1f else 0f,
-        animationSpec = tween(durationMillis = 260, easing = FastOutSlowInEasing),
-        label = "capsule-video-window",
-    )
-
     /*
      * Request fullscreen from the Activity instead of manipulating the Window here.
      *
@@ -501,10 +489,6 @@ internal fun CapsuleImmersiveContent(
         // Shrinking the whole region to 16:9 used to glue the video to the top edge
         // and prematurely pull the title/controls upwards.
         val artworkHeight = immersiveArtworkHeight(maxHeight)
-        val videoSidePadding = 22.dp
-        val videoFrameWidth = (maxWidth - videoSidePadding * 2).coerceAtLeast(120.dp)
-        val videoFrameHeight = (videoFrameWidth * (9f / 16f)).coerceAtMost(artworkHeight)
-        val videoFrameTop = ((artworkHeight - videoFrameHeight) / 2f).coerceAtLeast(0.dp)
         // The host samples this exact visible crop once for the player and Lyrics.
         val artworkAspect = maxWidth.value / artworkHeight.value.coerceAtLeast(1f)
         val edge = artworkTone.edge
@@ -638,19 +622,22 @@ internal fun CapsuleImmersiveContent(
                     .graphicsLayer { alpha = gradientAlpha.value },
             ) {
                 Box(modifier = Modifier.fillMaxSize().background(pageBackground))
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(artworkHeight)
-                        .clipToBounds()
-                        .graphicsLayer { alpha = 1f - videoReveal }
-                        .clickable(
-                            interactionSource = remember { MutableInteractionSource() },
-                            indication = null,
-                            enabled = !isVideo,
-                            onClick = onShowLyrics,
-                        ),
-                ) {
+            }
+        }
+
+        CapsuleVideoArtworkTransition(
+            presentingVideo = isVideo,
+            needsSurface = needsVideoSurface,
+            modifier = Modifier.align(Alignment.TopCenter).fillMaxWidth().height(artworkHeight),
+            fillArtworkSlot = true,
+            artworkCornerRadius = 0.dp,
+            videoSidePadding = 22.dp,
+            artworkClickable = !isVideo,
+            onArtworkClick = onShowLyrics,
+            video = { CapsuleVideoSurface(playerConnection.service, Modifier.fillMaxSize()) },
+        ) {
+            if (frame != null) {
+                Box(Modifier.fillMaxSize().graphicsLayer { alpha = gradientAlpha.value }) {
                     AsyncImage(
                         model = rememberImmersiveArtworkRequest(frame.imageUrl),
                         contentDescription = null,
@@ -694,26 +681,6 @@ internal fun CapsuleImmersiveContent(
                             ),
                     )
                 }
-            }
-        }
-
-        if (needsVideoSurface) {
-            Box(
-                modifier = Modifier
-                    .align(Alignment.TopCenter)
-                    .padding(top = videoFrameTop, start = videoSidePadding, end = videoSidePadding)
-                    .fillMaxWidth()
-                    .height(videoFrameHeight)
-                    .graphicsLayer {
-                        alpha = videoReveal
-                        val scale = 0.985f + 0.015f * videoReveal
-                        scaleX = scale
-                        scaleY = scale
-                    }
-                    .clip(RoundedCornerShape(28.dp))
-                    .background(Color.Black),
-            ) {
-                CapsuleVideoSurface(playerConnection.service, Modifier.fillMaxSize())
             }
         }
 

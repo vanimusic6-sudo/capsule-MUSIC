@@ -12,7 +12,6 @@ package com.nikhil.yt.ui.player
 import android.content.res.Configuration
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
@@ -123,9 +122,6 @@ import kotlinx.coroutines.isActive
 import kotlin.math.abs
 import kotlin.math.cos
 import kotlin.math.sin
-
-private val CapsuleArtworkShape =
-    RoundedCornerShape(24.dp)
 
 private val CapsuleControlsShape =
     RoundedCornerShape(24.dp)
@@ -358,16 +354,6 @@ fun CapsulePlayerContent(
 
     val isCapsuleVideoPlaying = videoPlaybackState.presentingVideo
     val needsVideoSurface = videoPlaybackState.needsSurface
-    // Keep artwork and its layout until both the frame and sound handoff are
-    // ready. The invisible TextureView still prepares under the artwork.
-    val videoStageReserved = isCapsuleVideoPlaying
-
-    val videoWindowReveal by animateFloatAsState(
-        targetValue = if (isCapsuleVideoPlaying) 1f else 0f,
-        animationSpec = tween(durationMillis = 260, easing = FastOutSlowInEasing),
-        label = "capsule-video-open",
-    )
-
     LaunchedEffect(isCapsuleVideoPlaying) {
         if (isCapsuleVideoPlaying && artworkResizeActive) {
             // Switching mode cancels an in-flight artwork resize transaction. The last committed
@@ -567,12 +553,6 @@ fun CapsulePlayerContent(
     }
 
     val artworkContent: @Composable () -> Unit = {
-            val mediaShape =
-                if (videoStageReserved) {
-                    RoundedCornerShape(28.dp)
-                } else {
-                    if (isLight) RoundedCornerShape(16.dp) else CapsuleArtworkShape
-                }
             val currentPlaybackError = playbackError
 
             if (currentPlaybackError != null) {
@@ -581,62 +561,28 @@ fun CapsulePlayerContent(
                     retry = playerConnection.service::retryCurrentFromFreshStream,
                 )
             } else {
-                Box(
-                    modifier =
-                        Modifier
-                            .then(
-                                if (useClayLayout && !videoStageReserved) {
-                                    Modifier.fillMaxSize()
-                                } else {
-                                    Modifier
-                                        .fillMaxWidth()
-                                        .aspectRatio(
-                                            if (videoStageReserved) 16f / 9f else 1f,
-                                        )
-                                },
-                            )
-                            .offset(
-                                y = if (videoStageReserved || isLight) 0.dp else (-5).dp,
-                            )
-                            .clip(mediaShape)
-                            .border(
-                                1.dp,
-                                if (isLight) Color.Transparent else outline,
-                                mediaShape,
-                            )
-                            .background(
-                                if (videoStageReserved) {
-                                    Color.Black
-                                } else {
-                                    textColor.copy(alpha = 0.045f)
-                                },
-                            )
-                            .clickable(
-                                enabled = !videoStageReserved && !(isLight && lightEditorEnabled),
-                                onClick = onArtworkClick,
-                            ),
-                    contentAlignment = Alignment.Center,
+                CapsuleVideoArtworkTransition(
+                    presentingVideo = isCapsuleVideoPlaying,
+                    needsSurface = needsVideoSurface,
+                    fillArtworkSlot = useClayLayout,
+                    artworkCornerRadius = if (isLight) 16.dp else 24.dp,
+                    artworkOffsetY = if (isLight) 0.dp else (-5).dp,
+                    artworkBackground = textColor.copy(alpha = 0.045f),
+                    outline = if (isLight) Color.Transparent else outline,
+                    onArtworkClick = onArtworkClick,
+                    artworkClickable = !isCapsuleVideoPlaying && !(isLight && lightEditorEnabled),
+                    video = {
+                        CapsuleVideoSurface(playerConnection.service, Modifier.fillMaxSize())
+                    },
                 ) {
-                    if (needsVideoSurface) {
-                        Box(Modifier.fillMaxWidth().aspectRatio(16f / 9f).graphicsLayer {
-                            alpha = videoWindowReveal
-                            val scale = 0.985f + 0.015f * videoWindowReveal
-                            scaleX = scale
-                            scaleY = scale
-                        }) {
-                            CapsuleVideoSurface(playerConnection.service, Modifier.fillMaxSize())
-                        }
-                    }
-                    if ((!isCapsuleVideoPlaying || videoWindowReveal < 1f) && hideArtwork) {
+                    if (hideArtwork) {
                         Icon(
                             painter = painterResource(R.drawable.album),
                             contentDescription = mediaMetadata.title,
                             tint = secondaryText,
-                            modifier = Modifier.size(72.dp).graphicsLayer {
-                                alpha = if (needsVideoSurface) 1f - videoWindowReveal else 1f
-                            },
+                            modifier = Modifier.size(72.dp),
                         )
-                    } else if (!isCapsuleVideoPlaying || videoWindowReveal < 1f) {
+                    } else {
                         AsyncImage(
                             model = mediaMetadata.thumbnailUrl?.let { artwork ->
                                 // YouTube's =w540 URL rewrite corrupts SoundCloud CDN URLs
@@ -663,9 +609,7 @@ fun CapsulePlayerContent(
                                 } else {
                                     ContentScale.Fit
                                 },
-                            modifier = Modifier.fillMaxSize().graphicsLayer {
-                                alpha = if (needsVideoSurface) 1f - videoWindowReveal else 1f
-                            },
+                            modifier = Modifier.fillMaxSize(),
                         )
                     }
                 }
@@ -981,12 +925,7 @@ fun CapsulePlayerContent(
                                     // exactly where the user put it.
                                     editable = lightEditorEnabled && !isCapsuleVideoPlaying,
                                     selectionResetToken = artworkSelectionResetToken,
-                                    contentAlignment =
-                                        if (isCapsuleVideoPlaying) {
-                                            Alignment.TopCenter
-                                        } else {
-                                            Alignment.Center
-                                        },
+                                    contentAlignment = Alignment.Center,
                                     onEditStarted = {
                                         artworkResizeActive = true
                                         beginNestedEdit()
@@ -1002,22 +941,9 @@ fun CapsulePlayerContent(
                                         lightValidationGeneration += 1
                                     },
                                 ) {
-                                    if (isCapsuleVideoPlaying) {
-                                        // Fixed legacy video viewport anchored independently from
-                                        // the user's artwork shape. Only the media inside ARTWORK
-                                        // changes; the rest of the Light layout does not relayout.
-                                        Box(
-                                            modifier =
-                                                Modifier
-                                                    .width(artworkBaseWidth)
-                                                    .height(artworkBaseHeight),
-                                            contentAlignment = Alignment.Center,
-                                        ) {
-                                            artworkContent()
-                                        }
-                                    } else {
-                                        artworkContent()
-                                    }
+                                    // One call site for the renderer in AUDIO, preparation and VIDEO.
+                                    // Moving this subtree at first-frame readiness destroys its surface.
+                                    artworkContent()
                                 }
 
                             }
