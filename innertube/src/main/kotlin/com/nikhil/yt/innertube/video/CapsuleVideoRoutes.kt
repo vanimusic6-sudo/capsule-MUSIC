@@ -35,6 +35,9 @@ internal fun resolveVideoRoutes(
     resolve: (CapsuleVideoRoute) -> CapsuleNewPipeResolved?,
 ): CapsuleNewPipeResolved {
     val failures = mutableListOf<Exception>()
+    // A URL can resolve successfully yet fail at the CDN/decoder. Remember
+    // this feedback across the next clips, not just this one recovery call.
+    CapsuleVideoRoute.entries.firstOrNull { it.wireName == failedBackend }?.let { health?.failure(it) }
     val routes = health?.order(failedBackend) ?: CapsuleVideoRoute.entries.sortedBy { it.wireName == failedBackend }
     for (route in routes) {
         VideoExtractionRequests.checkActive()

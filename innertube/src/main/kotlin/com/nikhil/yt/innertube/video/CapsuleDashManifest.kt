@@ -27,8 +27,10 @@ internal fun indexedDashVideo(
     if (durationMs <= 0L) return null
     val eligible = videos.filter { it.valid() && it.width > 0 && it.height in 1..quality.maxHeight && it.mimeType.startsWith("video/") }
     val height = eligible.maxOfOrNull { it.height } ?: return null
-    val selected = eligible.filter { it.height == height }.sortedWith(
-        compareByDescending<CapsuleDashTrack> { it.fps }.thenByDescending { it.bitrate })
+    // Keep the lower ladder for hardware compatibility. The VIDEO selector
+    // chooses the highest supported bitrate, without bandwidth downgrades.
+    val selected = eligible.sortedWith(compareByDescending<CapsuleDashTrack> { it.height }
+        .thenByDescending { it.fps }.thenByDescending { it.bitrate })
     val audio = audios.filter { it.valid() && it.mimeType.startsWith("audio/") }.maxByOrNull { it.bitrate } ?: return null
     val video = selected.first()
     val xml = buildString {

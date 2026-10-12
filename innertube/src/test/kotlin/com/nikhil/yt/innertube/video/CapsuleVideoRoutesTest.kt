@@ -84,4 +84,14 @@ class CapsuleVideoRoutesTest {
         assertEquals(listOf(CapsuleVideoRoute.ANDROID_VR), calls)
         assertEquals("direct-android-vr", next.backend)
     }
+
+    @Test fun cdnPlaybackFailurePreventsRepeatingTheBrokenRouteOnTheNextClip() {
+        var now = 0L
+        val health = CapsuleVideoRouteHealth { now }
+        val recovered = resolveVideoRoutes("direct-android-vr", health) { stream }
+        assertEquals("direct-visionos", recovered.backend)
+        assertEquals(CapsuleVideoRoute.VISIONOS, health.order(null).first())
+        now = 46_000_000_000L
+        assertEquals(CapsuleVideoRoute.ANDROID_VR, health.order(null).first())
+    }
 }

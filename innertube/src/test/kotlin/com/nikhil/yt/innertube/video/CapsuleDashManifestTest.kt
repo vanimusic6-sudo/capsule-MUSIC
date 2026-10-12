@@ -19,7 +19,7 @@ class CapsuleDashManifestTest {
         val xml = result.dashManifest!!
         val document = DocumentBuilderFactory.newInstance().newDocumentBuilder().parse(xml.byteInputStream())
         val reps = document.getElementsByTagName("Representation")
-        assertEquals(3, reps.length) // two native 720 representations, one soundtrack
+        assertEquals(4, reps.length) // native 720 variants, compatible lower fallback, soundtrack
         assertTrue(xml.contains("frameRate=\"60\"")); assertFalse(xml.contains("height=\"1080\""))
         assertTrue(xml.contains("indexRange=\"740-4095\""))
         assertEquals(video().url, document.getElementsByTagName("BaseURL").item(0).textContent)
