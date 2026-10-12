@@ -49,6 +49,22 @@ jobs:
           unqualifiedResLocale=en-US
           EOF
 
+      - name: Run Android lint
+        continue-on-error: true
+        run: |
+          gradle :app:lintUniversalDebug --stacktrace --no-daemon
+
+      - name: Upload Android lint reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: capsule-lint-reports
+          path: |
+            app/build/reports/lint-results-universalDebug.*
+            app/build/intermediates/lint_intermediate_text_report/universalDebug/lintReportUniversalDebug/*.txt
+          if-no-files-found: warn
+          retention-days: 14
+
       - name: Test player transition and energy regressions
         run: |
           gradle :app:testUniversalDebugUnitTest \
@@ -93,12 +109,6 @@ jobs:
             --tests 'com.nikhil.yt.innertube.video.CapsuleVideoRoutesTest' \
             --tests 'com.nikhil.yt.innertube.video.VideoExtractionRequestsTest' \
             --tests 'com.nikhil.yt.innertube.CapsuleVideoRequestGuardTest' \
-            --stacktrace --no-daemon
-
-      - name: Run Android lint
-        continue-on-error: true
-        run: |
-          gradle :app:lintUniversalDebug \
             --stacktrace --no-daemon
 
       - name: Build Universal Debug APK
