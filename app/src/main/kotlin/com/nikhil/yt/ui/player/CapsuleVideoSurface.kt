@@ -7,6 +7,8 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -21,6 +23,7 @@ import com.nikhil.yt.playback.MusicService
 @Composable
 internal fun CapsuleVideoSurface(service: MusicService, modifier: Modifier = Modifier) {
     val player = service.videoRenderPlayer
+    val state by service.videoPlaybackState.collectAsState()
     val owner = remember(service, player) { Any() }
     val host = LocalView.current
     DisposableEffect(service, player, owner) {
@@ -30,10 +33,12 @@ internal fun CapsuleVideoSurface(service: MusicService, modifier: Modifier = Mod
     DisposableEffect(host, player) {
         val wasKeepingScreenOn = host.keepScreenOn
         val listener = object : Player.Listener {
-            override fun onIsPlayingChanged(isPlaying: Boolean) { host.keepScreenOn = isPlaying }
+            override fun onEvents(player: Player, events: Player.Events) {
+                host.keepScreenOn = player.playWhenReady && player.currentMediaItem != null
+            }
         }
         player?.addListener(listener)
-        host.keepScreenOn = player?.isPlaying == true
+        host.keepScreenOn = player?.playWhenReady == true && player.currentMediaItem != null
         onDispose {
             player?.removeListener(listener)
             host.keepScreenOn = wasKeepingScreenOn
@@ -43,7 +48,7 @@ internal fun CapsuleVideoSurface(service: MusicService, modifier: Modifier = Mod
         ContentFrame(
             player = player, modifier = Modifier.fillMaxSize(),
             surfaceType = SURFACE_TYPE_TEXTURE_VIEW, contentScale = ContentScale.Fit,
-            keepContentOnReset = false,
+            keepContentOnReset = state.presentingVideo,
         )
     }
 }

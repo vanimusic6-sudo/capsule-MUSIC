@@ -26,6 +26,7 @@ import com.nikhil.yt.extensions.getQueueWindows
 import com.nikhil.yt.extensions.metadata
 import com.nikhil.yt.playback.MusicService.MusicBinder
 import com.nikhil.yt.playback.queues.Queue
+import com.nikhil.yt.playback.video.playbackStateOr
 import com.nikhil.yt.utils.reportException
 import com.nikhil.yt.utils.reportRecoverableException
 import kotlinx.coroutines.CoroutineScope
@@ -49,7 +50,10 @@ class PlayerConnection(
     val service = binder.service
     val player = service.player
 
-    val playbackState = MutableStateFlow(player.playbackState)
+    private val musicPlaybackState = MutableStateFlow(player.playbackState)
+    val playbackState = combine(musicPlaybackState, service.videoPlaybackState) { music, video ->
+        video.playbackStateOr(music)
+    }.stateIn(scope, SharingStarted.Eagerly, player.playbackState)
     private val playWhenReady = MutableStateFlow(player.playWhenReady)
     val playbackParameters = MutableStateFlow(player.playbackParameters)
     val isPlaying =
@@ -92,7 +96,7 @@ class PlayerConnection(
     init {
         player.addListener(this)
 
-        playbackState.value = player.playbackState
+        musicPlaybackState.value = player.playbackState
         playWhenReady.value = player.playWhenReady
         playbackParameters.value = player.playbackParameters
         val currentMeta = player.currentMetadata ?: service.currentMediaMetadata.value
@@ -175,7 +179,7 @@ class PlayerConnection(
     }
 
     override fun onPlaybackStateChanged(state: Int) {
-        playbackState.value = state
+        musicPlaybackState.value = state
         // Media3 can briefly surface an I/O error while the service is already replacing an
         // obsolete source after a skip. Recovery still happens immediately in MusicService; the
         // UI only clears here. A persistent error is published by onPlayerErrorChanged after the

@@ -58,8 +58,15 @@ class CapsuleVideoSessionTest {
             listeners.toList().forEach { it.onEvents(player, events) }
         }
         fun frame() = listeners.toList().forEach { it.onRenderedFirstFrame() }
+        fun userSeek(target: Long) {
+            val old = Player.PositionInfo(null, 0, item, null, 0, position, position, C.INDEX_UNSET, C.INDEX_UNSET)
+            position = target
+            val next = Player.PositionInfo(null, 0, item, null, 0, position, position, C.INDEX_UNSET, C.INDEX_UNSET)
+            listeners.toList().forEach { it.onPositionDiscontinuity(old, next, Player.DISCONTINUITY_REASON_SEEK) }
+            event(Player.EVENT_POSITION_DISCONTINUITY)
+        }
         fun ready(audioSelected: Boolean = true) {
-            state = Player.STATE_READY; playing = true
+            state = Player.STATE_READY; playing = intent
             tracks = if (audioSelected) Tracks(listOf(Tracks.Group(
                 TrackGroup("soundtrack", Format.Builder().setSampleMimeType("audio/mp4").build()),
                 false, intArrayOf(C.FORMAT_HANDLED), booleanArrayOf(true),
@@ -72,10 +79,12 @@ class CapsuleVideoSessionTest {
         val clip = Decoder()
         val owned = mutableListOf<Boolean>()
         val frames = mutableListOf<String>()
+        val hidden = mutableListOf<String>()
+        val buffering = mutableListOf<Boolean>()
         val failures = mutableListOf<Throwable>()
         val session = CapsuleVideoSession(music.player, clip.player, scope,
             { owned += it; music.volume = if (it) 0f else 1f },
-            { frames += it }, { _, error -> failures += error }, {})
+            { frames += it }, { _, error -> failures += error }, { hidden += it }, { _, loading -> buffering += loading })
         fun start() {
             session.setSurfaceAttached(true)
             session.start("song", MediaItem.Builder().setMediaId("song").build(), 0.8f)
@@ -114,12 +123,16 @@ class CapsuleVideoSessionTest {
         assertEquals(0.8f, f.clip.volume)
         f.session.stop()
     }
-    @Test fun pauseDuringSeamRestoresMusicAndCannotUnmuteOldClip() = runTest {
+    @Test fun pauseDuringSeamKeepsThePreparedClipPausedAndCancelsTheDelayedRamp() = runTest {
         val f = Fixture(this); f.start(); f.clip.ready(); f.clip.frame()
         f.music.intent = false; f.clip.playing = false; f.music.event(Player.EVENT_PLAY_WHEN_READY_CHANGED)
-        advanceTimeBy(200); runCurrent()
-        assertEquals(0f, f.clip.volume)
-        assertEquals(1f, f.music.volume)
+        f.session.setVolume(0.3f)
+        advanceTimeBy(500); runCurrent()
+        assertEquals(0.3f, f.clip.volume)
+        assertEquals(0f, f.music.volume)
+        assertFalse(f.clip.intent)
+        assertFalse(f.clip.playing)
+        assertEquals(listOf("song"), f.frames)
         f.session.stop()
     }
     @Test fun detachAndReturnNeverReselectTracksSeekOrSwitchSoundOwner() = runTest {
@@ -166,17 +179,66 @@ class CapsuleVideoSessionTest {
         assertEquals(0f, f.clip.volume)
         f.session.stop()
     }
-    @Test fun bufferingAfterSoundHandoffImmediatelyRestoresMusic() = runTest {
+    @Test fun bufferingAfterPresentationRetainsVideoAndNeverReplaysTheSoundSeam() = runTest {
         val f = Fixture(this); f.start(); f.clip.ready(); f.clip.frame()
         advanceTimeBy(261); runCurrent()
         f.clip.state = Player.STATE_BUFFERING; f.clip.playing = false; f.clip.event()
-        assertEquals(1f, f.music.volume)
-        assertEquals(0f, f.clip.volume)
+        val framesBefore = f.frames.toList()
+        val hiddenBefore = f.hidden.toList()
+        val ownersBefore = f.owned.toList()
+        assertEquals(0f, f.music.volume)
+        assertEquals(0.8f, f.clip.volume)
+        advanceTimeBy(3_000); runCurrent()
+        assertEquals(framesBefore, f.frames)
+        assertEquals(hiddenBefore, f.hidden)
+        assertEquals(listOf(true), f.buffering)
+        f.clip.ready(); runCurrent()
+        assertEquals(ownersBefore, f.owned)
+        assertEquals(listOf(true, false), f.buffering)
+        assertEquals(0.8f, f.clip.volume)
+        assertEquals(0f, f.music.volume)
         f.session.stop()
     }
     @Test fun selectedTracksWithoutFirstFrameTimeOutWithoutMutingMusic() = runTest {
         val f = Fixture(this); f.start(); f.clip.ready()
         advanceTimeBy(15_100); runCurrent()
+        assertEquals(1, f.failures.size)
+        assertTrue(f.failures.single() is java.net.SocketTimeoutException)
+        assertEquals(1f, f.music.volume)
+        assertEquals(0f, f.clip.volume)
+        f.session.stop()
+    }
+    @Test fun repeatedTimelineSeeksAndPausedBufferingNeverHideVideoOrRestoreMusic() = runTest {
+        val f = Fixture(this); f.start(); f.clip.ready(); f.clip.frame()
+        advanceTimeBy(261); runCurrent()
+        val owners = f.owned.toList()
+        val hidden = f.hidden.toList()
+        repeat(4) { index ->
+            val target = 40_000L + index * 20_000L
+            f.music.userSeek(target)
+            assertEquals(target, f.clip.position)
+            f.clip.state = Player.STATE_BUFFERING; f.clip.playing = false; f.clip.tracks = Tracks.EMPTY; f.clip.event()
+            advanceTimeBy(2_000); runCurrent()
+            assertEquals(0f, f.music.volume)
+            assertEquals(hidden, f.hidden)
+            f.clip.ready(); f.clip.frame()
+            assertEquals(owners, f.owned)
+            assertEquals(listOf("song"), f.frames)
+        }
+        f.music.intent = false; f.clip.playing = false; f.music.event()
+        f.music.userSeek(15_000L)
+        f.clip.state = Player.STATE_BUFFERING; f.clip.event()
+        advanceTimeBy(20_000); runCurrent()
+        assertTrue(f.failures.isEmpty())
+        assertEquals(hidden, f.hidden)
+        assertEquals(owners, f.owned)
+        f.session.stop()
+    }
+    @Test fun permanentStallStillRestoresMusicAfterTheBoundedVideoTimeout() = runTest {
+        val f = Fixture(this); f.start(); f.clip.ready(); f.clip.frame()
+        advanceTimeBy(261); runCurrent()
+        f.clip.state = Player.STATE_BUFFERING; f.clip.playing = false; f.clip.event()
+        advanceTimeBy(12_100); runCurrent()
         assertEquals(1, f.failures.size)
         assertTrue(f.failures.single() is java.net.SocketTimeoutException)
         assertEquals(1f, f.music.volume)
@@ -206,13 +268,16 @@ class CapsuleVideoSessionTest {
         assertTrue(f.frames.isEmpty())
         f.session.stop()
     }
-    @Test fun pausedPreparationCanRevealAStillWithoutMutingMusicOrStartingClipSound() = runTest {
+    @Test fun pausedPreparationOwnsVideoAndResumesWithoutAnotherMusicHandoff() = runTest {
         val f = Fixture(this); f.music.intent = false; f.start()
         f.clip.ready(); f.clip.playing = false; f.clip.frame()
         assertEquals(listOf("song"), f.frames)
-        assertTrue(f.owned.isEmpty())
-        assertEquals(1f, f.music.volume)
-        assertEquals(0f, f.clip.volume)
+        assertEquals(listOf(true), f.owned)
+        assertEquals(0f, f.music.volume)
+        assertFalse(f.clip.intent)
+        f.music.intent = true; f.music.event(); f.clip.ready()
+        assertEquals(0.8f, f.clip.volume)
+        assertEquals(listOf(true), f.owned)
         f.session.stop()
     }
 }

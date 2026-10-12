@@ -34,6 +34,7 @@ internal class CapsuleVideoCompanion(
     scope: CoroutineScope, onSoundOwned: (Boolean) -> Unit,
     onReady: (String) -> Unit, onFailure: (String, Throwable) -> Unit,
     onFrameUnavailable: (String) -> Unit,
+    onBufferingChanged: (String, Boolean) -> Unit,
 ) {
     val player: ExoPlayer = ExoPlayer.Builder(context)
         .setMediaSourceFactory(factory)
@@ -43,7 +44,7 @@ internal class CapsuleVideoCompanion(
         .setWakeMode(C.WAKE_MODE_LOCAL)
         .build()
     private val session = CapsuleVideoSession(
-        audio, player, scope, onSoundOwned, onReady, onFailure, onFrameUnavailable,
+        audio, player, scope, onSoundOwned, onReady, onFailure, onFrameUnavailable, onBufferingChanged,
     )
     fun start(id: String, item: MediaItem, volume: Float) = session.start(id, item, volume)
     fun setForeground(value: Boolean) = session.setForeground(value)
@@ -66,6 +67,7 @@ internal class CapsuleVideoSession(
     private val onReady: (String) -> Unit,
     private val onFailure: (String, Throwable) -> Unit,
     private val onFrameUnavailable: (String) -> Unit,
+    private val onBufferingChanged: (String, Boolean) -> Unit = { _, _ -> },
 ) {
     private var id: String? = null
     private var generation = 0L
@@ -78,6 +80,7 @@ internal class CapsuleVideoSession(
     private var soundGain = 0f
     private var aligned = false
     private var committed = false
+    private var reportedBuffering = false
     private var volume = 1f
     private var seamJob: Job? = null
     private var watchdog: Job? = null
@@ -102,9 +105,11 @@ internal class CapsuleVideoSession(
             if (id == null || audio.currentMediaItem?.mediaId != id) return
             if (reason == Player.DISCONTINUITY_REASON_SEEK || reason == Player.DISCONTINUITY_REASON_SEEK_ADJUSTMENT) {
                 firstFrame = false
-                frameReported = false
-                onFrameUnavailable(id!!)
-                if (seamJob?.isActive == true) returnSound()
+                if (!committed) {
+                    frameReported = false
+                    onFrameUnavailable(id!!)
+                    if (seamJob?.isActive == true) returnSound()
+                }
                 aligned = true
                 video.seekTo(targetPosition())
             }
@@ -144,6 +149,19 @@ internal class CapsuleVideoSession(
         val current = id ?: return
         if (starting) return
         if (audio.currentMediaItem?.mediaId != current) { stop(); return }
+        // After the first presentation, VIDEO owns the session through seeks,
+        // buffering, pauses and detached surfaces. Silence while loading is
+        // part of VIDEO; playing MUSIC underneath it would change the mode.
+        if (committed) {
+            val buffering = video.playbackState == Player.STATE_BUFFERING
+            if (reportedBuffering != buffering) {
+                reportedBuffering = buffering
+                onBufferingChanged(current, buffering)
+                Timber.tag("CapsuleVideo").i("buffering=%s session=%s; VIDEO retained", buffering, current)
+            }
+            ensureWatchdog()
+            return
+        }
         // Music has advanced during extraction/buffering. Align at readiness,
         // before silencing MUSIC, then wait for the post-seek decoded frame.
         if (!aligned && rendering && ready) {
@@ -158,8 +176,21 @@ internal class CapsuleVideoSession(
                 return
             }
         }
+        if (!audio.playWhenReady && rendering && firstFrame && ready && aligned) {
+            // A fully prepared paused clip is already in VIDEO. It must resume
+            // with its own soundtrack rather than replay the MUSIC handoff.
+            seamJob?.cancel(); seamJob = null
+            committed = true
+            audible = true
+            soundGain = 1f
+            if (!ownsSound) { ownsSound = true; onSoundOwned(true) }
+            video.volume = volume
+            reportPresentation(current)
+            ensureWatchdog()
+            return
+        }
         val canOwn = ready && video.isPlaying && audio.playWhenReady &&
-            (committed || (rendering && firstFrame && aligned))
+            rendering && firstFrame && aligned
         if (canOwn && !ownsSound) {
             if (frameReported) {
                 frameReported = false
@@ -177,7 +208,6 @@ internal class CapsuleVideoSession(
                 delay(CAPSULE_VIDEO_SOUND_GAP_MS)
                 if (id == current && generation == lease && ownsSound && ready && video.isPlaying && audio.playWhenReady) {
                     audible = true
-                    committed = true
                     for (step in 1..CAPSULE_SOUND_RAMP_STEPS) {
                         if (id != current || generation != lease || !ownsSound || !ready ||
                             !video.isPlaying || !audio.playWhenReady) return@launch
@@ -185,6 +215,7 @@ internal class CapsuleVideoSession(
                         video.volume = volume * soundGain
                         delay(CAPSULE_SOUND_RAMP_STEP_MS)
                     }
+                    committed = true
                     reportPresentation(current)
                     Timber.tag("CapsuleVideo").i("sound-owner VIDEO session=%s", current)
                 } else {
@@ -193,11 +224,6 @@ internal class CapsuleVideoSession(
             }
         } else if (!canOwn && ownsSound) {
             returnSound()
-        }
-        // A paused clip can show its decoded still without handing off sound.
-        // Established sessions can reveal a reattached surface immediately.
-        if (!audio.playWhenReady || (ownsSound && audible && seamJob?.isActive != true)) {
-            reportPresentation(current)
         }
         ensureWatchdog()
     }
@@ -215,7 +241,7 @@ internal class CapsuleVideoSession(
         audible = false
         soundGain = 0f
         if (ownsSound) {
-            if (audio.playWhenReady && frameReported) {
+            if (!committed && audio.playWhenReady && frameReported) {
                 frameReported = false
                 id?.let(onFrameUnavailable)
             }
@@ -295,8 +321,10 @@ internal class CapsuleVideoSession(
         change()
         if (wasRendering != rendering) {
             firstFrame = false
-            frameReported = false
-            id?.let(onFrameUnavailable)
+            if (!committed) {
+                frameReported = false
+                id?.let(onFrameUnavailable)
+            }
             if (rendering && !committed) {
                 aligned = false
                 if (id != null) video.seekTo(targetPosition())
@@ -322,7 +350,7 @@ internal class CapsuleVideoSession(
         id = null
         if (wasActive) audio.removeListener(audioListener)
         returnSound()
-        firstFrame = false; frameReported = false; aligned = false; committed = false
+        firstFrame = false; frameReported = false; aligned = false; committed = false; reportedBuffering = false
         video.playWhenReady = false
         video.stop()
         video.clearMediaItems()

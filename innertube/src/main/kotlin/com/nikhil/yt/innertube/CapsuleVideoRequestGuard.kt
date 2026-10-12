@@ -10,7 +10,8 @@
  *  - HTTP status and playabilityStatus are classified before localized text;
  *  - generic "sign in" is no longer treated as a bot-check;
  *  - Ktor ResponseException status is read directly when available;
- *  - existing token bucket / escalating breaker behaviour is preserved.
+ *  - paced metadata admission / escalating server-error breaker are preserved;
+ *  - continuous CDN media delivery has no local finite request quota.
  *
  * GPL-3.0
  */
@@ -18,7 +19,10 @@
 package com.nikhil.yt.innertube
 
 import io.ktor.client.plugins.ResponseException
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlin.math.max
@@ -39,13 +43,6 @@ object CapsuleVideoRequestGuard {
 
     private const val API_MIN_GAP_MS = 900L
     private const val API_JITTER_MS = 600L
-    private const val STREAM_MIN_GAP_MS = 150L
-    private const val STREAM_JITTER_MS = 120L
-
-    private const val BUCKET_CAPACITY = 20.0
-    private const val REFILL_INTERVAL_MS = 20_000.0
-    private const val API_COST = 1.0
-    private const val STREAM_COST = 0.34
     private const val MAX_QUEUE_WAIT_MS = 2_500L
 
     private val BACKOFF_STEPS_MS =
@@ -71,17 +68,10 @@ object CapsuleVideoRequestGuard {
 
     private val gate = Mutex()
 
-    @Volatile
-    private var tokens: Double = BUCKET_CAPACITY
-
-    @Volatile
-    private var lastRefillAtMs: Long = System.currentTimeMillis()
+    private var clock: () -> Long = System::currentTimeMillis
 
     @Volatile
     private var lastApiRequestAtMs = 0L
-
-    @Volatile
-    private var lastStreamRequestAtMs = 0L
 
     @Volatile
     private var blockedUntilMs = 0L
@@ -114,7 +104,7 @@ object CapsuleVideoRequestGuard {
     fun restore(snapshot: Snapshot?) {
         snapshot ?: return
 
-        val now = System.currentTimeMillis()
+        val now = clock()
         val sane = snapshot.blockedUntilMs <= now + BACKOFF_STEPS_MS.last()
 
         blockedUntilMs = if (sane) snapshot.blockedUntilMs else 0L
@@ -130,100 +120,60 @@ object CapsuleVideoRequestGuard {
 
     suspend fun beforeStreamProbe() = acquire(Surface.STREAM)
 
-    /*
-     * Pacing by reservation, not by sleeping under the lock.
-     *
-     * The lock is held only long enough to work out when this request may run
-     * and to claim that slot; the wait happens after it is released. Sleeping
-     * inside the lock made every other caller queue behind whoever happened to
-     * be waiting, which serialized the whole VIDEO surface and showed up as
-     * video flashing on for a second and disappearing again.
+    /**
+     * Only metadata/search is paced. A valid HLS clip continuously requests
+     * playlists, audio/video segments and initialization data; those reads must
+     * not spend a finite bucket shared with the next clip's extraction.
+     * Both surfaces still obey real server bot/rate-limit cooldowns.
      */
     suspend fun acquire(surface: Surface) {
-        val scheduledAtMs = gate.withLock {
-            val now = System.currentTimeMillis()
+        var previousApiAt = 0L
+        val scheduledAt = gate.withLock {
+            val now = clock()
             decayEscalationIfClean(now)
+            checkServerCooldown(now)
+            if (surface == Surface.STREAM) return@withLock now
 
-            val remaining = blockedUntilMs - now
-            if (remaining > 0L) {
+            previousApiAt = lastApiRequestAtMs
+            val gap = API_MIN_GAP_MS + Random.nextLong(API_JITTER_MS + 1)
+            val slot = max(now, lastApiRequestAtMs + gap)
+            if (slot - now > MAX_QUEUE_WAIT_MS) {
                 throw RequestBlockedException(
-                    "YouTube VIDEO requests paused after a ${blockReason ?: "block"} " +
-                        "response (${max(1L, remaining / 1000L)}s remaining)",
+                    "VIDEO metadata queue is full, retry in ${max(1L, (slot - now) / 1000L)}s",
                 )
             }
-
-            if (blockedUntilMs != 0L) {
-                blockedUntilMs = 0L
-                blockReason = null
-                publish()
-            }
-
-            refill(now)
-
-            val cost = if (surface == Surface.API) API_COST else STREAM_COST
-
-            var readyAt = now
-            if (tokens < cost) {
-                val waitForToken = ((cost - tokens) * REFILL_INTERVAL_MS).toLong()
-                if (waitForToken > MAX_QUEUE_WAIT_MS) {
-                    throw RequestBlockedException(
-                        "VIDEO request quota exhausted, retry in " +
-                            "${max(1L, waitForToken / 1000L)}s",
-                    )
-                }
-                readyAt = now + waitForToken
-                refill(readyAt)
-            }
-
-            tokens = max(0.0, tokens - cost)
-
-            val lastAt =
-                if (surface == Surface.API) lastApiRequestAtMs else lastStreamRequestAtMs
-
-            val gap =
-                if (surface == Surface.API) {
-                    API_MIN_GAP_MS + Random.nextLong(API_JITTER_MS + 1)
-                } else {
-                    STREAM_MIN_GAP_MS + Random.nextLong(STREAM_JITTER_MS + 1)
-                }
-
-            val scheduledAt = max(readyAt, lastAt + gap)
-
-            /*
-             * Reservations must not stack up without limit. If the backlog
-             * already reaches past the queue ceiling, refuse now instead of
-             * parking the caller for an unbounded stretch.
-             */
-            if (scheduledAt - now > MAX_QUEUE_WAIT_MS) {
-                tokens = min(BUCKET_CAPACITY, tokens + cost)
-                throw RequestBlockedException(
-                    "VIDEO request queue is full, retry in " +
-                        "${max(1L, (scheduledAt - now) / 1000L)}s",
-                )
-            }
-
-            if (surface == Surface.API) {
-                lastApiRequestAtMs = scheduledAt
-            } else {
-                lastStreamRequestAtMs = scheduledAt
-            }
-
-            scheduledAt
+            lastApiRequestAtMs = slot
+            slot
         }
-
-        val waitMs = scheduledAtMs - System.currentTimeMillis()
-        if (waitMs > 0L) delay(waitMs)
-        if (blockedUntilMs > System.currentTimeMillis()) {
-            throw RequestBlockedException("YouTube VIDEO requests paused after a ${blockReason ?: "block"}")
+        try {
+            val waitMs = scheduledAt - clock()
+            if (waitMs > 0L) delay(waitMs)
+            checkServerCooldown(clock())
+        } catch (cancelled: CancellationException) {
+            // An obsolete queued resolve must not reserve the next user's slot.
+            if (surface == Surface.API) withContext(NonCancellable) {
+                gate.withLock {
+                    if (lastApiRequestAtMs == scheduledAt) lastApiRequestAtMs = previousApiAt
+                }
+            }
+            throw cancelled
         }
     }
 
-    private fun refill(now: Long) {
-        val elapsed = now - lastRefillAtMs
-        if (elapsed <= 0L) return
-
-        tokens = min(BUCKET_CAPACITY, tokens + elapsed / REFILL_INTERVAL_MS)
-        lastRefillAtMs = now
+    @Synchronized
+    private fun checkServerCooldown(now: Long) {
+        val remaining = blockedUntilMs - now
+        if (remaining > 0L) {
+            throw RequestBlockedException(
+                "YouTube VIDEO requests paused after a ${blockReason ?: "block"} " +
+                    "response (${max(1L, remaining / 1000L)}s remaining)",
+            )
+        }
+        if (blockedUntilMs != 0L) {
+            blockedUntilMs = 0L
+            blockReason = null
+            publish()
+        }
     }
 
     fun classify(text: String?): FailureKind =
@@ -292,6 +242,7 @@ object CapsuleVideoRequestGuard {
         return kind
     }
 
+    @Synchronized
     fun noteStreamStatus(code: Int): FailureKind {
         if (code in 200..399 || code == 416) {
             streamForbiddenStreak = 0
@@ -327,11 +278,12 @@ object CapsuleVideoRequestGuard {
         streamForbiddenStreak = 0
     }
 
+    @Synchronized
     fun isBlocked(): Boolean {
         val until = blockedUntilMs
         if (until <= 0L) return false
 
-        if (until <= System.currentTimeMillis()) {
+        if (until <= clock()) {
             blockedUntilMs = 0L
             blockReason = null
             publish()
@@ -342,12 +294,13 @@ object CapsuleVideoRequestGuard {
     }
 
     fun remainingBackoffMs(): Long =
-        (blockedUntilMs - System.currentTimeMillis()).coerceAtLeast(0L)
+        (blockedUntilMs - clock()).coerceAtLeast(0L)
 
     fun blockReason(): String? = blockReason
 
+    @Synchronized
     private fun trip(reason: String) {
-        val now = System.currentTimeMillis()
+        val now = clock()
         decayEscalationIfClean(now)
 
         val step =
@@ -359,9 +312,6 @@ object CapsuleVideoRequestGuard {
         blockReason = reason
         lastTripAtMs = now
         escalationLevel = min(escalationLevel + 1, BACKOFF_STEPS_MS.lastIndex)
-
-        tokens = 0.0
-        lastRefillAtMs = now
 
         publish()
     }
@@ -393,15 +343,13 @@ object CapsuleVideoRequestGuard {
             -> FailureKind.PERMANENT
         }
 
-    fun resetForTests() {
+    fun resetForTests(now: () -> Long = System::currentTimeMillis) {
+        clock = now
         blockedUntilMs = 0L
         blockReason = null
         escalationLevel = 0
         lastTripAtMs = 0L
         streamForbiddenStreak = 0
-        tokens = BUCKET_CAPACITY
-        lastRefillAtMs = System.currentTimeMillis()
         lastApiRequestAtMs = 0L
-        lastStreamRequestAtMs = 0L
     }
 }

@@ -1002,6 +1002,12 @@ class MusicService :
     private var videoRequestedAtMs = 0L
     val videoRenderPlayer: Player?
         get() = videoCompanion?.player
+    // UI readouts follow the clip's clock after its first presentation. The
+    // MUSIC player still owns the canonical queue and user transport commands.
+    val capsuleTimelinePlayer: Player
+        get() = videoRenderPlayer?.takeIf {
+            videoPlaybackState.value.presentingVideo && it.currentMediaItem?.mediaId == player.currentMediaItem?.mediaId
+        } ?: player
 
     private fun companionForVideo(): CapsuleVideoCompanion =
         videoCompanion ?: CapsuleVideoCompanion(
@@ -1022,7 +1028,8 @@ class MusicService :
                 // masters/mixes from snapping together. On a queue transition
                 // or screen-off, restore AUDIO without unnecessary delay.
                 val returnGap = !ownsVideoAudio && videoWasAudible &&
-                    videoScreenVisible && player.playWhenReady
+                    videoScreenVisible && player.playWhenReady &&
+                    videoPlaybackState.value.mediaId == player.currentMediaItem?.mediaId
                 videoReturnGapActive = returnGap
                 player.volume = if (ownsVideoAudio || returnGap) 0f else effectiveAudioVolume
                 if (returnGap) {
@@ -1050,6 +1057,14 @@ class MusicService :
                 val state = videoPlaybackState.value
                 if (state.mediaId == currentId && state.mode == CapsulePlaybackMode.VIDEO) {
                     videoPlaybackState.value = state.copy(firstFrameReady = false)
+                }
+            },
+            onBufferingChanged = { currentId, buffering ->
+                val state = videoPlaybackState.value
+                if (state.mediaId == currentId && state.presentingVideo) {
+                    videoPlaybackState.value = state.copy(
+                        phase = if (buffering) CapsuleVideoPhase.BUFFERING else CapsuleVideoPhase.PLAYING,
+                    )
                 }
             },
         ).also {
@@ -1145,12 +1160,6 @@ class MusicService :
     fun setVideoAppForeground(foreground: Boolean) {
         videoScreenVisible = foreground && screenInteractive
         videoCompanion?.setForeground(videoScreenVisible)
-        if (!videoScreenVisible) {
-            val state = videoPlaybackState.value
-            if (state.mode == CapsulePlaybackMode.VIDEO) {
-                videoPlaybackState.value = state.copy(firstFrameReady = false)
-            }
-        }
     }
 
     private var videoOriginalMediaItem: MediaItem? = null
@@ -1162,7 +1171,7 @@ class MusicService :
     /*
      * VIDEO power/request protection.
      *
-     * - Screen off: VIDEO immediately falls back to normal AUDIO and no new
+     * - Screen off: an established VIDEO keeps its soundtrack; no new
      *   video-search requests are made while the display is off/locked.
      * - Screen unlocked again: the current track may resume VIDEO once.
      * - Detectable 403/429/bot responses open a short VIDEO-only circuit breaker.
@@ -4834,7 +4843,7 @@ class MusicService :
 
     /**
      * Activity backgrounding preserves VIDEO selection and clip soundtrack.
-     * The session disables image decoding until its surface returns.
+     * Media3 owns codec output while the rendering surface is absent.
      */
     fun suspendCapsuleVideoForAppBackground() {
         suspendCapsuleVideoForScreenOff()

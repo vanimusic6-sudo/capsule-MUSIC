@@ -150,6 +150,7 @@ fun BottomSheetPlayer(
     val playbackState by playerConnection.playbackState.collectAsState()
     val isPlaying by playerConnection.isPlaying.collectAsState()
     val mediaMetadata by playerConnection.mediaMetadata.collectAsState()
+    val videoPlaybackState by playerConnection.service.videoPlaybackState.collectAsState()
     val currentSong by playerConnection.currentSong.collectAsState(initial = null)
     val currentSongLiked = currentSong?.song?.liked == true
     val canSkipNext by playerConnection.canSkipNext.collectAsState()
@@ -204,10 +205,10 @@ fun BottomSheetPlayer(
     }
 
     var position by remember(mediaMetadata?.id) {
-        mutableLongStateOf(playerConnection.player.currentPosition.coerceAtLeast(0L))
+        mutableLongStateOf(playerConnection.service.capsuleTimelinePlayer.currentPosition.coerceAtLeast(0L))
     }
     var duration by remember(mediaMetadata?.id) {
-        mutableLongStateOf(playerConnection.player.duration)
+        mutableLongStateOf(playerConnection.service.capsuleTimelinePlayer.duration)
     }
     var sliderPosition by remember(mediaMetadata?.id) {
         mutableStateOf<Long?>(null)
@@ -223,6 +224,8 @@ fun BottomSheetPlayer(
      */
     LaunchedEffect(
         mediaMetadata?.id,
+        videoPlaybackState.presentingVideo,
+        videoPlaybackState.videoId,
         playbackState,
         isPlaying,
         sliderPosition,
@@ -236,9 +239,9 @@ fun BottomSheetPlayer(
         if (!onScreen || showInlineLyrics || state.isDismissed) return@LaunchedEffect
 
         while (isActive) {
-            position = playerConnection.player.currentPosition.coerceAtLeast(0L)
+            position = playerConnection.service.capsuleTimelinePlayer.currentPosition.coerceAtLeast(0L)
             duration =
-                playerConnection.player.duration
+                playerConnection.service.capsuleTimelinePlayer.duration
                     .takeIf { it > 0L && it != C.TIME_UNSET }
                     ?: C.TIME_UNSET
             delay(

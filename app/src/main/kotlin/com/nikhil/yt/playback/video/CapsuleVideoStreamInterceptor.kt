@@ -12,9 +12,10 @@ import okhttp3.Response
 import java.io.IOException
 
 /**
- * Owns request pacing and HTTP-status feedback for actual VIDEO media bytes.
+ * Checks server cooldown and HTTP-status feedback for actual VIDEO media bytes.
  * Metadata/search/extractor requests are guarded in the innertube layer; this
- * interceptor closes the remaining gap for googlevideo/CDN stream requests.
+ * HLS playlists/segments and progressive ranges have no finite local quota and
+ * do not pace or consume metadata/search reservations.
  */
 internal class CapsuleVideoStreamInterceptor : Interceptor {
     override fun intercept(chain: Interceptor.Chain): Response {

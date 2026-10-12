@@ -6,6 +6,8 @@
 
 package com.nikhil.yt.playback.video
 
+import androidx.media3.common.Player
+
 enum class CapsulePlaybackMode {
     AUDIO,
     VIDEO,
@@ -16,6 +18,7 @@ enum class CapsuleVideoPhase {
     RESOLVING,
     PREPARING,
     PLAYING,
+    BUFFERING,
     RECOVERING,
 
     /** No trustworthy official clip was found for this song. */
@@ -47,9 +50,18 @@ data class CapsuleVideoPlaybackState(
     val message: String? = null,
 ) {
     val needsSurface: Boolean get() = mode == CapsulePlaybackMode.VIDEO &&
-        phase in setOf(CapsuleVideoPhase.PREPARING, CapsuleVideoPhase.PLAYING, CapsuleVideoPhase.RECOVERING)
+        phase in setOf(CapsuleVideoPhase.PREPARING, CapsuleVideoPhase.PLAYING, CapsuleVideoPhase.BUFFERING, CapsuleVideoPhase.RECOVERING)
     // Preparing an attached decoder is distinct from revealing its window.
     val presentingVideo: Boolean get() = needsSurface && firstFrameReady
+}
+
+internal fun CapsuleVideoPlaybackState.playbackStateOr(musicState: Int): Int {
+    if (!presentingVideo) return musicState
+    return when (phase) {
+        CapsuleVideoPhase.PLAYING -> Player.STATE_READY
+        CapsuleVideoPhase.BUFFERING, CapsuleVideoPhase.PREPARING, CapsuleVideoPhase.RECOVERING -> Player.STATE_BUFFERING
+        else -> musicState
+    }
 }
 
 const val CAPSULE_VIDEO_SCHEME = "capsule-video"
