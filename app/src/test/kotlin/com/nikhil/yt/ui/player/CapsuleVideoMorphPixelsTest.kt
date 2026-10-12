@@ -101,12 +101,14 @@ class CapsuleVideoMorphPixelsTest {
         compose.mainClock.autoAdvance = false
         compose.runOnIdle { presenting.value = true }
         compose.mainClock.advanceTimeByFrame()
+        compose.waitForIdle()
         compose.mainClock.advanceTimeBy(160)
         assertFeatheredEdge("immersive-opening")
         compose.mainClock.advanceTimeBy(1_000)
         assertEquals(AndroidColor.RED, centre("immersive-video"))
         compose.runOnIdle { needed.value = false; presenting.value = false }
         compose.mainClock.advanceTimeByFrame()
+        compose.waitForIdle()
         compose.mainClock.advanceTimeBy(160)
         assertFeatheredEdge("immersive-closing")
         compose.mainClock.autoAdvance = true
