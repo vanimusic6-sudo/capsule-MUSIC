@@ -76,8 +76,8 @@ internal class CapsuleVideoDirectMediaSourceFactory(
                     val index = representation.indexUri
                     check(init != null && index != null && init.start >= 0L && init.length in 1..128 * 1024L &&
                         index.start >= init.start + init.length && index.length in 1..128 * 1024L)
-                    check(init.referenceUri.isEmpty() && index.referenceUri.isEmpty())
                     for (base in representation.baseUrls) {
+                        check(init.resolveUriString(base.url) == base.url && index.resolveUriString(base.url) == base.url)
                         val uri = Uri.parse(base.url)
                         check(uri.scheme == "https" && uri.host?.endsWith(".googlevideo.com") == true && uri.userInfo == null)
                         val role = if (set.type == C.TRACK_TYPE_VIDEO) "video" else "audio"

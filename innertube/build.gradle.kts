@@ -16,7 +16,11 @@ dependencies {
     implementation(libs.brotli)
     implementation(libs.newpipe.extractor)
     // Separate namespace: VIDEO fallback only, never replaces AUDIO/SoundCloud.
-    implementation("com.github.maxrave-dev:PipePipeExtractor:f8982ca9e7")
+    implementation("com.github.maxrave-dev:PipePipeExtractor:f8982ca9e7") {
+        // PipePipe's unused full runtime duplicates NewPipe's protobuf-lite.
+        // Its YouTube models use Wire; retain the existing lite runtime.
+        exclude(group = "com.google.protobuf", module = "protobuf-java")
+    }
     implementation(libs.re2j)
     implementation(libs.rhino)
     testImplementation(libs.junit)
