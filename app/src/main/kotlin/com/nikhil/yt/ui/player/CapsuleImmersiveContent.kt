@@ -633,6 +633,7 @@ internal fun CapsuleImmersiveContent(
             fillArtworkSlot = true,
             artworkCornerRadius = 0.dp,
             videoSidePadding = 12.dp,
+            motion = CapsuleVideoArtworkMotion.IMMERSIVE,
             artworkClickable = !isVideo,
             onArtworkClick = onShowLyrics,
             video = { active -> CapsuleVideoSurface(playerConnection.service, Modifier.fillMaxSize(), active = active) },

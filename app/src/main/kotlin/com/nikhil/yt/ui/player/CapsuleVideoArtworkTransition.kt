@@ -13,6 +13,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.BlendMode
+import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.CornerRadius
@@ -26,8 +29,11 @@ import androidx.compose.ui.unit.dp
 import kotlin.math.min
 import kotlin.math.max
 import kotlin.math.roundToInt
+import kotlin.math.hypot
 import androidx.compose.runtime.key
 import androidx.compose.runtime.rememberUpdatedState
+
+internal enum class CapsuleVideoArtworkMotion { SCULPTED, IMMERSIVE }
 
 /**
  * One moving silhouette, with both contents filling the same bounds.
@@ -46,6 +52,7 @@ internal fun CapsuleVideoArtworkTransition(
     videoSidePadding: Dp = 0.dp,
     videoWidthScale: Float = 1f,
     videoCornerRadius: Dp = 24.dp,
+    motion: CapsuleVideoArtworkMotion = CapsuleVideoArtworkMotion.SCULPTED,
     artworkBackground: Color = Color.Transparent,
     outline: Color = Color.Transparent,
     artworkClickable: Boolean = false,
@@ -56,9 +63,11 @@ internal fun CapsuleVideoArtworkTransition(
     val density = LocalDensity.current
     val windowWidth = with(density) { LocalConfiguration.current.screenWidthDp.dp.roundToPx() }
     val preparing = rememberUpdatedState(needsSurface && !presentingVideo)
+    val immersive = motion == CapsuleVideoArtworkMotion.IMMERSIVE
     val reveal = key(transitionKey) { animateFloatAsState(
         targetValue = if (presentingVideo) 1f else 0f,
-        animationSpec = spring(dampingRatio = 0.82f, stiffness = 260f, visibilityThreshold = 0.001f),
+        animationSpec = if (immersive) spring(dampingRatio = 0.96f, stiffness = 155f, visibilityThreshold = 0.001f)
+            else spring(dampingRatio = 0.86f, stiffness = 220f, visibilityThreshold = 0.001f),
         label = "capsule-cover-video",
     ) }
     BoxWithConstraints(modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -95,7 +104,9 @@ internal fun CapsuleVideoArtworkTransition(
                 // Uniform fill follows the moving silhouette. The decoder itself
                 // keeps its final viewport, avoiding surface/codec resize churn.
                 Box(Modifier.graphicsLayer {
-                    alpha = if (showVideoContent()) 1f else 0f
+                    alpha = if (immersive) {
+                        if (!preparing.value && reveal.value > 0f) 1f else 0f
+                    } else if (showVideoContent()) 1f else 0f
                     val scale = max(frameWidth().toFloat() / videoWidth, frameHeight().toFloat() / videoHeight)
                     scaleX = scale; scaleY = scale
                 }.background(Color.Black)) {
@@ -105,9 +116,24 @@ internal fun CapsuleVideoArtworkTransition(
                 // no growing hole, duplicate card or full-duration dissolve.
                 Box(
                     Modifier.graphicsLayer {
-                        alpha = if (showVideoContent()) 0f else 1f
+                        val p = reveal.value.coerceIn(0f, 1f)
+                        alpha = if (immersive && !preparing.value) (1f - (p - 0.8f).coerceAtLeast(0f) / 0.2f).coerceIn(0f, 1f)
+                            else if (showVideoContent()) 0f else 1f
+                        // A feathered mask only during the short Immersive
+                        // transition. No full-screen blur or playback timer.
+                        compositingStrategy = if (immersive && p > 0f && p < 1f) CompositingStrategy.Offscreen else CompositingStrategy.Auto
                         val scale = max(frameWidth().toFloat() / coverWidth, frameHeight().toFloat() / coverHeight)
                         scaleX = scale; scaleY = scale
+                    }.drawWithContent {
+                        drawContent()
+                        val p = reveal.value.coerceIn(0f, 1f)
+                        if (immersive && !preparing.value && p > 0f && p < 1f) {
+                            val radius = (hypot(frameWidth().toFloat(), frameHeight().toFloat()) * 0.7f * (1f - p)).coerceAtLeast(1f)
+                            drawRect(Brush.radialGradient(
+                                0f to Color.Black, 0.78f to Color.Black, 1f to Color.Transparent,
+                                center = center, radius = radius,
+                            ), blendMode = BlendMode.DstIn)
+                        }
                     }.background(artworkBackground),
                     contentAlignment = Alignment.Center,
                 ) { artwork() }

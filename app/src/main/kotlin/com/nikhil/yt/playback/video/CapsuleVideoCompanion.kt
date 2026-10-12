@@ -9,8 +9,10 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.Tracks
+import com.nikhil.yt.innertube.video.CapsuleVideoDelivery
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.upstream.DefaultBandwidthMeter
 import androidx.media3.exoplayer.source.MediaSource
 import androidx.media3.exoplayer.analytics.AnalyticsListener
 import androidx.media3.exoplayer.source.LoadEventInfo
@@ -42,9 +44,11 @@ internal class CapsuleVideoCompanion(
 ) {
     private var idleExpiry: Job? = null
     val player: ExoPlayer = ExoPlayer.Builder(context)
+        // AUDIO downloads must not make HLS assume the VIDEO host is fast.
+        .setBandwidthMeter(DefaultBandwidthMeter.Builder(context).build())
         .setMediaSourceFactory(factory)
         .setLoadControl(DefaultLoadControl.Builder()
-            .setBufferDurationsMs(2_500, 12_000, 350, 750)
+            .setBufferDurationsMs(6_000, 12_000, 350, 1_500)
             .setPrioritizeTimeOverSizeThresholds(true).build())
         .setWakeMode(C.WAKE_MODE_LOCAL)
         .build()
@@ -63,12 +67,21 @@ internal class CapsuleVideoCompanion(
                 if (session.awaitingPresentation) Timber.tag("CapsuleVideo").i(
                     "VIDEO startup decoder=%s ms=%s", decoderName, initializationDurationMs)
             }
+            override fun onDownstreamFormatChanged(eventTime: AnalyticsListener.EventTime, mediaLoadData: MediaLoadData) {
+                if (mediaLoadData.trackType == C.TRACK_TYPE_VIDEO) mediaLoadData.trackFormat?.let {
+                    Timber.tag("CapsuleVideo").i("VIDEO format width=%s height=%s fps=%s bitrate=%s", it.width, it.height, it.frameRate, it.bitrate)
+                }
+            }
+            override fun onDroppedVideoFrames(eventTime: AnalyticsListener.EventTime, droppedFrames: Int, elapsedMs: Long) {
+                if (droppedFrames > 5) Timber.tag("CapsuleVideo").i("VIDEO dropped frames=%s intervalMs=%s", droppedFrames, elapsedMs)
+            }
         })
     }
     fun start(id: String, item: MediaItem, volume: Float) {
         idleExpiry?.cancel(); idleExpiry = null
         frameRetention.clear()
-        session.start(id, item, volume)
+        val delivery = (item.localConfiguration?.tag as? YouTubeVideoResolver.ResolvedVideo)?.delivery
+        session.start(id, item, volume, startupBudgetMs = if (delivery == CapsuleVideoDelivery.PROGRESSIVE) 8_000L else 15_000L)
     }
     fun setForeground(value: Boolean) = session.setForeground(value)
     fun setSurfaceAttached(value: Boolean) = session.setSurfaceAttached(value)
@@ -106,6 +119,7 @@ internal class CapsuleVideoSession(
     private val onFailure: (String, Throwable) -> Unit,
     private val onFrameUnavailable: (String) -> Unit,
     private val onBufferingChanged: (String, Boolean) -> Unit = { _, _ -> },
+    private val clockMs: () -> Long = SystemClock::elapsedRealtime,
 ) {
     private var id: String? = null
     private var generation = 0L
@@ -118,6 +132,9 @@ internal class CapsuleVideoSession(
     private var soundGain = 0f
     private var aligned = false
     private var catchupPending = false
+    private var seekStartedAtMs: Long? = null
+    private var seekLatencyMs = 0L
+    private var startupBudgetMs = 15_000L
     private var committed = false
     private var reportedBuffering = false
     private var volume = 1f
@@ -151,6 +168,8 @@ internal class CapsuleVideoSession(
             if (reason == Player.DISCONTINUITY_REASON_SEEK || reason == Player.DISCONTINUITY_REASON_SEEK_ADJUSTMENT) {
                 firstFrame = false
                 if (!committed) {
+                    seekStartedAtMs = null
+                    catchupPending = false
                     frameReported = false
                     onFrameUnavailable(id!!)
                     if (seamJob?.isActive == true) returnSound()
@@ -166,6 +185,10 @@ internal class CapsuleVideoSession(
     private val videoListener = object : Player.Listener {
         override fun onRenderedFirstFrame() {
             if (id == null || !rendering) return
+            seekStartedAtMs?.let {
+                seekLatencyMs = (clockMs() - it).coerceIn(0L, 1_200L)
+                seekStartedAtMs = null
+            }
             firstFrame = true
             Timber.tag("CapsuleVideo").i("first-frame session=%s generation=%s prepareMs=%s", id, generation,
                 SystemClock.elapsedRealtime() - startedAtMs)
@@ -196,6 +219,21 @@ internal class CapsuleVideoSession(
         return if (duration > 0 && duration != C.TIME_UNSET) position.coerceAtMost((duration - 1).coerceAtLeast(0L)) else position
     }
 
+    private fun startupSeekTarget(): Long {
+        // Compensate only a measured seek/decode delay, while MUSIC's clock
+        // is running. Paused and user-initiated seeks stay exact.
+        val target = targetPosition() + if (audio.isPlaying) seekLatencyMs else 0L
+        return if (video.duration > 0L) target.coerceAtMost(video.duration - 1L) else target
+    }
+
+    private fun seekForStartup(target: Long) {
+        firstFrame = false
+        frameReported = false
+        seekStartedAtMs = clockMs()
+        id?.let(onFrameUnavailable)
+        video.seekTo(target)
+    }
+
     private fun evaluate() {
         val current = id ?: return
         if (starting) return
@@ -213,6 +251,13 @@ internal class CapsuleVideoSession(
             ensureWatchdog()
             return
         }
+        if (!ownsSound && !audio.playWhenReady && rendering && ready && firstFrame &&
+            abs(video.currentPosition - targetPosition()) > 400L) {
+            aligned = true
+            catchupPending = false
+            seekForStartup(targetPosition())
+            return
+        }
         // Music has advanced during extraction/buffering. Align at readiness,
         // before silencing MUSIC, then wait for the post-seek decoded frame.
         if (!ownsSound && !aligned && rendering && ready) {
@@ -220,11 +265,8 @@ internal class CapsuleVideoSession(
             val target = targetPosition()
             if (abs(video.currentPosition - target) > 400L) {
                 Timber.tag("CapsuleVideo").i("VIDEO timing align session=%s deltaMs=%s", current, target - video.currentPosition)
-                firstFrame = false
-                frameReported = false
                 catchupPending = true
-                onFrameUnavailable(current)
-                video.seekTo(target)
+                seekForStartup(startupSeekTarget())
                 ensureWatchdog()
                 return
             }
@@ -232,19 +274,16 @@ internal class CapsuleVideoSession(
         // A slow first seek can finish behind MUSIC. Correct it once, only
         // inside the available buffer. Never chase MUSIC with a seek loop.
         if (!ownsSound && catchupPending && rendering && ready && firstFrame) {
-            val target = targetPosition()
-            if (abs(video.currentPosition - target) > 400L) {
+            val target = startupSeekTarget()
+            if (abs(video.currentPosition - targetPosition()) > 400L) {
                 val bufferedTarget = if (video.duration > 0L) minOf(target + 350L, video.duration - 1L) else target + 350L
                 if (video.bufferedPosition < bufferedTarget) {
                     ensureWatchdog()
                     return
                 }
                 catchupPending = false
-                firstFrame = false
-                frameReported = false
-                onFrameUnavailable(current)
                 Timber.tag("CapsuleVideo").i("VIDEO startup buffered correction session=%s deltaMs=%s", current, target - video.currentPosition)
-                video.seekTo(target)
+                seekForStartup(target)
                 ensureWatchdog()
                 return
             }
@@ -325,10 +364,11 @@ internal class CapsuleVideoSession(
         }
     }
 
-    fun start(mediaId: String, item: MediaItem, outputVolume: Float) {
+    fun start(mediaId: String, item: MediaItem, outputVolume: Float, startupBudgetMs: Long = 15_000L) {
         val reuse = video.currentMediaItem?.mediaId == mediaId &&
             canReusePreparedVideo(preparedItem, item, video.playbackState)
         stop(keepPrepared = reuse)
+        this.startupBudgetMs = startupBudgetMs
         id = mediaId
         startedAtMs = SystemClock.elapsedRealtime()
         readyReported = false
@@ -340,8 +380,11 @@ internal class CapsuleVideoSession(
             video.volume = 0f
             if (reuse) {
                 if (abs(video.currentPosition - targetPosition()) > 400L) {
+                    // This seek already aligns the reopened clip. READY must
+                    // not schedule the same alignment a second time.
+                    aligned = true
                     catchupPending = true
-                    video.seekTo(targetPosition())
+                    seekForStartup(startupSeekTarget())
                 }
             } else {
                 preparedItem = item
@@ -385,7 +428,7 @@ internal class CapsuleVideoSession(
                 if (rendering && audio.playWhenReady && !frameReported) startupMs += 500L
                 if (ready && frameReported) startupMs = 0L
                 if ((rendering || committed) && audio.playWhenReady && video.playbackState == Player.STATE_BUFFERING) stallMs += 500L else stallMs = 0L
-                if (startupMs >= 15_000L || stallMs >= 12_000L) {
+                if (startupMs >= startupBudgetMs || stallMs >= 12_000L) {
                     fail(java.net.SocketTimeoutException("VIDEO readiness/stall timeout (surface=$surfaceAttached frame=$firstFrame audio=$hasAudio)"))
                     break
                 }
@@ -417,7 +460,7 @@ internal class CapsuleVideoSession(
                 if (id != null && video.playbackState == Player.STATE_READY && abs(video.currentPosition - targetPosition()) > 400L) {
                     aligned = true
                     catchupPending = true
-                    video.seekTo(targetPosition())
+                    seekForStartup(startupSeekTarget())
                 }
             }
         }
@@ -444,7 +487,7 @@ internal class CapsuleVideoSession(
         if (wasActive) audio.removeListener(audioListener)
         if (syncMusic && abs(audio.currentPosition - returnPosition) > 400L) audio.seekTo(returnPosition)
         returnSound()
-        firstFrame = false; frameReported = false; aligned = false; catchupPending = false; committed = false; reportedBuffering = false
+        firstFrame = false; frameReported = false; aligned = false; catchupPending = false; seekStartedAtMs = null; committed = false; reportedBuffering = false
         video.playWhenReady = false
         if (!keepPrepared) {
             preparedItem = null

@@ -84,7 +84,56 @@ class CapsuleVideoMorphPixelsTest {
             pixel == AndroidColor.RED || pixel == AndroidColor.BLUE)
     }
 
+    @Test fun immersiveCoverSpreadsWithAFeatheredEdgeAndSettlesWithoutAnEmptyFrame() {
+        val presenting = mutableStateOf(false)
+        val needed = mutableStateOf(true)
+        compose.setContent {
+            CapsuleVideoArtworkTransition(
+                presentingVideo = presenting.value, needsSurface = needed.value,
+                motion = CapsuleVideoArtworkMotion.IMMERSIVE, fillArtworkSlot = true,
+                artworkCornerRadius = 0.dp,
+                modifier = Modifier.size(320.dp, 440.dp).testTag("media-slot"),
+                video = { Box(Modifier.fillMaxSize().background(Color.Red)) },
+                artwork = { Box(Modifier.fillMaxSize().background(Color.Blue)) },
+            )
+        }
+        assertEquals(AndroidColor.BLUE, centre("immersive-audio"))
+        compose.mainClock.autoAdvance = false
+        compose.runOnIdle { presenting.value = true }
+        compose.mainClock.advanceTimeByFrame()
+        compose.mainClock.advanceTimeBy(160)
+        assertFeatheredEdge("immersive-opening")
+        compose.mainClock.advanceTimeBy(1_000)
+        assertEquals(AndroidColor.RED, centre("immersive-video"))
+        compose.runOnIdle { needed.value = false; presenting.value = false }
+        compose.mainClock.advanceTimeByFrame()
+        compose.mainClock.advanceTimeBy(160)
+        assertFeatheredEdge("immersive-closing")
+        compose.mainClock.autoAdvance = true
+        compose.waitForIdle()
+        assertEquals(AndroidColor.BLUE, centre("immersive-closed"))
+    }
+
+    private fun assertFeatheredEdge(name: String) {
+        val bitmap = snapshot(name)
+        try {
+            assertTrue("the centre never becomes an empty frame",
+                bitmap.getPixel(bitmap.width / 2, bitmap.height / 2) != AndroidColor.BLACK)
+            var feathered = false
+            for (y in 0 until bitmap.height step 4) for (x in 0 until bitmap.width step 4) {
+                val pixel = bitmap.getPixel(x, y)
+                if (AndroidColor.red(pixel) in 20..235 && AndroidColor.blue(pixel) in 20..235 && AndroidColor.green(pixel) < 10) feathered = true
+            }
+            assertTrue("Immersive has a spatially feathered cover boundary", feathered)
+        } finally { bitmap.recycle() }
+    }
+
     private fun centre(snapshotName: String): Int {
+        val bitmap = snapshot(snapshotName)
+        return bitmap.getPixel(bitmap.width / 2, bitmap.height / 2).also { bitmap.recycle() }
+    }
+
+    private fun snapshot(snapshotName: String): Bitmap {
         compose.waitForIdle()
         val bounds = compose.onNodeWithTag("media-slot").fetchSemanticsNode().boundsInRoot
         lateinit var bitmap: Bitmap
@@ -97,6 +146,6 @@ class CapsuleVideoMorphPixelsTest {
             output.parentFile.mkdirs()
             output.outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
         }
-        return bitmap.getPixel(bitmap.width / 2, bitmap.height / 2).also { bitmap.recycle() }
+        return bitmap
     }
 }

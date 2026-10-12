@@ -80,6 +80,7 @@ class CapsuleVideoSessionTest {
         }
     }
     private class Fixture(scope: kotlinx.coroutines.CoroutineScope) {
+        var clockMs = 0L
         val music = Decoder().apply { state = Player.STATE_READY; playing = true }
         val clip = Decoder()
         val owned = mutableListOf<Boolean>()
@@ -89,7 +90,7 @@ class CapsuleVideoSessionTest {
         val failures = mutableListOf<Throwable>()
         val session = CapsuleVideoSession(music.player, clip.player, scope,
             { owned += it; music.volume = if (it) 0f else 1f },
-            { frames += it }, { _, error -> failures += error }, { hidden += it }, { _, loading -> buffering += loading })
+            { frames += it }, { _, error -> failures += error }, { hidden += it }, { _, loading -> buffering += loading }, clockMs = { clockMs })
         fun start() {
             session.setSurfaceAttached(true)
             session.start("song", MediaItem.Builder().setMediaId("song").build(), 0.8f)
@@ -139,6 +140,53 @@ class CapsuleVideoSessionTest {
         advanceTimeBy(261); runCurrent()
         assertEquals(listOf("song"), f.frames)
         assertEquals(2, f.clip.seeks.size)
+        f.session.stop()
+    }
+    @Test fun measuredSeekLatencyCorrectsTheMovingClockWithoutAThirdSeek() = runTest {
+        val f = Fixture(this); f.start()
+        f.music.position = 8_000L; f.clip.ready()
+        f.clockMs = 700L; f.music.position = 8_700L; f.clip.frame()
+        assertEquals(listOf(8_000L, 9_400L), f.clip.seeks)
+        f.clockMs = 1_400L; f.music.position = 9_400L; f.clip.frame()
+        advanceTimeBy(261); runCurrent()
+        assertEquals(f.music.position, f.clip.position)
+        assertEquals(2, f.clip.seeks.size)
+        assertEquals(listOf("song"), f.frames)
+        f.session.stop()
+    }
+    @Test fun reusedClipDoesNotRepeatItsInitialAlignmentWhenReadyArrives() = runTest {
+        val f = Fixture(this); f.start(); f.clip.ready(); f.clip.frame()
+        advanceTimeBy(261); runCurrent(); f.session.stop(keepPrepared = true)
+        f.music.position = 6_000L; f.start()
+        f.clockMs = 500L; f.music.position = 6_500L; f.clip.ready(); f.clip.frame()
+        assertEquals(listOf(6_000L, 7_000L), f.clip.seeks)
+        f.clockMs = 1_000L; f.music.position = 7_000L; f.clip.frame()
+        advanceTimeBy(261); runCurrent()
+        assertEquals(1, f.clip.prepares)
+        assertEquals(2, f.clip.seeks.size)
+        assertEquals(2, f.frames.size)
+        f.session.stop()
+    }
+    @Test fun pauseDuringPredictedSeekReturnsToTheExactPausedPosition() = runTest {
+        val f = Fixture(this); f.start()
+        f.music.position = 8_000L; f.clip.ready()
+        f.clockMs = 800L; f.music.position = 8_800L; f.clip.frame()
+        assertEquals(9_600L, f.clip.position)
+        f.music.intent = false; f.music.playing = false; f.clip.playing = false; f.music.event(Player.EVENT_PLAY_WHEN_READY_CHANGED)
+        f.clockMs = 1_600L; f.clip.frame()
+        assertEquals(8_800L, f.clip.position)
+        f.clockMs = 1_800L; f.clip.frame()
+        assertFalse(f.clip.intent)
+        assertEquals(listOf("song"), f.frames)
+        f.session.stop()
+    }
+    @Test fun stalledProgressiveSourceHandsOverToRecoveryBeforeTheLongGenericTimeout() = runTest {
+        val f = Fixture(this); f.session.setSurfaceAttached(true)
+        f.session.start("song", MediaItem.Builder().setMediaId("song").build(), 0.8f, startupBudgetMs = 8_000L)
+        f.clip.ready()
+        advanceTimeBy(8_001L); runCurrent()
+        assertEquals(1, f.failures.size)
+        assertEquals(1f, f.music.volume)
         f.session.stop()
     }
     @Test fun bufferedCorrectionDoesNotCreateAnUnboundedSeekChase() = runTest {

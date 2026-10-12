@@ -33,7 +33,17 @@ internal class CapsuleHlsPlaylistParserFactory(private val maxHeight: Int) : Hls
                     playlist.variants[index].format.codecs.orEmpty().split(',')
                         .any { MimeTypes.getMediaMimeType(it.trim()) == MimeTypes.VIDEO_H264 }
                 }
-                val selected = avc.ifEmpty { eligible }
+                val codecs = avc.ifEmpty { eligible }
+                // Keep the adaptive height ladder, but avoid its duplicate
+                // 60fps encodings where the same height offers <=30fps.
+                val selected = codecs.filter { index ->
+                    val format = playlist.variants[index].format
+                    format.frameRate <= 30f || codecs.none { other ->
+                        val candidate = playlist.variants[other].format
+                        candidate.height == format.height && candidate.frameRate in 1f..30f &&
+                            playlist.variants[other].audioGroupId == playlist.variants[index].audioGroupId
+                    }
+                }
                 val keys = selected.map { StreamKey(HlsMultivariantPlaylist.GROUP_INDEX_VARIANT, it) }.toMutableList()
                 val audioGroups = selected.mapNotNull { playlist.variants[it].audioGroupId }.toSet()
                 playlist.audios.indices.filter { playlist.audios[it].groupId in audioGroups }

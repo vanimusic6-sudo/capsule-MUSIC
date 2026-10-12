@@ -27,10 +27,11 @@ class CapsuleVideoArtworkTransitionTest {
 
     @Test fun lightKeepsThePreparingSurfaceWhenFirstFrameArrives() = verifyStableOutput(320, 280, true, 0)
     @Test fun cosmoKeepsThePreparingSurfaceWhenFirstFrameArrives() = verifyStableOutput(340, 420, false, 0)
-    @Test fun immersiveKeepsThePreparingSurfaceWhenFirstFrameArrives() = verifyStableOutput(380, 440, true, 22)
+    @Test fun immersiveKeepsThePreparingSurfaceWhenFirstFrameArrives() = verifyStableOutput(380, 440, true, 12, motion = CapsuleVideoArtworkMotion.IMMERSIVE)
     @Test fun enlargedLightWindowKeepsOneFixedNativeViewport() = verifyStableOutput(320, 280, true, 0, 1.08f)
 
-    private fun verifyStableOutput(width: Int, height: Int, fill: Boolean, inset: Int, widthScale: Float = 1f) {
+    private fun verifyStableOutput(width: Int, height: Int, fill: Boolean, inset: Int, widthScale: Float = 1f,
+        motion: CapsuleVideoArtworkMotion = CapsuleVideoArtworkMotion.SCULPTED) {
         val presenting = mutableStateOf(false)
         val needed = mutableStateOf(true)
         var attaches = 0
@@ -46,6 +47,7 @@ class CapsuleVideoArtworkTransitionTest {
                 fillArtworkSlot = fill,
                 videoSidePadding = inset.dp,
                 videoWidthScale = widthScale,
+                motion = motion,
                 video = { active ->
                     if (active) DisposableEffect(Unit) {
                         attaches++
