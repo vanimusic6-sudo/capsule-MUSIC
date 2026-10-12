@@ -93,6 +93,9 @@ fun CapsuleCustomizeSettings(
             defaultValue = CapsulePlayerDesign.SUPER,
         )
     val context = LocalContext.current
+    val importInvalidMessage = stringResource(R.string.capsule_customize_import_invalid)
+    val importSuccessMessage = stringResource(R.string.capsule_customize_import_success)
+    val shareFailedMessage = stringResource(R.string.capsule_customize_share_failed)
 
     val (lightEditEnabled, onLightEditEnabledChange) =
         rememberPreference(
@@ -287,14 +290,14 @@ fun CapsuleCustomizeSettings(
                 if (preset == null) {
                     Toast.makeText(
                         context,
-                        context.getString(R.string.capsule_customize_import_invalid),
+                        importInvalidMessage,
                         Toast.LENGTH_SHORT,
                     ).show()
                 } else {
                     applyPreset(preset)
                     Toast.makeText(
                         context,
-                        context.getString(R.string.capsule_customize_import_success),
+                        importSuccessMessage,
                         Toast.LENGTH_SHORT,
                     ).show()
                 }
@@ -444,7 +447,7 @@ fun CapsuleCustomizeSettings(
                 }.onFailure {
                     Toast.makeText(
                         context,
-                        context.getString(R.string.capsule_customize_share_failed),
+                        shareFailedMessage,
                         Toast.LENGTH_SHORT,
                     ).show()
                 }

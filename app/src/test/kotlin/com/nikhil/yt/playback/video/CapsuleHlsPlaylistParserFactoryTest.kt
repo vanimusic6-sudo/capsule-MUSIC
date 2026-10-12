@@ -46,4 +46,16 @@ class CapsuleHlsPlaylistParserFactoryTest {
         )
         assertTrue(child is androidx.media3.exoplayer.hls.playlist.HlsMediaPlaylist)
     }
+    @Test fun avoidsPreparingUnusedCodecAndDubbedAudioGroups() {
+        val text = master(360, 720) + """
+            #EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="a",NAME="Dubbed",LANGUAGE="de",DEFAULT=NO,AUTOSELECT=YES,URI="dubbed.m3u8"
+            #EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="unused",NAME="Other codec audio",URI="other.m3u8"
+            #EXT-X-STREAM-INF:BANDWIDTH=1500000,RESOLUTION=1280x720,CODECS="av01.0.05M.08,mp4a.40.2",AUDIO="unused"
+            av1.m3u8
+        """.trimIndent()
+        val playlist = parse(text) as HlsMultivariantPlaylist
+        assertEquals(2, playlist.variants.size)
+        assertTrue(playlist.variants.all { it.format.codecs!!.startsWith("avc1") })
+        assertEquals(listOf("Original"), playlist.audios.map { it.name })
+    }
 }

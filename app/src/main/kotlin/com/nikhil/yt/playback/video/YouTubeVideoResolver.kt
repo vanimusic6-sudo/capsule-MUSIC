@@ -333,6 +333,8 @@ object YouTubeVideoResolver {
                 )
             }
 
+        Timber.tag(TAG).i("VIDEO timing routes clip=%s %s", videoId,
+            bundle.getString(CapsuleVideoIpc.EXTRA_ROUTE_TIMINGS).orEmpty())
         if (!bundle.getBoolean(CapsuleVideoIpc.EXTRA_SUCCESS, false)) {
             val failure =
                 runCatching {

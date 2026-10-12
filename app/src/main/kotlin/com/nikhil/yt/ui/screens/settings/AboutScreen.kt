@@ -53,6 +53,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLocale
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -93,6 +94,7 @@ fun AboutScreen(
     scrollBehavior: TopAppBarScrollBehavior,
 ) {
     val context = LocalContext.current
+    val locale = LocalLocale.current.platformLocale
     val uriHandler = LocalUriHandler.current
     val coroutineScope = rememberCoroutineScope()
 
@@ -674,7 +676,7 @@ fun AboutScreen(
                                 0,
                             )
                         DateFormat
-                            .getDateInstance(DateFormat.MEDIUM, context.resources.configuration.locales[0])
+                            .getDateInstance(DateFormat.MEDIUM, locale)
                             .format(Date(packageInfo.firstInstallTime))
                     } catch (_: Exception) {
                         unknownInstallDate

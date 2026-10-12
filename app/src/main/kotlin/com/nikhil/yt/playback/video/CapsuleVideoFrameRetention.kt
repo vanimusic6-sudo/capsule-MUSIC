@@ -17,6 +17,19 @@ internal data class CapsuleRetainedVideoFrame(val mediaId: String, val bitmap: B
 internal class CapsuleVideoFrameRetention(private val player: Player, private val scope: CoroutineScope) {
     private val mutableFrame = MutableStateFlow<CapsuleRetainedVideoFrame?>(null)
     val frame = mutableFrame.asStateFlow()
+    private val mutableBorderZoom = MutableStateFlow(1f)
+    val borderZoom = mutableBorderZoom.asStateFlow()
+    private var framedMediaId: String? = null
+
+    fun startClip(mediaId: String) {
+        if (framedMediaId != mediaId) {
+            framedMediaId = mediaId
+            mutableBorderZoom.value = 1f
+        }
+    }
+    fun setBorderZoom(mediaId: String, zoom: Float) {
+        if (framedMediaId == mediaId) mutableBorderZoom.value = zoom.coerceIn(1f, 1.6f)
+    }
     private var owner: Any? = null
     private var capture: (() -> Bitmap?)? = null
     private var expiry: Job? = null
@@ -62,7 +75,7 @@ internal class CapsuleVideoFrameRetention(private val player: Player, private va
         val still = CapsuleRetainedVideoFrame(mediaId, bitmap, exiting = true)
         mutableFrame.value = still
         expiry = scope.launch {
-            delay(650L) // 440ms reverse motion plus frame scheduling margin.
+            delay(800L) // Physical reverse motion plus frame scheduling margin.
             if (mutableFrame.value === still) mutableFrame.value = null
             expiry = null
         }

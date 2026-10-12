@@ -54,4 +54,28 @@ class CapsuleVideoRoutesTest {
         assertTrue(result.isFailure)
         assertEquals(1, calls)
     }
+    @Test fun nextClipStartsWithSuccessfulRouteWithoutRepeatingDeadEndpoints() {
+        val health = CapsuleVideoRouteHealth()
+        resolveVideoRoutes(health = health) { route ->
+            if (route != CapsuleVideoRoute.NEWPIPE) throw IOException("endpoint down")
+            stream
+        }
+        val calls = mutableListOf<CapsuleVideoRoute>()
+        val next = resolveVideoRoutes(health = health) { calls += it; stream }
+        assertEquals(listOf(CapsuleVideoRoute.NEWPIPE), calls)
+        assertEquals("newpipe", next.backend)
+    }
+    @Test fun healthyRouteFailingStillFallsBackAndRecoveryDeprioritizesIt() {
+        val health = CapsuleVideoRouteHealth()
+        health.success(CapsuleVideoRoute.ANDROID_REEL)
+        assertEquals(CapsuleVideoRoute.VISIONOS, health.order("direct-android-reel").first())
+        val calls = mutableListOf<CapsuleVideoRoute>()
+        val next = resolveVideoRoutes(health = health) { route ->
+            calls += route
+            if (route == CapsuleVideoRoute.ANDROID_REEL) throw IOException("endpoint down")
+            stream
+        }
+        assertEquals(listOf(CapsuleVideoRoute.ANDROID_REEL, CapsuleVideoRoute.VISIONOS), calls)
+        assertEquals("direct-visionos", next.backend)
+    }
 }

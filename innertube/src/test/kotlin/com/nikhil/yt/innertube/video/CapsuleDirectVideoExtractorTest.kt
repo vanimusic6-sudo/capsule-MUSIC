@@ -60,6 +60,17 @@ class CapsuleDirectVideoExtractorTest {
         assertNull(selectDirectHlsManifest(prefix + "2000/file/index.m3u8?n=unsolved", "abcdefghijk", CapsuleNewPipeQuality.AUTO, now))
         assertNull(selectDirectHlsManifest(prefix + "2000/file/index.m3u8?range=0-1", "abcdefghijk", CapsuleNewPipeQuality.AUTO, now))
     }
+    @Test fun completeMuxedMp4AvoidsPlaylistRoundTripsInAutoButExplicitHdKeepsHls() {
+        val base = response(listOf(format(360, 18, true)))
+        val data = JsonObject(base.toMutableMap().apply {
+            put("streamingData", JsonObject(base["streamingData"]!!.jsonObject.toMutableMap().apply {
+                put("hlsManifestUrl", JsonPrimitive("https://manifest.googlevideo.com/api/manifest/hls_playlist/expire/2000/file/index.m3u8"))
+            }))
+        })
+        assertEquals(CapsuleVideoDelivery.PROGRESSIVE, select(data)!!.delivery)
+        assertEquals(18, select(data)!!.videoItag)
+        assertEquals(CapsuleVideoDelivery.HLS, select(data, CapsuleNewPipeQuality.P720)!!.delivery)
+    }
     @Test fun reelRequiresExactIdAndAMuxedSoundtrackWithoutCipherOrOversizedFormats() {
         fun reel(player: JsonObject) = buildJsonObject { put("playerResponse", player) }
         fun choose(player: JsonObject) = selectAndroidReelVideo(reel(player), "abcdefghijk", CapsuleNewPipeQuality.AUTO, now)

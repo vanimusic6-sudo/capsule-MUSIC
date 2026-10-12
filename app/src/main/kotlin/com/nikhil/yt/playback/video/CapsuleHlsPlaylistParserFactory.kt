@@ -3,6 +3,8 @@
 package com.nikhil.yt.playback.video
 
 import androidx.media3.common.ParserException
+import androidx.media3.common.C
+import androidx.media3.common.MimeTypes
 import androidx.media3.common.StreamKey
 import androidx.media3.exoplayer.hls.playlist.*
 import androidx.media3.exoplayer.upstream.ParsingLoadable
@@ -23,14 +25,26 @@ internal class CapsuleHlsPlaylistParserFactory(private val maxHeight: Int) : Hls
         ParsingLoadable.Parser<HlsPlaylist> { uri, input ->
             val playlist = parser.parse(uri, input)
             if (playlist is HlsMultivariantPlaylist) {
-                val keys = playlist.variants.mapIndexedNotNull { index, variant ->
-                    if (variant.format.height in 1..maxHeight) StreamKey(HlsMultivariantPlaylist.GROUP_INDEX_VARIANT, index) else null
-                }.toMutableList()
-                if (keys.isEmpty()) throw ParserException.createForMalformedManifest("VIDEO HLS has no rendition within ${maxHeight}p", null)
-                // Keep the clip's original audio groups. Dropping them while
-                // filtering video would silently create a video-only source.
-                playlist.audios.indices.forEach { keys += StreamKey(HlsMultivariantPlaylist.GROUP_INDEX_AUDIO, it) }
-                playlist.subtitles.indices.forEach { keys += StreamKey(HlsMultivariantPlaylist.GROUP_INDEX_SUBTITLE, it) }
+                val eligible = playlist.variants.indices.filter { playlist.variants[it].format.height in 1..maxHeight }
+                if (eligible.isEmpty()) throw ParserException.createForMalformedManifest("VIDEO HLS has no rendition within ${maxHeight}p", null)
+                // Prefer the widely supported AVC ladder. Preparing extra codec
+                // families and unrelated/dubbed audio groups costs startup reads.
+                val avc = eligible.filter { index ->
+                    playlist.variants[index].format.codecs.orEmpty().split(',')
+                        .any { MimeTypes.getMediaMimeType(it.trim()) == MimeTypes.VIDEO_H264 }
+                }
+                val selected = avc.ifEmpty { eligible }
+                val keys = selected.map { StreamKey(HlsMultivariantPlaylist.GROUP_INDEX_VARIANT, it) }.toMutableList()
+                val audioGroups = selected.mapNotNull { playlist.variants[it].audioGroupId }.toSet()
+                playlist.audios.indices.filter { playlist.audios[it].groupId in audioGroups }
+                    .groupBy { playlist.audios[it].groupId }.values.forEach { renditions ->
+                        // Retain the advertised default soundtrack for every
+                        // referenced group, rather than preparing every language.
+                        val preferred = renditions.firstOrNull {
+                            playlist.audios[it].format.selectionFlags and C.SELECTION_FLAG_DEFAULT != 0
+                        } ?: renditions.first()
+                        keys += StreamKey(HlsMultivariantPlaylist.GROUP_INDEX_AUDIO, preferred)
+                    }
                 playlist.copy(keys)
             } else {
                 if (requireMaster) throw ParserException.createForMalformedManifest("VIDEO HLS requires a master playlist to verify quality", null)

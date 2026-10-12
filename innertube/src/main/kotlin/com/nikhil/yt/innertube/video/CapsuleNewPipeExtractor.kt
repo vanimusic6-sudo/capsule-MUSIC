@@ -49,6 +49,7 @@ enum class CapsuleNewPipeQuality(val maxHeight: Int) {
 }
 
 object CapsuleNewPipeExtractor {
+    private val routeHealth = CapsuleVideoRouteHealth()
     private const val CACHE_SAFETY_MS = 45_000L
     private const val DEFAULT_URL_TTL_MS = 3_600_000L
     private val initialized = AtomicBoolean(false)
@@ -118,12 +119,6 @@ object CapsuleNewPipeExtractor {
             }
         }
 
-        if (!muxedOnly) {
-            selectDirectHlsManifest(info.hlsUrl, id, quality, now)?.let {
-                return it.copy(backend = "newpipe")
-            }
-        }
-
         val muxed =
             info.videoStreams
                 .asSequence()
@@ -148,6 +143,12 @@ object CapsuleNewPipeExtractor {
                 )
 
         val selectedMuxed = selectMuxed(muxed, quality)
+        if (!muxedOnly && (selectedMuxed == null ||
+                (quality != CapsuleNewPipeQuality.AUTO && quality != CapsuleNewPipeQuality.P360))) {
+            selectDirectHlsManifest(info.hlsUrl, id, quality, now)?.let {
+                return it.copy(backend = "newpipe")
+            }
+        }
 
         if (muxedOnly) {
             return selectedMuxed?.toResolved(id, audio = null)
@@ -179,7 +180,9 @@ object CapsuleNewPipeExtractor {
     fun resolveWithFallback(
         videoId: String, quality: CapsuleNewPipeQuality,
         muxedOnly: Boolean = false, failedBackend: String? = null,
-    ): CapsuleNewPipeResolved = resolveVideoRoutes(failedBackend) { route ->
+        onAttempt: (String, Long, Boolean) -> Unit = { _, _, _ -> },
+    ): CapsuleNewPipeResolved = resolveVideoRoutes(failedBackend, health = routeHealth,
+        onAttempt = { route, elapsed, success -> onAttempt(route.wireName, elapsed, success) }) { route ->
         when (route) {
             CapsuleVideoRoute.VISIONOS -> CapsuleDirectVideoExtractor.resolve(videoId, quality, muxedOnly)
             CapsuleVideoRoute.ANDROID_REEL -> CapsuleDirectVideoExtractor.resolveReel(videoId, quality)

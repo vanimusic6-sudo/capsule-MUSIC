@@ -164,10 +164,8 @@ internal fun selectDirectVideo(
     val returnedId = (response["videoDetails"] as? JsonObject)?.get("videoId")?.jsonPrimitive?.contentOrNull
     if (returnedId != null && returnedId != videoId) return null
     val data = response["streamingData"] as? JsonObject ?: return null
-    if (!muxedOnly) {
-        selectDirectHlsManifest((data["hlsManifestUrl"] as? JsonPrimitive)?.contentOrNull,
-            videoId, quality, nowMs)?.let { return it }
-    }
+    val manifest = if (!muxedOnly) selectDirectHlsManifest(
+        (data["hlsManifestUrl"] as? JsonPrimitive)?.contentOrNull, videoId, quality, nowMs) else null
     fun JsonObject.number(name: String) = (get(name) as? JsonPrimitive)?.intOrNull
     fun JsonObject.string(name: String) = (get(name) as? JsonPrimitive)?.contentOrNull
     fun direct(format: JsonObject): Boolean {
@@ -192,6 +190,10 @@ internal fun selectDirectVideo(
     }.maxWithOrNull(compareBy<JsonObject> { it.number("height") ?: 0 }
         .thenBy { -(it.number("fps") ?: 30) }.thenBy { it.number("bitrate") ?: 0 })
     val muxed = choose(formats("formats").filter { (it.number("audioChannels") ?: 0) > 0 || it.string("audioQuality") != null })
+    // AUTO/360 can use one complete MP4 immediately, without master/media
+    // playlist round trips. Explicit HD retains the segmented quality ladder.
+    if (manifest != null && (muxed == null ||
+            (quality != CapsuleNewPipeQuality.AUTO && quality != CapsuleNewPipeQuality.P360))) return manifest
     val adaptive = formats("adaptiveFormats")
     val audio = adaptive.filter { it.string("mimeType")?.startsWith("audio/mp4") == true }
         .maxByOrNull { it.number("bitrate") ?: 0 }

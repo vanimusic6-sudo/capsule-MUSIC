@@ -101,7 +101,7 @@ import sh.calvin.reorderable.ReorderableItem
 import sh.calvin.reorderable.rememberReorderableLazyListState
 import java.text.Collator
 import java.time.LocalDateTime
-import java.util.Locale
+import androidx.compose.ui.platform.LocalLocale
 import java.util.UUID
 
 @OptIn(ExperimentalFoundationApi::class)
@@ -188,8 +188,8 @@ fun LibraryMixScreen(
     val artist = viewModel.artists.collectAsState()
     val playlist = viewModel.playlists.collectAsState()
 
-    val collator = Collator.getInstance(Locale.getDefault())
-    collator.strength = Collator.PRIMARY
+    val locale = LocalLocale.current.platformLocale
+    val collator = remember(locale) { Collator.getInstance(locale).apply { strength = Collator.PRIMARY } }
     val coroutineScope = rememberCoroutineScope()
 
     val lazyListState = rememberLazyListState()

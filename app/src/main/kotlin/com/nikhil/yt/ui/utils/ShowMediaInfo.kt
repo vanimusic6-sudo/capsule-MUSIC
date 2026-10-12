@@ -76,13 +76,14 @@ import com.nikhil.yt.utils.rememberEnumPreference
 import com.nikhil.yt.utils.rememberPreference
 import android.content.ClipData
 import android.content.ClipboardManager
-import java.util.Locale
+import androidx.compose.ui.platform.LocalLocale
 
 @Composable
 fun ShowMediaInfo(videoId: String) {
     if (videoId.isBlank() || videoId.isEmpty()) return
 
     val windowInsets = WindowInsets.systemBars
+    val locale = LocalLocale.current.platformLocale
 
     var info by remember {
         mutableStateOf<MediaInfo?>(null)
@@ -163,7 +164,7 @@ fun ShowMediaInfo(videoId: String) {
                                     loudnessDb = format.loudnessDb,
                                     perceptualLoudnessDb = format.perceptualLoudnessDb,
                                 )?.let { measured ->
-                                    String.format(Locale.getDefault(), "%.2f LUFS", measured)
+                                    String.format(locale, "%.2f LUFS", measured)
                                 }
                             },
                             stringResource(R.string.volume) to if (playerConnection != null)

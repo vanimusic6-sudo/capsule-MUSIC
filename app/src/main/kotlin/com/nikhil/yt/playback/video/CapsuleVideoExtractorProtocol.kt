@@ -45,6 +45,7 @@ internal object CapsuleVideoIpc {
     const val METHOD_INVALIDATE = "invalidate"
     const val EXTRA_REQUEST_ID = "request_id"
     const val REQUEST_TIMEOUT_MS = 20_000L
+    const val EXTRA_ROUTE_TIMINGS = "route_timings"
 
     const val EXTRA_VIDEO_ID = "video_id"
     const val EXTRA_QUALITY = "quality"

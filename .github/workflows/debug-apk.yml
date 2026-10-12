@@ -50,7 +50,6 @@ jobs:
           EOF
 
       - name: Run Android lint
-        continue-on-error: true
         run: |
           gradle :app:lintUniversalDebug --stacktrace --no-daemon
 
@@ -80,6 +79,7 @@ jobs:
             --tests 'com.nikhil.yt.ui.UiEnergyRegressionTest' \
             --tests 'com.nikhil.yt.ui.player.CapsuleVideoArtworkTransitionTest' \
             --tests 'com.nikhil.yt.ui.player.CapsuleVideoMorphPixelsTest' \
+            --tests 'com.nikhil.yt.ui.player.CapsuleVideoFramingTest' \
             --tests 'com.nikhil.yt.models.MediaMetadataArtistMergeTest' \
             --tests 'com.nikhil.yt.playback.video.CapsuleVideoResolveCoordinatorTest' \
             --tests 'com.nikhil.yt.playback.video.CapsuleVideoChunkedDataSourceTest' \

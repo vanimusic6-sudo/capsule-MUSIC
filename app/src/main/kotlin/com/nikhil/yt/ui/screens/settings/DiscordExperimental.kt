@@ -45,7 +45,7 @@ fun DiscordExperimental(
             LocalPlayerAwareWindowInsets.current
                 .only(WindowInsetsSides.Horizontal),
     ) { inner ->
-        Column(Modifier.fillMaxSize()) {
+        Column(Modifier.fillMaxSize().padding(inner).consumeWindowInsets(inner)) {
             TopAppBar(
                 title = { Text(stringResource(R.string.experiment_settings)) },
                 navigationIcon = {

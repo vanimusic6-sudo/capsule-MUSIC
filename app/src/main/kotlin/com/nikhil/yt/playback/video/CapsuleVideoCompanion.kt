@@ -3,6 +3,7 @@
 package com.nikhil.yt.playback.video
 
 import android.content.Context
+import android.os.SystemClock
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
@@ -49,6 +50,7 @@ internal class CapsuleVideoCompanion(
     )
     fun start(id: String, item: MediaItem, volume: Float) {
         frameRetention.clear()
+        frameRetention.startClip(id)
         session.start(id, item, volume)
     }
     fun setForeground(value: Boolean) = session.setForeground(value)
@@ -89,6 +91,8 @@ internal class CapsuleVideoSession(
     private var seamJob: Job? = null
     private var watchdog: Job? = null
     private var starting = false
+    private var startedAtMs = 0L
+    private var readyReported = false
     private val rendering get() = foreground && surfaceAttached
     private val hasAudio get() = video.currentTracks.groups.any {
         it.type == C.TRACK_TYPE_AUDIO && it.isSelected
@@ -126,12 +130,18 @@ internal class CapsuleVideoSession(
         override fun onRenderedFirstFrame() {
             if (id == null || !rendering) return
             firstFrame = true
-            Timber.tag("CapsuleVideo").i("first-frame session=%s generation=%s", id, generation)
+            Timber.tag("CapsuleVideo").i("first-frame session=%s generation=%s prepareMs=%s", id, generation,
+                SystemClock.elapsedRealtime() - startedAtMs)
             evaluate()
         }
         override fun onEvents(player: Player, events: Player.Events) = evaluate()
         override fun onPlayerError(error: PlaybackException) = fail(error)
         override fun onPlaybackStateChanged(playbackState: Int) {
+            if (playbackState == Player.STATE_READY && id != null && !readyReported) {
+                readyReported = true
+                Timber.tag("CapsuleVideo").i("VIDEO timing ready session=%s prepareMs=%s", id,
+                    SystemClock.elapsedRealtime() - startedAtMs)
+            }
             if (playbackState == Player.STATE_ENDED && id != null) {
                 // A clip can be shorter than the album track. Restore MUSIC
                 // once; an ordinary end is not a CDN failure to retry.
@@ -172,6 +182,7 @@ internal class CapsuleVideoSession(
             aligned = true
             val target = targetPosition()
             if (abs(video.currentPosition - target) > 400L) {
+                Timber.tag("CapsuleVideo").i("VIDEO timing align session=%s deltaMs=%s", current, target - video.currentPosition)
                 firstFrame = false
                 frameReported = false
                 onFrameUnavailable(current)
@@ -257,6 +268,8 @@ internal class CapsuleVideoSession(
     fun start(mediaId: String, item: MediaItem, outputVolume: Float) {
         stop()
         id = mediaId
+        startedAtMs = SystemClock.elapsedRealtime()
+        readyReported = false
         val lease = generation
         volume = outputVolume.coerceIn(0f, 1f)
         audio.addListener(audioListener)

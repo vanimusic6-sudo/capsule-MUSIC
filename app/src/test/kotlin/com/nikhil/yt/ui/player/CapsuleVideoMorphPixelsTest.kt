@@ -32,7 +32,7 @@ import kotlin.math.roundToInt
 class CapsuleVideoMorphPixelsTest {
     @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
 
-    @Test fun openingUsesAnOpaqueApertureAndClosingDoesNotSnapStraightToTheCover() {
+    @Test fun contentHandoverFinishesEarlyAndClosingRetainsTheVideoInitially() {
         val presenting = mutableStateOf(false)
         val needed = mutableStateOf(true)
         compose.setContent {
@@ -51,15 +51,15 @@ class CapsuleVideoMorphPixelsTest {
         compose.runOnIdle { presenting.value = true }
         compose.mainClock.advanceTimeByFrame()
         compose.waitForIdle()
-        compose.mainClock.advanceTimeBy(120)
-        // A crossfade would produce purple here. The new aperture shows the untouched video.
+        compose.mainClock.advanceTimeBy(250)
+        // Content handover is short; the rest of the physical settling is opaque.
         assertEquals(AndroidColor.RED, centre())
         compose.mainClock.advanceTimeBy(500)
         assertEquals(AndroidColor.RED, centre())
         compose.runOnIdle { needed.value = false; presenting.value = false }
         compose.mainClock.advanceTimeByFrame()
         compose.waitForIdle()
-        compose.mainClock.advanceTimeBy(120)
+        compose.mainClock.advanceTimeBy(32)
         assertEquals("closing must initially retain the video's still", AndroidColor.RED, centre())
         compose.mainClock.autoAdvance = true
         compose.waitForIdle()
