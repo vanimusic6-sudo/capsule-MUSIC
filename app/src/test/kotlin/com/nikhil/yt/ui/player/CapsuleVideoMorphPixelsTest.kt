@@ -25,6 +25,7 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 import kotlin.math.roundToInt
+import java.io.File
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35], application = Application::class, qualifiers = "w400dp-h800dp-xhdpi")
@@ -46,27 +47,31 @@ class CapsuleVideoMorphPixelsTest {
                 artwork = { Box(Modifier.fillMaxSize().background(Color.Blue)) },
             )
         }
-        assertEquals(AndroidColor.BLUE, centre())
+        assertEquals(AndroidColor.BLUE, centre("audio"))
         compose.mainClock.autoAdvance = false
         compose.runOnIdle { presenting.value = true }
         compose.mainClock.advanceTimeByFrame()
         compose.waitForIdle()
-        compose.mainClock.advanceTimeBy(250)
+        compose.mainClock.advanceTimeBy(64)
+        centre("open-64")
+        compose.mainClock.advanceTimeBy(186)
         // Content handover is short; the rest of the physical settling is opaque.
-        assertEquals(AndroidColor.RED, centre())
+        assertEquals(AndroidColor.RED, centre("open-250"))
         compose.mainClock.advanceTimeBy(500)
-        assertEquals(AndroidColor.RED, centre())
+        assertEquals(AndroidColor.RED, centre("video"))
         compose.runOnIdle { needed.value = false; presenting.value = false }
         compose.mainClock.advanceTimeByFrame()
         compose.waitForIdle()
         compose.mainClock.advanceTimeBy(32)
-        assertEquals("closing must initially retain the video's still", AndroidColor.RED, centre())
+        assertEquals("closing must initially retain the video's still", AndroidColor.RED, centre("close-32"))
+        compose.mainClock.advanceTimeBy(96)
+        centre("close-128")
         compose.mainClock.autoAdvance = true
         compose.waitForIdle()
-        assertEquals(AndroidColor.BLUE, centre())
+        assertEquals(AndroidColor.BLUE, centre("closed"))
     }
 
-    private fun centre(): Int {
+    private fun centre(snapshotName: String): Int {
         compose.waitForIdle()
         val bounds = compose.onNodeWithTag("media-slot").fetchSemanticsNode().boundsInRoot
         lateinit var bitmap: Bitmap
@@ -75,6 +80,9 @@ class CapsuleVideoMorphPixelsTest {
             val canvas = Canvas(bitmap)
             canvas.translate(-bounds.left, -bounds.top)
             compose.activity.findViewById<View>(android.R.id.content).draw(canvas)
+            val output = File("build/video-morph-preview/$snapshotName.png")
+            output.parentFile.mkdirs()
+            output.outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
         }
         return bitmap.getPixel(bitmap.width / 2, bitmap.height / 2).also { bitmap.recycle() }
     }

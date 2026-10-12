@@ -92,6 +92,17 @@ jobs:
             --tests 'com.nikhil.yt.playback.video.VideoStreamCacheTest' \
             --stacktrace --no-daemon
 
+      - name: Upload video regression evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: capsule-video-regression-evidence
+          path: |
+            app/build/video-morph-preview/*.png
+            app/build/test-results/testUniversalDebugUnitTest/*.xml
+          if-no-files-found: warn
+          retention-days: 14
+
       - name: Test search summary metadata
         run: |
           gradle :innertube:test \

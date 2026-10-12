@@ -105,9 +105,8 @@ private fun CapsuleVideoTextureOutput(service: MusicService, player: Player, ret
             var sampledMediaId: String? = null
             fun sampleBorders() {
                 val mediaId = player.currentMediaItem?.mediaId ?: return
-                if (sampledMediaId == mediaId) return
+                if (sampledMediaId == mediaId || sampling?.isActive == true) return
                 if (retention.borderZoom.value > 1f) return
-                sampledMediaId = mediaId
                 sampling?.cancel()
                 sampling = scope.launch {
                     val consensus = CapsuleVideoBorderConsensus()
@@ -121,6 +120,7 @@ private fun CapsuleVideoTextureOutput(service: MusicService, player: Player, ret
                                 finally { snapshot.recycle() }
                             val agreed = consensus.offer(insets)
                             if (agreed != null) {
+                                sampledMediaId = mediaId
                                 val size = player.videoSize
                                 val aspect = if (size.height > 0) size.width * size.pixelWidthHeightRatio / size.height else 16f / 9f
                                 retention.setBorderZoom(mediaId, agreed.zoom(aspect, 16f / 9f))
@@ -128,6 +128,7 @@ private fun CapsuleVideoTextureOutput(service: MusicService, player: Player, ret
                             }
                         }
                     }
+                    sampledMediaId = mediaId
                 }
             }
             retention.registerCapture(view) {
@@ -146,6 +147,8 @@ private fun CapsuleVideoTextureOutput(service: MusicService, player: Player, ret
                 }
                 override fun onPositionDiscontinuity(oldPosition: Player.PositionInfo, newPosition: Player.PositionInfo, reason: Int) {
                     view.hasVideoFrame = false
+                    sampling?.cancel()
+                    sampling = null
                 }
             }
             player.addListener(listener)
