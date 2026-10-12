@@ -36,9 +36,11 @@ data class CapsuleNewPipeResolved(
     val backend: String = "newpipe",
     val delivery: CapsuleVideoDelivery = CapsuleVideoDelivery.PROGRESSIVE,
     val maxHeight: Int = 720,
+    val dashManifest: String? = null,
+    val userAgent: String? = null,
 )
 
-enum class CapsuleVideoDelivery { PROGRESSIVE, HLS }
+enum class CapsuleVideoDelivery { PROGRESSIVE, HLS, DASH }
 
 enum class CapsuleNewPipeFailure {
     UNAVAILABLE, NETWORK, EXTRACTOR, RATE_LIMITED, BOT_BLOCKED, UNKNOWN
@@ -57,6 +59,7 @@ object CapsuleNewPipeExtractor {
     private data class Inventory(
         val videoStreams: List<VideoStream>, val videoOnlyStreams: List<VideoStream>,
         val audioStreams: List<AudioStream>, val hlsUrl: String,
+        val durationMs: Long,
     )
     private data class CachedInfo(val info: Inventory, val untilMs: Long)
     // At most two VIDEO items. Never shared with the MUSIC/AUDIO extractor.
@@ -95,7 +98,7 @@ object CapsuleNewPipeExtractor {
                 // StreamInfo additionally parses related items, thumbnails,
                 // chapters and previews. VIDEO already has its metadata.
                 Inventory(extractor.videoStreams, extractor.videoOnlyStreams,
-                    extractor.audioStreams, extractor.hlsUrl)
+                    extractor.audioStreams, extractor.hlsUrl, extractor.length * 1000L)
             }
         if (cached == null) {
             recentMetadata.remove(id)
@@ -143,35 +146,27 @@ object CapsuleNewPipeExtractor {
                 )
 
         val selectedMuxed = selectMuxed(muxed, quality)
-        if (!muxedOnly && (selectedMuxed == null ||
-                (quality != CapsuleNewPipeQuality.AUTO && quality != CapsuleNewPipeQuality.P360))) {
-            selectDirectHlsManifest(info.hlsUrl, id, quality, now)?.let {
-                return it.copy(backend = "newpipe")
-            }
+        if (!muxedOnly) {
+            val tracks = adaptiveVideo.map { v -> CapsuleDashTrack(v.content, v.itag,
+                v.format?.mimeType.orEmpty(), v.codec.orEmpty(), v.bitrate,
+                v.initStart.toLong(), v.initEnd.toLong(), v.indexStart.toLong(), v.indexEnd.toLong(), v.width, v.height, v.fps) }
+            val audioTracks = info.audioStreams.filter(::isProgressiveUrl).map { a -> CapsuleDashTrack(a.content, a.itag,
+                a.format?.mimeType.orEmpty(), a.codec.orEmpty(), a.bitrate,
+                a.initStart.toLong(), a.initEnd.toLong(), a.indexStart.toLong(), a.indexEnd.toLong()) }
+            indexedDashVideo(id, info.durationMs, tracks, audioTracks, quality,
+                (tracks + audioTracks).minOfOrNull { extractExpiryMs(it.url) } ?: now)?.let { return it }
         }
-
         if (muxedOnly) {
             return selectedMuxed?.toResolved(id, audio = null)
                 ?: throw ContentNotAvailableException("NewPipe returned no muxed VIDEO stream")
         }
-
-        /*
-         * AUTO is intentionally muxed-first. One URL means one timeline and one
-         * MediaSource, which is significantly more tolerant of seek/resume and
-         * stale-stream recovery than merging separate progressive tracks.
-         */
-        if (quality == CapsuleNewPipeQuality.AUTO || quality == CapsuleNewPipeQuality.P360) {
-            selectedMuxed?.let { return it.toResolved(id, audio = null) }
-            selectAdaptive(adaptiveVideo, quality)?.let { video ->
-                requireNotNull(audio) { "NewPipe returned video-only stream without audio" }
-                return video.toResolved(id, audio)
-            }
-        } else {
-            selectAdaptive(adaptiveVideo, quality)?.let { video ->
-                if (audio != null) return video.toResolved(id, audio)
-            }
-            selectedMuxed?.let { return it.toResolved(id, audio = null) }
+        selectDirectHlsManifest(info.hlsUrl, id, quality, now)?.let { return it.copy(backend = "newpipe") }
+        val selectedAdaptive = if (audio != null) selectAdaptive(adaptiveVideo, quality) else null
+        if (selectedAdaptive != null && selectedAdaptive.height > (selectedMuxed?.height ?: 0)) {
+            return selectedAdaptive.toResolved(id, audio)
         }
+        selectedMuxed?.let { return it.toResolved(id, audio = null) }
+        selectedAdaptive?.let { return it.toResolved(id, audio) }
 
         throw ContentNotAvailableException("NewPipe returned no compatible VIDEO stream")
     }
@@ -184,7 +179,9 @@ object CapsuleNewPipeExtractor {
     ): CapsuleNewPipeResolved = resolveVideoRoutes(failedBackend, health = routeHealth,
         onAttempt = { route, elapsed, success -> onAttempt(route.wireName, elapsed, success) }) { route ->
         when (route) {
+            CapsuleVideoRoute.ANDROID_VR -> CapsuleDirectVideoExtractor.resolveVr(videoId, quality, muxedOnly)
             CapsuleVideoRoute.VISIONOS -> CapsuleDirectVideoExtractor.resolve(videoId, quality, muxedOnly)
+            CapsuleVideoRoute.PIPEPIPE -> CapsulePipePipeExtractor.resolve(videoId, quality, muxedOnly)
             CapsuleVideoRoute.ANDROID_REEL -> CapsuleDirectVideoExtractor.resolveReel(videoId, quality)
             CapsuleVideoRoute.NEWPIPE -> resolve(videoId, quality, muxedOnly)
         }
@@ -228,11 +225,11 @@ object CapsuleNewPipeExtractor {
             YouTubeFailureKind.FORBIDDEN -> CapsuleNewPipeFailure.EXTRACTOR
             YouTubeFailureKind.NONE ->
                 when {
-                    throwable is ReCaptchaException -> CapsuleNewPipeFailure.BOT_BLOCKED
-                    throwable is ContentNotAvailableException -> CapsuleNewPipeFailure.UNAVAILABLE
+                    throwable is ReCaptchaException || throwable is dev.maxrave.pipepipe.extractor.exceptions.ReCaptchaException -> CapsuleNewPipeFailure.BOT_BLOCKED
+                    throwable is ContentNotAvailableException || throwable is dev.maxrave.pipepipe.extractor.exceptions.ContentNotAvailableException -> CapsuleNewPipeFailure.UNAVAILABLE
                     throwable is SocketTimeoutException || throwable is IOException ->
                         CapsuleNewPipeFailure.NETWORK
-                    throwable is ExtractionException -> CapsuleNewPipeFailure.EXTRACTOR
+                    throwable is ExtractionException || throwable is dev.maxrave.pipepipe.extractor.exceptions.ExtractionException -> CapsuleNewPipeFailure.EXTRACTOR
                     else -> CapsuleNewPipeFailure.UNKNOWN
                 }
         }
@@ -258,7 +255,7 @@ object CapsuleNewPipeExtractor {
 
         return streams
             .filter { it.height <= maxHeight }
-            .maxWithOrNull(compareBy<VideoStream> { it.height }.thenBy { -it.fps }.thenBy { it.bitrate })
+            .maxWithOrNull(compareBy<VideoStream> { it.height }.thenBy { it.fps }.thenBy { it.bitrate })
     }
 
     private fun selectAdaptive(
@@ -276,7 +273,7 @@ object CapsuleNewPipeExtractor {
 
         return streams
             .filter { it.height <= target }
-            .maxWithOrNull(compareBy<VideoStream> { it.height }.thenBy { -it.fps }.thenBy { it.bitrate })
+            .maxWithOrNull(compareBy<VideoStream> { it.height }.thenBy { it.fps }.thenBy { it.bitrate })
     }
 
     private fun VideoStream.toResolved(

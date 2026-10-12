@@ -20,9 +20,9 @@ class CapsuleDirectVideoExtractorTest {
     }
     private fun select(data: JsonObject, quality: CapsuleNewPipeQuality = CapsuleNewPipeQuality.AUTO, muxedOnly: Boolean = false) =
         selectDirectVideo(data, "abcdefghijk", quality, muxedOnly, now)
-    @Test fun autoSelectsMuxedAndExplicit720SelectsMatchingAudioPair() {
+    @Test fun autoAndExplicit720KeepTheBestQualityWithMatchingAudio() {
         val data = response(listOf(format(360, 18, true)), listOf(format(720, 136), format(0, 140)))
-        assertEquals(18, select(data)!!.videoItag)
+        assertEquals(136, select(data)!!.videoItag)
         val hd = select(data, CapsuleNewPipeQuality.P720)!!
         assertEquals(136, hd.videoItag); assertEquals(140, hd.audioItag)
         assertEquals(18, select(data, CapsuleNewPipeQuality.P720, true)!!.videoItag)
@@ -60,15 +60,14 @@ class CapsuleDirectVideoExtractorTest {
         assertNull(selectDirectHlsManifest(prefix + "2000/file/index.m3u8?n=unsolved", "abcdefghijk", CapsuleNewPipeQuality.AUTO, now))
         assertNull(selectDirectHlsManifest(prefix + "2000/file/index.m3u8?range=0-1", "abcdefghijk", CapsuleNewPipeQuality.AUTO, now))
     }
-    @Test fun completeMuxedMp4AvoidsPlaylistRoundTripsInAutoButExplicitHdKeepsHls() {
+    @Test fun autoKeepsSegmentedHdRatherThanSilentlyDroppingToMuxed360() {
         val base = response(listOf(format(360, 18, true)))
         val data = JsonObject(base.toMutableMap().apply {
             put("streamingData", JsonObject(base["streamingData"]!!.jsonObject.toMutableMap().apply {
                 put("hlsManifestUrl", JsonPrimitive("https://manifest.googlevideo.com/api/manifest/hls_playlist/expire/2000/file/index.m3u8"))
             }))
         })
-        assertEquals(CapsuleVideoDelivery.PROGRESSIVE, select(data)!!.delivery)
-        assertEquals(18, select(data)!!.videoItag)
+        assertEquals(CapsuleVideoDelivery.HLS, select(data)!!.delivery)
         assertEquals(CapsuleVideoDelivery.HLS, select(data, CapsuleNewPipeQuality.P720)!!.delivery)
     }
     @Test fun reelRequiresExactIdAndAMuxedSoundtrackWithoutCipherOrOversizedFormats() {

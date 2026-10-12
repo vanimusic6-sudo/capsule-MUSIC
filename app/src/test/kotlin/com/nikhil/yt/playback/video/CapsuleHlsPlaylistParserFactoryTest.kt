@@ -58,14 +58,14 @@ class CapsuleHlsPlaylistParserFactoryTest {
         assertTrue(playlist.variants.all { it.format.codecs!!.startsWith("avc1") })
         assertEquals(listOf("Original"), playlist.audios.map { it.name })
     }
-    @Test fun keepsTheHeightLadderButAvoidsDuplicateSixtyFpsRenditions() {
+    @Test fun keepsTheNativeFrameRateAndTheHeightLadder() {
         val text = master(360, 720).replace("BANDWIDTH=1440000,", "BANDWIDTH=1440000,FRAME-RATE=30,") + """
             #EXT-X-STREAM-INF:BANDWIDTH=2500000,RESOLUTION=1280x720,FRAME-RATE=60,CODECS="avc1.4d401f,mp4a.40.2",AUDIO="a"
             sixty.m3u8
         """.trimIndent()
         val playlist = parse(text) as HlsMultivariantPlaylist
-        assertEquals(listOf(360, 720), playlist.variants.map { it.format.height })
-        assertFalse(playlist.variants.any { it.format.frameRate == 60f })
+        assertEquals(listOf(360, 720, 720), playlist.variants.map { it.format.height })
+        assertTrue(playlist.variants.any { it.format.frameRate == 60f })
         val onlySixty = parse(text.replace("FRAME-RATE=30,", "FRAME-RATE=60,")) as HlsMultivariantPlaylist
         assertTrue(onlySixty.variants.any { it.format.height == 720 && it.format.frameRate == 60f })
     }

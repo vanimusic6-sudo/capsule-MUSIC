@@ -380,6 +380,33 @@ class CapsuleVideoSessionTest {
         assertEquals(0f, f.clip.volume)
         f.session.stop()
     }
+    @Test fun failedClipNeverRewindsOrRebuildsTheHealthyMusicPlayer() = runTest {
+        val f = Fixture(this); f.start(); f.clip.ready(); f.clip.frame()
+        advanceTimeBy(261); runCurrent()
+        val item = f.music.item
+        f.clip.position = 20_000L
+        f.music.position = 32_000L
+        val error = PlaybackException("VIDEO HTTP 403", java.io.IOException("403"), PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS)
+        f.clip.listeners.toList().forEach { it.onPlayerError(error) }
+        assertEquals(1, f.failures.size)
+        assertTrue(f.music.seeks.isEmpty())
+        assertEquals(32_000L, f.music.position)
+        assertSame(item, f.music.item)
+        assertEquals(0, f.music.prepares)
+        assertEquals(0, f.music.replacements)
+        assertTrue(f.music.intent)
+        assertEquals(1f, f.music.volume)
+        assertEquals(0f, f.clip.volume)
+        f.session.stop()
+    }
+    @Test fun intentionalSwitchBackToMusicStillPreservesTheVideoPosition() = runTest {
+        val f = Fixture(this); f.start(); f.clip.ready(); f.clip.frame()
+        advanceTimeBy(261); runCurrent()
+        f.clip.position = 20_000L; f.music.position = 22_000L
+        f.session.stop()
+        assertEquals(listOf(20_000L), f.music.seeks)
+    }
+
     @Test fun volumeChangeDuringSeamUsesLatestValueAndStopCancelsIt() = runTest {
         val f = Fixture(this); f.start(); f.clip.ready(); f.clip.frame()
         f.session.setVolume(0.3f)

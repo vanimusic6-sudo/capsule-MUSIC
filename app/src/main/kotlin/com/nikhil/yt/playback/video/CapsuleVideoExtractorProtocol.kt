@@ -22,6 +22,8 @@ data class CapsuleResolvedVideo(
     val backend: String = "newpipe",
     val delivery: CapsuleVideoDelivery = CapsuleVideoDelivery.PROGRESSIVE,
     val maxHeight: Int = 720,
+    val dashManifest: String? = null,
+    val userAgent: String? = null,
 ) {
     val adaptive: Boolean
         get() = !audioUrl.isNullOrBlank()
@@ -55,6 +57,8 @@ internal object CapsuleVideoIpc {
     const val EXTRA_BACKEND = "backend"
     const val EXTRA_DELIVERY = "delivery"
     const val EXTRA_MAX_HEIGHT = "max_height"
+    const val EXTRA_DASH_MANIFEST = "dash_manifest"
+    const val EXTRA_USER_AGENT = "user_agent"
     const val EXTRA_SUCCESS = "success"
     const val EXTRA_VIDEO_URL = "video_url"
     const val EXTRA_AUDIO_URL = "audio_url"
@@ -88,6 +92,8 @@ internal object CapsuleVideoIpc {
             putString(EXTRA_BACKEND, resolved.backend)
             putString(EXTRA_DELIVERY, resolved.delivery.name)
             putInt(EXTRA_MAX_HEIGHT, resolved.maxHeight)
+            putString(EXTRA_DASH_MANIFEST, resolved.dashManifest)
+            putString(EXTRA_USER_AGENT, resolved.userAgent)
         }
 
     fun failureBundle(

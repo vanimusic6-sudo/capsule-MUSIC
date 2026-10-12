@@ -100,6 +100,16 @@ object VideoExtractionRequests {
         }
     }
 
+    /** Capture ownership before enqueue: OkHttp callbacks run on other threads. */
+    internal fun registerAsync(call: Call): () -> Unit {
+        val state = current.get()
+        val route = currentRoute.get()
+        state?.register(call)
+        try { route?.register(call) }
+        catch (e: Exception) { state?.unregister(call); throw e }
+        return { route?.unregister(call); state?.unregister(call) }
+    }
+
     /** A route timing out leaves the request alive for the next independent route. */
     internal fun <T> withRouteBudget(timeoutMs: Long, block: () -> T): T {
         check(currentRoute.get() == null) { "Nested VIDEO route budget" }

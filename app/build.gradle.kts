@@ -222,6 +222,7 @@ dependencies {
 
     implementation(libs.media3)
     implementation("androidx.media3:media3-exoplayer-hls:${libs.versions.media3.get()}")
+    implementation("androidx.media3:media3-exoplayer-dash:${libs.versions.media3.get()}")
     implementation(libs.media3.session)
     implementation(libs.media3.okhttp)
     implementation("androidx.media3:media3-ui:${libs.versions.media3.get()}")

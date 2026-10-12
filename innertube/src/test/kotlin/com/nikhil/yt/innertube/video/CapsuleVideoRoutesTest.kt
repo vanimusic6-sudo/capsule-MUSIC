@@ -16,23 +16,23 @@ class CapsuleVideoRoutesTest {
             when (route) {
                 CapsuleVideoRoute.VISIONOS -> throw IOException("player unavailable")
                 CapsuleVideoRoute.ANDROID_REEL -> stream
-                CapsuleVideoRoute.NEWPIPE -> throw IOException("parser unavailable")
+                else -> throw IOException("parser unavailable")
             }
         }
-        assertEquals(listOf(CapsuleVideoRoute.VISIONOS, CapsuleVideoRoute.NEWPIPE, CapsuleVideoRoute.ANDROID_REEL), calls)
+        assertEquals(listOf(CapsuleVideoRoute.ANDROID_VR, CapsuleVideoRoute.VISIONOS, CapsuleVideoRoute.PIPEPIPE, CapsuleVideoRoute.NEWPIPE, CapsuleVideoRoute.ANDROID_REEL), calls)
         assertEquals("direct-android-reel", result.backend)
     }
     @Test fun recoveringVisionUsesDifferentEndpointBeforeRepeatingFailedBackend() {
         val calls = mutableListOf<CapsuleVideoRoute>()
         val result = resolveVideoRoutes("direct-visionos") { calls += it; stream }
-        assertEquals(listOf(CapsuleVideoRoute.NEWPIPE), calls)
-        assertEquals("newpipe", result.backend)
+        assertEquals(listOf(CapsuleVideoRoute.ANDROID_VR), calls)
+        assertEquals("direct-android-vr", result.backend)
     }
     @Test fun brokenNewPipeParserDoesNotPreventAnIndependentRecovery() {
         val result = resolveVideoRoutes("newpipe") { route ->
             if (route == CapsuleVideoRoute.NEWPIPE) error("Broken parser") else stream
         }
-        assertEquals("direct-visionos", result.backend)
+        assertEquals("direct-android-vr", result.backend)
     }
     @Test fun rateLimitStopsTheChainAndBotVerdictSurvivesLaterNetworkFailure() {
         var calls = 0
@@ -68,20 +68,20 @@ class CapsuleVideoRoutesTest {
     @Test fun fallbackSuccessDoesNotStickAfterTheFastEndpointRecovers() {
         var now = 0L
         val health = CapsuleVideoRouteHealth { now }
-        health.failure(CapsuleVideoRoute.VISIONOS)
+        health.failure(CapsuleVideoRoute.ANDROID_VR)
         health.success(CapsuleVideoRoute.NEWPIPE)
-        assertEquals(CapsuleVideoRoute.NEWPIPE, health.order(null).first())
-        now = 46_000_000_000L
         assertEquals(CapsuleVideoRoute.VISIONOS, health.order(null).first())
-        assertEquals(CapsuleVideoRoute.NEWPIPE, health.order("direct-visionos").first())
+        now = 46_000_000_000L
+        assertEquals(CapsuleVideoRoute.ANDROID_VR, health.order(null).first())
+        assertEquals(CapsuleVideoRoute.VISIONOS, health.order("direct-android-vr").first())
     }
     @Test fun missingFormatOnOneClipDoesNotCooldownTheFastRouteForOtherClips() {
         val health = CapsuleVideoRouteHealth()
-        val first = resolveVideoRoutes(health = health) { if (it == CapsuleVideoRoute.VISIONOS) null else stream }
-        assertEquals("newpipe", first.backend)
+        val first = resolveVideoRoutes(health = health) { if (it == CapsuleVideoRoute.ANDROID_VR) null else stream }
+        assertEquals("direct-visionos", first.backend)
         val calls = mutableListOf<CapsuleVideoRoute>()
         val next = resolveVideoRoutes(health = health) { calls += it; stream }
-        assertEquals(listOf(CapsuleVideoRoute.VISIONOS), calls)
-        assertEquals("direct-visionos", next.backend)
+        assertEquals(listOf(CapsuleVideoRoute.ANDROID_VR), calls)
+        assertEquals("direct-android-vr", next.backend)
     }
 }

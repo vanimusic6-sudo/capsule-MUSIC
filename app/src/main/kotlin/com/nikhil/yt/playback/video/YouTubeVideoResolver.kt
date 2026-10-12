@@ -62,6 +62,8 @@ object YouTubeVideoResolver {
         val backend: String = "newpipe",
         val delivery: CapsuleVideoDelivery = CapsuleVideoDelivery.PROGRESSIVE,
         val maxHeight: Int = 720,
+    val dashManifest: String? = null,
+    val userAgent: String? = null,
     ) {
         val streamUrl: String
             get() = videoStreamUrl
@@ -385,6 +387,8 @@ object YouTubeVideoResolver {
             delivery = runCatching { CapsuleVideoDelivery.valueOf(bundle.getString(CapsuleVideoIpc.EXTRA_DELIVERY).orEmpty()) }
                 .getOrDefault(CapsuleVideoDelivery.PROGRESSIVE),
             maxHeight = bundle.getInt(CapsuleVideoIpc.EXTRA_MAX_HEIGHT, 720).coerceIn(1, 720),
+            dashManifest = bundle.getString(CapsuleVideoIpc.EXTRA_DASH_MANIFEST),
+            userAgent = bundle.getString(CapsuleVideoIpc.EXTRA_USER_AGENT),
         )
     }
 
@@ -419,6 +423,8 @@ object YouTubeVideoResolver {
             backend = backend,
             delivery = delivery,
             maxHeight = maxHeight,
+            dashManifest = dashManifest,
+            userAgent = userAgent,
         )
     }
 

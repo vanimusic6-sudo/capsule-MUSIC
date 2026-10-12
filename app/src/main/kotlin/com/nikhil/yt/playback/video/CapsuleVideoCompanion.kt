@@ -10,6 +10,7 @@ import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.Tracks
 import com.nikhil.yt.innertube.video.CapsuleVideoDelivery
+import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.upstream.DefaultBandwidthMeter
@@ -47,6 +48,9 @@ internal class CapsuleVideoCompanion(
         // AUDIO downloads must not make HLS assume the VIDEO host is fast.
         .setBandwidthMeter(DefaultBandwidthMeter.Builder(context).build())
         .setMediaSourceFactory(factory)
+        .setTrackSelector(DefaultTrackSelector(context).apply {
+            setParameters(buildUponParameters().setForceHighestSupportedBitrate(true))
+        })
         .setLoadControl(DefaultLoadControl.Builder()
             .setBufferDurationsMs(6_000, 12_000, 350, 1_500)
             .setPrioritizeTimeOverSizeThresholds(true).build())
@@ -476,15 +480,16 @@ internal class CapsuleVideoSession(
     private fun fail(cause: Throwable) {
         val failed = id ?: return
         Timber.tag("CapsuleVideo").w(cause, "session-failure id=%s; MUSIC restored", failed)
-        stop()
+        stop(synchronizeMusic = false)
         onFailure(failed, cause)
     }
-    fun stop(keepPrepared: Boolean = false) {
+    fun stop(keepPrepared: Boolean = false, synchronizeMusic: Boolean = true) {
         generation++
         watchdog?.cancel(); watchdog = null
         val wasActive = id != null
         val returnPosition = video.currentPosition
-        val syncMusic = committed && ownsSound && audio.currentMediaItem?.mediaId == id
+        // A failed/stalled clip has no authority to rewind healthy MUSIC.
+        val syncMusic = synchronizeMusic && committed && ownsSound && audio.currentMediaItem?.mediaId == id
         id = null
         if (wasActive) audio.removeListener(audioListener)
         if (syncMusic && abs(audio.currentPosition - returnPosition) > 400L) audio.seekTo(returnPosition)

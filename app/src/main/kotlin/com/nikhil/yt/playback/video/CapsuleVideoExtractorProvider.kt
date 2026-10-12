@@ -97,6 +97,8 @@ class CapsuleVideoExtractorProvider : ContentProvider() {
                         backend = resolved.backend,
                         delivery = resolved.delivery,
                         maxHeight = resolved.maxHeight,
+                        dashManifest = resolved.dashManifest,
+                        userAgent = resolved.userAgent,
                     ),
                 )
             },

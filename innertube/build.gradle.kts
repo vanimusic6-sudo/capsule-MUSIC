@@ -15,6 +15,8 @@ dependencies {
     implementation(libs.ktor.client.encoding)
     implementation(libs.brotli)
     implementation(libs.newpipe.extractor)
+    // Separate namespace: VIDEO fallback only, never replaces AUDIO/SoundCloud.
+    implementation("com.github.maxrave-dev:PipePipeExtractor:f8982ca9e7")
     implementation(libs.re2j)
     implementation(libs.rhino)
     testImplementation(libs.junit)

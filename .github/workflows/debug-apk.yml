@@ -89,6 +89,7 @@ jobs:
             --tests 'com.nikhil.yt.playback.video.CapsuleVideoSessionTest' \
             --tests 'com.nikhil.yt.playback.video.CapsuleVideoFrameRetentionTest' \
             --tests 'com.nikhil.yt.playback.video.CapsuleHlsPlaylistParserFactoryTest' \
+            --tests 'com.nikhil.yt.playback.video.CapsuleVideoIndexedDashTest' \
             --tests 'com.nikhil.yt.playback.video.CapsuleVideoDirectMediaSourceFactoryTest' \
             --tests 'com.nikhil.yt.playback.video.VideoStreamCacheTest' \
             --stacktrace --no-daemon
@@ -117,6 +118,8 @@ jobs:
             --tests 'com.nikhil.yt.innertube.YouTubeMusicVideoMatcherTest' \
             --tests 'com.nikhil.yt.innertube.ExplicitVideoOriginTest' \
             --tests 'com.nikhil.yt.innertube.video.CapsuleNewPipeExtractorTest' \
+            --tests 'com.nikhil.yt.innertube.video.CapsulePipePipeTransportTest' \
+            --tests 'com.nikhil.yt.innertube.video.CapsuleDashManifestTest' \
             --tests 'com.nikhil.yt.innertube.video.CapsuleDirectVideoExtractorTest' \
             --tests 'com.nikhil.yt.innertube.video.CapsuleVideoRoutesTest' \
             --tests 'com.nikhil.yt.innertube.video.VideoExtractionRequestsTest' \

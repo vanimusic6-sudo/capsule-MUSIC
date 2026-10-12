@@ -1094,9 +1094,18 @@ class MusicService :
         videoRecoveryAttempts = 0
     }
 
+    private fun restoreMusicAfterVideoFailure() {
+        videoReturnGapJob?.cancel()
+        videoReturnGapJob = null
+        videoReturnGapActive = false
+        videoAudioOwned = false
+        player.volume = effectiveAudioVolume
+    }
+
     private fun failVideoSession(mediaId: String, failure: Throwable) {
         val state = videoPlaybackState.value
         if (state.mediaId != mediaId || state.preferredMode != CapsulePlaybackMode.VIDEO) return
+        restoreMusicAfterVideoFailure()
         Timber.tag("CapsuleVideo").w(failure, "VIDEO session failed; original MUSIC continues")
         videoPlaybackState.value = state.copy(
             preferredMode = CapsulePlaybackMode.AUDIO, mode = CapsulePlaybackMode.AUDIO,
@@ -1109,6 +1118,7 @@ class MusicService :
     private fun recoverVideoSession(mediaId: String, failure: Throwable) {
         val state = videoPlaybackState.value
         if (state.mediaId != mediaId || state.preferredMode != CapsulePlaybackMode.VIDEO) return
+        restoreMusicAfterVideoFailure()
         val stream = activeResolvedVideo
         val recoverable = generateSequence(failure) { it.cause }.take(8).any {
             it is java.io.IOException ||

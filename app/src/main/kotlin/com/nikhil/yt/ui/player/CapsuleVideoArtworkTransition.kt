@@ -12,10 +12,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.BlurEffect
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.BlendMode
-import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.CornerRadius
@@ -29,7 +27,6 @@ import androidx.compose.ui.unit.dp
 import kotlin.math.min
 import kotlin.math.max
 import kotlin.math.roundToInt
-import kotlin.math.hypot
 import androidx.compose.runtime.key
 import androidx.compose.runtime.rememberUpdatedState
 
@@ -66,7 +63,7 @@ internal fun CapsuleVideoArtworkTransition(
     val immersive = motion == CapsuleVideoArtworkMotion.IMMERSIVE
     val reveal = key(transitionKey) { animateFloatAsState(
         targetValue = if (presentingVideo) 1f else 0f,
-        animationSpec = if (immersive) spring(dampingRatio = 0.96f, stiffness = 155f, visibilityThreshold = 0.001f)
+        animationSpec = if (immersive) spring(dampingRatio = 0.94f, stiffness = 135f, visibilityThreshold = 0.001f)
             else spring(dampingRatio = 0.86f, stiffness = 220f, visibilityThreshold = 0.001f),
         label = "capsule-cover-video",
     ) }
@@ -117,23 +114,21 @@ internal fun CapsuleVideoArtworkTransition(
                 Box(
                     Modifier.graphicsLayer {
                         val p = reveal.value.coerceIn(0f, 1f)
-                        alpha = if (immersive && !preparing.value) (1f - (p - 0.8f).coerceAtLeast(0f) / 0.2f).coerceIn(0f, 1f)
+                        // The whole cover flows within one rectangular silhouette.
+                        // The same phase runs backwards on close, and spring
+                        // velocity survives an interrupted/reversed gesture.
+                        val handover = ((p - 0.22f) / 0.62f).coerceIn(0f, 1f)
+                        val softened = handover * handover * (3f - 2f * handover)
+                        alpha = if (immersive && !preparing.value) 1f - softened
                             else if (showVideoContent()) 0f else 1f
-                        // A feathered mask only during the short Immersive
-                        // transition. No full-screen blur or playback timer.
-                        compositingStrategy = if (immersive && p > 0f && p < 1f) CompositingStrategy.Offscreen else CompositingStrategy.Auto
-                        val scale = max(frameWidth().toFloat() / coverWidth, frameHeight().toFloat() / coverHeight)
+                        val motionAmount = if (immersive && !preparing.value) 4f * p * (1f - p) else 0f
+                        // Artwork-only transient blur; no shader or blur remains
+                        // attached to the live video during ordinary playback.
+                        val blur = 2.dp.toPx() * motionAmount
+                        renderEffect = if (blur > 0.05f) BlurEffect(blur, blur) else null
+                        val scale = max(frameWidth().toFloat() / coverWidth, frameHeight().toFloat() / coverHeight) *
+                            (1f + 0.025f * motionAmount)
                         scaleX = scale; scaleY = scale
-                    }.drawWithContent {
-                        drawContent()
-                        val p = reveal.value.coerceIn(0f, 1f)
-                        if (immersive && !preparing.value && p > 0f && p < 1f) {
-                            val radius = (hypot(frameWidth().toFloat(), frameHeight().toFloat()) * 0.7f * (1f - p)).coerceAtLeast(1f)
-                            drawRect(Brush.radialGradient(
-                                0f to Color.Black, 0.78f to Color.Black, 1f to Color.Transparent,
-                                center = center, radius = radius,
-                            ), blendMode = BlendMode.DstIn)
-                        }
                     }.background(artworkBackground),
                     contentAlignment = Alignment.Center,
                 ) { artwork() }

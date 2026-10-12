@@ -84,7 +84,7 @@ class CapsuleVideoMorphPixelsTest {
             pixel == AndroidColor.RED || pixel == AndroidColor.BLUE)
     }
 
-    @Test fun immersiveCoverSpreadsWithAFeatheredEdgeAndSettlesWithoutAnEmptyFrame() {
+    @Test fun immersiveUsesOneSoftRectangularHandoverAndSettlesWithoutAnEmptyFrame() {
         val presenting = mutableStateOf(false)
         val needed = mutableStateOf(true)
         compose.setContent {
@@ -102,31 +102,36 @@ class CapsuleVideoMorphPixelsTest {
         compose.runOnIdle { presenting.value = true }
         compose.mainClock.advanceTimeByFrame()
         compose.waitForIdle()
-        compose.mainClock.advanceTimeBy(160)
-        assertFeatheredEdge("immersive-opening")
+        compose.mainClock.advanceTimeBy(64)
+        assertEquals("cover survives the beginning of the silhouette movement", AndroidColor.BLUE, centre("immersive-open-64"))
+        compose.mainClock.advanceTimeBy(96)
+        assertRectangularBlend("immersive-opening")
         compose.mainClock.advanceTimeBy(1_000)
         assertEquals(AndroidColor.RED, centre("immersive-video"))
         compose.runOnIdle { needed.value = false; presenting.value = false }
         compose.mainClock.advanceTimeByFrame()
         compose.waitForIdle()
         compose.mainClock.advanceTimeBy(160)
-        assertFeatheredEdge("immersive-closing")
+        assertRectangularBlend("immersive-closing")
         compose.mainClock.autoAdvance = true
         compose.waitForIdle()
         assertEquals(AndroidColor.BLUE, centre("immersive-closed"))
     }
 
-    private fun assertFeatheredEdge(name: String) {
+    private fun assertRectangularBlend(name: String) {
         val bitmap = snapshot(name)
         try {
             assertTrue("the centre never becomes an empty frame",
                 bitmap.getPixel(bitmap.width / 2, bitmap.height / 2) != AndroidColor.BLACK)
-            var feathered = false
-            for (y in 0 until bitmap.height step 4) for (x in 0 until bitmap.width step 4) {
-                val pixel = bitmap.getPixel(x, y)
-                if (AndroidColor.red(pixel) in 20..235 && AndroidColor.blue(pixel) in 20..235 && AndroidColor.green(pixel) < 10) feathered = true
+            val centre = bitmap.getPixel(bitmap.width / 2, bitmap.height / 2)
+            assertTrue("the handover is soft, with both opaque contents covering the same frame",
+                AndroidColor.red(centre) in 20..235 && AndroidColor.blue(centre) in 20..235)
+            // A radial mask would reveal a different colour away from the centre.
+            for (x in listOf(bitmap.width / 2 - 60, bitmap.width / 2 + 60)) {
+                val edge = bitmap.getPixel(x, bitmap.height / 2)
+                assertTrue(kotlin.math.abs(AndroidColor.red(centre) - AndroidColor.red(edge)) <= 3)
+                assertTrue(kotlin.math.abs(AndroidColor.blue(centre) - AndroidColor.blue(edge)) <= 3)
             }
-            assertTrue("Immersive has a spatially feathered cover boundary", feathered)
         } finally { bitmap.recycle() }
     }
 

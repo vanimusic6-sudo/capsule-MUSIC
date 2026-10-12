@@ -41,7 +41,15 @@ object CapsuleDirectVideoExtractor {
 
     @Synchronized
     fun resolve(videoId: String, quality: CapsuleNewPipeQuality, muxedOnly: Boolean): CapsuleNewPipeResolved? {
-        val identity = YouTubeClient.VISIONOS
+        return resolvePlayer(videoId, quality, muxedOnly, YouTubeClient.VISIONOS)
+    }
+
+    @Synchronized
+    fun resolveVr(videoId: String, quality: CapsuleNewPipeQuality, muxedOnly: Boolean): CapsuleNewPipeResolved? =
+        resolvePlayer(videoId, quality, muxedOnly, YouTubeClient.ANDROID_VR_1_65_10)
+
+    private fun resolvePlayer(videoId: String, quality: CapsuleNewPipeQuality, muxedOnly: Boolean,
+                              identity: YouTubeClient): CapsuleNewPipeResolved? {
         val deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(BUDGET_MS)
         val base = buildPlayerRequestPayload(
             client = identity, locale = YouTubeLocale("US", "en"),
@@ -54,17 +62,19 @@ object CapsuleDirectVideoExtractor {
             put("utcOffsetMinutes", JsonPrimitive(0))
         })
         val anonymousContext = JsonObject(context.toMutableMap().apply { put("client", clientContext) })
-        val visitor = guestVisitor(identity.clientId, identity.clientVersion, identity.userAgent,
-            anonymousContext, deadline)
+        // VR's anonymous player accepts its client context directly. Do not
+        // add a visitor bootstrap round trip to the indexed route.
+        val visitor = if (identity == YouTubeClient.ANDROID_VR_1_65_10) null else
+            guestVisitor(identity.clientId, identity.clientVersion, identity.userAgent, anonymousContext, deadline)
         val payload = JsonObject(base.toMutableMap().apply {
             put("context", JsonObject(anonymousContext.toMutableMap().apply {
-                put("client", JsonObject(clientContext.toMutableMap().apply { put("visitorData", JsonPrimitive(visitor)) }))
+                put("client", JsonObject(clientContext.toMutableMap().apply { visitor?.let { put("visitorData", JsonPrimitive(it)) } }))
             }))
             put("cpn", JsonPrimitive(nonce(12)))
         })
         val response = post("https://youtubei.googleapis.com/youtubei/v1/player?prettyPrint=false&t=${nonce(9)}&id=$videoId",
-            payload, deadline)
-        return selectDirectVideo(response, videoId, quality, muxedOnly)
+            payload, deadline, clientId = identity.clientId, clientVersion = identity.clientVersion, userAgent = identity.userAgent)
+        return selectDirectVideo(response, videoId, quality, muxedOnly)?.copy(userAgent = identity.userAgent)
     }
 
     /**
@@ -101,7 +111,7 @@ object CapsuleDirectVideoExtractor {
         }
         val response = post("https://youtubei.googleapis.com/youtubei/v1/reel/reel_item_watch?prettyPrint=false&t=${nonce(9)}&id=$videoId&\$fields=playerResponse",
             payload, deadline, clientId = "3", clientVersion = version, userAgent = userAgent)
-        return selectAndroidReelVideo(response, videoId, quality)
+        return selectAndroidReelVideo(response, videoId, quality)?.copy(userAgent = userAgent)
     }
 
     private fun guestVisitor(clientId: String, version: String, userAgent: String,
@@ -188,20 +198,34 @@ internal fun selectDirectVideo(
         (it.number("height") ?: 0) in 1..quality.maxHeight &&
             it.string("mimeType")?.startsWith("video/mp4") == true
     }.maxWithOrNull(compareBy<JsonObject> { it.number("height") ?: 0 }
-        .thenBy { -(it.number("fps") ?: 30) }.thenBy { it.number("bitrate") ?: 0 })
+        .thenBy { it.number("fps") ?: 30 }.thenBy { it.number("bitrate") ?: 0 })
     val muxed = choose(formats("formats").filter { (it.number("audioChannels") ?: 0) > 0 || it.string("audioQuality") != null })
-    // AUTO/360 can use one complete MP4 immediately, without master/media
-    // playlist round trips. Explicit HD retains the segmented quality ladder.
-    if (manifest != null && (muxed == null ||
-            (quality != CapsuleNewPipeQuality.AUTO && quality != CapsuleNewPipeQuality.P360))) return manifest
     val adaptive = formats("adaptiveFormats")
     val audio = adaptive.filter { it.string("mimeType")?.startsWith("audio/mp4") == true }
         .maxByOrNull { it.number("bitrate") ?: 0 }
-    val video = if (muxedOnly || quality == CapsuleNewPipeQuality.AUTO || quality == CapsuleNewPipeQuality.P360) {
-        muxed ?: if (!muxedOnly && audio != null) choose(adaptive) else null
-    } else {
-        (if (audio != null) choose(adaptive) else null) ?: muxed
-    } ?: return null
+    if (!muxedOnly) {
+        fun track(f: JsonObject): CapsuleDashTrack? {
+            val init = f["initRange"] as? JsonObject ?: return null
+            val index = f["indexRange"] as? JsonObject ?: return null
+            fun range(obj: JsonObject, key: String) = (obj[key] as? JsonPrimitive)?.longOrNull ?: -1L
+            val mime = f.string("mimeType").orEmpty()
+            return CapsuleDashTrack(f.string("url")!!, f.number("itag") ?: -1, mime.substringBefore(';'),
+                Regex("codecs=\"([^\"]+)\"").find(mime)?.groupValues?.get(1).orEmpty(), f.number("bitrate") ?: 0,
+                range(init, "start"), range(init, "end"), range(index, "start"), range(index, "end"),
+                f.number("width") ?: 0, f.number("height") ?: 0, f.number("fps") ?: 30)
+        }
+        val tracks = adaptive.mapNotNull(::track)
+        val duration = ((response["videoDetails"] as? JsonObject)?.get("lengthSeconds") as? JsonPrimitive)?.longOrNull?.times(1000L)
+            ?: adaptive.mapNotNull { (it["approxDurationMs"] as? JsonPrimitive)?.longOrNull }.maxOrNull() ?: 0L
+        indexedDashVideo(videoId, duration, tracks, tracks, quality,
+            tracks.minOfOrNull { signedVideoExpiryMs(it.url, nowMs) } ?: nowMs)?.let { return it }
+        if (manifest != null) return manifest
+    }
+    // Preserve the selected quality, including AUTO. A smaller muxed stream is
+    // only a fallback when indexed/segmented or higher-quality tracks are absent.
+    val adaptiveVideo = if (!muxedOnly && audio != null) choose(adaptive) else null
+    val video = if (adaptiveVideo != null && (adaptiveVideo.number("height") ?: 0) > (muxed?.number("height") ?: 0))
+        adaptiveVideo else muxed ?: adaptiveVideo ?: return null
     val soundtrack = if (video === muxed) null else audio ?: return null
     val urls = listOfNotNull(video.string("url"), soundtrack?.string("url"))
     val expiresAt = urls.minOf { url ->

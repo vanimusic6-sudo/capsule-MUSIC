@@ -5,7 +5,9 @@ import java.io.IOException
 import java.util.concurrent.TimeUnit
 
 internal enum class CapsuleVideoRoute(val wireName: String, val budgetMs: Long) {
+    ANDROID_VR("direct-android-vr", 4_000L),
     VISIONOS("direct-visionos", 4_000L),
+    PIPEPIPE("pipepipe", 10_000L),
     NEWPIPE("newpipe", 10_000L),
     ANDROID_REEL("direct-android-reel", 4_000L),
 }
