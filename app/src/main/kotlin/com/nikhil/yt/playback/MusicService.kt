@@ -1002,6 +1002,8 @@ class MusicService :
     private var videoRequestedAtMs = 0L
     val videoRenderPlayer: Player?
         get() = videoCompanion?.player
+    internal val videoFrameRetention
+        get() = videoCompanion?.frameRetention
     // UI readouts follow the clip's clock after its first presentation. The
     // MUSIC player still owns the canonical queue and user transport commands.
     val capsuleTimelinePlayer: Player

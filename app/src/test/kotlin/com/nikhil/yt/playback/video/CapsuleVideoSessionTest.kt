@@ -24,6 +24,7 @@ class CapsuleVideoSessionTest {
         var parameters = PlaybackParameters.DEFAULT
         val listeners = mutableListOf<Player.Listener>()
         val seeks = mutableListOf<Long>()
+        val intentWrites = mutableListOf<Boolean>()
         val player = Proxy.newProxyInstance(Player::class.java.classLoader, arrayOf(Player::class.java)) { _, method, args ->
             when (method.name) {
                 "addListener" -> { listeners += args!![0] as Player.Listener; null }
@@ -33,7 +34,7 @@ class CapsuleVideoSessionTest {
                 "getDuration" -> duration
                 "getPlaybackState" -> state
                 "getPlayWhenReady" -> intent
-                "setPlayWhenReady" -> { intent = args!![0] as Boolean; null }
+                "setPlayWhenReady" -> { intent = args!![0] as Boolean; intentWrites += intent; null }
                 "isPlaying" -> playing
                 "getCurrentTracks" -> tracks
                 "getVolume" -> volume
@@ -165,6 +166,24 @@ class CapsuleVideoSessionTest {
         assertEquals(seeksBefore, f.clip.seeks)
         assertEquals(ownersBefore, f.owned)
         assertFalse(f.clip.intent)
+        f.session.stop()
+    }
+    @Test fun pausedForegroundAndNativeFrameCallbacksNeverIssueEvenOnePlayCommand() = runTest {
+        val f = Fixture(this); f.start(); f.clip.ready(); f.clip.frame()
+        advanceTimeBy(261); runCurrent()
+        f.music.intent = false; f.clip.playing = false; f.music.event()
+        f.clip.intentWrites.clear()
+        val seeksBefore = f.clip.seeks.toList()
+        repeat(3) {
+            f.session.setForeground(false); f.session.setSurfaceAttached(false)
+            f.clip.event()
+            f.session.setSurfaceAttached(true); f.session.setForeground(true)
+            f.clip.frame(); f.clip.event()
+        }
+        assertTrue(f.clip.intentWrites.none { it })
+        assertFalse(f.clip.intent)
+        assertEquals(seeksBefore, f.clip.seeks)
+        assertEquals(listOf(true), f.owned)
         f.session.stop()
     }
     @Test fun hiddenSurfaceNeverTimesOutAndStaleSeamNeverMutesNewSong() = runTest {

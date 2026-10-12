@@ -43,15 +43,19 @@ internal class CapsuleVideoCompanion(
             .setPrioritizeTimeOverSizeThresholds(true).build())
         .setWakeMode(C.WAKE_MODE_LOCAL)
         .build()
+    internal val frameRetention = CapsuleVideoFrameRetention(player, scope)
     private val session = CapsuleVideoSession(
         audio, player, scope, onSoundOwned, onReady, onFailure, onFrameUnavailable, onBufferingChanged,
     )
-    fun start(id: String, item: MediaItem, volume: Float) = session.start(id, item, volume)
+    fun start(id: String, item: MediaItem, volume: Float) {
+        frameRetention.clear()
+        session.start(id, item, volume)
+    }
     fun setForeground(value: Boolean) = session.setForeground(value)
     fun setSurfaceAttached(value: Boolean) = session.setSurfaceAttached(value)
     fun setVolume(value: Float) = session.setVolume(value)
-    fun stop() = session.stop()
-    fun release() { session.release(); player.release() }
+    fun stop() { frameRetention.retainExitFrame(); session.stop() }
+    fun release() { frameRetention.release(); session.release(); player.release() }
 }
 
 /**

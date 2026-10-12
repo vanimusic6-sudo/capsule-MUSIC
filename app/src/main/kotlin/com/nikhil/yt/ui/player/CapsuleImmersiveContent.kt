@@ -628,13 +628,14 @@ internal fun CapsuleImmersiveContent(
         CapsuleVideoArtworkTransition(
             presentingVideo = isVideo,
             needsSurface = needsVideoSurface,
+            transitionKey = mediaMetadata.id,
             modifier = Modifier.align(Alignment.TopCenter).fillMaxWidth().height(artworkHeight),
             fillArtworkSlot = true,
             artworkCornerRadius = 0.dp,
             videoSidePadding = 22.dp,
             artworkClickable = !isVideo,
             onArtworkClick = onShowLyrics,
-            video = { CapsuleVideoSurface(playerConnection.service, Modifier.fillMaxSize()) },
+            video = { active -> CapsuleVideoSurface(playerConnection.service, Modifier.fillMaxSize(), active = active) },
         ) {
             if (frame != null) {
                 Box(Modifier.fillMaxSize().graphicsLayer { alpha = gradientAlpha.value }) {

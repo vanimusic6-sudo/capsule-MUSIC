@@ -43,8 +43,8 @@ class CapsuleVideoArtworkTransitionTest {
                 modifier = Modifier.size(width.dp, height.dp),
                 fillArtworkSlot = fill,
                 videoSidePadding = inset.dp,
-                video = {
-                    DisposableEffect(Unit) {
+                video = { active ->
+                    if (active) DisposableEffect(Unit) {
                         attaches++
                         onDispose { detaches++ }
                     }

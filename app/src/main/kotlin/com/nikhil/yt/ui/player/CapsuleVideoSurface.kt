@@ -1,7 +1,13 @@
-/* Capsule MUSIC — Media3 Compose video output with an opaque black shutter. GPL-3.0. */
+/* Capsule MUSIC — retained paused frame over Media3 TextureView output. GPL-3.0.
+ * TextureView attachment follows AndroidX Media3 PlayerSurface (Apache-2.0,
+ * Copyright 2025 The Android Open Source Project). */
 @file:Suppress("UnsafeOptInUsageError")
 package com.nikhil.yt.ui.player
 
+import android.content.Context
+import android.view.TextureView
+import android.view.View
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -9,22 +15,52 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.viewinterop.AndroidView
 import androidx.media3.common.Player
-import androidx.media3.ui.compose.ContentFrame
-import androidx.media3.ui.compose.SURFACE_TYPE_TEXTURE_VIEW
+import androidx.media3.ui.compose.modifiers.resizeWithContentScale
+import androidx.media3.ui.compose.state.rememberPresentationState
 import com.nikhil.yt.playback.MusicService
+import com.nikhil.yt.playback.video.CapsuleVideoFrameRetention
 
-/** No PlayerView artwork/shutter layer or page-colored overlay around the video. */
+/** The decoder may redraw a frame while paused after a new surface. Keep the user's still above it. */
 @Composable
-internal fun CapsuleVideoSurface(service: MusicService, modifier: Modifier = Modifier) {
+internal fun CapsuleVideoSurface(service: MusicService, modifier: Modifier = Modifier, active: Boolean = true) {
     val player = service.videoRenderPlayer
+    val retention = service.videoFrameRetention
+    if (player == null || retention == null) {
+        Box(modifier.background(Color.Black))
+        return
+    }
+    val still by retention.frame.collectAsState()
+    Box(modifier.background(Color.Black)) {
+        if (active) CapsuleVideoTextureOutput(service, player, retention)
+        val frame = still
+        if (frame != null && (frame.exiting ||
+                (!player.playWhenReady && frame.mediaId == player.currentMediaItem?.mediaId))) {
+            Image(
+                bitmap = remember(frame.bitmap) { frame.bitmap.asImageBitmap() },
+                contentDescription = null,
+                modifier = Modifier.fillMaxSize(),
+                contentScale = ContentScale.Fit,
+            )
+        }
+    }
+}
+
+@Composable
+private fun CapsuleVideoTextureOutput(service: MusicService, player: Player, retention: CapsuleVideoFrameRetention) {
     val state by service.videoPlaybackState.collectAsState()
+    val presentation = rememberPresentationState(player, keepContentOnReset = state.presentingVideo)
     val owner = remember(service, player) { Any() }
+    var texture by remember { mutableStateOf<CapsuleFrameTextureView?>(null) }
     val host = LocalView.current
     DisposableEffect(service, player, owner) {
         service.attachVideoSurface(owner)
@@ -37,18 +73,63 @@ internal fun CapsuleVideoSurface(service: MusicService, modifier: Modifier = Mod
                 host.keepScreenOn = player.playWhenReady && player.currentMediaItem != null
             }
         }
-        player?.addListener(listener)
-        host.keepScreenOn = player?.playWhenReady == true && player.currentMediaItem != null
-        onDispose {
-            player?.removeListener(listener)
-            host.keepScreenOn = wasKeepingScreenOn
+        player.addListener(listener)
+        host.keepScreenOn = player.playWhenReady && player.currentMediaItem != null
+        onDispose { player.removeListener(listener); host.keepScreenOn = wasKeepingScreenOn }
+    }
+    AndroidView(
+        modifier = Modifier.fillMaxSize().resizeWithContentScale(ContentScale.Fit, presentation.videoSizeDp),
+        factory = { CapsuleFrameTextureView(it, retention).also { view -> texture = view } },
+        onReset = {},
+        update = {},
+        onRelease = { retention.retainPausedFrame(); player.clearVideoTextureView(it) },
+    )
+    val view = texture
+    if (view != null) {
+        DisposableEffect(view, player, retention) {
+            retention.registerCapture(view) {
+                if (view.hasVideoFrame && view.isAvailable && view.width > 0 && view.height > 0) {
+                    // Read once on pause/exit, never on a playback timer. Bound the one retained bitmap.
+                    val scale = minOf(1f, 1280f / view.width, 720f / view.height)
+                    try { view.getBitmap((view.width * scale).toInt().coerceAtLeast(1),
+                        (view.height * scale).toInt().coerceAtLeast(1)) } catch (_: RuntimeException) { null }
+                } else null
+            }
+            val listener = object : Player.Listener {
+                override fun onRenderedFirstFrame() {
+                    view.hasVideoFrame = true
+                    view.postOnAnimation { retention.retainPausedFrame() }
+                }
+                override fun onPositionDiscontinuity(oldPosition: Player.PositionInfo, newPosition: Player.PositionInfo, reason: Int) {
+                    view.hasVideoFrame = false
+                }
+            }
+            player.addListener(listener)
+            player.setVideoTextureView(view)
+            onDispose {
+                retention.retainPausedFrame()
+                retention.unregisterCapture(view)
+                player.removeListener(listener)
+                // ExoPlayer clears only this view, so an old design cannot clear its replacement.
+                player.clearVideoTextureView(view)
+            }
         }
     }
-    Box(modifier.background(Color.Black)) {
-        ContentFrame(
-            player = player, modifier = Modifier.fillMaxSize(),
-            surfaceType = SURFACE_TYPE_TEXTURE_VIEW, contentScale = ContentScale.Fit,
-            keepContentOnReset = state.presentingVideo,
-        )
+    if (presentation.coverSurface) Box(Modifier.fillMaxSize().background(Color.Black))
+}
+
+private class CapsuleFrameTextureView(context: Context, private val retention: CapsuleVideoFrameRetention) : TextureView(context) {
+    var hasVideoFrame = false
+    override fun onWindowVisibilityChanged(visibility: Int) {
+        if (visibility != View.VISIBLE) {
+            retention.retainPausedFrame()
+            hasVideoFrame = false
+        }
+        super.onWindowVisibilityChanged(visibility)
+    }
+    override fun onDetachedFromWindow() {
+        retention.retainPausedFrame()
+        hasVideoFrame = false
+        super.onDetachedFromWindow()
     }
 }

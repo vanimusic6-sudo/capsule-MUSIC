@@ -564,6 +564,7 @@ fun CapsulePlayerContent(
                 CapsuleVideoArtworkTransition(
                     presentingVideo = isCapsuleVideoPlaying,
                     needsSurface = needsVideoSurface,
+                    transitionKey = mediaMetadata.id,
                     fillArtworkSlot = useClayLayout,
                     artworkCornerRadius = if (isLight) 16.dp else 24.dp,
                     artworkOffsetY = if (isLight) 0.dp else (-5).dp,
@@ -571,8 +572,8 @@ fun CapsulePlayerContent(
                     outline = if (isLight) Color.Transparent else outline,
                     onArtworkClick = onArtworkClick,
                     artworkClickable = !isCapsuleVideoPlaying && !(isLight && lightEditorEnabled),
-                    video = {
-                        CapsuleVideoSurface(playerConnection.service, Modifier.fillMaxSize())
+                    video = { active ->
+                        CapsuleVideoSurface(playerConnection.service, Modifier.fillMaxSize(), active = active)
                     },
                 ) {
                     if (hideArtwork) {

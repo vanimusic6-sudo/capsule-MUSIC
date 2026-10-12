@@ -63,12 +63,14 @@ jobs:
             --tests 'com.nikhil.yt.playback.CrossfadeIdlePollTest' \
             --tests 'com.nikhil.yt.ui.UiEnergyRegressionTest' \
             --tests 'com.nikhil.yt.ui.player.CapsuleVideoArtworkTransitionTest' \
+            --tests 'com.nikhil.yt.ui.player.CapsuleVideoMorphPixelsTest' \
             --tests 'com.nikhil.yt.models.MediaMetadataArtistMergeTest' \
             --tests 'com.nikhil.yt.playback.video.CapsuleVideoResolveCoordinatorTest' \
             --tests 'com.nikhil.yt.playback.video.CapsuleVideoChunkedDataSourceTest' \
             --tests 'com.nikhil.yt.playback.video.CapsuleVideoWarmupTest' \
             --tests 'com.nikhil.yt.playback.video.CapsuleVideoCompanionTest' \
             --tests 'com.nikhil.yt.playback.video.CapsuleVideoSessionTest' \
+            --tests 'com.nikhil.yt.playback.video.CapsuleVideoFrameRetentionTest' \
             --tests 'com.nikhil.yt.playback.video.CapsuleHlsPlaylistParserFactoryTest' \
             --tests 'com.nikhil.yt.playback.video.CapsuleVideoDirectMediaSourceFactoryTest' \
             --tests 'com.nikhil.yt.playback.video.VideoStreamCacheTest' \
