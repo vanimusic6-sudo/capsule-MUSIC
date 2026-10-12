@@ -107,7 +107,9 @@ internal fun CapsuleVideoArtworkTransition(
                     val scale = max(frameWidth().toFloat() / videoWidth, frameHeight().toFloat() / videoHeight)
                     val visibleHeight = frameHeight() / scale
                     val bottom = (size.height - visibleHeight) / 2f + visibleHeight * wipe
-                    if (wipe >= 1f) drawContent()
+                    // Alpha-zero preparation must still record AndroidView: a
+                    // TextureView creates its SurfaceTexture on its first draw.
+                    if (preparing.value || wipe >= 1f) drawContent()
                     else if (wipe > 0f) clipRect(bottom = bottom) { this@drawWithContent.drawContent() }
                 }.background(Color.Black)) {
                     video(needsSurface)
