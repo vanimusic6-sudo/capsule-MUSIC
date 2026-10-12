@@ -21,6 +21,12 @@ class CapsuleVideoFramingTest {
         }!!
         assertEquals(1f, shadow.zoom(16f / 9f, 16f / 9f), 0f)
     }
+    @Test fun largeSideBordersAroundSquareAndPortraitClipsAreNotLeftBehind() {
+        val square = frame(horizontal = 35)!!
+        assertTrue(square.zoom(16f / 9f, 16f / 9f) > 1.7f)
+        val portrait = frame(horizontal = 54)!!
+        assertTrue(portrait.zoom(16f / 9f, 16f / 9f) > 2.8f)
+    }
     @Test fun existingAspectCropIsNotAppliedTwice() {
         val insets = CapsuleVideoInsets(horizontal = 0.1f)
         assertEquals(1f, insets.zoom(2.4f, 16f / 9f), 0.001f)

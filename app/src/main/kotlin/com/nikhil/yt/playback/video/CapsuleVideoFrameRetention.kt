@@ -28,7 +28,7 @@ internal class CapsuleVideoFrameRetention(private val player: Player, private va
         }
     }
     fun setBorderZoom(mediaId: String, zoom: Float) {
-        if (framedMediaId == mediaId) mutableBorderZoom.value = zoom.coerceIn(1f, 1.6f)
+        if (framedMediaId == mediaId) mutableBorderZoom.value = zoom.coerceIn(1f, 3.2f)
     }
     private var owner: Any? = null
     private var capture: (() -> Bitmap?)? = null

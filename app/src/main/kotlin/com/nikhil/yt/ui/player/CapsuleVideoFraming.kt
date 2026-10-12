@@ -4,13 +4,15 @@ package com.nikhil.yt.ui.player
 import kotlin.math.abs
 import kotlin.math.max
 
+internal const val CAPSULE_VIDEO_MAX_BORDER_ZOOM = 3.2f // Portrait clip baked into a 16:9 frame.
+
 internal data class CapsuleVideoInsets(val horizontal: Float = 0f, val vertical: Float = 0f) {
     fun zoom(sourceAspect: Float, viewportAspect: Float): Float {
         if (sourceAspect <= 0f || viewportAspect <= 0f) return 1f
         val base = max(viewportAspect / sourceAspect, 1f)
         val cropped = max(viewportAspect / (sourceAspect * (1f - 2f * horizontal)),
             1f / (1f - 2f * vertical))
-        return (cropped / base).coerceIn(1f, 1.6f)
+        return (cropped / base).coerceIn(1f, CAPSULE_VIDEO_MAX_BORDER_ZOOM)
     }
 }
 
@@ -34,7 +36,7 @@ internal fun detectCapsuleVideoInsets(width: Int, height: Int, pixel: (Int, Int)
     fun darkRow(y: Int) = (0 until width).count { brightness(it, y) > 20 } <= width / 100
     fun darkColumn(x: Int) = (0 until height).count { brightness(x, it) > 20 } <= height / 100
     fun band(length: Int, dark: (Int) -> Boolean): Float {
-        val limit = (length * 0.23f).toInt()
+        val limit = (length * 0.42f).toInt()
         val start = (0 until limit).takeWhile(dark).size
         val end = (0 until limit).takeWhile { dark(length - 1 - it) }.size
         if (start < 2 || end < 2 || start == limit || end == limit ||
