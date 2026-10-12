@@ -19,8 +19,6 @@ import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.platform.LocalConfiguration
-import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -29,8 +27,6 @@ import kotlin.math.max
 import kotlin.math.roundToInt
 import androidx.compose.runtime.key
 import androidx.compose.runtime.rememberUpdatedState
-
-internal val CapsulePlayerFrameCornerRadius = 24.dp
 
 /**
  * One moving silhouette, with both contents filling the same bounds.
@@ -47,8 +43,6 @@ internal fun CapsuleVideoArtworkTransition(
     artworkCornerRadius: Dp = 24.dp,
     artworkOffsetY: Dp = 0.dp,
     videoSidePadding: Dp = 0.dp,
-    videoWidthScale: Float = 1f,
-    videoCornerRadius: Dp = CapsulePlayerFrameCornerRadius,
     artworkBackground: Color = Color.Transparent,
     outline: Color = Color.Transparent,
     artworkClickable: Boolean = false,
@@ -57,11 +51,10 @@ internal fun CapsuleVideoArtworkTransition(
     artwork: @Composable () -> Unit,
 ) {
     val density = LocalDensity.current
-    val windowWidth = with(density) { LocalConfiguration.current.screenWidthDp.dp.roundToPx() }
     val preparing = rememberUpdatedState(needsSurface && !presentingVideo)
     val reveal = key(transitionKey) { animateFloatAsState(
         targetValue = if (presentingVideo) 1f else 0f,
-        animationSpec = spring(dampingRatio = 0.82f, stiffness = 180f, visibilityThreshold = 0.001f),
+        animationSpec = spring(dampingRatio = 0.82f, stiffness = 260f, visibilityThreshold = 0.001f),
         label = "capsule-cover-video",
     ) }
     BoxWithConstraints(modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -69,30 +62,25 @@ internal fun CapsuleVideoArtworkTransition(
         val slotHeight = constraints.maxHeight
         val coverWidth = if (fillArtworkSlot) slotWidth else min(slotWidth, slotHeight)
         val coverHeight = if (fillArtworkSlot) slotHeight else coverWidth
-        val maximumWidth = (windowWidth - with(density) { 32.dp.roundToPx() }).coerceAtLeast(slotWidth)
-        val availableVideoWidth = ((slotWidth * videoWidthScale).roundToInt() - with(density) { (videoSidePadding.toPx() * 2).roundToInt() }).coerceIn(1, maximumWidth)
+        val availableVideoWidth = (slotWidth - with(density) { (videoSidePadding.toPx() * 2).roundToInt() }).coerceAtLeast(1)
         val videoWidth = min(availableVideoWidth, (slotHeight * 16f / 9f).roundToInt().coerceAtLeast(1))
         val videoHeight = (videoWidth * 9f / 16f).roundToInt().coerceIn(1, slotHeight.coerceAtLeast(1))
         val coverOffset = with(density) { artworkOffsetY.roundToPx() }
         fun frameWidth() = transitionDimension(coverWidth, videoWidth, reveal.value)
         fun frameHeight() = transitionDimension(coverHeight, videoHeight, reveal.value)
-        fun contentWipe(): Float {
-            val handover = if (preparing.value) 0f else ((reveal.value - 0.45f) / 0.47f).coerceIn(0f, 1f)
-            return handover * handover * (3f - 2f * handover)
-        }
         Layout(
             modifier = Modifier
                 .graphicsLayer {
                     val corners = reveal.value.coerceIn(0f, 1f)
-                    shape = RoundedCornerShape(artworkCornerRadius + (videoCornerRadius - artworkCornerRadius) * corners)
+                    shape = RoundedCornerShape(artworkCornerRadius + (28.dp - artworkCornerRadius) * corners)
                     clip = true
                     translationY = coverOffset * (1f - reveal.value)
                 }
                 .drawWithContent {
                     drawContent()
                     val corners = reveal.value.coerceIn(0f, 1f)
-                    val radius = (artworkCornerRadius + (videoCornerRadius - artworkCornerRadius) * corners).toPx()
-                    if (outline.alpha > 0f) drawRoundRect(outline, cornerRadius = CornerRadius(radius), style = Stroke(1.dp.toPx()))
+                    val radius = (artworkCornerRadius + (28.dp - artworkCornerRadius) * corners).toPx()
+                    drawRoundRect(outline, cornerRadius = CornerRadius(radius), style = Stroke(1.dp.toPx()))
                 }
                 .clickable(enabled = artworkClickable, onClick = onArtworkClick),
             content = {
@@ -102,15 +90,6 @@ internal fun CapsuleVideoArtworkTransition(
                     alpha = if (!preparing.value && reveal.value > 0f) 1f else 0f
                     val scale = max(frameWidth().toFloat() / videoWidth, frameHeight().toFloat() / videoHeight)
                     scaleX = scale; scaleY = scale
-                }.drawWithContent {
-                    val wipe = contentWipe()
-                    val scale = max(frameWidth().toFloat() / videoWidth, frameHeight().toFloat() / videoHeight)
-                    val visibleHeight = frameHeight() / scale
-                    val bottom = (size.height - visibleHeight) / 2f + visibleHeight * wipe
-                    // Alpha-zero preparation must still record AndroidView: a
-                    // TextureView creates its SurfaceTexture on its first draw.
-                    if (preparing.value || wipe >= 1f) drawContent()
-                    else if (wipe > 0f) clipRect(bottom = bottom) { this@drawWithContent.drawContent() }
                 }.background(Color.Black)) {
                     video(needsSurface)
                 }
@@ -118,16 +97,10 @@ internal fun CapsuleVideoArtworkTransition(
                 // no growing hole, duplicate card or full-duration dissolve.
                 Box(
                     Modifier.graphicsLayer {
+                        val handover = ((reveal.value - 0.28f) / 0.42f).coerceIn(0f, 1f)
+                        alpha = if (preparing.value) 1f else 1f - handover * handover * (3f - 2f * handover)
                         val scale = max(frameWidth().toFloat() / coverWidth, frameHeight().toFloat() / coverHeight)
                         scaleX = scale; scaleY = scale
-                    }.drawWithContent {
-                        val wipe = contentWipe()
-                        // Disjoint contents inside one contour: no cover/video alpha mixture.
-                        val scale = max(frameWidth().toFloat() / coverWidth, frameHeight().toFloat() / coverHeight)
-                        val visibleHeight = frameHeight() / scale
-                        val top = (size.height - visibleHeight) / 2f + visibleHeight * wipe
-                        if (wipe <= 0f) drawContent()
-                        else if (wipe < 1f) clipRect(top = top) { this@drawWithContent.drawContent() }
                     }.background(artworkBackground),
                     contentAlignment = Alignment.Center,
                 ) { artwork() }

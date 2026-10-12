@@ -22,9 +22,6 @@ class CapsuleVideoSessionTest {
         var tracks = Tracks.EMPTY
         var selection = TrackSelectionParameters.DEFAULT_WITHOUT_CONTEXT
         var parameters = PlaybackParameters.DEFAULT
-        var bufferedPosition: Long? = null
-        var prepares = 0
-        var itemWrites = 0
         val listeners = mutableListOf<Player.Listener>()
         val seeks = mutableListOf<Long>()
         val intentWrites = mutableListOf<Boolean>()
@@ -34,7 +31,6 @@ class CapsuleVideoSessionTest {
                 "removeListener" -> { listeners -= args!![0] as Player.Listener; null }
                 "getCurrentMediaItem" -> item
                 "getCurrentPosition" -> position
-                "getBufferedPosition" -> (bufferedPosition ?: position + 12_000L)
                 "getDuration" -> duration
                 "getPlaybackState" -> state
                 "getPlayWhenReady" -> intent
@@ -47,11 +43,11 @@ class CapsuleVideoSessionTest {
                 "setTrackSelectionParameters" -> { selection = args!![0] as TrackSelectionParameters; null }
                 "getPlaybackParameters" -> parameters
                 "setPlaybackParameters" -> { parameters = args!![0] as PlaybackParameters; null }
-                "setMediaItem" -> { itemWrites++; item = args!![0] as MediaItem; if (args.size > 1) position = args[1] as Long; null }
+                "setMediaItem" -> { item = args!![0] as MediaItem; if (args.size > 1) position = args[1] as Long; null }
                 "seekTo" -> { position = args!![0] as Long; seeks += position; null }
                 "stop" -> { state = Player.STATE_IDLE; playing = false; null }
                 "clearMediaItems" -> { item = null; null }
-                "prepare" -> { prepares++; state = Player.STATE_BUFFERING; null }
+                "prepare" -> { state = Player.STATE_BUFFERING; null }
                 "equals" -> false
                 "hashCode" -> System.identityHashCode(this)
                 "toString" -> "TestDecoder"
@@ -127,57 +123,6 @@ class CapsuleVideoSessionTest {
         advanceTimeBy(261); runCurrent()
         assertEquals(0.8f, f.clip.volume)
         f.session.stop()
-    }
-    @Test fun preparationSeekDelayIsCorrectedBeforePublishingTheVideoClock() = runTest {
-        val f = Fixture(this); f.start()
-        f.music.position = 8_000L
-        f.clip.ready()
-        f.music.position = 9_700L // The real log shows this drift while the first seek buffers.
-        f.clip.frame()
-        assertEquals(listOf(8_000L, 9_700L), f.clip.seeks)
-        assertTrue(f.frames.isEmpty())
-        assertEquals(1f, f.music.volume)
-        f.clip.frame()
-        advanceTimeBy(261); runCurrent()
-        assertEquals(listOf("song"), f.frames)
-        assertEquals(9_700L, f.clip.position)
-        f.session.stop()
-    }
-    @Test fun driftOutsideBufferedWindowWaitsWithoutCreatingAnotherNetworkSeek() = runTest {
-        val f = Fixture(this); f.start()
-        f.music.position = 8_000L; f.clip.ready()
-        f.music.position = 9_700L; f.clip.bufferedPosition = 9_000L
-        f.clip.frame()
-        assertEquals(listOf(8_000L), f.clip.seeks)
-        assertEquals(1f, f.music.volume)
-        assertTrue(f.frames.isEmpty())
-        f.clip.bufferedPosition = 15_000L; f.clip.event(Player.EVENT_IS_LOADING_CHANGED)
-        assertEquals(listOf(8_000L, 9_700L), f.clip.seeks)
-        f.clip.frame(); advanceTimeBy(261); runCurrent()
-        assertEquals(listOf("song"), f.frames)
-        f.session.stop()
-    }
-    @Test fun parkedClipReopensWithoutReplacingItsMediaSourceOrPreparingItAgain() = runTest {
-        val f = Fixture(this); f.start(); f.clip.ready(); f.clip.frame()
-        advanceTimeBy(261); runCurrent()
-        val item = f.clip.item!!
-        val prepares = f.clip.prepares; val itemWrites = f.clip.itemWrites
-        f.session.stop(keepPrepared = true)
-        assertEquals(Player.STATE_READY, f.clip.state)
-        assertFalse(f.clip.intent)
-        assertSame(item, f.clip.item)
-        f.session.start("song", item, 0.8f)
-        assertEquals(prepares, f.clip.prepares)
-        assertEquals(itemWrites, f.clip.itemWrites)
-        f.clip.ready(); f.clip.frame(); advanceTimeBy(261); runCurrent()
-        f.session.stop()
-    }
-    @Test fun anotherSignedSourceCannotReuseTheOldDecoderInventory() {
-        val old = MediaItem.Builder().setMediaId("song").setUri("https://cdn.test/old").build()
-        val next = MediaItem.Builder().setMediaId("song").setUri("https://cdn.test/new").build()
-        assertFalse(canReusePreparedVideo(old, next, Player.STATE_READY))
-        assertFalse(canReusePreparedVideo(old, old, Player.STATE_IDLE))
-        assertTrue(canReusePreparedVideo(old, old, Player.STATE_READY))
     }
     @Test fun pauseDuringSeamKeepsThePreparedClipPausedAndCancelsTheDelayedRamp() = runTest {
         val f = Fixture(this); f.start(); f.clip.ready(); f.clip.frame()

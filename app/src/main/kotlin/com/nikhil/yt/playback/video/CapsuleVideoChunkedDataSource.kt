@@ -23,7 +23,6 @@ import java.io.EOFException
 import java.io.IOException
 
 internal const val CAPSULE_VIDEO_CHUNK_BYTES = 4L * 1024 * 1024
-internal const val CAPSULE_VIDEO_FIRST_CHUNK_BYTES = 512L * 1024
 
 internal class CapsuleVideoChunkedDataSource(
     private val upstream: DataSource,
@@ -67,9 +66,9 @@ internal class CapsuleVideoChunkedDataSource(
 
         val firstLength =
             if (dataSpec.length == C.LENGTH_UNSET.toLong()) {
-                minOf(chunkBytes, CAPSULE_VIDEO_FIRST_CHUNK_BYTES)
+                chunkBytes
             } else {
-                minOf(chunkBytes, CAPSULE_VIDEO_FIRST_CHUNK_BYTES, dataSpec.length)
+                minOf(chunkBytes, dataSpec.length)
             }
 
         val firstSpec =
