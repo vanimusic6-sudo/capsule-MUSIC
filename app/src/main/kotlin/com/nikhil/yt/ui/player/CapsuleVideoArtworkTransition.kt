@@ -31,6 +31,7 @@ import kotlin.math.min
 import kotlin.math.roundToInt
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.key
+import androidx.compose.runtime.rememberUpdatedState
 
 // Zero velocity and acceleration at both ends, without a spring or late corner snap.
 internal val CapsuleVideoMorphEasing = Easing { t -> t * t * t * (t * (t * 6f - 15f) + 10f) }
@@ -58,6 +59,7 @@ internal fun CapsuleVideoArtworkTransition(
     artwork: @Composable () -> Unit,
 ) {
     val density = LocalDensity.current
+    val preparing = rememberUpdatedState(needsSurface && !presentingVideo)
     val reveal = key(transitionKey) { animateFloatAsState(
         targetValue = if (presentingVideo) 1f else 0f,
         animationSpec = tween(if (presentingVideo) 480 else 440, easing = CapsuleVideoMorphEasing),
@@ -97,7 +99,7 @@ internal fun CapsuleVideoArtworkTransition(
                 // Keep the original opaque cover alive; never blend its colours with VIDEO.
                 Box(
                     Modifier.drawWithContent {
-                        val progress = if (needsSurface && !presentingVideo) 0f else reveal.value
+                        val progress = if (preparing.value) 0f else reveal.value
                         if (progress <= 0f) {
                             drawContent()
                         } else if (progress < 1f) {

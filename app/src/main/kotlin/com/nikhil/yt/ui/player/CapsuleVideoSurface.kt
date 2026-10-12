@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -105,7 +106,6 @@ private fun CapsuleVideoTextureOutput(service: MusicService, player: Player, ret
                 }
             }
             player.addListener(listener)
-            player.setVideoTextureView(view)
             onDispose {
                 retention.retainPausedFrame()
                 retention.unregisterCapture(view)
@@ -114,6 +114,8 @@ private fun CapsuleVideoTextureOutput(service: MusicService, player: Player, ret
                 player.clearVideoTextureView(view)
             }
         }
+        // Start after Media3's presentation observer, matching PlayerSurface's attachment order.
+        LaunchedEffect(view, player) { player.setVideoTextureView(view) }
     }
     if (presentation.coverSurface) Box(Modifier.fillMaxSize().background(Color.Black))
 }

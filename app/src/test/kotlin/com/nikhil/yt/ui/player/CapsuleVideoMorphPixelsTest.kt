@@ -49,12 +49,16 @@ class CapsuleVideoMorphPixelsTest {
         assertEquals(AndroidColor.BLUE, centre())
         compose.mainClock.autoAdvance = false
         compose.runOnIdle { presenting.value = true }
+        compose.mainClock.advanceTimeByFrame()
+        compose.waitForIdle()
         compose.mainClock.advanceTimeBy(120)
         // A crossfade would produce purple here. The new aperture shows the untouched video.
         assertEquals(AndroidColor.RED, centre())
         compose.mainClock.advanceTimeBy(500)
         assertEquals(AndroidColor.RED, centre())
         compose.runOnIdle { needed.value = false; presenting.value = false }
+        compose.mainClock.advanceTimeByFrame()
+        compose.waitForIdle()
         compose.mainClock.advanceTimeBy(120)
         assertEquals("closing must initially retain the video's still", AndroidColor.RED, centre())
         compose.mainClock.autoAdvance = true
