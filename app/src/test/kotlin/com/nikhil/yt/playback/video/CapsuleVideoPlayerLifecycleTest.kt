@@ -17,7 +17,7 @@ import org.robolectric.annotation.Config
 @Config(sdk = [35], application = Application::class)
 class CapsuleVideoPlayerLifecycleTest {
     @Test fun actualVideoCompanionConstructsStopsAndReleasesWithMedia3() = runTest {
-        val context = RuntimeEnvironment.getApplication<Application>()
+        val context = RuntimeEnvironment.getApplication()
         val music = ExoPlayer.Builder(context).build()
         try {
             val video = CapsuleVideoCompanion(context, DefaultMediaSourceFactory(context), music, backgroundScope,
