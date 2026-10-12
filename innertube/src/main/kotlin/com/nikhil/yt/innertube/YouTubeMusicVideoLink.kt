@@ -67,6 +67,7 @@ object YouTubeMusicVideoLinkResolver {
         title: String,
         artists: List<String>,
         durationSeconds: Int?,
+        beforeMetadataRequest: suspend () -> Unit = CapsuleVideoRequestGuard::beforeMetadataRequest,
     ): Result<YouTubeMusicVideoLink> =
         runCatching {
             val sourceId = sourceMediaId.trim()
@@ -128,7 +129,7 @@ object YouTubeMusicVideoLinkResolver {
                      */
                     if (index > 0 && candidatesById.isNotEmpty()) break
 
-                    val renderers = searchVideoRenderers(query)
+                    val renderers = searchVideoRenderers(query, beforeMetadataRequest)
 
                     for (renderer in renderers) {
                         val candidate =
@@ -198,8 +199,9 @@ object YouTubeMusicVideoLinkResolver {
 
     private suspend fun searchVideoRenderers(
         query: String,
+        beforeMetadataRequest: suspend () -> Unit,
     ): List<MusicResponsiveListItemRenderer> {
-        CapsuleVideoRequestGuard.beforeMetadataRequest()
+        beforeMetadataRequest()
 
         val response =
             try {

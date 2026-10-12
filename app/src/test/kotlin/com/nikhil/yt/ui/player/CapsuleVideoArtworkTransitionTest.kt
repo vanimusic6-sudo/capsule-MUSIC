@@ -28,13 +28,15 @@ class CapsuleVideoArtworkTransitionTest {
     @Test fun lightKeepsThePreparingSurfaceWhenFirstFrameArrives() = verifyStableOutput(320, 280, true, 0)
     @Test fun cosmoKeepsThePreparingSurfaceWhenFirstFrameArrives() = verifyStableOutput(340, 420, false, 0)
     @Test fun immersiveKeepsThePreparingSurfaceWhenFirstFrameArrives() = verifyStableOutput(380, 440, true, 22)
+    @Test fun largerVideoKeepsTheOriginalArtworkFootprintAndTheSameRenderer() = verifyStableOutput(320, 280, true, 0, 1.12f)
 
-    private fun verifyStableOutput(width: Int, height: Int, fill: Boolean, inset: Int) {
+    private fun verifyStableOutput(width: Int, height: Int, fill: Boolean, inset: Int, videoScale: Float = 1f) {
         val presenting = mutableStateOf(false)
         val needed = mutableStateOf(true)
         var attaches = 0
         var detaches = 0
         val measured = mutableListOf<IntSize>()
+        var artworkSize = IntSize.Zero
         compose.mainClock.autoAdvance = false
         compose.setContent {
             CapsuleVideoArtworkTransition(
@@ -43,6 +45,7 @@ class CapsuleVideoArtworkTransitionTest {
                 modifier = Modifier.size(width.dp, height.dp),
                 fillArtworkSlot = fill,
                 videoSidePadding = inset.dp,
+                videoWidthScale = videoScale,
                 video = { active ->
                     if (active) DisposableEffect(Unit) {
                         attaches++
@@ -50,13 +53,14 @@ class CapsuleVideoArtworkTransitionTest {
                     }
                     Box(Modifier.fillMaxSize().onSizeChanged { measured.add(it) })
                 },
-                artwork = { Box(Modifier.fillMaxSize()) },
+                artwork = { Box(Modifier.fillMaxSize().onSizeChanged { artworkSize = it }) },
             )
         }
         compose.waitForIdle()
         val preparingSize = measured.single()
         assertTrue(preparingSize.width > 0 && preparingSize.height > 0)
         assertEquals(16f / 9f, preparingSize.width.toFloat() / preparingSize.height, 0.02f)
+        if (videoScale > 1f) assertTrue("VIDEO may grow without moving saved artwork controls", preparingSize.width > artworkSize.width)
         compose.runOnIdle { presenting.value = true }
         compose.mainClock.advanceTimeBy(120)
         compose.waitForIdle()

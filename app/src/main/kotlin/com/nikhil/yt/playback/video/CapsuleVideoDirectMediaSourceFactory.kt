@@ -34,6 +34,7 @@ internal class CapsuleVideoDirectMediaSourceFactory(
 ) : MediaSource.Factory {
 
     private val progressive = ProgressiveMediaSource.Factory(upstream)
+        .setContinueLoadingCheckIntervalBytes(256 * 1024)
         .setLoadErrorHandlingPolicy(DefaultLoadErrorHandlingPolicy(1))
 
     override fun createMediaSource(mediaItem: MediaItem): MediaSource {

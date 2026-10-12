@@ -124,7 +124,7 @@ import kotlin.math.cos
 import kotlin.math.sin
 
 private val CapsuleControlsShape =
-    RoundedCornerShape(24.dp)
+    RoundedCornerShape(CapsulePlayerFrameCornerRadius)
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
@@ -566,6 +566,8 @@ fun CapsulePlayerContent(
                     needsSurface = needsVideoSurface,
                     transitionKey = mediaMetadata.id,
                     fillArtworkSlot = useClayLayout,
+                    videoWidthScale = if (isLandscape) 1f else if (isLight) 1.12f else 1.06f,
+                    videoCornerRadius = if (isLight) CapsuleLightPanelRadius else CapsulePlayerFrameCornerRadius,
                     artworkCornerRadius = if (isLight) 16.dp else 24.dp,
                     artworkOffsetY = if (isLight) 0.dp else (-5).dp,
                     artworkBackground = textColor.copy(alpha = 0.045f),

@@ -114,6 +114,17 @@ class CapsuleVideoChunkedDataSourceTest {
         assertEquals(1, cdn.requests.size)
         assertEquals(900L, cdn.requests.single().length)
     }
+    @Test fun coldStartUsesSmallPrefixThenNormalBoundedContinuationWithoutDroppingBytes() {
+        val bytes = ByteArray(700_000) { (it % 251).toByte() }
+        val cdn = MemoryCdn(bytes)
+        val source = CapsuleVideoChunkedDataSource(cdn)
+        assertEquals(bytes.size.toLong(), source.open(DataSpec(uri)))
+        assertArrayEquals(bytes, readAll(source))
+        source.close()
+        assertEquals(CAPSULE_VIDEO_FIRST_CHUNK_BYTES, cdn.requests.first().length)
+        assertEquals(CAPSULE_VIDEO_FIRST_CHUNK_BYTES, cdn.requests[1].position)
+        assertTrue(cdn.requests.all { it.length <= CAPSULE_VIDEO_CHUNK_BYTES })
+    }
 
     @Test
     fun unknownLengthSeekContinuesFromRequestedByte() {

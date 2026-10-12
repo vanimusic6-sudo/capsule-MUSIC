@@ -5,10 +5,9 @@
 package com.nikhil.yt.ui.player
 
 import android.content.Context
+import android.graphics.Matrix
 import android.view.TextureView
 import android.view.View
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
@@ -21,7 +20,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
@@ -31,13 +29,10 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.media3.common.Player
-import androidx.media3.ui.compose.modifiers.resizeWithContentScale
+import androidx.media3.common.VideoSize
 import androidx.media3.ui.compose.state.rememberPresentationState
 import com.nikhil.yt.playback.MusicService
 import com.nikhil.yt.playback.video.CapsuleVideoFrameRetention
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
 
 /** The decoder may redraw a frame while paused after a new surface. Keep the user's still above it. */
 @Composable
@@ -49,10 +44,7 @@ internal fun CapsuleVideoSurface(service: MusicService, modifier: Modifier = Mod
         return
     }
     val still by retention.frame.collectAsState()
-    val targetZoom by retention.borderZoom.collectAsState()
-    val zoom by animateFloatAsState(targetZoom, tween(220), label = "capsule-video-framing")
     Box(modifier.clipToBounds().background(Color.Black)) {
-      Box(Modifier.fillMaxSize().graphicsLayer { scaleX = zoom; scaleY = zoom }) {
         if (active) CapsuleVideoTextureOutput(service, player, retention)
         val frame = still
         if (frame != null && (frame.exiting ||
@@ -61,10 +53,9 @@ internal fun CapsuleVideoSurface(service: MusicService, modifier: Modifier = Mod
                 bitmap = remember(frame.bitmap) { frame.bitmap.asImageBitmap() },
                 contentDescription = null,
                 modifier = Modifier.fillMaxSize(),
-                contentScale = ContentScale.Crop,
+                contentScale = ContentScale.Fit,
             )
         }
-      }
     }
 }
 
@@ -75,7 +66,6 @@ private fun CapsuleVideoTextureOutput(service: MusicService, player: Player, ret
     val owner = remember(service, player) { Any() }
     var texture by remember { mutableStateOf<CapsuleFrameTextureView?>(null) }
     val host = LocalView.current
-    val scope = rememberCoroutineScope()
     DisposableEffect(service, player, owner) {
         service.attachVideoSurface(owner)
         onDispose { service.detachVideoSurface(owner) }
@@ -92,45 +82,18 @@ private fun CapsuleVideoTextureOutput(service: MusicService, player: Player, ret
         onDispose { player.removeListener(listener); host.keepScreenOn = wasKeepingScreenOn }
     }
     AndroidView(
-        modifier = Modifier.fillMaxSize().resizeWithContentScale(ContentScale.Crop, presentation.videoSizeDp),
+        modifier = Modifier.fillMaxSize(),
         factory = { CapsuleFrameTextureView(it, retention).also { view -> texture = view } },
         onReset = {},
-        update = {},
+        update = { view ->
+            val size = presentation.videoSizeDp
+            view.setSourceAspect(if (size != null && size.height > 0f) size.width / size.height else 16f / 9f)
+        },
         onRelease = { retention.retainPausedFrame(); player.clearVideoTextureView(it) },
     )
     val view = texture
     if (view != null) {
         DisposableEffect(view, player, retention) {
-            var sampling: Job? = null
-            var sampledMediaId: String? = null
-            fun sampleBorders() {
-                val mediaId = player.currentMediaItem?.mediaId ?: return
-                if (sampledMediaId == mediaId || sampling?.isActive == true) return
-                if (retention.borderZoom.value > 1f) return
-                sampling?.cancel()
-                sampling = scope.launch {
-                    val consensus = CapsuleVideoBorderConsensus()
-                    repeat(5) { attempt ->
-                        delay(if (attempt == 0) 48L else 400L)
-                        if (!view.isAvailable || !view.hasVideoFrame ||
-                            player.currentMediaItem?.mediaId != mediaId) return@launch
-                        val snapshot = try { view.getBitmap(160, 90) } catch (_: RuntimeException) { null }
-                        if (snapshot != null) {
-                            val insets = try { detectCapsuleVideoInsets(160, 90, snapshot::getPixel) }
-                                finally { snapshot.recycle() }
-                            val agreed = consensus.offer(insets)
-                            if (agreed != null) {
-                                sampledMediaId = mediaId
-                                val size = player.videoSize
-                                val aspect = if (size.height > 0) size.width * size.pixelWidthHeightRatio / size.height else 16f / 9f
-                                retention.setBorderZoom(mediaId, agreed.zoom(aspect, 16f / 9f))
-                                return@launch
-                            }
-                        }
-                    }
-                    sampledMediaId = mediaId
-                }
-            }
             retention.registerCapture(view) {
                 if (view.hasVideoFrame && view.isAvailable && view.width > 0 && view.height > 0) {
                     // Read once on pause/exit, never on a playback timer. Bound the one retained bitmap.
@@ -140,21 +103,20 @@ private fun CapsuleVideoTextureOutput(service: MusicService, player: Player, ret
                 } else null
             }
             val listener = object : Player.Listener {
+                override fun onVideoSizeChanged(videoSize: VideoSize) {
+                    if (videoSize.height > 0) view.setSourceAspect(videoSize.width * videoSize.pixelWidthHeightRatio / videoSize.height)
+                }
                 override fun onRenderedFirstFrame() {
                     view.hasVideoFrame = true
                     view.postOnAnimation { retention.retainPausedFrame() }
-                    sampleBorders()
                 }
                 override fun onPositionDiscontinuity(oldPosition: Player.PositionInfo, newPosition: Player.PositionInfo, reason: Int) {
                     view.hasVideoFrame = false
-                    sampling?.cancel()
-                    sampling = null
                 }
             }
             player.addListener(listener)
             onDispose {
                 retention.retainPausedFrame()
-                sampling?.cancel()
                 retention.unregisterCapture(view)
                 player.removeListener(listener)
                 // ExoPlayer clears only this view, so an old design cannot clear its replacement.
@@ -168,7 +130,25 @@ private fun CapsuleVideoTextureOutput(service: MusicService, player: Player, ret
 }
 
 private class CapsuleFrameTextureView(context: Context, private val retention: CapsuleVideoFrameRetention) : TextureView(context) {
+    init { isOpaque = false }
     var hasVideoFrame = false
+    private var sourceAspect = 16f / 9f
+    private val fitTransform = Matrix()
+    fun setSourceAspect(value: Float) {
+        if (sourceAspect == value) return
+        sourceAspect = value
+        applyFitTransform()
+    }
+    override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
+        super.onSizeChanged(w, h, oldw, oldh)
+        applyFitTransform()
+    }
+    private fun applyFitTransform() {
+        if (width <= 0 || height <= 0) return
+        val fit = capsuleVideoFitScale(sourceAspect, width.toFloat() / height)
+        fitTransform.setScale(fit.first, fit.second, width / 2f, height / 2f)
+        setTransform(fitTransform)
+    }
     override fun onWindowVisibilityChanged(visibility: Int) {
         if (visibility != View.VISIBLE) {
             retention.retainPausedFrame()
@@ -182,3 +162,9 @@ private class CapsuleFrameTextureView(context: Context, private val retention: C
         super.onDetachedFromWindow()
     }
 }
+
+/** Live TextureView and retained bitmap use the same fixed viewport. */
+internal fun capsuleVideoFitScale(sourceAspect: Float, viewportAspect: Float): Pair<Float, Float> =
+    if (sourceAspect <= 0f || viewportAspect <= 0f) 1f to 1f
+    else if (sourceAspect >= viewportAspect) 1f to (viewportAspect / sourceAspect)
+    else (sourceAspect / viewportAspect) to 1f

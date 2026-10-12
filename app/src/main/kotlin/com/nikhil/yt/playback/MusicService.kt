@@ -4537,7 +4537,10 @@ class MusicService :
                 .addInterceptor(CapsuleVideoStreamInterceptor())
                 .build()
 
-        val httpUpstream = DefaultDataSource.Factory(this, OkHttpDataSource.Factory(videoHttpClient))
+        val httpUpstream = com.nikhil.yt.playback.video.CapsuleVideoStartupDataSource.Factory(
+            DefaultDataSource.Factory(this, OkHttpDataSource.Factory(videoHttpClient)),
+            preparing = { videoPlaybackState.value.needsSurface && !videoPlaybackState.value.firstFrameReady },
+        )
         return CacheDataSource
             .Factory()
             .setCache(videoCache)
