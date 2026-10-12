@@ -4,7 +4,9 @@ package com.nikhil.yt.playback.video
 import androidx.media3.exoplayer.LoadControl
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.common.Player
+import androidx.media3.common.MediaItem
 import androidx.media3.exoplayer.source.TrackGroupArray
+import androidx.media3.exoplayer.source.SinglePeriodTimeline
 import androidx.media3.exoplayer.trackselection.ExoTrackSelection
 import androidx.media3.common.C
 import androidx.media3.common.Timeline
@@ -36,7 +38,9 @@ class CapsuleVideoLoadControlTest {
     @Test fun currentMedia3CallbacksUseConcreteDefaultLoadControl() {
         val control = CapsuleVideoLoadControl()
         val playerId = PlayerId.UNSET
-        val parameters = LoadControl.Parameters(playerId, Timeline.EMPTY, MediaPeriodId("clip"),
+        val timeline = SinglePeriodTimeline(10_000_000L, true, false, false, null,
+            MediaItem.fromUri("https://video.example.test/clip.mp4"))
+        val parameters = LoadControl.Parameters(playerId, timeline, MediaPeriodId(timeline.getUidOfPeriod(0)),
             0L, 500_000L, 1f, true, false, C.TIME_UNSET, C.TIME_UNSET)
         assertNotNull(control.getAllocator(playerId))
         assertEquals(0L, control.getBackBufferDurationUs(playerId))
