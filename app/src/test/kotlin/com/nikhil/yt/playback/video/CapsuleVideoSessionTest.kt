@@ -22,6 +22,9 @@ class CapsuleVideoSessionTest {
         var tracks = Tracks.EMPTY
         var selection = TrackSelectionParameters.DEFAULT_WITHOUT_CONTEXT
         var parameters = PlaybackParameters.DEFAULT
+        var buffered: Long? = null
+        var prepares = 0
+        var replacements = 0
         val listeners = mutableListOf<Player.Listener>()
         val seeks = mutableListOf<Long>()
         val intentWrites = mutableListOf<Boolean>()
@@ -31,6 +34,7 @@ class CapsuleVideoSessionTest {
                 "removeListener" -> { listeners -= args!![0] as Player.Listener; null }
                 "getCurrentMediaItem" -> item
                 "getCurrentPosition" -> position
+                "getBufferedPosition" -> buffered ?: (position + 12_000L)
                 "getDuration" -> duration
                 "getPlaybackState" -> state
                 "getPlayWhenReady" -> intent
@@ -43,11 +47,11 @@ class CapsuleVideoSessionTest {
                 "setTrackSelectionParameters" -> { selection = args!![0] as TrackSelectionParameters; null }
                 "getPlaybackParameters" -> parameters
                 "setPlaybackParameters" -> { parameters = args!![0] as PlaybackParameters; null }
-                "setMediaItem" -> { item = args!![0] as MediaItem; if (args.size > 1) position = args[1] as Long; null }
+                "setMediaItem" -> { replacements++; item = args!![0] as MediaItem; if (args.size > 1) position = args[1] as Long; null }
                 "seekTo" -> { position = args!![0] as Long; seeks += position; null }
                 "stop" -> { state = Player.STATE_IDLE; playing = false; null }
                 "clearMediaItems" -> { item = null; null }
-                "prepare" -> { state = Player.STATE_BUFFERING; null }
+                "prepare" -> { prepares++; state = Player.STATE_BUFFERING; null }
                 "equals" -> false
                 "hashCode" -> System.identityHashCode(this)
                 "toString" -> "TestDecoder"
@@ -122,6 +126,58 @@ class CapsuleVideoSessionTest {
         f.clip.frame()
         advanceTimeBy(261); runCurrent()
         assertEquals(0.8f, f.clip.volume)
+        f.session.stop()
+    }
+    @Test fun firstSeekDelayGetsOneBufferedCorrectionBeforeTheClockChanges() = runTest {
+        val f = Fixture(this); f.start()
+        f.music.position = 8_000L; f.clip.ready()
+        f.music.position = 9_700L; f.clip.frame()
+        assertEquals(listOf(8_000L, 9_700L), f.clip.seeks)
+        assertEquals(1f, f.music.volume)
+        assertTrue(f.frames.isEmpty())
+        f.music.position = 9_750L; f.clip.frame()
+        advanceTimeBy(261); runCurrent()
+        assertEquals(listOf("song"), f.frames)
+        assertEquals(2, f.clip.seeks.size)
+        f.session.stop()
+    }
+    @Test fun bufferedCorrectionDoesNotCreateAnUnboundedSeekChase() = runTest {
+        val f = Fixture(this); f.start()
+        f.music.position = 8_000L; f.clip.ready()
+        f.music.position = 9_700L; f.clip.buffered = 9_800L; f.clip.frame()
+        repeat(5) { f.clip.event() }
+        assertEquals(listOf(8_000L), f.clip.seeks)
+        f.clip.buffered = 15_000L; f.clip.event()
+        assertEquals(listOf(8_000L, 9_700L), f.clip.seeks)
+        f.music.position = 10_200L; f.clip.frame()
+        repeat(5) { f.clip.event() }
+        advanceTimeBy(261); runCurrent()
+        assertEquals(2, f.clip.seeks.size)
+        assertEquals(listOf("song"), f.frames)
+        f.session.stop()
+    }
+    @Test fun preparedClipSurvivesTheSourceFactoryRewritingItsTimelineUri() = runTest {
+        val f = Fixture(this); f.start(); f.clip.ready(); f.clip.frame()
+        advanceTimeBy(261); runCurrent()
+        f.clip.item = f.clip.item!!.buildUpon().setUri("https://cdn.example.test/clip.mp4").build()
+        f.session.stop(keepPrepared = true)
+        assertFalse(f.clip.intent)
+        f.start(); f.clip.ready(); f.clip.frame()
+        advanceTimeBy(261); runCurrent()
+        assertEquals(1, f.clip.prepares)
+        assertEquals(1, f.clip.replacements)
+        assertEquals(2, f.frames.size)
+        f.session.stop()
+    }
+    @Test fun changedSourceOrReleasedDecoderMustPrepareAgain() = runTest {
+        val f = Fixture(this); f.start(); f.clip.ready(); f.clip.frame()
+        advanceTimeBy(261); runCurrent()
+        f.session.stop(keepPrepared = true)
+        f.session.start("song", MediaItem.Builder().setMediaId("song").setUri("https://new.example.test/clip").build(), 0.8f)
+        assertEquals(2, f.clip.prepares)
+        f.session.stop()
+        f.start()
+        assertEquals(3, f.clip.prepares)
         f.session.stop()
     }
     @Test fun pauseDuringSeamKeepsThePreparedClipPausedAndCancelsTheDelayedRamp() = runTest {

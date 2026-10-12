@@ -37,7 +37,8 @@ class UiEnergyRegressionTest {
         val source = source("com/nikhil/yt/ui/player/Player.kt")
         assertTrue(source.contains("state.isExpanded -> 300L"))
         assertTrue(source.contains("else -> 1_000L"))
-        assertTrue(source.contains("!isPlaying -> 1_500L"))
+        assertTrue(source.contains("if (!isPlaying) break"))
+        assertTrue(source.contains("positionDiscontinuityRevision,"))
     }
 
     @Test

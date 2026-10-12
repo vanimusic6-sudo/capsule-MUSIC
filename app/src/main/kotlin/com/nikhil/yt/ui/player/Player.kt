@@ -151,6 +151,7 @@ fun BottomSheetPlayer(
     val isPlaying by playerConnection.isPlaying.collectAsState()
     val mediaMetadata by playerConnection.mediaMetadata.collectAsState()
     val videoPlaybackState by playerConnection.service.videoPlaybackState.collectAsState()
+    val positionDiscontinuityRevision by playerConnection.positionDiscontinuityRevision.collectAsState()
     val currentSong by playerConnection.currentSong.collectAsState(initial = null)
     val currentSongLiked = currentSong?.song?.liked == true
     val canSkipNext by playerConnection.canSkipNext.collectAsState()
@@ -226,6 +227,7 @@ fun BottomSheetPlayer(
         mediaMetadata?.id,
         videoPlaybackState.presentingVideo,
         videoPlaybackState.videoId,
+        positionDiscontinuityRevision,
         playbackState,
         isPlaying,
         sliderPosition,
@@ -244,9 +246,9 @@ fun BottomSheetPlayer(
                 playerConnection.service.capsuleTimelinePlayer.duration
                     .takeIf { it > 0L && it != C.TIME_UNSET }
                     ?: C.TIME_UNSET
+            if (!isPlaying) break
             delay(
                 when {
-                    !isPlaying -> 1_500L
                     state.isExpanded -> 300L
                     else -> 1_000L
                 },

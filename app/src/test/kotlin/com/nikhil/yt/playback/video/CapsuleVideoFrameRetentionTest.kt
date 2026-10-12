@@ -97,16 +97,4 @@ class CapsuleVideoFrameRetentionTest {
         assertSame(bitmap, retained.frame.value!!.bitmap)
         retained.release()
     }
-    @Test fun pauseSeekAndSurfaceReplacementKeepFramingButAnotherClipResetsIt() = runTest {
-        val clip = Clip(); val retained = CapsuleVideoFrameRetention(clip.player, this)
-        retained.startClip("song")
-        retained.setBorderZoom("song", 1.3f)
-        retained.clear()
-        retained.startClip("song")
-        assertEquals(1.3f, retained.borderZoom.value)
-        retained.startClip("next")
-        retained.setBorderZoom("song", 1.4f)
-        assertEquals(1f, retained.borderZoom.value)
-        retained.release()
-    }
 }

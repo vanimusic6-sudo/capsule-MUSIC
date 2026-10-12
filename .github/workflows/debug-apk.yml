@@ -79,7 +79,8 @@ jobs:
             --tests 'com.nikhil.yt.ui.UiEnergyRegressionTest' \
             --tests 'com.nikhil.yt.ui.player.CapsuleVideoArtworkTransitionTest' \
             --tests 'com.nikhil.yt.ui.player.CapsuleVideoMorphPixelsTest' \
-            --tests 'com.nikhil.yt.ui.player.CapsuleVideoFramingTest' \
+            --tests 'com.nikhil.yt.ui.player.CapsuleVideoViewportTest' \
+            --tests 'com.nikhil.yt.playback.video.CapsuleVideoPlayerLifecycleTest' \
             --tests 'com.nikhil.yt.models.MediaMetadataArtistMergeTest' \
             --tests 'com.nikhil.yt.playback.video.CapsuleVideoResolveCoordinatorTest' \
             --tests 'com.nikhil.yt.playback.video.CapsuleVideoChunkedDataSourceTest' \
@@ -120,6 +121,7 @@ jobs:
             --tests 'com.nikhil.yt.innertube.video.CapsuleVideoRoutesTest' \
             --tests 'com.nikhil.yt.innertube.video.VideoExtractionRequestsTest' \
             --tests 'com.nikhil.yt.innertube.CapsuleVideoRequestGuardTest' \
+            --tests 'com.nikhil.yt.innertube.CapsuleVideoMetadataAdmissionTest' \
             --stacktrace --no-daemon
 
       - name: Build Universal Debug APK

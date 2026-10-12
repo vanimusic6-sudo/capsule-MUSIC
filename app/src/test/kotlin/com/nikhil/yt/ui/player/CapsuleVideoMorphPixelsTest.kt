@@ -18,6 +18,7 @@ import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.unit.dp
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -53,8 +54,12 @@ class CapsuleVideoMorphPixelsTest {
         compose.mainClock.advanceTimeByFrame()
         compose.waitForIdle()
         compose.mainClock.advanceTimeBy(64)
-        centre("open-64")
-        compose.mainClock.advanceTimeBy(186)
+        assertEquals("cover remains opaque until the silhouette has moved", AndroidColor.BLUE, centre("open-64"))
+        repeat(10) {
+            compose.mainClock.advanceTimeBy(16)
+            assertOpaqueContent("opening-$it")
+        }
+        compose.mainClock.advanceTimeBy(26)
         // Content handover is short; the rest of the physical settling is opaque.
         assertEquals(AndroidColor.RED, centre("open-250"))
         compose.mainClock.advanceTimeBy(500)
@@ -64,11 +69,19 @@ class CapsuleVideoMorphPixelsTest {
         compose.waitForIdle()
         compose.mainClock.advanceTimeBy(32)
         assertEquals("closing must initially retain the video's still", AndroidColor.RED, centre("close-32"))
-        compose.mainClock.advanceTimeBy(96)
-        centre("close-128")
+        repeat(6) {
+            compose.mainClock.advanceTimeBy(16)
+            assertOpaqueContent("closing-$it")
+        }
         compose.mainClock.autoAdvance = true
         compose.waitForIdle()
         assertEquals(AndroidColor.BLUE, centre("closed"))
+    }
+
+    private fun assertOpaqueContent(name: String) {
+        val pixel = centre(name)
+        assertTrue("$name must show one opaque content, never blended layers or an empty frame",
+            pixel == AndroidColor.RED || pixel == AndroidColor.BLUE)
     }
 
     private fun centre(snapshotName: String): Int {

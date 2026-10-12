@@ -56,6 +56,7 @@ class PlayerConnection(
     }.stateIn(scope, SharingStarted.Eagerly, player.playbackState)
     private val playWhenReady = MutableStateFlow(player.playWhenReady)
     val playbackParameters = MutableStateFlow(player.playbackParameters)
+    val positionDiscontinuityRevision = MutableStateFlow(0L)
     val isPlaying =
         combine(playbackState, playWhenReady) { playbackState, playWhenReady ->
             playWhenReady && playbackState != STATE_ENDED
@@ -229,6 +230,10 @@ class PlayerConnection(
         queueWindows.value = player.getQueueWindows()
         currentWindowIndex.value = player.getCurrentQueueIndex()
         updateCanSkipPreviousAndNext()
+    }
+
+    override fun onPositionDiscontinuity(oldPosition: Player.PositionInfo, newPosition: Player.PositionInfo, reason: Int) {
+        positionDiscontinuityRevision.value += 1L
     }
 
     override fun onRepeatModeChanged(mode: Int) {

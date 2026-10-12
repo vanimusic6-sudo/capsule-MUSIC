@@ -17,6 +17,7 @@ import android.os.RemoteException
 import com.nikhil.yt.App
 import com.nikhil.yt.constants.CapsuleVideoQuality
 import com.nikhil.yt.innertube.CapsuleVideoRequestGuard
+import com.nikhil.yt.innertube.CapsuleVideoMetadataAdmission
 import com.nikhil.yt.innertube.YouTubeMusicVideoLinkResolver
 import com.nikhil.yt.innertube.video.CapsuleVideoDelivery
 import android.os.SystemClock
@@ -177,6 +178,7 @@ object YouTubeVideoResolver {
                 try {
                     withTimeoutOrNull(CapsuleVideoIpc.REQUEST_TIMEOUT_MS) {
                         val startedAt = SystemClock.elapsedRealtime()
+                        val admission = CapsuleVideoMetadataAdmission()
                         // An explicitly selected video/podcast already has the
                         // canonical YouTube video id. Avoid searching for another
                         // clip (two requests and possible wrong match).
@@ -190,6 +192,7 @@ object YouTubeVideoResolver {
                                         title = title,
                                         artists = artists,
                                         durationSeconds = durationSeconds,
+                                        beforeMetadataRequest = admission::beforeRequest,
                                     )
                                     .getOrThrow()
                                     .videoId
@@ -203,6 +206,7 @@ object YouTubeVideoResolver {
                                 videoId = videoId,
                                 quality = quality,
                                 muxedOnly = false,
+                                beforeMetadataRequest = admission::beforeRequest,
                             )
                         Timber.tag(TAG).i("VIDEO timing extract clip=%s ms=%s backend=%s delivery=%s", videoId,
                             SystemClock.elapsedRealtime() - matchedAt, resolved.backend, resolved.delivery)
@@ -258,6 +262,7 @@ object YouTubeVideoResolver {
         muxedOnly: Boolean,
         failedBackend: String? = null,
         refresh: Boolean = false,
+        beforeMetadataRequest: suspend () -> Unit = CapsuleVideoRequestGuard::beforeMetadataRequest,
     ): ResolvedVideo {
         val key = cacheKey(videoId, quality, muxedOnly)
         cache[key]?.let { return it }
@@ -270,7 +275,7 @@ object YouTubeVideoResolver {
 
         return resolveMutex.withLock {
             cache[key]?.let { return@withLock it }
-            CapsuleVideoRequestGuard.beforeMetadataRequest()
+            beforeMetadataRequest()
             val remote = callRemoteExtractor(videoId, quality, muxedOnly, failedBackend, refresh)
             val resolved = remote.toResolved(sourceMediaId)
             cache.put(videoId, key, resolved)

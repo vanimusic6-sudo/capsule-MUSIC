@@ -568,6 +568,8 @@ fun CapsulePlayerContent(
                     fillArtworkSlot = useClayLayout,
                     artworkCornerRadius = if (isLight) 16.dp else 24.dp,
                     artworkOffsetY = if (isLight) 0.dp else (-5).dp,
+                    videoWidthScale = if (isLandscape) 1f else if (isLight) 1.08f else 1.04f,
+                    videoCornerRadius = if (isLight) CapsuleLightPanelRadius else 24.dp,
                     artworkBackground = textColor.copy(alpha = 0.045f),
                     outline = if (isLight) Color.Transparent else outline,
                     onArtworkClick = onArtworkClick,
