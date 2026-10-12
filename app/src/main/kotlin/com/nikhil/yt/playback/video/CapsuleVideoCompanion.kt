@@ -186,7 +186,9 @@ internal class CapsuleVideoSession(
         override fun onRenderedFirstFrame() {
             if (id == null || !rendering) return
             seekStartedAtMs?.let {
-                seekLatencyMs = (clockMs() - it).coerceIn(0L, 1_200L)
+                // A network seek can take far longer than a subsequent
+                // buffered seek. Bound prediction to the handoff tolerance.
+                seekLatencyMs = (clockMs() - it).coerceIn(0L, 400L)
                 seekStartedAtMs = null
             }
             firstFrame = true
@@ -252,7 +254,7 @@ internal class CapsuleVideoSession(
             return
         }
         if (!ownsSound && !audio.playWhenReady && rendering && ready && firstFrame &&
-            abs(video.currentPosition - targetPosition()) > 400L) {
+            abs(video.currentPosition - targetPosition()) > 50L) {
             aligned = true
             catchupPending = false
             seekForStartup(targetPosition())
