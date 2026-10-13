@@ -22,14 +22,16 @@ internal object CapsuleVideoGuardStore {
                 Context.MODE_PRIVATE,
             )
 
-        CapsuleVideoRequestGuard.restore(
-            CapsuleVideoRequestGuard.Snapshot(
-                blockedUntilMs = prefs.getLong("blocked_until", 0L),
-                escalationLevel = prefs.getInt("escalation_level", 0),
-                lastTripAtMs = prefs.getLong("last_trip", 0L),
-                reason = prefs.getString("reason", null),
-            ),
+        val stored = CapsuleVideoRequestGuard.Snapshot(
+            blockedUntilMs = prefs.getLong("blocked_until", 0L),
+            escalationLevel = prefs.getInt("escalation_level", 0),
+            lastTripAtMs = prefs.getLong("last_trip", 0L),
+            reason = prefs.getString("reason", null),
         )
+        Timber.tag("CapsuleVideoGuard").i("restore reason=%s untilMs=%s remainingMs=%s escalation=%s lastTripMs=%s",
+            stored.reason ?: "none", stored.blockedUntilMs,
+            (stored.blockedUntilMs - System.currentTimeMillis()).coerceAtLeast(0L), stored.escalationLevel, stored.lastTripAtMs)
+        CapsuleVideoRequestGuard.restore(stored)
 
         val persist: (CapsuleVideoRequestGuard.Snapshot) -> Unit = { snapshot ->
             Timber.tag("CapsuleVideoGuard").i("state reason=%s untilMs=%s remainingMs=%s escalation=%s lastTripMs=%s",
