@@ -25,6 +25,13 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.produceState
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
+import kotlinx.coroutines.delay
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.repeatOnLifecycle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -79,15 +86,24 @@ internal fun CapsuleAudioVideoToggle(
     val videoUnavailable =
         state.preferredMode == CapsulePlaybackMode.VIDEO &&
             state.phase == CapsuleVideoPhase.UNAVAILABLE
-    val videoRequestError =
-        state.preferredMode == CapsulePlaybackMode.VIDEO &&
-            state.phase == CapsuleVideoPhase.REQUEST_ERROR
-    // A request-guard cooldown is not a broken video decoder. Surface its actual meaning
-    // instead of the alarming, misleading "VIDEO ERROR" label while AUDIO keeps playing.
-    val videoRequestPaused =
-        videoRequestError &&
-            (state.message?.contains("paused", ignoreCase = true) == true ||
-                state.message?.contains("quota", ignoreCase = true) == true)
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
+    val nowMs by produceState(System.currentTimeMillis(), state.requestBlockedUntilMs, lifecycle) {
+        value = System.currentTimeMillis()
+        if (state.requestBlockedUntilMs > 0L) lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
+            value = System.currentTimeMillis()
+            while (state.requestBlockedUntilMs > value) {
+                delay(minOf(60_000L, state.requestBlockedUntilMs - value))
+                value = System.currentTimeMillis()
+            }
+        }
+    }
+    val videoRequestPaused = state.requestBlockedUntilMs > nowMs
+    val expiredCooldown = state.requestBlockedUntilMs > 0L && !videoRequestPaused
+    val videoRequestError = state.preferredMode == CapsulePlaybackMode.VIDEO &&
+        state.phase == CapsuleVideoPhase.REQUEST_ERROR && !expiredCooldown
+    val blockedLabel = if (state.requestBlockReason?.contains("bot", true) == true) "BOT" else "WAIT"
+    val blockedMinutes = ((state.requestBlockedUntilMs - nowMs + 59_999L) / 60_000L).coerceAtLeast(1L)
+    val blockedText = "VIDEO $blockedLabel ${blockedMinutes}m"
     val videoSelected =
         state.mode == CapsulePlaybackMode.VIDEO || videoResolving
     val audioSelected = !videoSelected
@@ -137,7 +153,7 @@ internal fun CapsuleAudioVideoToggle(
                         shape = segmentShape,
                         text =
                             when {
-                                videoRequestPaused -> "VIDEO PAUSED"
+                                videoRequestPaused -> blockedText
                                 videoRequestError -> "VIDEO ERROR"
                                 videoUnavailable -> "VIDEO N/A"
                                 else -> "video"
@@ -146,10 +162,12 @@ internal fun CapsuleAudioVideoToggle(
                         loading = videoResolving,
                         unavailable = videoUnavailable,
                         requestError = videoRequestError,
-                        enabled = enabled && !videoUnavailable,
+                        enabled = enabled && !videoUnavailable && !videoRequestPaused,
                         textColor = textColor,
                         onClick = onVideoClick,
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier.fillMaxWidth().semantics {
+                            stateDescription = if (videoRequestPaused) state.message.orEmpty() else ""
+                        },
                     )
                 }
             }
@@ -191,7 +209,7 @@ internal fun CapsuleAudioVideoToggle(
                 shape = segmentShape,
                 text =
                     when {
-                        videoRequestPaused -> "VIDEO PAUSED"
+                        videoRequestPaused -> blockedText
                         videoRequestError -> "VIDEO ERROR"
                         videoUnavailable -> "VIDEO N/A"
                         else -> "VIDEO"
@@ -200,10 +218,12 @@ internal fun CapsuleAudioVideoToggle(
                 loading = videoResolving,
                 unavailable = videoUnavailable,
                 requestError = videoRequestError,
-                enabled = enabled && !videoUnavailable,
+                enabled = enabled && !videoUnavailable && !videoRequestPaused,
                 textColor = textColor,
                 onClick = onVideoClick,
-                modifier = Modifier.weight(1f),
+                modifier = Modifier.weight(1f).semantics {
+                    stateDescription = if (videoRequestPaused) state.message.orEmpty() else ""
+                },
             )
         }
     }

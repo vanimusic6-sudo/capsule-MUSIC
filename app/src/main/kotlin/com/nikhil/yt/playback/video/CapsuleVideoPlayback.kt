@@ -48,6 +48,8 @@ data class CapsuleVideoPlaybackState(
     val height: Int? = null,
     val firstFrameReady: Boolean = false,
     val message: String? = null,
+    val requestBlockedUntilMs: Long = 0L,
+    val requestBlockReason: String? = null,
 ) {
     val needsSurface: Boolean get() = mode == CapsulePlaybackMode.VIDEO &&
         phase in setOf(CapsuleVideoPhase.PREPARING, CapsuleVideoPhase.PLAYING, CapsuleVideoPhase.BUFFERING, CapsuleVideoPhase.RECOVERING)

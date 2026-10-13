@@ -8,6 +8,7 @@ package com.nikhil.yt.playback.video
 import android.content.Context
 import com.nikhil.yt.innertube.CapsuleVideoRequestGuard
 import java.util.concurrent.atomic.AtomicBoolean
+import timber.log.Timber
 
 internal object CapsuleVideoGuardStore {
     private val initialized = AtomicBoolean(false)
@@ -30,7 +31,10 @@ internal object CapsuleVideoGuardStore {
             ),
         )
 
-        CapsuleVideoRequestGuard.onStateChanged = { snapshot ->
+        val persist: (CapsuleVideoRequestGuard.Snapshot) -> Unit = { snapshot ->
+            Timber.tag("CapsuleVideoGuard").i("state reason=%s untilMs=%s remainingMs=%s escalation=%s lastTripMs=%s",
+                snapshot.reason ?: "none", snapshot.blockedUntilMs,
+                (snapshot.blockedUntilMs - System.currentTimeMillis()).coerceAtLeast(0L), snapshot.escalationLevel, snapshot.lastTripAtMs)
             prefs.edit()
                 .putLong("blocked_until", snapshot.blockedUntilMs)
                 .putInt("escalation_level", snapshot.escalationLevel)
@@ -38,5 +42,8 @@ internal object CapsuleVideoGuardStore {
                 .putString("reason", snapshot.reason)
                 .apply()
         }
+        CapsuleVideoRequestGuard.onStateChanged = persist
+        // Save migrated 403-only bans immediately, rather than restoring them again.
+        persist(CapsuleVideoRequestGuard.snapshot())
     }
 }

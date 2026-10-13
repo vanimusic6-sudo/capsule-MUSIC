@@ -10,7 +10,7 @@
  *  - HTTP status and playabilityStatus are classified before localized text;
  *  - generic "sign in" is no longer treated as a bot-check;
  *  - Ktor ResponseException status is read directly when available;
- *  - paced metadata admission / escalating server-error breaker are preserved;
+ *  - paced metadata admission / explicit bot and rate-limit breaker are preserved;
  *  - continuous CDN media delivery has no local finite request quota.
  *
  * GPL-3.0
@@ -54,7 +54,6 @@ object CapsuleVideoRequestGuard {
         )
 
     private const val ESCALATION_DECAY_MS = 6 * 60 * 60 * 1000L
-    private const val STREAM_FORBIDDEN_STREAK_LIMIT = 6
 
     data class Snapshot(
         val blockedUntilMs: Long,
@@ -85,8 +84,6 @@ object CapsuleVideoRequestGuard {
     @Volatile
     private var blockReason: String? = null
 
-    @Volatile
-    private var streamForbiddenStreak = 0
 
     class RequestBlockedException(
         message: String,
@@ -103,6 +100,15 @@ object CapsuleVideoRequestGuard {
 
     fun restore(snapshot: Snapshot?) {
         snapshot ?: return
+        // Old policy incorrectly promoted ordinary signed-link/client 403s to
+        // a global ban. Migrate only those reasons; real 429/bot verdicts stay.
+        if (snapshot.reason?.lowercase() in setOf("repeated stream 403", "http 403", "forbidden")) {
+            blockedUntilMs = 0L
+            escalationLevel = 0
+            lastTripAtMs = 0L
+            blockReason = null
+            return
+        }
 
         val now = clock()
         val sane = snapshot.blockedUntilMs <= now + BACKOFF_STEPS_MS.last()
@@ -233,7 +239,6 @@ object CapsuleVideoRequestGuard {
         when (kind) {
             FailureKind.RATE_LIMITED,
             FailureKind.BOT_CHECK,
-            FailureKind.FORBIDDEN,
             -> trip(kind.name.lowercase().replace('_', ' '))
 
             else -> Unit
@@ -245,7 +250,6 @@ object CapsuleVideoRequestGuard {
     @Synchronized
     fun noteStreamStatus(code: Int): FailureKind {
         if (code in 200..399 || code == 416) {
-            streamForbiddenStreak = 0
             return FailureKind.NONE
         }
 
@@ -255,28 +259,23 @@ object CapsuleVideoRequestGuard {
         }
 
         if (code == 403 || code == 401) {
-            streamForbiddenStreak += 1
-            if (streamForbiddenStreak >= STREAM_FORBIDDEN_STREAK_LIMIT) {
-                streamForbiddenStreak = 0
-                trip("repeated stream 403")
-                return FailureKind.FORBIDDEN
-            }
-            return FailureKind.NONE
+            // A CDN refusal can mean an expired signature, unsupported route
+            // or missing credentials. It is not evidence of a global bot ban.
+            // The VIDEO session already invalidates and changes backend.
+            return FailureKind.FORBIDDEN
         }
 
         return FailureKind.TRANSIENT
     }
 
     fun noteHttpStatus(code: Int): Boolean {
-        if (code != 403 && code != 429) return false
+        if (code != 429) return false
 
         trip("http $code")
         return true
     }
 
-    fun noteSuccess() {
-        streamForbiddenStreak = 0
-    }
+    fun noteSuccess() = Unit
 
     @Synchronized
     fun isBlocked(): Boolean {
@@ -349,7 +348,6 @@ object CapsuleVideoRequestGuard {
         blockReason = null
         escalationLevel = 0
         lastTripAtMs = 0L
-        streamForbiddenStreak = 0
         lastApiRequestAtMs = 0L
     }
 }

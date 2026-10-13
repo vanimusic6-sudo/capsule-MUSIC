@@ -9,6 +9,7 @@
 package com.nikhil.yt.ui.screens.settings
 
 import com.nikhil.yt.BuildConfig
+import com.nikhil.yt.innertube.CapsuleVideoRequestGuard
 import com.nikhil.yt.playback.audio.AudioCdnSessionStats
 import android.content.Intent
 import android.text.format.DateFormat
@@ -736,6 +737,10 @@ private fun LogViewerPanel() {
                                 "Filter: ${when (filterMode) { 0 -> "Discord"; 1 -> "YouTube core"; else -> "All" }}"
                             )
                             appendLine("Count: ${filtered.size}")
+                            val videoGuard = CapsuleVideoRequestGuard.snapshot()
+                            appendLine("video-guard reason=${videoGuard.reason ?: "none"} " +
+                                "untilMs=${videoGuard.blockedUntilMs} remainingMs=${(videoGuard.blockedUntilMs - exportedAt).coerceAtLeast(0L)} " +
+                                "escalation=${videoGuard.escalationLevel} lastTripMs=${videoGuard.lastTripAtMs}")
                             /*
                              * Which build produced this capture.
                              *

@@ -187,6 +187,7 @@ import com.nikhil.yt.playback.video.CapsuleVideoChunkedDataSource
 import com.nikhil.yt.playback.video.CAPSULE_VIDEO_WARMUP_BYTES
 import com.nikhil.yt.playback.video.CAPSULE_VIDEO_AUDIO_WARMUP_BYTES
 import com.nikhil.yt.playback.video.CapsuleVideoStreamInterceptor
+import com.nikhil.yt.playback.video.CapsuleVideoGuardStore
 import com.nikhil.yt.playback.video.CapsuleVideoCompanion
 import com.nikhil.yt.playback.video.CapsuleVideoDirectMediaSourceFactory
 import com.nikhil.yt.playback.video.YouTubeVideoResolver
@@ -1757,6 +1758,7 @@ class MusicService :
                 ?.isInteractive
                 ?: true
         registerCapsuleScreenStateReceiver()
+        CapsuleVideoGuardStore.initialize(applicationContext)
 
         audioManager = getSystemService(Context.AUDIO_SERVICE) as AudioManager
         playbackFocusController.initialize()
@@ -4879,13 +4881,19 @@ class MusicService :
         }
 
         if (CapsuleVideoRequestGuard.isBlocked()) {
+            val guard = CapsuleVideoRequestGuard.snapshot()
+            val remainingMs = CapsuleVideoRequestGuard.remainingBackoffMs()
+            Timber.tag("CapsuleVideoGuard").w("request-denied id=%s reason=%s remainingMs=%s untilMs=%s",
+                player.currentMediaItem?.mediaId, guard.reason, remainingMs, guard.blockedUntilMs)
             videoPlaybackState.value =
                 videoPlaybackState.value.copy(
                     preferredMode = CapsulePlaybackMode.VIDEO,
                     mode = CapsulePlaybackMode.AUDIO,
                     phase = CapsuleVideoPhase.REQUEST_ERROR,
                     mediaId = player.currentMediaItem?.mediaId,
-                    message = "Video requests temporarily paused",
+                    message = "VIDEO requests paused: ${guard.reason}; retry in ${(remainingMs + 999L) / 1000L}s",
+                    requestBlockedUntilMs = guard.blockedUntilMs,
+                    requestBlockReason = guard.reason,
                 )
             return
         }

@@ -117,4 +117,36 @@ class CapsuleVideoRequestGuardTest {
         }
     }
 
+    @Test
+    fun expiredOrUnsupportedCdnLinksDoNotBanOtherClips() = kotlinx.coroutines.runBlocking {
+        repeat(20) {
+            assertEquals(CapsuleVideoRequestGuard.FailureKind.FORBIDDEN,
+                CapsuleVideoRequestGuard.noteStreamStatus(403))
+        }
+        assertFalse(CapsuleVideoRequestGuard.isBlocked())
+        CapsuleVideoRequestGuard.beforeStreamProbe()
+        assertFalse(CapsuleVideoRequestGuard.noteHttpStatus(403))
+        assertEquals(CapsuleVideoRequestGuard.FailureKind.FORBIDDEN,
+            CapsuleVideoRequestGuard.noteApiFailure(IllegalStateException("HTTP 403")))
+        assertFalse(CapsuleVideoRequestGuard.isBlocked())
+        CapsuleVideoRequestGuard.noteStreamStatus(429)
+        assertTrue(CapsuleVideoRequestGuard.isBlocked())
+    }
+
+    @Test
+    fun old403OnlyCooldownIsMigratedWithoutRemovingRealBotOrRateLimitCooldowns() {
+        val now = 100_000L
+        CapsuleVideoRequestGuard.resetForTests { now }
+        for (reason in listOf("repeated stream 403", "http 403", "forbidden")) {
+            CapsuleVideoRequestGuard.restore(CapsuleVideoRequestGuard.Snapshot(now + 21_600_000L, 3, now, reason))
+            assertFalse(CapsuleVideoRequestGuard.isBlocked())
+            assertEquals(0, CapsuleVideoRequestGuard.snapshot().escalationLevel)
+        }
+        for (reason in listOf("http 429 (stream)", "rate_limited", "bot_blocked", "bot check")) {
+            CapsuleVideoRequestGuard.restore(CapsuleVideoRequestGuard.Snapshot(now + 600_000L, 1, now, reason))
+            assertTrue(CapsuleVideoRequestGuard.isBlocked())
+            assertEquals(reason, CapsuleVideoRequestGuard.blockReason())
+        }
+    }
+
 }
