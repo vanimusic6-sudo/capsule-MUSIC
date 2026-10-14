@@ -75,21 +75,28 @@ internal fun CapsuleVideoArtworkTransition(
     // Each mediaId gets its own starting position without carry-over.
     val body = remember(transitionKey) { Animatable(target) }
     LaunchedEffect(body, target, immersive) {
-        body.animateTo(
-            targetValue = target,
-            animationSpec = if (immersive)
-                spring(dampingRatio = 0.77f, stiffness = 105f, visibilityThreshold = 0.001f)
-            else
-                spring(dampingRatio = 0.86f, stiffness = 210f, visibilityThreshold = 0.001f),
-        )
+        // An initial AUDIO placeholder already sits at zero. Starting a
+        // no-op spring there can momentarily mark isRunning=true and mount
+        // the black video surface before the cover image is ready.
+        if (abs(body.value - target) > 0.0001f || abs(body.velocity) > 0.0001f) {
+            body.animateTo(
+                targetValue = target,
+                animationSpec = if (immersive)
+                    spring(dampingRatio = 0.77f, stiffness = 105f, visibilityThreshold = 0.001f)
+                else
+                    spring(dampingRatio = 0.86f, stiffness = 210f, visibilityThreshold = 0.001f),
+            )
+        }
     }
     val lead = if (immersive) remember(transitionKey) { Animatable(target) } else body
     if (immersive) {
         LaunchedEffect(lead, target) {
-            lead.animateTo(
-                targetValue = target,
-                animationSpec = spring(dampingRatio = 0.63f, stiffness = 270f, visibilityThreshold = 0.001f),
-            )
+            if (abs(lead.value - target) > 0.0001f || abs(lead.velocity) > 0.0001f) {
+                lead.animateTo(
+                    targetValue = target,
+                    animationSpec = spring(dampingRatio = 0.63f, stiffness = 270f, visibilityThreshold = 0.001f),
+                )
+            }
         }
     }
     // Render lease must not flicker during a negative spring overshoot.
