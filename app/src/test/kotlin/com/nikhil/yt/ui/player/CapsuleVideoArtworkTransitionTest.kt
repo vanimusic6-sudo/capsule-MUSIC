@@ -77,6 +77,39 @@ class CapsuleVideoArtworkTransitionTest {
         ), nowMs = 1000L))
     }
 
+    @Test fun resizingLightCoverCannotResizeTheNativeVideoViewport() {
+        val small = mutableStateOf(false)
+        var videoWidth = 0
+        var videoHeight = 0
+        compose.setContent {
+            CapsuleVideoArtworkTransition(
+                presentingVideo = false,
+                needsSurface = true,
+                independentVideoViewport = true,
+                fillArtworkSlot = true,
+                modifier = if (small.value) Modifier.size(185.dp, 140.dp)
+                           else Modifier.size(340.dp, 265.dp),
+                artworkCornerRadius = 16.dp,
+                videoCornerRadius = 16.dp,
+                video = {
+                    Box(Modifier.fillMaxSize().onSizeChanged {
+                        videoWidth = it.width
+                        videoHeight = it.height
+                    })
+                },
+                artwork = { Box(Modifier.fillMaxSize()) },
+            )
+        }
+        compose.waitForIdle()
+        val normalWidth = videoWidth
+        val normalHeight = videoHeight
+        assertTrue(normalWidth > 0)
+        compose.runOnIdle { small.value = true }
+        compose.waitForIdle()
+        assertEquals("user's Light cover width is not VIDEO width", normalWidth, videoWidth)
+        assertEquals("user's Light cover height is not VIDEO height", normalHeight, videoHeight)
+    }
+
     @Test fun oneWindowWidthIsSharedAcrossImmersionCosmoAndLight() {
         // The recorded bug: Immersion's full-bleed slot bypassed the maximum
         // screen-width constraint because the cap used coerceAtLeast(slotWidth).
