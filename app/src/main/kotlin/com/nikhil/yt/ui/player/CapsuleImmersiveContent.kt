@@ -634,7 +634,9 @@ internal fun CapsuleImmersiveContent(
             // Keep the full-bleed artwork, but morph into the same rounded
             // 16:9 video window used by the other player styles.
             artworkCornerRadius = 0.dp,
-            videoCornerRadius = 24.dp,
+            // Smaller circular finish; radius now grows continuously with
+            // the container instead of jumping near the end of the morph.
+            videoCornerRadius = 16.dp,
             videoSidePadding = 12.dp,
             videoWidthScale = 1.04f,
             motion = CapsuleVideoArtworkMotion.IMMERSIVE,
