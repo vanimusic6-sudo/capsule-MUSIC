@@ -159,6 +159,7 @@ internal class CapsuleVideoSession(
     private var watchdog: Job? = null
     private var starting = false
     private var synchronizingSeek = false
+    private var deferredVideoSeekMs: Long? = null
     private var startedAtMs = 0L
     private var readyReported = false
     // The source factory replaces the synthetic URI with the CDN URI in the
@@ -288,6 +289,13 @@ internal class CapsuleVideoSession(
     fun seekTo(positionMs: Long) {
         val currentId = id ?: return
         if (audio.currentMediaItem?.mediaId != currentId) { stop(synchronizeMusic = false); return }
+        // Before the manifest/timeline establishes a real duration, an
+        // arbitrary far seek can push some extractors past their last segment.
+        // Store only the intent and clamp/apply once the duration is known.
+        if (capsuleKnownDuration(video.duration) == null) {
+            deferredVideoSeekMs = positionMs.coerceAtLeast(0L)
+            return
+        }
         if (capsuleVideoSeekCompletes(positionMs, video.duration)) { finishClip(); return }
         val target = capsuleClampDecoderSeek(positionMs, video.duration)
         if (!committed) {
@@ -321,6 +329,12 @@ internal class CapsuleVideoSession(
         val current = id ?: return
         if (starting) return
         if (audio.currentMediaItem?.mediaId != current) { stop(); return }
+        val deferredSeek = deferredVideoSeekMs
+        if (deferredSeek != null && capsuleKnownDuration(video.duration) != null) {
+            deferredVideoSeekMs = null
+            seekTo(deferredSeek)
+            return
+        }
         // After the first presentation, VIDEO owns the session through seeks,
         // buffering, pauses and detached surfaces. Silence while loading is
         // part of VIDEO; playing MUSIC underneath it would change the mode.
@@ -577,6 +591,7 @@ internal class CapsuleVideoSession(
         // A failed/stalled clip has no authority to rewind healthy MUSIC.
         val syncMusic = synchronizeMusic && committed && ownsSound && audio.currentMediaItem?.mediaId == id
         id = null
+        deferredVideoSeekMs = null
         if (wasActive) audio.removeListener(audioListener)
         if (syncMusic) {
             val safePosition = capsuleClampDecoderSeek(returnPosition, audio.duration)
