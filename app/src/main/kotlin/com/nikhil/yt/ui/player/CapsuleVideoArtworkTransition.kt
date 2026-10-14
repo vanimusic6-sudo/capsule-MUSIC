@@ -22,6 +22,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.RoundRect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
 import androidx.compose.foundation.shape.GenericShape
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
@@ -130,7 +131,7 @@ internal fun CapsuleVideoArtworkTransition(
         val videoHeight = (videoWidth * 9f / 16f).roundToInt().coerceIn(1, slotHeight)
         // A small, fixed overscan is reserved around Immersion so the jelly
         // silhouette cannot be cropped by its own graphics layer at the peak.
-        val overscan = if (immersive) with(density) { 8.dp.roundToPx() } else 0
+        val overscan = with(density) { (if (immersive) 8.dp else 5.dp).roundToPx() }
         val frameWidth = max(coverWidth, videoWidth) + overscan * 2
         val frameHeight = max(coverHeight, videoHeight) + overscan * 2
         val frameWidthDp = with(density) { frameWidth.toDp() }
@@ -188,44 +189,15 @@ internal fun CapsuleVideoArtworkTransition(
                     val radius = capsuleMorphCornerRadius(
                         artworkRadius, videoRadius, p,
                     ).coerceIn(0f, min(w, h) / 2f)
-                    if (immersive || abs(adhesion) > 0.0001f) {
-                        // Unlike uniform scale, the top and bottom edge lag the
-                        // faster spring. Subtle cubic tension creates a real
-                        // soft-surface silhouette, including reverse recoil.
-                        val pullPx = with(density) {
-                            (if (immersive) 6.dp else 4.dp).toPx()
-                        } * adhesion
-                        shape = GenericShape { _, _ ->
-                            val right = left + w
-                            val bottom = top + h
-                            val inner = (w - radius * 2f).coerceAtLeast(0f)
-                            moveTo(left + radius, top)
-                            cubicTo(
-                                left + radius + inner * 0.30f, top - pullPx,
-                                left + radius + inner * 0.70f, top - pullPx,
-                                right - radius, top,
-                            )
-                            val k = radius * 0.55228475f
-                            // Circular-arc-compatible cubic corners. When edge
-                            // adhesion reaches zero, this contour is optically
-                            // identical to the ordinary rounded video window.
-                            cubicTo(right - radius + k, top, right, top + radius - k, right, top + radius)
-                            lineTo(right, bottom - radius)
-                            cubicTo(right, bottom - radius + k, right - radius + k, bottom, right - radius, bottom)
-                            cubicTo(
-                                right - radius - inner * 0.30f, bottom - pullPx * 0.65f,
-                                right - radius - inner * 0.70f, bottom - pullPx * 0.65f,
-                                left + radius, bottom,
-                            )
-                            cubicTo(left + radius - k, bottom, left, bottom - radius + k, left, bottom - radius)
-                            lineTo(left, top + radius)
-                            cubicTo(left, top + radius - k, left + radius - k, top, left + radius, top)
-                            close()
-                        }
-                    } else {
-                        shape = GenericShape { _, _ ->
-                            addRoundRect(RoundRect(left, top, left + w, top + h, CornerRadius(radius)))
-                        }
+                    // One continuous cubic contour across both styles and
+                    // throughout the entire motion. Never switch between
+                    // RoundRect and an elastic path mid-flight: the change in
+                    // corner curvature itself caused an apparent sharp 'pop'.
+                    val pullPx = with(density) {
+                        (if (immersive) 6.dp else 4.dp).toPx()
+                    } * adhesion
+                    shape = GenericShape { _, _ ->
+                        addPath(capsuleStickyContourPath(left, top, w, h, radius, pullPx))
                     }
                     clip = true
                     shadowElevation = if (immersive) 0f else shadowPx * smoothVideoStep(p)
@@ -235,14 +207,22 @@ internal fun CapsuleVideoArtworkTransition(
                     drawContent()
                     if (outline.alpha > 0f) {
                         val p = body.value
-                        val w = widthAt(p, lead.value)
-                        val h = heightAt(p, lead.value)
+                        val leading = lead.value
+                        val w = widthAt(p, leading)
+                        val h = heightAt(p, leading)
+                        val adhesion = if (immersive) immersiveEdgeTension(p, leading)
+                            else sculptedEdgeTension(p, leading)
+                        val left = (size.width - w) / 2f
+                        val top = (size.height - h) / 2f +
+                            if (immersive) adhesion * with(density) { 9.dp.toPx() } else 0f
                         val radius = capsuleMorphCornerRadius(artworkRadius, videoRadius, p)
-                        drawRoundRect(
+                            .coerceIn(0f, min(w, h) / 2f)
+                        val pullPx = with(density) {
+                            (if (immersive) 6.dp else 4.dp).toPx()
+                        } * adhesion
+                        drawPath(
+                            path = capsuleStickyContourPath(left, top, w, h, radius, pullPx),
                             color = outline,
-                            topLeft = Offset((size.width - w) / 2f, (size.height - h) / 2f),
-                            size = Size(w, h),
-                            cornerRadius = CornerRadius(radius.coerceAtLeast(0f)),
                             style = Stroke(1.dp.toPx()),
                         )
                     }
@@ -336,4 +316,42 @@ internal fun sculptedEdgeTension(body: Float, lead: Float): Float {
     val p = body.coerceIn(0f, 1f)
     return ((lead - body) * sin((PI * p).toFloat()).coerceAtLeast(0f))
         .coerceIn(-0.25f, 0.25f)
+}
+
+/**
+ * One contour implementation for the filled clip AND the outline. The curved
+ * edges have zero tension at rest, so they reduce exactly to rounded corners
+ * whose control points are tangent to their adjacent straight lines.
+ */
+internal fun capsuleStickyContourPath(
+    left: Float,
+    top: Float,
+    width: Float,
+    height: Float,
+    cornerRadius: Float,
+    pullPx: Float,
+): Path = Path().apply {
+    val right = left + width
+    val bottom = top + height
+    val radius = cornerRadius.coerceIn(0f, min(width, height) * 0.5f)
+    val inner = (width - radius * 2f).coerceAtLeast(0f)
+    val k = radius * 0.55228475f
+    moveTo(left + radius, top)
+    cubicTo(
+        left + radius + inner * 0.30f, top - pullPx,
+        left + radius + inner * 0.70f, top - pullPx,
+        right - radius, top,
+    )
+    cubicTo(right - radius + k, top, right, top + radius - k, right, top + radius)
+    lineTo(right, bottom - radius)
+    cubicTo(right, bottom - radius + k, right - radius + k, bottom, right - radius, bottom)
+    cubicTo(
+        right - radius - inner * 0.30f, bottom - pullPx * 0.65f,
+        right - radius - inner * 0.70f, bottom - pullPx * 0.65f,
+        left + radius, bottom,
+    )
+    cubicTo(left + radius - k, bottom, left, bottom - radius + k, left, bottom - radius)
+    lineTo(left, top + radius)
+    cubicTo(left, top + radius - k, left + radius - k, top, left + radius, top)
+    close()
 }
