@@ -77,6 +77,59 @@ class CapsuleVideoArtworkTransitionTest {
         ), nowMs = 1000L))
     }
 
+    @Test fun oneWindowWidthIsSharedAcrossImmersionCosmoAndLight() {
+        // The recorded bug: Immersion's full-bleed slot bypassed the maximum
+        // screen-width constraint because the cap used coerceAtLeast(slotWidth).
+        // On the same 400dp device all three 16:9 VIDEO windows now match.
+        val design = mutableStateOf(0)
+        var outputWidth = 0
+        compose.setContent {
+            val style = design.value
+            CapsuleVideoArtworkTransition(
+                presentingVideo = false,
+                needsSurface = true,
+                modifier = if (style == 2) Modifier.size(400.dp, 440.dp)
+                    else if (style == 1) Modifier.size(352.dp, 280.dp)
+                    else Modifier.size(340.dp, 280.dp),
+                fillArtworkSlot = style != 1,
+                artworkCornerRadius = if (style == 2) 0.dp else if (style == 0) 16.dp else 24.dp,
+                videoSidePadding = if (style == 2) 12.dp else 0.dp,
+                videoWidthScale = if (style == 0) 1.08f else 1.04f,
+                motion = if (style == 2) CapsuleVideoArtworkMotion.IMMERSIVE
+                    else CapsuleVideoArtworkMotion.SCULPTED,
+                video = { Box(Modifier.fillMaxSize().onSizeChanged { outputWidth = it.width }) },
+                artwork = { Box(Modifier.fillMaxSize()) },
+            )
+        }
+        compose.waitForIdle()
+        val light = outputWidth
+        compose.runOnIdle { design.value = 1 }
+        compose.waitForIdle()
+        val cosmo = outputWidth
+        compose.runOnIdle { design.value = 2 }
+        compose.waitForIdle()
+        val immersion = outputWidth
+        assertTrue("Light width must be positive", light > 0)
+        assertTrue("Immersion cannot be materially wider than Light: $immersion vs $light",
+            kotlin.math.abs(immersion - light) <= 4)
+        assertTrue("Immersion cannot be materially wider than Cosmo: $immersion vs $cosmo",
+            kotlin.math.abs(immersion - cosmo) <= 4)
+    }
+
+    @Test fun cornersAdvanceFromTheFirstFrameAndDoNotPopLate() {
+        assertEquals(0f, capsuleMorphCornerRadius(0f, 16f, 0f), 0.001f)
+        assertEquals(4f, capsuleMorphCornerRadius(0f, 16f, 0.25f), 0.001f)
+        assertEquals(8f, capsuleMorphCornerRadius(0f, 16f, 0.5f), 0.001f)
+        assertEquals(12f, capsuleMorphCornerRadius(0f, 16f, 0.75f), 0.001f)
+        assertEquals(16f, capsuleMorphCornerRadius(0f, 16f, 1f), 0.001f)
+        assertEquals(16f, capsuleMorphCornerRadius(16f, 16f, 0.5f), 0.001f)
+        assertEquals(24f, capsuleMorphCornerRadius(24f, 24f, 0.5f), 0.001f)
+        assertTrue(sculptedStickyStretch(0.45f, 0.70f) > 0.015f)
+        assertTrue(sculptedStickyStretch(0.45f, 0.20f) < -0.015f)
+        assertEquals(0f, sculptedStickyStretch(0f, 0f), 0.0001f)
+        assertEquals(0f, sculptedStickyStretch(1f, 1f), 0.0001f)
+    }
+
     @Test fun jellyStretchIsBoundedReversibleAndInvisibleAtBothEndpoints() {
         assertEquals(0f, immersiveJellyStretch(0f, 0.4f), 0.0001f)
         assertEquals(0f, immersiveJellyStretch(1f, 1.08f), 0.0001f)
