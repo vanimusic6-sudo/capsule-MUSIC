@@ -567,6 +567,9 @@ fun CapsulePlayerContent(
                     transitionKey = mediaMetadata.id,
                     fillArtworkSlot = useClayLayout,
                     artworkCornerRadius = if (isLight) 16.dp else 24.dp,
+                    // No late corner pop: keep the same silhouette radius
+                    // through the entire artwork ↔ VIDEO transition.
+                    videoCornerRadius = if (isLight) 16.dp else 24.dp,
                     artworkOffsetY = if (isLight) 0.dp else (-5).dp,
                     videoWidthScale = if (isLandscape) 1f else if (isLight) 1.08f else 1.04f,
                     artworkBackground = textColor.copy(alpha = 0.045f),
