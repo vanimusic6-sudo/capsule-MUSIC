@@ -14,6 +14,7 @@ on:
       - fix/video-state-audio-maintenance-20261014
       - polish/video-immersion-jelly-audio-cdn-20261014
       - polish/velocity-sticky-video-20261014
+      - fix/video-consistent-width-soft-corners-20261014
       - fix/video-timeline-morph-20261014
 
 permissions:
