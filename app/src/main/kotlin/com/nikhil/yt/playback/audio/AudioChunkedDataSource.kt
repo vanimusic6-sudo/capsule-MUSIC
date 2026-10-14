@@ -63,6 +63,43 @@ internal fun shouldChunkAudioRequest(
 ): Boolean = length != C.LENGTH_UNSET.toLong() && length > chunkBytes
 
 /**
+ * Adaptive, source-local CDN range sizing, not a client/URL retry policy.
+ *
+ * Logs show the SAME edge delivering the first 1 MiB in ~3s, then the next
+ * 1 MiB in 44-57s with status 206. That is body pacing, not a denied URL.
+ * One confirmed slow range may shorten subsequent ranges to 512 KiB so
+ * readers are not trapped for a minute in one response. Fast ranges restore
+ * the extractor's original range size. Never create a new /player request.
+ *
+ * This is a bounded experiment; more HTTP requests may cost extra handshakes
+ * or CDN refusals on some routes. Only shrink after enough bytes and time.
+ */
+internal class AudioCdnChunkRatePolicy(
+    private val initialChunkBytes: Long,
+    private val reducedChunkBytes: Long = 512L * 1024,
+    private val minObservedBytes: Long = 384L * 1024,
+    private val minDurationMs: Long = 12_000L,
+    private val slowBps: Long = 48L * 1024,
+    private val recoveredBps: Long = 160L * 1024,
+) {
+    var nextChunkBytes: Long = initialChunkBytes
+        private set
+
+    fun observe(bytes: Long, elapsedMs: Long): Long {
+        if (bytes < minObservedBytes || elapsedMs < 1L) return nextChunkBytes
+        val throughputBps = (bytes.toDouble() * 1000.0 / elapsedMs).toLong()
+        nextChunkBytes = when {
+            elapsedMs >= minDurationMs && throughputBps < slowBps ->
+                minOf(initialChunkBytes, reducedChunkBytes).coerceAtLeast(1L)
+            nextChunkBytes < initialChunkBytes && throughputBps >= recoveredBps ->
+                initialChunkBytes
+            else -> nextChunkBytes
+        }
+        return nextChunkBytes
+    }
+}
+
+/**
  * Asks googlevideo for a long stream a few megabytes at a time.
  *
  * A single request for a whole file is served fast for a few seconds and then paced, and the pace
@@ -94,6 +131,11 @@ internal class AudioChunkedDataSource(
     private var activeChunkBytes = chunkBytes
     private var firstChunkBytes = 0L
     private var firstChunkPending = false
+    private var adaptiveChunkBytes = chunkBytes
+    private var ratePolicy = AudioCdnChunkRatePolicy(chunkBytes)
+    private var currentChunkBytes = 0L
+    private var chunkOpenedAtMs = 0L
+    private val elapsedRealtimeMs: () -> Long = android.os.SystemClock::elapsedRealtime
 
     override fun addTransferListener(transferListener: TransferListener) {
         upstream.addTransferListener(transferListener)
@@ -142,6 +184,8 @@ internal class AudioChunkedDataSource(
 
         request = dataSpec
         activeChunkBytes = chunkBytes
+        adaptiveChunkBytes = chunkBytes
+        ratePolicy = AudioCdnChunkRatePolicy(chunkBytes)
         firstChunkBytes = firstBytes
         firstChunkPending = true
         nextPosition = dataSpec.position
@@ -154,8 +198,9 @@ internal class AudioChunkedDataSource(
     /** Opens the next bounded slice without changing the original URL or extraction contract. */
     private fun openNextChunk() {
         val spec = requireNotNull(request)
-        chunkLeft = minOf(if (firstChunkPending) firstChunkBytes else activeChunkBytes, bytesLeft)
+        chunkLeft = minOf(if (firstChunkPending) firstChunkBytes else adaptiveChunkBytes, bytesLeft)
         firstChunkPending = false
+        currentChunkBytes = chunkLeft
         val chunkSpec =
             spec.buildUpon()
                 .setPosition(nextPosition)
@@ -163,6 +208,9 @@ internal class AudioChunkedDataSource(
                 .build()
 
         openWithRefusalRetry(chunkSpec)
+        // Exclude slow DNS/connect/header negotiation from body-throughput
+        // measurements: those are handled by the existing host timeout path.
+        chunkOpenedAtMs = elapsedRealtimeMs()
     }
 
     /**
@@ -216,6 +264,22 @@ internal class AudioChunkedDataSource(
         nextPosition += read
         bytesLeft -= read
         chunkLeft -= read
+        if (chunkLeft == 0L) {
+            val oldChunkBytes = adaptiveChunkBytes
+            adaptiveChunkBytes = ratePolicy.observe(
+                currentChunkBytes,
+                (elapsedRealtimeMs() - chunkOpenedAtMs).coerceAtLeast(1L),
+            )
+            if (oldChunkBytes != adaptiveChunkBytes && GlobalLog.isEnabled) {
+                Timber.tag("AudioCDN").i(
+                    "cdn-range-adapt oldBytes=%d nextBytes=%d observedBytes=%d elapsedMs=%d",
+                    oldChunkBytes,
+                    adaptiveChunkBytes,
+                    currentChunkBytes,
+                    (elapsedRealtimeMs() - chunkOpenedAtMs).coerceAtLeast(1L),
+                )
+            }
+        }
         return read
     }
 
@@ -241,6 +305,9 @@ internal class AudioChunkedDataSource(
         opened = false
         request = null
         firstChunkPending = false
+        adaptiveChunkBytes = chunkBytes
+        currentChunkBytes = 0L
+        chunkOpenedAtMs = 0L
         upstream.close()
     }
 
