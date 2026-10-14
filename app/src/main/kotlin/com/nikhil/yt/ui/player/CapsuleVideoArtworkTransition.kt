@@ -139,13 +139,11 @@ internal fun CapsuleVideoArtworkTransition(
         // separate snapping animations, not one attached material surface.
         // The renderer is NEVER resized; only this contour follows the spring.
         fun widthAt(p: Float, leading: Float): Float {
-            val base = coverWidth.toFloat() +
-                (videoWidth - coverWidth).toFloat() * smoothVideoStep(p)
+            val base = sharedVideoMorphDimension(coverWidth, videoWidth, p)
             return if (immersive) base * (1f + immersiveJellyStretch(p, leading)) else base
         }
         fun heightAt(p: Float, leading: Float): Float {
-            val base = coverHeight.toFloat() +
-                (videoHeight - coverHeight).toFloat() * smoothVideoStep(p)
+            val base = sharedVideoMorphDimension(coverHeight, videoHeight, p)
             return if (immersive) base * (1f - immersiveJellyStretch(p, leading) * 0.55f) else base
         }
         fun contentHandover(p: Float): Float {
@@ -267,9 +265,12 @@ internal fun smoothVideoStep(progress: Float): Float {
     return p * p * p * (p * (p * 6f - 15f) + 10f)
 }
 
-// Vertical contraction first; width expansion follows. Both reverse together.
-internal fun stagedVideoHeight(progress: Float): Float = smoothVideoStep(progress / 0.58f)
-internal fun stagedVideoWidth(progress: Float): Float = smoothVideoStep((progress - 0.30f) / 0.70f)
+/**
+ * A shared container transform: WIDTH and HEIGHT start and finish together.
+ * The old independent stages created a two-step flatten-then-expand jump.
+ */
+internal fun sharedVideoMorphDimension(fromPx: Int, toPx: Int, progress: Float): Float =
+    fromPx.toFloat() + (toPx - fromPx).toFloat() * smoothVideoStep(progress)
 
 /**
  * Two springs create a perceptible, BOUNDED trailing deformation. Sampling
