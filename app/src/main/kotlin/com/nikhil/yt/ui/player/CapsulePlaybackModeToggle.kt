@@ -86,7 +86,6 @@ internal fun CapsuleAudioVideoToggle(
         } else {
             RoundedCornerShape(10.dp)
         }
-    val videoResolving = shouldShowVideoLoading(state)
     val videoUnavailable = state.phase == CapsuleVideoPhase.UNAVAILABLE
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     val nowMs by produceState(System.currentTimeMillis(), state.requestBlockedUntilMs, lifecycle) {
@@ -100,6 +99,7 @@ internal fun CapsuleAudioVideoToggle(
         }
     }
     val videoRequestPaused = state.requestBlockedUntilMs > nowMs
+    val videoResolving = shouldShowVideoLoading(state, nowMs)
     val videoRequestError = state.phase == CapsuleVideoPhase.REQUEST_ERROR && !videoRequestPaused
     val blockedMinutes = ((state.requestBlockedUntilMs - nowMs + 59_999L) / 60_000L).coerceAtLeast(1L)
     val blockedText = "paused ${blockedMinutes}m"
@@ -167,7 +167,7 @@ internal fun CapsuleAudioVideoToggle(
                             loading = videoResolving,
                             unavailable = videoUnavailable,
                             requestError = videoRequestError,
-                            enabled = enabled && !videoRequestPaused,
+                            enabled = enabled && !videoRequestPaused && !videoUnavailable,
                             textColor = textColor,
                             onClick = onVideoClick,
                             modifier = Modifier.fillMaxWidth().semantics {
@@ -225,7 +225,7 @@ internal fun CapsuleAudioVideoToggle(
                     loading = videoResolving,
                     unavailable = videoUnavailable,
                     requestError = videoRequestError,
-                    enabled = enabled && !videoRequestPaused,
+                    enabled = enabled && !videoRequestPaused && !videoUnavailable,
                     textColor = textColor,
                     onClick = onVideoClick,
                     modifier = Modifier.weight(1f).semantics {
@@ -237,8 +237,12 @@ internal fun CapsuleAudioVideoToggle(
     }
 }
 
-internal fun shouldShowVideoLoading(state: CapsuleVideoPlaybackState): Boolean =
+internal fun shouldShowVideoLoading(
+    state: CapsuleVideoPlaybackState,
+    nowMs: Long = System.currentTimeMillis(),
+): Boolean =
     state.preferredMode == CapsulePlaybackMode.VIDEO &&
+        state.requestBlockedUntilMs <= nowMs &&
         !state.firstFrameReady && !state.preparedVideoReady &&
         state.phase in setOf(CapsuleVideoPhase.RESOLVING, CapsuleVideoPhase.PREPARING, CapsuleVideoPhase.RECOVERING)
 
