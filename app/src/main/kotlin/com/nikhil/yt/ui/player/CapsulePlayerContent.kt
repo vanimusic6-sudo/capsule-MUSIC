@@ -572,7 +572,13 @@ fun CapsulePlayerContent(
                     videoCornerRadius = if (isLight) 16.dp else 24.dp,
                     artworkOffsetY = if (isLight) 0.dp else (-5).dp,
                     videoWidthScale = if (isLandscape) 1f else if (isLight) 1.08f else 1.04f,
-                    artworkBackground = textColor.copy(alpha = 0.045f),
+                    // VIDEO is a fixed screen-level window. User resizing the
+                    // Light AUDIO cover changes only its own dimensions.
+                    independentVideoViewport = useClayLayout,
+                    // Never let an incompletely loaded/Fit album bitmap reveal
+                    // the live video beneath its transparent margin on closing.
+                    artworkBackground = if (needsVideoSurface || isCapsuleVideoPlaying)
+                        Color(0xFF141414) else textColor.copy(alpha = 0.045f),
                     outline = if (isLight) Color.Transparent else outline,
                     onArtworkClick = onArtworkClick,
                     artworkClickable = !isCapsuleVideoPlaying && !(isLight && lightEditorEnabled),
