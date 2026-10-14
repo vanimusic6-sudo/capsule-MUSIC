@@ -69,7 +69,7 @@ internal fun resolveVideoRoutes(
             VideoExtractionRequests.checkActive()
             onFailure(route, failure)
             if (CapsuleNewPipeExtractor.classify(failure) == CapsuleNewPipeFailure.RATE_LIMITED) throw failure
-            health?.failure(route)
+            if ((failure as? CapsuleDirectVideoException)?.penalizeRoute != false) health?.failure(route)
             onAttempt(route, TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - started), false)
             failures += failure
         }

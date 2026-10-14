@@ -191,6 +191,7 @@ object CapsuleNewPipeExtractor {
 
     fun classify(throwable: Throwable): CapsuleNewPipeFailure {
         if (throwable is CapsuleVideoRoutesException) return throwable.failure
+        if (throwable is CapsuleDirectVideoException) return throwable.failure
         val text =
             generateSequence(throwable) { it.cause }
                 .take(8)
@@ -237,6 +238,9 @@ object CapsuleNewPipeExtractor {
                 }
         }
     }
+
+    fun routeDiagnostic(throwable: Throwable): String =
+        (throwable as? CapsuleDirectVideoException)?.diagnostic ?: throwable.javaClass.simpleName
 
     private fun isProgressiveUrl(stream: org.schabi.newpipe.extractor.stream.Stream): Boolean =
         stream.isUrl &&

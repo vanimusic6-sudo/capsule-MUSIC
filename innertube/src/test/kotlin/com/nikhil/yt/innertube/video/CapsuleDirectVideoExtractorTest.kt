@@ -5,6 +5,71 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class CapsuleDirectVideoExtractorTest {
+    @Test fun rejectedGuestIsEvictedAndBotVerdictSurvivesTheDirectRoute() {
+        val sessions = CapsuleVideoGuestSessions { 0L }
+        sessions.beginSession("process:0")
+        sessions.put("101", "rejected-visitor")
+        val blocked = buildJsonObject {
+            put("playabilityStatus", buildJsonObject {
+                put("status", "LOGIN_REQUIRED")
+                put("reason", "Sign in to confirm you're not a bot")
+            })
+        }
+        val failure = runCatching {
+            requireDirectVideo(blocked, "abcdefghijk", CapsuleNewPipeQuality.AUTO,
+                onRejectedSession = { sessions.remove("101") })
+        }.exceptionOrNull()!!
+        assertNull(sessions["101"])
+        assertEquals(CapsuleNewPipeFailure.BOT_BLOCKED, CapsuleNewPipeExtractor.classify(failure))
+        assertEquals("PLAYER_LOGIN_REQUIRED:BOT_CHECK", CapsuleNewPipeExtractor.routeDiagnostic(failure))
+    }
+
+    @Test fun resetGenerationAndProcessRestartDropTheGuestButOrdinaryRequestsReuseIt() {
+        val sessions = CapsuleVideoGuestSessions { 0L }
+        sessions.beginSession("first-process:0")
+        sessions.put("101", "old-visitor")
+        sessions.beginSession("first-process:0")
+        assertEquals("old-visitor", sessions["101"])
+        sessions.beginSession("first-process:1")
+        assertNull(sessions["101"])
+        sessions.put("101", "new-visitor")
+        sessions.beginSession("second-process:0")
+        assertNull(sessions["101"])
+    }
+
+    @Test fun ageRestrictionDoesNotDiscardAHealthyGuestOrBecomeABotBan() {
+        var discarded = false
+        val data = buildJsonObject {
+            put("playabilityStatus", buildJsonObject {
+                put("status", "LOGIN_REQUIRED"); put("reason", "Sign in to confirm your age")
+            })
+        }
+        val failure = runCatching {
+            requireDirectVideo(data, "abcdefghijk", CapsuleNewPipeQuality.AUTO,
+                onRejectedSession = { discarded = true })
+        }.exceptionOrNull()!!
+        assertFalse(discarded)
+        assertEquals(CapsuleNewPipeFailure.UNAVAILABLE, CapsuleNewPipeExtractor.classify(failure))
+    }
+
+    @Test fun rejectedFormatsExplainFallbackWithoutExposingSignedUrls() {
+        val data = response(listOf(format(360, 18, true, "&n=secret-challenge&sig=secret-signature")))
+        val failure = runCatching {
+            requireDirectVideo(data, "abcdefghijk", CapsuleNewPipeQuality.AUTO, nowMs = now)
+        }.exceptionOrNull()!!
+        val diagnostic = CapsuleNewPipeExtractor.routeDiagnostic(failure)
+        assertTrue(diagnostic.startsWith("NO_COMPATIBLE_STREAM:formats=1,cipher=0,n=1"))
+        assertFalse(diagnostic.contains("secret"))
+        assertFalse(diagnostic.contains("googlevideo"))
+        assertEquals(CapsuleNewPipeFailure.EXTRACTOR, CapsuleNewPipeExtractor.classify(failure))
+    }
+
+    @Test fun directSuccessStillSelectsTheExistingPlayableStream() {
+        val data = response(listOf(format(360, 18, true)))
+        assertEquals(select(data), requireDirectVideo(data, "abcdefghijk", CapsuleNewPipeQuality.AUTO, nowMs = now,
+            onRejectedSession = { fail("A healthy session must be reused") }))
+    }
+
     private val now = 1_000_000L
     private fun format(height: Int, itag: Int, audio: Boolean = false, suffix: String = "") = buildJsonObject {
         put("url", "https://rr1.googlevideo.com/videoplayback?expire=2000&itag=$itag$suffix")

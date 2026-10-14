@@ -15,6 +15,7 @@ import android.database.Cursor
 import android.net.Uri
 import android.os.Bundle
 import com.nikhil.yt.innertube.video.CapsuleNewPipeExtractor
+import com.nikhil.yt.innertube.video.CapsuleDirectVideoExtractor
 import com.nikhil.yt.innertube.video.CapsuleNewPipeFailure
 import com.nikhil.yt.innertube.video.CapsuleNewPipeQuality
 import com.nikhil.yt.innertube.video.VideoExtractionRequests
@@ -70,6 +71,7 @@ class CapsuleVideoExtractorProvider : ContentProvider() {
         val routeTimings = mutableListOf<String>()
         return runCatching {
             VideoExtractionRequests.withRequest(requestId, CapsuleVideoIpc.EXTRACTION_TIMEOUT_MS) {
+                extras?.getString(CapsuleVideoIpc.EXTRA_SESSION_KEY)?.let(CapsuleDirectVideoExtractor::beginSession)
                 if (extras?.getBoolean(CapsuleVideoIpc.EXTRA_REFRESH, false) == true) {
                     CapsuleNewPipeExtractor.invalidate(videoId)
                 }
@@ -81,7 +83,7 @@ class CapsuleVideoExtractorProvider : ContentProvider() {
                     onAttempt = { route, elapsed, success -> routeTimings += "$route:${elapsed}ms:${if (success) "ok" else "fallback"}" },
                     onRouteFailure = { route, failure ->
                         val kind = CapsuleNewPipeExtractor.classify(failure)
-                        routeTimings += "$route:$kind:${failure.javaClass.simpleName}"
+                        routeTimings += "$route:$kind:${CapsuleNewPipeExtractor.routeDiagnostic(failure)}"
                         timber.log.Timber.tag("CapsuleVideo").w(failure, "VIDEO route=%s failed kind=%s", route, kind)
                     },
                 )

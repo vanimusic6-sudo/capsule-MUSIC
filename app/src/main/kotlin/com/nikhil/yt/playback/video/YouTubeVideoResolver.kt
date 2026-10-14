@@ -34,6 +34,7 @@ import java.util.UUID
 object YouTubeVideoResolver {
     private const val TAG = "CapsuleVideo"
     private const val CACHE_SAFETY_MS = 45_000L
+    private val processSessionKey = UUID.randomUUID().toString()
     private val remoteExecutor = Executors.newFixedThreadPool(2) { task ->
         Thread(task, "capsule-video-ipc").apply { isDaemon = true }
     }
@@ -262,6 +263,7 @@ object YouTubeVideoResolver {
         val extras =
             Bundle().apply {
                 putString(CapsuleVideoIpc.EXTRA_REQUEST_ID, requestId)
+                putString(CapsuleVideoIpc.EXTRA_SESSION_KEY, "$processSessionKey:$guardEpoch")
                 putString(CapsuleVideoIpc.EXTRA_VIDEO_ID, videoId)
                 putString(CapsuleVideoIpc.EXTRA_QUALITY, CapsuleVideoIpc.qualityToWire(quality))
                 putBoolean(CapsuleVideoIpc.EXTRA_MUXED_ONLY, muxedOnly)

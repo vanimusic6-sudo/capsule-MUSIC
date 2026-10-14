@@ -115,4 +115,17 @@ class CapsuleVideoRoutesTest {
         assertTrue(routes.contains(CapsuleVideoRoute.PIPEPIPE))
     }
 
+    @Test fun directBotFailureStillAllowsOtherBackendsAndNoFormatDoesNotPenalizeNextClip() {
+        val health = CapsuleVideoRouteHealth()
+        val result = resolveVideoRoutes(health = health) {
+            when (it) {
+                CapsuleVideoRoute.ANDROID_VR -> throw CapsuleDirectVideoException(CapsuleNewPipeFailure.BOT_BLOCKED, "PLAYER_LOGIN_REQUIRED:BOT_CHECK")
+                CapsuleVideoRoute.VISIONOS -> throw CapsuleDirectVideoException(CapsuleNewPipeFailure.EXTRACTOR, "NO_COMPATIBLE_STREAM", penalizeRoute = false)
+                else -> stream
+            }
+        }
+        assertEquals("pipepipe", result.backend)
+        assertEquals(CapsuleVideoRoute.VISIONOS, health.order(null).first())
+    }
+
 }

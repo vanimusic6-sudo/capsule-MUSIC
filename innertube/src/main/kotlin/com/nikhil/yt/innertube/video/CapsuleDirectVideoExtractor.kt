@@ -6,6 +6,8 @@
 package com.nikhil.yt.innertube.video
 
 import com.nikhil.yt.innertube.buildPlayerRequestPayload
+import com.nikhil.yt.innertube.YouTubeFailureClassifier
+import com.nikhil.yt.innertube.YouTubeFailureKind
 import com.nikhil.yt.innertube.models.YouTubeClient
 import com.nikhil.yt.innertube.models.YouTubeLocale
 import kotlinx.serialization.json.*
@@ -30,8 +32,14 @@ import java.util.Base64
 object CapsuleDirectVideoExtractor {
     private const val BUDGET_MS = 5_000L
     private val nonceRandom = SecureRandom()
-    private data class GuestVisitor(val value: String, val untilMs: Long)
-    private val visitors = mutableMapOf<String, GuestVisitor>()
+    private val visitors = CapsuleVideoGuestSessions()
+
+    /** The reset generation crosses IPC with the next request, so a queued
+     * reset cannot race behind that request and leave its old visitor in use. */
+    @Synchronized
+    fun beginSession(key: String) {
+        visitors.beginSession(key)
+    }
     private val client = OkHttpClient.Builder()
         .callTimeout(5, TimeUnit.SECONDS)
         .connectTimeout(3, TimeUnit.SECONDS)
@@ -74,7 +82,8 @@ object CapsuleDirectVideoExtractor {
         })
         val response = post("https://youtubei.googleapis.com/youtubei/v1/player?prettyPrint=false&t=${nonce(9)}&id=$videoId",
             payload, deadline, clientId = identity.clientId, clientVersion = identity.clientVersion, userAgent = identity.userAgent)
-        return selectDirectVideo(response, videoId, quality, muxedOnly)?.copy(userAgent = identity.userAgent)
+        return requireDirectVideo(response, videoId, quality, muxedOnly,
+            onRejectedSession = { visitors.remove(identity.clientId) }).copy(userAgent = identity.userAgent)
     }
 
     /**
@@ -111,19 +120,27 @@ object CapsuleDirectVideoExtractor {
         }
         val response = post("https://youtubei.googleapis.com/youtubei/v1/reel/reel_item_watch?prettyPrint=false&t=${nonce(9)}&id=$videoId&\$fields=playerResponse",
             payload, deadline, clientId = "3", clientVersion = version, userAgent = userAgent)
-        return selectAndroidReelVideo(response, videoId, quality)?.copy(userAgent = userAgent)
+        val player = response["playerResponse"] as? JsonObject
+            ?: throw CapsuleDirectVideoException(CapsuleNewPipeFailure.EXTRACTOR, "MISSING_PLAYER_RESPONSE")
+        // Keep Reel's stronger exact-ID requirement; it can return a substitute.
+        if ((player["playabilityStatus"] as? JsonObject)?.get("status")?.jsonPrimitive?.contentOrNull == "OK" &&
+            (player["videoDetails"] as? JsonObject)?.get("videoId")?.jsonPrimitive?.contentOrNull != videoId) {
+            throw CapsuleDirectVideoException(CapsuleNewPipeFailure.EXTRACTOR, "VIDEO_ID_MISMATCH", penalizeRoute = false)
+        }
+        return requireDirectVideo(player, videoId, quality, muxedOnly = true,
+            onRejectedSession = { visitors.remove("3") }).copy(userAgent = userAgent)
     }
 
     private fun guestVisitor(clientId: String, version: String, userAgent: String,
                              context: JsonObject, deadline: Long): String {
-        visitors[clientId]?.takeIf { it.untilMs > System.currentTimeMillis() }?.let { return it.value }
+        visitors[clientId]?.let { return it }
         val host = if (clientId == "3") "youtubei.googleapis.com" else "www.youtube.com"
         val bootstrap = post("https://$host/youtubei/v1/visitor_id?prettyPrint=false",
             buildJsonObject { put("context", context) }, deadline, maxCallMs = 2_000L,
             clientId = clientId, clientVersion = version, userAgent = userAgent)
         val visitor = (bootstrap["responseContext"] as? JsonObject)?.get("visitorData")?.jsonPrimitive?.contentOrNull
             ?.takeIf { it.isNotBlank() } ?: throw IOException("VIDEO anonymous visitor unavailable")
-        visitors[clientId] = GuestVisitor(visitor, System.currentTimeMillis() + TimeUnit.HOURS.toMillis(6))
+        visitors.put(clientId, visitor)
         return visitor
     }
 
@@ -154,6 +171,72 @@ object CapsuleDirectVideoExtractor {
             }
         }
     }
+}
+
+internal class CapsuleVideoGuestSessions(private val clock: () -> Long = System::currentTimeMillis) {
+    private data class Visitor(val value: String, val untilMs: Long)
+    private val visitors = mutableMapOf<String, Visitor>()
+    private var sessionKey: String? = null
+
+    fun beginSession(key: String) {
+        if (sessionKey == key) return
+        visitors.clear()
+        sessionKey = key
+    }
+
+    operator fun get(clientId: String): String? = visitors[clientId]?.takeIf { it.untilMs > clock() }?.value
+    fun put(clientId: String, value: String) { visitors[clientId] = Visitor(value, clock() + TimeUnit.HOURS.toMillis(6)) }
+    fun remove(clientId: String) { visitors.remove(clientId) }
+}
+
+/** Only machine-generated summaries cross IPC. Never log player JSON, visitor
+ * data, signed URLs, or arbitrary upstream exception messages. */
+internal class CapsuleDirectVideoException(
+    val failure: CapsuleNewPipeFailure,
+    val diagnostic: String,
+    val penalizeRoute: Boolean = true,
+) : IOException("VIDEO direct $diagnostic")
+
+internal fun requireDirectVideo(
+    response: JsonObject, videoId: String, quality: CapsuleNewPipeQuality,
+    muxedOnly: Boolean = false, nowMs: Long = System.currentTimeMillis(),
+    onRejectedSession: () -> Unit = {},
+): CapsuleNewPipeResolved {
+    val playability = response["playabilityStatus"] as? JsonObject
+    val status = (playability?.get("status") as? JsonPrimitive)?.contentOrNull
+    if (status != "OK") {
+        val kind = YouTubeFailureClassifier.classify(playabilityStatus = status, text = playability?.toString())
+        val failure = when (kind) {
+            YouTubeFailureKind.BOT_CHECK -> CapsuleNewPipeFailure.BOT_BLOCKED
+            YouTubeFailureKind.RATE_LIMITED -> CapsuleNewPipeFailure.RATE_LIMITED
+            YouTubeFailureKind.LOGIN_REQUIRED, YouTubeFailureKind.AGE_RESTRICTED,
+            YouTubeFailureKind.UNPLAYABLE, YouTubeFailureKind.PERMANENT -> CapsuleNewPipeFailure.UNAVAILABLE
+            YouTubeFailureKind.TRANSIENT -> CapsuleNewPipeFailure.NETWORK
+            else -> CapsuleNewPipeFailure.EXTRACTOR
+        }
+        if (kind == YouTubeFailureKind.BOT_CHECK || kind == YouTubeFailureKind.LOGIN_REQUIRED) onRejectedSession()
+        val safeStatus = status?.takeIf { it.matches(Regex("[A-Z_]{1,40}")) } ?: "UNKNOWN"
+        throw CapsuleDirectVideoException(failure, "PLAYER_$safeStatus:$kind")
+    }
+    selectDirectVideo(response, videoId, quality, muxedOnly, nowMs)?.let { return it }
+    val returnedId = ((response["videoDetails"] as? JsonObject)?.get("videoId") as? JsonPrimitive)?.contentOrNull
+    val data = response["streamingData"] as? JsonObject
+    val reason = when {
+        returnedId != null && returnedId != videoId -> "VIDEO_ID_MISMATCH"
+        data == null -> "NO_STREAMING_DATA"
+        else -> "NO_COMPATIBLE_STREAM"
+    }
+    val formats = listOf("formats", "adaptiveFormats").flatMap { name ->
+        (data?.get(name) as? JsonArray).orEmpty().mapNotNull { it as? JsonObject }
+    }
+    val cipher = formats.count { it["signatureCipher"] != null || it["cipher"] != null }
+    val challenged = formats.count { format ->
+        val url = (format["url"] as? JsonPrimitive)?.contentOrNull
+        runCatching { URI(url).rawQuery.orEmpty().split('&').any { it.substringBefore('=') == "n" } }.getOrDefault(false)
+    }
+    throw CapsuleDirectVideoException(CapsuleNewPipeFailure.EXTRACTOR,
+        "$reason:formats=${formats.size},cipher=$cipher,n=$challenged,hls=${data?.get("hlsManifestUrl") != null},muxed=$muxedOnly",
+        penalizeRoute = false)
 }
 
 internal fun selectAndroidReelVideo(
