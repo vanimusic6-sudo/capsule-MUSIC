@@ -27,7 +27,6 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.foundation.shape.GenericShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.graphics.graphicsLayer
@@ -217,8 +216,17 @@ internal fun CapsuleVideoArtworkTransition(
                     val pullPx = with(density) {
                         (if (immersive) 6.dp else 4.dp).toPx()
                     } * adhesion
+                    // The animation frame may be much larger than the
+                    // *current* contour (especially after the user shrinks
+                    // artwork). Clip to its actual left/top/width/height,
+                    // not RoundedCornerShape(frameSize), or economy mode
+                    // would reveal the entire padded window.
                     shape = if (economyMotion) {
-                        RoundedCornerShape(with(density) { radius.toDp() })
+                        GenericShape { _, _ ->
+                            addRoundRect(
+                                RoundRect(left, top, left + w, top + h, CornerRadius(radius)),
+                            )
+                        }
                     } else GenericShape { _, _ ->
                         addPath(capsuleStickyContourPath(left, top, w, h, radius, pullPx))
                     }
