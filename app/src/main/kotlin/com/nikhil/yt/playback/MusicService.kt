@@ -1169,11 +1169,13 @@ class MusicService :
             // Pin this session's exact formats; another quality/cache lookup
             // cannot silently substitute a different signed URL at prepare().
             .setTag(video).build()
+        val preparedVideoReady = companion.canResume(item)
         videoPlaybackState.value = CapsuleVideoPlaybackState(
             preferredMode = CapsulePlaybackMode.VIDEO, mode = CapsulePlaybackMode.VIDEO,
             phase = CapsuleVideoPhase.PREPARING, mediaId = mediaId, videoId = video.videoId,
             qualityLabel = video.qualityLabel, width = video.videoFormat.width,
             height = video.videoFormat.height, firstFrameReady = false,
+            preparedVideoReady = preparedVideoReady,
         )
         companion.setForeground(videoScreenVisible)
         companion.start(mediaId, item, effectiveAudioVolume)
@@ -4906,6 +4908,9 @@ class MusicService :
                 videoPlaybackState.value =
                     videoPlaybackState.value.copy(
                         preferredMode = CapsulePlaybackMode.VIDEO,
+                        preparedVideoReady = player.currentMediaItem?.mediaId?.let {
+                            videoCompanion?.hasPreparedClip(it)
+                        } == true,
                     )
                 // A rapid AUDIO→VIDEO reversal coalesces into one fresh resolve,
                 // after the old decoder and recovery job have finished tearing down.
@@ -5017,6 +5022,7 @@ class MusicService :
                 phase = CapsuleVideoPhase.RESOLVING,
                 mediaId = canonicalMediaId,
                 videoId = null,
+                preparedVideoReady = videoCompanion?.hasPreparedClip(canonicalMediaId) == true,
                 message = null,
             )
 

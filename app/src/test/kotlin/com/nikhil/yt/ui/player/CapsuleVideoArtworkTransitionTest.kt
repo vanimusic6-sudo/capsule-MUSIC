@@ -12,6 +12,9 @@ import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
+import com.nikhil.yt.playback.video.CapsulePlaybackMode
+import com.nikhil.yt.playback.video.CapsuleVideoPhase
+import com.nikhil.yt.playback.video.CapsuleVideoPlaybackState
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -32,6 +35,16 @@ class CapsuleVideoArtworkTransitionTest {
         assertTrue(stagedVideoWidth(0.75f) < 1f)
         assertEquals(0f, stagedVideoWidth(0f), 0.001f)
         assertEquals(1f, stagedVideoWidth(1f), 0.001f)
+    }
+
+    @Test fun loadingIndicatorOnlyAppearsWhileAnUnpreparedClipLoads() {
+        val loading = CapsuleVideoPlaybackState(
+            preferredMode = CapsulePlaybackMode.VIDEO, phase = CapsuleVideoPhase.PREPARING,
+        )
+        assertTrue(shouldShowVideoLoading(loading))
+        assertEquals(false, shouldShowVideoLoading(loading.copy(preparedVideoReady = true)))
+        assertEquals(false, shouldShowVideoLoading(loading.copy(firstFrameReady = true)))
+        assertEquals(false, shouldShowVideoLoading(loading.copy(phase = CapsuleVideoPhase.BUFFERING)))
     }
 
     @Test fun lightKeepsThePreparingSurfaceWhenFirstFrameArrives() = verifyStableOutput(320, 280, true, 0)
@@ -90,8 +103,11 @@ class CapsuleVideoArtworkTransitionTest {
         assertEquals(0, detaches)
         assertEquals(listOf(preparingSize), measured)
         // Only leaving the decoder lifecycle may detach it.
-        compose.mainClock.autoAdvance = true
+        compose.mainClock.autoAdvance = false
         compose.runOnIdle { needed.value = false; presenting.value = false }
+        compose.mainClock.advanceTimeBy(80)
+        compose.runOnIdle { assertEquals("exit still remains attached during reverse motion", 0, detaches) }
+        compose.mainClock.autoAdvance = true
         compose.waitForIdle()
         compose.runOnIdle { assertEquals("AUDIO must release the renderer", 1, detaches) }
     }

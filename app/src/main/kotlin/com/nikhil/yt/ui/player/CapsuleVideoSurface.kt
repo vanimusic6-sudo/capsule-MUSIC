@@ -106,7 +106,7 @@ private fun CapsuleVideoTextureOutput(service: MusicService, player: Player, ret
             retention.registerCapture(view) {
                 if (view.hasVideoFrame && view.isAvailable && view.width > 0 && view.height > 0) {
                     // Read once on pause/exit, never on a playback timer. Bound the one retained bitmap.
-                    val scale = minOf(1f, 1280f / view.width, 720f / view.height)
+                    val scale = minOf(1f, 960f / view.width, 540f / view.height)
                     try { view.getBitmap((view.width * scale).toInt().coerceAtLeast(1),
                         (view.height * scale).toInt().coerceAtLeast(1)) } catch (_: RuntimeException) { null }
                 } else null
@@ -132,7 +132,9 @@ private fun CapsuleVideoTextureOutput(service: MusicService, player: Player, ret
         // Start after Media3's presentation observer, matching PlayerSurface's attachment order.
         LaunchedEffect(view, player) { player.setVideoTextureView(view) }
     }
-    if (coverSurface) Box(Modifier.fillMaxSize().background(Color.Black))
+    if (coverSurface && !service.videoPlaybackState.value.firstFrameReady) {
+        Box(Modifier.fillMaxSize().background(Color.Black))
+    }
 }
 
 private class CapsuleFrameTextureView(context: Context, private val retention: CapsuleVideoFrameRetention) : TextureView(context) {

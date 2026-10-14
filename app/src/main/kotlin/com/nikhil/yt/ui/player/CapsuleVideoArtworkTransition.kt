@@ -12,7 +12,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.BlurEffect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.draw.drawWithContent
@@ -62,8 +61,8 @@ internal fun CapsuleVideoArtworkTransition(
     val immersive = motion == CapsuleVideoArtworkMotion.IMMERSIVE
     val reveal = key(transitionKey) { animateFloatAsState(
         targetValue = if (presentingVideo) 1f else 0f,
-        animationSpec = if (immersive) spring(dampingRatio = 0.98f, stiffness = 92f, visibilityThreshold = 0.001f)
-            else spring(dampingRatio = 0.91f, stiffness = 190f, visibilityThreshold = 0.001f),
+        animationSpec = if (immersive) spring(dampingRatio = 1f, stiffness = 56f, visibilityThreshold = 0.001f)
+            else spring(dampingRatio = 0.92f, stiffness = 105f, visibilityThreshold = 0.001f),
         label = "capsule-cover-video",
     ) }
     BoxWithConstraints(modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -82,8 +81,8 @@ internal fun CapsuleVideoArtworkTransition(
             else transitionDimension(coverHeight, videoHeight, stagedVideoHeight(reveal.value))
         // One reversible phase drives the geometry and both content layers.
         fun contentHandover(): Float {
-            val start = if (immersive) 0.12f else 0.48f
-            val duration = if (immersive) 0.82f else 0.42f
+            val start = if (immersive) 0.22f else 0.40f
+            val duration = if (immersive) 0.66f else 0.48f
             return smoothVideoStep((reveal.value - start) / duration)
         }
         Layout(
@@ -108,7 +107,9 @@ internal fun CapsuleVideoArtworkTransition(
                     val scale = max(frameWidth().toFloat() / videoWidth, frameHeight().toFloat() / videoHeight)
                     scaleX = scale; scaleY = scale
                 }.background(Color.Black)) {
-                    video(needsSurface)
+                    // Retain the TextureView through the reverse morph. The service
+                    // has already captured its exit still before stopping playback.
+                    video(needsSurface || reveal.value > 0.005f)
                 }
                 // A short content handover inside the single moving frame;
                 // no growing hole, duplicate card or full-duration dissolve.
@@ -119,13 +120,8 @@ internal fun CapsuleVideoArtworkTransition(
                         // The same phase runs backwards on close, and spring
                         // velocity survives an interrupted/reversed gesture.
                         alpha = if (preparing.value) 1f else 1f - contentHandover()
-                        val motionAmount = if (immersive && !preparing.value) 4f * p * (1f - p) else 0f
-                        // Artwork-only transient blur; no shader or blur remains
-                        // attached to the live video during ordinary playback.
-                        val blur = 2.dp.toPx() * motionAmount
-                        renderEffect = if (blur > 0.05f) BlurEffect(blur, blur) else null
                         val scale = max(frameWidth().toFloat() / coverWidth, frameHeight().toFloat() / coverHeight) *
-                            (1f + 0.025f * motionAmount)
+                            (1f + if (immersive && !preparing.value) 0.008f * 4f * p * (1f - p) else 0f)
                         scaleX = scale; scaleY = scale
                     }.background(artworkBackground),
                     contentAlignment = Alignment.Center,

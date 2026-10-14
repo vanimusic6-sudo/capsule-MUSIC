@@ -84,9 +84,7 @@ internal fun CapsuleAudioVideoToggle(
         } else {
             RoundedCornerShape(10.dp)
         }
-    val videoResolving =
-        state.preferredMode == CapsulePlaybackMode.VIDEO &&
-            state.phase in setOf(CapsuleVideoPhase.RESOLVING, CapsuleVideoPhase.PREPARING, CapsuleVideoPhase.BUFFERING, CapsuleVideoPhase.RECOVERING)
+    val videoResolving = shouldShowVideoLoading(state)
     val videoUnavailable = state.phase == CapsuleVideoPhase.UNAVAILABLE
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     val nowMs by produceState(System.currentTimeMillis(), state.requestBlockedUntilMs, lifecycle) {
@@ -104,7 +102,8 @@ internal fun CapsuleAudioVideoToggle(
     val blockedMinutes = ((state.requestBlockedUntilMs - nowMs + 59_999L) / 60_000L).coerceAtLeast(1L)
     val blockedText = "paused ${blockedMinutes}m"
     val videoSelected =
-        state.mode == CapsulePlaybackMode.VIDEO || videoResolving
+        state.mode == CapsulePlaybackMode.VIDEO || state.preferredMode == CapsulePlaybackMode.VIDEO &&
+            state.phase in setOf(CapsuleVideoPhase.RESOLVING, CapsuleVideoPhase.PREPARING, CapsuleVideoPhase.RECOVERING)
     val audioSelected = !videoSelected
 
     if (framedStyle) {
@@ -235,6 +234,11 @@ internal fun CapsuleAudioVideoToggle(
         }
     }
 }
+
+internal fun shouldShowVideoLoading(state: CapsuleVideoPlaybackState): Boolean =
+    state.preferredMode == CapsulePlaybackMode.VIDEO &&
+        !state.firstFrameReady && !state.preparedVideoReady &&
+        state.phase in setOf(CapsuleVideoPhase.RESOLVING, CapsuleVideoPhase.PREPARING, CapsuleVideoPhase.RECOVERING)
 
 @Composable
 private fun CapsuleRollingSelection(

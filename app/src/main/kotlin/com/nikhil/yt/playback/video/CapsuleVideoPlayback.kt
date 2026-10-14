@@ -47,6 +47,8 @@ data class CapsuleVideoPlaybackState(
     val width: Int? = null,
     val height: Int? = null,
     val firstFrameReady: Boolean = false,
+    /** A prepared decoder for this track can be resumed without a loading indicator. */
+    val preparedVideoReady: Boolean = false,
     val message: String? = null,
     val requestBlockedUntilMs: Long = 0L,
     val requestBlockReason: String? = null,

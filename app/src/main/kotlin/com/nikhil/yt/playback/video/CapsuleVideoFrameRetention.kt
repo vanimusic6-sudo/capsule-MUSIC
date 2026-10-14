@@ -62,7 +62,7 @@ internal class CapsuleVideoFrameRetention(private val player: Player, private va
         val still = CapsuleRetainedVideoFrame(mediaId, bitmap, exiting = true)
         mutableFrame.value = still
         expiry = scope.launch {
-            delay(800L) // Physical reverse motion plus frame scheduling margin.
+            delay(1_600L) // Keep the exit frame through the softer reverse motion.
             if (mutableFrame.value === still) mutableFrame.value = null
             expiry = null
         }
