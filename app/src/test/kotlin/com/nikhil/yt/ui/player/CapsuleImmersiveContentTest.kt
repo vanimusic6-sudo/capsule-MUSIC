@@ -15,6 +15,53 @@ private val Floor: Dp = immersiveArtworkHeight(0.dp)
 private val Ceiling: Dp = immersiveArtworkHeight(100_000.dp)
 
 class CapsuleImmersiveContentTest {
+
+    @Test
+    fun `VIDEO to AUDIO never exposes transparent album through track fade`() {
+        // Recorded 9222.mp4: during closing, the thumbnail blended with the
+        // live VIDEO because two independently driven alpha layers multiplied.
+        for (trackFade in listOf(0f, 0.12f, 0.5f, 0.99f, 1f)) {
+            assertEquals(
+                1f,
+                capsuleImmersiveArtworkOpacity(
+                    frameMatchesTrack = true,
+                    hasPresentedVideo = true,
+                    trackFadeAlpha = trackFade,
+                ),
+                0.0001f,
+            )
+        }
+        // The outgoing DIFFERENT song must still fade out on track switches.
+        assertEquals(
+            0.25f,
+            capsuleImmersiveArtworkOpacity(
+                frameMatchesTrack = false,
+                hasPresentedVideo = true,
+                trackFadeAlpha = 0.25f,
+            ),
+            0.0001f,
+        )
+        // Before any VIDEO has been presented, track-fade behaviour is intact.
+        assertEquals(
+            0.6f,
+            capsuleImmersiveArtworkOpacity(
+                frameMatchesTrack = true,
+                hasPresentedVideo = false,
+                trackFadeAlpha = 0.6f,
+            ),
+            0.0001f,
+        )
+    }
+
+    @Test
+    fun `invisible artwork preload ends immediately after first decoded image`() {
+        val url = "https://i.ytimg.com/vi/ABC123def45/maxresdefault.jpg"
+        assertTrue(capsuleImmersiveNeedsArtworkPreload(false, true, url))
+        assertTrue(!capsuleImmersiveNeedsArtworkPreload(true, true, url))
+        assertTrue(!capsuleImmersiveNeedsArtworkPreload(false, false, url))
+        assertTrue(!capsuleImmersiveNeedsArtworkPreload(false, true, null))
+    }
+
     @Test
     fun `status bar leaves before immersive player reaches the top`() {
         assertTrue(!immersiveStatusBarShouldHide(open = true, expansionProgress = 0f))
