@@ -80,16 +80,15 @@ internal fun CapsuleVideoArtworkTransition(
             label = "capsule-video-body",
         )
     }
-    val elastic = key(transitionKey) {
+    // Only Immersion needs a second animator. Other designs read one shared
+    // spring, avoiding duplicate invalidations on ordinary player screens.
+    val elastic = if (immersive) key(transitionKey) {
         animateFloatAsState(
             targetValue = target,
-            animationSpec = if (immersive)
-                spring(dampingRatio = 0.67f, stiffness = 130f, visibilityThreshold = 0.001f)
-            else
-                spring(dampingRatio = 0.88f, stiffness = 145f, visibilityThreshold = 0.001f),
+            animationSpec = spring(dampingRatio = 0.67f, stiffness = 130f, visibilityThreshold = 0.001f),
             label = "capsule-video-elastic",
         )
-    }
+    } else reveal
     // Only mount the native decoder while preparing/revealing/leaving VIDEO.
     // On interrupted closures also wait for the elastic spring to settle.
     val surfaceActive by remember(needsSurface, reveal, elastic) {
