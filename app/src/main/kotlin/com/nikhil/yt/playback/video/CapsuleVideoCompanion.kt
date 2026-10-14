@@ -48,9 +48,9 @@ internal class CapsuleVideoCompanion(
         // AUDIO downloads must not make HLS assume the VIDEO host is fast.
         .setBandwidthMeter(DefaultBandwidthMeter.Builder(context).build())
         .setMediaSourceFactory(factory)
-        // The resolver already chooses the requested quality. Forcing the
-        // highest adaptive rendition can defeat that limit and waste power.
-        .setTrackSelector(DefaultTrackSelector(context))
+        .setTrackSelector(DefaultTrackSelector(context).apply {
+            setParameters(buildUponParameters().setForceHighestSupportedBitrate(true))
+        })
         .setLoadControl(DefaultLoadControl.Builder()
             .setBufferDurationsMs(6_000, 12_000, 350, 1_500)
             .setPrioritizeTimeOverSizeThresholds(true).build())
@@ -88,6 +88,7 @@ internal class CapsuleVideoCompanion(
         session.start(id, item, volume, startupBudgetMs = if (delivery == CapsuleVideoDelivery.PROGRESSIVE) 8_000L else 15_000L)
     }
     fun setForeground(value: Boolean) = session.setForeground(value)
+    // Read-only status for the toggle indicator; does not alter session playback.
     fun hasPreparedClip(mediaId: String): Boolean = session.hasPreparedClip(mediaId)
     fun canResume(item: MediaItem): Boolean = session.canResume(item)
     fun setSurfaceAttached(value: Boolean) = session.setSurfaceAttached(value)
@@ -154,7 +155,6 @@ internal class CapsuleVideoSession(
     private var preparedItem: MediaItem? = null
     fun hasPreparedClip(mediaId: String): Boolean =
         preparedItem?.mediaId == mediaId && video.playbackState == Player.STATE_READY
-
     fun canResume(item: MediaItem): Boolean =
         canReusePreparedVideo(preparedItem, item, video.playbackState)
     private val rendering get() = foreground && surfaceAttached
@@ -251,9 +251,9 @@ internal class CapsuleVideoSession(
         val current = id ?: return
         if (starting) return
         if (audio.currentMediaItem?.mediaId != current) { stop(); return }
-        // During visible playback VIDEO owns the session through seeks and
-        // buffering. App backgrounding parks the decoder and returns sound to
-        // the existing MUSIC player; foreground re-enters the startup handoff.
+        // After the first presentation, VIDEO owns the session through seeks,
+        // buffering, pauses and detached surfaces. Silence while loading is
+        // part of VIDEO; playing MUSIC underneath it would change the mode.
         if (committed) {
             val buffering = video.playbackState == Player.STATE_BUFFERING
             if (reportedBuffering != buffering) {
@@ -457,7 +457,7 @@ internal class CapsuleVideoSession(
         // VIDEO here reselected the muxed/HLS period and flushed its soundtrack.
         // Media3 handles absent output with its codec placeholder surface.
         // Keep the selected stream, timeline and sound owner unchanged.
-        video.playWhenReady = audio.playWhenReady && foreground && (rendering || committed)
+        video.playWhenReady = audio.playWhenReady && (rendering || committed)
     }
     private fun changeRendering(change: () -> Unit) {
         val wasRendering = rendering
@@ -480,16 +480,7 @@ internal class CapsuleVideoSession(
         updateRendering()
         evaluate()
     }
-    fun setForeground(value: Boolean) {
-        if (foreground == value) return
-        if (!value && committed) {
-            committed = false
-            frameReported = false
-            id?.let(onFrameUnavailable)
-            returnSound()
-        }
-        changeRendering { foreground = value }
-    }
+    fun setForeground(value: Boolean) { if (foreground != value) changeRendering { foreground = value } }
     fun setSurfaceAttached(value: Boolean) { if (surfaceAttached != value) changeRendering { surfaceAttached = value } }
     fun setVolume(value: Float) { volume = value.coerceIn(0f, 1f); video.volume = if (ownsSound && audible) volume * soundGain else 0f }
 

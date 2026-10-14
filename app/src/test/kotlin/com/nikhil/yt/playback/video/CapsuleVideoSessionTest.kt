@@ -252,24 +252,22 @@ class CapsuleVideoSessionTest {
         assertEquals(listOf("song"), f.frames)
         f.session.stop()
     }
-    @Test fun backgroundParksVideoAndReturnsAudioThenReentersWithoutPreparingAgain() = runTest {
+    @Test fun detachAndReturnNeverReselectTracksSeekOrSwitchSoundOwner() = runTest {
         val f = Fixture(this); f.start(); f.clip.ready(); f.clip.frame()
         advanceTimeBy(261); runCurrent()
         val selectionBefore = f.clip.selection
-        val preparesBefore = f.clip.prepares
+        val seeksBefore = f.clip.seeks.toList()
+        val ownersBefore = f.owned.toList()
         f.session.setForeground(false); f.session.setSurfaceAttached(false)
         f.clip.event()
-        assertEquals(0f, f.clip.volume)
-        assertEquals(1f, f.music.volume)
-        assertFalse(f.clip.intent)
+        assertEquals(0.8f, f.clip.volume)
+        assertEquals(0f, f.music.volume)
         assertSame(selectionBefore, f.clip.selection)
         f.session.setSurfaceAttached(true); f.session.setForeground(true)
-        f.clip.playing = true
         f.clip.frame()
-        advanceTimeBy(261); runCurrent()
         assertSame(selectionBefore, f.clip.selection)
-        assertEquals(preparesBefore, f.clip.prepares)
-        assertEquals(listOf(true, false, true), f.owned)
+        assertEquals(seeksBefore, f.clip.seeks)
+        assertEquals(ownersBefore, f.owned)
         assertEquals(0.8f, f.clip.volume)
         f.session.stop()
     }
@@ -301,7 +299,7 @@ class CapsuleVideoSessionTest {
         assertTrue(f.clip.intentWrites.none { it })
         assertFalse(f.clip.intent)
         assertEquals(seeksBefore, f.clip.seeks)
-        assertEquals(listOf(true, false, true, false, true, false, true), f.owned)
+        assertEquals(listOf(true), f.owned)
         f.session.stop()
     }
     @Test fun hiddenSurfaceNeverTimesOutAndStaleSeamNeverMutesNewSong() = runTest {

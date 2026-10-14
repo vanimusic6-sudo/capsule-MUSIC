@@ -34,19 +34,6 @@ class CapsuleVideoRoutesTest {
         }
         assertEquals("direct-android-vr", result.backend)
     }
-    @Test fun parserLinkageFailureContinuesToTheNextIndependentBackend() {
-        val calls = mutableListOf<CapsuleVideoRoute>()
-        val result = resolveVideoRoutes { route ->
-            calls += route
-            when (route) {
-                CapsuleVideoRoute.ANDROID_VR, CapsuleVideoRoute.VISIONOS -> null
-                CapsuleVideoRoute.PIPEPIPE -> throw NoClassDefFoundError("parser dependency")
-                else -> stream
-            }
-        }
-        assertEquals("newpipe", result.backend)
-        assertEquals(CapsuleVideoRoute.NEWPIPE, calls.last())
-    }
     @Test fun rateLimitStopsTheChainAndBotVerdictSurvivesLaterNetworkFailure() {
         var calls = 0
         val limited = runCatching { resolveVideoRoutes { calls++; throw IOException("HTTP 429") } }

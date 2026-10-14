@@ -34,7 +34,7 @@ internal fun resolveVideoRoutes(
     onAttempt: (CapsuleVideoRoute, Long, Boolean) -> Unit = { _, _, _ -> },
     resolve: (CapsuleVideoRoute) -> CapsuleNewPipeResolved?,
 ): CapsuleNewPipeResolved {
-    val failures = mutableListOf<Throwable>()
+    val failures = mutableListOf<Exception>()
     // A URL can resolve successfully yet fail at the CDN/decoder. Remember
     // this feedback across the next clips, not just this one recovery call.
     CapsuleVideoRoute.entries.firstOrNull { it.wireName == failedBackend }?.let { health?.failure(it) }
@@ -51,10 +51,7 @@ internal fun resolveVideoRoutes(
             // No compatible format is a verdict about this clip, not an
             // endpoint outage. Do not penalize the fast route on other clips.
             onAttempt(route, TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - started), false)
-        } catch (failure: Throwable) {
-            // A missing/incompatible parser class is local to this backend.
-            // It must not terminate the independent route chain.
-            if (failure !is Exception && failure !is LinkageError) throw failure
+        } catch (failure: Exception) {
             // Route deadlines leave room for the next backend. Request-wide
             // cancellation/deadline and rate limits stop all work immediately.
             VideoExtractionRequests.checkActive()

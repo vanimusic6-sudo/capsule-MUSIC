@@ -229,7 +229,7 @@ object CapsuleNewPipeExtractor {
                     throwable is ContentNotAvailableException || throwable is dev.maxrave.pipepipe.extractor.exceptions.ContentNotAvailableException -> CapsuleNewPipeFailure.UNAVAILABLE
                     throwable is SocketTimeoutException || throwable is IOException ->
                         CapsuleNewPipeFailure.NETWORK
-                    throwable is LinkageError || throwable is ExtractionException || throwable is dev.maxrave.pipepipe.extractor.exceptions.ExtractionException -> CapsuleNewPipeFailure.EXTRACTOR
+                    throwable is ExtractionException || throwable is dev.maxrave.pipepipe.extractor.exceptions.ExtractionException -> CapsuleNewPipeFailure.EXTRACTOR
                     else -> CapsuleNewPipeFailure.UNKNOWN
                 }
         }
