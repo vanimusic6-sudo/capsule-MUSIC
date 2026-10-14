@@ -72,6 +72,18 @@ const val CAPSULE_VIDEO_SCHEME = "capsule-video"
 const val CAPSULE_VIDEO_CACHE_PREFIX = "capsule:video:"
 const val CAPSULE_VIDEO_STREAM_CACHE_PREFIX = "capsule:video-stream:"
 
+/**
+ * VIDEO N/A is a confirmed result for this track, not a new search prompt every
+ * time the user moves the switch. A server cooldown also cannot be retried just
+ * by briefly selecting AUDIO. The service resets this state on track changes.
+ */
+internal fun CapsuleVideoPlaybackState.hasStableVideoBlock(
+    currentMediaId: String?,
+    nowMs: Long,
+): Boolean =
+    currentMediaId != null && mediaId == currentMediaId &&
+        (phase == CapsuleVideoPhase.UNAVAILABLE || requestBlockedUntilMs > nowMs)
+
 /** Repeated taps are idempotent only while work/presentation actually exists. */
 internal val CapsuleVideoPlaybackState.videoRequestAlreadyActive: Boolean
     get() = preferredMode == CapsulePlaybackMode.VIDEO && phase in setOf(
