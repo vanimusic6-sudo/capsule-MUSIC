@@ -69,6 +69,25 @@ internal fun Throwable.isUnresponsiveCdnOpenFor(mediaId: String?): Boolean {
             .any { it is SocketTimeoutException }
 }
 
+/**
+ * A peer can reset a long-lived HTTP/1.1 socket at a chunk boundary.
+ * That is not an HTTP refusal and does not prove this CDN group is blocked.
+ * Preserve the current signed URL and let the existing Media3/OkHttp bounded
+ * transport retry reopen a socket before asking YouTube for another /player URL.
+ *
+ * Match only actual reset signatures; timeouts, DNS, TLS verification and
+ * HTTP 403/410/429 retain their existing recovery paths.
+ */
+internal fun Throwable.isTransientAudioCdnSocketReset(): Boolean =
+    generateSequence(this as Throwable?) { it.cause }
+        .take(12)
+        .any { cause ->
+            (cause is SocketException &&
+                (cause.message?.contains("connection reset", ignoreCase = true) == true ||
+                    cause.message?.contains("ECONNRESET", ignoreCase = true) == true)) ||
+                (cause is IOException && cause.javaClass.simpleName == "ConnectionResetException")
+        }
+
 /** Keep HTTP refusal retries in the chunk layer; never turn cancellation into a fresh resolve. */
 internal fun IOException.isAudioCdnTransportFailure(): Boolean {
     if (isExpectedAudioCdnInterruption()) return false
