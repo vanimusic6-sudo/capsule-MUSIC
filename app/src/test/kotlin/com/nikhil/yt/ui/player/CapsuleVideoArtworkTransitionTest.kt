@@ -84,17 +84,79 @@ class CapsuleVideoArtworkTransitionTest {
         val closing = immersiveJellyStretch(0.45f, 0.26f)
         assertTrue("leading edge produces a gentle jelly pull", opening > 0.01f)
         assertTrue("reverse motion pulls in the opposite direction", closing < -0.01f)
-        assertTrue(opening <= 0.019f)
-        assertTrue(closing >= -0.019f)
+        assertTrue(opening <= 0.042f)
+        assertTrue(closing >= -0.042f)
+        // The previous clamp to 0..1 erased physical rebound: once the body
+        // passed the endpoint, its silhouette snapped flat while spring moved.
+        assertTrue(immersiveJellyStretch(1.035f, 1.09f) > 0f)
+        assertTrue(immersiveJellyStretch(-0.03f, -0.08f) < 0f)
+        assertEquals(0f, immersiveJellyStretch(1f, 1f), 0.0001f)
+        assertEquals(0f, immersiveJellyStretch(0f, 0f), 0.0001f)
+        assertTrue(immersiveEdgeTension(0.50f, 0.80f) > 0f)
+        assertTrue(immersiveEdgeTension(0.50f, 0.20f) < 0f)
     }
 
-    @Test fun sculptedCoverContractsBeforeItExpandsAndReversesInTheSameOrder() {
-        assertEquals(0f, stagedVideoWidth(0.25f), 0.001f)
-        assertTrue(stagedVideoHeight(0.25f) > 0f)
-        assertEquals(1f, stagedVideoHeight(0.75f), 0.001f)
-        assertTrue(stagedVideoWidth(0.75f) < 1f)
-        assertEquals(0f, stagedVideoWidth(0f), 0.001f)
-        assertEquals(1f, stagedVideoWidth(1f), 0.001f)
+    @Test fun rendererSurvivesSpringZeroCrossingAndStopsOnlyAfterRecoil() {
+        val presenting = mutableStateOf(true)
+        val needed = mutableStateOf(true)
+        var attached = 0
+        var detached = 0
+        compose.mainClock.autoAdvance = false
+        compose.setContent {
+            CapsuleVideoArtworkTransition(
+                presentingVideo = presenting.value,
+                needsSurface = needed.value,
+                motion = CapsuleVideoArtworkMotion.IMMERSIVE,
+                modifier = Modifier.size(320.dp, 440.dp),
+                fillArtworkSlot = true,
+                video = { if (it) DisposableEffect(Unit) {
+                    attached++
+                    onDispose { detached++ }
+                } },
+                artwork = { Box(Modifier.fillMaxSize()) },
+            )
+        }
+        compose.waitForIdle()
+        compose.runOnIdle {
+            presenting.value = false
+            needed.value = false
+        }
+        // Several frames around the zero-crossing where a bouncy spring can
+        // go slightly negative. Do not release/recreate the decoder between.
+        repeat(30) {
+            compose.mainClock.advanceTimeBy(16)
+            compose.waitForIdle()
+            if (it < 12) compose.runOnIdle { assertEquals(0, detached) }
+        }
+        compose.mainClock.autoAdvance = true
+        compose.waitForIdle()
+        compose.runOnIdle {
+            assertEquals(1, attached)
+            assertEquals(1, detached)
+        }
+    }
+
+    @Test fun sharedBoundsChangeWidthAndHeightTogetherWithoutTwoStepStaging() {
+        val coverWidth = 320
+        val videoWidth = 348
+        val coverHeight = 320
+        val videoHeight = 196
+        assertEquals(320f, sharedVideoMorphDimension(coverWidth, videoWidth, 0f), 0.001f)
+        assertEquals(320f, sharedVideoMorphDimension(coverHeight, videoHeight, 0f), 0.001f)
+        for (p in listOf(0.20f, 0.35f, 0.50f, 0.75f)) {
+            val width = sharedVideoMorphDimension(coverWidth, videoWidth, p)
+            val height = sharedVideoMorphDimension(coverHeight, videoHeight, p)
+            assertTrue("width must be moving even at early progress", width > coverWidth)
+            assertTrue("height must be moving even at early progress", height < coverHeight)
+            assertEquals(
+                "the axes should share one progress to prevent corner catch-up",
+                (width - coverWidth) / (videoWidth - coverWidth),
+                (height - coverHeight) / (videoHeight - coverHeight),
+                0.001f,
+            )
+        }
+        assertEquals(348f, sharedVideoMorphDimension(coverWidth, videoWidth, 1f), 0.001f)
+        assertEquals(196f, sharedVideoMorphDimension(coverHeight, videoHeight, 1f), 0.001f)
     }
 
     @Test fun loadingIndicatorOnlyAppearsWhileAnUnpreparedClipLoads() {
