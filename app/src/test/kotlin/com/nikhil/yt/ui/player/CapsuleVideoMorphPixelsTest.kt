@@ -153,7 +153,10 @@ class CapsuleVideoMorphPixelsTest {
         compose.mainClock.advanceTimeByFrame()
         compose.waitForIdle()
         compose.mainClock.advanceTimeBy(160)
-        assertRectangularBlend("immersive-closing")
+        // The new shorter handover prevents a ghost-photo over VIDEO during
+        // most of closing. There must be opaque content, regardless of exact
+        // spring progress at 60/120Hz.
+        assertOpaqueContent("immersive-closing")
         compose.mainClock.autoAdvance = true
         compose.waitForIdle()
         assertEquals(AndroidColor.BLUE, centre("immersive-closed"))
