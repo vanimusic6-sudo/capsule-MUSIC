@@ -55,6 +55,15 @@ internal const val CDN_HOST_SUSPECT_MS = 90 * 1000L
 internal const val CDN_HOST_SUSPECT_OPEN_TIMEOUT_SECONDS = 5L
 internal const val CDN_HOST_LONG_OPEN_MS = 10_000L
 
+/** Persistently slow *network reads* (not a paused Media3 loader) earn a temporary cooldown. */
+internal const val CDN_HOST_SLOW_READ_MIN_REQUEST_BYTES = 16 * 1024
+internal const val CDN_HOST_SLOW_READ_MIN_DURATION_MS = 250L
+internal const val CDN_HOST_SLOW_READ_BPS = 48L * 1024
+internal const val CDN_HOST_FAST_READ_BPS = 160L * 1024
+internal const val CDN_HOST_SLOW_READS_BEFORE_COLD = 3
+internal const val CDN_HOST_SLOW_COLD_MS = 90 * 1000L
+internal const val CDN_HOST_HEALTHY_PROBE_READS = 3
+
 /**
  * Remembers which googlevideo server groups are currently refusing everything.
  *
@@ -88,6 +97,12 @@ internal class AudioCdnHostHealth(
     private val lastProbe = HashMap<String, Long>()
     private val suspectUntil = HashMap<String, Long>()
 
+    // Separate from refused signed URLs and transport open timeouts. A 206
+    // response followed by persistently slow bytes is still a sick CDN.
+    private val slowColdUntil = HashMap<String, Long>()
+    private val consecutiveSlowReads = HashMap<String, Int>()
+    private val healthyProbeReads = HashMap<String, Int>()
+
     /** A song locally skipped on a cold group MUST get a real second-client probe. */
     private val locallySkippedGroupByMediaId = LinkedHashMap<String, String>()
 
@@ -100,8 +115,10 @@ internal class AudioCdnHostHealth(
         consecutiveSkips = 0
         val group = googlevideoServerGroup(host) ?: return
         val wasCold = coldUntil.remove(group) != null
+        // A single HTTP 206/body byte must not pardon a persistently slow
+        // server: it still needs several HEALTHY measured reads on a probe.
         failures.remove(group)
-        lastProbe.remove(group)
+        if (!slowColdUntil.containsKey(group)) lastProbe.remove(group)
         suspectUntil.remove(group)
         if (wasCold) {
             Timber.tag("AudioCDN").w("cdn-host-recovered group=%s", group)
@@ -122,6 +139,51 @@ internal class AudioCdnHostHealth(
                 CDN_HOST_COLD_MS / 1000,
             )
         }
+    }
+
+    /**
+     * A sampled read belongs to the socket, not Media3's playback schedule.
+     * Three genuinely slow consecutive reads are evidence of an unusable edge.
+     * It becomes cold for 90 seconds, but the usual probes and two-skip
+     * escape hatch still apply. Healthy probes lift the quarantine early.
+     *
+     * @return true exactly when this sample first makes the host slow-cold.
+     */
+    @Synchronized
+    fun recordNetworkRead(host: String?, requestedBytes: Int, readBytes: Int, elapsedMs: Long): Boolean {
+        val group = googlevideoServerGroup(host) ?: return false
+        if (requestedBytes < CDN_HOST_SLOW_READ_MIN_REQUEST_BYTES || readBytes <= 0 || elapsedMs < 1L) {
+            return false
+        }
+        val bps = readBytes.toDouble() * 1000.0 / elapsedMs
+        val slow = elapsedMs >= CDN_HOST_SLOW_READ_MIN_DURATION_MS && bps < CDN_HOST_SLOW_READ_BPS
+        if (slow) {
+            healthyProbeReads.remove(group)
+            val count = (consecutiveSlowReads[group] ?: 0) + 1
+            consecutiveSlowReads[group] = count.coerceAtMost(CDN_HOST_SLOW_READS_BEFORE_COLD)
+            if (count >= CDN_HOST_SLOW_READS_BEFORE_COLD && slowColdUntil[group] == null) {
+                slowColdUntil[group] = now() + CDN_HOST_SLOW_COLD_MS
+                Timber.tag("AudioCDN").w(
+                    "cdn-host-cold group=%s reason=slow-network-reads samples=%d cooldownMs=%d",
+                    group, count, CDN_HOST_SLOW_COLD_MS,
+                )
+                return true
+            }
+        } else if (bps >= CDN_HOST_FAST_READ_BPS) {
+            consecutiveSlowReads.remove(group)
+            if (slowColdUntil[group] != null) {
+                val recovered = (healthyProbeReads[group] ?: 0) + 1
+                if (recovered >= CDN_HOST_HEALTHY_PROBE_READS) {
+                    slowColdUntil.remove(group)
+                    healthyProbeReads.remove(group)
+                    lastProbe.remove(group)
+                    Timber.tag("AudioCDN").i("cdn-host-recovered group=%s reason=healthy-network-reads", group)
+                } else {
+                    healthyProbeReads[group] = recovered
+                }
+            }
+        }
+        return false
     }
 
     /**
@@ -164,11 +226,19 @@ internal class AudioCdnHostHealth(
         if (consecutiveSkips >= CDN_HOST_MAX_CONSECUTIVE_SKIPS) return false
 
         val group = googlevideoServerGroup(host) ?: return false
-        val expiry = coldUntil[group] ?: return false
         val instant = now()
-        if (instant >= expiry) {
+        val transportExpiry = coldUntil[group]
+        if (transportExpiry != null && instant >= transportExpiry) {
             coldUntil.remove(group)
             failures.remove(group)
+        }
+        val slowExpiry = slowColdUntil[group]
+        if (slowExpiry != null && instant >= slowExpiry) {
+            slowColdUntil.remove(group)
+            consecutiveSlowReads.remove(group)
+            healthyProbeReads.remove(group)
+        }
+        if (coldUntil[group] == null && slowColdUntil[group] == null) {
             lastProbe.remove(group)
             return false
         }
@@ -206,6 +276,9 @@ internal class AudioCdnHostHealth(
         coldUntil.clear()
         lastProbe.clear()
         suspectUntil.clear()
+        slowColdUntil.clear()
+        consecutiveSlowReads.clear()
+        healthyProbeReads.clear()
         locallySkippedGroupByMediaId.clear()
         consecutiveSkips = 0
     }
@@ -226,6 +299,8 @@ internal class AudioCdnHostHealthDataSource(
     private var servedByHost: String? = null
     private var deliveredBytes = false
     private var mediaId: String? = null
+    // Injected time source allows deterministic tests for actual upstream read latency.
+    private val nanoTime: () -> Long = System::nanoTime
 
     override fun addTransferListener(transferListener: TransferListener) {
         upstream.addTransferListener(transferListener)
@@ -268,10 +343,25 @@ internal class AudioCdnHostHealthDataSource(
     }
 
     override fun read(buffer: ByteArray, offset: Int, length: Int): Int = try {
+        val started = nanoTime()
         upstream.read(buffer, offset, length).also { count ->
-            if (count > 0 && !deliveredBytes) {
-                deliveredBytes = true
-                health.recordSuccess(servedByHost ?: host)
+            if (count > 0) {
+                if (!deliveredBytes) {
+                    deliveredBytes = true
+                    health.recordSuccess(servedByHost ?: host)
+                }
+                val readMs = (nanoTime() - started).coerceAtLeast(0L) / 1_000_000L
+                // A full Media3 buffer never calls read(), so it cannot count
+                // as a slow network sample. Only sustained blocking I/O can
+                // trigger a quarantine and a bounded fresh-URL recovery.
+                if (mediaId != null && health.recordNetworkRead(
+                        servedByHost ?: host, length, count, readMs
+                    )
+                ) {
+                    throw AudioCdnRefreshRequiredException(
+                        requireNotNull(mediaId), AudioCdnRefreshReason.READ_FAILURE,
+                    )
+                }
             }
         }
     } catch (failure: IOException) {
@@ -309,16 +399,9 @@ internal class AudioCdnHostHealthDataSource(
             )
             return failure
         }
-        // Captured 60s HTTP/1.1 reads sometimes end in ECONNRESET; the same
-        // signed link subsequently returns 206 on a new socket. This does not
-        // justify a fresh extractor request or a 90-second host cooldown.
-        if (failure.isTransientAudioCdnSocketReset()) {
-            Timber.tag("AudioCDN").d(
-                "cdn-socket-reset group=%s; leave current URL and host eligible",
-                googlevideoServerGroup(servedByHost ?: host) ?: "unknown",
-            )
-            return failure
-        }
+        // Restore the normal host-health pathway for repeat socket resets.
+        // One reset is not enough to quarantine a server; three consecutive
+        // unresolved transport failures already are. Never treat it as a 403.
         if (!failure.isAudioCdnTransportFailure()) return failure
 
         // A cross-group redirect may have succeeded on the issuing server
