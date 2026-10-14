@@ -807,6 +807,7 @@ fun CapsulePlayerContent(
         },
         lightInteractionActive = lightEditInProgress,
         lightArtworkResizeActive = artworkResizeActive,
+        videoWindowActive = isCapsuleVideoPlaying || needsVideoSurface,
         onLightOrderSettled = { reordered ->
             val safeOrder = restoreHiddenLyric(reordered)
             lightOrder = safeOrder
