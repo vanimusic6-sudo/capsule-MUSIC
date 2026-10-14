@@ -19,6 +19,7 @@ import androidx.compose.ui.unit.dp
 import com.nikhil.yt.playback.video.CapsulePlaybackMode
 import com.nikhil.yt.playback.video.CapsuleVideoPhase
 import com.nikhil.yt.playback.video.CapsuleVideoPlaybackState
+import com.nikhil.yt.playback.video.hasStableVideoBlock
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -31,6 +32,50 @@ import org.robolectric.annotation.Config
 @Config(sdk = [35], application = Application::class, qualifiers = "w400dp-h800dp")
 class CapsuleVideoArtworkTransitionTest {
     @get:Rule val compose = createComposeRule()
+
+    @Test fun noVideoDecoderOrBlackWindowBeforeArtworkLoadsInAudioMode() {
+        val needsSurface = mutableStateOf(false)
+        var videoCompositionCount = 0
+        compose.setContent {
+            CapsuleVideoArtworkTransition(
+                presentingVideo = false,
+                needsSurface = needsSurface.value,
+                modifier = Modifier.size(320.dp, 280.dp),
+                fillArtworkSlot = true,
+                video = {
+                    videoCompositionCount++
+                    Box(Modifier.fillMaxSize())
+                },
+                // Mirrors the empty async-cover placeholder.
+                artwork = { Box(Modifier.fillMaxSize()) },
+            )
+        }
+        compose.waitForIdle()
+        compose.runOnIdle { assertEquals("AUDIO placeholder must not mount VIDEO", 0, videoCompositionCount) }
+        compose.runOnIdle { needsSurface.value = true }
+        compose.waitForIdle()
+        compose.runOnIdle { assertTrue("VIDEO preparation still mounts the surface", videoCompositionCount > 0) }
+    }
+
+    @Test fun knownUnavailableAndCooldownRemainStableAcrossAudioVideoTaps() {
+        val state = CapsuleVideoPlaybackState(
+            mode = CapsulePlaybackMode.AUDIO,
+            preferredMode = CapsulePlaybackMode.AUDIO,
+            mediaId = "song",
+            phase = CapsuleVideoPhase.UNAVAILABLE,
+        )
+        assertTrue(state.hasStableVideoBlock("song", 1000L))
+        assertEquals(false, state.hasStableVideoBlock("next", 1000L))
+        assertTrue(state.copy(phase = CapsuleVideoPhase.REQUEST_ERROR, requestBlockedUntilMs = 3000L)
+            .hasStableVideoBlock("song", 1000L))
+        assertEquals(false, state.copy(phase = CapsuleVideoPhase.REQUEST_ERROR, requestBlockedUntilMs = 3000L)
+            .hasStableVideoBlock("song", 3000L))
+        assertEquals(false, shouldShowVideoLoading(state.copy(
+            preferredMode = CapsulePlaybackMode.VIDEO,
+            phase = CapsuleVideoPhase.RESOLVING,
+            requestBlockedUntilMs = 3000L,
+        ), nowMs = 1000L))
+    }
 
     @Test fun sculptedCoverContractsBeforeItExpandsAndReversesInTheSameOrder() {
         assertEquals(0f, stagedVideoWidth(0.25f), 0.001f)
