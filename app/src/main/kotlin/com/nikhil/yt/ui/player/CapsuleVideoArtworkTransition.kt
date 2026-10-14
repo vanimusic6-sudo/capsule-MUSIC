@@ -1,7 +1,7 @@
 /* Capsule MUSIC — stable GPU cover/video composition. GPL-3.0. */
 package com.nikhil.yt.ui.player
 
-import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -10,9 +10,9 @@ import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -32,6 +32,9 @@ import androidx.compose.ui.unit.dp
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.roundToInt
+import kotlin.math.abs
+import kotlin.math.sin
+import kotlin.math.PI
 
 internal enum class CapsuleVideoArtworkMotion { SCULPTED, IMMERSIVE }
 
@@ -66,33 +69,36 @@ internal fun CapsuleVideoArtworkTransition(
     val windowWidth = with(density) { LocalConfiguration.current.screenWidthDp.dp.roundToPx() }
     val immersive = motion == CapsuleVideoArtworkMotion.IMMERSIVE
     val target = if (presentingVideo) 1f else 0f
-    // Two velocity-preserving springs drive the same fixed-sized GPU layer.
-    // Cosmo/Minimal get a crisp, controlled handoff. Immersion's leading
-    // spring pulls a few pixels against the softer body spring, then both
-    // settle organically. Reversals preserve their current velocities.
-    val reveal = key(transitionKey) {
-        animateFloatAsState(
+    // Animatable exposes isRunning: a video surface cannot be destroyed for
+    // one frame when an underdamped closing spring crosses zero and rebounds.
+    // animateTo() maintains velocity on target reversal (including mid-flight).
+    // Each mediaId gets its own starting position without carry-over.
+    val body = remember(transitionKey) { Animatable(target) }
+    LaunchedEffect(body, target, immersive) {
+        body.animateTo(
             targetValue = target,
             animationSpec = if (immersive)
-                spring(dampingRatio = 0.83f, stiffness = 82f, visibilityThreshold = 0.001f)
+                spring(dampingRatio = 0.77f, stiffness = 105f, visibilityThreshold = 0.001f)
             else
-                spring(dampingRatio = 0.88f, stiffness = 145f, visibilityThreshold = 0.001f),
-            label = "capsule-video-body",
+                spring(dampingRatio = 0.86f, stiffness = 210f, visibilityThreshold = 0.001f),
         )
     }
-    // Only Immersion needs a second animator. Other designs read one shared
-    // spring, avoiding duplicate invalidations on ordinary player screens.
-    val elastic = if (immersive) key(transitionKey) {
-        animateFloatAsState(
-            targetValue = target,
-            animationSpec = spring(dampingRatio = 0.67f, stiffness = 130f, visibilityThreshold = 0.001f),
-            label = "capsule-video-elastic",
-        )
-    } else reveal
-    // Only mount the native decoder while preparing/revealing/leaving VIDEO.
-    // On interrupted closures also wait for the elastic spring to settle.
-    val surfaceActive by remember(needsSurface, reveal, elastic) {
-        derivedStateOf { needsSurface || reveal.value > 0.004f || elastic.value > 0.004f }
+    val lead = if (immersive) remember(transitionKey) { Animatable(target) } else body
+    if (immersive) {
+        LaunchedEffect(lead, target) {
+            lead.animateTo(
+                targetValue = target,
+                animationSpec = spring(dampingRatio = 0.63f, stiffness = 270f, visibilityThreshold = 0.001f),
+            )
+        }
+    }
+    // Render lease must not flicker during a negative spring overshoot.
+    // Derived state only changes composition at the mount/unmount boundary.
+    val surfaceActive by remember(needsSurface, body, lead) {
+        derivedStateOf {
+            needsSurface || body.isRunning || lead.isRunning ||
+                abs(body.value) > 0.001f || abs(lead.value) > 0.001f
+        }
     }
 
     BoxWithConstraints(modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
