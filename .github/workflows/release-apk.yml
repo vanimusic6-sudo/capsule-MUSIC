@@ -10,6 +10,7 @@ on:
       - fix/video-stable-incremental-20261011
       - refactor/video-session-rebuild-20261011
       - fix/video-state-audio-maintenance-20261014
+      - polish/video-immersion-jelly-audio-cdn-20261014
       - fix/video-timeline-morph-20261014
 
 permissions:
