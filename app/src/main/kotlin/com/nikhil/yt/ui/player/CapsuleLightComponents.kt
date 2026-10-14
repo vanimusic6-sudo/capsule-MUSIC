@@ -139,6 +139,7 @@ internal fun CapsulePlayerLayout(
     onLightArtworkSelectionDismiss: () -> Unit = {},
     lightInteractionActive: Boolean = false,
     lightArtworkResizeActive: Boolean = false,
+    videoWindowActive: Boolean = false,
     /**
      * Optional block renderer used by the first Capsule "clay" editor.
      *
@@ -271,6 +272,7 @@ internal fun CapsulePlayerLayout(
                             onArtworkSelectionDismiss = onLightArtworkSelectionDismiss,
                             externalGestureActive = lightInteractionActive,
                             artworkResizeActive = lightArtworkResizeActive,
+                            videoWindowActive = videoWindowActive,
                             modifier =
                                 Modifier
                                     .fillMaxWidth()
