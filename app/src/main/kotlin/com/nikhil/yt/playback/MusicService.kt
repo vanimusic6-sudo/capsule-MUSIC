@@ -497,6 +497,9 @@ internal fun PlaybackException.isNoPlayableStreamFailure(): Boolean =
                 message.contains("InnerTubeX returned no playable AUDIO stream", ignoreCase = true)
         }
 
+private const val VIDEO_PAUSED_COLLAPSE_MS = 10 * 60_000L
+private const val VIDEO_SWITCH_SETTLE_MS = 450L
+
 @OptIn(ExperimentalCoroutinesApi::class, FlowPreview::class)
 @AndroidEntryPoint
 class MusicService :
@@ -999,6 +1002,9 @@ class MusicService :
     private var videoRecoveryJob: Job? = null
     private var videoRecoveryAttempts = 0
     private var videoSessionGeneration = 0L
+    private var videoPauseCollapseJob: Job? = null
+    private var videoModeSwitchJob: Job? = null
+    private var lastVideoExitElapsedMs = 0L
     private var effectiveAudioVolume = 1f
     private var videoRequestedAtMs = 0L
     val videoRenderPlayer: Player?
@@ -1106,12 +1112,17 @@ class MusicService :
     private fun failVideoSession(mediaId: String, failure: Throwable) {
         val state = videoPlaybackState.value
         if (state.mediaId != mediaId || state.preferredMode != CapsulePlaybackMode.VIDEO) return
+        videoPauseCollapseJob?.cancel()
+        videoPauseCollapseJob = null
+        val guard = CapsuleVideoRequestGuard.snapshot().takeIf { it.blockedUntilMs > System.currentTimeMillis() }
         restoreMusicAfterVideoFailure()
         Timber.tag("CapsuleVideo").w(failure, "VIDEO session failed; original MUSIC continues")
         videoPlaybackState.value = state.copy(
             preferredMode = CapsulePlaybackMode.AUDIO, mode = CapsulePlaybackMode.AUDIO,
             phase = CapsuleVideoPhase.REQUEST_ERROR, firstFrameReady = false,
             message = failure.message ?: "VIDEO unavailable — original AUDIO continues",
+            requestBlockedUntilMs = guard?.blockedUntilMs ?: 0L,
+            requestBlockReason = guard?.reason,
         )
         activeResolvedVideo = null
     }
@@ -1166,6 +1177,34 @@ class MusicService :
         )
         companion.setForeground(videoScreenVisible)
         companion.start(mediaId, item, effectiveAudioVolume)
+        updateVideoPauseCollapse()
+    }
+
+    /** Release a long-paused signed stream and decoder while keeping the MUSIC position/intent. */
+    private fun updateVideoPauseCollapse() {
+        val state = videoPlaybackState.value
+        val mediaId = player.currentMediaItem?.mediaId
+        val pausedVideo = state.preferredMode == CapsulePlaybackMode.VIDEO &&
+            state.mode == CapsulePlaybackMode.VIDEO && state.mediaId == mediaId &&
+            !player.playWhenReady
+        if (!pausedVideo) {
+            videoPauseCollapseJob?.cancel()
+            videoPauseCollapseJob = null
+            return
+        }
+        if (videoPauseCollapseJob != null) return
+        videoPauseCollapseJob = scope.launch {
+            delay(VIDEO_PAUSED_COLLAPSE_MS)
+            videoPauseCollapseJob = null
+            val current = videoPlaybackState.value
+            if (!player.playWhenReady && current.preferredMode == CapsulePlaybackMode.VIDEO &&
+                current.mode == CapsulePlaybackMode.VIDEO && current.mediaId == mediaId &&
+                player.currentMediaItem?.mediaId == mediaId
+            ) {
+                Timber.tag("CapsuleVideo").i("VIDEO paused timeout; release signed stream id=%s", mediaId)
+                setCapsulePlaybackMode(CapsulePlaybackMode.AUDIO)
+            }
+        }
     }
 
     // Activity lifecycle. VIDEO stays selected while background audio
@@ -3560,6 +3599,10 @@ class MusicService :
                 previousCanonicalId != null &&
                 transitionedMediaId != previousCanonicalId
         if (canonicalChanged) {
+            videoPauseCollapseJob?.cancel()
+            videoPauseCollapseJob = null
+            videoModeSwitchJob?.cancel()
+            videoModeSwitchJob = null
             cancelVideoRecovery()
             videoCompanion?.stop()
             videoReturnGapJob?.cancel()
@@ -3882,6 +3925,7 @@ class MusicService :
 
     override fun onIsPlayingChanged(isPlaying: Boolean) {
         super.onIsPlayingChanged(isPlaying)
+        updateVideoPauseCollapse()
         val activeMediaId = player.currentMediaItem?.mediaId
         playbackRecoveryCoordinator.onPlaybackActivity(
             mediaId = activeMediaId,
@@ -3894,6 +3938,9 @@ class MusicService :
 
 
     override fun onEvents(player: Player, events: Player.Events) {
+        if (events.containsAny(Player.EVENT_PLAY_WHEN_READY_CHANGED, Player.EVENT_MEDIA_ITEM_TRANSITION)) {
+            updateVideoPauseCollapse()
+        }
         if (events.contains(EVENT_POSITION_DISCONTINUITY)) {
             playbackPositionGeneration.markDiscontinuity()
         }
@@ -4839,6 +4886,15 @@ class MusicService :
     fun setCapsulePlaybackMode(mode: CapsulePlaybackMode) {
         when (mode) {
             CapsulePlaybackMode.AUDIO -> {
+                videoModeSwitchJob?.cancel()
+                videoModeSwitchJob = null
+                val current = videoPlaybackState.value
+                if (current.preferredMode == CapsulePlaybackMode.AUDIO &&
+                    current.mode == CapsulePlaybackMode.AUDIO
+                ) return
+                lastVideoExitElapsedMs = android.os.SystemClock.elapsedRealtime()
+                videoPauseCollapseJob?.cancel()
+                videoPauseCollapseJob = null
                 videoPlaybackState.value =
                     videoPlaybackState.value.copy(
                         preferredMode = CapsulePlaybackMode.AUDIO,
@@ -4846,11 +4902,30 @@ class MusicService :
                 leaveCapsuleVideoMode()
             }
             CapsulePlaybackMode.VIDEO -> {
+                if (videoPlaybackState.value.preferredMode == CapsulePlaybackMode.VIDEO) return
                 videoPlaybackState.value =
                     videoPlaybackState.value.copy(
                         preferredMode = CapsulePlaybackMode.VIDEO,
                     )
-                enterCapsuleVideoMode()
+                // A rapid AUDIO→VIDEO reversal coalesces into one fresh resolve,
+                // after the old decoder and recovery job have finished tearing down.
+                val elapsed = android.os.SystemClock.elapsedRealtime() - lastVideoExitElapsedMs
+                val settleMs = (VIDEO_SWITCH_SETTLE_MS - elapsed).coerceIn(0L, VIDEO_SWITCH_SETTLE_MS)
+                if (settleMs == 0L) enterCapsuleVideoMode()
+                else {
+                    videoPlaybackState.value = videoPlaybackState.value.copy(
+                        mode = CapsulePlaybackMode.AUDIO,
+                        phase = CapsuleVideoPhase.RESOLVING,
+                    )
+                    videoModeSwitchJob?.cancel()
+                    videoModeSwitchJob = scope.launch {
+                        delay(settleMs)
+                        videoModeSwitchJob = null
+                        if (videoPlaybackState.value.preferredMode == CapsulePlaybackMode.VIDEO) {
+                            enterCapsuleVideoMode()
+                        }
+                    }
+                }
             }
         }
     }
@@ -4965,6 +5040,7 @@ class MusicService :
 
                     val noMatchingVideo =
                         isDefiniteNoVideoMatch(throwable)
+                    val guard = CapsuleVideoRequestGuard.snapshot().takeIf { it.blockedUntilMs > System.currentTimeMillis() }
 
                     Timber.tag("CapsuleVideo").w(
                         throwable,
@@ -4989,6 +5065,8 @@ class MusicService :
                                 },
                             mediaId = canonicalMediaId,
                             videoId = null,
+                            requestBlockedUntilMs = guard?.blockedUntilMs ?: 0L,
+                            requestBlockReason = guard?.reason,
                             message =
                                 throwable.message
                                     ?: if (noMatchingVideo) {
@@ -5767,6 +5845,8 @@ class MusicService :
     }
 
     override fun onDestroy() {
+        videoPauseCollapseJob?.cancel()
+        videoModeSwitchJob?.cancel()
         videoReturnGapJob?.cancel()
         videoReturnGapJob = null
         cancelVideoRecovery()

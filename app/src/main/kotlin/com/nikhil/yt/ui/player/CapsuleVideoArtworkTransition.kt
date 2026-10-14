@@ -48,7 +48,6 @@ internal fun CapsuleVideoArtworkTransition(
     artworkOffsetY: Dp = 0.dp,
     videoSidePadding: Dp = 0.dp,
     videoWidthScale: Float = 1f,
-    videoCornerRadius: Dp = 24.dp,
     motion: CapsuleVideoArtworkMotion = CapsuleVideoArtworkMotion.SCULPTED,
     artworkBackground: Color = Color.Transparent,
     outline: Color = Color.Transparent,
@@ -63,8 +62,8 @@ internal fun CapsuleVideoArtworkTransition(
     val immersive = motion == CapsuleVideoArtworkMotion.IMMERSIVE
     val reveal = key(transitionKey) { animateFloatAsState(
         targetValue = if (presentingVideo) 1f else 0f,
-        animationSpec = if (immersive) spring(dampingRatio = 0.94f, stiffness = 135f, visibilityThreshold = 0.001f)
-            else spring(dampingRatio = 0.86f, stiffness = 220f, visibilityThreshold = 0.001f),
+        animationSpec = if (immersive) spring(dampingRatio = 0.98f, stiffness = 92f, visibilityThreshold = 0.001f)
+            else spring(dampingRatio = 0.91f, stiffness = 190f, visibilityThreshold = 0.001f),
         label = "capsule-cover-video",
     ) }
     BoxWithConstraints(modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -77,23 +76,27 @@ internal fun CapsuleVideoArtworkTransition(
         val videoWidth = min(availableVideoWidth, (slotHeight * 16f / 9f).roundToInt().coerceAtLeast(1))
         val videoHeight = (videoWidth * 9f / 16f).roundToInt().coerceIn(1, slotHeight.coerceAtLeast(1))
         val coverOffset = with(density) { artworkOffsetY.roundToPx() }
-        fun frameWidth() = transitionDimension(coverWidth, videoWidth, reveal.value)
-        fun frameHeight() = transitionDimension(coverHeight, videoHeight, reveal.value)
-        // Switch opaque contents while the silhouette is already moving. One
-        // phase controls both layers, including interrupted/reversed motion.
-        fun showVideoContent() = !preparing.value && reveal.value >= 0.72f
+        fun frameWidth() = if (immersive) transitionDimension(coverWidth, videoWidth, reveal.value)
+            else transitionDimension(coverWidth, videoWidth, stagedVideoWidth(reveal.value))
+        fun frameHeight() = if (immersive) transitionDimension(coverHeight, videoHeight, reveal.value)
+            else transitionDimension(coverHeight, videoHeight, stagedVideoHeight(reveal.value))
+        // One reversible phase drives the geometry and both content layers.
+        fun contentHandover(): Float {
+            val start = if (immersive) 0.12f else 0.48f
+            val duration = if (immersive) 0.82f else 0.42f
+            return smoothVideoStep((reveal.value - start) / duration)
+        }
         Layout(
             modifier = Modifier
                 .graphicsLayer {
-                    val corners = reveal.value.coerceIn(0f, 1f)
-                    shape = RoundedCornerShape(artworkCornerRadius + (videoCornerRadius - artworkCornerRadius) * corners)
+                    // The mask is one physical piece; its corner radius never catches up later.
+                    shape = RoundedCornerShape(artworkCornerRadius)
                     clip = true
                     translationY = coverOffset * (1f - reveal.value)
                 }
                 .drawWithContent {
                     drawContent()
-                    val corners = reveal.value.coerceIn(0f, 1f)
-                    val radius = (artworkCornerRadius + (videoCornerRadius - artworkCornerRadius) * corners).toPx()
+                    val radius = artworkCornerRadius.toPx()
                     if (outline.alpha > 0f) drawRoundRect(outline, cornerRadius = CornerRadius(radius), style = Stroke(1.dp.toPx()))
                 }
                 .clickable(enabled = artworkClickable, onClick = onArtworkClick),
@@ -101,9 +104,7 @@ internal fun CapsuleVideoArtworkTransition(
                 // Uniform fill follows the moving silhouette. The decoder itself
                 // keeps its final viewport, avoiding surface/codec resize churn.
                 Box(Modifier.graphicsLayer {
-                    alpha = if (immersive) {
-                        if (!preparing.value && reveal.value > 0f) 1f else 0f
-                    } else if (showVideoContent()) 1f else 0f
+                    alpha = if (preparing.value) 0f else 1f
                     val scale = max(frameWidth().toFloat() / videoWidth, frameHeight().toFloat() / videoHeight)
                     scaleX = scale; scaleY = scale
                 }.background(Color.Black)) {
@@ -117,10 +118,7 @@ internal fun CapsuleVideoArtworkTransition(
                         // The whole cover flows within one rectangular silhouette.
                         // The same phase runs backwards on close, and spring
                         // velocity survives an interrupted/reversed gesture.
-                        val handover = ((p - 0.22f) / 0.62f).coerceIn(0f, 1f)
-                        val softened = handover * handover * (3f - 2f * handover)
-                        alpha = if (immersive && !preparing.value) 1f - softened
-                            else if (showVideoContent()) 0f else 1f
+                        alpha = if (preparing.value) 1f else 1f - contentHandover()
                         val motionAmount = if (immersive && !preparing.value) 4f * p * (1f - p) else 0f
                         // Artwork-only transient blur; no shader or blur remains
                         // attached to the live video during ordinary playback.
@@ -136,8 +134,8 @@ internal fun CapsuleVideoArtworkTransition(
         ) { children, _ ->
             val output = children[0].measure(Constraints.fixed(videoWidth, videoHeight))
             val cover = children[1].measure(Constraints.fixed(coverWidth, coverHeight))
-            val width = transitionDimension(coverWidth, videoWidth, reveal.value)
-            val height = transitionDimension(coverHeight, videoHeight, reveal.value)
+            val width = frameWidth()
+            val height = frameHeight()
             layout(width, height) {
                 output.placeRelative((width - output.width) / 2, (height - output.height) / 2)
                 cover.placeRelative((width - cover.width) / 2, (height - cover.height) / 2)
@@ -148,3 +146,13 @@ internal fun CapsuleVideoArtworkTransition(
 
 internal fun transitionDimension(cover: Int, video: Int, progress: Float): Int =
     (cover + (video - cover) * progress.coerceIn(-0.015f, 1.015f)).roundToInt().coerceAtLeast(1)
+
+internal fun smoothVideoStep(progress: Float): Float {
+    val p = progress.coerceIn(0f, 1f)
+    return p * p * p * (p * (p * 6f - 15f) + 10f)
+}
+
+// On opening, contract the cover vertically before widening it into a 16:9 window.
+// Reversing the same progress naturally contracts width first and restores height last.
+internal fun stagedVideoHeight(progress: Float): Float = smoothVideoStep(progress / 0.58f)
+internal fun stagedVideoWidth(progress: Float): Float = smoothVideoStep((progress - 0.30f) / 0.70f)

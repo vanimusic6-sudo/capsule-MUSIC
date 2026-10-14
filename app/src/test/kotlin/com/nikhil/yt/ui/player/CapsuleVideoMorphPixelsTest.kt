@@ -34,7 +34,7 @@ import java.io.File
 class CapsuleVideoMorphPixelsTest {
     @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
 
-    @Test fun contentHandoverFinishesEarlyAndClosingRetainsTheVideoInitially() {
+    @Test fun sculptedMorphKeepsOpaqueContentWhileTheFrameChangesShape() {
         val presenting = mutableStateOf(false)
         val needed = mutableStateOf(true)
         compose.setContent {
@@ -60,15 +60,14 @@ class CapsuleVideoMorphPixelsTest {
             assertOpaqueContent("opening-$it")
         }
         compose.mainClock.advanceTimeBy(26)
-        // Content handover is short; the rest of the physical settling is opaque.
-        assertEquals(AndroidColor.RED, centre("open-250"))
+        assertOpaqueContent("open-250")
         compose.mainClock.advanceTimeBy(500)
         assertEquals(AndroidColor.RED, centre("video"))
         compose.runOnIdle { needed.value = false; presenting.value = false }
         compose.mainClock.advanceTimeByFrame()
         compose.waitForIdle()
         compose.mainClock.advanceTimeBy(32)
-        assertEquals("closing must initially retain the video's still", AndroidColor.RED, centre("close-32"))
+        assertOpaqueContent("close-32")
         repeat(6) {
             compose.mainClock.advanceTimeBy(16)
             assertOpaqueContent("closing-$it")
@@ -80,8 +79,9 @@ class CapsuleVideoMorphPixelsTest {
 
     private fun assertOpaqueContent(name: String) {
         val pixel = centre(name)
-        assertTrue("$name must show one opaque content, never blended layers or an empty frame",
-            pixel == AndroidColor.RED || pixel == AndroidColor.BLUE)
+        assertTrue("$name must show an opaque cover/video blend, never a black gap",
+            AndroidColor.alpha(pixel) == 255 &&
+                (AndroidColor.red(pixel) > 0 || AndroidColor.blue(pixel) > 0))
     }
 
     @Test fun immersiveUsesOneSoftRectangularHandoverAndSettlesWithoutAnEmptyFrame() {

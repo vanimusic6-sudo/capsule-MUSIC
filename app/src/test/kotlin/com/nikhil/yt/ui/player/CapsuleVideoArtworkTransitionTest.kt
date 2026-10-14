@@ -25,6 +25,15 @@ import org.robolectric.annotation.Config
 class CapsuleVideoArtworkTransitionTest {
     @get:Rule val compose = createComposeRule()
 
+    @Test fun sculptedCoverContractsBeforeItExpandsAndReversesInTheSameOrder() {
+        assertEquals(0f, stagedVideoWidth(0.25f), 0.001f)
+        assertTrue(stagedVideoHeight(0.25f) > 0f)
+        assertEquals(1f, stagedVideoHeight(0.75f), 0.001f)
+        assertTrue(stagedVideoWidth(0.75f) < 1f)
+        assertEquals(0f, stagedVideoWidth(0f), 0.001f)
+        assertEquals(1f, stagedVideoWidth(1f), 0.001f)
+    }
+
     @Test fun lightKeepsThePreparingSurfaceWhenFirstFrameArrives() = verifyStableOutput(320, 280, true, 0)
     @Test fun cosmoKeepsThePreparingSurfaceWhenFirstFrameArrives() = verifyStableOutput(340, 420, false, 0)
     @Test fun immersiveKeepsThePreparingSurfaceWhenFirstFrameArrives() = verifyStableOutput(380, 440, true, 12, motion = CapsuleVideoArtworkMotion.IMMERSIVE)
