@@ -136,13 +136,27 @@ class CapsuleVideoArtworkTransitionTest {
         }
     }
 
-    @Test fun sculptedCoverContractsBeforeItExpandsAndReversesInTheSameOrder() {
-        assertEquals(0f, stagedVideoWidth(0.25f), 0.001f)
-        assertTrue(stagedVideoHeight(0.25f) > 0f)
-        assertEquals(1f, stagedVideoHeight(0.75f), 0.001f)
-        assertTrue(stagedVideoWidth(0.75f) < 1f)
-        assertEquals(0f, stagedVideoWidth(0f), 0.001f)
-        assertEquals(1f, stagedVideoWidth(1f), 0.001f)
+    @Test fun sharedBoundsChangeWidthAndHeightTogetherWithoutTwoStepStaging() {
+        val coverWidth = 320
+        val videoWidth = 348
+        val coverHeight = 320
+        val videoHeight = 196
+        assertEquals(320f, sharedVideoMorphDimension(coverWidth, videoWidth, 0f), 0.001f)
+        assertEquals(320f, sharedVideoMorphDimension(coverHeight, videoHeight, 0f), 0.001f)
+        for (p in listOf(0.20f, 0.35f, 0.50f, 0.75f)) {
+            val width = sharedVideoMorphDimension(coverWidth, videoWidth, p)
+            val height = sharedVideoMorphDimension(coverHeight, videoHeight, p)
+            assertTrue("width must be moving even at early progress", width > coverWidth)
+            assertTrue("height must be moving even at early progress", height < coverHeight)
+            assertEquals(
+                "the axes should share one progress to prevent corner catch-up",
+                (width - coverWidth) / (videoWidth - coverWidth),
+                (height - coverHeight) / (videoHeight - coverHeight),
+                0.001f,
+            )
+        }
+        assertEquals(348f, sharedVideoMorphDimension(coverWidth, videoWidth, 1f), 0.001f)
+        assertEquals(196f, sharedVideoMorphDimension(coverHeight, videoHeight, 1f), 0.001f)
     }
 
     @Test fun loadingIndicatorOnlyAppearsWhileAnUnpreparedClipLoads() {
