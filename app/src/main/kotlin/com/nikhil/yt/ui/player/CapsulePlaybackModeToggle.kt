@@ -100,8 +100,7 @@ internal fun CapsuleAudioVideoToggle(
         }
     }
     val videoRequestPaused = state.requestBlockedUntilMs > nowMs
-    val expiredCooldown = state.requestBlockedUntilMs > 0L && !videoRequestPaused
-    val videoRequestError = state.phase == CapsuleVideoPhase.REQUEST_ERROR && !expiredCooldown
+    val videoRequestError = state.phase == CapsuleVideoPhase.REQUEST_ERROR && !videoRequestPaused
     val blockedMinutes = ((state.requestBlockedUntilMs - nowMs + 59_999L) / 60_000L).coerceAtLeast(1L)
     val blockedText = "paused ${blockedMinutes}m"
     val videoSelected =
