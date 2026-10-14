@@ -4968,6 +4968,11 @@ class MusicService :
     }
 
     fun setCapsulePlaybackMode(mode: CapsulePlaybackMode) {
+        // Do not invalidate an in-flight delayed VIDEO request for a repeated
+        // VIDEO tap: idempotence must hold before taking a new request lease.
+        if (mode == CapsulePlaybackMode.VIDEO &&
+            videoPlaybackState.value.videoRequestAlreadyActive
+        ) return
         val requestLease = ++videoModeSwitchGeneration
         val requestMediaId = player.currentMediaItem?.mediaId
         when (mode) {
