@@ -294,14 +294,12 @@ internal class AudioCdnHostHealth(
 internal class AudioCdnHostHealthDataSource(
     private val upstream: DataSource,
     private val health: AudioCdnHostHealth,
+    private val nanoTime: () -> Long = System::nanoTime,
 ) : DataSource {
     private var host: String? = null
     private var servedByHost: String? = null
     private var deliveredBytes = false
     private var mediaId: String? = null
-    // Injected time source allows deterministic tests for actual upstream read latency.
-    private val nanoTime: () -> Long = System::nanoTime
-
     override fun addTransferListener(transferListener: TransferListener) {
         upstream.addTransferListener(transferListener)
     }
