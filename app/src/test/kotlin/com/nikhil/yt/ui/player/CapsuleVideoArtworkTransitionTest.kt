@@ -116,6 +116,62 @@ class CapsuleVideoArtworkTransitionTest {
             kotlin.math.abs(immersion - cosmo) <= 4)
     }
 
+    @Test fun resizingLightArtworkNeverResizesNativeVideoWindow() {
+        val tinyCover = mutableStateOf(false)
+        var videoWidth = 0
+        var videoHeight = 0
+        compose.setContent {
+            CapsuleVideoArtworkTransition(
+                presentingVideo = true,
+                needsSurface = true,
+                transitionKey = "same-track",
+                modifier = if (tinyCover.value) Modifier.size(175.dp, 140.dp)
+                    else Modifier.size(340.dp, 300.dp),
+                fillArtworkSlot = true,
+                motion = CapsuleVideoArtworkMotion.SCULPTED,
+                video = {
+                    Box(Modifier.fillMaxSize().onSizeChanged {
+                        videoWidth = it.width
+                        videoHeight = it.height
+                    })
+                },
+                artwork = { Box(Modifier.fillMaxSize()) },
+            )
+        }
+        compose.waitForIdle()
+        val initialWidth = videoWidth
+        val initialHeight = videoHeight
+        assertTrue(initialWidth > 0)
+        assertTrue(initialHeight > 0)
+        compose.runOnIdle { tinyCover.value = true }
+        compose.waitForIdle()
+        compose.runOnIdle {
+            assertEquals("VIDEO viewport width must ignore the custom Light cover size", initialWidth, videoWidth)
+            assertEquals("VIDEO viewport height must ignore the custom Light cover size", initialHeight, videoHeight)
+        }
+    }
+
+    @Test fun screenRelativeVideoBoundsAreIndependentOfArtworkSlot() {
+        // Pixel geometry has no dependence on the user-selected cover size.
+        val portrait = capsuleStableVideoWidthPx(400, 800, 16)
+        assertEquals(368, portrait)
+        assertEquals(portrait, capsuleStableVideoWidthPx(400, 800, 16))
+        val landscape = capsuleStableVideoWidthPx(800, 400, 16)
+        assertTrue(landscape > 300)
+        assertTrue(landscape < 700)
+        assertEquals(1, capsuleStableVideoWidthPx(0, 0, 16))
+    }
+
+    @Test fun CosmoAndLightHaveSolidCoverPixelsThroughoutTransition() {
+        for (p in listOf(-0.2f, 0f, 0.08f, 0.25f, 0.50f, 0.75f, 0.94f, 1f, 1.2f)) {
+            val fraction = capsuleOpaqueCoverFraction(p)
+            assertTrue("Reveal must stay in 0..1", fraction in 0f..1f)
+        }
+        assertEquals(1f, capsuleOpaqueCoverFraction(0f), 0.0001f)
+        assertEquals(0f, capsuleOpaqueCoverFraction(1f), 0.0001f)
+        assertTrue(capsuleOpaqueCoverFraction(0.25f) > capsuleOpaqueCoverFraction(0.70f))
+    }
+
     @Test fun cornersAdvanceFromTheFirstFrameAndDoNotPopLate() {
         assertEquals(0f, capsuleMorphCornerRadius(0f, 16f, 0f), 0.001f)
         assertEquals(4f, capsuleMorphCornerRadius(0f, 16f, 0.25f), 0.001f)

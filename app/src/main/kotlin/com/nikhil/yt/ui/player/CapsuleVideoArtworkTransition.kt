@@ -1,6 +1,9 @@
 /* Capsule MUSIC — stable GPU cover/video composition. GPL-3.0. */
 package com.nikhil.yt.ui.player
 
+import android.app.ActivityManager
+import android.content.Context
+import android.os.PowerManager
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
@@ -25,9 +28,11 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.foundation.shape.GenericShape
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import kotlin.math.max
@@ -67,7 +72,18 @@ internal fun CapsuleVideoArtworkTransition(
     artwork: @Composable () -> Unit,
 ) {
     val density = LocalDensity.current
-    val windowWidth = with(density) { LocalConfiguration.current.screenWidthDp.dp.roundToPx() }
+    val context = LocalContext.current
+    val windowConfig = LocalConfiguration.current
+    // One-time capability check per player/configuration, never per frame.
+    val economyMotion = remember(context, windowConfig) {
+        val lowRam = (context.getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager)
+            ?.isLowRamDevice == true
+        val saving = (context.getSystemService(Context.POWER_SERVICE) as? PowerManager)
+            ?.isPowerSaveMode == true
+        lowRam || saving
+    }
+    val windowWidth = with(density) { windowConfig.screenWidthDp.dp.roundToPx() }
+    val windowHeight = with(density) { windowConfig.screenHeightDp.dp.roundToPx() }
     val immersive = motion == CapsuleVideoArtworkMotion.IMMERSIVE
     val target = if (presentingVideo) 1f else 0f
     // Animatable exposes isRunning: a video surface cannot be destroyed for
@@ -82,26 +98,29 @@ internal fun CapsuleVideoArtworkTransition(
         if (abs(body.value - target) > 0.0001f || abs(body.velocity) > 0.0001f) {
             body.animateTo(
                 targetValue = target,
-                animationSpec = if (immersive)
-                    spring(dampingRatio = 0.90f, stiffness = 106f, visibilityThreshold = 0.001f)
-                else
-                    spring(dampingRatio = 0.94f, stiffness = 162f, visibilityThreshold = 0.001f),
+                animationSpec = when {
+                    economyMotion -> spring(dampingRatio = 1f, stiffness = 210f, visibilityThreshold = 0.001f)
+                    immersive -> spring(dampingRatio = 0.90f, stiffness = 106f, visibilityThreshold = 0.001f)
+                    else -> spring(dampingRatio = 0.94f, stiffness = 162f, visibilityThreshold = 0.001f)
+                },
             )
         }
     }
     // Both player families now have a leading-edge spring. In Cosmo/Light it
     // is tighter and almost critically damped: enough for attached-edge drag,
     // not the bigger liquid wobble of Immersion.
-    val lead = remember(transitionKey) { Animatable(target) }
-    LaunchedEffect(lead, target, immersive) {
-        if (abs(lead.value - target) > 0.0001f || abs(lead.velocity) > 0.0001f) {
-            lead.animateTo(
-                targetValue = target,
-                animationSpec = if (immersive)
-                    spring(dampingRatio = 0.84f, stiffness = 184f, visibilityThreshold = 0.001f)
-                else
-                    spring(dampingRatio = 0.90f, stiffness = 242f, visibilityThreshold = 0.001f),
-            )
+    val lead = if (economyMotion) body else remember(transitionKey) { Animatable(target) }
+    if (!economyMotion) {
+        LaunchedEffect(lead, target, immersive) {
+            if (abs(lead.value - target) > 0.0001f || abs(lead.velocity) > 0.0001f) {
+                lead.animateTo(
+                    targetValue = target,
+                    animationSpec = if (immersive)
+                        spring(dampingRatio = 0.84f, stiffness = 184f, visibilityThreshold = 0.001f)
+                    else
+                        spring(dampingRatio = 0.90f, stiffness = 242f, visibilityThreshold = 0.001f),
+                )
+            }
         }
     }
     // Render lease must not flicker during a negative spring overshoot.
@@ -118,17 +137,20 @@ internal fun CapsuleVideoArtworkTransition(
         val slotHeight = constraints.maxHeight.coerceAtLeast(1)
         val coverWidth = if (fillArtworkSlot) slotWidth else min(slotWidth, slotHeight)
         val coverHeight = if (fillArtworkSlot) slotHeight else coverWidth
-        // The old coerceAtLeast(slotWidth) silently disabled the device-width
-        // cap in Immersion, whose slot is full bleed. Its VIDEO window became
-        // almost screen-wide while Light/Cosmo were inset. All designs now
-        // share an explicit screen-relative target. Keep the user-sized Light
-        // artwork slot as an upper bound when it is unusually small.
-        val sharedWindowWidth = (windowWidth - with(density) { 32.dp.roundToPx() }).coerceAtLeast(1)
-        val availableVideoWidth = ((slotWidth * videoWidthScale).roundToInt() -
-            with(density) { (videoSidePadding.toPx() * 2).roundToInt() }).coerceAtLeast(1)
-        val videoWidth = minOf(availableVideoWidth, sharedWindowWidth,
-            (slotHeight * 16f / 9f).roundToInt().coerceAtLeast(1))
-        val videoHeight = (videoWidth * 9f / 16f).roundToInt().coerceIn(1, slotHeight)
+        // Native VIDEO dimensions are a property of the PLAYER WINDOW,
+        // not the user-resizable COVER. The former implementation derived
+        // both axes from slotWidth/slotHeight: shrinking Light's artwork to
+        // 55% accidentally shrank VIDEO to 55% too.
+        //
+        // The canvas continues to reserve the user's chosen artwork footprint
+        // (no controls jump); VIDEO is rendered above it as an overflowing
+        // shared element, measured at a stable screen-relative 16:9 size.
+        val videoWidth = capsuleStableVideoWidthPx(
+            screenWidthPx = windowWidth,
+            screenHeightPx = windowHeight,
+            sideInsetPx = with(density) { 16.dp.roundToPx() },
+        )
+        val videoHeight = (videoWidth * 9f / 16f).roundToInt().coerceAtLeast(1)
         // A small, fixed overscan is reserved around Immersion so the jelly
         // silhouette cannot be cropped by its own graphics layer at the peak.
         val overscan = with(density) { (if (immersive) 8.dp else 5.dp).roundToPx() }
@@ -151,13 +173,15 @@ internal fun CapsuleVideoArtworkTransition(
         // The renderer is NEVER resized; only this contour follows the spring.
         fun widthAt(p: Float, leading: Float): Float {
             val base = sharedVideoMorphDimension(coverWidth, videoWidth, p)
-            val sticky = if (immersive) immersiveJellyStretch(p, leading)
+            val sticky = if (economyMotion) 0f
+                else if (immersive) immersiveJellyStretch(p, leading)
                 else sculptedStickyStretch(p, leading)
             return base * (1f + sticky)
         }
         fun heightAt(p: Float, leading: Float): Float {
             val base = sharedVideoMorphDimension(coverHeight, videoHeight, p)
-            val sticky = if (immersive) immersiveJellyStretch(p, leading)
+            val sticky = if (economyMotion) 0f
+                else if (immersive) immersiveJellyStretch(p, leading)
                 else sculptedStickyStretch(p, leading)
             return base * (1f - sticky * 0.55f)
         }
@@ -172,7 +196,8 @@ internal fun CapsuleVideoArtworkTransition(
                     val leading = lead.value
                     val w = widthAt(p, leading)
                     val h = heightAt(p, leading)
-                    val adhesion = if (immersive) immersiveEdgeTension(p, leading)
+                    val adhesion = if (economyMotion) 0f
+                        else if (immersive) immersiveEdgeTension(p, leading)
                         else sculptedEdgeTension(p, leading)
                     val left = (size.width - w) / 2f
                     val top = (size.height - h) / 2f +
@@ -191,7 +216,18 @@ internal fun CapsuleVideoArtworkTransition(
                     val pullPx = with(density) {
                         (if (immersive) 6.dp else 4.dp).toPx()
                     } * adhesion
-                    shape = GenericShape { _, _ ->
+                    // The animation frame may be much larger than the
+                    // *current* contour (especially after the user shrinks
+                    // artwork). Clip to its actual left/top/width/height,
+                    // not RoundedCornerShape(frameSize), or economy mode
+                    // would reveal the entire padded window.
+                    shape = if (economyMotion) {
+                        GenericShape { _, _ ->
+                            addRoundRect(
+                                RoundRect(left, top, left + w, top + h, CornerRadius(radius)),
+                            )
+                        }
+                    } else GenericShape { _, _ ->
                         addPath(capsuleStickyContourPath(left, top, w, h, radius, pullPx))
                     }
                     clip = true
@@ -205,7 +241,8 @@ internal fun CapsuleVideoArtworkTransition(
                         val leading = lead.value
                         val w = widthAt(p, leading)
                         val h = heightAt(p, leading)
-                        val adhesion = if (immersive) immersiveEdgeTension(p, leading)
+                        val adhesion = if (economyMotion) 0f
+                            else if (immersive) immersiveEdgeTension(p, leading)
                             else sculptedEdgeTension(p, leading)
                         val left = (size.width - w) / 2f
                         val top = (size.height - h) / 2f +
@@ -251,7 +288,8 @@ internal fun CapsuleVideoArtworkTransition(
                             // A small velocity-correlated mass lag applies to
                             // its GPU layer (not to the native decoder's size).
                             // Keep uniform scale so faces are never stretched.
-                            val lag = capsuleVideoContentLag(p, lead.value, immersive)
+                            val lag = if (economyMotion) 0f
+                                else capsuleVideoContentLag(p, lead.value, immersive)
                             scaleX = fill * (1f + kotlin.math.abs(lag) * 0.016f)
                             scaleY = fill * (1f + kotlin.math.abs(lag) * 0.016f)
                             translationY = lag * with(density) { 3.dp.toPx() }
@@ -267,7 +305,13 @@ internal fun CapsuleVideoArtworkTransition(
                     .requiredSize(coverWidthDp, coverHeightDp)
                     .graphicsLayer {
                         val p = body.value
-                        alpha = 1f - contentHandover(p)
+                        // Cosmo/Light: never draw a translucent photograph on
+                        // top of the live VIDEO. The frame recording 9234.mp4
+                        // shows precisely that double exposure, perceived as
+                        // a flash. Instead reveal an always-opaque cover via
+                        // a cheap horizontal clip synchronized to the spring.
+                        // Immersion retains its already-approved soft fade.
+                        alpha = if (immersive) 1f - contentHandover(p) else 1f
                         // The cover must follow the contour too. Previously
                         // it kept its original measured bounds while the
                         // container widened, exposing a narrow black/video
@@ -276,10 +320,31 @@ internal fun CapsuleVideoArtworkTransition(
                             widthAt(p, lead.value) / coverWidth.toFloat(),
                             heightAt(p, lead.value) / coverHeight.toFloat(),
                         ).coerceIn(0.5f, 3f)
-                        val stretch = if (immersive) immersiveJellyStretch(p, lead.value)
+                        val stretch = if (economyMotion) 0f
+                            else if (immersive) immersiveJellyStretch(p, lead.value)
                             else sculptedStickyStretch(p, lead.value)
                         scaleX = fill * (1f + stretch * 0.45f)
                         scaleY = fill * (1f - stretch * 0.25f)
+                    }
+                    .drawWithContent {
+                        if (immersive) {
+                            drawContent()
+                        } else {
+                            val fraction = capsuleOpaqueCoverFraction(body.value)
+                            if (fraction >= 1f) {
+                                drawContent() // No GPU scissor at AUDIO rest.
+                            } else if (fraction > 0f) {
+                                val halfWidth = size.width * fraction * 0.5f
+                                clipRect(
+                                    left = size.width * 0.5f - halfWidth,
+                                    top = 0f,
+                                    right = size.width * 0.5f + halfWidth,
+                                    bottom = size.height,
+                                ) {
+                                    this@drawWithContent.drawContent()
+                                }
+                            }
+                        }
                     }
                     .background(artworkBackground),
                 contentAlignment = Alignment.Center,
@@ -404,3 +469,31 @@ internal fun capsuleCoverVideoHandover(body: Float, immersive: Boolean): Float {
     val length = if (immersive) 0.43f else 0.52f
     return smoothVideoStep((body - start) / length)
 }
+
+/**
+ * VIDEO is anchored to device/player bounds, independent of the Light editor's
+ * custom cover size. Landscape gets a conservative height cap so VIDEO does
+ * not cover the playback controls. Pixel calculations happen only on layout/
+ * configuration changes; no per-frame measurement of the native renderer.
+ */
+internal fun capsuleStableVideoWidthPx(
+    screenWidthPx: Int,
+    screenHeightPx: Int,
+    sideInsetPx: Int,
+): Int {
+    val widthBound = (screenWidthPx - sideInsetPx.coerceAtLeast(0) * 2).coerceAtLeast(1)
+    val landscape = screenWidthPx > screenHeightPx
+    val heightBudget = screenHeightPx.coerceAtLeast(1) *
+        (if (landscape) 0.70f else 0.46f)
+    val aspectBound = (heightBudget * 16f / 9f).roundToInt().coerceAtLeast(1)
+    return min(widthBound, aspectBound)
+}
+
+/**
+ * Solid-cover compositing for Cosmo/Light. A shape reveal does not mix
+ * semi-transparent album pixels with the underlying moving VIDEO picture.
+ * Smooth fifth-order easing keeps the mask edge velocity zero at both ends,
+ * while the spring itself remains interruption/reversal-safe.
+ */
+internal fun capsuleOpaqueCoverFraction(bodyProgress: Float): Float =
+    smoothVideoStep((0.94f - bodyProgress) / 0.88f)
