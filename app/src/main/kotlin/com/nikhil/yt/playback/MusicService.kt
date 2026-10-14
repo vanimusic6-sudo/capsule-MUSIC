@@ -187,6 +187,7 @@ import com.nikhil.yt.playback.video.capsuleClampSeek
 import com.nikhil.yt.playback.video.capsuleClampDecoderSeek
 import com.nikhil.yt.playback.video.capsuleKnownDuration
 import com.nikhil.yt.playback.video.capsuleVideoSeekCompletes
+import com.nikhil.yt.playback.video.hasStableVideoBlock
 import com.nikhil.yt.playback.video.videoRequestAlreadyActive
 import com.nikhil.yt.playback.video.CapsuleVideoChunkedDataSource
 import com.nikhil.yt.playback.video.CAPSULE_VIDEO_WARMUP_BYTES
@@ -4968,11 +4969,29 @@ class MusicService :
     }
 
     fun setCapsulePlaybackMode(mode: CapsulePlaybackMode) {
-        // Do not invalidate an in-flight delayed VIDEO request for a repeated
-        // VIDEO tap: idempotence must hold before taking a new request lease.
-        if (mode == CapsulePlaybackMode.VIDEO &&
-            videoPlaybackState.value.videoRequestAlreadyActive
-        ) return
+        if (mode == CapsulePlaybackMode.VIDEO) {
+            val current = videoPlaybackState.value
+            val mediaId = player.currentMediaItem?.mediaId ?: return
+            // These checks happen BEFORE publishing preferredMode=VIDEO. A
+            // rejected request must never flash RESOLVING in the toggle.
+            if (current.videoRequestAlreadyActive ||
+                current.hasStableVideoBlock(mediaId, System.currentTimeMillis())
+            ) return
+            if (CapsuleVideoRequestGuard.isBlocked()) {
+                val guard = CapsuleVideoRequestGuard.snapshot()
+                val remainingMs = CapsuleVideoRequestGuard.remainingBackoffMs()
+                videoPlaybackState.value = current.copy(
+                    preferredMode = CapsulePlaybackMode.AUDIO,
+                    mode = CapsulePlaybackMode.AUDIO,
+                    phase = CapsuleVideoPhase.REQUEST_ERROR,
+                    mediaId = mediaId,
+                    requestBlockedUntilMs = guard.blockedUntilMs,
+                    requestBlockReason = guard.reason,
+                    message = "VIDEO requests paused: ${guard.reason}; retry in ${(remainingMs + 999L) / 1000L}s",
+                )
+                return
+            }
+        }
         val requestLease = ++videoModeSwitchGeneration
         val requestMediaId = player.currentMediaItem?.mediaId
         when (mode) {
