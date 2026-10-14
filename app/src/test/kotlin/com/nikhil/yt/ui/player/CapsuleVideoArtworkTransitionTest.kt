@@ -84,8 +84,56 @@ class CapsuleVideoArtworkTransitionTest {
         val closing = immersiveJellyStretch(0.45f, 0.26f)
         assertTrue("leading edge produces a gentle jelly pull", opening > 0.01f)
         assertTrue("reverse motion pulls in the opposite direction", closing < -0.01f)
-        assertTrue(opening <= 0.019f)
-        assertTrue(closing >= -0.019f)
+        assertTrue(opening <= 0.042f)
+        assertTrue(closing >= -0.042f)
+        // The previous clamp to 0..1 erased physical rebound: once the body
+        // passed the endpoint, its silhouette snapped flat while spring moved.
+        assertTrue(immersiveJellyStretch(1.035f, 1.09f) > 0f)
+        assertTrue(immersiveJellyStretch(-0.03f, -0.08f) < 0f)
+        assertEquals(0f, immersiveJellyStretch(1f, 1f), 0.0001f)
+        assertEquals(0f, immersiveJellyStretch(0f, 0f), 0.0001f)
+        assertTrue(immersiveEdgeTension(0.50f, 0.80f) > 0f)
+        assertTrue(immersiveEdgeTension(0.50f, 0.20f) < 0f)
+    }
+
+    @Test fun rendererSurvivesSpringZeroCrossingAndStopsOnlyAfterRecoil() {
+        val presenting = mutableStateOf(true)
+        val needed = mutableStateOf(true)
+        var attached = 0
+        var detached = 0
+        compose.mainClock.autoAdvance = false
+        compose.setContent {
+            CapsuleVideoArtworkTransition(
+                presentingVideo = presenting.value,
+                needsSurface = needed.value,
+                motion = CapsuleVideoArtworkMotion.IMMERSIVE,
+                modifier = Modifier.size(320.dp, 440.dp),
+                fillArtworkSlot = true,
+                video = { if (it) DisposableEffect(Unit) {
+                    attached++
+                    onDispose { detached++ }
+                } },
+                artwork = { Box(Modifier.fillMaxSize()) },
+            )
+        }
+        compose.waitForIdle()
+        compose.runOnIdle {
+            presenting.value = false
+            needed.value = false
+        }
+        // Several frames around the zero-crossing where a bouncy spring can
+        // go slightly negative. Do not release/recreate the decoder between.
+        repeat(30) {
+            compose.mainClock.advanceTimeBy(16)
+            compose.waitForIdle()
+            if (it < 12) compose.runOnIdle { assertEquals(0, detached) }
+        }
+        compose.mainClock.autoAdvance = true
+        compose.waitForIdle()
+        compose.runOnIdle {
+            assertEquals(1, attached)
+            assertEquals(1, detached)
+        }
     }
 
     @Test fun sculptedCoverContractsBeforeItExpandsAndReversesInTheSameOrder() {
