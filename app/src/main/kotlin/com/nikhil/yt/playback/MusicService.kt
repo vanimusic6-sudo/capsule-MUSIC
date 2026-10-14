@@ -183,6 +183,10 @@ import com.nikhil.yt.playback.video.CAPSULE_VIDEO_STREAM_CACHE_PREFIX
 import com.nikhil.yt.playback.video.CapsulePlaybackMode
 import com.nikhil.yt.playback.video.CapsuleVideoPhase
 import com.nikhil.yt.playback.video.CapsuleVideoPlaybackState
+import com.nikhil.yt.playback.video.capsuleClampSeek
+import com.nikhil.yt.playback.video.capsuleClampDecoderSeek
+import com.nikhil.yt.playback.video.capsuleKnownDuration
+import com.nikhil.yt.playback.video.capsuleVideoSeekCompletes
 import com.nikhil.yt.playback.video.videoRequestAlreadyActive
 import com.nikhil.yt.playback.video.CapsuleVideoChunkedDataSource
 import com.nikhil.yt.playback.video.CAPSULE_VIDEO_WARMUP_BYTES
@@ -1005,6 +1009,7 @@ class MusicService :
     private var videoSessionGeneration = 0L
     private var videoPauseCollapseJob: Job? = null
     private var videoModeSwitchJob: Job? = null
+    private var videoModeSwitchGeneration = 0L
     private var lastVideoExitElapsedMs = 0L
     private var effectiveAudioVolume = 1f
     private var videoRequestedAtMs = 0L
@@ -1063,6 +1068,7 @@ class MusicService :
                 }
             },
             onFailure = { failedId, failure -> recoverVideoSession(failedId, failure) },
+            onEnded = { endedId -> finishCapsuleVideoTrack(endedId) },
             onFrameUnavailable = { currentId ->
                 val state = videoPlaybackState.value
                 if (state.mediaId == currentId && state.mode == CapsulePlaybackMode.VIDEO) {
@@ -1081,6 +1087,62 @@ class MusicService :
             videoCompanion = it
             it.setSurfaceAttached(videoSurfaceOwner != null)
         }
+
+    /**
+     * All player designs seek through this gateway. The canonical MUSIC queue
+     * remains untouched; a prepared VIDEO decoder owns its shorter timeline.
+     */
+    fun seekToCapsuleTimeline(positionMs: Long) {
+        val state = videoPlaybackState.value
+        val mediaId = player.currentMediaItem?.mediaId
+        val video = videoRenderPlayer
+        if (state.mode == CapsulePlaybackMode.VIDEO && state.mediaId == mediaId &&
+            video != null && video.currentMediaItem?.mediaId == mediaId
+        ) {
+            if (capsuleVideoSeekCompletes(positionMs, video.duration)) {
+                finishCapsuleVideoTrack(mediaId ?: return)
+                return
+            }
+            videoCompanion?.seekTo(capsuleClampDecoderSeek(positionMs, video.duration))
+        } else {
+            player.seekTo(capsuleClampSeek(positionMs, player.duration))
+        }
+    }
+
+    /**
+     * Normal EOF (including a seek to 100%) advances the queue exactly once.
+     * A finished clip is never sent to the CDN failure/recovery machinery.
+     */
+    private fun finishCapsuleVideoTrack(endedMediaId: String) {
+        val current = videoPlaybackState.value
+        if (current.mediaId != endedMediaId ||
+            current.preferredMode != CapsulePlaybackMode.VIDEO ||
+            player.currentMediaItem?.mediaId != endedMediaId
+        ) return
+        videoModeSwitchGeneration++
+        videoModeSwitchJob?.cancel(); videoModeSwitchJob = null
+        videoPauseCollapseJob?.cancel(); videoPauseCollapseJob = null
+        videoCompanion?.stopForCompletedClip()
+        videoResolveCoordinator.cancel()
+        cancelVideoRecovery()
+        restoreMusicAfterVideoFailure()
+        videoPlaybackState.value = current.copy(
+            preferredMode = CapsulePlaybackMode.AUDIO,
+            mode = CapsulePlaybackMode.AUDIO,
+            phase = CapsuleVideoPhase.IDLE,
+            firstFrameReady = false,
+            preparedVideoReady = false,
+        )
+        Timber.tag("CapsuleVideo").i("VIDEO natural end id=%s; advancing MUSIC queue", endedMediaId)
+        if (player.hasNextMediaItem()) {
+            player.seekToNextMediaItem()
+        } else {
+            // Last track: stop rather than letting silent MUSIC continue behind
+            // the ended clip. No fabricated/recoverable VIDEO error is published.
+            player.playWhenReady = false
+            capsuleKnownDuration(player.duration)?.let { player.seekTo(it) }
+        }
+    }
 
     fun attachVideoSurface(owner: Any) {
         videoSurfaceOwner = owner
@@ -4906,6 +4968,13 @@ class MusicService :
     }
 
     fun setCapsulePlaybackMode(mode: CapsulePlaybackMode) {
+        // Do not invalidate an in-flight delayed VIDEO request for a repeated
+        // VIDEO tap: idempotence must hold before taking a new request lease.
+        if (mode == CapsulePlaybackMode.VIDEO &&
+            videoPlaybackState.value.videoRequestAlreadyActive
+        ) return
+        val requestLease = ++videoModeSwitchGeneration
+        val requestMediaId = player.currentMediaItem?.mediaId
         when (mode) {
             CapsulePlaybackMode.AUDIO -> {
                 videoModeSwitchJob?.cancel()
@@ -4946,7 +5015,10 @@ class MusicService :
                     videoModeSwitchJob = scope.launch {
                         delay(settleMs)
                         videoModeSwitchJob = null
-                        if (videoPlaybackState.value.preferredMode == CapsulePlaybackMode.VIDEO) {
+                        if (videoModeSwitchGeneration == requestLease &&
+                            player.currentMediaItem?.mediaId == requestMediaId &&
+                            videoPlaybackState.value.preferredMode == CapsulePlaybackMode.VIDEO
+                        ) {
                             enterCapsuleVideoMode()
                         }
                     }
@@ -5136,13 +5208,15 @@ class MusicService :
         if (!isCurrentCapsuleVideoItem()) {
             videoOriginalMediaItem = null
             videoOriginalMediaId = null
-            videoPlaybackState.value =
-                CapsuleVideoPlaybackState(
-                    preferredMode = CapsulePlaybackMode.AUDIO,
-                    mode = CapsulePlaybackMode.AUDIO,
-                    phase = CapsuleVideoPhase.IDLE,
-                    mediaId = currentItem.mediaId,
-                )
+            // Keep the last VIDEO status when going back to AUDIO. A fresh
+            // track transition is the only operation that resets diagnostics.
+            videoPlaybackState.value = videoPlaybackState.value.copy(
+                preferredMode = CapsulePlaybackMode.AUDIO,
+                mode = CapsulePlaybackMode.AUDIO,
+                firstFrameReady = false,
+                preparedVideoReady = videoCompanion?.hasPreparedClip(currentItem.mediaId) == true,
+                mediaId = currentItem.mediaId,
+            )
             return
         }
 
@@ -5192,7 +5266,8 @@ class MusicService :
                     }
                     .build()
 
-        val failedVideoId = videoPlaybackState.value.videoId
+        val oldVideoState = videoPlaybackState.value
+        val failedVideoId = oldVideoState.videoId
         if (invalidateFailedVideo && !failedVideoId.isNullOrBlank()) {
             YouTubeVideoResolver.invalidate(failedVideoId)
             scope.launch(Dispatchers.IO) {
@@ -5221,20 +5296,15 @@ class MusicService :
 
         videoOriginalMediaItem = null
         videoOriginalMediaId = null
-        videoPlaybackState.value =
-            CapsuleVideoPlaybackState(
-                preferredMode = preferredModeAfter,
-                mode = CapsulePlaybackMode.AUDIO,
-                phase =
-                    if (failureMessage == null) {
-                        CapsuleVideoPhase.IDLE
-                    } else {
-                        failurePhase
-                    },
-                mediaId = canonicalMediaId,
-                videoId = failedVideoId,
-                message = failureMessage,
-            )
+        videoPlaybackState.value = oldVideoState.copy(
+            preferredMode = preferredModeAfter,
+            mode = CapsulePlaybackMode.AUDIO,
+            phase = if (failureMessage == null) oldVideoState.phase else failurePhase,
+            firstFrameReady = false,
+            mediaId = canonicalMediaId,
+            videoId = failedVideoId,
+            message = failureMessage ?: oldVideoState.message,
+        )
 
         player.replaceMediaItem(currentIndex, original)
         player.seekTo(currentIndex, position)

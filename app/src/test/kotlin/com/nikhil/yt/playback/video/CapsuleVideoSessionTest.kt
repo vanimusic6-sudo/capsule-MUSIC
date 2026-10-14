@@ -88,9 +88,11 @@ class CapsuleVideoSessionTest {
         val hidden = mutableListOf<String>()
         val buffering = mutableListOf<Boolean>()
         val failures = mutableListOf<Throwable>()
+        val endings = mutableListOf<String>()
         val session = CapsuleVideoSession(music.player, clip.player, scope,
             { owned += it; music.volume = if (it) 0f else 1f },
-            { frames += it }, { _, error -> failures += error }, { hidden += it }, { _, loading -> buffering += loading }, clockMs = { clockMs })
+            { frames += it }, { _, error -> failures += error }, { endings += it },
+            { hidden += it }, { _, loading -> buffering += loading }, clockMs = { clockMs })
         fun start() {
             session.setSurfaceAttached(true)
             session.start("song", MediaItem.Builder().setMediaId("song").build(), 0.8f)
@@ -483,4 +485,105 @@ class CapsuleVideoSessionTest {
         f.session.stop()
     }
 
+
+    @Test fun enteringVideoBeyondItsDurationStartsAtZeroInsteadOfReachingEof() = runTest {
+        val f = Fixture(this)
+        f.music.position = 250_000L
+        f.clip.duration = 40_000L
+        f.start()
+        // MediaItem preparation always begins at zero; READY uses actual duration.
+        f.clip.ready()
+        assertEquals(listOf(0L), f.clip.seeks)
+        f.clip.frame(); advanceTimeBy(261); runCurrent()
+        assertEquals(0L, f.clip.position)
+        assertTrue(f.failures.isEmpty())
+        f.session.stop()
+    }
+
+    @Test fun restartedShortVideoRewindsOnlyTheMutedAudioShadowClock() = runTest {
+        val f = Fixture(this)
+        f.music.position = 250_000L
+        f.music.duration = 300_000L
+        f.clip.duration = 40_000L
+        f.start(); f.clip.ready(); f.clip.frame()
+        assertEquals(0L, f.music.position)
+        assertEquals(0L, f.clip.position)
+        assertEquals(0f, f.music.volume)
+        advanceTimeBy(261); runCurrent()
+        assertEquals(listOf("song"), f.frames)
+        assertTrue(f.failures.isEmpty())
+        f.session.stop()
+    }
+
+    @Test fun naturalClipEofIsNotAnErrorAndCompletesExactlyOnce() = runTest {
+        val f = Fixture(this); f.start(); f.clip.ready(); f.clip.frame()
+        advanceTimeBy(261); runCurrent()
+        f.clip.state = Player.STATE_ENDED
+        f.clip.listeners.toList().forEach { it.onPlaybackStateChanged(Player.STATE_ENDED) }
+        f.clip.listeners.toList().forEach { it.onPlaybackStateChanged(Player.STATE_ENDED) }
+        assertEquals(listOf("song"), f.endings)
+        assertTrue(f.failures.isEmpty())
+        assertEquals(1f, f.music.volume)
+    }
+
+    @Test fun seekExactlyToClipEndCompletesRatherThanSeekingToLastFrame() = runTest {
+        val f = Fixture(this)
+        f.clip.duration = 20_000L
+        f.start(); f.clip.ready(); f.clip.frame()
+        advanceTimeBy(261); runCurrent()
+        f.music.userSeek(20_000L)
+        assertEquals(listOf("song"), f.endings)
+        assertTrue(f.failures.isEmpty())
+        assertFalse(f.clip.seeks.contains(19_999L))
+    }
+
+    @Test fun unknownDecoderDurationDefersSeekUntilTimelineCanClampIt() = runTest {
+        val f = Fixture(this)
+        f.clip.duration = C.TIME_UNSET
+        f.start()
+        f.session.seekTo(5_000L)
+        assertTrue("no unbounded seek may reach the decoder", f.clip.seeks.isEmpty())
+        f.clip.duration = 20_000L
+        f.clip.ready()
+        assertEquals(listOf(5_000L), f.clip.seeks)
+        assertEquals(5_000L, f.music.position)
+        f.session.stop()
+    }
+
+    @Test fun deferredSeekBeyondClipEndCompletesOnTimelineReadiness() = runTest {
+        val f = Fixture(this)
+        f.clip.duration = C.TIME_UNSET
+        f.start()
+        f.session.seekTo(30_000L)
+        f.clip.duration = 20_000L
+        f.clip.ready()
+        assertEquals(listOf("song"), f.endings)
+        assertTrue(f.failures.isEmpty())
+    }
+
+    @Test fun explicitClipSeekWhileBufferingKeepsVideoAndClampsToDecoderBounds() = runTest {
+        val f = Fixture(this)
+        f.clip.duration = 20_000L
+        f.start(); f.clip.ready(); f.clip.frame()
+        advanceTimeBy(261); runCurrent()
+        f.clip.state = Player.STATE_BUFFERING
+        f.clip.playing = false
+        f.clip.event()
+        f.session.seekTo(-200L)
+        assertEquals(0L, f.clip.position)
+        assertTrue(f.failures.isEmpty())
+        assertTrue(f.endings.isEmpty())
+        assertEquals(0f, f.music.volume)
+        f.session.stop()
+    }
+
+    @Test fun switchingBackToShorterAudioClampsWithoutJumpingToAnotherTrack() = runTest {
+        val f = Fixture(this); f.start(); f.clip.ready(); f.clip.frame()
+        advanceTimeBy(261); runCurrent()
+        f.music.duration = 15_000L
+        f.clip.position = 20_000L
+        f.session.stop()
+        assertEquals(14_999L, f.music.position)
+        assertEquals(1f, f.music.volume)
+    }
 }

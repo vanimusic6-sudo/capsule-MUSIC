@@ -11,6 +11,7 @@ on:
       - feature/video-isolated-thermal-20261010-v2
       - fix/video-stable-incremental-20261011
       - refactor/video-session-rebuild-20261011
+      - fix/video-timeline-morph-20261014
 
 permissions:
   contents: read
@@ -91,6 +92,7 @@ jobs:
             --tests 'com.nikhil.yt.playback.video.CapsuleVideoWarmupTest' \
             --tests 'com.nikhil.yt.playback.video.CapsuleVideoCompanionTest' \
             --tests 'com.nikhil.yt.playback.video.CapsuleVideoSessionTest' \
+            --tests 'com.nikhil.yt.playback.video.CapsuleVideoTimelinePolicyTest' \
             --tests 'com.nikhil.yt.playback.video.CapsuleVideoFrameRetentionTest' \
             --tests 'com.nikhil.yt.playback.video.CapsuleHlsPlaylistParserFactoryTest' \
             --tests 'com.nikhil.yt.playback.video.CapsuleVideoIndexedDashTest' \
