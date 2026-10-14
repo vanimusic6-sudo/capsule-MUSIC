@@ -1062,6 +1062,7 @@ internal fun CapsuleLightCanvasV2(
     onArtworkSelectionDismiss: () -> Unit = {},
     externalGestureActive: Boolean = false,
     artworkResizeActive: Boolean = false,
+    videoWindowActive: Boolean = false,
     modifier: Modifier = Modifier,
     content: @Composable (CapsuleLightBlock, Dp?) -> Unit,
 ) {
@@ -1440,7 +1441,11 @@ internal fun CapsuleLightCanvasV2(
                             .graphicsLayer {
                                 translationY = animatedTop
                             }
-                            .zIndex(if (selected) 4f else 0f),
+                            .zIndex(
+                                if (selected) 4f
+                                else if (videoWindowActive && block == CapsuleLightBlock.ARTWORK) 3f
+                                else 0f,
+                            ),
                 ) {
                     content(
                         block,
