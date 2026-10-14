@@ -13,6 +13,9 @@ import java.net.SocketTimeoutException
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
+import org.robolectric.annotation.Config
 
 private const val DEAD = "rr4---sn-aj4g55-5o.googlevideo.com"
 private const val DEAD_REPLICA = "rr1---sn-aj4g55-5o.googlevideo.com"
@@ -26,6 +29,8 @@ private class TestClock(var instant: Long = 0L) {
 
 private fun healthWith(clock: TestClock) = AudioCdnHostHealth(now = { clock.instant })
 
+@RunWith(RobolectricTestRunner::class)
+@Config(sdk = [35])
 class AudioCdnHostHealthTest {
     @Test
     fun `reset on old socket does not trigger a fresh URL or cold host`() {
