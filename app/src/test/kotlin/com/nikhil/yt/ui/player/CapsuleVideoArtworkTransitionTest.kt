@@ -10,6 +10,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import com.nikhil.yt.playback.video.CapsulePlaybackMode
@@ -45,6 +47,29 @@ class CapsuleVideoArtworkTransitionTest {
         assertEquals(false, shouldShowVideoLoading(loading.copy(preparedVideoReady = true)))
         assertEquals(false, shouldShowVideoLoading(loading.copy(firstFrameReady = true)))
         assertEquals(false, shouldShowVideoLoading(loading.copy(phase = CapsuleVideoPhase.BUFFERING)))
+    }
+
+    @Test fun switchLabelsKeepTheirBoundsThroughRapidSelectionReversals() {
+        val state = mutableStateOf(CapsuleVideoPlaybackState())
+        compose.mainClock.autoAdvance = false
+        compose.setContent {
+            CapsuleAudioVideoToggle(state.value, Color.White, true, {}, {}, lightStyle = true)
+        }
+        compose.waitForIdle()
+        val audio = compose.onNodeWithText("audio").fetchSemanticsNode().boundsInRoot
+        val video = compose.onNodeWithText("video").fetchSemanticsNode().boundsInRoot
+        repeat(8) { index ->
+            compose.runOnIdle {
+                state.value = if (index % 2 == 0) CapsuleVideoPlaybackState(
+                    preferredMode = CapsulePlaybackMode.VIDEO, mode = CapsulePlaybackMode.VIDEO,
+                    phase = CapsuleVideoPhase.PLAYING, firstFrameReady = true,
+                ) else CapsuleVideoPlaybackState()
+            }
+            compose.mainClock.advanceTimeBy(48)
+            compose.waitForIdle()
+            assertEquals(audio, compose.onNodeWithText("audio").fetchSemanticsNode().boundsInRoot)
+            assertEquals(video, compose.onNodeWithText("video").fetchSemanticsNode().boundsInRoot)
+        }
     }
 
     @Test fun lightKeepsThePreparingSurfaceWhenFirstFrameArrives() = verifyStableOutput(320, 280, true, 0)

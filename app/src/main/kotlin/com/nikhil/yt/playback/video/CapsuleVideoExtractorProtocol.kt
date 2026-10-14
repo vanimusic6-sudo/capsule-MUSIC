@@ -46,7 +46,9 @@ internal object CapsuleVideoIpc {
     const val METHOD_CANCEL = "cancel"
     const val METHOD_INVALIDATE = "invalidate"
     const val EXTRA_REQUEST_ID = "request_id"
-    const val REQUEST_TIMEOUT_MS = 20_000L
+    // Route budgets total 32 seconds. A cold parser fallback must get a turn
+    // after the fast routes; the old 20-second limit cut the chain short.
+    const val REQUEST_TIMEOUT_MS = 40_000L
     const val EXTRA_ROUTE_TIMINGS = "route_timings"
 
     const val EXTRA_VIDEO_ID = "video_id"

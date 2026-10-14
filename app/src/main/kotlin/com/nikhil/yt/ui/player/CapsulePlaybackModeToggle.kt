@@ -6,7 +6,6 @@
 
 package com.nikhil.yt.ui.player
 
-import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
@@ -249,9 +248,9 @@ private fun CapsuleRollingSelection(
     modifier: Modifier = Modifier,
 ) {
     val target = if (videoSelected == videoOnRight) 1f else 0f
-    val position by animateFloatAsState(
+    val position = animateFloatAsState(
         targetValue = target,
-        animationSpec = spring(dampingRatio = 0.68f, stiffness = 275f, visibilityThreshold = 0.001f),
+        animationSpec = spring(dampingRatio = 0.82f, stiffness = 230f, visibilityThreshold = 0.001f),
         label = "capsuleModeRoll",
     )
     BoxWithConstraints(modifier) {
@@ -260,8 +259,8 @@ private fun CapsuleRollingSelection(
                 .width(maxWidth / 2)
                 .fillMaxHeight()
                 .graphicsLayer {
-                    translationX = position * size.width
-                    rotationZ = (sin(position.toDouble() * PI) * 1.7).toFloat()
+                    translationX = position.value.coerceIn(0f, 1f) * size.width
+                    rotationZ = (sin(position.value.toDouble() * PI) * 0.8).toFloat()
                 }
                 .clip(shape)
                 .background(color.copy(alpha = 0.11f)),
@@ -283,26 +282,12 @@ private fun CapsuleModeSegment(
     modifier: Modifier = Modifier,
     lightStyle: Boolean = false,
 ) {
-    val scale by
-        animateFloatAsState(
-            targetValue = if (selected) 1f else 0.985f,
-            animationSpec =
-                spring(
-                    dampingRatio = Spring.DampingRatioNoBouncy,
-                    stiffness = Spring.StiffnessMediumLow,
-                ),
-            label = "capsuleModeScale",
-        )
     Box(
         modifier =
             modifier
                 .then(
                     if (lightStyle) Modifier.fillMaxHeight() else Modifier.height(34.dp),
                 )
-                .graphicsLayer {
-                    scaleX = scale
-                    scaleY = scale
-                }
                 .clip(shape)
                 .clickable(
                     enabled = enabled && !loading,
@@ -329,7 +314,7 @@ private fun CapsuleModeSegment(
                     ),
                 fontFamily = if (lightStyle) FontFamily.SansSerif else FontFamily.Monospace,
                 fontSize = if (unavailable || requestError) 9.sp else if (lightStyle) 14.sp else 11.sp,
-                fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
+                fontWeight = FontWeight.Medium,
                 letterSpacing = 0.35.sp,
                 maxLines = 1,
             )
@@ -343,18 +328,5 @@ private fun CapsuleModeSegment(
             }
         }
 
-        if (selected && !lightStyle) {
-            Box(
-                modifier =
-                    Modifier
-                        .align(Alignment.BottomCenter)
-                        .width(56.dp)
-                        .height(2.dp)
-                        .background(
-                            textColor.copy(alpha = 0.86f),
-                            RoundedCornerShape(2.dp),
-                        ),
-            )
-        }
     }
 }

@@ -127,7 +127,8 @@ object YouTubeVideoResolver {
         cancellationExecutor.execute {
             runCatching {
                 val context = App.instance.applicationContext
-                context.contentResolver.call(
+                callVideoExtractor(
+                    context.contentResolver,
                     Uri.parse("content://${context.packageName}.capsule.video.extractor"),
                     CapsuleVideoIpc.METHOD_INVALIDATE,
                     null,
@@ -312,8 +313,8 @@ object YouTubeVideoResolver {
                     cancellableRemoteCall(
                         executor = remoteExecutor,
                         cancellationExecutor = cancellationExecutor,
-                        call = { context.contentResolver.call(uri, CapsuleVideoIpc.METHOD_RESOLVE, null, extras) },
-                        cancel = { context.contentResolver.call(uri, CapsuleVideoIpc.METHOD_CANCEL, null, extras) },
+                        call = { callVideoExtractor(context.contentResolver, uri, CapsuleVideoIpc.METHOD_RESOLVE, null, extras) },
+                        cancel = { callVideoExtractor(context.contentResolver, uri, CapsuleVideoIpc.METHOD_CANCEL, null, extras) },
                     )
                 } ?: throw VideoBackendException(CapsuleVideoFailure.NETWORK, "VIDEO extraction timed out")
             } catch (cancelled: CancellationException) {
@@ -321,12 +322,14 @@ object YouTubeVideoResolver {
             } catch (failure: VideoBackendException) {
                 throw failure
             } catch (dead: DeadObjectException) {
+                CapsuleVideoProcessDiagnostics.reportRecentCrash(context)
                 throw VideoBackendException(
                     CapsuleVideoFailure.REMOTE_PROCESS_DIED,
                     "VIDEO extractor process stopped unexpectedly",
                     dead,
                 )
             } catch (remote: RemoteException) {
+                CapsuleVideoProcessDiagnostics.reportRecentCrash(context)
                 throw VideoBackendException(
                     CapsuleVideoFailure.REMOTE_PROCESS_DIED,
                     "VIDEO extractor IPC failed",

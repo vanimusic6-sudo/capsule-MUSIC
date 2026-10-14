@@ -63,6 +63,9 @@
 ## Rules for NewPipeExtractor
 -keep class org.schabi.newpipe.extractor.services.youtube.protos.** { *; }
 -keep class org.schabi.newpipe.extractor.timeago.patterns.** { *; }
+# PipePipe uses the same reflective pattern/protocol loading in its relocated namespace.
+-keep class dev.maxrave.pipepipe.extractor.services.youtube.protos.** { *; }
+-keep class dev.maxrave.pipepipe.extractor.timeago.patterns.** { *; }
 -keep class org.mozilla.javascript.** { *; }
 -keep class org.mozilla.javascript.engine.** { *; }
 -dontwarn org.mozilla.javascript.JavaToJSONConverters

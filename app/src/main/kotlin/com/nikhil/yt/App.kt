@@ -99,6 +99,7 @@ class App : Application(), SingletonImageLoader.Factory {
          * credential-free downloader from CapsuleVideoExtractorProvider.
          */
         if (processName?.endsWith(":capsule_video") == true) {
+            com.nikhil.yt.playback.video.CapsuleVideoProcessDiagnostics.install(this)
             return
         }
 
