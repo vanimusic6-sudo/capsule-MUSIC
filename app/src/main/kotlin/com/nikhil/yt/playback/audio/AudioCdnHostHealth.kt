@@ -309,6 +309,16 @@ internal class AudioCdnHostHealthDataSource(
             )
             return failure
         }
+        // Captured 60s HTTP/1.1 reads sometimes end in ECONNRESET; the same
+        // signed link subsequently returns 206 on a new socket. This does not
+        // justify a fresh extractor request or a 90-second host cooldown.
+        if (failure.isTransientAudioCdnSocketReset()) {
+            Timber.tag("AudioCDN").d(
+                "cdn-socket-reset group=%s; leave current URL and host eligible",
+                googlevideoServerGroup(servedByHost ?: host) ?: "unknown",
+            )
+            return failure
+        }
         if (!failure.isAudioCdnTransportFailure()) return failure
 
         // A cross-group redirect may have succeeded on the issuing server
