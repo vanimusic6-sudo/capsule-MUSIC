@@ -183,17 +183,21 @@ internal fun CapsuleVideoArtworkTransition(
                                 left + radius + inner * 0.70f, top - pullPx,
                                 right - radius, top,
                             )
-                            quadraticBezierTo(right, top, right, top + radius)
+                            val k = radius * 0.55228475f
+                            // Circular-arc-compatible cubic corners. When edge
+                            // adhesion reaches zero, this contour is optically
+                            // identical to the ordinary rounded video window.
+                            cubicTo(right - radius + k, top, right, top + radius - k, right, top + radius)
                             lineTo(right, bottom - radius)
-                            quadraticBezierTo(right, bottom, right - radius, bottom)
+                            cubicTo(right, bottom - radius + k, right - radius + k, bottom, right - radius, bottom)
                             cubicTo(
                                 right - radius - inner * 0.30f, bottom - pullPx * 0.65f,
                                 right - radius - inner * 0.70f, bottom - pullPx * 0.65f,
                                 left + radius, bottom,
                             )
-                            quadraticBezierTo(left, bottom, left, bottom - radius)
+                            cubicTo(left + radius - k, bottom, left, bottom - radius + k, left, bottom - radius)
                             lineTo(left, top + radius)
-                            quadraticBezierTo(left, top, left + radius, top)
+                            cubicTo(left, top + radius - k, left + radius - k, top, left + radius, top)
                             close()
                         }
                     } else {
