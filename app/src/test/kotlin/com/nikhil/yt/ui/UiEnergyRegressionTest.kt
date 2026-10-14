@@ -38,6 +38,19 @@ class UiEnergyRegressionTest {
     }
 
     @Test
+    fun `low memory and power saver simplify video effects without a new timer`() {
+        val src = source("com/nikhil/yt/ui/player/CapsuleVideoArtworkTransition.kt")
+        assertTrue(src.contains("isLowRamDevice"))
+        assertTrue(src.contains("isPowerSaveMode"))
+        assertTrue(src.contains("if (economyMotion) body else remember(transitionKey)"))
+        assertTrue(src.contains("RoundedCornerShape(with(density) { radius.toDp() })"))
+        assertTrue(src.contains("if (economyMotion) 0f"))
+        assertTrue(src.contains("capsuleStableVideoWidthPx("))
+        assertTrue(src.contains("capsuleOpaqueCoverFraction(body.value)"))
+        assertTrue(!src.contains("delay("))
+    }
+
+    @Test
     fun `mini player procedural motion stops when playback is not active`() {
         val source = source("com/nikhil/yt/ui/player/CapsuleMiniPlayer.kt")
         val normalized = source.replace(Regex("\\s+"), " ")
