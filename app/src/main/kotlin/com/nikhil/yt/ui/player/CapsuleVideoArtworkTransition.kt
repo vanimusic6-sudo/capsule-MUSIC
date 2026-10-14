@@ -341,7 +341,7 @@ internal fun CapsuleVideoArtworkTransition(
                                     right = size.width * 0.5f + halfWidth,
                                     bottom = size.height,
                                 ) {
-                                    drawContent()
+                                    this@drawWithContent.drawContent()
                                 }
                             }
                         }
