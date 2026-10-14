@@ -15,6 +15,7 @@ on:
       - polish/video-immersion-jelly-audio-cdn-20261014
       - polish/velocity-sticky-video-20261014
       - fix/video-consistent-width-soft-corners-20261014
+      - fix/immersion-close-artwork-energy-20261014
       - fix/video-timeline-morph-20261014
 
 permissions:
@@ -83,6 +84,7 @@ jobs:
             --tests 'com.nikhil.yt.playback.CrossfadeIdlePollTest' \
             --tests 'com.nikhil.yt.ui.UiEnergyRegressionTest' \
             --tests 'com.nikhil.yt.ui.player.CapsuleVideoArtworkTransitionTest' \
+            --tests 'com.nikhil.yt.ui.player.CapsuleImmersiveContentTest' \
             --tests 'com.nikhil.yt.ui.player.CapsuleVideoMorphPixelsTest' \
             --tests 'com.nikhil.yt.ui.player.CapsuleVideoViewportTest' \
             --tests 'com.nikhil.yt.playback.video.CapsuleVideoPlayerLifecycleTest' \
