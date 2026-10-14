@@ -537,6 +537,30 @@ class CapsuleVideoSessionTest {
         assertFalse(f.clip.seeks.contains(19_999L))
     }
 
+    @Test fun unknownDecoderDurationDefersSeekUntilTimelineCanClampIt() = runTest {
+        val f = Fixture(this)
+        f.clip.duration = C.TIME_UNSET
+        f.start()
+        f.session.seekTo(5_000L)
+        assertTrue("no unbounded seek may reach the decoder", f.clip.seeks.isEmpty())
+        f.clip.duration = 20_000L
+        f.clip.ready()
+        assertEquals(listOf(5_000L), f.clip.seeks)
+        assertEquals(5_000L, f.music.position)
+        f.session.stop()
+    }
+
+    @Test fun deferredSeekBeyondClipEndCompletesOnTimelineReadiness() = runTest {
+        val f = Fixture(this)
+        f.clip.duration = C.TIME_UNSET
+        f.start()
+        f.session.seekTo(30_000L)
+        f.clip.duration = 20_000L
+        f.clip.ready()
+        assertEquals(listOf("song"), f.endings)
+        assertTrue(f.failures.isEmpty())
+    }
+
     @Test fun explicitClipSeekWhileBufferingKeepsVideoAndClampsToDecoderBounds() = runTest {
         val f = Fixture(this)
         f.clip.duration = 20_000L
