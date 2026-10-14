@@ -108,7 +108,7 @@ internal fun CapsuleAudioVideoToggle(
     val audioSelected = !videoSelected
 
     if (framedStyle) {
-        BoxWithConstraints(
+        Box(
             modifier = modifier
                 .height(CapsuleLightToggleHeight)
                 .clip(shape)
@@ -178,7 +178,7 @@ internal fun CapsuleAudioVideoToggle(
             }
         }
     } else {
-        BoxWithConstraints(
+        Box(
             modifier =
                 modifier
                     .width(190.dp)
