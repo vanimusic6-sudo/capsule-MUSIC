@@ -77,6 +77,17 @@ class CapsuleVideoArtworkTransitionTest {
         ), nowMs = 1000L))
     }
 
+    @Test fun jellyStretchIsBoundedReversibleAndInvisibleAtBothEndpoints() {
+        assertEquals(0f, immersiveJellyStretch(0f, 0.4f), 0.0001f)
+        assertEquals(0f, immersiveJellyStretch(1f, 1.08f), 0.0001f)
+        val opening = immersiveJellyStretch(0.45f, 0.64f)
+        val closing = immersiveJellyStretch(0.45f, 0.26f)
+        assertTrue("leading edge produces a gentle jelly pull", opening > 0.01f)
+        assertTrue("reverse motion pulls in the opposite direction", closing < -0.01f)
+        assertTrue(opening <= 0.019f)
+        assertTrue(closing >= -0.019f)
+    }
+
     @Test fun sculptedCoverContractsBeforeItExpandsAndReversesInTheSameOrder() {
         assertEquals(0f, stagedVideoWidth(0.25f), 0.001f)
         assertTrue(stagedVideoHeight(0.25f) > 0f)
