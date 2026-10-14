@@ -130,6 +130,19 @@ class CapsuleVideoArtworkTransitionTest {
         assertEquals(0f, sculptedStickyStretch(1f, 1f), 0.0001f)
     }
 
+    @Test fun videoPictureSharesTheInertiaOfTheWindowWithoutPermanentDistortion() {
+        assertEquals(0f, capsuleVideoContentLag(0f, 0f, true), 0.0001f)
+        assertEquals(0f, capsuleVideoContentLag(1f, 1f, true), 0.0001f)
+        assertTrue("video itself must move with the contour lag",
+            capsuleVideoContentLag(0.48f, 0.66f, true) > 0.1f)
+        assertTrue("reversals must reverse video inertia",
+            capsuleVideoContentLag(0.48f, 0.27f, true) < -0.1f)
+        assertTrue("no out-of-bounds renderer translate",
+            kotlin.math.abs(capsuleVideoContentLag(0.5f, -2f, true)) <= 1f)
+        assertTrue("Light/Cosmo also get subtle video-window momentum",
+            capsuleVideoContentLag(0.5f, 0.65f, false) > 0f)
+    }
+
     @Test fun jellyStretchIsBoundedReversibleAndInvisibleAtBothEndpoints() {
         assertEquals(0f, immersiveJellyStretch(0f, 0.4f), 0.0001f)
         assertEquals(0f, immersiveJellyStretch(1f, 1.08f), 0.0001f)
