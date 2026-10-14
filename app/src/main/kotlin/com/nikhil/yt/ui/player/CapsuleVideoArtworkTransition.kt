@@ -83,9 +83,9 @@ internal fun CapsuleVideoArtworkTransition(
             body.animateTo(
                 targetValue = target,
                 animationSpec = if (immersive)
-                    spring(dampingRatio = 0.77f, stiffness = 105f, visibilityThreshold = 0.001f)
+                    spring(dampingRatio = 0.90f, stiffness = 106f, visibilityThreshold = 0.001f)
                 else
-                    spring(dampingRatio = 0.86f, stiffness = 210f, visibilityThreshold = 0.001f),
+                    spring(dampingRatio = 0.94f, stiffness = 162f, visibilityThreshold = 0.001f),
             )
         }
     }
@@ -98,9 +98,9 @@ internal fun CapsuleVideoArtworkTransition(
             lead.animateTo(
                 targetValue = target,
                 animationSpec = if (immersive)
-                    spring(dampingRatio = 0.63f, stiffness = 270f, visibilityThreshold = 0.001f)
+                    spring(dampingRatio = 0.84f, stiffness = 184f, visibilityThreshold = 0.001f)
                 else
-                    spring(dampingRatio = 0.80f, stiffness = 345f, visibilityThreshold = 0.001f),
+                    spring(dampingRatio = 0.90f, stiffness = 242f, visibilityThreshold = 0.001f),
             )
         }
     }
@@ -251,8 +251,15 @@ internal fun CapsuleVideoArtworkTransition(
                                 contourWidth / videoWidth.toFloat(),
                                 contourHeight / videoHeight.toFloat(),
                             ).coerceIn(0.5f, 3f)
-                            scaleX = fill
-                            scaleY = fill
+                            // The video window is itself physical, not just
+                            // a static 16:9 picture behind a rubber cover.
+                            // A small velocity-correlated mass lag applies to
+                            // its GPU layer (not to the native decoder's size).
+                            // Keep uniform scale so faces are never stretched.
+                            val lag = capsuleVideoContentLag(p, lead.value, immersive)
+                            scaleX = fill * (1f + kotlin.math.abs(lag) * 0.016f)
+                            scaleY = fill * (1f + kotlin.math.abs(lag) * 0.016f)
+                            translationY = lag * with(density) { 3.dp.toPx() }
                         }
                         .background(Color.Black),
                     contentAlignment = Alignment.Center,
@@ -314,13 +321,13 @@ internal fun immersiveJellyStretch(body: Float, lead: Float): Float {
     val middle = sin((PI * p).toFloat()).coerceAtLeast(0f)
     val lag = (lead - body).coerceIn(-0.55f, 0.55f)
     val recoil = (body - p) * 0.36f
-    return (lag * 0.21f * middle + recoil).coerceIn(-0.042f, 0.042f)
+    return (lag * 0.16f * middle + recoil * 0.58f).coerceIn(-0.026f, 0.026f)
 }
 
 internal fun immersiveEdgeTension(body: Float, lead: Float): Float {
     val p = body.coerceIn(0f, 1f)
     val middle = sin((PI * p).toFloat()).coerceAtLeast(0f)
-    return ((lead - body) * middle).coerceIn(-0.42f, 0.42f)
+    return ((lead - body) * middle).coerceIn(-0.30f, 0.30f)
 }
 
 /** Corner deformation follows the physical progress from the first frame. */
@@ -332,7 +339,7 @@ internal fun sculptedStickyStretch(body: Float, lead: Float): Float {
     val p = body.coerceIn(0f, 1f)
     val middle = sin((PI * p).toFloat()).coerceAtLeast(0f)
     return (((lead - body) * 0.17f * middle) + (body - p) * 0.10f)
-        .coerceIn(-0.020f, 0.020f)
+        .coerceIn(-0.016f, 0.016f)
 }
 
 internal fun sculptedEdgeTension(body: Float, lead: Float): Float {
@@ -377,4 +384,16 @@ internal fun capsuleStickyContourPath(
     lineTo(left, top + radius)
     cubicTo(left, top + radius - k, left + radius - k, top, left + radius, top)
     close()
+}
+
+/**
+ * Dimensionless inertia of the VIDEO picture relative to the shared contour.
+ * The largest possible translate is 3dp, with no non-uniform video stretching.
+ * This stays zero before opening and after settling, including at 60 Hz.
+ */
+internal fun capsuleVideoContentLag(body: Float, lead: Float, immersive: Boolean): Float {
+    val p = body.coerceIn(0f, 1f)
+    val envelope = sin((PI * p).toFloat()).coerceAtLeast(0f)
+    val gain = if (immersive) 3.2f else 2.2f
+    return ((lead - body) * envelope * gain).coerceIn(-1f, 1f)
 }
