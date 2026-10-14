@@ -82,6 +82,36 @@ class AudioChunkedDataSourceTest {
             .build()
 
     @Test
+    fun slowNetworkReadsReduceOnlyUpcomingRangeWithoutReResolvingUrl() {
+        val policy = AudioCdnChunkRatePolicy(1024L * 1024)
+        repeat(3) {
+            policy.observeRead(requestedBytes = 32 * 1024, readBytes = 16 * 1024, elapsedMs = 1_000L)
+        }
+        assertEquals(512L * 1024, policy.onChunkComplete())
+        repeat(3) {
+            policy.observeRead(requestedBytes = 32 * 1024, readBytes = 32 * 1024, elapsedMs = 8L)
+        }
+        assertEquals(1024L * 1024, policy.onChunkComplete())
+    }
+
+    @Test
+    fun media3IdleBufferingAndShortReadsNeverTriggerAdaptiveNetworkRequests() {
+        val policy = AudioCdnChunkRatePolicy(1024L * 1024)
+        // A chunk taking 57 seconds wall-clock can be entirely healthy:
+        // active socket reads complete instantly between long loader pauses.
+        repeat(3) {
+            policy.observeRead(requestedBytes = 32 * 1024, readBytes = 32 * 1024, elapsedMs = 1L)
+        }
+        assertEquals(1024L * 1024, policy.onChunkComplete())
+        // A tiny requested read cannot prove throttling, even if it waited.
+        repeat(5) { policy.observeRead(2 * 1024, 1, 9_000L) }
+        assertEquals(1024L * 1024, policy.onChunkComplete())
+        val smallerExtractorSize = AudioCdnChunkRatePolicy(256L * 1024)
+        repeat(5) { smallerExtractorSize.observeRead(32 * 1024, 2 * 1024, 2_000L) }
+        assertEquals(256L * 1024, smallerExtractorSize.onChunkComplete())
+    }
+
+    @Test
     fun aLongStreamArrivesWholeAndInOrder() {
         val bytes = content(1000)
         val upstream = FakeUpstream(bytes)

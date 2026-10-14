@@ -65,18 +65,34 @@ internal fun CapsuleVideoArtworkTransition(
     val density = LocalDensity.current
     val windowWidth = with(density) { LocalConfiguration.current.screenWidthDp.dp.roundToPx() }
     val immersive = motion == CapsuleVideoArtworkMotion.IMMERSIVE
+    val target = if (presentingVideo) 1f else 0f
+    // Two velocity-preserving springs drive the same fixed-sized GPU layer.
+    // Cosmo/Minimal get a crisp, controlled handoff. Immersion's leading
+    // spring pulls a few pixels against the softer body spring, then both
+    // settle organically. Reversals preserve their current velocities.
     val reveal = key(transitionKey) {
         animateFloatAsState(
-            targetValue = if (presentingVideo) 1f else 0f,
-            animationSpec = if (immersive) spring(dampingRatio = 0.94f, stiffness = 72f, visibilityThreshold = 0.001f)
-                else spring(dampingRatio = 0.86f, stiffness = 100f, visibilityThreshold = 0.001f),
-            label = "capsule-cover-video",
+            targetValue = target,
+            animationSpec = if (immersive)
+                spring(dampingRatio = 0.83f, stiffness = 82f, visibilityThreshold = 0.001f)
+            else
+                spring(dampingRatio = 0.88f, stiffness = 145f, visibilityThreshold = 0.001f),
+            label = "capsule-video-body",
         )
     }
-    // Unlike reading reveal.value directly in composition, this invalidates
-    // composition only when the surface actually crosses its exit threshold.
-    val surfaceActive by remember(needsSurface, reveal) {
-        derivedStateOf { needsSurface || reveal.value > 0.005f }
+    // Only Immersion needs a second animator. Other designs read one shared
+    // spring, avoiding duplicate invalidations on ordinary player screens.
+    val elastic = if (immersive) key(transitionKey) {
+        animateFloatAsState(
+            targetValue = target,
+            animationSpec = spring(dampingRatio = 0.67f, stiffness = 130f, visibilityThreshold = 0.001f),
+            label = "capsule-video-elastic",
+        )
+    } else reveal
+    // Only mount the native decoder while preparing/revealing/leaving VIDEO.
+    // On interrupted closures also wait for the elastic spring to settle.
+    val surfaceActive by remember(needsSurface, reveal, elastic) {
+        derivedStateOf { needsSurface || reveal.value > 0.004f || elastic.value > 0.004f }
     }
 
     BoxWithConstraints(modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -89,8 +105,11 @@ internal fun CapsuleVideoArtworkTransition(
             with(density) { (videoSidePadding.toPx() * 2).roundToInt() }).coerceIn(1, maximumWidth)
         val videoWidth = min(availableVideoWidth, (slotHeight * 16f / 9f).roundToInt().coerceAtLeast(1))
         val videoHeight = (videoWidth * 9f / 16f).roundToInt().coerceIn(1, slotHeight)
-        val frameWidth = max(coverWidth, videoWidth)
-        val frameHeight = max(coverHeight, videoHeight)
+        // A small, fixed overscan is reserved around Immersion so the jelly
+        // silhouette cannot be cropped by its own graphics layer at the peak.
+        val overscan = if (immersive) with(density) { 8.dp.roundToPx() } else 0
+        val frameWidth = max(coverWidth, videoWidth) + overscan * 2
+        val frameHeight = max(coverHeight, videoHeight) + overscan * 2
         val frameWidthDp = with(density) { frameWidth.toDp() }
         val frameHeightDp = with(density) { frameHeight.toDp() }
         val coverWidthDp = with(density) { coverWidth.toDp() }
@@ -104,12 +123,26 @@ internal fun CapsuleVideoArtworkTransition(
 
         // The same clamped progress controls clipping, corner radius, alpha
         // and vertical offset: no separate catch-up tween / sudden seam.
-        fun widthAt(p: Float) = transitionDimension(coverWidth, videoWidth, stagedVideoWidth(p))
-        fun heightAt(p: Float) = transitionDimension(coverHeight, videoHeight, stagedVideoHeight(p))
-        fun contentHandover(p: Float): Float {
-            val start = if (immersive) 0.22f else 0.40f
-            val length = if (immersive) 0.66f else 0.48f
-            return smoothVideoStep((p - start) / length)
+        fun widthAt(body: Float, lead: Float): Float =
+            if (immersive) {
+                val stretch = immersiveJellyStretch(body, lead)
+                transitionDimension(coverWidth, videoWidth, smoothVideoStep(body)).toFloat() * (1f + stretch)
+            } else {
+                transitionDimension(coverWidth, videoWidth, stagedVideoWidth(body)).toFloat()
+            }
+        fun heightAt(body: Float, lead: Float): Float =
+            if (immersive) {
+                val stretch = immersiveJellyStretch(body, lead)
+                transitionDimension(coverHeight, videoHeight, smoothVideoStep(body)).toFloat() * (1f - stretch * 0.55f)
+            } else {
+                transitionDimension(coverHeight, videoHeight, stagedVideoHeight(body)).toFloat()
+            }
+        fun contentHandover(body: Float): Float {
+            // The real first frame must already exist (presentingVideo), so
+            // keep the cover fully opaque through the initial frame reshape.
+            val start = if (immersive) 0.24f else 0.36f
+            val length = if (immersive) 0.68f else 0.52f
+            return smoothVideoStep((body - start) / length)
         }
 
         Box(
@@ -117,8 +150,8 @@ internal fun CapsuleVideoArtworkTransition(
                 .requiredSize(frameWidthDp, frameHeightDp)
                 .graphicsLayer {
                     val p = reveal.value.coerceIn(0f, 1f)
-                    val w = widthAt(p).toFloat()
-                    val h = heightAt(p).toFloat()
+                    val w = widthAt(p, elastic.value)
+                    val h = heightAt(p, elastic.value)
                     val left = (size.width - w) / 2f
                     val top = (size.height - h) / 2f
                     val radius = artworkRadius + (videoRadius - artworkRadius) * smoothVideoStep(p)
@@ -134,8 +167,8 @@ internal fun CapsuleVideoArtworkTransition(
                     drawContent()
                     if (outline.alpha > 0f) {
                         val p = reveal.value.coerceIn(0f, 1f)
-                        val w = widthAt(p).toFloat()
-                        val h = heightAt(p).toFloat()
+                        val w = widthAt(p, elastic.value)
+                        val h = heightAt(p, elastic.value)
                         val radius = artworkRadius + (videoRadius - artworkRadius) * smoothVideoStep(p)
                         drawRoundRect(
                             color = outline,
@@ -168,9 +201,12 @@ internal fun CapsuleVideoArtworkTransition(
                         val p = reveal.value.coerceIn(0f, 1f)
                         alpha = 1f - contentHandover(p)
                         if (immersive) {
-                            val swell = 1f + 0.008f * 4f * p * (1f - p)
-                            scaleX = swell
-                            scaleY = swell
+                            // Tiny counter-stretch of the cover tracks the outer
+                            // clip: a soft liquid pull, never a distorted video
+                            // decoder or an AndroidView resized per frame.
+                            val jelly = immersiveJellyStretch(p, elastic.value)
+                            scaleX = 1f + jelly * 0.36f
+                            scaleY = 1f - jelly * 0.20f
                         }
                     }
                     .background(artworkBackground),
@@ -191,3 +227,14 @@ internal fun smoothVideoStep(progress: Float): Float {
 // Vertical contraction first; width expansion follows. Both reverse together.
 internal fun stagedVideoHeight(progress: Float): Float = smoothVideoStep(progress / 0.58f)
 internal fun stagedVideoWidth(progress: Float): Float = smoothVideoStep((progress - 0.30f) / 0.70f)
+
+/**
+ * A small signed elastic lead drives a 0..2% horizontal pull and compensating
+ * vertical squeeze. No distortion remains at either endpoint, even after an
+ * in-flight reversal. Only the GPU clip and artwork layers stretch; decoder
+ * resolution/aspect ratio and layout never change.
+ */
+internal fun immersiveJellyStretch(body: Float, lead: Float): Float {
+    val middle = 4f * body.coerceIn(0f, 1f) * (1f - body.coerceIn(0f, 1f))
+    return ((lead - body) * 0.20f * middle).coerceIn(-0.019f, 0.019f)
+}

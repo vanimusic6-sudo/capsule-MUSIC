@@ -63,6 +63,56 @@ internal fun shouldChunkAudioRequest(
 ): Boolean = length != C.LENGTH_UNSET.toLong() && length > chunkBytes
 
 /**
+ * Adaptive ranges ONLY for measured slow socket reads, never total time
+ * between open() and close(). Media3 can suspend reads for a full buffer:
+ * cdn-close elapsedMs and deliveredToLoaderBps are not network throughput.
+ * Without actual slow read() samples, preserve InnerTubeX's chunk sizing.
+ */
+internal class AudioCdnChunkRatePolicy(
+    private val initialChunkBytes: Long,
+    private val reducedChunkBytes: Long = 512L * 1024,
+    private val minRequestedBytes: Int = 8 * 1024,
+    private val slowReadMs: Long = 250L,
+    private val slowBps: Long = 48L * 1024,
+    private val recoveredBps: Long = 160L * 1024,
+) {
+    var nextChunkBytes: Long = initialChunkBytes
+        private set
+    private var slowReadSamples = 0
+    private var fastReadSamples = 0
+
+    /** Time only an actual upstream read(), never time Media3 spent idle. */
+    fun observeRead(requestedBytes: Int, readBytes: Int, elapsedMs: Long) {
+        if (requestedBytes < minRequestedBytes || readBytes <= 0) return
+        val readBps = readBytes.toDouble() * 1000.0 / elapsedMs.coerceAtLeast(1L)
+        when {
+            elapsedMs >= slowReadMs && readBps < slowBps -> {
+                slowReadSamples = (slowReadSamples + 1).coerceAtMost(8)
+                fastReadSamples = 0
+            }
+            readBps >= recoveredBps -> {
+                fastReadSamples = (fastReadSamples + 1).coerceAtMost(8)
+                if (fastReadSamples >= 2) slowReadSamples = 0
+            }
+        }
+    }
+
+    /** Called only at a completed range seam: never abort an in-flight CDN read. */
+    fun onChunkComplete(): Long {
+        nextChunkBytes = when {
+            slowReadSamples >= 3 -> minOf(initialChunkBytes, reducedChunkBytes)
+            nextChunkBytes < initialChunkBytes && fastReadSamples >= 3 -> initialChunkBytes
+            else -> nextChunkBytes
+        }.coerceAtLeast(1L)
+        // A single genuinely slow read at the end of one range may accumulate
+        // with the next one; a healthy pair clears stale slow evidence.
+        fastReadSamples = 0
+        if (slowReadSamples >= 3) slowReadSamples = 0
+        return nextChunkBytes
+    }
+}
+
+/**
  * Asks googlevideo for a long stream a few megabytes at a time.
  *
  * A single request for a whole file is served fast for a few seconds and then paced, and the pace
@@ -94,6 +144,9 @@ internal class AudioChunkedDataSource(
     private var activeChunkBytes = chunkBytes
     private var firstChunkBytes = 0L
     private var firstChunkPending = false
+    private var adaptiveChunkBytes = chunkBytes
+    private var ratePolicy = AudioCdnChunkRatePolicy(chunkBytes)
+    private var currentChunkBytes = 0L
 
     override fun addTransferListener(transferListener: TransferListener) {
         upstream.addTransferListener(transferListener)
@@ -142,6 +195,8 @@ internal class AudioChunkedDataSource(
 
         request = dataSpec
         activeChunkBytes = chunkBytes
+        adaptiveChunkBytes = chunkBytes
+        ratePolicy = AudioCdnChunkRatePolicy(chunkBytes)
         firstChunkBytes = firstBytes
         firstChunkPending = true
         nextPosition = dataSpec.position
@@ -154,8 +209,9 @@ internal class AudioChunkedDataSource(
     /** Opens the next bounded slice without changing the original URL or extraction contract. */
     private fun openNextChunk() {
         val spec = requireNotNull(request)
-        chunkLeft = minOf(if (firstChunkPending) firstChunkBytes else activeChunkBytes, bytesLeft)
+        chunkLeft = minOf(if (firstChunkPending) firstChunkBytes else adaptiveChunkBytes, bytesLeft)
         firstChunkPending = false
+        currentChunkBytes = chunkLeft
         val chunkSpec =
             spec.buildUpon()
                 .setPosition(nextPosition)
@@ -202,7 +258,16 @@ internal class AudioChunkedDataSource(
             openNextChunk()
         }
 
-        val read = upstream.read(buffer, offset, minOf(length.toLong(), chunkLeft).toInt())
+        val requested = minOf(length.toLong(), chunkLeft).toInt()
+        val readStartedNs = System.nanoTime()
+        val read = upstream.read(buffer, offset, requested)
+        // This is network blocking time, not the wall-clock age of the range.
+        // Media3 may stop requesting bytes for minutes when its buffer is full.
+        ratePolicy.observeRead(
+            requestedBytes = requested,
+            readBytes = read,
+            elapsedMs = ((System.nanoTime() - readStartedNs).coerceAtLeast(0L) / 1_000_000L),
+        )
         if (read == C.RESULT_END_OF_INPUT) {
             // This is a bounded request with a known remaining length: EOF before chunkLeft
             // reaches zero means that the CDN truncated this slice, not that the song ended.
@@ -216,6 +281,17 @@ internal class AudioChunkedDataSource(
         nextPosition += read
         bytesLeft -= read
         chunkLeft -= read
+        if (chunkLeft == 0L) {
+            val oldChunkBytes = adaptiveChunkBytes
+            adaptiveChunkBytes = ratePolicy.onChunkComplete()
+            if (oldChunkBytes != adaptiveChunkBytes && GlobalLog.isEnabled) {
+                Timber.tag("AudioCDN").i(
+                    "cdn-range-adapt oldBytes=%d nextBytes=%d trigger=slow-read-samples",
+                    oldChunkBytes,
+                    adaptiveChunkBytes,
+                )
+            }
+        }
         return read
     }
 
@@ -241,6 +317,8 @@ internal class AudioChunkedDataSource(
         opened = false
         request = null
         firstChunkPending = false
+        adaptiveChunkBytes = chunkBytes
+        currentChunkBytes = 0L
         upstream.close()
     }
 

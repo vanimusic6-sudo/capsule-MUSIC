@@ -6,7 +6,6 @@ import android.net.Uri
 import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.DataSpec
 import androidx.media3.datasource.TransferListener
-import org.junit.Assert.assertSame
 import java.io.IOException
 import java.net.SocketException
 import java.net.SocketTimeoutException
@@ -33,8 +32,9 @@ private fun healthWith(clock: TestClock) = AudioCdnHostHealth(now = { clock.inst
 @Config(sdk = [35])
 class AudioCdnHostHealthTest {
     @Test
-    fun `reset on old socket does not trigger a fresh URL or cold host`() {
-        val health = healthWith(TestClock())
+    fun `repeat CDN socket resets once again count as failures and earn a temporary ban`() {
+        val clock = TestClock()
+        val health = healthWith(clock)
         val reset = SocketException("Connection reset by peer")
         val upstream = object : DataSource {
             override fun addTransferListener(transferListener: TransferListener) = Unit
@@ -43,27 +43,95 @@ class AudioCdnHostHealthTest {
             override fun getUri(): Uri? = Uri.parse("https://$DEAD/videoplayback")
             override fun close() = Unit
         }
-        repeat(4) {
+        repeat(CDN_HOST_FAILURES_BEFORE_COLD) {
             val wrapped = AudioCdnHostHealthDataSource(upstream, health)
             try {
                 val spec = DataSpec.Builder()
                     .setUri(Uri.parse("https://$DEAD/videoplayback"))
                     .setKey("capsule:audio:song:251:12345")
                     .build()
-                val error = runCatching { wrapped.open(spec) }.exceptionOrNull()
-                assertSame("Socket failure must stay a transport failure, not trigger re-resolution", reset, error)
+                assertTrue(runCatching { wrapped.open(spec) }.exceptionOrNull()
+                    is AudioCdnRefreshRequiredException)
             } finally {
                 wrapped.close()
             }
         }
-        assertFalse("reset sockets do not blacklist a working server group", health.shouldSkipHost(DEAD))
+        // Existing cooldown never permanently bans all routes.
+        assertFalse("one probe is allowed", health.shouldSkipHost(DEAD))
+        assertTrue("persistently reset edge is quarantined", health.shouldSkipHost(DEAD_REPLICA))
+        assertFalse(health.shouldSkipHost(GOOD))
+        clock.advance(CDN_HOST_COLD_MS)
+        assertFalse("cooldown expires", health.shouldSkipHost(DEAD))
+    }
+
+    @Test
+    fun `sustained actual slow reads quarantine a group despite successful response bytes`() {
+        val clock = TestClock()
+        val health = healthWith(clock)
+        val request = 32 * 1024
+        health.recordSuccess(DEAD)
+        repeat(CDN_HOST_SLOW_READS_BEFORE_COLD - 1) {
+            assertFalse(health.recordNetworkRead(DEAD, request, 8 * 1024, 1000L))
+        }
+        assertTrue("the third genuinely slow socket read banishes this CDN",
+            health.recordNetworkRead(DEAD, request, 8 * 1024, 1000L))
+        // A 206 followed by one served byte is not proof that a throttled host recovered.
+        health.recordSuccess(DEAD_REPLICA)
+        assertFalse(health.shouldSkipHost(DEAD, "oldSong"))
+        assertTrue(health.shouldSkipHost(DEAD_REPLICA, "otherSong"))
+        assertFalse(health.shouldSkipHost(GOOD))
+        health.forget()
         assertFalse(health.shouldSkipHost(DEAD))
+    }
+
+    @Test
+    fun `healthy socket reads cancel a slow streak while Media3 idle time is ignored`() {
+        val health = healthWith(TestClock())
+        repeat(8) { health.recordNetworkRead(DEAD, 2048, 100, 50_000L) }
+        repeat(2) { health.recordNetworkRead(DEAD, 32 * 1024, 1024, 300L) }
+        health.recordNetworkRead(DEAD, 32 * 1024, 32 * 1024, 2L)
+        assertFalse("one later slow read is not a quarantine",
+            health.recordNetworkRead(DEAD, 32 * 1024, 1024, 300L))
+        assertFalse(health.shouldSkipHost(DEAD))
+    }
+
+    @Test
+    fun `three slow upstream reads force the existing bounded fresh URL recovery`() {
+        val health = healthWith(TestClock())
+        var tickNs = 0L
+        val fake = object : DataSource {
+            override fun addTransferListener(transferListener: TransferListener) = Unit
+            override fun open(dataSpec: DataSpec): Long = dataSpec.length
+            override fun read(buffer: ByteArray, offset: Int, length: Int): Int = 4096
+            override fun getUri(): Uri? = Uri.parse("https://$DEAD/videoplayback")
+            override fun close() = Unit
+        }
+        val source = AudioCdnHostHealthDataSource(fake, health, nanoTime = {
+            val now = tickNs
+            tickNs += 450_000_000L
+            now
+        })
+        val spec = DataSpec.Builder().setUri(Uri.parse("https://$DEAD/videoplayback"))
+            .setKey("capsule:audio:song:251:12345")
+            .setLength(1024L * 1024)
+            .build()
+        source.open(spec)
+        val buffer = ByteArray(32 * 1024)
+        assertTrue(source.read(buffer, 0, buffer.size) > 0)
+        assertTrue(source.read(buffer, 0, buffer.size) > 0)
+        val third = runCatching { source.read(buffer, 0, buffer.size) }.exceptionOrNull()
+        assertTrue("must enter bounded audio recovery, not endless buffering",
+            third is AudioCdnRefreshRequiredException)
+        source.close()
+        assertFalse("one probe permitted", health.shouldSkipHost(DEAD))
+        assertTrue("later opening is denied briefly", health.shouldSkipHost(DEAD))
     }
 
     @Test
     fun `socket reset classification does not swallow timeouts or unrelated errors`() {
         assertTrue(SocketException("recvfrom failed: ECONNRESET").isTransientAudioCdnSocketReset())
         assertTrue(IOException("transport", SocketException("Connection reset")).isTransientAudioCdnSocketReset())
+        assertTrue(SocketException("Connection reset").isAudioCdnTransportFailure())
         assertFalse(SocketTimeoutException("read timed out").isTransientAudioCdnSocketReset())
         assertFalse(IOException("HTTP 403").isTransientAudioCdnSocketReset())
         assertFalse(SocketException("Network unreachable").isTransientAudioCdnSocketReset())
