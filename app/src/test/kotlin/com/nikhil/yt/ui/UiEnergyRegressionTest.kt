@@ -43,7 +43,7 @@ class UiEnergyRegressionTest {
         assertTrue(src.contains("isLowRamDevice"))
         assertTrue(src.contains("isPowerSaveMode"))
         assertTrue(src.contains("if (economyMotion) body else remember(transitionKey)"))
-        assertTrue(src.contains("RoundedCornerShape(with(density) { radius.toDp() })"))
+        assertTrue(src.contains("addRoundRect("))
         assertTrue(src.contains("if (economyMotion) 0f"))
         assertTrue(src.contains("capsuleStableVideoWidthPx("))
         assertTrue(src.contains("capsuleOpaqueCoverFraction(body.value)"))
