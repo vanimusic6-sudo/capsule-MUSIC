@@ -161,13 +161,8 @@ internal fun CapsuleVideoArtworkTransition(
                 else sculptedStickyStretch(p, leading)
             return base * (1f - sticky * 0.55f)
         }
-        fun contentHandover(p: Float): Float {
-            // One optical handover, after VIDEO has its first frame. Immersion
-            // remains visible long enough to carry the user's cover identity.
-            val start = if (immersive) 0.23f else 0.29f
-            val length = if (immersive) 0.77f else 0.60f
-            return smoothVideoStep((p - start) / length)
-        }
+        fun contentHandover(p: Float): Float =
+            capsuleCoverVideoHandover(p, immersive)
 
         Box(
             Modifier
@@ -396,4 +391,16 @@ internal fun capsuleVideoContentLag(body: Float, lead: Float, immersive: Boolean
     val envelope = sin((PI * p).toFloat()).coerceAtLeast(0f)
     val gain = if (immersive) 3.2f else 2.2f
     return ((lead - body) * envelope * gain).coerceIn(-1f, 1f)
+}
+
+/**
+ * Album photo becomes fully opaque before the window unfolds across most of
+ * the screen on VIDEO -> AUDIO. The old .23..1.00 fade overlaid two unrelated
+ * scenes for almost the entire morph, perceived as a broken transparent photo.
+ * The shorter smooth fifth-order handover has zero derivative at both ends.
+ */
+internal fun capsuleCoverVideoHandover(body: Float, immersive: Boolean): Float {
+    val start = if (immersive) 0.50f else 0.38f
+    val length = if (immersive) 0.43f else 0.52f
+    return smoothVideoStep((body - start) / length)
 }
