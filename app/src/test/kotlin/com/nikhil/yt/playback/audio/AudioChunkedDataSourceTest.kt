@@ -82,25 +82,33 @@ class AudioChunkedDataSourceTest {
             .build()
 
     @Test
-    fun slowCdnBodyReducesOnlyUpcomingRangeWithoutReResolvingUrl() {
+    fun slowNetworkReadsReduceOnlyUpcomingRangeWithoutReResolvingUrl() {
         val policy = AudioCdnChunkRatePolicy(1024L * 1024)
-        // Fast first portion is typical and does not justify more requests.
-        assertEquals(1024L * 1024, policy.observe(1024L * 1024, 3_100L))
-        // Captured sn-f5f7kn7e delivered 1 MiB in 43.7-57.1 seconds.
-        assertEquals(512L * 1024, policy.observe(1024L * 1024, 43_728L))
-        assertEquals(512L * 1024, policy.observe(512L * 1024, 28_000L))
-        // One fast bounded response restores the existing extractor default.
-        assertEquals(1024L * 1024, policy.observe(512L * 1024, 1_700L))
+        repeat(3) {
+            policy.observeRead(requestedBytes = 32 * 1024, readBytes = 16 * 1024, elapsedMs = 1_000L)
+        }
+        assertEquals(512L * 1024, policy.onChunkComplete())
+        repeat(3) {
+            policy.observeRead(requestedBytes = 32 * 1024, readBytes = 32 * 1024, elapsedMs = 8L)
+        }
+        assertEquals(1024L * 1024, policy.onChunkComplete())
     }
 
     @Test
-    fun adaptiveRangesIgnoreSmallStagedSamplesAndHeaderDelays() {
+    fun media3IdleBufferingAndShortReadsNeverTriggerAdaptiveNetworkRequests() {
         val policy = AudioCdnChunkRatePolicy(1024L * 1024)
-        assertEquals(1024L * 1024, policy.observe(128L * 1024, 50_000L))
-        assertEquals(1024L * 1024, policy.observe(1024L * 1024, 2_000L))
-        // Do not override smaller extractor-chosen sizes with 512 KiB.
-        val small = AudioCdnChunkRatePolicy(256L * 1024)
-        assertEquals(256L * 1024, small.observe(1024L * 1024, 60_000L))
+        // A chunk taking 57 seconds wall-clock can be entirely healthy:
+        // active socket reads complete instantly between long loader pauses.
+        repeat(3) {
+            policy.observeRead(requestedBytes = 32 * 1024, readBytes = 32 * 1024, elapsedMs = 1L)
+        }
+        assertEquals(1024L * 1024, policy.onChunkComplete())
+        // A tiny requested read cannot prove throttling, even if it waited.
+        repeat(5) { policy.observeRead(2 * 1024, 1, 9_000L) }
+        assertEquals(1024L * 1024, policy.onChunkComplete())
+        val smallerExtractorSize = AudioCdnChunkRatePolicy(256L * 1024)
+        repeat(5) { smallerExtractorSize.observeRead(32 * 1024, 2 * 1024, 2_000L) }
+        assertEquals(256L * 1024, smallerExtractorSize.onChunkComplete())
     }
 
     @Test
