@@ -22,6 +22,22 @@ class UiEnergyRegressionTest {
     }
 
     @Test
+    fun `immersive video motion keeps a single gradient and disposes invisible preloader`() {
+        val src = source("com/nikhil/yt/ui/player/CapsuleImmersiveContent.kt")
+        assertTrue(src.contains("capsuleImmersiveNeedsArtworkPreload(coverImageReady, artworkTone.ready"))
+        assertTrue(src.contains("capsuleImmersiveArtworkOpacity("))
+        assertTrue(
+            "the same full-screen gradient must not be painted twice with another alpha layer",
+            src.split("Box(modifier = Modifier.fillMaxSize().background(pageBackground))").size - 1 == 1,
+        )
+        // Keep the real video compositor alive to protect the paused frame;
+        // removing its surface for a fake energy saving causes black flashes.
+        val video = source("com/nikhil/yt/ui/player/CapsuleVideoArtworkTransition.kt")
+        assertTrue(video.contains("body.isRunning || lead.isRunning"))
+        assertTrue(video.contains("capsuleVideoContentLag(p, lead.value, immersive)"))
+    }
+
+    @Test
     fun `mini player procedural motion stops when playback is not active`() {
         val source = source("com/nikhil/yt/ui/player/CapsuleMiniPlayer.kt")
         val normalized = source.replace(Regex("\\s+"), " ")
