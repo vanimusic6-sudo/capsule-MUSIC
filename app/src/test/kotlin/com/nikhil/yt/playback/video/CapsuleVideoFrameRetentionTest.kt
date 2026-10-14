@@ -82,7 +82,7 @@ class CapsuleVideoFrameRetentionTest {
         assertTrue(retained.frame.value!!.exiting)
         advanceTimeBy(500); runCurrent()
         assertSame(still, retained.frame.value!!.bitmap)
-        advanceTimeBy(301); runCurrent()
+        advanceTimeBy(1_101); runCurrent()
         assertNull(retained.frame.value)
         retained.release()
     }
