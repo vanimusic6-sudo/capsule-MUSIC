@@ -31,7 +31,6 @@ internal fun canSwitchToVideoSound(
     musicIsPlaying: Boolean, clipIsPlaying: Boolean,
 ): Boolean = firstFrameRendered && ready && originalAudioSelected && musicIsPlaying && clipIsPlaying
 
-internal class CapsuleVideoEndedException : IllegalStateException("VIDEO clip ended")
 internal const val CAPSULE_VIDEO_SOUND_GAP_MS = 180L
 internal const val CAPSULE_SOUND_RAMP_STEP_MS = 16L
 internal const val CAPSULE_SOUND_RAMP_STEPS = 5
@@ -40,7 +39,7 @@ internal class CapsuleVideoCompanion(
     context: Context, factory: MediaSource.Factory, audio: ExoPlayer,
     private val scope: CoroutineScope, onSoundOwned: (Boolean) -> Unit,
     onReady: (String) -> Unit, onFailure: (String, Throwable) -> Unit,
-    onFrameUnavailable: (String) -> Unit,
+    onEnded: (String) -> Unit, onFrameUnavailable: (String) -> Unit,
     onBufferingChanged: (String, Boolean) -> Unit,
 ) {
     private var idleExpiry: Job? = null
@@ -58,7 +57,7 @@ internal class CapsuleVideoCompanion(
         .build()
     internal val frameRetention = CapsuleVideoFrameRetention(player, scope)
     private val session = CapsuleVideoSession(
-        audio, player, scope, onSoundOwned, onReady, onFailure, onFrameUnavailable, onBufferingChanged,
+        audio, player, scope, onSoundOwned, onReady, onFailure, onEnded, onFrameUnavailable, onBufferingChanged,
     )
     init {
         player.addAnalyticsListener(object : AnalyticsListener {
@@ -93,6 +92,13 @@ internal class CapsuleVideoCompanion(
     fun canResume(item: MediaItem): Boolean = session.canResume(item)
     fun setSurfaceAttached(value: Boolean) = session.setSurfaceAttached(value)
     fun setVolume(value: Float) = session.setVolume(value)
+    fun seekTo(positionMs: Long) = session.seekTo(positionMs)
+    /** Natural VIDEO completion must never sync/rewind the canonical AUDIO clock. */
+    fun stopForCompletedClip() {
+        idleExpiry?.cancel(); idleExpiry = null
+        frameRetention.retainExitFrame()
+        session.stop(synchronizeMusic = false)
+    }
     fun stop() {
         frameRetention.retainExitFrame()
         val keep = player.playbackState == Player.STATE_READY && player.duration > 0L
@@ -124,6 +130,7 @@ internal class CapsuleVideoSession(
     private val onSoundOwned: (Boolean) -> Unit,
     private val onReady: (String) -> Unit,
     private val onFailure: (String, Throwable) -> Unit,
+    private val onEnded: (String) -> Unit,
     private val onFrameUnavailable: (String) -> Unit,
     private val onBufferingChanged: (String, Boolean) -> Unit = { _, _ -> },
     private val clockMs: () -> Long = SystemClock::elapsedRealtime,
@@ -151,6 +158,7 @@ internal class CapsuleVideoSession(
     private var seamJob: Job? = null
     private var watchdog: Job? = null
     private var starting = false
+    private var synchronizingSeek = false
     private var startedAtMs = 0L
     private var readyReported = false
     // The source factory replaces the synthetic URI with the CDN URI in the
@@ -180,6 +188,11 @@ internal class CapsuleVideoSession(
         ) {
             if (id == null || audio.currentMediaItem?.mediaId != id) return
             if (reason == Player.DISCONTINUITY_REASON_SEEK || reason == Player.DISCONTINUITY_REASON_SEEK_ADJUSTMENT) {
+                if (synchronizingSeek) return
+                if (capsuleVideoSeekCompletes(audio.currentPosition, video.duration)) {
+                    finishClip()
+                    return
+                }
                 firstFrame = false
                 preparedFrameAvailable = false
                 if (!committed) {
@@ -221,9 +234,8 @@ internal class CapsuleVideoSession(
                     SystemClock.elapsedRealtime() - startedAtMs)
             }
             if (playbackState == Player.STATE_ENDED && id != null) {
-                // A clip can be shorter than the album track. Restore MUSIC
-                // once; an ordinary end is not a CDN failure to retry.
-                fail(CapsuleVideoEndedException())
+                // VIDEO end is a real track completion, never a recoverable network error.
+                finishClip()
                 return
             }
             evaluate()
@@ -231,17 +243,51 @@ internal class CapsuleVideoSession(
     }
     init { video.volume = 0f; video.addListener(videoListener) }
 
-    private fun targetPosition(): Long {
-        val position = audio.currentPosition.coerceAtLeast(0L)
-        val duration = video.duration
-        return if (duration > 0 && duration != C.TIME_UNSET) position.coerceAtMost((duration - 1).coerceAtLeast(0L)) else position
-    }
+    private fun targetPosition(): Long =
+        capsuleVideoStartupSeek(audio.currentPosition, video.duration)
 
     private fun startupSeekTarget(): Long {
-        // Compensate only a measured seek/decode delay, while MUSIC's clock
-        // is running. Paused and user-initiated seeks stay exact.
-        val target = targetPosition() + if (audio.isPlaying) seekLatencyMs else 0L
-        return if (video.duration > 0L) target.coerceAtMost(video.duration - 1L) else target
+        // A shorter clip requested while AUDIO is already past EOF starts at 0.
+        // Prediction must not offset that explicit reset or a paused seek.
+        val duration = capsuleKnownDuration(video.duration)
+        val pastEnd = duration != null && audio.currentPosition >= duration
+        val prediction = if (audio.isPlaying && !pastEnd) seekLatencyMs else 0L
+        return capsuleClampDecoderSeek(targetPosition() + prediction, video.duration)
+    }
+
+    private fun finishClip() {
+        val finishedId = id ?: return
+        // Clear the lease before the callback can advance MUSIC's queue. This
+        // makes ENDED, EOF seek and a concurrent next-track event idempotent.
+        stop(synchronizeMusic = false)
+        onEnded(finishedId)
+    }
+
+    /**
+     * Service-owned VIDEO seek: update the canonical silent clock without
+     * re-entering the audio discontinuity listener and overwriting the clip seek.
+     */
+    fun seekTo(positionMs: Long) {
+        val currentId = id ?: return
+        if (audio.currentMediaItem?.mediaId != currentId) { stop(synchronizeMusic = false); return }
+        if (capsuleVideoSeekCompletes(positionMs, video.duration)) { finishClip(); return }
+        val target = capsuleClampDecoderSeek(positionMs, video.duration)
+        if (!committed) {
+            firstFrame = false
+            preparedFrameAvailable = false
+            frameReported = false
+            seekStartedAtMs = null
+            catchupPending = false
+            onFrameUnavailable(currentId)
+        }
+        aligned = true
+        video.seekTo(target)
+        synchronizingSeek = true
+        try {
+            audio.seekTo(capsuleClampDecoderSeek(target, audio.duration))
+        } finally {
+            synchronizingSeek = false
+        }
     }
 
     private fun seekForStartup(target: Long) {
@@ -250,7 +296,7 @@ internal class CapsuleVideoSession(
         frameReported = false
         seekStartedAtMs = clockMs()
         id?.let(onFrameUnavailable)
-        video.seekTo(target)
+        video.seekTo(capsuleClampDecoderSeek(target, video.duration))
     }
 
     private fun evaluate() {
@@ -295,7 +341,7 @@ internal class CapsuleVideoSession(
         if (!ownsSound && catchupPending && rendering && ready && firstFrame) {
             val target = startupSeekTarget()
             if (abs(video.currentPosition - targetPosition()) > 400L) {
-                val bufferedTarget = if (video.duration > 0L) minOf(target + 350L, video.duration - 1L) else target + 350L
+                val bufferedTarget = capsuleClampDecoderSeek(target + 350L, video.duration)
                 if (video.bufferedPosition < bufferedTarget) {
                     ensureWatchdog()
                     return
@@ -408,7 +454,9 @@ internal class CapsuleVideoSession(
                 }
             } else {
                 preparedItem = item
-                video.setMediaItem(item, targetPosition())
+                // Duration is unknown until Media3 parses the timeline. Start at
+                // frame 0, then align in READY using the real clip duration.
+                video.setMediaItem(item)
             }
             video.playbackParameters = audio.playbackParameters
             updateRendering()
@@ -507,7 +555,10 @@ internal class CapsuleVideoSession(
         val syncMusic = synchronizeMusic && committed && ownsSound && audio.currentMediaItem?.mediaId == id
         id = null
         if (wasActive) audio.removeListener(audioListener)
-        if (syncMusic && abs(audio.currentPosition - returnPosition) > 400L) audio.seekTo(returnPosition)
+        if (syncMusic) {
+            val safePosition = capsuleClampDecoderSeek(returnPosition, audio.duration)
+            if (abs(audio.currentPosition - safePosition) > 100L) audio.seekTo(safePosition)
+        }
         returnSound()
         firstFrame = false; frameReported = false; aligned = false; catchupPending = false; seekStartedAtMs = null; committed = false; reportedBuffering = false
         video.playWhenReady = false
