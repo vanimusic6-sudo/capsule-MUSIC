@@ -25,6 +25,9 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.produceState
 import androidx.compose.ui.semantics.semantics
@@ -164,7 +167,7 @@ internal fun CapsuleAudioVideoToggle(
                             loading = videoResolving,
                             unavailable = videoUnavailable,
                             requestError = videoRequestError,
-                            enabled = enabled && !videoUnavailable && !videoRequestPaused,
+                            enabled = enabled && !videoRequestPaused,
                             textColor = textColor,
                             onClick = onVideoClick,
                             modifier = Modifier.fillMaxWidth().semantics {
@@ -222,7 +225,7 @@ internal fun CapsuleAudioVideoToggle(
                     loading = videoResolving,
                     unavailable = videoUnavailable,
                     requestError = videoRequestError,
-                    enabled = enabled && !videoUnavailable && !videoRequestPaused,
+                    enabled = enabled && !videoRequestPaused,
                     textColor = textColor,
                     onClick = onVideoClick,
                     modifier = Modifier.weight(1f).semantics {
@@ -290,15 +293,15 @@ private fun CapsuleModeSegment(
                 )
                 .clip(shape)
                 .clickable(
-                    enabled = enabled && !loading,
+                    enabled = enabled,
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null,
+                    role = Role.Tab,
                     onClick = onClick,
                 ),
         contentAlignment = Alignment.Center,
     ) {
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             Text(
                 text = text,
                 color =
@@ -313,7 +316,7 @@ private fun CapsuleModeSegment(
                             },
                     ),
                 fontFamily = if (lightStyle) FontFamily.SansSerif else FontFamily.Monospace,
-                fontSize = if (unavailable || requestError) 9.sp else if (lightStyle) 14.sp else 11.sp,
+                fontSize = if (unavailable || requestError || text.startsWith("paused")) 9.sp else if (lightStyle) 14.sp else 11.sp,
                 fontWeight = FontWeight.Medium,
                 letterSpacing = 0.35.sp,
                 maxLines = 1,
@@ -321,7 +324,7 @@ private fun CapsuleModeSegment(
 
             if (loading) {
                 CircularProgressIndicator(
-                    modifier = Modifier.width(11.dp).height(11.dp),
+                    modifier = Modifier.align(Alignment.CenterEnd).padding(end = 8.dp).width(11.dp).height(11.dp),
                     strokeWidth = 1.3.dp,
                     color = textColor.copy(alpha = 0.72f),
                 )

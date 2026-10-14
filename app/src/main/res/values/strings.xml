@@ -945,4 +945,10 @@ Velune will only extract your token, and everything else is stored locally.</str
     <string name="capsule_customize_import_success">Capsule design file applied.</string>
     <string name="taste_recommendations">Similar to your taste</string>
     <string name="taste_recommendations_subtitle">Built from what you finish, replay and skip</string>
+    <string name="video_timeout_title">YouTube video timeout</string>
+    <string name="video_timeout_active">Video requests paused: %1$d min remaining</string>
+    <string name="video_timeout_inactive">No video timeout is active</string>
+    <string name="video_timeout_description">Clear the local pause and retry delay. Tap video in the player to try again. YouTube may apply a new limit.</string>
+    <string name="video_timeout_reset">Reset video timeout</string>
+    <string name="video_timeout_reset_done">Video timeout reset</string>
 </resources>

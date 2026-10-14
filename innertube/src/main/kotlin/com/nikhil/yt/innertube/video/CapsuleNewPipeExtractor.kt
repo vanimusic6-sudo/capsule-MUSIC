@@ -176,8 +176,10 @@ object CapsuleNewPipeExtractor {
         videoId: String, quality: CapsuleNewPipeQuality,
         muxedOnly: Boolean = false, failedBackend: String? = null,
         onAttempt: (String, Long, Boolean) -> Unit = { _, _, _ -> },
+        onRouteFailure: (String, Throwable) -> Unit = { _, _ -> },
     ): CapsuleNewPipeResolved = resolveVideoRoutes(failedBackend, health = routeHealth,
-        onAttempt = { route, elapsed, success -> onAttempt(route.wireName, elapsed, success) }) { route ->
+        onAttempt = { route, elapsed, success -> onAttempt(route.wireName, elapsed, success) },
+        onFailure = { route, failure -> onRouteFailure(route.wireName, failure) }) { route ->
         when (route) {
             CapsuleVideoRoute.ANDROID_VR -> CapsuleDirectVideoExtractor.resolveVr(videoId, quality, muxedOnly)
             CapsuleVideoRoute.VISIONOS -> CapsuleDirectVideoExtractor.resolve(videoId, quality, muxedOnly)
@@ -188,6 +190,7 @@ object CapsuleNewPipeExtractor {
     }
 
     fun classify(throwable: Throwable): CapsuleNewPipeFailure {
+        if (throwable is CapsuleVideoRoutesException) return throwable.failure
         val text =
             generateSequence(throwable) { it.cause }
                 .take(8)

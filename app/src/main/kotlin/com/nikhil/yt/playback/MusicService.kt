@@ -183,6 +183,7 @@ import com.nikhil.yt.playback.video.CAPSULE_VIDEO_STREAM_CACHE_PREFIX
 import com.nikhil.yt.playback.video.CapsulePlaybackMode
 import com.nikhil.yt.playback.video.CapsuleVideoPhase
 import com.nikhil.yt.playback.video.CapsuleVideoPlaybackState
+import com.nikhil.yt.playback.video.videoRequestAlreadyActive
 import com.nikhil.yt.playback.video.CapsuleVideoChunkedDataSource
 import com.nikhil.yt.playback.video.CAPSULE_VIDEO_WARMUP_BYTES
 import com.nikhil.yt.playback.video.CAPSULE_VIDEO_AUDIO_WARMUP_BYTES
@@ -4885,6 +4886,25 @@ class MusicService :
         freshlyResolvedLoudnessVersion.update { it + 1L }
     }
 
+    fun resetYouTubeVideoTimeout() {
+        CapsuleVideoGuardStore.reset(applicationContext)
+        val state = videoPlaybackState.value
+        if (state.requestBlockedUntilMs > 0L && state.mode == CapsulePlaybackMode.AUDIO) {
+            videoModeSwitchJob?.cancel()
+            videoModeSwitchJob = null
+            videoResolveCoordinator.cancel()
+            cancelVideoRecovery()
+            videoPlaybackState.value = state.copy(
+                preferredMode = CapsulePlaybackMode.AUDIO,
+                phase = CapsuleVideoPhase.IDLE,
+                requestBlockedUntilMs = 0L, requestBlockReason = null, message = null,
+            )
+        } else {
+            videoPlaybackState.value = state.copy(requestBlockedUntilMs = 0L, requestBlockReason = null)
+        }
+        Timber.tag("CapsuleVideoGuard").i("VIDEO cooldown reset by user")
+    }
+
     fun setCapsulePlaybackMode(mode: CapsulePlaybackMode) {
         when (mode) {
             CapsulePlaybackMode.AUDIO -> {
@@ -4904,7 +4924,7 @@ class MusicService :
                 leaveCapsuleVideoMode()
             }
             CapsulePlaybackMode.VIDEO -> {
-                if (videoPlaybackState.value.preferredMode == CapsulePlaybackMode.VIDEO) return
+                if (videoPlaybackState.value.videoRequestAlreadyActive) return
                 videoPlaybackState.value =
                     videoPlaybackState.value.copy(
                         preferredMode = CapsulePlaybackMode.VIDEO,
@@ -4946,6 +4966,7 @@ class MusicService :
     private fun enterCapsuleVideoMode() {
         videoRequestedAtMs = android.os.SystemClock.elapsedRealtime()
         cancelVideoRecovery()
+        videoResolveCoordinator.cancel()
         videoCompanion?.stop()
         if (!canUseCapsuleVideoForScreen()) {
             val currentId = player.currentMediaItem?.mediaId
@@ -4967,7 +4988,7 @@ class MusicService :
                 player.currentMediaItem?.mediaId, guard.reason, remainingMs, guard.blockedUntilMs)
             videoPlaybackState.value =
                 videoPlaybackState.value.copy(
-                    preferredMode = CapsulePlaybackMode.VIDEO,
+                    preferredMode = CapsulePlaybackMode.AUDIO,
                     mode = CapsulePlaybackMode.AUDIO,
                     phase = CapsuleVideoPhase.REQUEST_ERROR,
                     mediaId = player.currentMediaItem?.mediaId,

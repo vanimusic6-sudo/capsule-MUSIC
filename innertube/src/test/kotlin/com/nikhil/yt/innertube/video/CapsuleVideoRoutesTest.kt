@@ -34,7 +34,7 @@ class CapsuleVideoRoutesTest {
         }
         assertEquals("direct-android-vr", result.backend)
     }
-    @Test fun rateLimitStopsTheChainAndBotVerdictSurvivesLaterNetworkFailure() {
+    @Test fun rateLimitStopsTheChainButOneBotVerdictDoesNotBanEveryRoute() {
         var calls = 0
         val limited = runCatching { resolveVideoRoutes { calls++; throw IOException("HTTP 429") } }
         assertEquals(1, calls)
@@ -43,7 +43,7 @@ class CapsuleVideoRoutesTest {
             if (route == CapsuleVideoRoute.VISIONOS) throw IOException("Confirm you are not a bot")
             throw IOException("network down")
         } }
-        assertEquals(CapsuleNewPipeFailure.BOT_BLOCKED, CapsuleNewPipeExtractor.classify(blocked.exceptionOrNull()!!))
+        assertEquals(CapsuleNewPipeFailure.NETWORK, CapsuleNewPipeExtractor.classify(blocked.exceptionOrNull()!!))
     }
     @Test fun requestCancellationCannotAdvanceToAnotherRoute() {
         val id = UUID.randomUUID().toString()
@@ -94,4 +94,25 @@ class CapsuleVideoRoutesTest {
         now = 46_000_000_000L
         assertEquals(CapsuleVideoRoute.ANDROID_VR, health.order(null).first())
     }
+    @Test fun globalBotCooldownRequiresEveryRouteToConfirmTheBlock() {
+        val failure = runCatching { resolveVideoRoutes { throw IOException("Confirm you are not a bot") } }.exceptionOrNull()!!
+        assertEquals(CapsuleNewPipeFailure.BOT_BLOCKED, CapsuleNewPipeExtractor.classify(failure))
+        val mixed = runCatching { resolveVideoRoutes {
+            if (it == CapsuleVideoRoute.NEWPIPE) throw IOException("Confirm you are not a bot")
+            null
+        } }.exceptionOrNull()!!
+        assertEquals(CapsuleNewPipeFailure.EXTRACTOR, CapsuleNewPipeExtractor.classify(mixed))
+    }
+
+    @Test fun incompatibleParserDoesNotKillRemainingFallbacks() {
+        val routes = mutableListOf<CapsuleVideoRoute>()
+        val stream = resolveVideoRoutes {
+            routes += it
+            if (it == CapsuleVideoRoute.PIPEPIPE) throw VerifyError("bad Android class")
+            if (it == CapsuleVideoRoute.NEWPIPE) this.stream else null
+        }
+        assertEquals("newpipe", stream.backend)
+        assertTrue(routes.contains(CapsuleVideoRoute.PIPEPIPE))
+    }
+
 }

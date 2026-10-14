@@ -202,6 +202,7 @@ object YouTubeMusicVideoLinkResolver {
         beforeMetadataRequest: suspend () -> Unit,
     ): List<MusicResponsiveListItemRenderer> {
         beforeMetadataRequest()
+        val guardEpoch = CapsuleVideoRequestGuard.resetEpoch()
 
         val response =
             try {
@@ -224,7 +225,7 @@ object YouTubeMusicVideoLinkResolver {
             } catch (blocked: CapsuleVideoRequestGuard.RequestBlockedException) {
                 throw blocked
             } catch (throwable: Throwable) {
-                val kind = CapsuleVideoRequestGuard.noteApiFailure(throwable)
+                val kind = CapsuleVideoRequestGuard.noteApiFailure(throwable, guardEpoch)
 
                 if (
                     kind == CapsuleVideoRequestGuard.FailureKind.RATE_LIMITED ||

@@ -30,8 +30,9 @@ internal class CapsuleVideoStreamInterceptor : Interceptor {
             )
         }
 
+        val guardEpoch = CapsuleVideoRequestGuard.resetEpoch()
         val response = chain.proceed(chain.request())
-        CapsuleVideoRequestGuard.noteStreamStatus(response.code)
+        CapsuleVideoRequestGuard.noteStreamStatus(response.code, guardEpoch)
         return response
     }
 }

@@ -11,6 +11,14 @@ import java.util.concurrent.atomic.AtomicBoolean
 import timber.log.Timber
 
 internal object CapsuleVideoGuardStore {
+    private val mutableState = kotlinx.coroutines.flow.MutableStateFlow(CapsuleVideoRequestGuard.snapshot())
+    val state: kotlinx.coroutines.flow.StateFlow<CapsuleVideoRequestGuard.Snapshot> = mutableState
+
+    fun reset(context: Context) {
+        initialize(context)
+        CapsuleVideoRequestGuard.resetCooldown()
+    }
+
     private val initialized = AtomicBoolean(false)
 
     fun initialize(context: Context) {
@@ -34,6 +42,7 @@ internal object CapsuleVideoGuardStore {
         CapsuleVideoRequestGuard.restore(stored)
 
         val persist: (CapsuleVideoRequestGuard.Snapshot) -> Unit = { snapshot ->
+            mutableState.value = snapshot
             Timber.tag("CapsuleVideoGuard").i("state reason=%s untilMs=%s remainingMs=%s escalation=%s lastTripMs=%s",
                 snapshot.reason ?: "none", snapshot.blockedUntilMs,
                 (snapshot.blockedUntilMs - System.currentTimeMillis()).coerceAtLeast(0L), snapshot.escalationLevel, snapshot.lastTripAtMs)

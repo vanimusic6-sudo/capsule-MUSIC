@@ -69,7 +69,7 @@ class CapsuleVideoExtractorProvider : ContentProvider() {
 
         val routeTimings = mutableListOf<String>()
         return runCatching {
-            VideoExtractionRequests.withRequest(requestId, CapsuleVideoIpc.REQUEST_TIMEOUT_MS) {
+            VideoExtractionRequests.withRequest(requestId, CapsuleVideoIpc.EXTRACTION_TIMEOUT_MS) {
                 if (extras?.getBoolean(CapsuleVideoIpc.EXTRA_REFRESH, false) == true) {
                     CapsuleNewPipeExtractor.invalidate(videoId)
                 }
@@ -79,6 +79,11 @@ class CapsuleVideoExtractorProvider : ContentProvider() {
                     muxedOnly,
                     extras?.getString(CapsuleVideoIpc.EXTRA_FAILED_BACKEND),
                     onAttempt = { route, elapsed, success -> routeTimings += "$route:${elapsed}ms:${if (success) "ok" else "fallback"}" },
+                    onRouteFailure = { route, failure ->
+                        val kind = CapsuleNewPipeExtractor.classify(failure)
+                        routeTimings += "$route:$kind:${failure.javaClass.simpleName}"
+                        timber.log.Timber.tag("CapsuleVideo").w(failure, "VIDEO route=%s failed kind=%s", route, kind)
+                    },
                 )
             }
         }.fold(

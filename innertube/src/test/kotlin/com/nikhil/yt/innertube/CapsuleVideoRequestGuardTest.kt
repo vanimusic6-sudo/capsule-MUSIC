@@ -149,4 +149,36 @@ class CapsuleVideoRequestGuardTest {
         }
     }
 
+    @Test fun simultaneousSegmentFailuresAreOneCooldownIncident() {
+        var now = 100_000L
+        CapsuleVideoRequestGuard.resetForTests { now }
+        CapsuleVideoRequestGuard.noteStreamStatus(429)
+        val initial = CapsuleVideoRequestGuard.snapshot()
+        repeat(20) { CapsuleVideoRequestGuard.noteStreamStatus(429) }
+        assertEquals(initial, CapsuleVideoRequestGuard.snapshot())
+        assertEquals(600_000L, CapsuleVideoRequestGuard.remainingBackoffMs())
+        now += 600_001L
+        CapsuleVideoRequestGuard.noteStreamStatus(429)
+        assertEquals(1_800_000L, CapsuleVideoRequestGuard.remainingBackoffMs())
+    }
+
+    @Test fun developerResetPersistsAndOldReplyCannotRestoreTheTimeout() {
+        val now = 100_000L
+        CapsuleVideoRequestGuard.resetForTests { now }
+        val oldEpoch = CapsuleVideoRequestGuard.resetEpoch()
+        CapsuleVideoRequestGuard.noteBlockedAfterAllAttempts("bot_blocked", oldEpoch)
+        var saved: CapsuleVideoRequestGuard.Snapshot? = null
+        CapsuleVideoRequestGuard.onStateChanged = { saved = it }
+        try {
+            CapsuleVideoRequestGuard.resetCooldown()
+            assertEquals(CapsuleVideoRequestGuard.Snapshot(0L, 0, 0L, null), saved)
+            CapsuleVideoRequestGuard.noteBlockedAfterAllAttempts("bot_blocked", oldEpoch)
+            CapsuleVideoRequestGuard.noteStreamStatus(429, oldEpoch)
+            CapsuleVideoRequestGuard.noteApiFailure(IllegalStateException("Confirm you are not a bot"), oldEpoch)
+            assertFalse(CapsuleVideoRequestGuard.isBlocked())
+            CapsuleVideoRequestGuard.noteBlockedAfterAllAttempts("bot_blocked")
+            assertEquals(600_000L, CapsuleVideoRequestGuard.remainingBackoffMs())
+        } finally { CapsuleVideoRequestGuard.onStateChanged = null }
+    }
+
 }

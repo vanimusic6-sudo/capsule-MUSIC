@@ -132,6 +132,9 @@ internal class CapsuleVideoSession(
     private var generation = 0L
     private var foreground = true
     private var surfaceAttached = false
+    // Physical frame lifetime differs from a session's presentation lifetime.
+    // Media3 does not emit another first-frame event for a retained surface.
+    private var preparedFrameAvailable = false
     private var firstFrame = false
     private var frameReported = false
     private var ownsSound = false
@@ -178,6 +181,7 @@ internal class CapsuleVideoSession(
             if (id == null || audio.currentMediaItem?.mediaId != id) return
             if (reason == Player.DISCONTINUITY_REASON_SEEK || reason == Player.DISCONTINUITY_REASON_SEEK_ADJUSTMENT) {
                 firstFrame = false
+                preparedFrameAvailable = false
                 if (!committed) {
                     seekStartedAtMs = null
                     catchupPending = false
@@ -203,6 +207,7 @@ internal class CapsuleVideoSession(
                 seekStartedAtMs = null
             }
             firstFrame = true
+            preparedFrameAvailable = true
             Timber.tag("CapsuleVideo").i("first-frame session=%s generation=%s prepareMs=%s", id, generation,
                 SystemClock.elapsedRealtime() - startedAtMs)
             evaluate()
@@ -240,6 +245,7 @@ internal class CapsuleVideoSession(
     }
 
     private fun seekForStartup(target: Long) {
+        preparedFrameAvailable = false
         firstFrame = false
         frameReported = false
         seekStartedAtMs = clockMs()
@@ -381,6 +387,7 @@ internal class CapsuleVideoSession(
         val reuse = video.currentMediaItem?.mediaId == mediaId &&
             canReusePreparedVideo(preparedItem, item, video.playbackState)
         stop(keepPrepared = reuse)
+        firstFrame = reuse && rendering && preparedFrameAvailable
         this.startupBudgetMs = startupBudgetMs
         id = mediaId
         startedAtMs = SystemClock.elapsedRealtime()
@@ -463,6 +470,7 @@ internal class CapsuleVideoSession(
         val wasRendering = rendering
         change()
         if (wasRendering != rendering) {
+            preparedFrameAvailable = false
             firstFrame = false
             if (!committed) {
                 frameReported = false
@@ -504,6 +512,7 @@ internal class CapsuleVideoSession(
         firstFrame = false; frameReported = false; aligned = false; catchupPending = false; seekStartedAtMs = null; committed = false; reportedBuffering = false
         video.playWhenReady = false
         if (!keepPrepared) {
+            preparedFrameAvailable = false
             preparedItem = null
             video.stop()
             video.clearMediaItems()

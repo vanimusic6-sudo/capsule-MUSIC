@@ -84,6 +84,21 @@ object CapsuleVideoRequestGuard {
     @Volatile
     private var blockReason: String? = null
 
+    @Volatile private var resetGeneration = 0L
+    fun resetEpoch(): Long = resetGeneration
+
+    /** Explicit developer action; persists through the same bridge as a trip. */
+    @Synchronized
+    fun resetCooldown() {
+        resetGeneration++
+        blockedUntilMs = 0L
+        blockReason = null
+        escalationLevel = 0
+        lastTripAtMs = 0L
+        lastApiRequestAtMs = 0L
+        publish()
+    }
+
 
     class RequestBlockedException(
         message: String,
@@ -220,8 +235,10 @@ object CapsuleVideoRequestGuard {
         )
     }
 
-    fun noteBlockedAfterAllAttempts(reason: String) {
-        trip(reason)
+    @Synchronized
+    fun noteBlockedAfterAllAttempts(reason: String, epoch: Long = resetGeneration) {
+        // A reply from before a manual reset cannot reinstate the old ban.
+        if (epoch == resetGeneration) trip(reason)
     }
 
     private fun flatten(throwable: Throwable): String =
@@ -233,13 +250,13 @@ object CapsuleVideoRequestGuard {
     fun noteFailure(throwable: Throwable): Boolean =
         noteApiFailure(throwable) != FailureKind.NONE && isBlocked()
 
-    fun noteApiFailure(throwable: Throwable): FailureKind {
+    fun noteApiFailure(throwable: Throwable, epoch: Long = resetGeneration): FailureKind {
         val kind = classify(throwable)
 
         when (kind) {
             FailureKind.RATE_LIMITED,
             FailureKind.BOT_CHECK,
-            -> trip(kind.name.lowercase().replace('_', ' '))
+            -> noteBlockedAfterAllAttempts(kind.name.lowercase().replace('_', ' '), epoch)
 
             else -> Unit
         }
@@ -248,13 +265,13 @@ object CapsuleVideoRequestGuard {
     }
 
     @Synchronized
-    fun noteStreamStatus(code: Int): FailureKind {
+    fun noteStreamStatus(code: Int, epoch: Long = resetGeneration): FailureKind {
         if (code in 200..399 || code == 416) {
             return FailureKind.NONE
         }
 
         if (code == 429) {
-            trip("http 429 (stream)")
+            noteBlockedAfterAllAttempts("http 429 (stream)", epoch)
             return FailureKind.RATE_LIMITED
         }
 
@@ -300,6 +317,9 @@ object CapsuleVideoRequestGuard {
     @Synchronized
     private fun trip(reason: String) {
         val now = clock()
+        // Concurrent audio/video segment failures are one incident. Escalate
+        // only after the previous cooldown has elapsed and a new attempt fails.
+        if (blockedUntilMs > now) return
         decayEscalationIfClean(now)
 
         val step =
@@ -344,6 +364,7 @@ object CapsuleVideoRequestGuard {
 
     fun resetForTests(now: () -> Long = System::currentTimeMillis) {
         clock = now
+        resetGeneration = 0L
         blockedUntilMs = 0L
         blockReason = null
         escalationLevel = 0

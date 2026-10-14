@@ -71,3 +71,10 @@ internal fun CapsuleVideoPlaybackState.playbackStateOr(musicState: Int): Int {
 const val CAPSULE_VIDEO_SCHEME = "capsule-video"
 const val CAPSULE_VIDEO_CACHE_PREFIX = "capsule:video:"
 const val CAPSULE_VIDEO_STREAM_CACHE_PREFIX = "capsule:video-stream:"
+
+/** Repeated taps are idempotent only while work/presentation actually exists. */
+internal val CapsuleVideoPlaybackState.videoRequestAlreadyActive: Boolean
+    get() = preferredMode == CapsulePlaybackMode.VIDEO && phase in setOf(
+        CapsuleVideoPhase.RESOLVING, CapsuleVideoPhase.PREPARING,
+        CapsuleVideoPhase.RECOVERING, CapsuleVideoPhase.PLAYING, CapsuleVideoPhase.BUFFERING,
+    )

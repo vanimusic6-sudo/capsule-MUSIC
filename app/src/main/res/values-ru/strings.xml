@@ -866,4 +866,10 @@
     <string name="capsule_customize_import_success">Дизайн из файла Capsule применён.</string>
     <string name="taste_recommendations">Похоже на ваш вкус</string>
     <string name="taste_recommendations_subtitle">По тому, что вы дослушиваете, переслушиваете и скипаете</string>
+    <string name="video_timeout_title">Тайм-аут видео YouTube</string>
+    <string name="video_timeout_active">Запросы видео приостановлены: осталось %1$d мин</string>
+    <string name="video_timeout_inactive">Тайм-аут видео не активен</string>
+    <string name="video_timeout_description">Сброс локальной паузы и накопленной задержки. Для новой попытки нажмите video в плеере. YouTube может повторно ограничить запросы.</string>
+    <string name="video_timeout_reset">Сбросить тайм-аут видео</string>
+    <string name="video_timeout_reset_done">Тайм-аут видео сброшен</string>
 </resources>

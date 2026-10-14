@@ -46,7 +46,11 @@ internal object CapsuleVideoIpc {
     const val METHOD_CANCEL = "cancel"
     const val METHOD_INVALIDATE = "invalidate"
     const val EXTRA_REQUEST_ID = "request_id"
-    const val REQUEST_TIMEOUT_MS = 20_000L
+    // All five route budgets total 32s. Leave room for initialization,
+    // Binder delivery and matching instead of cutting the final routes off.
+    const val EXTRACTION_TIMEOUT_MS = 36_000L
+    const val REQUEST_TIMEOUT_MS = 40_000L
+    const val SONG_TIMEOUT_MS = 55_000L
     const val EXTRA_ROUTE_TIMINGS = "route_timings"
 
     const val EXTRA_VIDEO_ID = "video_id"

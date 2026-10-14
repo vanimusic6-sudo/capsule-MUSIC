@@ -442,4 +442,45 @@ class CapsuleVideoSessionTest {
         assertEquals(listOf(true), f.owned)
         f.session.stop()
     }
+    @Test fun rapidReopenUsesTheExistingFrameWithoutWaitingForANewFrameEvent() = runTest {
+        val f = Fixture(this); f.start(); f.clip.ready(); f.clip.frame()
+        advanceTimeBy(261); runCurrent()
+        f.session.stop(keepPrepared = true)
+        f.start(); f.clip.ready()
+        // The same TextureView has not detached and Media3 does not announce
+        // another first frame for this prepared, unseeked source.
+        advanceTimeBy(261); runCurrent()
+        assertEquals(2, f.frames.size)
+        assertEquals(1, f.clip.prepares)
+        assertTrue(f.failures.isEmpty())
+        f.session.stop()
+    }
+
+    @Test fun pausedPreparedVideoReopensWithoutChangingPlayIntent() = runTest {
+        val f = Fixture(this)
+        f.music.intent = false; f.music.playing = false
+        f.start(); f.clip.ready(); f.clip.frame()
+        f.session.stop(keepPrepared = true)
+        f.start(); f.clip.ready()
+        assertEquals(2, f.frames.size)
+        assertFalse(f.clip.intent)
+        assertFalse(f.music.intent)
+        assertEquals(1, f.clip.prepares)
+        f.session.stop()
+    }
+
+    @Test fun detachedSurfaceCannotReuseAStaleFirstFrame() = runTest {
+        val f = Fixture(this); f.start(); f.clip.ready(); f.clip.frame()
+        advanceTimeBy(261); runCurrent()
+        f.session.stop(keepPrepared = true)
+        f.session.setSurfaceAttached(false)
+        f.start(); f.clip.ready()
+        advanceTimeBy(261); runCurrent()
+        assertEquals(1, f.frames.size)
+        f.clip.frame()
+        advanceTimeBy(261); runCurrent()
+        assertEquals(2, f.frames.size)
+        f.session.stop()
+    }
+
 }

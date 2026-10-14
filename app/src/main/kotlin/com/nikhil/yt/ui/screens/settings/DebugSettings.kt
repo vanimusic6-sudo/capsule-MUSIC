@@ -11,6 +11,7 @@ package com.nikhil.yt.ui.screens.settings
 import com.nikhil.yt.BuildConfig
 import com.nikhil.yt.innertube.CapsuleVideoRequestGuard
 import com.nikhil.yt.playback.audio.AudioCdnSessionStats
+import com.nikhil.yt.playback.video.CapsuleVideoGuardStore
 import android.content.Intent
 import android.text.format.DateFormat
 import android.util.Log
@@ -219,6 +220,8 @@ fun DebugSettings(
                 onCheckedChange = onShowCodecOnPlayerChange
             )
 
+            VideoTimeoutSettings()
+
             AnimatedVisibility(
                 visible = showDevDebug,
                 enter = expandVertically() + fadeIn(),
@@ -248,6 +251,43 @@ fun DebugSettings(
             }
 
             Spacer(modifier = Modifier.height(24.dp))
+        }
+    }
+}
+
+@Composable
+private fun VideoTimeoutSettings() {
+    val context = LocalContext.current
+    val connection = LocalPlayerConnection.current
+    val guard by CapsuleVideoGuardStore.state.collectAsState()
+    val onScreen = com.nikhil.yt.ui.player.appIsOnScreen()
+    var now by remember { mutableStateOf(System.currentTimeMillis()) }
+    LaunchedEffect(context) { CapsuleVideoGuardStore.initialize(context) }
+    LaunchedEffect(guard.blockedUntilMs, onScreen) {
+        now = System.currentTimeMillis()
+        if (!onScreen) return@LaunchedEffect
+        while (guard.blockedUntilMs > now) {
+            delay(minOf(60_000L, guard.blockedUntilMs - now))
+            now = System.currentTimeMillis()
+        }
+    }
+    val remaining = (guard.blockedUntilMs - now).coerceAtLeast(0L)
+    OutlinedCard(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(stringResource(R.string.video_timeout_title), style = MaterialTheme.typography.titleMedium)
+            Text(
+                if (remaining > 0L) stringResource(R.string.video_timeout_active, (remaining + 59_999L) / 60_000L)
+                else stringResource(R.string.video_timeout_inactive),
+                style = MaterialTheme.typography.bodyMedium,
+            )
+            Text(stringResource(R.string.video_timeout_description), style = MaterialTheme.typography.bodySmall)
+            FilledTonalButton(onClick = {
+                val service = connection?.service
+                if (service != null) service.resetYouTubeVideoTimeout() else CapsuleVideoGuardStore.reset(context)
+                Toast.makeText(context, R.string.video_timeout_reset_done, Toast.LENGTH_SHORT).show()
+            }) {
+                Text(stringResource(R.string.video_timeout_reset))
+            }
         }
     }
 }

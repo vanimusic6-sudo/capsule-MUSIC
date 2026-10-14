@@ -22,8 +22,6 @@ import com.nikhil.yt.innertube.YouTubeMusicVideoLinkResolver
 import com.nikhil.yt.innertube.video.CapsuleVideoDelivery
 import android.os.SystemClock
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.CompletableDeferred
-import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
@@ -98,21 +96,7 @@ object YouTubeVideoResolver {
      */
     private val resolveMutex = Mutex()
 
-    /*
-     * Share the entire song -> official video -> extracted streams operation,
-     * not just the final extractor call. Without this, two quick VIDEO requests
-     * for the same track could both perform the YouTube Music linking request
-     * before they reached resolveMutex. That creates unnecessary traffic and
-     * makes rapid mode toggles more likely to trip upstream throttling.
-     *
-     * The owner is the only coroutine that performs work. Other callers await
-     * the same result. If the owner is cancelled because the user moved to a
-     * different track, all waiters are cancelled too and no stale result is
-     * published by this resolver.
-     */
-    private val songResolveMutex = Mutex()
-    private val inFlightSongResolves =
-        mutableMapOf<String, CompletableDeferred<Result<ResolvedVideo>>>()
+    private val songResolves = CapsuleVideoSingleFlight<Result<ResolvedVideo>>()
 
     @Volatile
     private var initialized = false
@@ -161,25 +145,10 @@ object YouTubeVideoResolver {
         }
 
         val requestKey = "$canonicalId:${quality.name}:${if (originalVideo) "original" else "matched"}"
-        var isOwner = false
-        val sharedResult =
-            songResolveMutex.withLock {
-                inFlightSongResolves[requestKey]
-                    ?: CompletableDeferred<Result<ResolvedVideo>>()
-                        .also { created ->
-                            inFlightSongResolves[requestKey] = created
-                            isOwner = true
-                        }
-            }
-
-        if (!isOwner) {
-            return sharedResult.await()
-        }
-
-        try {
+        return songResolves.run(requestKey) {
             val result =
                 try {
-                    withTimeoutOrNull(CapsuleVideoIpc.REQUEST_TIMEOUT_MS) {
+                    withTimeoutOrNull(CapsuleVideoIpc.SONG_TIMEOUT_MS) {
                         val startedAt = SystemClock.elapsedRealtime()
                         val admission = CapsuleVideoMetadataAdmission()
                         // An explicitly selected video/podcast already has the
@@ -217,20 +186,12 @@ object YouTubeVideoResolver {
                         Result.success(resolved)
                     } ?: Result.failure(VideoBackendException(CapsuleVideoFailure.NETWORK, "VIDEO extraction timed out"))
                 } catch (cancelled: CancellationException) {
-                    sharedResult.cancel(cancelled)
                     throw cancelled
                 } catch (throwable: Throwable) {
                     Result.failure(throwable)
                 }
 
-            sharedResult.complete(result)
-            return result
-        } finally {
-            withContext(NonCancellable) {
-                songResolveMutex.withLock {
-                    inFlightSongResolves.remove(requestKey, sharedResult)
-                }
-            }
+            result
         }
     }
 
@@ -297,6 +258,7 @@ object YouTubeVideoResolver {
         val authority = "${context.packageName}.capsule.video.extractor"
         val uri = Uri.parse("content://$authority")
         val requestId = UUID.randomUUID().toString()
+        val guardEpoch = CapsuleVideoRequestGuard.resetEpoch()
         val extras =
             Bundle().apply {
                 putString(CapsuleVideoIpc.EXTRA_REQUEST_ID, requestId)
@@ -360,7 +322,7 @@ object YouTubeVideoResolver {
             when (failure) {
                 CapsuleVideoFailure.RATE_LIMITED,
                 CapsuleVideoFailure.BOT_BLOCKED,
-                -> CapsuleVideoRequestGuard.noteBlockedAfterAllAttempts(failure.name.lowercase())
+                -> CapsuleVideoRequestGuard.noteBlockedAfterAllAttempts(failure.name.lowercase(), guardEpoch)
 
                 else -> Unit
             }

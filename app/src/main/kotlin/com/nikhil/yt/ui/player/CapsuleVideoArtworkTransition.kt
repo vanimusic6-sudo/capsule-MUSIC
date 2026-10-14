@@ -27,7 +27,6 @@ import kotlin.math.min
 import kotlin.math.max
 import kotlin.math.roundToInt
 import androidx.compose.runtime.key
-import androidx.compose.runtime.rememberUpdatedState
 
 internal enum class CapsuleVideoArtworkMotion { SCULPTED, IMMERSIVE }
 
@@ -57,7 +56,6 @@ internal fun CapsuleVideoArtworkTransition(
 ) {
     val density = LocalDensity.current
     val windowWidth = with(density) { LocalConfiguration.current.screenWidthDp.dp.roundToPx() }
-    val preparing = rememberUpdatedState(needsSurface && !presentingVideo)
     val immersive = motion == CapsuleVideoArtworkMotion.IMMERSIVE
     val reveal = key(transitionKey) { animateFloatAsState(
         targetValue = if (presentingVideo) 1f else 0f,
@@ -103,7 +101,6 @@ internal fun CapsuleVideoArtworkTransition(
                 // Uniform fill follows the moving silhouette. The decoder itself
                 // keeps its final viewport, avoiding surface/codec resize churn.
                 Box(Modifier.graphicsLayer {
-                    alpha = if (preparing.value) 0f else 1f
                     val scale = max(frameWidth().toFloat() / videoWidth, frameHeight().toFloat() / videoHeight)
                     scaleX = scale; scaleY = scale
                 }.background(Color.Black)) {
@@ -119,9 +116,9 @@ internal fun CapsuleVideoArtworkTransition(
                         // The whole cover flows within one rectangular silhouette.
                         // The same phase runs backwards on close, and spring
                         // velocity survives an interrupted/reversed gesture.
-                        alpha = if (preparing.value) 1f else 1f - contentHandover()
+                        alpha = 1f - contentHandover()
                         val scale = max(frameWidth().toFloat() / coverWidth, frameHeight().toFloat() / coverHeight) *
-                            (1f + if (immersive && !preparing.value) 0.008f * 4f * p * (1f - p) else 0f)
+                            (1f + if (immersive) 0.008f * 4f * p * (1f - p) else 0f)
                         scaleX = scale; scaleY = scale
                     }.background(artworkBackground),
                     contentAlignment = Alignment.Center,

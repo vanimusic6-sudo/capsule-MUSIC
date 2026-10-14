@@ -27,11 +27,16 @@ internal class CapsuleVideoRouteHealth(private val clock: () -> Long = System::n
     }
 }
 
+internal class CapsuleVideoRoutesException(
+    val failure: CapsuleNewPipeFailure, cause: Throwable?,
+) : IOException("VIDEO routes exhausted ($failure)", cause)
+
 /** One attempt per backend; move the failed playback backend to the end. */
 internal fun resolveVideoRoutes(
     failedBackend: String? = null,
     health: CapsuleVideoRouteHealth? = null,
     onAttempt: (CapsuleVideoRoute, Long, Boolean) -> Unit = { _, _, _ -> },
+    onFailure: (CapsuleVideoRoute, Throwable) -> Unit = { _, _ -> },
     resolve: (CapsuleVideoRoute) -> CapsuleNewPipeResolved?,
 ): CapsuleNewPipeResolved {
     val failures = mutableListOf<Exception>()
@@ -51,21 +56,36 @@ internal fun resolveVideoRoutes(
             // No compatible format is a verdict about this clip, not an
             // endpoint outage. Do not penalize the fast route on other clips.
             onAttempt(route, TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - started), false)
-        } catch (failure: Exception) {
+        } catch (problem: Throwable) {
+            // A parser compiled against an incompatible Android API is a
+            // broken route. VM failures are not safe to recover here.
+            val failure = when (problem) {
+                is Exception -> problem
+                is LinkageError -> IOException("VIDEO parser incompatible", problem)
+                else -> throw problem
+            }
             // Route deadlines leave room for the next backend. Request-wide
             // cancellation/deadline and rate limits stop all work immediately.
             VideoExtractionRequests.checkActive()
+            onFailure(route, failure)
             if (CapsuleNewPipeExtractor.classify(failure) == CapsuleNewPipeFailure.RATE_LIMITED) throw failure
             health?.failure(route)
             onAttempt(route, TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - started), false)
             failures += failure
         }
     }
-    // Preserve a real bot verdict for VIDEO cooldown even if a later route
-    // failed differently. A fallback success never reports the earlier error.
-    val failure = failures.firstOrNull {
+    // A client-specific bot response is not proof that every independent
+    // route is blocked. Never turn a mixture of parser/network/no-format
+    // failures into a global ten-minute ban based on just one backend.
+    val allBotBlocked = failures.size == routes.size && failures.all {
         CapsuleNewPipeExtractor.classify(it) == CapsuleNewPipeFailure.BOT_BLOCKED
-    } ?: failures.lastOrNull() ?: IOException("No compatible VIDEO stream from available routes")
-    failures.filter { it !== failure }.forEach(failure::addSuppressed)
-    throw failure
+    }
+    val kind = when {
+        allBotBlocked -> CapsuleNewPipeFailure.BOT_BLOCKED
+        failures.any { CapsuleNewPipeExtractor.classify(it) == CapsuleNewPipeFailure.NETWORK } -> CapsuleNewPipeFailure.NETWORK
+        else -> CapsuleNewPipeFailure.EXTRACTOR
+    }
+    throw CapsuleVideoRoutesException(kind, failures.lastOrNull()).also { combined ->
+        failures.forEach(combined::addSuppressed)
+    }
 }

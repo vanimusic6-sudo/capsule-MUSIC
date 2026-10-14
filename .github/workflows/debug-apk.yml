@@ -83,6 +83,8 @@ jobs:
             --tests 'com.nikhil.yt.playback.video.CapsuleVideoPlayerLifecycleTest' \
             --tests 'com.nikhil.yt.models.MediaMetadataArtistMergeTest' \
             --tests 'com.nikhil.yt.playback.video.CapsuleVideoResolveCoordinatorTest' \
+            --tests 'com.nikhil.yt.playback.video.CapsuleVideoSingleFlightTest' \
+            --tests 'com.nikhil.yt.playback.video.CapsuleVideoModeRequestTest' \
             --tests 'com.nikhil.yt.playback.video.CapsuleVideoRemoteClientTest' \
             --tests 'com.nikhil.yt.playback.video.CancellableRemoteCallTest' \
             --tests 'com.nikhil.yt.playback.video.CapsuleVideoChunkedDataSourceTest' \

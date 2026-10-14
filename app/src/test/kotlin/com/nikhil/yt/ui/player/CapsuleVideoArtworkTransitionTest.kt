@@ -10,6 +10,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.click
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.IntSize
@@ -69,6 +71,42 @@ class CapsuleVideoArtworkTransitionTest {
             compose.waitForIdle()
             assertEquals(audio, compose.onNodeWithText("audio").fetchSemanticsNode().boundsInRoot)
             assertEquals(video, compose.onNodeWithText("video").fetchSemanticsNode().boundsInRoot)
+        }
+    }
+
+    @Test fun lightSwitchAcceptsEveryTapDuringLoadingAndReversal() = verifyTaps(light = true, cosmo = false)
+    @Test fun cosmoSwitchAcceptsEveryTapDuringLoadingAndReversal() = verifyTaps(light = false, cosmo = true)
+    @Test fun plainSwitchAcceptsEveryTapDuringLoadingAndReversal() = verifyTaps(light = false, cosmo = false)
+
+    private fun verifyTaps(light: Boolean, cosmo: Boolean) {
+        val state = mutableStateOf(CapsuleVideoPlaybackState())
+        var audioClicks = 0
+        var videoClicks = 0
+        compose.mainClock.autoAdvance = false
+        compose.setContent {
+            CapsuleAudioVideoToggle(state.value, Color.White, true,
+                onAudioClick = { audioClicks++; state.value = CapsuleVideoPlaybackState() },
+                onVideoClick = {
+                    videoClicks++
+                    state.value = CapsuleVideoPlaybackState(
+                        preferredMode = CapsulePlaybackMode.VIDEO, phase = CapsuleVideoPhase.RESOLVING)
+                },
+                modifier = Modifier.size(240.dp, 48.dp), lightStyle = light, cosmoStyle = cosmo,
+            )
+        }
+        repeat(10) {
+            compose.onNodeWithText(if (light || cosmo) "video" else "VIDEO").performTouchInput { click() }
+            compose.mainClock.advanceTimeBy(32)
+            // A repeat tap while loading reaches the service's idempotent
+            // handler, instead of the UI dropping input for an animation.
+            compose.onNodeWithText(if (light || cosmo) "video" else "VIDEO").performTouchInput { click() }
+            compose.onNodeWithText(if (light || cosmo) "audio" else "AUDIO").performTouchInput { click() }
+            compose.mainClock.advanceTimeBy(32)
+        }
+        compose.runOnIdle {
+            assertEquals(20, videoClicks)
+            assertEquals(10, audioClicks)
+            assertEquals(CapsulePlaybackMode.AUDIO, state.value.preferredMode)
         }
     }
 

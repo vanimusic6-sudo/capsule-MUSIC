@@ -118,6 +118,30 @@ class CapsuleVideoMorphPixelsTest {
         assertEquals(AndroidColor.BLUE, centre("immersive-closed"))
     }
 
+    @Test fun recoveringReadinessDoesNotFlashTheOpaqueCover() {
+        val presenting = mutableStateOf(true)
+        compose.setContent {
+            CapsuleVideoArtworkTransition(
+                presentingVideo = presenting.value, needsSurface = true,
+                modifier = Modifier.size(320.dp, 280.dp).testTag("media-slot"),
+                video = { Box(Modifier.fillMaxSize().background(Color.Red)) },
+                artwork = { Box(Modifier.fillMaxSize().background(Color.Blue)) },
+            )
+        }
+        assertEquals(AndroidColor.RED, centre("before-recovery"))
+        compose.mainClock.autoAdvance = false
+        compose.runOnIdle { presenting.value = false }
+        compose.mainClock.advanceTimeByFrame()
+        val first = centre("recovery-first-frame")
+        assertTrue("readiness change must reverse the animation without a cover flash", AndroidColor.red(first) > 240)
+        compose.mainClock.advanceTimeBy(160)
+        assertOpaqueContent("recovery-blend")
+        compose.runOnIdle { presenting.value = true }
+        compose.mainClock.autoAdvance = true
+        compose.waitForIdle()
+        assertEquals(AndroidColor.RED, centre("recovered"))
+    }
+
     private fun assertRectangularBlend(name: String) {
         val bitmap = snapshot(name)
         try {
