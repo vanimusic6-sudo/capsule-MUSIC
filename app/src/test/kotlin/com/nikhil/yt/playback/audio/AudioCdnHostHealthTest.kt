@@ -1,3 +1,5 @@
+@file:Suppress("UnsafeOptInUsageError")
+
 package com.nikhil.yt.playback.audio
 
 import android.net.Uri
