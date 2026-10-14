@@ -1,5 +1,13 @@
 package com.nikhil.yt.playback.audio
 
+import android.net.Uri
+import androidx.media3.datasource.DataSource
+import androidx.media3.datasource.DataSpec
+import androidx.media3.datasource.TransferListener
+import org.junit.Assert.assertSame
+import java.io.IOException
+import java.net.SocketException
+import java.net.SocketTimeoutException
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -17,6 +25,42 @@ private class TestClock(var instant: Long = 0L) {
 private fun healthWith(clock: TestClock) = AudioCdnHostHealth(now = { clock.instant })
 
 class AudioCdnHostHealthTest {
+    @Test
+    fun `reset on old socket does not trigger a fresh URL or cold host`() {
+        val health = healthWith(TestClock())
+        val reset = SocketException("Connection reset by peer")
+        val upstream = object : DataSource {
+            override fun addTransferListener(transferListener: TransferListener) = Unit
+            override fun open(dataSpec: DataSpec): Long = throw reset
+            override fun read(buffer: ByteArray, offset: Int, length: Int): Int = 0
+            override fun getUri(): Uri? = Uri.parse("https://$DEAD/videoplayback")
+            override fun close() = Unit
+        }
+        repeat(4) {
+            val wrapped = AudioCdnHostHealthDataSource(upstream, health)
+            try {
+                val spec = DataSpec.Builder()
+                    .setUri(Uri.parse("https://$DEAD/videoplayback"))
+                    .setKey("capsule:audio:song:251:12345")
+                    .build()
+                val error = runCatching { wrapped.open(spec) }.exceptionOrNull()
+                assertSame("Socket failure must stay a transport failure, not trigger re-resolution", reset, error)
+            } finally {
+                wrapped.close()
+            }
+        }
+        assertFalse("reset sockets do not blacklist a working server group", health.shouldSkipHost(DEAD))
+        assertFalse(health.shouldSkipHost(DEAD))
+    }
+
+    @Test
+    fun `socket reset classification does not swallow timeouts or unrelated errors`() {
+        assertTrue(SocketException("recvfrom failed: ECONNRESET").isTransientAudioCdnSocketReset())
+        assertTrue(IOException("transport", SocketException("Connection reset")).isTransientAudioCdnSocketReset())
+        assertFalse(SocketTimeoutException("read timed out").isTransientAudioCdnSocketReset())
+        assertFalse(IOException("HTTP 403").isTransientAudioCdnSocketReset())
+        assertFalse(SocketException("Network unreachable").isTransientAudioCdnSocketReset())
+    }
     @Test
     fun `one no-byte open timeout shortens only the same CDN group temporarily`() {
         val clock = TestClock()
