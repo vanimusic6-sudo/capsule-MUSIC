@@ -253,7 +253,7 @@ private fun CapsuleRollingSelection(
     val target = if (videoSelected == videoOnRight) 1f else 0f
     val position = animateFloatAsState(
         targetValue = target,
-        animationSpec = spring(dampingRatio = 0.82f, stiffness = 230f, visibilityThreshold = 0.001f),
+        animationSpec = spring(dampingRatio = 0.73f, stiffness = 240f, visibilityThreshold = 0.001f),
         label = "capsuleModeRoll",
     )
     BoxWithConstraints(modifier) {
@@ -262,7 +262,8 @@ private fun CapsuleRollingSelection(
                 .width(maxWidth / 2)
                 .fillMaxHeight()
                 .graphicsLayer {
-                    translationX = position.value.coerceIn(0f, 1f) * size.width
+                     // Permit a tiny physical overshoot; hard-clamping to 0..1 removed the spring bounce.
+                    translationX = position.value.coerceIn(-0.045f, 1.045f) * size.width
                     rotationZ = (sin(position.value.toDouble() * PI) * 0.8).toFloat()
                 }
                 .clip(shape)
