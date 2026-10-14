@@ -507,6 +507,15 @@ internal fun CapsuleImmersiveContent(
         // background colours. It remains intact during fade-out even if Media3 has already
         // switched its metadata to the NEXT song.
         val visualKey = "${mediaMetadata.id}|${mediaMetadata.thumbnailUrl}|${artworkAspect}"
+        // A decoded bitmap that has been displayed through VIDEO must remain
+        // opaque on VIDEO -> AUDIO. The track-switch gradient fade is independent
+        // of the cover/video morph and can be interrupted by sheet visibility.
+        // Never multiply the two independently animated opacities: that was
+        // revealing the video underneath as a broken/translucent album photo.
+        var keepVideoReturnArtworkOpaque by remember(visualKey) { mutableStateOf(false) }
+        LaunchedEffect(visualKey, isVideo, needsVideoSurface) {
+            if (isVideo || needsVideoSurface) keepVideoReturnArtworkOpaque = true
+        }
         var shownGradient by remember { mutableStateOf<ImmersiveGradientFrame?>(null) }
         var hasShownGradient by remember { mutableStateOf(false) }
         val gradientAlpha = remember { Animatable(0f) }
@@ -596,7 +605,10 @@ internal fun CapsuleImmersiveContent(
 
         // Preload the NEXT image invisibly. Coil must finish decoding this exact URL
         // before the frame is allowed to replace the old one. It is never rendered early.
-        if (artworkTone.ready && artworkTone.displayUrl != null) {
+        // Once this exact artwork has decoded, dispose the invisible Coil
+        // preloader. Keeping it alive while VIDEO runs doubled retained image
+        // nodes and graphics layers for no visual benefit.
+        if (!coverImageReady && artworkTone.ready && artworkTone.displayUrl != null) {
             AsyncImage(
                 model = rememberImmersiveArtworkRequest(artworkTone.displayUrl),
                 contentDescription = null,
@@ -614,16 +626,10 @@ internal fun CapsuleImmersiveContent(
         // new cover+scrim+page enter together. There is NO separately animated colour
         // layer that can lag behind the image.
         Box(modifier = Modifier.fillMaxSize().background(pageBackground))
-        if (frame != null) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    // Alpha is a layer update; it must not recompose the artwork or controls.
-                    .graphicsLayer { alpha = gradientAlpha.value },
-            ) {
-                Box(modifier = Modifier.fillMaxSize().background(pageBackground))
-            }
-        }
+        // The page itself already paints this SAME gradient. Previously it was
+        // painted a second time in a full-screen alpha layer on every transition
+        // frame. That doubled overdraw, required an extra GPU layer and did not
+        // change the resulting pixels because both gradients were identical.
 
         CapsuleVideoArtworkTransition(
             presentingVideo = isVideo,
@@ -645,7 +651,14 @@ internal fun CapsuleImmersiveContent(
             video = { active -> CapsuleVideoSurface(playerConnection.service, Modifier.fillMaxSize(), active = active) },
         ) {
             if (frame != null) {
-                Box(Modifier.fillMaxSize().graphicsLayer { alpha = gradientAlpha.value }) {
+                Box(Modifier.fillMaxSize().graphicsLayer {
+                    // Keep the current song's artwork fully opaque once VIDEO
+                    // has owned it. Only the *shared* container crossfade can
+                    // reveal it; the unrelated song gradient cannot punch holes
+                    // through it while VIDEO is closing.
+                    alpha = if (keepVideoReturnArtworkOpaque && frame.key == visualKey)
+                        1f else gradientAlpha.value
+                }) {
                     AsyncImage(
                         model = rememberImmersiveArtworkRequest(frame.imageUrl),
                         contentDescription = null,
