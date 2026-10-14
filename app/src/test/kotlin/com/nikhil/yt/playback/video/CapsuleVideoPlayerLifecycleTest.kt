@@ -29,7 +29,7 @@ class CapsuleVideoPlayerLifecycleTest {
         try {
             val video = CapsuleVideoCompanion(context, DefaultMediaSourceFactory(context), music, backgroundScope,
                 onSoundOwned = {}, onReady = {}, onFailure = { _, error -> throw error },
-                onFrameUnavailable = {}, onBufferingChanged = { _, _ -> })
+                onEnded = {}, onFrameUnavailable = {}, onBufferingChanged = { _, _ -> })
             try {
                 assertEquals(Player.STATE_IDLE, video.player.playbackState)
                 video.stop()
