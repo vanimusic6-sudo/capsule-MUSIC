@@ -84,6 +84,40 @@ class CapsuleVideoMorphPixelsTest {
                 (AndroidColor.red(pixel) > 0 || AndroidColor.blue(pixel) > 0))
     }
 
+    @Test fun CosmoAndLightNeverDoubleExposeAlbumAndVideoAtCentre() {
+        val presenting = mutableStateOf(true)
+        compose.setContent {
+            CapsuleVideoArtworkTransition(
+                presentingVideo = presenting.value,
+                needsSurface = true,
+                modifier = Modifier.size(320.dp, 280.dp).testTag("media-slot"),
+                fillArtworkSlot = true,
+                motion = CapsuleVideoArtworkMotion.SCULPTED,
+                video = { Box(Modifier.fillMaxSize().background(Color.Red)) },
+                artwork = { Box(Modifier.fillMaxSize().background(Color.Blue)) },
+            )
+        }
+        assertEquals(AndroidColor.RED, centre("opaque-start-video"))
+        compose.mainClock.autoAdvance = false
+        compose.runOnIdle { presenting.value = false }
+        compose.mainClock.advanceTimeByFrame()
+        repeat(16) {
+            compose.mainClock.advanceTimeBy(16)
+            val pixel = centre("opaque-cosmo-close-$it")
+            val isVideo = AndroidColor.red(pixel) >= 240 &&
+                AndroidColor.blue(pixel) <= 15
+            val isArtwork = AndroidColor.blue(pixel) >= 240 &&
+                AndroidColor.red(pixel) <= 15
+            assertTrue(
+                "Cosmo/Light VIDEO close must never blend two pictures into ghosted photo",
+                isVideo || isArtwork,
+            )
+        }
+        compose.mainClock.autoAdvance = true
+        compose.waitForIdle()
+        assertEquals(AndroidColor.BLUE, centre("opaque-finish-audio"))
+    }
+
     @Test fun regularMorphHasNoHardHorizontalVideoGuttersMidTransition() {
         val presenting = mutableStateOf(false)
         compose.setContent {
