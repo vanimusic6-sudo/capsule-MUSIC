@@ -132,10 +132,16 @@ internal fun CapsuleVideoArtworkTransition(
     val photoOpacity = remember(transitionKey) { Animatable(if (presentingVideo) 0f else 1f) }
     LaunchedEffect(photoOpacity, target, body) {
         if (target == 0f) {
-            photoOpacity.animateTo(1f, animationSpec = tween(100, easing = FastOutSlowInEasing))
+            // Skip initial AUDIO no-op: even an unchanged Animatable target
+            // would otherwise schedule ~100ms of empty frame callbacks.
+            if (photoOpacity.value < 0.999f) {
+                photoOpacity.animateTo(1f, animationSpec = tween(100, easing = FastOutSlowInEasing))
+            }
         } else {
-            snapshotFlow { body.value }.first { it >= 0.53f }
-            photoOpacity.animateTo(0f, animationSpec = tween(180, easing = FastOutSlowInEasing))
+            if (photoOpacity.value > 0.001f) {
+                snapshotFlow { body.value }.first { it >= 0.53f }
+                photoOpacity.animateTo(0f, animationSpec = tween(180, easing = FastOutSlowInEasing))
+            }
         }
     }
     // Render lease must not flicker during a negative spring overshoot.
