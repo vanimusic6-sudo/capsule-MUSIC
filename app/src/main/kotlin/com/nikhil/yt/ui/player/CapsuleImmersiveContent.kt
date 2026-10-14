@@ -608,7 +608,7 @@ internal fun CapsuleImmersiveContent(
         // Once this exact artwork has decoded, dispose the invisible Coil
         // preloader. Keeping it alive while VIDEO runs doubled retained image
         // nodes and graphics layers for no visual benefit.
-        if (!coverImageReady && artworkTone.ready && artworkTone.displayUrl != null) {
+        if (capsuleImmersiveNeedsArtworkPreload(coverImageReady, artworkTone.ready, artworkTone.displayUrl)) {
             AsyncImage(
                 model = rememberImmersiveArtworkRequest(artworkTone.displayUrl),
                 contentDescription = null,
@@ -656,8 +656,11 @@ internal fun CapsuleImmersiveContent(
                     // has owned it. Only the *shared* container crossfade can
                     // reveal it; the unrelated song gradient cannot punch holes
                     // through it while VIDEO is closing.
-                    alpha = if (keepVideoReturnArtworkOpaque && frame.key == visualKey)
-                        1f else gradientAlpha.value
+                    alpha = capsuleImmersiveArtworkOpacity(
+                        frameMatchesTrack = frame.key == visualKey,
+                        hasPresentedVideo = keepVideoReturnArtworkOpaque,
+                        trackFadeAlpha = gradientAlpha.value,
+                    )
                 }) {
                     AsyncImage(
                         model = rememberImmersiveArtworkRequest(frame.imageUrl),
@@ -1214,3 +1217,22 @@ private fun rememberImmersiveArtworkRequest(url: String?): ImageRequest {
             .build()
     }
 }
+
+
+/** Retire the invisible decoder after preload: no permanently transparent Image node. */
+internal fun capsuleImmersiveNeedsArtworkPreload(
+    imageReady: Boolean,
+    toneReady: Boolean,
+    url: String?,
+): Boolean = !imageReady && toneReady && url != null
+
+/**
+ * Preserve an already shown album photo while VIDEO is morphing back.
+ * A separate track-change dissolve must never multiply its opacity to zero.
+ * Frames from a DIFFERENT song still obey the outgoing-song fade.
+ */
+internal fun capsuleImmersiveArtworkOpacity(
+    frameMatchesTrack: Boolean,
+    hasPresentedVideo: Boolean,
+    trackFadeAlpha: Float,
+): Float = if (frameMatchesTrack && hasPresentedVideo) 1f else trackFadeAlpha.coerceIn(0f, 1f)
