@@ -1,7 +1,6 @@
 [versions]
 androidGradlePlugin = "9.3.1"
 annotation = "1.9.1"
-json = "20250517"
 kotlin = "2.4.10"
 compose = "1.12.1"
 lifecycle = "2.10.0"
@@ -102,7 +101,6 @@ ktor-server-content-negotiation = { module = "io.ktor:ktor-server-content-negoti
 
 jsoup = { module = "org.jsoup:jsoup", version.ref = "jsoup" }
 re2j = { module = "com.google.re2j:re2j", version.ref = "re2j" }
-json = { module = "org.json:json", version.ref = "json" }
 brotli = { module = "org.brotli:dec", version.ref = "brotli" }
 rhino = { module = "org.mozilla:rhino", version.ref = "rhino" }
 desugaring = { module = "com.android.tools:desugar_jdk_libs", version.ref = "desugaring" }

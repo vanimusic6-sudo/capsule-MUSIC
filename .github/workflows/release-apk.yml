@@ -77,7 +77,7 @@ jobs:
 
       - name: Build Universal Release APK
         run: |
-          gradle :app:assembleUniversalRelease \
+          gradle :app:verifyAndroidJsonRuntime :app:assembleUniversalRelease \
             --stacktrace \
             --no-daemon
 
@@ -103,6 +103,18 @@ jobs:
           echo "SHA-256:"
           sha256sum "$APK"
 
+      - name: Verify platform JSON in optimized release
+        shell: bash
+        run: |
+          set -euo pipefail
+          MAPPING=app/build/outputs/mapping/universalRelease/mapping.txt
+          test -s "$MAPPING"
+          if rg -n '^org\.json\.[^ ]+ -> ' "$MAPPING"; then
+            echo 'Desktop JSON classes entered the optimized Android APK'
+            exit 1
+          fi
+          echo 'Optimized release uses platform JSON classes'
+
       - name: Verify APK signature
         shell: bash
         run: |
@@ -126,6 +138,14 @@ jobs:
         with:
           name: Capsule-MUSIC-Universal-Release
           path: ${{ steps.apk.outputs.path }}
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload release mapping
+        uses: actions/upload-artifact@v4
+        with:
+          name: Capsule-MUSIC-Release-Mapping
+          path: app/build/outputs/mapping/universalRelease/mapping.txt
           if-no-files-found: error
           retention-days: 30
 

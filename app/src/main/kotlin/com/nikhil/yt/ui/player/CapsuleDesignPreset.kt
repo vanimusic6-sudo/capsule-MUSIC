@@ -30,10 +30,9 @@ internal data class CapsuleDesignPreset(
 /**
  * Dependency-free, versioned interchange format for community-created Capsule screens.
  *
- * Do not use org.json here. The app also carries the standalone org.json artifact, while Android
- * ships its own classes with the same package name. R8 can optimise against one hierarchy and then
- * Android verifies against the other one, which causes a VerifyError before the share sheet even
- * opens on some Android 16 builds.
+ * Keep this interchange independent of the Android JSON implementation. Desktop org.json is
+ * excluded from the APK because its exception hierarchy differs from Android's and can make
+ * R8 produce code rejected by ART. Layout sharing also stays usable in plain JVM tooling.
  *
  * Each value is URL-escaped, so delimiters inside saved layout strings remain safe. On import every
  * field still goes through the editor's existing decoders/encoders before it reaches DataStore.

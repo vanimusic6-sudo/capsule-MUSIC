@@ -46,6 +46,9 @@ internal class CapsulePipePipeDownloader(
                 override fun onResponse(call: Call, response: Response) {
                     try { response.use { callback.onSuccess(convert(it)) } }
                     catch (e: Exception) { callback.onError(e) }
+                    // Parser errors occur on OkHttp's thread, outside the
+                    // synchronous route guard. Complete the request as failed.
+                    catch (e: LinkageError) { callback.onError(IOException("VIDEO fallback parser incompatible", e)) }
                     finally { completed(); handle.setFinished() }
                 }
             })

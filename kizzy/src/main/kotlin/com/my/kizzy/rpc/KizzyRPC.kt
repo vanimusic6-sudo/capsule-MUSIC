@@ -21,7 +21,10 @@ import io.ktor.client.HttpClient
 import io.ktor.client.request.get
 import io.ktor.client.request.header
 import io.ktor.client.statement.bodyAsText
-import org.json.JSONObject
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.contentOrNull
 import java.util.logging.Logger
 
 
@@ -273,11 +276,16 @@ open class KizzyRPC(private val token: String, private val injectedLogger: Kizzy
             val response = client.get("https://discord.com/api/v9/users/@me") {
                 header("Authorization", token)
             }.bodyAsText()
-            val json = JSONObject(response)
-            val username = json.getString("username")
-            val name = json.optString("global_name", username)
             client.close()
-            UserInfo(username, name)
+            parseDiscordUserInfo(response)
         }
     }
+}
+
+internal fun parseDiscordUserInfo(response: String): UserInfo {
+    val json = Json.parseToJsonElement(response).jsonObject
+    val username = json["username"]?.jsonPrimitive?.contentOrNull
+        ?: error("Discord user response has no username")
+    val name = json["global_name"]?.jsonPrimitive?.contentOrNull ?: username
+    return UserInfo(username, name)
 }

@@ -9,6 +9,23 @@ plugins {
     alias(libs.plugins.compose.compiler)
 }
 
+// Android supplies org.json. JSON-java has a different JSONException hierarchy;
+// packaging it lets R8 produce code that ART rejects against the boot class.
+configurations.configureEach {
+    exclude(group = "org.json", module = "json")
+}
+
+tasks.register("verifyAndroidJsonRuntime") {
+    doLast {
+        val conflicts = configurations.getByName("universalReleaseRuntimeClasspath")
+            .resolvedConfiguration.resolvedArtifacts.filter {
+                it.moduleVersion.id.group == "org.json" && it.name == "json"
+            }
+        check(conflicts.isEmpty()) { "Desktop org.json must not enter the Android runtime: $conflicts" }
+        logger.lifecycle("Android JSON runtime verified: platform org.json only")
+    }
+}
+
 /**
  * The commit this APK was built from, or "unknown" outside a git checkout.
  *

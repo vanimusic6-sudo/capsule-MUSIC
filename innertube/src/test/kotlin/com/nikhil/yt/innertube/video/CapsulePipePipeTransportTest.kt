@@ -12,8 +12,32 @@ import java.util.UUID
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicReference
+import okhttp3.Protocol
+import okhttp3.ResponseBody.Companion.toResponseBody
 
 class CapsulePipePipeTransportTest {
+    @Test fun asynchronousParserVerifyErrorCompletesTheRouteAsAnError() {
+        val completed = CountDownLatch(1)
+        val failure = AtomicReference<Exception>()
+        val client = OkHttpClient.Builder().addInterceptor { chain ->
+            okhttp3.Response.Builder().request(chain.request()).protocol(Protocol.HTTP_1_1)
+                .code(200).message("OK").body("{}".toResponseBody()).build()
+        }.build()
+        try {
+            CapsulePipePipeDownloader(client).executeAsync(
+                Request.newBuilder().get("https://example.test/video").build(),
+                object : Downloader.AsyncCallback {
+                    override fun onSuccess(response: Response) { throw VerifyError("incompatible JSON hierarchy") }
+                    override fun onError(e: Exception) { failure.set(e); completed.countDown() }
+                },
+            )
+            assertTrue("the route must receive an error instead of losing its worker", completed.await(3, TimeUnit.SECONDS))
+            assertTrue(failure.get().cause is VerifyError)
+        } finally {
+            client.connectionPool.evictAll(); client.dispatcher.executorService.shutdownNow()
+        }
+    }
     @Test fun anonymousHeadersStripIdentityButKeepUpstreamClientAndServiceCookies() {
         val safe = anonymousVideoHeaders(mapOf(
             "Authorization" to listOf("account"), "X-Goog-AuthUser" to listOf("0"),

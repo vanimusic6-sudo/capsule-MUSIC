@@ -51,7 +51,7 @@ jobs:
 
       - name: Run Android lint
         run: |
-          gradle :app:lintUniversalDebug --stacktrace --no-daemon
+          gradle :app:verifyAndroidJsonRuntime :app:lintUniversalDebug --stacktrace --no-daemon
 
       - name: Upload Android lint reports
         if: always()
@@ -109,6 +109,7 @@ jobs:
 
       - name: Test search summary metadata
         run: |
+          gradle :kizzy:test --stacktrace --no-daemon
           gradle :innertube:test \
             --tests 'com.nikhil.yt.innertube.pages.SearchSummaryMetadataTest' \
             --tests 'com.nikhil.yt.innertube.pages.PageHelperArtistCreditsTest' \
