@@ -82,6 +82,28 @@ class AudioChunkedDataSourceTest {
             .build()
 
     @Test
+    fun slowCdnBodyReducesOnlyUpcomingRangeWithoutReResolvingUrl() {
+        val policy = AudioCdnChunkRatePolicy(1024L * 1024)
+        // Fast first portion is typical and does not justify more requests.
+        assertEquals(1024L * 1024, policy.observe(1024L * 1024, 3_100L))
+        // Captured sn-f5f7kn7e delivered 1 MiB in 43.7-57.1 seconds.
+        assertEquals(512L * 1024, policy.observe(1024L * 1024, 43_728L))
+        assertEquals(512L * 1024, policy.observe(512L * 1024, 28_000L))
+        // One fast bounded response restores the existing extractor default.
+        assertEquals(1024L * 1024, policy.observe(512L * 1024, 1_700L))
+    }
+
+    @Test
+    fun adaptiveRangesIgnoreSmallStagedSamplesAndHeaderDelays() {
+        val policy = AudioCdnChunkRatePolicy(1024L * 1024)
+        assertEquals(1024L * 1024, policy.observe(128L * 1024, 50_000L))
+        assertEquals(1024L * 1024, policy.observe(1024L * 1024, 2_000L))
+        // Do not override smaller extractor-chosen sizes with 512 KiB.
+        val small = AudioCdnChunkRatePolicy(256L * 1024)
+        assertEquals(256L * 1024, small.observe(1024L * 1024, 60_000L))
+    }
+
+    @Test
     fun aLongStreamArrivesWholeAndInOrder() {
         val bytes = content(1000)
         val upstream = FakeUpstream(bytes)
