@@ -434,7 +434,7 @@ fun BottomSheetPlayer(
                     },
                     onSeekFinished = {
                         sliderPosition?.let {
-                            playerConnection.player.seekTo(it)
+                            playerConnection.service.seekToCapsuleTimeline(it)
                             position = it
                         }
                         sliderPosition = null
