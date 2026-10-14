@@ -127,54 +127,85 @@ internal fun CapsuleVideoArtworkTransition(
         val videoRadius = with(density) { videoCornerRadius.toPx() }
         val shadowPx = with(density) { 6.dp.toPx() }
 
-        // The same clamped progress controls clipping, corner radius, alpha
-        // and vertical offset: no separate catch-up tween / sudden seam.
-        fun widthAt(body: Float, lead: Float): Float =
-            if (immersive) {
-                val stretch = immersiveJellyStretch(body, lead)
-                transitionDimension(coverWidth, videoWidth, smoothVideoStep(body)).toFloat() * (1f + stretch)
-            } else {
-                transitionDimension(coverWidth, videoWidth, stagedVideoWidth(body)).toFloat()
-            }
-        fun heightAt(body: Float, lead: Float): Float =
-            if (immersive) {
-                val stretch = immersiveJellyStretch(body, lead)
-                transitionDimension(coverHeight, videoHeight, smoothVideoStep(body)).toFloat() * (1f - stretch * 0.55f)
-            } else {
-                transitionDimension(coverHeight, videoHeight, stagedVideoHeight(body)).toFloat()
-            }
-        fun contentHandover(body: Float): Float {
-            // The real first frame must already exist (presentingVideo), so
-            // keep the cover fully opaque through the initial frame reshape.
-            val start = if (immersive) 0.24f else 0.36f
-            val length = if (immersive) 0.68f else 0.52f
-            return smoothVideoStep((body - start) / length)
+        // Geometry is one shared bounds transformation. Sequential vertical
+        // then horizontal resize in the old implementation felt like two
+        // separate snapping animations, not one attached material surface.
+        // The renderer is NEVER resized; only this contour follows the spring.
+        fun widthAt(p: Float, leading: Float): Float {
+            val base = coverWidth.toFloat() +
+                (videoWidth - coverWidth).toFloat() * smoothVideoStep(p)
+            return if (immersive) base * (1f + immersiveJellyStretch(p, leading)) else base
+        }
+        fun heightAt(p: Float, leading: Float): Float {
+            val base = coverHeight.toFloat() +
+                (videoHeight - coverHeight).toFloat() * smoothVideoStep(p)
+            return if (immersive) base * (1f - immersiveJellyStretch(p, leading) * 0.55f) else base
+        }
+        fun contentHandover(p: Float): Float {
+            // One optical handover, after VIDEO has its first frame. Immersion
+            // remains visible long enough to carry the user's cover identity.
+            val start = if (immersive) 0.19f else 0.29f
+            val length = if (immersive) 0.71f else 0.60f
+            return smoothVideoStep((p - start) / length)
         }
 
         Box(
             Modifier
                 .requiredSize(frameWidthDp, frameHeightDp)
                 .graphicsLayer {
-                    val p = reveal.value.coerceIn(0f, 1f)
-                    val w = widthAt(p, elastic.value)
-                    val h = heightAt(p, elastic.value)
+                    val p = body.value
+                    val leading = lead.value
+                    val w = widthAt(p, leading)
+                    val h = heightAt(p, leading)
+                    val adhesion = immersiveEdgeTension(p, leading)
                     val left = (size.width - w) / 2f
-                    val top = (size.height - h) / 2f
-                    val radius = artworkRadius + (videoRadius - artworkRadius) * smoothVideoStep(p)
-                    shape = GenericShape { _, _ ->
-                        addRoundRect(RoundRect(left, top, left + w, top + h,
-                            CornerRadius(radius.coerceAtLeast(0f))))
+                    val top = (size.height - h) / 2f +
+                        if (immersive) adhesion * with(density) { 9.dp.toPx() } else 0f
+                    val radius = (artworkRadius + (videoRadius - artworkRadius) *
+                        smoothVideoStep(p)).coerceIn(0f, min(w, h) / 2f)
+                    if (immersive) {
+                        // Unlike uniform scale, the top and bottom edge lag the
+                        // faster spring. Subtle cubic tension creates a real
+                        // soft-surface silhouette, including reverse recoil.
+                        val pullPx = with(density) { 6.dp.toPx() } * adhesion
+                        shape = GenericShape { _, _ ->
+                            val right = left + w
+                            val bottom = top + h
+                            val inner = (w - radius * 2f).coerceAtLeast(0f)
+                            moveTo(left + radius, top)
+                            cubicTo(
+                                left + radius + inner * 0.30f, top - pullPx,
+                                left + radius + inner * 0.70f, top - pullPx,
+                                right - radius, top,
+                            )
+                            quadraticBezierTo(right, top, right, top + radius)
+                            lineTo(right, bottom - radius)
+                            quadraticBezierTo(right, bottom, right - radius, bottom)
+                            cubicTo(
+                                right - radius - inner * 0.30f, bottom - pullPx * 0.65f,
+                                right - radius - inner * 0.70f, bottom - pullPx * 0.65f,
+                                left + radius, bottom,
+                            )
+                            quadraticBezierTo(left, bottom, left, bottom - radius)
+                            lineTo(left, top + radius)
+                            quadraticBezierTo(left, top, left + radius, top)
+                            close()
+                        }
+                    } else {
+                        shape = GenericShape { _, _ ->
+                            addRoundRect(RoundRect(left, top, left + w, top + h, CornerRadius(radius)))
+                        }
                     }
                     clip = true
                     shadowElevation = if (immersive) 0f else shadowPx * smoothVideoStep(p)
-                    translationY = coverOffset * (1f - p)
+                    translationY = coverOffset * (1f - p.coerceIn(0f, 1f))
                 }
                 .drawWithContent {
                     drawContent()
                     if (outline.alpha > 0f) {
-                        val p = reveal.value.coerceIn(0f, 1f)
-                        val w = widthAt(p, elastic.value)
-                        val h = heightAt(p, elastic.value)
+                        val p = body.value
+                        val w = widthAt(p, lead.value)
+                        val h = heightAt(p, lead.value)
                         val radius = artworkRadius + (videoRadius - artworkRadius) * smoothVideoStep(p)
                         drawRoundRect(
                             color = outline,
@@ -204,15 +235,14 @@ internal fun CapsuleVideoArtworkTransition(
                 Modifier
                     .requiredSize(coverWidthDp, coverHeightDp)
                     .graphicsLayer {
-                        val p = reveal.value.coerceIn(0f, 1f)
+                        val p = body.value
                         alpha = 1f - contentHandover(p)
                         if (immersive) {
-                            // Tiny counter-stretch of the cover tracks the outer
-                            // clip: a soft liquid pull, never a distorted video
-                            // decoder or an AndroidView resized per frame.
-                            val jelly = immersiveJellyStretch(p, elastic.value)
-                            scaleX = 1f + jelly * 0.36f
-                            scaleY = 1f - jelly * 0.20f
+                            // Artwork adheres to the moving contour, but the
+                            // underlying TextureView stays correctly proportioned.
+                            val stretch = immersiveJellyStretch(p, lead.value)
+                            scaleX = 1f + stretch * 0.56f
+                            scaleY = 1f - stretch * 0.30f
                         }
                     }
                     .background(artworkBackground),
@@ -235,12 +265,23 @@ internal fun stagedVideoHeight(progress: Float): Float = smoothVideoStep(progres
 internal fun stagedVideoWidth(progress: Float): Float = smoothVideoStep((progress - 0.30f) / 0.70f)
 
 /**
- * A small signed elastic lead drives a 0..2% horizontal pull and compensating
- * vertical squeeze. No distortion remains at either endpoint, even after an
- * in-flight reversal. Only the GPU clip and artwork layers stretch; decoder
- * resolution/aspect ratio and layout never change.
+ * Two springs create a perceptible, BOUNDED trailing deformation. Sampling
+ * only body progress and clipping it to 0..1 in the previous version erased
+ * the settling motion altogether: the two springs were nearly indistinguishable.
+ *
+ * Inertia is strongest in the middle, but a tiny endpoint rebound remains
+ * while the body overshoots 0/1. Everything is EXACT at rest.
  */
 internal fun immersiveJellyStretch(body: Float, lead: Float): Float {
-    val middle = 4f * body.coerceIn(0f, 1f) * (1f - body.coerceIn(0f, 1f))
-    return ((lead - body) * 0.20f * middle).coerceIn(-0.019f, 0.019f)
+    val p = body.coerceIn(0f, 1f)
+    val middle = sin((PI * p).toFloat()).coerceAtLeast(0f)
+    val lag = (lead - body).coerceIn(-0.55f, 0.55f)
+    val recoil = (body - p) * 0.36f
+    return (lag * 0.21f * middle + recoil).coerceIn(-0.042f, 0.042f)
+}
+
+internal fun immersiveEdgeTension(body: Float, lead: Float): Float {
+    val p = body.coerceIn(0f, 1f)
+    val middle = sin((PI * p).toFloat()).coerceAtLeast(0f)
+    return ((lead - body) * middle).coerceIn(-0.42f, 0.42f)
 }
