@@ -171,6 +171,13 @@ internal class AudioNetworkDiagnosticDataSource(
     private var bytesRead = 0L
     private var slowReadCount = 0
     private var worstReadMs = 0L
+    // Unlike cdn-close elapsedMs these distinguish socket waits from deliberate
+    // loader pauses when Media3 has buffered enough data.
+    private var activeReadMs = 0L
+    private var idleBetweenReadsMs = 0L
+    private var maxSingleReadMs = 0L
+    private var previousReadFinishedNs = 0L
+    private var readCallCount = 0
     private var mediaKey: String? = null
     private var host: String? = null
     private var linkRef: String? = null
@@ -217,6 +224,11 @@ internal class AudioNetworkDiagnosticDataSource(
         bytesRead = 0L
         slowReadCount = 0
         worstReadMs = 0L
+        activeReadMs = 0L
+        idleBetweenReadsMs = 0L
+        maxSingleReadMs = 0L
+        previousReadFinishedNs = 0L
+        readCallCount = 0
         mediaKey = dataSpec.key?.take(64)
         host = dataSpec.uri.host?.take(96)
         linkRef = AudioCdnLinkIdentity.ref(dataSpec.uri.toString())
@@ -320,10 +332,17 @@ internal class AudioNetworkDiagnosticDataSource(
         }
 
         val readStartedAtNs = System.nanoTime()
+        if (previousReadFinishedNs != 0L && readStartedAtNs > previousReadFinishedNs) {
+            idleBetweenReadsMs += elapsedMs(previousReadFinishedNs, readStartedAtNs)
+        }
         return try {
             upstream.read(buffer, offset, length).also { count ->
                 val now = System.nanoTime()
                 val readMs = elapsedMs(readStartedAtNs, now)
+                activeReadMs += readMs
+                maxSingleReadMs = maxOf(maxSingleReadMs, readMs)
+                previousReadFinishedNs = now
+                readCallCount++
 
                 if (count > 0) {
                     markFirstAudioBytes(count)
@@ -442,7 +461,8 @@ internal class AudioNetworkDiagnosticDataSource(
                     if (elapsed > 0L) bytesRead * 1000L / elapsed else 0L
                 Timber.tag(TAG).d(
                     "cdn-close id=%s host=%s bytes=%d firstByte=%s elapsedMs=%d " +
-                        "deliveredToLoaderBps=%d slowReads=%d worstReadMs=%d",
+                        "deliveredToLoaderBps=%d slowReads=%d worstReadMs=%d " +
+                        "activeReadMs=%d idleBetweenReadsMs=%d maxSingleReadMs=%d readCalls=%d",
                     mediaKey ?: "none",
                     host ?: "unknown",
                     bytesRead,
@@ -451,6 +471,10 @@ internal class AudioNetworkDiagnosticDataSource(
                     deliveredToLoaderBps,
                     slowReadCount,
                     worstReadMs,
+                    activeReadMs,
+                    idleBetweenReadsMs,
+                    maxSingleReadMs,
+                    readCallCount,
                 )
             }
             diagnosticsEnabled = false
@@ -461,6 +485,11 @@ internal class AudioNetworkDiagnosticDataSource(
             bytesRead = 0L
             slowReadCount = 0
             worstReadMs = 0L
+            activeReadMs = 0L
+            idleBetweenReadsMs = 0L
+            maxSingleReadMs = 0L
+            previousReadFinishedNs = 0L
+            readCallCount = 0
             linkRef = null
             openedDataSpec = null
             firstAudioBytesSeen = false
