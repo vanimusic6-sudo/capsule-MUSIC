@@ -176,7 +176,6 @@ internal fun CapsuleAudioVideoToggle(
                     }
                 }
             }
-            }
         }
     } else {
         BoxWithConstraints(
