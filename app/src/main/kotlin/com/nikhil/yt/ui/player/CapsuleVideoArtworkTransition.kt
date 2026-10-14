@@ -22,6 +22,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.RoundRect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
 import androidx.compose.foundation.shape.GenericShape
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
@@ -88,15 +89,19 @@ internal fun CapsuleVideoArtworkTransition(
             )
         }
     }
-    val lead = if (immersive) remember(transitionKey) { Animatable(target) } else body
-    if (immersive) {
-        LaunchedEffect(lead, target) {
-            if (abs(lead.value - target) > 0.0001f || abs(lead.velocity) > 0.0001f) {
-                lead.animateTo(
-                    targetValue = target,
-                    animationSpec = spring(dampingRatio = 0.63f, stiffness = 270f, visibilityThreshold = 0.001f),
-                )
-            }
+    // Both player families now have a leading-edge spring. In Cosmo/Light it
+    // is tighter and almost critically damped: enough for attached-edge drag,
+    // not the bigger liquid wobble of Immersion.
+    val lead = remember(transitionKey) { Animatable(target) }
+    LaunchedEffect(lead, target, immersive) {
+        if (abs(lead.value - target) > 0.0001f || abs(lead.velocity) > 0.0001f) {
+            lead.animateTo(
+                targetValue = target,
+                animationSpec = if (immersive)
+                    spring(dampingRatio = 0.63f, stiffness = 270f, visibilityThreshold = 0.001f)
+                else
+                    spring(dampingRatio = 0.80f, stiffness = 345f, visibilityThreshold = 0.001f),
+            )
         }
     }
     // Render lease must not flicker during a negative spring overshoot.
@@ -113,14 +118,20 @@ internal fun CapsuleVideoArtworkTransition(
         val slotHeight = constraints.maxHeight.coerceAtLeast(1)
         val coverWidth = if (fillArtworkSlot) slotWidth else min(slotWidth, slotHeight)
         val coverHeight = if (fillArtworkSlot) slotHeight else coverWidth
-        val maximumWidth = (windowWidth - with(density) { 32.dp.roundToPx() }).coerceAtLeast(slotWidth)
+        // The old coerceAtLeast(slotWidth) silently disabled the device-width
+        // cap in Immersion, whose slot is full bleed. Its VIDEO window became
+        // almost screen-wide while Light/Cosmo were inset. All designs now
+        // share an explicit screen-relative target. Keep the user-sized Light
+        // artwork slot as an upper bound when it is unusually small.
+        val sharedWindowWidth = (windowWidth - with(density) { 32.dp.roundToPx() }).coerceAtLeast(1)
         val availableVideoWidth = ((slotWidth * videoWidthScale).roundToInt() -
-            with(density) { (videoSidePadding.toPx() * 2).roundToInt() }).coerceIn(1, maximumWidth)
-        val videoWidth = min(availableVideoWidth, (slotHeight * 16f / 9f).roundToInt().coerceAtLeast(1))
+            with(density) { (videoSidePadding.toPx() * 2).roundToInt() }).coerceAtLeast(1)
+        val videoWidth = minOf(availableVideoWidth, sharedWindowWidth,
+            (slotHeight * 16f / 9f).roundToInt().coerceAtLeast(1))
         val videoHeight = (videoWidth * 9f / 16f).roundToInt().coerceIn(1, slotHeight)
         // A small, fixed overscan is reserved around Immersion so the jelly
         // silhouette cannot be cropped by its own graphics layer at the peak.
-        val overscan = if (immersive) with(density) { 8.dp.roundToPx() } else 0
+        val overscan = with(density) { (if (immersive) 8.dp else 5.dp).roundToPx() }
         val frameWidth = max(coverWidth, videoWidth) + overscan * 2
         val frameHeight = max(coverHeight, videoHeight) + overscan * 2
         val frameWidthDp = with(density) { frameWidth.toDp() }
@@ -140,11 +151,15 @@ internal fun CapsuleVideoArtworkTransition(
         // The renderer is NEVER resized; only this contour follows the spring.
         fun widthAt(p: Float, leading: Float): Float {
             val base = sharedVideoMorphDimension(coverWidth, videoWidth, p)
-            return if (immersive) base * (1f + immersiveJellyStretch(p, leading)) else base
+            val sticky = if (immersive) immersiveJellyStretch(p, leading)
+                else sculptedStickyStretch(p, leading)
+            return base * (1f + sticky)
         }
         fun heightAt(p: Float, leading: Float): Float {
             val base = sharedVideoMorphDimension(coverHeight, videoHeight, p)
-            return if (immersive) base * (1f - immersiveJellyStretch(p, leading) * 0.55f) else base
+            val sticky = if (immersive) immersiveJellyStretch(p, leading)
+                else sculptedStickyStretch(p, leading)
+            return base * (1f - sticky * 0.55f)
         }
         fun contentHandover(p: Float): Float {
             // One optical handover, after VIDEO has its first frame. Immersion
@@ -162,48 +177,27 @@ internal fun CapsuleVideoArtworkTransition(
                     val leading = lead.value
                     val w = widthAt(p, leading)
                     val h = heightAt(p, leading)
-                    val adhesion = immersiveEdgeTension(p, leading)
+                    val adhesion = if (immersive) immersiveEdgeTension(p, leading)
+                        else sculptedEdgeTension(p, leading)
                     val left = (size.width - w) / 2f
                     val top = (size.height - h) / 2f +
                         if (immersive) adhesion * with(density) { 9.dp.toPx() } else 0f
-                    val radius = (artworkRadius + (videoRadius - artworkRadius) *
-                        smoothVideoStep(p)).coerceIn(0f, min(w, h) / 2f)
-                    if (immersive) {
-                        // Unlike uniform scale, the top and bottom edge lag the
-                        // faster spring. Subtle cubic tension creates a real
-                        // soft-surface silhouette, including reverse recoil.
-                        val pullPx = with(density) { 6.dp.toPx() } * adhesion
-                        shape = GenericShape { _, _ ->
-                            val right = left + w
-                            val bottom = top + h
-                            val inner = (w - radius * 2f).coerceAtLeast(0f)
-                            moveTo(left + radius, top)
-                            cubicTo(
-                                left + radius + inner * 0.30f, top - pullPx,
-                                left + radius + inner * 0.70f, top - pullPx,
-                                right - radius, top,
-                            )
-                            val k = radius * 0.55228475f
-                            // Circular-arc-compatible cubic corners. When edge
-                            // adhesion reaches zero, this contour is optically
-                            // identical to the ordinary rounded video window.
-                            cubicTo(right - radius + k, top, right, top + radius - k, right, top + radius)
-                            lineTo(right, bottom - radius)
-                            cubicTo(right, bottom - radius + k, right - radius + k, bottom, right - radius, bottom)
-                            cubicTo(
-                                right - radius - inner * 0.30f, bottom - pullPx * 0.65f,
-                                right - radius - inner * 0.70f, bottom - pullPx * 0.65f,
-                                left + radius, bottom,
-                            )
-                            cubicTo(left + radius - k, bottom, left, bottom - radius + k, left, bottom - radius)
-                            lineTo(left, top + radius)
-                            cubicTo(left, top + radius - k, left + radius - k, top, left + radius, top)
-                            close()
-                        }
-                    } else {
-                        shape = GenericShape { _, _ ->
-                            addRoundRect(RoundRect(left, top, left + w, top + h, CornerRadius(radius)))
-                        }
+                    // Corner radius is *part of* the moving silhouette, not
+                    // another smoothstep that stays square for half the travel
+                    // then suddenly rounds near the video frame. Light/Cosmo
+                    // will keep their existing artwork radius at both ends.
+                    val radius = capsuleMorphCornerRadius(
+                        artworkRadius, videoRadius, p,
+                    ).coerceIn(0f, min(w, h) / 2f)
+                    // One continuous cubic contour across both styles and
+                    // throughout the entire motion. Never switch between
+                    // RoundRect and an elastic path mid-flight: the change in
+                    // corner curvature itself caused an apparent sharp 'pop'.
+                    val pullPx = with(density) {
+                        (if (immersive) 6.dp else 4.dp).toPx()
+                    } * adhesion
+                    shape = GenericShape { _, _ ->
+                        addPath(capsuleStickyContourPath(left, top, w, h, radius, pullPx))
                     }
                     clip = true
                     shadowElevation = if (immersive) 0f else shadowPx * smoothVideoStep(p)
@@ -213,14 +207,22 @@ internal fun CapsuleVideoArtworkTransition(
                     drawContent()
                     if (outline.alpha > 0f) {
                         val p = body.value
-                        val w = widthAt(p, lead.value)
-                        val h = heightAt(p, lead.value)
-                        val radius = artworkRadius + (videoRadius - artworkRadius) * smoothVideoStep(p)
-                        drawRoundRect(
+                        val leading = lead.value
+                        val w = widthAt(p, leading)
+                        val h = heightAt(p, leading)
+                        val adhesion = if (immersive) immersiveEdgeTension(p, leading)
+                            else sculptedEdgeTension(p, leading)
+                        val left = (size.width - w) / 2f
+                        val top = (size.height - h) / 2f +
+                            if (immersive) adhesion * with(density) { 9.dp.toPx() } else 0f
+                        val radius = capsuleMorphCornerRadius(artworkRadius, videoRadius, p)
+                            .coerceIn(0f, min(w, h) / 2f)
+                        val pullPx = with(density) {
+                            (if (immersive) 6.dp else 4.dp).toPx()
+                        } * adhesion
+                        drawPath(
+                            path = capsuleStickyContourPath(left, top, w, h, radius, pullPx),
                             color = outline,
-                            topLeft = Offset((size.width - w) / 2f, (size.height - h) / 2f),
-                            size = Size(w, h),
-                            cornerRadius = CornerRadius(radius.coerceAtLeast(0f)),
                             style = Stroke(1.dp.toPx()),
                         )
                     }
@@ -234,7 +236,25 @@ internal fun CapsuleVideoArtworkTransition(
             // and reverse animation, then release it when that phase finishes.
             if (surfaceActive) {
                 Box(
-                    Modifier.requiredSize(videoWidthDp, videoHeightDp).background(Color.Black),
+                    Modifier
+                        .requiredSize(videoWidthDp, videoHeightDp)
+                        .graphicsLayer {
+                            val p = body.value
+                            val contourWidth = widthAt(p, lead.value)
+                            val contourHeight = heightAt(p, lead.value)
+                            // Fill (not Fit) the morphing mask during the short
+                            // handover. TextureView stays 16:9 and measured ONCE:
+                            // scaling this containing layer is purely GPU work.
+                            // A uniform crop is preferable to black gutters and
+                            // to distorted video frames/corner 'catch-up'.
+                            val fill = maxOf(
+                                contourWidth / videoWidth.toFloat(),
+                                contourHeight / videoHeight.toFloat(),
+                            ).coerceIn(0.5f, 3f)
+                            scaleX = fill
+                            scaleY = fill
+                        }
+                        .background(Color.Black),
                     contentAlignment = Alignment.Center,
                 ) {
                     video(true)
@@ -246,13 +266,18 @@ internal fun CapsuleVideoArtworkTransition(
                     .graphicsLayer {
                         val p = body.value
                         alpha = 1f - contentHandover(p)
-                        if (immersive) {
-                            // Artwork adheres to the moving contour, but the
-                            // underlying TextureView stays correctly proportioned.
-                            val stretch = immersiveJellyStretch(p, lead.value)
-                            scaleX = 1f + stretch * 0.56f
-                            scaleY = 1f - stretch * 0.30f
-                        }
+                        // The cover must follow the contour too. Previously
+                        // it kept its original measured bounds while the
+                        // container widened, exposing a narrow black/video
+                        // stripe before the contents could meet the new edge.
+                        val fill = maxOf(
+                            widthAt(p, lead.value) / coverWidth.toFloat(),
+                            heightAt(p, lead.value) / coverHeight.toFloat(),
+                        ).coerceIn(0.5f, 3f)
+                        val stretch = if (immersive) immersiveJellyStretch(p, lead.value)
+                            else sculptedStickyStretch(p, lead.value)
+                        scaleX = fill * (1f + stretch * 0.45f)
+                        scaleY = fill * (1f - stretch * 0.25f)
                     }
                     .background(artworkBackground),
                 contentAlignment = Alignment.Center,
@@ -296,4 +321,60 @@ internal fun immersiveEdgeTension(body: Float, lead: Float): Float {
     val p = body.coerceIn(0f, 1f)
     val middle = sin((PI * p).toFloat()).coerceAtLeast(0f)
     return ((lead - body) * middle).coerceIn(-0.42f, 0.42f)
+}
+
+/** Corner deformation follows the physical progress from the first frame. */
+internal fun capsuleMorphCornerRadius(startPx: Float, endPx: Float, progress: Float): Float =
+    startPx + (endPx - startPx) * progress.coerceIn(0f, 1f)
+
+/** Controlled adhesive pull for Cosmo / Light; at rest there is no distortion. */
+internal fun sculptedStickyStretch(body: Float, lead: Float): Float {
+    val p = body.coerceIn(0f, 1f)
+    val middle = sin((PI * p).toFloat()).coerceAtLeast(0f)
+    return (((lead - body) * 0.17f * middle) + (body - p) * 0.10f)
+        .coerceIn(-0.020f, 0.020f)
+}
+
+internal fun sculptedEdgeTension(body: Float, lead: Float): Float {
+    val p = body.coerceIn(0f, 1f)
+    return ((lead - body) * sin((PI * p).toFloat()).coerceAtLeast(0f))
+        .coerceIn(-0.25f, 0.25f)
+}
+
+/**
+ * One contour implementation for the filled clip AND the outline. The curved
+ * edges have zero tension at rest, so they reduce exactly to rounded corners
+ * whose control points are tangent to their adjacent straight lines.
+ */
+internal fun capsuleStickyContourPath(
+    left: Float,
+    top: Float,
+    width: Float,
+    height: Float,
+    cornerRadius: Float,
+    pullPx: Float,
+): Path = Path().apply {
+    val right = left + width
+    val bottom = top + height
+    val radius = cornerRadius.coerceIn(0f, min(width, height) * 0.5f)
+    val inner = (width - radius * 2f).coerceAtLeast(0f)
+    val k = radius * 0.55228475f
+    moveTo(left + radius, top)
+    cubicTo(
+        left + radius + inner * 0.30f, top - pullPx,
+        left + radius + inner * 0.70f, top - pullPx,
+        right - radius, top,
+    )
+    cubicTo(right - radius + k, top, right, top + radius - k, right, top + radius)
+    lineTo(right, bottom - radius)
+    cubicTo(right, bottom - radius + k, right - radius + k, bottom, right - radius, bottom)
+    cubicTo(
+        right - radius - inner * 0.30f, bottom - pullPx * 0.65f,
+        right - radius - inner * 0.70f, bottom - pullPx * 0.65f,
+        left + radius, bottom,
+    )
+    cubicTo(left + radius - k, bottom, left, bottom - radius + k, left, bottom - radius)
+    lineTo(left, top + radius)
+    cubicTo(left, top + radius - k, left + radius - k, top, left + radius, top)
+    close()
 }
