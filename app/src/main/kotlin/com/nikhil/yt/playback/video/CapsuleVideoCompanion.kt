@@ -255,6 +255,24 @@ internal class CapsuleVideoSession(
         return capsuleClampDecoderSeek(targetPosition() + prediction, video.duration)
     }
 
+    /**
+     * MUSIC stays the canonical queue owner. If we entered a shorter VIDEO
+     * from a MUSIC position already beyond VIDEO EOF, rewind ONLY the silent
+     * shadow clock after acquiring VIDEO sound. Otherwise MUSIC would advance
+     * the queue early while the newly restarted VIDEO is still playing.
+     */
+    private fun alignSilentAudioAfterClipRestart() {
+        val clipDuration = capsuleKnownDuration(video.duration) ?: return
+        if (audio.currentPosition < clipDuration) return
+        val safeShadowPosition = capsuleClampDecoderSeek(video.currentPosition, audio.duration)
+        synchronizingSeek = true
+        try {
+            audio.seekTo(safeShadowPosition)
+        } finally {
+            synchronizingSeek = false
+        }
+    }
+
     private fun finishClip() {
         val finishedId = id ?: return
         // Clear the lease before the callback can advance MUSIC's queue. This
@@ -361,7 +379,11 @@ internal class CapsuleVideoSession(
             committed = true
             audible = true
             soundGain = 1f
-            if (!ownsSound) { ownsSound = true; onSoundOwned(true) }
+            if (!ownsSound) {
+                ownsSound = true
+                onSoundOwned(true)
+                alignSilentAudioAfterClipRestart()
+            }
             video.volume = volume
             reportPresentation(current)
             ensureWatchdog()
@@ -378,6 +400,7 @@ internal class CapsuleVideoSession(
             audible = false
             video.volume = 0f
             onSoundOwned(true)
+            alignSilentAudioAfterClipRestart()
             val lease = generation
             seamJob?.cancel()
             seamJob = scope.launch {
