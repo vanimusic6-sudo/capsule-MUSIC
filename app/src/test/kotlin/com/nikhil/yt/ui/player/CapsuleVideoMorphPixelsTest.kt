@@ -84,6 +84,47 @@ class CapsuleVideoMorphPixelsTest {
                 (AndroidColor.red(pixel) > 0 || AndroidColor.blue(pixel) > 0))
     }
 
+    @Test fun regularMorphHasNoHardHorizontalVideoGuttersMidTransition() {
+        val presenting = mutableStateOf(false)
+        compose.setContent {
+            CapsuleVideoArtworkTransition(
+                presentingVideo = presenting.value,
+                needsSurface = true,
+                fillArtworkSlot = true,
+                modifier = Modifier.size(320.dp, 280.dp).testTag("media-slot"),
+                video = { Box(Modifier.fillMaxSize().background(Color.Red)) },
+                artwork = { Box(Modifier.fillMaxSize().background(Color.Blue)) },
+            )
+        }
+        compose.mainClock.autoAdvance = false
+        compose.runOnIdle { presenting.value = true }
+        compose.mainClock.advanceTimeByFrame()
+        compose.mainClock.advanceTimeBy(160)
+        val bitmap = snapshot("no-internal-gutter")
+        try {
+            val midX = bitmap.width / 2
+            val inside = (0 until bitmap.height).filter {
+                val color = bitmap.getPixel(midX, it)
+                AndroidColor.red(color) > 16 || AndroidColor.blue(color) > 16
+            }
+            assertTrue("a visible contour must exist", inside.size > 50)
+            val first = bitmap.getPixel(midX, inside.first() + 12)
+            val middle = bitmap.getPixel(midX, bitmap.height / 2)
+            val last = bitmap.getPixel(midX, inside.last() - 12)
+            // Video and cover are uniform test fills. Their colours should
+            // blend uniformly all the way to the moving contour. Previously
+            // the fixed 16:9 native viewport showed a hard red strip against
+            // a blue/black band until the outer mask caught up.
+            for (edge in listOf(first, last)) {
+                assertTrue("no horizontal VIDEO boundary may jump under the shared mask",
+                    kotlin.math.abs(AndroidColor.red(edge) - AndroidColor.red(middle)) <= 16 &&
+                    kotlin.math.abs(AndroidColor.blue(edge) - AndroidColor.blue(middle)) <= 16)
+            }
+        } finally {
+            bitmap.recycle()
+        }
+    }
+
     @Test fun immersiveUsesOneSoftRectangularHandoverAndSettlesWithoutAnEmptyFrame() {
         val presenting = mutableStateOf(false)
         val needed = mutableStateOf(true)
