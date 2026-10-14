@@ -1209,8 +1209,8 @@ class MusicService :
         }
     }
 
-    // Activity lifecycle. VIDEO stays selected while background audio
-    // continues; no NewPipe re-extraction on return.
+    // Activity lifecycle. Keep VIDEO selected while its decoder is parked;
+    // the already-running MUSIC player supplies audio until the screen returns.
     fun setVideoAppForeground(foreground: Boolean) {
         videoScreenVisible = foreground && screenInteractive
         videoCompanion?.setForeground(videoScreenVisible)
@@ -1225,7 +1225,7 @@ class MusicService :
     /*
      * VIDEO power/request protection.
      *
-     * - Screen off: an established VIDEO keeps its soundtrack; no new
+     * - Screen off: an established VIDEO hands sound back to MUSIC; no new
      *   video-search requests are made while the display is off/locked.
      * - Screen unlocked again: the current track may resume VIDEO once.
      * - Detectable 403/429/bot responses open a short VIDEO-only circuit breaker.

@@ -104,7 +104,7 @@ class CapsuleVideoMorphPixelsTest {
         compose.waitForIdle()
         compose.mainClock.advanceTimeBy(64)
         assertEquals("cover survives the beginning of the silhouette movement", AndroidColor.BLUE, centre("immersive-open-64"))
-        compose.mainClock.advanceTimeBy(96)
+        compose.mainClock.advanceTimeBy(176)
         assertRectangularBlend("immersive-opening")
         compose.mainClock.advanceTimeBy(1_000)
         assertEquals(AndroidColor.RED, centre("immersive-video"))

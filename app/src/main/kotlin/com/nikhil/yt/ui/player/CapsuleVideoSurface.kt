@@ -53,7 +53,7 @@ internal fun CapsuleVideoSurface(service: MusicService, modifier: Modifier = Mod
         ?: presentation.videoSizeDp
     Box(modifier.clipToBounds().background(Color.Black)) {
       CapsuleVideoViewport(sourceSize) {
-        if (active) CapsuleVideoTextureOutput(service, player, retention, presentation.coverSurface)
+        if (active) CapsuleVideoTextureOutput(service, player, retention, presentation.coverSurface, state.firstFrameReady)
         if (frame != null) {
             Image(
                 bitmap = remember(frame.bitmap) { frame.bitmap.asImageBitmap() },
@@ -74,7 +74,8 @@ internal fun CapsuleVideoViewport(sourceSize: Size?, content: @Composable () -> 
 }
 
 @Composable
-private fun CapsuleVideoTextureOutput(service: MusicService, player: Player, retention: CapsuleVideoFrameRetention, coverSurface: Boolean) {
+private fun CapsuleVideoTextureOutput(service: MusicService, player: Player, retention: CapsuleVideoFrameRetention,
+    coverSurface: Boolean, firstFrameReady: Boolean) {
     val owner = remember(service, player) { Any() }
     var texture by remember { mutableStateOf<CapsuleFrameTextureView?>(null) }
     val host = LocalView.current
@@ -132,7 +133,7 @@ private fun CapsuleVideoTextureOutput(service: MusicService, player: Player, ret
         // Start after Media3's presentation observer, matching PlayerSurface's attachment order.
         LaunchedEffect(view, player) { player.setVideoTextureView(view) }
     }
-    if (coverSurface && !service.videoPlaybackState.value.firstFrameReady) {
+    if (coverSurface && !firstFrameReady) {
         Box(Modifier.fillMaxSize().background(Color.Black))
     }
 }
