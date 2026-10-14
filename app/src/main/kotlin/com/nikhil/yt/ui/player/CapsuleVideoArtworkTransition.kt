@@ -236,7 +236,25 @@ internal fun CapsuleVideoArtworkTransition(
             // and reverse animation, then release it when that phase finishes.
             if (surfaceActive) {
                 Box(
-                    Modifier.requiredSize(videoWidthDp, videoHeightDp).background(Color.Black),
+                    Modifier
+                        .requiredSize(videoWidthDp, videoHeightDp)
+                        .graphicsLayer {
+                            val p = body.value
+                            val contourWidth = widthAt(p, lead.value)
+                            val contourHeight = heightAt(p, lead.value)
+                            // Fill (not Fit) the morphing mask during the short
+                            // handover. TextureView stays 16:9 and measured ONCE:
+                            // scaling this containing layer is purely GPU work.
+                            // A uniform crop is preferable to black gutters and
+                            // to distorted video frames/corner 'catch-up'.
+                            val fill = maxOf(
+                                contourWidth / videoWidth.toFloat(),
+                                contourHeight / videoHeight.toFloat(),
+                            ).coerceIn(0.5f, 3f)
+                            scaleX = fill
+                            scaleY = fill
+                        }
+                        .background(Color.Black),
                     contentAlignment = Alignment.Center,
                 ) {
                     video(true)
@@ -248,13 +266,18 @@ internal fun CapsuleVideoArtworkTransition(
                     .graphicsLayer {
                         val p = body.value
                         alpha = 1f - contentHandover(p)
-                        if (immersive) {
-                            // Artwork adheres to the moving contour, but the
-                            // underlying TextureView stays correctly proportioned.
-                            val stretch = immersiveJellyStretch(p, lead.value)
-                            scaleX = 1f + stretch * 0.56f
-                            scaleY = 1f - stretch * 0.30f
-                        }
+                        // The cover must follow the contour too. Previously
+                        // it kept its original measured bounds while the
+                        // container widened, exposing a narrow black/video
+                        // stripe before the contents could meet the new edge.
+                        val fill = maxOf(
+                            widthAt(p, lead.value) / coverWidth.toFloat(),
+                            heightAt(p, lead.value) / coverHeight.toFloat(),
+                        ).coerceIn(0.5f, 3f)
+                        val stretch = if (immersive) immersiveJellyStretch(p, lead.value)
+                            else sculptedStickyStretch(p, lead.value)
+                        scaleX = fill * (1f + stretch * 0.45f)
+                        scaleY = fill * (1f - stretch * 0.25f)
                     }
                     .background(artworkBackground),
                 contentAlignment = Alignment.Center,
