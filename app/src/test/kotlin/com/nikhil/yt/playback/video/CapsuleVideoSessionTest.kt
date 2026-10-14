@@ -500,6 +500,21 @@ class CapsuleVideoSessionTest {
         f.session.stop()
     }
 
+    @Test fun restartedShortVideoRewindsOnlyTheMutedAudioShadowClock() = runTest {
+        val f = Fixture(this)
+        f.music.position = 250_000L
+        f.music.duration = 300_000L
+        f.clip.duration = 40_000L
+        f.start(); f.clip.ready(); f.clip.frame()
+        assertEquals(0L, f.music.position)
+        assertEquals(0L, f.clip.position)
+        assertEquals(0f, f.music.volume)
+        advanceTimeBy(261); runCurrent()
+        assertEquals(listOf("song"), f.frames)
+        assertTrue(f.failures.isEmpty())
+        f.session.stop()
+    }
+
     @Test fun naturalClipEofIsNotAnErrorAndCompletesExactlyOnce() = runTest {
         val f = Fixture(this); f.start(); f.clip.ready(); f.clip.frame()
         advanceTimeBy(261); runCurrent()
