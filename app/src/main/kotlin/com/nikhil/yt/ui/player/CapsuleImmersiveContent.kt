@@ -564,7 +564,10 @@ internal fun CapsuleImmersiveContent(
             // Also handles reopening the sheet while its previous fade-out was being
             // cancelled. Alpha carries on from its current value, not a new zero.
             if (shownGradient?.key == visualKey) {
-                if (!hasShownGradient) {
+                if (!hasShownGradient || keepVideoReturnArtworkOpaque) {
+                    // After VIDEO this song's photo is already fully visible.
+                    // Skip a redundant 630ms offscreen alpha animation.
+                    // Track switches reset the guard and still crossfade.
                     // The first frame has no previous artwork to dissolve from.
                     // Reveal it directly instead of flashing the neutral sheet.
                     gradientAlpha.snapTo(1f)
