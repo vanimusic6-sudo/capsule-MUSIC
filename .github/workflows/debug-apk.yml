@@ -16,6 +16,7 @@ on:
       - polish/velocity-sticky-video-20261014
       - fix/video-consistent-width-soft-corners-20261014
       - fix/immersion-close-artwork-energy-20261014
+      - fix/video-cover-stability-independent-size-20261014
       - fix/video-timeline-morph-20261014
 
 permissions:
