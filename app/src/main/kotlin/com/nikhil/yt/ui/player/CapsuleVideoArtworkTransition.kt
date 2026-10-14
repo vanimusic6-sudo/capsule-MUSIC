@@ -144,8 +144,8 @@ internal fun CapsuleVideoArtworkTransition(
         fun contentHandover(p: Float): Float {
             // One optical handover, after VIDEO has its first frame. Immersion
             // remains visible long enough to carry the user's cover identity.
-            val start = if (immersive) 0.19f else 0.29f
-            val length = if (immersive) 0.71f else 0.60f
+            val start = if (immersive) 0.23f else 0.29f
+            val length = if (immersive) 0.77f else 0.60f
             return smoothVideoStep((p - start) / length)
         }
 
