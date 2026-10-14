@@ -149,12 +149,17 @@ internal fun CapsuleVideoArtworkTransition(
                 .clickable(enabled = artworkClickable, onClick = onArtworkClick),
             contentAlignment = Alignment.Center,
         ) {
-            // At all animation frames this has precisely the final decoder size.
-            Box(
-                Modifier.requiredSize(videoWidthDp, videoHeightDp).background(Color.Black),
-                contentAlignment = Alignment.Center,
-            ) {
-                video(surfaceActive)
+            // The VIDEO decoder is not an artwork placeholder. Without this gate a
+            // black 16:9 rectangle was composed before the first cover loaded,
+            // even in AUDIO/VIDEO N/A. Keep it mounted throughout preparation
+            // and reverse animation, then release it when that phase finishes.
+            if (surfaceActive) {
+                Box(
+                    Modifier.requiredSize(videoWidthDp, videoHeightDp).background(Color.Black),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    video(true)
+                }
             }
             Box(
                 Modifier
