@@ -84,6 +84,39 @@ class CapsuleVideoMorphPixelsTest {
                 (AndroidColor.red(pixel) > 0 || AndroidColor.blue(pixel) > 0))
     }
 
+    @Test fun lightAndCosmoReturnOpaquePhotoBeforeContainerFinishesClosing() {
+        val presenting = mutableStateOf(true)
+        val surfaceNeeded = mutableStateOf(true)
+        compose.setContent {
+            CapsuleVideoArtworkTransition(
+                presentingVideo = presenting.value,
+                needsSurface = surfaceNeeded.value,
+                modifier = Modifier.size(320.dp, 280.dp).testTag("media-slot"),
+                fillArtworkSlot = true,
+                artworkCornerRadius = 16.dp,
+                videoCornerRadius = 16.dp,
+                artworkBackground = Color(0xFF141414),
+                video = { Box(Modifier.fillMaxSize().background(Color.Red)) },
+                artwork = { Box(Modifier.fillMaxSize().background(Color.Blue)) },
+            )
+        }
+        assertEquals(AndroidColor.RED, centre("sculpted-start-video"))
+        compose.mainClock.autoAdvance = false
+        compose.runOnIdle {
+            presenting.value = false
+            surfaceNeeded.value = false
+        }
+        compose.mainClock.advanceTimeByFrame()
+        compose.mainClock.advanceTimeBy(128)
+        assertEquals(
+            "The cover must be fully opaque ~100ms after closing, while the geometric spring continues",
+            AndroidColor.BLUE, centre("sculpted-cover-no-double-exposure"),
+        )
+        compose.mainClock.autoAdvance = true
+        compose.waitForIdle()
+        assertEquals(AndroidColor.BLUE, centre("sculpted-cover-final"))
+    }
+
     @Test fun regularMorphHasNoHardHorizontalVideoGuttersMidTransition() {
         val presenting = mutableStateOf(false)
         compose.setContent {
