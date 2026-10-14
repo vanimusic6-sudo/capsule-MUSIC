@@ -93,7 +93,7 @@ internal fun IOException.isAudioCdnTransportFailure(): Boolean {
     if (isExpectedAudioCdnInterruption()) return false
     val causes = generateSequence(this as Throwable?) { it.cause }.take(12).toList()
     if (causes.any { it is InvalidResponseCodeException }) return false
-    return causes.any {
+    return isTransientAudioCdnSocketReset() || causes.any {
         it is SocketTimeoutException || it is SocketException ||
             it is UnknownHostException || it is EOFException
     }
