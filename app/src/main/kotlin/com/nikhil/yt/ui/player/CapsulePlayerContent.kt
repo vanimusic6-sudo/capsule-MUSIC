@@ -575,6 +575,7 @@ fun CapsulePlayerContent(
                     // VIDEO is a fixed screen-level window. User resizing the
                     // Light AUDIO cover changes only its own dimensions.
                     independentVideoViewport = useClayLayout,
+                    blendStyle = if (isLight) CapsuleVideoBlendStyle.LIGHT else CapsuleVideoBlendStyle.COSMO,
                     // Never let an incompletely loaded/Fit album bitmap reveal
                     // the live video beneath its transparent margin on closing.
                     artworkBackground = if (needsVideoSurface || isCapsuleVideoPlaying)
