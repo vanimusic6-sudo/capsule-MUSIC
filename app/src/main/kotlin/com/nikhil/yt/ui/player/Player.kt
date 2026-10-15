@@ -512,12 +512,13 @@ fun BottomSheetPlayer(
  * display, while the foreground rides with the sheet. This keeps the physical "canvas" motion
  * without reintroducing the colour sweep that moving procedural backgrounds used to cause.
  */
-// Single physical canvas and velocity-preserving lip. Do not animate
-// foreground on an unrelated wall-clock: it created an empty rising panel
-// on 60 Hz and a visible late text-pop after fast reversals.
-private const val LyricsOpenSpringStiffness = 108f
-private const val LyricsCloseSpringStiffness = 215f
-private val LyricsFrameCornerRadius = 30.dp
+// Separate tuned paths: a brief 60Hz-friendly opening impulse with a small
+// bounded settling nudge, while closing restores the original straight-down
+// rigid sheet movement (critically damped, no zoom/deformation).
+// Foreground alpha remains tied to physical progress, never a wall clock.
+private const val LyricsOpenSpringStiffness = 190f
+private const val LyricsCloseSpringStiffness = 315f
+private val LyricsFrameCornerRadius = 20.dp
 
 @Composable
 @OptIn(ExperimentalLayoutApi::class)
@@ -564,7 +565,7 @@ private fun CapsulePlayerLyricsHost(
     // opacity reaches zero. This also prevents invisible lyrics controls
     // intercepting a tap meant for the player during the last close frames.
     val lyricsInkMounted by remember(showLyrics) {
-        derivedStateOf { showLyrics || sheetOffset.value < 0.89f }
+        derivedStateOf { showLyrics || sheetOffset.value < 0.80f }
     }
 
     DisposableEffect(Unit) {
@@ -587,7 +588,7 @@ private fun CapsulePlayerLyricsHost(
                     sheetOffset.animateTo(
                         0f,
                         spring(
-                            dampingRatio = 0.92f,
+                            dampingRatio = 0.83f,
                             stiffness = LyricsOpenSpringStiffness,
                             visibilityThreshold = 0.001f,
                         ),
@@ -597,15 +598,17 @@ private fun CapsulePlayerLyricsHost(
                     sheetEdge.animateTo(
                         0f,
                         spring(
-                            dampingRatio = 0.86f,
-                            stiffness = 162f,
+                            dampingRatio = 0.84f,
+                            stiffness = 230f,
                             visibilityThreshold = 0.001f,
                         ),
                     )
                 }
             }
         } else if (lyricsLayerMounted) {
-            lyricsRuntimeActive = false
+            // Keep the text rendering stable until its position-coupled fade
+            // finishes. Disabling lyrics on the first closing frame used to
+            // snap the live list before the physical sheet could carry it away.
             // Two Animatables retain *their current velocity* after an
             // interruption. Both geometry and optical reveal derive from
             // these two values, so a mid-open BACK never pops or flashes.
@@ -614,7 +617,7 @@ private fun CapsulePlayerLyricsHost(
                     sheetOffset.animateTo(
                         1f,
                         spring(
-                            dampingRatio = 0.96f,
+                            dampingRatio = 1.0f,
                             stiffness = LyricsCloseSpringStiffness,
                             visibilityThreshold = 0.001f,
                         ),
@@ -624,13 +627,14 @@ private fun CapsulePlayerLyricsHost(
                     sheetEdge.animateTo(
                         1f,
                         spring(
-                            dampingRatio = 0.90f,
-                            stiffness = 285f,
+                            dampingRatio = 1.0f,
+                            stiffness = LyricsCloseSpringStiffness,
                             visibilityThreshold = 0.001f,
                         ),
                     )
                 }
             }
+            lyricsRuntimeActive = false
             lyricsLayerMounted = false
             onLyricsCloseSettled()
         }
@@ -754,7 +758,7 @@ private fun CapsulePlayerLyricsHost(
             val systemBars = WindowInsets.systemBarsIgnoringVisibility
             val safeTopPx = systemBars.getTop(density).toFloat()
             val safeBottomPx = systemBars.getBottom(density).toFloat()
-            // One moving canvas, one mask, one immutable geometry timeline.
+            // One moving canvas, one mask and one 60Hz-friendly spring timeline.
             // Previously background and text each had their own graphicsLayer
             // mask plus a third tween for text alpha. They could disagree by
             // a frame at 60 Hz, exposing streaks, seams and text that arrived
@@ -762,17 +766,19 @@ private fun CapsulePlayerLyricsHost(
             val lyricsFrame = Modifier.graphicsLayer {
                 val position = sheetOffset.value
                 val edge = sheetEdge.value
-                val recoil = capsuleLyricsEdgeRecoil(position, edge)
-                val retreat = capsuleLyricsRetreat(position, edge)
+                // Opening: the two springs produce one small landing nudge.
+                // Closing: a nearly rigid, full-size vertical descent. There
+                // is NO enlargement/recession, which stretched the glyphs
+                // and made the exit feel detached from the player.
+                val recoil = if (showLyrics) capsuleLyricsEdgeRecoil(position, edge) else 0f
                 translationY = capsuleLyricsTranslation(
                     position,
                     recoil,
                     fullHeightPx,
-                    with(density) { 18.dp.toPx() },
+                    with(density) { 20.dp.toPx() },
                 )
-                transformOrigin = androidx.compose.ui.graphics.TransformOrigin(0.5f, 1f)
-                scaleX = 1f - retreat
-                scaleY = 1f - retreat * 0.62f
+                scaleX = 1f
+                scaleY = 1f
                 shape = RoundedCornerShape(
                     LyricsFrameCornerRadius * position.coerceIn(0f, 1f),
                 )
@@ -781,32 +787,25 @@ private fun CapsulePlayerLyricsHost(
 
             if (lyricsLayerMounted) {
                 Box(modifier = Modifier.fillMaxSize().then(lyricsFrame)) {
-                    // Counter-transform the ONLY background RenderNode to
-                    // exactly the screen coordinates while the foreground
-                    // rides with the card. Inverse scale compensates for
-                    // mid-flight recession: artwork and gradient never
-                    // visibly drift or alter their colour boundary.
+                    // Inverse TRANSLATION alone locks the background
+                    // to the display. The removed inverse-scale pair caused
+                    // glyph stretching, colour-seam drift and two extra
+                    // GPU operations during opening/closing.
                     Box(
                         modifier = Modifier.fillMaxSize().graphicsLayer {
                             val position = sheetOffset.value
                             val edge = sheetEdge.value
-                            val recoil = capsuleLyricsEdgeRecoil(position, edge)
-                            val retreat = capsuleLyricsRetreat(position, edge)
-                            transformOrigin =
-                                androidx.compose.ui.graphics.TransformOrigin(0.5f, 1f)
-                            scaleX = 1f / (1f - retreat)
-                            scaleY = 1f / (1f - retreat * 0.62f)
-                            // Translation of the inner layer is itself
-                            // scaled by the outer page. Divide by parent
-                            // scale to leave the *actual screen-space* gradient
-                            // still; otherwise the album shifts by a few
-                            // pixels in the middle of every 60Hz animation.
+                            val recoil = if (showLyrics) capsuleLyricsEdgeRecoil(position, edge) else 0f
+                            // Exact counter-translation for the anchored
+                            // gradient. Removing opposite 3–4% scale passes
+                            // saves a layer transform and eliminates seam
+                            // interpolation at the screen edge on 60Hz.
                             translationY = -capsuleLyricsTranslation(
                                 position,
                                 recoil,
                                 fullHeightPx,
-                                with(density) { 18.dp.toPx() },
-                            ) / (1f - retreat * 0.62f)
+                                with(density) { 20.dp.toPx() },
+                            )
                         },
                     ) {
                         CapsuleLyricsBackdropLayer(

@@ -321,11 +321,12 @@ fun LyricsMenu(
 
     Spacer(modifier = Modifier.height(12.dp))
 
-    val configuration = LocalConfiguration.current
-    val isPortrait = configuration.orientation == Configuration.ORIENTATION_PORTRAIT
-
+    // Previously portrait explicitly disabled the actual LazyColumn scroll.
+    // The gesture then fell straight through to the modal sheet, producing
+    // an apparent 3fps/stuttering scroll as the *whole panel* changed anchors.
+    // Let nested scrolling consume the content first on every orientation.
     LazyColumn(
-        userScrollEnabled = !isPortrait,
+        state = androidx.compose.foundation.lazy.rememberLazyListState(),
         contentPadding = PaddingValues(
             start = 0.dp,
             top = 0.dp,
@@ -333,7 +334,7 @@ fun LyricsMenu(
             bottom = 8.dp + WindowInsets.systemBars.asPaddingValues().calculateBottomPadding(),
         ),
     ) {
-        item {
+        item(key = "lyrics-actions", contentType = "actions") {
             // Enhanced Action Grid using NewMenuComponents
             NewActionGrid(
                 actions = listOf(
@@ -381,7 +382,7 @@ fun LyricsMenu(
             )
         }
 
-        item {
+        item(key = "lyrics-tuning", contentType = "controls") {
             // Position and sync live here because you find out a file is early while it is playing.
             LyricsTuning()
             Spacer(Modifier.height(8.dp))

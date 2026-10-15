@@ -4,6 +4,8 @@ import com.nikhil.yt.ui.component.MenuPresentation
 import com.nikhil.yt.ui.component.MenuState
 import com.nikhil.yt.ui.component.capsuleMenuElasticX
 import com.nikhil.yt.ui.component.capsuleMenuElasticY
+import com.nikhil.yt.ui.component.capsuleMenuDismissScale
+import com.nikhil.yt.ui.component.capsuleMenuTopFill
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -49,4 +51,31 @@ class CapsuleMenuMotionTest {
             assertTrue(capsuleMenuElasticY(deform) in 0.95f..1.05f)
         }
     }
+    @Test fun appleClosePullStartsAtFullSizeAndShrinksSmoothlyWithoutJump() {
+        assertEquals(1f, capsuleMenuDismissScale(0f), 0.00001f)
+        assertEquals(0.948f, capsuleMenuDismissScale(1f), 0.00001f)
+        var previous = 1f
+        for (frame in 1..60) {
+            val now = capsuleMenuDismissScale(frame / 60f)
+            assertTrue(now <= previous + 0.00001f)
+            assertTrue("frame gap must be small on 60Hz", previous - now < 0.003f)
+            previous = now
+        }
+    }
+
+    @Test fun expandingTopHazeFillsWithoutFlashingOrJumps() {
+        assertEquals(0f, capsuleMenuTopFill(Float.NaN, 1000f), 0.0001f)
+        assertEquals(0f, capsuleMenuTopFill(1000f, 1000f), 0.0001f)
+        var previous = 0f
+        for (i in 0..100) {
+            val offset = 1000f * (1f - i / 100f)
+            val alpha = capsuleMenuTopFill(offset, 1000f)
+            assertTrue(alpha + 0.00001f >= previous)
+            assertTrue(alpha in 0f..0.30f)
+            assertTrue(alpha - previous < 0.02f)
+            previous = alpha
+        }
+        assertEquals(0.30f, previous, 0.0001f)
+    }
+
 }
