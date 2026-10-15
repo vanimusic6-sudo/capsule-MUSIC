@@ -56,6 +56,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.window.DialogWindowProvider
@@ -347,6 +348,7 @@ private fun CapsulePhysicalMenuSheet(
                     .align(Alignment.BottomCenter)
                     .fillMaxWidth()
                     .heightIn(max = maxHeight * 0.92f)
+                    .testTag("capsule-menu-card")
                     .onSizeChanged { measuredSheetPx = it.height.toFloat() }
                     .graphicsLayer {
                         val progress = displayedProgress()
@@ -376,6 +378,7 @@ private fun CapsulePhysicalMenuSheet(
                     Box(
                         Modifier
                             .fillMaxWidth()
+                            .testTag("capsule-menu-drag-handle")
                             .draggable(
                                 orientation = Orientation.Vertical,
                                 state = handleDrag,
