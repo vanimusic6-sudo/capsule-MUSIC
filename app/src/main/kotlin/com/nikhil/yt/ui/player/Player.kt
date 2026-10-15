@@ -565,7 +565,7 @@ private fun CapsulePlayerLyricsHost(
     // opacity reaches zero. This also prevents invisible lyrics controls
     // intercepting a tap meant for the player during the last close frames.
     val lyricsInkMounted by remember(showLyrics) {
-        derivedStateOf { showLyrics || sheetOffset.value < 0.89f }
+        derivedStateOf { showLyrics || sheetOffset.value < 0.80f }
     }
 
     DisposableEffect(Unit) {
@@ -758,7 +758,7 @@ private fun CapsulePlayerLyricsHost(
             val systemBars = WindowInsets.systemBarsIgnoringVisibility
             val safeTopPx = systemBars.getTop(density).toFloat()
             val safeBottomPx = systemBars.getBottom(density).toFloat()
-            // One moving canvas, one mask, one immutable geometry timeline.
+            // One moving canvas, one mask and one 60Hz-friendly spring timeline.
             // Previously background and text each had their own graphicsLayer
             // mask plus a third tween for text alpha. They could disagree by
             // a frame at 60 Hz, exposing streaks, seams and text that arrived
@@ -787,11 +787,10 @@ private fun CapsulePlayerLyricsHost(
 
             if (lyricsLayerMounted) {
                 Box(modifier = Modifier.fillMaxSize().then(lyricsFrame)) {
-                    // Counter-transform the ONLY background RenderNode to
-                    // exactly the screen coordinates while the foreground
-                    // rides with the card. Inverse scale compensates for
-                    // mid-flight recession: artwork and gradient never
-                    // visibly drift or alter their colour boundary.
+                    // Inverse TRANSLATION alone locks the background
+                    // to the display. The removed inverse-scale pair caused
+                    // glyph stretching, colour-seam drift and two extra
+                    // GPU operations during opening/closing.
                     Box(
                         modifier = Modifier.fillMaxSize().graphicsLayer {
                             val position = sheetOffset.value
