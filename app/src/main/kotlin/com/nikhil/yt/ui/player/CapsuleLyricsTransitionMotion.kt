@@ -15,25 +15,25 @@ import kotlin.math.sin
 internal fun capsuleLyricsEdgeRecoil(body: Float, lead: Float): Float {
     val progress = body.coerceIn(0f, 1f)
     val envelope = sin((PI * progress).toFloat()).coerceAtLeast(0f)
-    return ((lead - body) * envelope).coerceIn(-0.12f, 0.12f)
+    return ((lead - body) * envelope).coerceIn(-0.18f, 0.18f)
 }
 
 /**
- * The body spring is allowed just ~0.8% beyond the fully open anchor. This
- * gives the last few pixels the requested small, soft landing impulse rather
- * than a gigantic 25px rubber band at 60Hz. Closing uses a non-overshooting
- * spring and hence never travels past the hidden bottom edge.
+ * The aperture top edge may overrun the screen by at most 0.4% of its height
+ * (approximately 3px for a 60Hz phone), then settle softly. Both foreground
+ * and backdrop cancel this exact travel, so NO text or gradient travels.
  */
 internal fun capsuleLyricsLandingTravel(body: Float): Float =
-    body.coerceIn(-0.008f, 1f)
+    body.coerceIn(-0.004f, 1f)
 
 /** Sheet opening and page ink are one motion; reversible on every single frame. */
 internal fun capsuleLyricsForegroundOpacity(body: Float): Float {
     val progress = body.coerceIn(0f, 1f)
-    // Begin acquiring readable controls as soon as the full page enters;
-    // finished before the sheet locks into place. Eliminates the visible
-    // "empty panel rising first, lyrics appear 300ms later" defect.
-    val reveal = ((0.78f - progress) / 0.70f).coerceIn(0f, 1f)
+    // The painterly scene (gradient) appears with the mask; text becomes
+    // opaque WHILE the aperture is still moving, rather than popping in
+    // after it reaches the top. The smoothstep has zero endpoint slope at
+    // both the reveal and retract boundaries and is fully reversible.
+    val reveal = ((0.92f - progress) / 0.42f).coerceIn(0f, 1f)
     return reveal * reveal * (3f - 2f * reveal)
 }
 
