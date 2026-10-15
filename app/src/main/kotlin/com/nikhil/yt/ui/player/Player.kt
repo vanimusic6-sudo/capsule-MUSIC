@@ -515,11 +515,11 @@ fun BottomSheetPlayer(
 // 60 Hz gets the same physical journey as 120 Hz: continuous spring velocity,
 // no high-refresh-only per-frame increments and no independently staged axes.
 // A nearly-critical spring avoids jittering text at the end of the sheet travel.
-private const val LyricsOpenSpringStiffness = 154f
-private const val LyricsCloseSpringStiffness = 355f
-private const val LyricsForegroundOpenDelayMillis = 68
-private const val LyricsForegroundOpenFadeMillis = 330
-private const val LyricsForegroundCloseFadeMillis = 172
+private const val LyricsOpenSpringStiffness = 116f
+private const val LyricsCloseSpringStiffness = 208f
+private const val LyricsForegroundOpenDelayMillis = 76
+private const val LyricsForegroundOpenFadeMillis = 390
+private const val LyricsForegroundCloseFadeMillis = 250
 private val LyricsFrameCornerRadius = 32.dp
 
 /**
@@ -536,6 +536,22 @@ internal fun capsuleLyricsEdgeRecoil(body: Float, lead: Float): Float {
     val progress = body.coerceIn(0f, 1f)
     val envelope = sin((PI * progress).toFloat()).coerceAtLeast(0f)
     return ((lead - body) * envelope).coerceIn(-0.26f, 0.26f)
+}
+
+/**
+ * A real, visible depth cue while the Lyrics canvas travels, rather than a
+ * sharper drop with a barely noticeable lip wobble. Peaks at mid-flight and
+ * becomes precisely 0 at either rest anchor so the full-screen artwork never
+ * shows a hairline or distorted edge while stationary.
+ *
+ * Full layout, touch targets, text and gradient are still composed ONCE at
+ * natural size. Only their already-existing parent RenderNodes are scaled.
+ */
+internal fun capsuleLyricsRetreat(body: Float, lead: Float): Float {
+    val p = body.coerceIn(0f, 1f)
+    val midFlight = sin((PI * p).toFloat()).coerceAtLeast(0f)
+    val lag = kotlin.math.abs(capsuleLyricsEdgeRecoil(body, lead))
+    return (midFlight * 0.037f + lag * 0.017f).coerceIn(0f, 0.043f)
 }
 
 @Composable
@@ -599,14 +615,14 @@ private fun CapsulePlayerLyricsHost(
                 launch {
                     sheetOffset.animateTo(
                         0f,
-                        spring(dampingRatio = 0.88f, stiffness = LyricsOpenSpringStiffness,
+                        spring(dampingRatio = 0.93f, stiffness = LyricsOpenSpringStiffness,
                             visibilityThreshold = 0.001f),
                     )
                 }
                 launch {
                     sheetEdge.animateTo(
                         0f,
-                        spring(dampingRatio = 0.78f, stiffness = 255f, visibilityThreshold = 0.001f),
+                        spring(dampingRatio = 0.87f, stiffness = 165f, visibilityThreshold = 0.001f),
                     )
                 }
                 launch {
@@ -623,14 +639,14 @@ private fun CapsulePlayerLyricsHost(
                 launch {
                     sheetOffset.animateTo(
                         1f,
-                        spring(dampingRatio = 0.93f, stiffness = LyricsCloseSpringStiffness,
+                        spring(dampingRatio = 0.95f, stiffness = LyricsCloseSpringStiffness,
                             visibilityThreshold = 0.001f),
                     )
                 }
                 launch {
                     sheetEdge.animateTo(
                         1f,
-                        spring(dampingRatio = 0.84f, stiffness = 515f, visibilityThreshold = 0.001f),
+                        spring(dampingRatio = 0.91f, stiffness = 305f, visibilityThreshold = 0.001f),
                     )
                 }
                 launch {
@@ -772,14 +788,19 @@ private fun CapsulePlayerLyricsHost(
             val lyricsFrame = Modifier.graphicsLayer {
                 val travel = sheetOffset.value
                 val recoil = capsuleLyricsEdgeRecoil(travel, sheetEdge.value)
-                // At 60 Hz this is still one continuous GPU transform; it
-                // follows the same physical timeline as the sheet. The leading
-                // edge can pull by at most 4dp, then settles without a snap.
-                translationY = travel * fullHeightPx + recoil * with(density) { 16.dp.toPx() }
+                val retreat = capsuleLyricsRetreat(travel, sheetEdge.value)
+                // The leading edge is the jelly, the whole page feels like
+                // a heavy sheet receding into the distance. No high-Hz steps
+                // and no separate text re-layout: RenderNode work only.
+                translationY = travel * fullHeightPx + recoil * with(density) { 20.dp.toPx() }
+                transformOrigin = androidx.compose.ui.graphics.TransformOrigin(0.5f, 1f)
+                scaleX = 1f - retreat
+                scaleY = 1f - retreat * 0.62f
                 shape = RoundedCornerShape(
-                    LyricsFrameCornerRadius * travel.coerceIn(0f, 1f) + 8.dp * abs(recoil)
+                    LyricsFrameCornerRadius * travel.coerceIn(0f, 1f) +
+                        8.dp * kotlin.math.abs(recoil)
                 )
-                clip = travel > 0f || abs(recoil) > 0.001f
+                clip = travel > 0f || kotlin.math.abs(recoil) > 0.001f
             }
 
             if (lyricsLayerMounted) {
@@ -791,7 +812,7 @@ private fun CapsulePlayerLyricsHost(
                             modifier = Modifier.fillMaxSize().graphicsLayer {
                                 val travel = sheetOffset.value
                                 translationY = -travel * fullHeightPx -
-                                    capsuleLyricsEdgeRecoil(travel, sheetEdge.value) * with(density) { 16.dp.toPx() }
+                                    capsuleLyricsEdgeRecoil(travel, sheetEdge.value) * with(density) { 20.dp.toPx() }
                             },
                         ) {
                             CapsuleLyricsBackdropLayer(
