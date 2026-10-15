@@ -379,7 +379,7 @@ fun PlayerMenu(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.basicMarquee(),
+                        modifier = Modifier,
                     )
                 }
             }
