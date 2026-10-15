@@ -802,12 +802,6 @@ private fun CapsulePlayerLyricsHost(
             }
 
             if (lyricsLayerMounted) {
-                val lipShade = remember {
-                    Brush.verticalGradient(
-                        0f to Color.Black.copy(alpha = 0.10f),
-                        1f to Color.Transparent,
-                    )
-                }
                 Box(modifier = Modifier.fillMaxSize().then(lyricsFrame)) {
                     Box(
                         modifier = Modifier.fillMaxSize().graphicsLayer {
@@ -828,26 +822,15 @@ private fun CapsulePlayerLyricsHost(
                             playerArtworkColors = playerArtworkColors,
                             backdropAnimationTime = backdropAnimationTime,
                             isVisible = showLyrics,
+                            instantBackdrop = true,
                             modifier = Modifier.fillMaxSize(),
                         )
                     }
 
-                    // A narrow moving edge shade is the only decoration:
-                    // it belongs to the aperture (not to the static scene).
-                    // Only 14dp of pixels are shaded; no bitmap blur, second
-                    // backdrop, or long-running full-screen effect. The
-                    // envelope vanishes exactly at open and hidden anchors.
-                    Box(
-                        modifier = Modifier
-                            .align(Alignment.TopCenter)
-                            .fillMaxWidth()
-                            .height(14.dp)
-                            .graphicsLayer {
-                                val p = sheetOffset.value.coerceIn(0f, 1f)
-                                alpha = sin((PI * p).toFloat()).coerceAtLeast(0f)
-                            }
-                            .background(lipShade),
-                    )
+                    // No extra translucent edge scrim: on bright artwork,
+                    // that colour layer was seen as haze above the aperture.
+                    // Shape, clip and two physical springs supply the edge
+                    // depth without another GPU blend pass.
 
                     // The Lyrics foreground is ALREADY painted at its
                     // final full-screen coordinates, then the same aperture
