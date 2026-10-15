@@ -233,6 +233,7 @@ class CapsuleVideoMorphPixelsTest {
             CapsuleVideoArtworkTransition(
                 presentingVideo = presenting.value, needsSurface = needed.value,
                 motion = CapsuleVideoArtworkMotion.IMMERSIVE, fillArtworkSlot = true,
+                blendStyle = CapsuleVideoBlendStyle.IMMERSION,
                 artworkCornerRadius = 0.dp,
                 modifier = Modifier.size(320.dp, 440.dp).testTag("media-slot"),
                 video = { Box(Modifier.fillMaxSize().background(Color.Red)) },
