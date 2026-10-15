@@ -39,7 +39,11 @@ class PlayerTransitionArchitectureTest {
             Regex("translationY = -displacement").findAll(player).count(),
         )
         assertTrue(player.contains("topStart = LyricsFrameCornerRadius"))
-        assertTrue(player.contains(".height(14.dp)"))
+        assertTrue(player.contains("instantBackdrop = true"))
+        assertFalse(player.contains("lipShade"))
+        val backdrop = source("com/nikhil/yt/ui/player/CapsuleLyricsContent.kt")
+        assertTrue(backdrop.contains("if (instantBackdrop)"))
+        assertTrue(backdrop.contains("renderBackdrop(lyricsBackdrop)"))
         assertFalse(player.contains("val recoil = if (showLyrics)"))
         assertFalse(player.contains("capsuleLyricsRetreat("))
         assertFalse(player.contains("foregroundOpacity.animateTo"))
