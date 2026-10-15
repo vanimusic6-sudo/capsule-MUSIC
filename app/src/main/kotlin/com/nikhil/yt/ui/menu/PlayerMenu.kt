@@ -20,7 +20,6 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.annotation.DrawableRes
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.background
-import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -156,7 +155,6 @@ fun PlayerMenu(
     val resources = LocalResources.current
     val database = LocalDatabase.current
     val playerConnection = LocalPlayerConnection.current ?: return
-    val playerVolume = playerConnection.service.playerVolume.collectAsState()
     val activityResultLauncher =
         rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { }
     val librarySong by database.song(mediaMetadata.id).collectAsState(initial = null)
@@ -372,7 +370,7 @@ fun PlayerMenu(
                     fontWeight = FontWeight.SemiBold,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.basicMarquee(),
+                    modifier = Modifier,
                 )
                 if (nowPlayingSubtitle.isNotBlank()) {
                     Text(
@@ -391,15 +389,13 @@ fun PlayerMenu(
     if (isQueueTrigger != true) {
         Spacer(modifier = Modifier.height(12.dp))
 
-        PlayerVolumeCard(
-            volume = playerVolume.value,
-            onVolumeChange = { playerConnection.service.playerVolume.value = it },
-        )
+        PlayerVolumeCard(playerConnection = playerConnection)
     }
 
     Spacer(modifier = Modifier.height(16.dp))
 
     LazyColumn(
+        state = androidx.compose.foundation.lazy.rememberLazyListState(),
         modifier = Modifier.fillMaxWidth(),
         contentPadding = PaddingValues(
             start = 0.dp,
@@ -408,7 +404,7 @@ fun PlayerMenu(
             bottom = 8.dp + WindowInsets.systemBars.asPaddingValues().calculateBottomPadding(),
         ),
     ) {
-        item {
+        item(key = "quick-actions", contentType = "actions") {
             MenuSurfaceSection(modifier = Modifier.padding(vertical = 6.dp)) {
                 NewActionGrid(
                     actions = listOf(
@@ -490,11 +486,11 @@ fun PlayerMenu(
                 )
             }
         }
-        item {
+        item(key = "actions-gap", contentType = "spacer") {
             Spacer(modifier = Modifier.height(12.dp))
         }
         if (splitArtists.isNotEmpty() || mediaMetadata.album != null) {
-            item {
+            item(key = "artists-album", contentType = "menu-section") {
                 MenuSurfaceSection(modifier = Modifier.padding(vertical = 6.dp)) {
                     Column {
                         if (splitArtists.isNotEmpty()) {
@@ -555,11 +551,11 @@ fun PlayerMenu(
                     }
                 }
             }
-            item {
+            item(key = "artists-gap", contentType = "spacer") {
                 Spacer(modifier = Modifier.height(12.dp))
             }
         }
-        item {
+        item(key = "download", contentType = "menu-section") {
             when (download?.state) {
                 Download.STATE_COMPLETED -> {
                     MenuSurfaceSection(modifier = Modifier.padding(vertical = 6.dp)) {
@@ -664,7 +660,7 @@ fun PlayerMenu(
                 }
             }
         }
-        item {
+        item(key = "tools", contentType = "menu-section") {
             MenuSurfaceSection(modifier = Modifier.padding(vertical = 6.dp)) {
                 Column {
                     ListItem(
@@ -734,10 +730,16 @@ fun PlayerMenu(
 
 @Composable
 private fun PlayerVolumeCard(
-    volume: Float,
-    onVolumeChange: (Float) -> Unit,
+    playerConnection: com.nikhil.yt.playback.PlayerConnection,
     modifier: Modifier = Modifier,
 ) {
+    // A volume change used to invalidate the whole PlayerMenu, recreating
+    // its action grid while the LazyColumn was actively scrolling. Subscribe
+    // only inside this small leaf so scrolling no longer pays that cost.
+    val volume by playerConnection.service.playerVolume.collectAsState()
+    val onVolumeChange: (Float) -> Unit = remember(playerConnection) {
+        { value -> playerConnection.service.playerVolume.value = value }
+    }
     val safeVolume = volume.coerceIn(0f, 1f)
 
     Surface(
