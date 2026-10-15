@@ -127,6 +127,7 @@ internal fun CapsuleLyricsBackdropLayer(
     playerArtworkColors: List<Color> = emptyList(),
     backdropAnimationTime: State<Long>? = null,
     isVisible: Boolean = true,
+    instantBackdrop: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
     val playerConnection = LocalPlayerConnection.current ?: return
@@ -187,11 +188,12 @@ internal fun CapsuleLyricsBackdropLayer(
             immersiveArtworkHeight(maxHeight).value.coerceAtLeast(1f)
         // Crossfade only changes of layout/style. Track palettes keep the same renderer and
         // the same 1400ms interpolation as the player; no permanent second backdrop layer.
-        Crossfade(
-            targetState = lyricsBackdrop,
-            animationSpec = tween(630, easing = CapsuleStandardEasing),
-            label = "lyricsBackdropStyle",
-        ) { backdrop ->
+        // When the Lyrics aperture itself is travelling, never blend
+        // two FULL-SCREEN backdrops through an offscreen alpha layer.
+        // That composited pale backgrounds over dark ones as the reported
+        // translucent white "fog". Style changes when NOT in a transition
+        // keep their original crossfade.
+        val renderBackdrop: @Composable (CapsuleLyricsBackdrop) -> Unit = { backdrop ->
             val base = if (
                 backdrop is CapsuleLyricsBackdrop.PlayerTheme &&
                 backdrop.style == PlayerBackgroundStyle.DEFAULT
@@ -218,6 +220,15 @@ internal fun CapsuleLyricsBackdropLayer(
                     )
                 }
             }
+        }
+        if (instantBackdrop) {
+            renderBackdrop(lyricsBackdrop)
+        } else {
+            Crossfade(
+                targetState = lyricsBackdrop,
+                animationSpec = tween(630, easing = CapsuleStandardEasing),
+                label = "lyricsBackdropStyle",
+            ) { backdrop -> renderBackdrop(backdrop) }
         }
     }
 }
