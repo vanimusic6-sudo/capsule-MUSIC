@@ -512,47 +512,12 @@ fun BottomSheetPlayer(
  * display, while the foreground rides with the sheet. This keeps the physical "canvas" motion
  * without reintroducing the colour sweep that moving procedural backgrounds used to cause.
  */
-// 60 Hz gets the same physical journey as 120 Hz: continuous spring velocity,
-// no high-refresh-only per-frame increments and no independently staged axes.
-// A nearly-critical spring avoids jittering text at the end of the sheet travel.
-private const val LyricsOpenSpringStiffness = 116f
-private const val LyricsCloseSpringStiffness = 208f
-private const val LyricsForegroundOpenDelayMillis = 76
-private const val LyricsForegroundOpenFadeMillis = 390
-private const val LyricsForegroundCloseFadeMillis = 250
-private val LyricsFrameCornerRadius = 32.dp
-
-/**
- * Two nearly critically damped spring profiles share one physical frame and retain velocity
- * on interruption. Closing is quicker and its controls dissolve before the final sheet travel;
- * at 60 Hz neither geometry nor timing depends on a high-refresh frame count.
- */
-private val LyricsForegroundAcquireEasing = CubicBezierEasing(0.25f, 0.08f, 0.25f, 1f)
-// An early dissolve prevents bright text/slider streaks during the faster sheet exit.
-private val LyricsForegroundReleaseEasing = CubicBezierEasing(0.28f, 0f, 0.24f, 1f)
-
-/** A bounded leading-edge lag, exactly zero at both resting endpoints. */
-internal fun capsuleLyricsEdgeRecoil(body: Float, lead: Float): Float {
-    val progress = body.coerceIn(0f, 1f)
-    val envelope = sin((PI * progress).toFloat()).coerceAtLeast(0f)
-    return ((lead - body) * envelope).coerceIn(-0.26f, 0.26f)
-}
-
-/**
- * A real, visible depth cue while the Lyrics canvas travels, rather than a
- * sharper drop with a barely noticeable lip wobble. Peaks at mid-flight and
- * becomes precisely 0 at either rest anchor so the full-screen artwork never
- * shows a hairline or distorted edge while stationary.
- *
- * Full layout, touch targets, text and gradient are still composed ONCE at
- * natural size. Only their already-existing parent RenderNodes are scaled.
- */
-internal fun capsuleLyricsRetreat(body: Float, lead: Float): Float {
-    val p = body.coerceIn(0f, 1f)
-    val midFlight = sin((PI * p).toFloat()).coerceAtLeast(0f)
-    val lag = kotlin.math.abs(capsuleLyricsEdgeRecoil(body, lead))
-    return (midFlight * 0.037f + lag * 0.017f).coerceIn(0f, 0.043f)
-}
+// Single physical canvas and velocity-preserving lip. Do not animate
+// foreground on an unrelated wall-clock: it created an empty rising panel
+// on 60 Hz and a visible late text-pop after fast reversals.
+private const val LyricsOpenSpringStiffness = 108f
+private const val LyricsCloseSpringStiffness = 215f
+private val LyricsFrameCornerRadius = 30.dp
 
 @Composable
 @OptIn(ExperimentalLayoutApi::class)
@@ -586,14 +551,14 @@ private fun CapsulePlayerLyricsHost(
     // makes the top lip lead and settle like the accepted VIDEO card without
     // stretching/blur-rendering the lyrics glyphs or moving the gradient.
     val sheetEdge = remember { Animatable(if (showLyrics) 0f else 1f) }
-    val foregroundOpacity = remember { Animatable(if (showLyrics) 1f else 0f) }
+    // Opacity derives directly from sheet position: no third coroutine, no
+    // arbitrary millisecond delay and no de-synchronised close/reopen fade.
     // The outgoing player stays fully present while Lyrics travels across it. Once the page has
     // covered the last pixel, its lyric row and decorative orbit can sleep until closing starts.
     val playerMotionActive by remember(showLyrics) {
         derivedStateOf { !showLyrics || sheetOffset.value > 0.001f }
     }
     var lyricsLayerMounted by remember { mutableStateOf(showLyrics) }
-    var lyricsForegroundMounted by remember { mutableStateOf(showLyrics) }
     var lyricsRuntimeActive by remember { mutableStateOf(showLyrics) }
 
     DisposableEffect(Unit) {
@@ -606,58 +571,58 @@ private fun CapsulePlayerLyricsHost(
             if (!lyricsLayerMounted) {
                 sheetOffset.snapTo(1f)
                 sheetEdge.snapTo(1f)
-                foregroundOpacity.snapTo(0f)
             }
             lyricsLayerMounted = true
-            lyricsForegroundMounted = true
-            lyricsRuntimeActive = false
+            // Pre-compose and measure text before the optical threshold,
+            // keeping its first visible frame in exactly the right position.
+            lyricsRuntimeActive = true
             coroutineScope {
                 launch {
                     sheetOffset.animateTo(
                         0f,
-                        spring(dampingRatio = 0.93f, stiffness = LyricsOpenSpringStiffness,
-                            visibilityThreshold = 0.001f),
+                        spring(
+                            dampingRatio = 0.92f,
+                            stiffness = LyricsOpenSpringStiffness,
+                            visibilityThreshold = 0.001f,
+                        ),
                     )
                 }
                 launch {
                     sheetEdge.animateTo(
                         0f,
-                        spring(dampingRatio = 0.87f, stiffness = 165f, visibilityThreshold = 0.001f),
+                        spring(
+                            dampingRatio = 0.86f,
+                            stiffness = 162f,
+                            visibilityThreshold = 0.001f,
+                        ),
                     )
-                }
-                launch {
-                    // Centre the list while it is still transparent, then reveal the entire UI.
-                    delay(LyricsForegroundOpenDelayMillis.toLong())
-                    lyricsRuntimeActive = true
-                    foregroundOpacity.animateTo(1f, tween(LyricsForegroundOpenFadeMillis, easing = LyricsForegroundAcquireEasing))
                 }
             }
         } else if (lyricsLayerMounted) {
             lyricsRuntimeActive = false
-            // Reversing starts from the currently drawn pixels, including an interrupted opening.
+            // Two Animatables retain *their current velocity* after an
+            // interruption. Both geometry and optical reveal derive from
+            // these two values, so a mid-open BACK never pops or flashes.
             coroutineScope {
                 launch {
                     sheetOffset.animateTo(
                         1f,
-                        spring(dampingRatio = 0.95f, stiffness = LyricsCloseSpringStiffness,
-                            visibilityThreshold = 0.001f),
+                        spring(
+                            dampingRatio = 0.96f,
+                            stiffness = LyricsCloseSpringStiffness,
+                            visibilityThreshold = 0.001f,
+                        ),
                     )
                 }
                 launch {
                     sheetEdge.animateTo(
                         1f,
-                        spring(dampingRatio = 0.91f, stiffness = 305f, visibilityThreshold = 0.001f),
-                    )
-                }
-                launch {
-                    foregroundOpacity.animateTo(
-                        0f,
-                        tween(
-                            LyricsForegroundCloseFadeMillis,
-                            easing = LyricsForegroundReleaseEasing,
+                        spring(
+                            dampingRatio = 0.90f,
+                            stiffness = 285f,
+                            visibilityThreshold = 0.001f,
                         ),
                     )
-                    lyricsForegroundMounted = false
                 }
             }
             lyricsLayerMounted = false
@@ -783,76 +748,88 @@ private fun CapsulePlayerLyricsHost(
             val systemBars = WindowInsets.systemBarsIgnoringVisibility
             val safeTopPx = systemBars.getTop(density).toFloat()
             val safeBottomPx = systemBars.getBottom(density).toFloat()
-            // A single travel value drives the frame and its corners. Avoid independently animated
-            // scale, dimming and mask layers: their work is especially visible at 60 Hz.
+            // One moving canvas, one mask, one immutable geometry timeline.
+            // Previously background and text each had their own graphicsLayer
+            // mask plus a third tween for text alpha. They could disagree by
+            // a frame at 60 Hz, exposing streaks, seams and text that arrived
+            // after the page. Now the ONE shared frame clips both siblings.
             val lyricsFrame = Modifier.graphicsLayer {
-                val travel = sheetOffset.value
-                val recoil = capsuleLyricsEdgeRecoil(travel, sheetEdge.value)
-                val retreat = capsuleLyricsRetreat(travel, sheetEdge.value)
-                // The leading edge is the jelly, the whole page feels like
-                // a heavy sheet receding into the distance. No high-Hz steps
-                // and no separate text re-layout: RenderNode work only.
-                translationY = travel * fullHeightPx + recoil * with(density) { 20.dp.toPx() }
+                val position = sheetOffset.value
+                val edge = sheetEdge.value
+                val recoil = capsuleLyricsEdgeRecoil(position, edge)
+                val retreat = capsuleLyricsRetreat(position, edge)
+                translationY = capsuleLyricsTranslation(
+                    position,
+                    recoil,
+                    fullHeightPx,
+                    with(density) { 18.dp.toPx() },
+                )
                 transformOrigin = androidx.compose.ui.graphics.TransformOrigin(0.5f, 1f)
                 scaleX = 1f - retreat
                 scaleY = 1f - retreat * 0.62f
                 shape = RoundedCornerShape(
-                    LyricsFrameCornerRadius * travel.coerceIn(0f, 1f) +
-                        8.dp * kotlin.math.abs(recoil)
+                    LyricsFrameCornerRadius * position.coerceIn(0f, 1f),
                 )
-                clip = travel > 0f || kotlin.math.abs(recoil) > 0.001f
+                clip = position > 0.0001f
             }
 
             if (lyricsLayerMounted) {
-                Box(modifier = Modifier.fillMaxSize()) {
-                    // Background and foreground share the rounded frame. The background itself
-                    // keeps its colours fixed to the display through both transitions.
-                    Box(modifier = Modifier.fillMaxSize().then(lyricsFrame)) {
-                        Box(
-                            modifier = Modifier.fillMaxSize().graphicsLayer {
-                                val travel = sheetOffset.value
-                                translationY = -travel * fullHeightPx -
-                                    capsuleLyricsEdgeRecoil(travel, sheetEdge.value) * with(density) { 20.dp.toPx() }
-                            },
-                        ) {
-                            CapsuleLyricsBackdropLayer(
-                                mediaMetadata = mediaMetadata,
-                                immersiveArtworkTone = immersiveArtworkTone,
-                                playerArtworkColors = playerArtworkColors,
-                                backdropAnimationTime = backdropAnimationTime,
-                                isVisible = showLyrics,
-                                modifier = Modifier.fillMaxSize(),
+                Box(modifier = Modifier.fillMaxSize().then(lyricsFrame)) {
+                    // Counter-transform the ONLY background RenderNode to
+                    // exactly the screen coordinates while the foreground
+                    // rides with the card. Inverse scale compensates for
+                    // mid-flight recession: artwork and gradient never
+                    // visibly drift or alter their colour boundary.
+                    Box(
+                        modifier = Modifier.fillMaxSize().graphicsLayer {
+                            val position = sheetOffset.value
+                            val edge = sheetEdge.value
+                            val recoil = capsuleLyricsEdgeRecoil(position, edge)
+                            val retreat = capsuleLyricsRetreat(position, edge)
+                            transformOrigin =
+                                androidx.compose.ui.graphics.TransformOrigin(0.5f, 1f)
+                            scaleX = 1f / (1f - retreat)
+                            scaleY = 1f / (1f - retreat * 0.62f)
+                            translationY = -capsuleLyricsTranslation(
+                                position,
+                                recoil,
+                                fullHeightPx,
+                                with(density) { 18.dp.toPx() },
                             )
-                        }
+                        },
+                    ) {
+                        CapsuleLyricsBackdropLayer(
+                            mediaMetadata = mediaMetadata,
+                            immersiveArtworkTone = immersiveArtworkTone,
+                            playerArtworkColors = playerArtworkColors,
+                            backdropAnimationTime = backdropAnimationTime,
+                            isVisible = showLyrics,
+                            modifier = Modifier.fillMaxSize(),
+                        )
                     }
 
-                    // This clip belongs to the stationary viewport, not to the moving page. It
-                    // prevents travelling controls from painting behind system navigation buttons.
-                    if (lyricsForegroundMounted) Box(
+                    // Foreground is already within the SAME stencil. Clip
+                    // system-bar content only here; do not clip the gradient.
+                    Box(
                         modifier = Modifier.fillMaxSize().drawWithContent {
                             clipRect(top = safeTopPx, bottom = size.height - safeBottomPx) {
                                 this@drawWithContent.drawContent()
                             }
+                        }.graphicsLayer {
+                            alpha = capsuleLyricsForegroundOpacity(sheetOffset.value)
                         },
                     ) {
-                        Box(
-                            modifier = Modifier.fillMaxSize().then(lyricsFrame).graphicsLayer {
-                                alpha = foregroundOpacity.value
-                                compositingStrategy = CompositingStrategy.Auto
-                            },
-                        ) {
-                            LyricsScreen(
-                                mediaMetadata = mediaMetadata,
-                                onBackClick = onHideLyrics,
-                                playerArtworkColors = playerArtworkColors,
-                                backdropAnimationTime = backdropAnimationTime,
-                                drawBackdrop = false,
-                                isVisible = lyricsRuntimeActive,
-                                backHandlerEnabled =
-                                    showLyrics && playerState.isExpandedOrExpanding,
-                                modifier = Modifier.fillMaxSize(),
-                            )
-                        }
+                        LyricsScreen(
+                            mediaMetadata = mediaMetadata,
+                            onBackClick = onHideLyrics,
+                            playerArtworkColors = playerArtworkColors,
+                            backdropAnimationTime = backdropAnimationTime,
+                            drawBackdrop = false,
+                            isVisible = lyricsRuntimeActive,
+                            backHandlerEnabled =
+                                showLyrics && playerState.isExpandedOrExpanding,
+                            modifier = Modifier.fillMaxSize(),
+                        )
                     }
                 }
             }
