@@ -560,6 +560,12 @@ private fun CapsulePlayerLyricsHost(
     }
     var lyricsLayerMounted by remember { mutableStateOf(showLyrics) }
     var lyricsRuntimeActive by remember { mutableStateOf(showLyrics) }
+    // The page can finish travelling with only its cheap backdrop once text
+    // opacity reaches zero. This also prevents invisible lyrics controls
+    // intercepting a tap meant for the player during the last close frames.
+    val lyricsInkMounted by remember(showLyrics) {
+        derivedStateOf { showLyrics || sheetOffset.value < 0.89f }
+    }
 
     DisposableEffect(Unit) {
         // Clearing the current song can remove the host before the transition has completed.
@@ -815,7 +821,7 @@ private fun CapsulePlayerLyricsHost(
 
                     // Foreground is already within the SAME stencil. Clip
                     // system-bar content only here; do not clip the gradient.
-                    Box(
+                    if (lyricsInkMounted) Box(
                         modifier = Modifier.fillMaxSize().drawWithContent {
                             clipRect(top = safeTopPx, bottom = size.height - safeBottomPx) {
                                 this@drawWithContent.drawContent()
