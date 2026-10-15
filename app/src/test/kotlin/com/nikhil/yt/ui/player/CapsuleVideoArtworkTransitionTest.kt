@@ -167,13 +167,23 @@ class CapsuleVideoArtworkTransitionTest {
         val light = capsuleVideoBlendSpec(CapsuleVideoBlendStyle.LIGHT)
         val cosmo = capsuleVideoBlendSpec(CapsuleVideoBlendStyle.COSMO)
         val immersion = capsuleVideoBlendSpec(CapsuleVideoBlendStyle.IMMERSION)
-        // Crisp Light, gentler Cosmo, stretched/dissolving Immersion.
-        assertTrue(light.closeMs < cosmo.closeMs)
-        assertTrue(cosmo.closeMs < immersion.closeMs)
-        assertTrue(light.openMs < cosmo.openMs)
-        assertTrue(cosmo.openMs < immersion.openMs)
-        assertTrue(immersion.openGate < cosmo.openGate)
-        assertTrue(cosmo.openGate < light.openGate)
+        // All styles use the SAME physical timeline, with distinct optical
+        // reveal ranges, eliminating cross-animation drift.
+        assertTrue(light.fadeSpan < cosmo.fadeSpan)
+        assertTrue(cosmo.fadeSpan < immersion.fadeSpan)
+        assertTrue(immersion.fadeStart < cosmo.fadeStart)
+        for (style in CapsuleVideoBlendStyle.entries) {
+            assertEquals(1f, capsulePhotoOpacity(0f, style), 0.0001f)
+            assertEquals(0f, capsulePhotoOpacity(1f, style), 0.0001f)
+            var prior = 1f
+            for (i in 0..100) {
+                val alpha = capsulePhotoOpacity(i / 100f, style)
+                assertTrue("alpha only decreases as VIDEO opens", alpha <= prior + 0.0001f)
+                prior = alpha
+            }
+            val spec = capsuleVideoBlendSpec(style)
+            assertEquals(1f, capsulePhotoOpacity(spec.fadeStart, style), 0.0001f)
+        }
     }
 
     @Test fun retainedVideoBecomesFullyInvisibleUnderClosedAlbumInEveryStyle() {
