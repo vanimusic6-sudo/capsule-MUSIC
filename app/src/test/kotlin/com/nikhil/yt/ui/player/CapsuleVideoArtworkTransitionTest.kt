@@ -190,12 +190,19 @@ class CapsuleVideoArtworkTransitionTest {
         for (style in CapsuleVideoBlendStyle.entries) {
             assertEquals(1f, capsuleVideoRenderAlpha(0f, style), 0.0001f)
             assertEquals(0f, capsuleVideoRenderAlpha(1f, style), 0.0001f)
-            assertEquals(0f, capsuleVideoRenderAlpha(0.99f, style), 0.0001f)
+            assertEquals(1f, capsuleVideoRenderAlpha(0.99f, style), 0.0001f)
             var previous = 1f
-            for (step in 0..20) {
-                val alpha = capsuleVideoRenderAlpha(step / 20f, style)
-                assertTrue("VIDEO fade must be monotonic when photo returns", alpha <= previous + 0.001f)
-                previous = alpha
+            for (step in 0..1000) {
+                val cover = step / 1000f
+                val renderer = capsuleVideoRenderAlpha(cover, style)
+                assertTrue("VIDEO opacity must not rise as photo returns", renderer <= previous)
+                // Source-over compositing of two opaque full-contour fills.
+                // Until the album is solid, its VIDEO underlay must remain
+                // fully opaque; a small 1%-alpha gap was visible in CI pixels.
+                val compositeAlpha = cover + renderer * (1f - cover)
+                assertEquals("no transparent handoff frame in $style at $cover",
+                    1f, compositeAlpha, 0.0001f)
+                previous = renderer
             }
         }
     }
