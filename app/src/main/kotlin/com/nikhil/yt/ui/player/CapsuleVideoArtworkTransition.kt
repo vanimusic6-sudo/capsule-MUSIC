@@ -2,6 +2,7 @@
 package com.nikhil.yt.ui.player
 
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.core.spring
@@ -13,7 +14,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -42,7 +42,6 @@ import kotlin.math.roundToInt
 import kotlin.math.abs
 import kotlin.math.sin
 import kotlin.math.PI
-import kotlinx.coroutines.flow.first
 import android.app.ActivityManager
 import android.content.Context
 import android.os.PowerManager
@@ -146,28 +145,17 @@ internal fun CapsuleVideoArtworkTransition(
             }
         }
     }
-    // Photo + opaque matte fade as a SINGLE layer. A bitmap often has
-    // letterbox/transparent edges, while the earlier cover image was smaller
-    // than the jelly contour; those gaps briefly exposed the live VIDEO.
-    // The matte occupies the whole contour, so the video can dissolve in the
-    // centre but can never leak through independent corner deformations.
-    val photoOpacity = remember(transitionKey) { Animatable(if (presentingVideo) 0f else 1f) }
-    LaunchedEffect(photoOpacity, target, blendSpec, body) {
-        if (target == 0f) {
-            if (photoOpacity.value < 0.999f) {
-                photoOpacity.animateTo(
-                    1f, animationSpec = tween(blendSpec.closeMs, easing = FastOutSlowInEasing),
-                )
-            }
-        } else if (photoOpacity.value > 0.001f) {
-            // Opening VIDEO requires the already decoded first frame. Wait for
-            // the container to begin transforming before revealing that frame.
-            snapshotFlow { body.value }.first { it >= blendSpec.openGate }
-            photoOpacity.animateTo(
-                0f, animationSpec = tween(blendSpec.openMs, easing = FastOutSlowInEasing),
-            )
-        }
-    }
+    // The entire opaque backing + album photo fades as ONE graphics layer.
+    // Target-driven state is robust to rapid open/close reversals, avoiding
+    // the coroutine retargets previously missed in Robolectric pixel tests.
+    val photoOpacity by animateFloatAsState(
+        targetValue = if (presentingVideo) 0f else 1f,
+        animationSpec = tween(
+            durationMillis = if (presentingVideo) blendSpec.openMs else blendSpec.closeMs,
+            easing = FastOutSlowInEasing,
+        ),
+        label = "capsule-photo-video-dissolve",
+    )
     // Render lease must not flicker during a negative spring overshoot.
     // Derived state only changes composition at the mount/unmount boundary.
     val surfaceActive by remember(needsSurface, body, lead) {
@@ -328,7 +316,7 @@ internal fun CapsuleVideoArtworkTransition(
                             // never bending its rectangular window or distorting
                             // the decoded 16:9 frame. Both axes scale together.
                             val dissolveStretch = if (immersive && !energySaver)
-                                capsuleImmersionVideoDissolveStretch(photoOpacity.value) else 0f
+                                capsuleImmersionVideoDissolveStretch(photoOpacity) else 0f
                             val total = fill * (1f + kotlin.math.abs(lag) * 0.012f + dissolveStretch)
                             scaleX = total
                             scaleY = total
@@ -360,7 +348,7 @@ internal fun CapsuleVideoArtworkTransition(
                     // VIDEO is retained while closing (needsSurface=true).
                     .zIndex(1f)
                     .requiredSize(frameWidthDp, frameHeightDp)
-                    .graphicsLayer { alpha = photoOpacity.value }
+                    .graphicsLayer { alpha = photoOpacity }
                     .background(artworkBackground.compositeOver(Color(0xFF141414))),
                 contentAlignment = Alignment.Center,
             ) {
