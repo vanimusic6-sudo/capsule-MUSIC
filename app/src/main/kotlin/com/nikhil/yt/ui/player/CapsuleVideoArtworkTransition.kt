@@ -502,10 +502,16 @@ internal fun capsuleImmersionVideoDissolveStretch(photoAlpha: Float): Float {
  * its corners on devices that reorder video/compositing render nodes.
  */
 internal fun capsuleVideoRenderAlpha(coverAlpha: Float, style: CapsuleVideoBlendStyle): Float {
-    val (start, width) = when (style) {
-        CapsuleVideoBlendStyle.LIGHT -> 0.58f to 0.32f
-        CapsuleVideoBlendStyle.COSMO -> 0.62f to 0.32f
-        CapsuleVideoBlendStyle.IMMERSION -> 0.70f to 0.28f
+    // IMPORTANT: Don't fade VIDEO and PHOTO simultaneously against a black
+    // background. Two partly transparent layers create a dark/empty interval
+    // (and on some native video surfaces a corner leak). Keep the VIDEO fully
+    // opaque throughout the *photo* dissolve, then hand over only at the last
+    // percent when the album matte is effectively solid. All styles use this
+    // pixel-safety rule; their photo reveal timing remains skin-specific.
+    val nearOpaque = when (style) {
+        CapsuleVideoBlendStyle.LIGHT -> 0.975f
+        CapsuleVideoBlendStyle.COSMO -> 0.977f
+        CapsuleVideoBlendStyle.IMMERSION -> 0.980f
     }
-    return 1f - smoothVideoStep((coverAlpha - start) / width)
+    return 1f - smoothVideoStep((coverAlpha - nearOpaque) / (0.990f - nearOpaque))
 }
