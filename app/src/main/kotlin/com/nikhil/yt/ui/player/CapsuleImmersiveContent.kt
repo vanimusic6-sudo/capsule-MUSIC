@@ -650,7 +650,11 @@ internal fun CapsuleImmersiveContent(
             videoWidthScale = 1.04f,
             motion = CapsuleVideoArtworkMotion.IMMERSIVE,
             blendStyle = CapsuleVideoBlendStyle.IMMERSION,
-            artworkBackground = frame?.edge ?: seamColor,
+            // A static album remains joined to its page gradient while only
+            // the separate VIDEO mask grows/shrinks. The previous moving
+            // album/matte exposed different edge pixels at the join on close.
+            fixedImmersiveArtwork = true,
+            artworkBackground = seamColor,
             artworkClickable = !isVideo,
             onArtworkClick = onShowLyrics,
             video = { active -> CapsuleVideoSurface(playerConnection.service, Modifier.fillMaxSize(), active = active) },
