@@ -57,8 +57,8 @@ internal data class CapsuleVideoBlendSpec(
 
 internal fun capsuleVideoBlendSpec(style: CapsuleVideoBlendStyle): CapsuleVideoBlendSpec =
     when (style) {
-        CapsuleVideoBlendStyle.LIGHT -> CapsuleVideoBlendSpec(fadeStart = 0.46f, fadeSpan = 0.40f)
-        CapsuleVideoBlendStyle.COSMO -> CapsuleVideoBlendSpec(fadeStart = 0.46f, fadeSpan = 0.44f)
+        CapsuleVideoBlendStyle.LIGHT -> CapsuleVideoBlendSpec(fadeStart = 0.58f, fadeSpan = 0.28f)
+        CapsuleVideoBlendStyle.COSMO -> CapsuleVideoBlendSpec(fadeStart = 0.58f, fadeSpan = 0.32f)
         CapsuleVideoBlendStyle.IMMERSION -> CapsuleVideoBlendSpec(fadeStart = 0.32f, fadeSpan = 0.68f)
     }
 
@@ -501,17 +501,15 @@ internal fun capsuleImmersionVideoDissolveStretch(photoAlpha: Float): Float {
  * release ensures that a retained native VIDEO view cannot shine through
  * its corners on devices that reorder video/compositing render nodes.
  */
-internal fun capsuleVideoRenderAlpha(coverAlpha: Float, style: CapsuleVideoBlendStyle): Float {
-    // IMPORTANT: Don't fade VIDEO and PHOTO simultaneously against a black
-    // background. Two partly transparent layers create a dark/empty interval
-    // (and on some native video surfaces a corner leak). Keep the VIDEO fully
-    // opaque throughout the *photo* dissolve, then hand over only at the last
-    // percent when the album matte is effectively solid. All styles use this
-    // pixel-safety rule; their photo reveal timing remains skin-specific.
-    val nearOpaque = when (style) {
-        CapsuleVideoBlendStyle.LIGHT -> 0.975f
-        CapsuleVideoBlendStyle.COSMO -> 0.977f
-        CapsuleVideoBlendStyle.IMMERSION -> 0.980f
-    }
-    return 1f - smoothVideoStep((coverAlpha - nearOpaque) / (0.990f - nearOpaque))
+internal fun capsuleVideoRenderAlpha(
+    coverAlpha: Float,
+    @Suppress("UNUSED_PARAMETER") style: CapsuleVideoBlendStyle,
+): Float {
+    // A fractional matte alpha is not an opaque backing. Fading the VIDEO
+    // renderer at 0.99f cover opacity introduced transparent pixels in the
+    // opening/closing frames (RGBA alpha 253/254 in Robolectric snapshots).
+    // Preserve a fully opaque VIDEO under the dissolving album, then hide it
+    // only when the front matte is solid: invisible handoff, no dark gaps.
+    // The transition is otherwise entirely driven by the shared spring.
+    return if (coverAlpha >= 1f) 0f else 1f
 }
