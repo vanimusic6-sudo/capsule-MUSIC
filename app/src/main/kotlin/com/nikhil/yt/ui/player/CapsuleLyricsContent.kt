@@ -58,6 +58,8 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotate
@@ -101,6 +103,21 @@ private val CapsuleLyricsSecondary =
 
 private val lyricsPanelColorShape =
     RoundedCornerShape(24.dp)
+
+/**
+ * The heavy Lyrics list keeps its natural layout, fonts and hit targets.
+ * Only this small RenderNode is animated; no per-frame composition/layout,
+ * no blur/shader work, no independent coroutine per child at 60 Hz.
+ */
+private fun Modifier.lyricsInkLayer(
+    motionPosition: () -> Float,
+    zone: LyricsInkZone,
+    density: Float,
+): Modifier = graphicsLayer {
+    val position = motionPosition()
+    alpha = capsuleLyricsZoneOpacity(position, zone)
+    translationY = capsuleLyricsZoneFloatDp(position, zone) * density
+}
 
 
 @Composable
@@ -244,6 +261,7 @@ fun CapsuleLyricsContent(
     backdropAnimationTime: State<Long>? = null,
     drawBackdrop: Boolean = true,
     isVisible: Boolean = true,
+    motionPosition: () -> Float = { 0f },
     modifier: Modifier = Modifier,
 ) {
     val playerConnection =
@@ -254,6 +272,7 @@ fun CapsuleLyricsContent(
 
     val onScreen = appIsOnScreen()
     val visualsActive = isVisible && onScreen
+    val motionDensity = LocalDensity.current.density
 
     if (!onScreen) {
         // Background means genuinely invisible. Tear down the expensive lyrics subtree instead of
@@ -367,7 +386,8 @@ fun CapsuleLyricsContent(
             modifier =
                 Modifier
                     .fillMaxWidth()
-                    .height(64.dp),
+                    .height(64.dp)
+                    .lyricsInkLayer(motionPosition, LyricsInkZone.HEADER, motionDensity),
         ) {
             Box(
                 modifier =
@@ -478,7 +498,8 @@ fun CapsuleLyricsContent(
                     .padding(
                         top = 6.dp,
                         bottom = 8.dp,
-                    ),
+                    )
+                    .lyricsInkLayer(motionPosition, LyricsInkZone.LINES, motionDensity),
         ) {
             Lyrics(
                 sliderPositionProvider = {
@@ -520,12 +541,14 @@ fun CapsuleLyricsContent(
             modifier =
                 Modifier
                     .fillMaxWidth()
-                    .height(28.dp),
+                    .height(28.dp)
+                    .lyricsInkLayer(motionPosition, LyricsInkZone.TIMELINE, motionDensity),
         )
 
         Row(
             modifier =
-                Modifier.fillMaxWidth(),
+                Modifier.fillMaxWidth()
+                    .lyricsInkLayer(motionPosition, LyricsInkZone.TIMELINE, motionDensity),
             horizontalArrangement =
                 Arrangement.SpaceBetween,
         ) {
@@ -580,7 +603,8 @@ fun CapsuleLyricsContent(
                     )
                     .background(
                         lyricsPanelColor,
-                    ),
+                    )
+                    .lyricsInkLayer(motionPosition, LyricsInkZone.CONTROLS, motionDensity),
         ) {
             Row(
                 modifier =
