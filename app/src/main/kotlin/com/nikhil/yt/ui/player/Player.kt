@@ -72,6 +72,7 @@ import com.nikhil.yt.ui.component.playerHandoffSurfaceAlpha
 import com.nikhil.yt.ui.component.playerBackdropContentAlpha
 import com.nikhil.yt.ui.component.LocalBottomSheetPageState
 import com.nikhil.yt.ui.component.LocalMenuState
+import com.nikhil.yt.ui.component.MenuPresentation
 import com.nikhil.yt.ui.component.rememberBottomSheetState
 import com.nikhil.yt.ui.menu.PlayerMenu
 import com.nikhil.yt.ui.screens.settings.DarkMode
@@ -461,7 +462,7 @@ fun BottomSheetPlayer(
                     // would square the opacity and desynchronise it from Light/Cosmo.
                     transitionForegroundAlpha = { 1f },
                     onShowMenu = {
-                        menuState.show {
+                        menuState.show(presentation = MenuPresentation.CAPSULE_PLAYER) {
                             PlayerMenu(
                                 mediaMetadata = metadata,
                                 navController = navController,
