@@ -28,6 +28,7 @@ import com.nikhil.yt.LocalPlayerConnection
 import com.nikhil.yt.db.entities.LyricsEntity
 import com.nikhil.yt.models.MediaMetadata
 import com.nikhil.yt.ui.component.LocalMenuState
+import com.nikhil.yt.ui.component.MenuPresentation
 import com.nikhil.yt.ui.menu.LyricsMenu
 import dagger.hilt.android.EntryPointAccessors
 import kotlinx.coroutines.CancellationException
@@ -101,7 +102,7 @@ fun LyricsScreen(
         durationMs = duration,
         onClose = onBackClick,
         onMenuClick = {
-            menuState.show {
+            menuState.show(presentation = MenuPresentation.CAPSULE_PLAYER) {
                 LyricsMenu(
                     lyricsProvider = { currentLyrics },
                     mediaMetadataProvider = { mediaMetadata },

@@ -15,6 +15,7 @@ import android.net.Uri
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.CubicBezierEasing
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.isSystemInDarkTheme
@@ -72,6 +73,7 @@ import com.nikhil.yt.ui.component.playerHandoffSurfaceAlpha
 import com.nikhil.yt.ui.component.playerBackdropContentAlpha
 import com.nikhil.yt.ui.component.LocalBottomSheetPageState
 import com.nikhil.yt.ui.component.LocalMenuState
+import com.nikhil.yt.ui.component.MenuPresentation
 import com.nikhil.yt.ui.component.rememberBottomSheetState
 import com.nikhil.yt.ui.menu.PlayerMenu
 import com.nikhil.yt.ui.screens.settings.DarkMode
@@ -461,7 +463,7 @@ fun BottomSheetPlayer(
                     // would square the opacity and desynchronise it from Light/Cosmo.
                     transitionForegroundAlpha = { 1f },
                     onShowMenu = {
-                        menuState.show {
+                        menuState.show(presentation = MenuPresentation.CAPSULE_PLAYER) {
                             PlayerMenu(
                                 mediaMetadata = metadata,
                                 navController = navController,
@@ -507,23 +509,24 @@ fun BottomSheetPlayer(
  * display, while the foreground rides with the sheet. This keeps the physical "canvas" motion
  * without reintroducing the colour sweep that moving procedural backgrounds used to cause.
  */
-private const val LyricsOpenTravelMillis = 640
-private const val LyricsCloseTravelMillis = 300
-private const val LyricsForegroundOpenDelayMillis = 120
-private const val LyricsForegroundOpenFadeMillis = 420
-private const val LyricsForegroundCloseFadeMillis = 210
+// 60 Hz gets the same physical journey as 120 Hz: continuous spring velocity,
+// no high-refresh-only per-frame increments and no independently staged axes.
+// A nearly-critical spring avoids jittering text at the end of the sheet travel.
+private const val LyricsOpenSpringStiffness = 154f
+private const val LyricsCloseSpringStiffness = 375f
+private const val LyricsForegroundOpenDelayMillis = 68
+private const val LyricsForegroundOpenFadeMillis = 330
+private const val LyricsForegroundCloseFadeMillis = 172
 private val LyricsFrameCornerRadius = 32.dp
 
 /**
- * Keep the established page motion and unhurried reveal on opening. Closing reverses the travel
- * curve on its own shorter timeline; the UI starts dissolving immediately, ahead of the fast drop.
+ * Two nearly critically damped spring profiles share one physical frame and retain velocity
+ * on interruption. Closing is quicker and its controls dissolve before the final sheet travel;
+ * at 60 Hz neither geometry nor timing depends on a high-refresh frame count.
  */
-private val LyricsOpenEasing = CubicBezierEasing(0.44f, 0f, 0.56f, 1f)
-private val LyricsForegroundAcquireEasing = CubicBezierEasing(0.42f, 0f, 0.58f, 1f)
-// Preserve the accepted closing travel: the time-reverse of the original opening curve.
-private val LyricsCloseEasing = CubicBezierEasing(0.78f, 0f, 0.62f, 0.96f)
-// An early dissolve prevents bright text/slider streaks during the later, faster sheet travel.
-private val LyricsForegroundReleaseEasing = CubicBezierEasing(0.32f, 0f, 0.26f, 1f)
+private val LyricsForegroundAcquireEasing = CubicBezierEasing(0.25f, 0.08f, 0.25f, 1f)
+// An early dissolve prevents bright text/slider streaks during the faster sheet exit.
+private val LyricsForegroundReleaseEasing = CubicBezierEasing(0.28f, 0f, 0.24f, 1f)
 
 @Composable
 @OptIn(ExperimentalLayoutApi::class)
@@ -579,7 +582,11 @@ private fun CapsulePlayerLyricsHost(
             lyricsRuntimeActive = false
             coroutineScope {
                 launch {
-                    sheetOffset.animateTo(0f, tween(LyricsOpenTravelMillis, easing = LyricsOpenEasing))
+                    sheetOffset.animateTo(
+                        0f,
+                        spring(dampingRatio = 0.95f, stiffness = LyricsOpenSpringStiffness,
+                            visibilityThreshold = 0.001f),
+                    )
                 }
                 launch {
                     // Centre the list while it is still transparent, then reveal the entire UI.
@@ -593,7 +600,11 @@ private fun CapsulePlayerLyricsHost(
             // Reversing starts from the currently drawn pixels, including an interrupted opening.
             coroutineScope {
                 launch {
-                    sheetOffset.animateTo(1f, tween(LyricsCloseTravelMillis, easing = LyricsCloseEasing))
+                    sheetOffset.animateTo(
+                        1f,
+                        spring(dampingRatio = 0.99f, stiffness = LyricsCloseSpringStiffness,
+                            visibilityThreshold = 0.001f),
+                    )
                 }
                 launch {
                     foregroundOpacity.animateTo(

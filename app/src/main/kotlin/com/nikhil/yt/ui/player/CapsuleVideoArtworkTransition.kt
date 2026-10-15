@@ -356,14 +356,29 @@ internal fun CapsuleVideoArtworkTransition(
                         .requiredSize(coverWidthDp, coverHeightDp)
                         .graphicsLayer {
                             val p = body.value
-                            val fill = maxOf(
-                                widthAt(p, lead.value) / coverWidth.toFloat(),
-                                heightAt(p, lead.value) / coverHeight.toFloat(),
-                            ).coerceIn(0.5f, 3f)
-                            val stretch = if (energySaver || immersive) 0f
-                                else sculptedStickyStretch(p, lead.value)
-                            scaleX = fill * (1f + stretch * 0.20f)
-                            scaleY = fill * (1f - stretch * 0.12f)
+                            if (immersive) {
+                                // Immersion's album is the TOP of a stationary,
+                                // screen-aligned gradient. Scaling its bitmap
+                                // during VIDEO -> AUDIO moves the colour sampled
+                                // at the bottom seam while the page gradient does
+                                // not move: a one-frame colour flash on each
+                                // redraw, especially apparent at 60 Hz. The
+                                // closing mask is smaller than the original
+                                // full-bleed album, so no artwork rescale is
+                                // needed to fill it. Keep the album fixed and
+                                // let the common contour do the physical work.
+                                scaleX = 1f
+                                scaleY = 1f
+                            } else {
+                                val fill = maxOf(
+                                    widthAt(p, lead.value) / coverWidth.toFloat(),
+                                    heightAt(p, lead.value) / coverHeight.toFloat(),
+                                ).coerceIn(0.5f, 3f)
+                                val stretch = if (energySaver) 0f
+                                    else sculptedStickyStretch(p, lead.value)
+                                scaleX = fill * (1f + stretch * 0.20f)
+                                scaleY = fill * (1f - stretch * 0.12f)
+                            }
                         },
                     contentAlignment = Alignment.Center,
                 ) { artwork() }
