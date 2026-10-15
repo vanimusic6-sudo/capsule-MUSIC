@@ -578,8 +578,10 @@ fun CapsulePlayerContent(
                     blendStyle = if (isLight) CapsuleVideoBlendStyle.LIGHT else CapsuleVideoBlendStyle.COSMO,
                     // Never let an incompletely loaded/Fit album bitmap reveal
                     // the live video beneath its transparent margin on closing.
-                    artworkBackground = if (needsVideoSurface || isCapsuleVideoPlaying)
-                        Color(0xFF141414) else textColor.copy(alpha = 0.045f),
+                    // A mode-dependent matte used to change colour halfway
+                    // through closing, creating a tiny corner flash even when
+                    // the album photo was already opaque. Keep it constant.
+                    artworkBackground = Color(0xFF141414),
                     outline = if (isLight) Color.Transparent else outline,
                     onArtworkClick = onArtworkClick,
                     artworkClickable = !isCapsuleVideoPlaying && !(isLight && lightEditorEnabled),
