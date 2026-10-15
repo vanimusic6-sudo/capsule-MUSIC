@@ -25,6 +25,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.RoundRect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.graphics.Path
 import androidx.compose.foundation.shape.GenericShape
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -47,6 +48,22 @@ import android.os.PowerManager
 
 internal enum class CapsuleVideoArtworkMotion { SCULPTED, IMMERSIVE }
 
+/** Each skin gets its own optical handoff; physical layout stays shared. */
+internal enum class CapsuleVideoBlendStyle { LIGHT, COSMO, IMMERSION }
+
+internal data class CapsuleVideoBlendSpec(
+    val closeMs: Int,
+    val openMs: Int,
+    val openGate: Float,
+)
+
+internal fun capsuleVideoBlendSpec(style: CapsuleVideoBlendStyle): CapsuleVideoBlendSpec =
+    when (style) {
+        CapsuleVideoBlendStyle.LIGHT -> CapsuleVideoBlendSpec(closeMs = 105, openMs = 160, openGate = 0.51f)
+        CapsuleVideoBlendStyle.COSMO -> CapsuleVideoBlendSpec(closeMs = 130, openMs = 190, openGate = 0.47f)
+        CapsuleVideoBlendStyle.IMMERSION -> CapsuleVideoBlendSpec(closeMs = 210, openMs = 270, openGate = 0.30f)
+    }
+
 /**
  * All designs use the same 16:9 output and GPU-clipped shared silhouette.
  * Both children retain FIXED measured sizes. Only graphics layers redraw
@@ -68,6 +85,7 @@ internal fun CapsuleVideoArtworkTransition(
     videoWidthScale: Float = 1f,
     independentVideoViewport: Boolean = false,
     motion: CapsuleVideoArtworkMotion = CapsuleVideoArtworkMotion.SCULPTED,
+    blendStyle: CapsuleVideoBlendStyle = CapsuleVideoBlendStyle.COSMO,
     artworkBackground: Color = Color.Transparent,
     outline: Color = Color.Transparent,
     artworkClickable: Boolean = false,
@@ -89,6 +107,7 @@ internal fun CapsuleVideoArtworkTransition(
                 ?.isPowerSaveMode == true
     }
     val immersive = motion == CapsuleVideoArtworkMotion.IMMERSIVE
+    val blendSpec = capsuleVideoBlendSpec(blendStyle)
     val target = if (presentingVideo) 1f else 0f
     // Animatable exposes isRunning: a video surface cannot be destroyed for
     // one frame when an underdamped closing spring crosses zero and rebounds.
@@ -126,22 +145,26 @@ internal fun CapsuleVideoArtworkTransition(
             }
         }
     }
-    // The first frame is already decoded when presentingVideo becomes true.
-    // Return an opaque photo promptly on closing instead of drawing a ghost of
-    // both scenes across most of the geometric spring.
+    // Photo + opaque matte fade as a SINGLE layer. A bitmap often has
+    // letterbox/transparent edges, while the earlier cover image was smaller
+    // than the jelly contour; those gaps briefly exposed the live VIDEO.
+    // The matte occupies the whole contour, so the video can dissolve in the
+    // centre but can never leak through independent corner deformations.
     val photoOpacity = remember(transitionKey) { Animatable(if (presentingVideo) 0f else 1f) }
-    LaunchedEffect(photoOpacity, target, body) {
+    LaunchedEffect(photoOpacity, target, blendSpec, body) {
         if (target == 0f) {
-            // Skip initial AUDIO no-op: even an unchanged Animatable target
-            // would otherwise schedule ~100ms of empty frame callbacks.
             if (photoOpacity.value < 0.999f) {
-                photoOpacity.animateTo(1f, animationSpec = tween(100, easing = FastOutSlowInEasing))
+                photoOpacity.animateTo(
+                    1f, animationSpec = tween(blendSpec.closeMs, easing = FastOutSlowInEasing),
+                )
             }
-        } else {
-            if (photoOpacity.value > 0.001f) {
-                snapshotFlow { body.value }.first { it >= 0.53f }
-                photoOpacity.animateTo(0f, animationSpec = tween(180, easing = FastOutSlowInEasing))
-            }
+        } else if (photoOpacity.value > 0.001f) {
+            // Opening VIDEO requires the already decoded first frame. Wait for
+            // the container to begin transforming before revealing that frame.
+            snapshotFlow { body.value }.first { it >= blendSpec.openGate }
+            photoOpacity.animateTo(
+                0f, animationSpec = tween(blendSpec.openMs, easing = FastOutSlowInEasing),
+            )
         }
     }
     // Render lease must not flicker during a negative spring overshoot.
@@ -199,14 +222,16 @@ internal fun CapsuleVideoArtworkTransition(
         // The renderer is NEVER resized; only this contour follows the spring.
         fun widthAt(p: Float, leading: Float): Float {
             val base = sharedVideoMorphDimension(coverWidth, videoWidth, p)
-            val sticky = if (energySaver) 0f else if (immersive) immersiveJellyStretch(p, leading)
-                else sculptedStickyStretch(p, leading)
+            // Immersion is now a stretch-and-dissolve of the VIDEO picture,
+            // not a rubber-edged geometric deformation of the viewport.
+            val sticky = if (energySaver || immersive) 0f else sculptedStickyStretch(p, leading)
             return base * (1f + sticky)
         }
         fun heightAt(p: Float, leading: Float): Float {
             val base = sharedVideoMorphDimension(coverHeight, videoHeight, p)
-            val sticky = if (energySaver) 0f else if (immersive) immersiveJellyStretch(p, leading)
-                else sculptedStickyStretch(p, leading)
+            // Immersion is now a stretch-and-dissolve of the VIDEO picture,
+            // not a rubber-edged geometric deformation of the viewport.
+            val sticky = if (energySaver || immersive) 0f else sculptedStickyStretch(p, leading)
             return base * (1f - sticky * 0.55f)
         }
         Box(
@@ -217,7 +242,7 @@ internal fun CapsuleVideoArtworkTransition(
                     val leading = lead.value
                     val w = widthAt(p, leading)
                     val h = heightAt(p, leading)
-                    val adhesion = if (energySaver) 0f else if (immersive) immersiveEdgeTension(p, leading)
+                    val adhesion = if (energySaver || immersive) 0f
                         else sculptedEdgeTension(p, leading)
                     val left = (size.width - w) / 2f
                     val top = (size.height - h) / 2f +
@@ -250,7 +275,7 @@ internal fun CapsuleVideoArtworkTransition(
                         val leading = lead.value
                         val w = widthAt(p, leading)
                         val h = heightAt(p, leading)
-                        val adhesion = if (energySaver) 0f else if (immersive) immersiveEdgeTension(p, leading)
+                        val adhesion = if (energySaver || immersive) 0f
                             else sculptedEdgeTension(p, leading)
                         val left = (size.width - w) / 2f
                         val top = (size.height - h) / 2f +
@@ -296,10 +321,17 @@ internal fun CapsuleVideoArtworkTransition(
                             // A small velocity-correlated mass lag applies to
                             // its GPU layer (not to the native decoder's size).
                             // Keep uniform scale so faces are never stretched.
-                            val lag = if (energySaver) 0f else capsuleVideoContentLag(p, lead.value, immersive)
-                            scaleX = fill * (1f + kotlin.math.abs(lag) * 0.016f)
-                            scaleY = fill * (1f + kotlin.math.abs(lag) * 0.016f)
-                            translationY = lag * with(density) { 3.dp.toPx() }
+                            val lag = if (energySaver) 0f
+                                else capsuleVideoContentLag(p, lead.value, immersive)
+                            // Immersion: VIDEO dissolves while gently growing,
+                            // never bending its rectangular window or distorting
+                            // the decoded 16:9 frame. Both axes scale together.
+                            val dissolveStretch = if (immersive && !energySaver)
+                                capsuleImmersionVideoDissolveStretch(photoOpacity.value) else 0f
+                            val total = fill * (1f + kotlin.math.abs(lag) * 0.012f + dissolveStretch)
+                            scaleX = total
+                            scaleY = total
+                            translationY = lag * with(density) { (if (immersive) 1.dp else 2.dp).toPx() }
                         }
                         .background(Color.Black),
                     contentAlignment = Alignment.Center,
@@ -307,28 +339,36 @@ internal fun CapsuleVideoArtworkTransition(
                     video(true)
                 }
             }
+            // This FULL-SIZE opaque matte is important: the album artwork is
+            // often FIT/CROP with different dimensions and its independently
+            // deformed child can leave tiny triangular gaps near the rounded
+            // contour. Those gaps must show album tone, NEVER a video frame.
+            // Animating the matte+bitmap together also eliminates double-alpha
+            // compositing at the edges, with a single GPU opacity layer.
             Box(
                 Modifier
-                    .requiredSize(coverWidthDp, coverHeightDp)
-                    .graphicsLayer {
-                        val p = body.value
-                        alpha = photoOpacity.value
-                        // The cover must follow the contour too. Previously
-                        // it kept its original measured bounds while the
-                        // container widened, exposing a narrow black/video
-                        // stripe before the contents could meet the new edge.
-                        val fill = maxOf(
-                            widthAt(p, lead.value) / coverWidth.toFloat(),
-                            heightAt(p, lead.value) / coverHeight.toFloat(),
-                        ).coerceIn(0.5f, 3f)
-                        val stretch = if (energySaver) 0f else if (immersive) immersiveJellyStretch(p, lead.value)
-                            else sculptedStickyStretch(p, lead.value)
-                        scaleX = fill * (1f + stretch * 0.45f)
-                        scaleY = fill * (1f - stretch * 0.25f)
-                    }
-                    .background(artworkBackground),
+                    .requiredSize(frameWidthDp, frameHeightDp)
+                    .graphicsLayer { alpha = photoOpacity.value }
+                    .background(artworkBackground.compositeOver(Color(0xFF141414))),
                 contentAlignment = Alignment.Center,
-            ) { artwork() }
+            ) {
+                Box(
+                    Modifier
+                        .requiredSize(coverWidthDp, coverHeightDp)
+                        .graphicsLayer {
+                            val p = body.value
+                            val fill = maxOf(
+                                widthAt(p, lead.value) / coverWidth.toFloat(),
+                                heightAt(p, lead.value) / coverHeight.toFloat(),
+                            ).coerceIn(0.5f, 3f)
+                            val stretch = if (energySaver || immersive) 0f
+                                else sculptedStickyStretch(p, lead.value)
+                            scaleX = fill * (1f + stretch * 0.20f)
+                            scaleY = fill * (1f - stretch * 0.12f)
+                        },
+                    contentAlignment = Alignment.Center,
+                ) { artwork() }
+            }
         }
     }
 }
@@ -448,4 +488,10 @@ internal fun capsuleCoverVideoHandover(body: Float, immersive: Boolean): Float {
     val start = if (immersive) 0.50f else 0.38f
     val length = if (immersive) 0.43f else 0.52f
     return smoothVideoStep((body - start) / length)
+}
+
+/** Dissolve stretch peaks mid-blend and returns to exact 16:9 at both ends. */
+internal fun capsuleImmersionVideoDissolveStretch(photoAlpha: Float): Float {
+    val p = photoAlpha.coerceIn(0f, 1f)
+    return (0.047f * sin((PI * p).toFloat())).coerceIn(0f, 0.047f)
 }
