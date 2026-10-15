@@ -82,7 +82,7 @@ internal fun capsuleMenuTopFill(offsetPx: Float, viewportPx: Float): Float {
 internal fun capsuleMenuDismissScale(close: Float): Float {
     val p = close.coerceIn(0f, 1f)
     val ease = p * p * (3f - 2f * p)
-    return 1f - 0.052f * ease
+    return 1f - 0.032f * ease
 }
 
 val LocalMenuState = compositionLocalOf { MenuState() }
@@ -174,12 +174,12 @@ fun BottomSheetMenu(
                 // Short, controlled impulse. This does NOT own any touch,
                 // sheet height or anchor: the stock Material3 spring still
                 // handles partial/full expansion and scroll coordination.
-                gel.snapTo(-0.017f)
+                gel.snapTo(-0.011f)
                 gel.animateTo(
                     0f,
                     spring(
-                        dampingRatio = 0.80f,
-                        stiffness = 270f,
+                        dampingRatio = 0.91f,
+                        stiffness = 206f,
                         visibilityThreshold = 0.0001f,
                     ),
                 )
@@ -204,8 +204,8 @@ fun BottomSheetMenu(
                         dismissPull.animateTo(
                             1f,
                             spring(
-                                dampingRatio = 1.0f,
-                                stiffness = 390f,
+                                dampingRatio = 0.97f,
+                                stiffness = 295f,
                                 visibilityThreshold = 0.001f,
                             ),
                         )
@@ -293,7 +293,7 @@ fun BottomSheetMenu(
                     val closeScale = capsuleMenuDismissScale(dismissPull.value)
                     scaleX = capsuleMenuElasticX(gel.value) * closeScale
                     scaleY = capsuleMenuElasticY(gel.value) * closeScale
-                    translationY = dismissPull.value * with(density) { 9.dp.toPx() }
+                    translationY = dismissPull.value * with(density) { 6.dp.toPx() }
                 }
             },
         ) {
