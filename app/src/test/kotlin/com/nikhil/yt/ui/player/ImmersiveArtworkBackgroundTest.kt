@@ -32,7 +32,7 @@ class ImmersiveArtworkBackgroundTest {
         val hsv = FloatArray(3)
         AndroidColor.colorToHSV(result.toArgb(), hsv)
         assertTrue("A white paper background must stay grey, not green: saturation=${hsv[1]}", hsv[1] < 0.10f)
-        assertTrue(hsv[2] in 0.16f..0.45f)
+        assertTrue("White artwork must not be clamped to dark grey", hsv[2] > 0.88f)
         image.recycle()
     }
 
@@ -60,4 +60,11 @@ class ImmersiveArtworkBackgroundTest {
         assertTrue("Off-screen green bars must not tint a white visible cover", hsv[1] < 0.10f)
         image.recycle()
     }
+    @Test fun pureWhiteAndPureBlackSamplesRetainTheirRealPixelValues() {
+        val white = androidx.compose.ui.graphics.Color.White.comfortableImmersiveColor()
+        val black = androidx.compose.ui.graphics.Color.Black.comfortableImmersiveColor()
+        org.junit.Assert.assertEquals(AndroidColor.WHITE, white.toArgb())
+        org.junit.Assert.assertEquals(AndroidColor.BLACK, black.toArgb())
+    }
+
 }
