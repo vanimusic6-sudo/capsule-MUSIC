@@ -199,6 +199,22 @@ internal fun immersiveUpperHazeColor(edge: Color): Color = edge
  */
 internal val ImmersiveSmokyGraphite = Color(0xFF242529)
 
+/** Strict sRGB-channel interpolation. Compose's Color.lerp can interpolate
+ * through a perceptual colour space, which subtly bends the tint (and caused
+ * a too-large tonal change between two ostensibly gentle stops).
+ * This transition must ONLY ever include the original edge colour and
+ * smoky graphite, no incidental third hue.
+ */
+private fun immersiveSmokeRgbMix(edge: Color, destination: Color, amount: Float): Color {
+    val t = amount.coerceIn(0f, 1f)
+    return Color(
+        red = edge.red + (destination.red - edge.red) * t,
+        green = edge.green + (destination.green - edge.green) * t,
+        blue = edge.blue + (destination.blue - edge.blue) * t,
+        alpha = 1f,
+    )
+}
+
 /** Single continuous floor painted under the opaque cover fade.
  * The derivative stays visually gentle near the join: pure sampled edge
  * until the cover physically ENDS, then a gradual progression to graphite.
@@ -219,7 +235,7 @@ internal fun immersiveSmokyFloorStops(
     return arrayOf(0f to edge, join to edge) +
         fractions.drop(1).map { t ->
             val smooth = t * t * (3f - 2f * t)
-            (join + remaining * t) to lerp(edge, destination, smooth)
+            (join + remaining * t) to immersiveSmokeRgbMix(edge, destination, smooth)
         }.toTypedArray()
 }
 
