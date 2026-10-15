@@ -38,6 +38,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.launch
 
 /** Preserve the original Material3 sheet's appearance and THREE swipe anchors. */
 enum class MenuPresentation { STANDARD, CAPSULE_PLAYER }
@@ -132,12 +134,15 @@ fun BottomSheetMenu(
         val gel = remember { Animatable(0f) }
         LaunchedEffect(physical) {
             if (physical) {
-                gel.snapTo(-0.022f)
+                // Slow enough to remain visible AFTER Material's initial
+                // partial entrance has started. This is a soft-body effect on
+                // pixels only, never a competing sheet translation/drag owner.
+                gel.snapTo(-0.034f)
                 gel.animateTo(
                     0f,
                     spring(
-                        dampingRatio = 0.79f,
-                        stiffness = 200f,
+                        dampingRatio = 0.73f,
+                        stiffness = 128f,
                         visibilityThreshold = 0.0001f,
                     ),
                 )
@@ -148,7 +153,21 @@ fun BottomSheetMenu(
                 // Do not destroy the surface before Material completes its
                 // native gesture/programmatic close. Back, scrim and actions
                 // all leave from the visible position and keep sheet anchors.
-                sheetState.hide()
+                coroutineScope {
+                    // Exit contraction and native sheet slide happen together.
+                    // Starting either on pointer DOWN is expressly forbidden.
+                    launch {
+                        gel.animateTo(
+                            0.023f,
+                            spring(
+                                dampingRatio = 0.87f,
+                                stiffness = 360f,
+                                visibilityThreshold = 0.0001f,
+                            ),
+                        )
+                    }
+                    launch { sheetState.hide() }
+                }
                 state.completeAnimatedDismiss()
             }
         }
