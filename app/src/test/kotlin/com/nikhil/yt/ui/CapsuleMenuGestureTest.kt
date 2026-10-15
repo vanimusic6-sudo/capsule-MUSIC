@@ -49,7 +49,7 @@ class CapsuleMenuGestureTest {
     @Test fun longHoldWithoutDraggingCannotMoveTheMenu() {
         val state = openMenu()
         val before = cardTop()
-        compose.onNodeWithTag("capsule-menu-drag-handle").performTouchInput {
+        compose.onNodeWithTag("capsule-menu-drag-handle", useUnmergedTree = true).performTouchInput {
             down(center)
             advanceEventTime(850L)
             up()
@@ -62,13 +62,13 @@ class CapsuleMenuGestureTest {
     @Test fun swipeExpandsAndSwipeClosesThePhysicalMenu() {
         val state = openMenu()
         val peekTop = cardTop()
-        compose.onNodeWithTag("capsule-menu-drag-handle").performTouchInput {
+        compose.onNodeWithTag("capsule-menu-drag-handle", useUnmergedTree = true).performTouchInput {
             swipe(start = center, end = Offset(center.x, center.y - 280f), durationMillis = 180)
         }
         compose.waitForIdle()
         assertTrue("menu remains present while expanded", state.isVisible)
         assertTrue("upward swipe expands the sheet", cardTop() < peekTop - 20f)
-        compose.onNodeWithTag("capsule-menu-drag-handle").performTouchInput {
+        compose.onNodeWithTag("capsule-menu-drag-handle", useUnmergedTree = true).performTouchInput {
             swipe(start = center, end = Offset(center.x, center.y + 420f), durationMillis = 180)
         }
         compose.waitForIdle()
