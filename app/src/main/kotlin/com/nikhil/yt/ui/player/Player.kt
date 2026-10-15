@@ -566,11 +566,14 @@ private fun CapsulePlayerLyricsHost(
     }
     var lyricsLayerMounted by remember { mutableStateOf(showLyrics) }
     var lyricsRuntimeActive by remember { mutableStateOf(showLyrics) }
-    // The page can finish travelling with only its cheap backdrop once text
-    // opacity reaches zero. This also prevents invisible lyrics controls
-    // intercepting a tap meant for the player during the last close frames.
+    // When ink is 100% transparent, drop its expensive LazyColumn and
+    // interactive controls. Match the ACTUAL optical curve, not an unrelated
+    // hard-coded threshold: the old 0.80 cutoff caused a visible sudden
+    // disappearance while alpha was still > 0 at closing.
     val lyricsInkMounted by remember(showLyrics) {
-        derivedStateOf { showLyrics || sheetOffset.value < 0.80f }
+        derivedStateOf {
+            showLyrics || capsuleLyricsForegroundOpacity(sheetOffset.value) > 0.0001f
+        }
     }
 
     DisposableEffect(Unit) {
@@ -788,9 +791,10 @@ private fun CapsulePlayerLyricsHost(
                     bottomStart = 0.dp,
                     bottomEnd = 0.dp,
                 )
-                // Keep clipping enabled even when fully open: cancelling a
-                // close during rebound must not flash outside the page mask.
-                clip = true
+                // The full-open settled view doesn't need an always-on
+                // offscreen mask; suspend clipping after both springs rest.
+                // During every actual move, keep the stencil on.
+                clip = sheetOffset.value > 0.0001f || sheetEdge.value > 0.0001f
             }
 
             if (lyricsLayerMounted) {
