@@ -240,9 +240,17 @@ fun BottomSheetMenu(
                         Box(
                             Modifier.fillMaxWidth().height(28.dp)
                                 .graphicsLayer {
-                                    alpha = capsuleMenuTopFill(
-                                        sheetState.requireOffset(), viewportPx,
-                                    )
+                                    // Material initializes the anchored offset
+                                    // only AFTER its first measure. An alpha
+                                    // read during the initial graphics-layer
+                                    // placement otherwise crashes before the
+                                    // sheet can open on Android/Robolectric.
+                                    val offset = try {
+                                        sheetState.requireOffset()
+                                    } catch (_: IllegalStateException) {
+                                        viewportPx
+                                    }
+                                    alpha = capsuleMenuTopFill(offset, viewportPx)
                                 }
                                 .background(haze),
                         )
