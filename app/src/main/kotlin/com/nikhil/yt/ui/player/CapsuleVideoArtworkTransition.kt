@@ -19,6 +19,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.zIndex
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
@@ -347,6 +348,11 @@ internal fun CapsuleVideoArtworkTransition(
             // compositing at the edges, with a single GPU opacity layer.
             Box(
                 Modifier
+                    // Android's VIDEO TextureView and a full-frame Compose
+                    // alpha layer may be reordered across render nodes. Make
+                    // the album/matte the explicit front-most child even when
+                    // VIDEO is retained while closing (needsSurface=true).
+                    .zIndex(1f)
                     .requiredSize(frameWidthDp, frameHeightDp)
                     .graphicsLayer { alpha = photoOpacity.value }
                     .background(artworkBackground.compositeOver(Color(0xFF141414))),
