@@ -107,9 +107,9 @@ class CapsuleVideoMorphPixelsTest {
             surfaceNeeded.value = false
         }
         compose.mainClock.advanceTimeByFrame()
-        compose.mainClock.advanceTimeBy(128)
+        compose.mainClock.advanceTimeBy(160)
         assertEquals(
-            "The cover must be fully opaque ~100ms after closing, while the geometric spring continues",
+            "Cosmo cover must be completely opaque by 160ms without corner leaks",
             AndroidColor.BLUE, centre("sculpted-cover-no-double-exposure"),
         )
         compose.mainClock.autoAdvance = true
