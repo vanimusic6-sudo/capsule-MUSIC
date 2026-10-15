@@ -19,6 +19,7 @@ on:
       - fix/video-cover-stability-independent-size-20261014
       - fix/video-dissolve-opaque-cover-20261015
       - polish/lyrics-menu-motion-20261015
+      - polish/lyrics-jelly-menu-gestures-immersion-seam-20261015
       - fix/video-timeline-morph-20261014
 
 permissions:
@@ -83,6 +84,8 @@ jobs:
             --tests 'com.nikhil.yt.ui.CapsuleFavoriteAnimationTest' \
             --tests 'com.nikhil.yt.ui.PlayerMenuGestureTest' \
             --tests 'com.nikhil.yt.ui.CapsuleMenuMotionTest' \
+            --tests 'com.nikhil.yt.ui.CapsuleMenuGestureTest' \
+            --tests 'com.nikhil.yt.ui.player.CapsuleLyricsSpringMotionTest' \
             --tests 'com.nikhil.yt.ui.MiniPlayerSwipeMotionTest' \
             --tests 'com.nikhil.yt.ui.CapsuleBackgroundMotionTest' \
             --tests 'com.nikhil.yt.playback.CrossfadeIdlePollTest' \

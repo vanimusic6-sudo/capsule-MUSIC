@@ -85,6 +85,9 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlin.math.abs
+import kotlin.math.sin
+import kotlin.math.PI
 
 internal fun capsulePlayerDesignForOrientation(
     selected: CapsulePlayerDesign,
@@ -513,7 +516,7 @@ fun BottomSheetPlayer(
 // no high-refresh-only per-frame increments and no independently staged axes.
 // A nearly-critical spring avoids jittering text at the end of the sheet travel.
 private const val LyricsOpenSpringStiffness = 154f
-private const val LyricsCloseSpringStiffness = 375f
+private const val LyricsCloseSpringStiffness = 355f
 private const val LyricsForegroundOpenDelayMillis = 68
 private const val LyricsForegroundOpenFadeMillis = 330
 private const val LyricsForegroundCloseFadeMillis = 172
@@ -527,6 +530,13 @@ private val LyricsFrameCornerRadius = 32.dp
 private val LyricsForegroundAcquireEasing = CubicBezierEasing(0.25f, 0.08f, 0.25f, 1f)
 // An early dissolve prevents bright text/slider streaks during the faster sheet exit.
 private val LyricsForegroundReleaseEasing = CubicBezierEasing(0.28f, 0f, 0.24f, 1f)
+
+/** A bounded leading-edge lag, exactly zero at both resting endpoints. */
+internal fun capsuleLyricsEdgeRecoil(body: Float, lead: Float): Float {
+    val progress = body.coerceIn(0f, 1f)
+    val envelope = sin((PI * progress).toFloat()).coerceAtLeast(0f)
+    return ((lead - body) * envelope).coerceIn(-0.26f, 0.26f)
+}
 
 @Composable
 @OptIn(ExperimentalLayoutApi::class)
@@ -556,6 +566,10 @@ private fun CapsulePlayerLyricsHost(
     // Each property keeps its current value on cancellation. A quick reverse therefore starts
     // from the pixels already on screen, rather than switching to another geometry formula.
     val sheetOffset = remember { Animatable(if (showLyrics) 0f else 1f) }
+    // A faster edge spring runs alongside the body: the small velocity gap
+    // makes the top lip lead and settle like the accepted VIDEO card without
+    // stretching/blur-rendering the lyrics glyphs or moving the gradient.
+    val sheetEdge = remember { Animatable(if (showLyrics) 0f else 1f) }
     val foregroundOpacity = remember { Animatable(if (showLyrics) 1f else 0f) }
     // The outgoing player stays fully present while Lyrics travels across it. Once the page has
     // covered the last pixel, its lyric row and decorative orbit can sleep until closing starts.
@@ -575,6 +589,7 @@ private fun CapsulePlayerLyricsHost(
         if (showLyrics) {
             if (!lyricsLayerMounted) {
                 sheetOffset.snapTo(1f)
+                sheetEdge.snapTo(1f)
                 foregroundOpacity.snapTo(0f)
             }
             lyricsLayerMounted = true
@@ -584,8 +599,14 @@ private fun CapsulePlayerLyricsHost(
                 launch {
                     sheetOffset.animateTo(
                         0f,
-                        spring(dampingRatio = 0.95f, stiffness = LyricsOpenSpringStiffness,
+                        spring(dampingRatio = 0.88f, stiffness = LyricsOpenSpringStiffness,
                             visibilityThreshold = 0.001f),
+                    )
+                }
+                launch {
+                    sheetEdge.animateTo(
+                        0f,
+                        spring(dampingRatio = 0.78f, stiffness = 255f, visibilityThreshold = 0.001f),
                     )
                 }
                 launch {
@@ -602,8 +623,14 @@ private fun CapsulePlayerLyricsHost(
                 launch {
                     sheetOffset.animateTo(
                         1f,
-                        spring(dampingRatio = 0.99f, stiffness = LyricsCloseSpringStiffness,
+                        spring(dampingRatio = 0.93f, stiffness = LyricsCloseSpringStiffness,
                             visibilityThreshold = 0.001f),
+                    )
+                }
+                launch {
+                    sheetEdge.animateTo(
+                        1f,
+                        spring(dampingRatio = 0.84f, stiffness = 515f, visibilityThreshold = 0.001f),
                     )
                 }
                 launch {
@@ -744,9 +771,15 @@ private fun CapsulePlayerLyricsHost(
             // scale, dimming and mask layers: their work is especially visible at 60 Hz.
             val lyricsFrame = Modifier.graphicsLayer {
                 val travel = sheetOffset.value
-                translationY = travel * fullHeightPx
-                shape = RoundedCornerShape(LyricsFrameCornerRadius * travel)
-                clip = travel > 0f
+                val recoil = capsuleLyricsEdgeRecoil(travel, sheetEdge.value)
+                // At 60 Hz this is still one continuous GPU transform; it
+                // follows the same physical timeline as the sheet. The leading
+                // edge can pull by at most 4dp, then settles without a snap.
+                translationY = travel * fullHeightPx + recoil * with(density) { 16.dp.toPx() }
+                shape = RoundedCornerShape(
+                    LyricsFrameCornerRadius * travel.coerceIn(0f, 1f) + 8.dp * abs(recoil)
+                )
+                clip = travel > 0f || abs(recoil) > 0.001f
             }
 
             if (lyricsLayerMounted) {
@@ -756,7 +789,9 @@ private fun CapsulePlayerLyricsHost(
                     Box(modifier = Modifier.fillMaxSize().then(lyricsFrame)) {
                         Box(
                             modifier = Modifier.fillMaxSize().graphicsLayer {
-                                translationY = -sheetOffset.value * fullHeightPx
+                                val travel = sheetOffset.value
+                                translationY = -travel * fullHeightPx -
+                                    capsuleLyricsEdgeRecoil(travel, sheetEdge.value) * with(density) { 16.dp.toPx() }
                             },
                         ) {
                             CapsuleLyricsBackdropLayer(

@@ -94,6 +94,7 @@ internal fun CapsuleVideoArtworkTransition(
     independentVideoViewport: Boolean = false,
     motion: CapsuleVideoArtworkMotion = CapsuleVideoArtworkMotion.SCULPTED,
     blendStyle: CapsuleVideoBlendStyle = CapsuleVideoBlendStyle.COSMO,
+    fixedImmersiveArtwork: Boolean = false,
     artworkBackground: Color = Color.Transparent,
     outline: Color = Color.Transparent,
     artworkClickable: Boolean = false,
@@ -203,6 +204,22 @@ internal fun CapsuleVideoArtworkTransition(
         val artworkRadius = with(density) { artworkCornerRadius.toPx() }
         val videoRadius = with(density) { videoCornerRadius.toPx() }
         val shadowPx = with(density) { 6.dp.toPx() }
+
+        // Immersion is a FULL-BLEED artwork dissolved into a stationary page
+        // gradient, not a card. The previous implementation clipped/scaled its
+        // album inside the moving VIDEO contour, changing the visible artwork
+        // pixels right at the page gradient seam on every closing frame. Keep
+        // the poster + its lower fade pinned to the screen, and morph ONLY the
+        // VIDEO window above it. Both layers use the same spring progress.
+        if (fixedImmersiveArtwork) {
+            Box(
+                Modifier
+                    .requiredSize(coverWidthDp, coverHeightDp)
+                    .graphicsLayer { alpha = capsulePhotoOpacity(body.value, blendStyle) }
+                    .background(artworkBackground),
+                contentAlignment = Alignment.Center,
+            ) { artwork() }
+        }
 
         // Geometry is one shared bounds transformation. Sequential vertical
         // then horizontal resize in the old implementation felt like two
@@ -324,7 +341,10 @@ internal fun CapsuleVideoArtworkTransition(
                             // outgoing photo. An actual zero-alpha renderer
                             // prevents stale VIDEO leaking through any corner
                             // even on devices with different RenderNode order.
-                            alpha = capsuleVideoRenderAlpha(capsulePhotoOpacity(p, blendStyle), blendStyle)
+                            alpha = if (fixedImmersiveArtwork)
+                                1f - capsulePhotoOpacity(p, blendStyle)
+                            else
+                                capsuleVideoRenderAlpha(capsulePhotoOpacity(p, blendStyle), blendStyle)
                             translationY = lag * with(density) { (if (immersive) 1.dp else 2.dp).toPx() }
                         }
                         .background(Color.Black),
@@ -339,7 +359,7 @@ internal fun CapsuleVideoArtworkTransition(
             // contour. Those gaps must show album tone, NEVER a video frame.
             // Animating the matte+bitmap together also eliminates double-alpha
             // compositing at the edges, with a single GPU opacity layer.
-            Box(
+            if (!fixedImmersiveArtwork) Box(
                 Modifier
                     // Android's VIDEO TextureView and a full-frame Compose
                     // alpha layer may be reordered across render nodes. Make
