@@ -33,7 +33,14 @@ class PlayerTransitionArchitectureTest {
         assertTrue(player.contains("capsuleLyricsForegroundOpacity(sheetOffset.value)"))
         assertTrue(player.contains("scaleX = 1f"))
         assertTrue(player.contains("scaleY = 1f"))
-        assertTrue(player.contains("val recoil = if (showLyrics)"))
+        assertEquals(
+            "Both heavy composables must stay screen-fixed beneath ONE mask",
+            2,
+            Regex("translationY = -displacement").findAll(player).count(),
+        )
+        assertTrue(player.contains("topStart = LyricsFrameCornerRadius"))
+        assertTrue(player.contains(".height(14.dp)"))
+        assertFalse(player.contains("val recoil = if (showLyrics)"))
         assertFalse(player.contains("capsuleLyricsRetreat("))
         assertFalse(player.contains("foregroundOpacity.animateTo"))
         assertFalse(player.contains("LyricsForegroundOpenDelayMillis"))
