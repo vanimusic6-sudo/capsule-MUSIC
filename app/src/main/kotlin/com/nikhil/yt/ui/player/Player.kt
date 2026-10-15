@@ -23,6 +23,8 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.systemBarsIgnoringVisibility
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -40,9 +42,11 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.drawscope.clipRect
@@ -798,6 +802,12 @@ private fun CapsulePlayerLyricsHost(
             }
 
             if (lyricsLayerMounted) {
+                val lipShade = remember {
+                    Brush.verticalGradient(
+                        0f to Color.Black.copy(alpha = 0.10f),
+                        1f to Color.Transparent,
+                    )
+                }
                 Box(modifier = Modifier.fillMaxSize().then(lyricsFrame)) {
                     Box(
                         modifier = Modifier.fillMaxSize().graphicsLayer {
@@ -821,6 +831,23 @@ private fun CapsulePlayerLyricsHost(
                             modifier = Modifier.fillMaxSize(),
                         )
                     }
+
+                    // A narrow moving edge shade is the only decoration:
+                    // it belongs to the aperture (not to the static scene).
+                    // Only 14dp of pixels are shaded; no bitmap blur, second
+                    // backdrop, or long-running full-screen effect. The
+                    // envelope vanishes exactly at open and hidden anchors.
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.TopCenter)
+                            .fillMaxWidth()
+                            .height(14.dp)
+                            .graphicsLayer {
+                                val p = sheetOffset.value.coerceIn(0f, 1f)
+                                alpha = sin((PI * p).toFloat()).coerceAtLeast(0f)
+                            }
+                            .background(lipShade),
+                    )
 
                     // The Lyrics foreground is ALREADY painted at its
                     // final full-screen coordinates, then the same aperture
