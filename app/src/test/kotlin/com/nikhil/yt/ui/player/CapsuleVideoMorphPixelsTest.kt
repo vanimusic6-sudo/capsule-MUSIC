@@ -107,9 +107,14 @@ class CapsuleVideoMorphPixelsTest {
             surfaceNeeded.value = false
         }
         compose.mainClock.advanceTimeByFrame()
-        compose.mainClock.advanceTimeBy(160)
+        repeat(10) {
+            // Exercise real scheduler iterations: a single bulk clock jump
+            // can skip LaunchedEffect/Animatable recomposition on Robolectric.
+            compose.mainClock.advanceTimeByFrame()
+            compose.waitForIdle()
+        }
         assertEquals(
-            "Cosmo cover must be completely opaque by 160ms without corner leaks",
+            "Cosmo cover must be completely opaque by ~160ms without corner leaks",
             AndroidColor.BLUE, centre("sculpted-cover-no-double-exposure"),
         )
         compose.mainClock.autoAdvance = true
@@ -151,7 +156,10 @@ class CapsuleVideoMorphPixelsTest {
         compose.mainClock.autoAdvance = false
         compose.runOnIdle { playing.value = false }
         compose.mainClock.advanceTimeByFrame()
-        compose.mainClock.advanceTimeBy(atMs)
+        repeat((atMs / 16L).toInt()) {
+            compose.mainClock.advanceTimeByFrame()
+            compose.waitForIdle()
+        }
         val frame = snapshot("opaque-$style")
         try {
             val cx = frame.width / 2
