@@ -31,8 +31,10 @@ class PlayerTransitionArchitectureTest {
         val player = source("com/nikhil/yt/ui/player/Player.kt")
         assertEquals(1, Regex("then\\(lyricsFrame\\)").findAll(player).count())
         assertTrue(player.contains("capsuleLyricsForegroundOpacity(sheetOffset.value)"))
-        assertTrue(player.contains("scaleX = 1f / (1f - retreat)"))
-        assertTrue(player.contains("/ (1f - retreat * 0.62f)"))
+        assertTrue(player.contains("scaleX = 1f"))
+        assertTrue(player.contains("scaleY = 1f"))
+        assertTrue(player.contains("val recoil = if (showLyrics)"))
+        assertFalse(player.contains("capsuleLyricsRetreat("))
         assertFalse(player.contains("foregroundOpacity.animateTo"))
         assertFalse(player.contains("LyricsForegroundOpenDelayMillis"))
     }
