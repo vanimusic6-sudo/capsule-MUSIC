@@ -24,6 +24,9 @@ import androidx.compose.ui.test.swipeUp
 import androidx.compose.ui.unit.dp
 import com.nikhil.yt.ui.component.BottomSheetMenu
 import com.nikhil.yt.ui.component.MenuState
+import com.nikhil.yt.ui.component.MenuPresentation
+import com.nikhil.yt.ui.component.NewActionButton
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -43,9 +46,15 @@ class PlayerMenuGestureTest {
 
     private fun openMenu() {
         menu = MenuState()
-        menu.show {
+        menu.show(presentation = MenuPresentation.CAPSULE_PLAYER) {
             // The fixed header and volume area above the menu's lazy list.
             Box(Modifier.fillMaxWidth().height(80.dp).testTag("header")) { Text("Now playing") }
+            NewActionButton(
+                icon = { Text("▶") },
+                text = "Radio",
+                modifier = Modifier.fillMaxWidth().testTag("hold-action"),
+                onClick = {},
+            )
             Box(Modifier.fillMaxWidth().height(112.dp)) { Text("Volume") }
             list = rememberLazyListState()
             LazyColumn(
@@ -108,4 +117,18 @@ class PlayerMenuGestureTest {
         }
         compose.runOnIdle { assertFalse("Downward swipes at the list start must dismiss", menu.isVisible) }
     }
+    @Test fun holdingAnActionDoesNotRetreatOrExpandTheSheet() {
+        openMenu()
+        val before = compose.onNodeWithTag("header").fetchSemanticsNode().boundsInRoot.top
+        compose.onNodeWithTag("hold-action", useUnmergedTree = true).performTouchInput {
+            down(center)
+            advanceEventTime(850L)
+            up()
+        }
+        compose.waitForIdle()
+        val after = compose.onNodeWithTag("header").fetchSemanticsNode().boundsInRoot.top
+        assertEquals("pressing an action must not move the native sheet", before, after, 1.5f)
+        compose.runOnIdle { assertTrue(menu.isVisible) }
+    }
+
 }

@@ -5,6 +5,20 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class CapsuleLyricsSpringMotionTest {
+    @Test fun retreatIsPerceptibleDuringTravelButZeroAtBothRestPositions() {
+        assertEquals(0f, capsuleLyricsRetreat(0f, 0f), 0.00001f)
+        assertEquals(0f, capsuleLyricsRetreat(1f, 1f), 0.00001f)
+        val centre = capsuleLyricsRetreat(0.5f, 0.5f)
+        assertTrue("retreat at half-flight should visibly exceed 3%", centre > 0.03f)
+        for (body in -15..115) {
+            for (lead in -15..115 step 5) {
+                val depth = capsuleLyricsRetreat(body / 100f, lead / 100f)
+                assertTrue("no GPU overscale/underscale even when spring overshoots",
+                    depth in 0f..0.043f)
+            }
+        }
+    }
+
     @Test fun edgeReturnsExactlyToRestAndNeverSeparatesFromSheet() {
         assertEquals(0f, capsuleLyricsEdgeRecoil(0f, 0f), 0.00001f)
         assertEquals(0f, capsuleLyricsEdgeRecoil(1f, 1f), 0.00001f)
