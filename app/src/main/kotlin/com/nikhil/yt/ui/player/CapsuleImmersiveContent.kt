@@ -215,7 +215,7 @@ internal fun immersiveSmokyFloorStops(
     // Unlike two or three linear segments, this avoids visible slope
     // changes/tonal bands on white and highly saturated album covers.
     // The nine-stop shader is built ONCE per colour/viewport, not per frame.
-    val fractions = floatArrayOf(0f, 0.16f, 0.33f, 0.5f, 0.67f, 0.84f, 1f)
+    val fractions = floatArrayOf(0f, 0.14f, 0.29f, 0.43f, 0.57f, 0.71f, 0.86f, 1f)
     return arrayOf(0f to edge, join to edge) +
         fractions.drop(1).map { t ->
             val smooth = t * t * (3f - 2f * t)
