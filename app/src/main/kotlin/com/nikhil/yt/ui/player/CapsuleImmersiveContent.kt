@@ -194,6 +194,32 @@ internal fun immersiveSeamColor(edge: Color, floor: Color): Color = edge
 
 internal fun immersiveUpperHazeColor(edge: Color): Color = edge
 
+/** Smoky graphite used ONLY as the far-bottom destination, never as the
+ * cover's seam. Its cool neutral RGB has no synthetic saturation spike.
+ */
+internal val ImmersiveSmokyGraphite = Color(0xFF242529)
+
+/** Single continuous floor painted under the opaque cover fade.
+ * The derivative stays visually gentle near the join: pure sampled edge
+ * until the cover physically ENDS, then a gradual progression to graphite.
+ * The same gradient handles white, saturated and nearly black artwork.
+ */
+internal fun immersiveSmokyFloorStops(
+    edge: Color,
+    seam: Float,
+    destination: Color = ImmersiveSmokyGraphite,
+): Array<Pair<Float, Color>> {
+    val join = seam.coerceIn(0f, 0.98f)
+    val remaining = 1f - join
+    return arrayOf(
+        0f to edge,
+        join to edge,
+        (join + 0.28f * remaining) to lerp(edge, destination, 0.11f),
+        (join + 0.66f * remaining) to lerp(edge, destination, 0.59f),
+        1f to destination,
+    )
+}
+
 /** Dark ink is only applied to CONTROLS on light covers, never the artwork. */
 internal fun immersiveInkForFloor(defaultInk: Color, floor: Color): Color =
     if (floor.luminance() > 0.58f) Color(0xFF141414) else defaultInk
@@ -587,9 +613,10 @@ internal fun CapsuleImmersiveContent(
          * Where the cover ends, as a fraction of the sheet. The page has to be exactly edge at
          * that line and nowhere else, so the stop is computed rather than guessed.
          */
-        // Exact colour continuation does not require another full-screen
-        // gradient shader. The cover is blended over a single opaque floor.
-        // Avoids a full-screen gradient fill at every frame on low-end GPUs.
+        // The cover keeps its own seamless sampled edge, while only the
+        // space BELOW it eases into smoky graphite. No second overlay or
+        // independently animated shader: one cached vertical gradient.
+        val seam = (artworkHeight / maxHeight).coerceIn(0.05f, 0.95f)
 
         val frame = shownGradient
         // Same tone sampled for the Immersion background. VIDEO must not
@@ -601,7 +628,12 @@ internal fun CapsuleImmersiveContent(
             ?: artworkTone.accent.takeIf { artworkTone.ready }
             ?: IMMERSIVE_NEUTRAL_COLOR
         val seamColor = immersiveSeamColor(pageEdge, pageFloor)
-        val immersiveInk = immersiveInkForFloor(textColor, pageFloor)
+        val pageBackground = remember(seamColor, seam) {
+            Brush.verticalGradient(
+                colorStops = immersiveSmokyFloorStops(seamColor, seam),
+            )
+        }
+        val immersiveInk = immersiveInkForFloor(textColor, ImmersiveSmokyGraphite)
 
         // Preload the NEXT image invisibly. Coil must finish decoding this exact URL
         // before the frame is allowed to replace the old one. It is never rendered early.
@@ -625,11 +657,10 @@ internal fun CapsuleImmersiveContent(
         // One layer, one alpha: the old cover+scrim+page leave together, then the
         // new cover+scrim+page enter together. There is NO separately animated colour
         // layer that can lag behind the image.
-        Box(modifier = Modifier.fillMaxSize().background(seamColor))
-        // The page itself already paints this SAME gradient. Previously it was
-        // painted a second time in a full-screen alpha layer on every transition
-        // frame. That doubled overdraw, required an extra GPU layer and did not
-        // change the resulting pixels because both gradients were identical.
+        Box(modifier = Modifier.fillMaxSize().background(pageBackground))
+        // One cached opaque gradient, never duplicated as a translucent
+        // overlay. The album's bottom fade ends in EXACTLY seamColor at
+        // the join, so there is no stripe on white or saturated covers.
 
         CapsuleVideoArtworkTransition(
             presentingVideo = isVideo,
