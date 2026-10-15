@@ -526,8 +526,8 @@ fun BottomSheetPlayer(
  * Spring velocity survives mid-flight reversals. A small second lip spring
  * adds video-like edge softness without animating the lyrics glyphs.
  */
-private const val LyricsOpenSpringStiffness = 202f
-private const val LyricsCloseSpringStiffness = 316f
+private const val LyricsOpenSpringStiffness = 144f
+private const val LyricsCloseSpringStiffness = 255f
 private val LyricsFrameCornerRadius = 18.dp
 
 @Composable
@@ -600,7 +600,7 @@ private fun CapsulePlayerLyricsHost(
                     sheetOffset.animateTo(
                         0f,
                         spring(
-                            dampingRatio = 0.93f,
+                            dampingRatio = 0.95f,
                             stiffness = LyricsOpenSpringStiffness,
                             visibilityThreshold = 0.001f,
                         ),
@@ -610,8 +610,8 @@ private fun CapsulePlayerLyricsHost(
                     sheetEdge.animateTo(
                         0f,
                         spring(
-                            dampingRatio = 0.88f,
-                            stiffness = 245f,
+                            dampingRatio = 0.87f,
+                            stiffness = 183f,
                             visibilityThreshold = 0.001f,
                         ),
                     )
@@ -629,7 +629,7 @@ private fun CapsulePlayerLyricsHost(
                     sheetOffset.animateTo(
                         1f,
                         spring(
-                            dampingRatio = 0.98f,
+                            dampingRatio = 0.99f,
                             stiffness = LyricsCloseSpringStiffness,
                             visibilityThreshold = 0.001f,
                         ),
@@ -639,7 +639,7 @@ private fun CapsulePlayerLyricsHost(
                     sheetEdge.animateTo(
                         1f,
                         spring(
-                            dampingRatio = 0.98f,
+                            dampingRatio = 0.99f,
                             stiffness = LyricsCloseSpringStiffness,
                             visibilityThreshold = 0.001f,
                         ),
@@ -864,10 +864,13 @@ private fun CapsulePlayerLyricsHost(
                                     fullHeightPx,
                                     lipBudgetPx,
                                 )
+                                // Do not fade one full-screen Lyrics
+                                // RenderNode independently of the incoming
+                                // header/line/transport layers. Each ink zone
+                                // now reads the SAME physical sheet position
+                                // below and fades naturally as the aperture
+                                // reaches its resting coordinates.
                                 translationY = -displacement
-                                alpha = capsuleLyricsForegroundOpacity(
-                                    sheetOffset.value,
-                                )
                             }
                             .drawWithContent {
                                 clipRect(top = safeTopPx, bottom = size.height - safeBottomPx) {
@@ -882,6 +885,7 @@ private fun CapsulePlayerLyricsHost(
                             backdropAnimationTime = backdropAnimationTime,
                             drawBackdrop = false,
                             isVisible = lyricsRuntimeActive,
+                            motionPosition = { sheetOffset.value },
                             backHandlerEnabled =
                                 showLyrics && playerState.isExpandedOrExpanding,
                             modifier = Modifier.fillMaxSize(),
