@@ -163,13 +163,26 @@ class CapsuleVideoArtworkTransitionTest {
         assertEquals(0f, sculptedStickyStretch(1f, 1f), 0.0001f)
     }
 
-    @Test fun immersiveCoverIsOpaqueBeforeMostOfClosingAndCrossfadeHasSoftEdges() {
-        assertEquals(0f, capsuleCoverVideoHandover(0.50f, true), 0.00001f)
-        assertEquals(0f, capsuleCoverVideoHandover(0.30f, true), 0.00001f)
-        assertEquals(1f, capsuleCoverVideoHandover(0.93f, true), 0.00001f)
-        assertTrue(capsuleCoverVideoHandover(0.68f, true) in 0.15f..0.50f)
-        assertEquals(0f, capsuleCoverVideoHandover(0.38f, false), 0.00001f)
-        assertEquals(1f, capsuleCoverVideoHandover(0.90f, false), 0.00001f)
+    @Test fun everySkinHasItsOwnMeasuredOpticalDissolve() {
+        val light = capsuleVideoBlendSpec(CapsuleVideoBlendStyle.LIGHT)
+        val cosmo = capsuleVideoBlendSpec(CapsuleVideoBlendStyle.COSMO)
+        val immersion = capsuleVideoBlendSpec(CapsuleVideoBlendStyle.IMMERSION)
+        // Crisp Light, gentler Cosmo, stretched/dissolving Immersion.
+        assertTrue(light.closeMs < cosmo.closeMs)
+        assertTrue(cosmo.closeMs < immersion.closeMs)
+        assertTrue(light.openMs < cosmo.openMs)
+        assertTrue(cosmo.openMs < immersion.openMs)
+        assertTrue(immersion.openGate < cosmo.openGate)
+        assertTrue(cosmo.openGate < light.openGate)
+    }
+
+    @Test fun immersiveVideoStretchIsOpticalNotADeformedWindow() {
+        assertEquals(0f, capsuleImmersionVideoDissolveStretch(0f), 0.00001f)
+        assertEquals(0f, capsuleImmersionVideoDissolveStretch(1f), 0.00001f)
+        assertTrue(capsuleImmersionVideoDissolveStretch(0.5f) > 0.045f)
+        assertTrue(capsuleImmersionVideoDissolveStretch(0.25f) > 0.020f)
+        assertTrue(capsuleImmersionVideoDissolveStretch(0.75f) > 0.020f)
+        assertTrue(capsuleImmersionVideoDissolveStretch(0.5f) <= 0.047f)
     }
 
     @Test fun videoPictureSharesTheInertiaOfTheWindowWithoutPermanentDistortion() {
