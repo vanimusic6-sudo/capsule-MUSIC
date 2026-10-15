@@ -45,6 +45,7 @@ fun LyricsScreen(
     backdropAnimationTime: State<Long>? = null,
     drawBackdrop: Boolean = true,
     isVisible: Boolean = true,
+    motionPosition: () -> Float = { 0f },
     backHandlerEnabled: Boolean = true,
     modifier: Modifier = Modifier,
 ) {
@@ -128,6 +129,7 @@ fun LyricsScreen(
             sliderPosition = null
         },
         isVisible = isVisible,
+        motionPosition = motionPosition,
         modifier = modifier,
     )
 }

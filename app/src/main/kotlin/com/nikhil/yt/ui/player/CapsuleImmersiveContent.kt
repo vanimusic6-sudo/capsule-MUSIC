@@ -47,6 +47,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import coil3.request.ImageRequest
@@ -183,17 +184,19 @@ internal fun immersiveFadeProfile(
 }
 
 /**
- * Display-only shaping for the cover -> player dissolve.
+ * TRUE EDGE CONTINUATION: the photo, overlay and page share ONE colour.
  *
- * The sampled artwork colour is left untouched. The seam is only nudged toward the already
- * existing darker floor so the lower fade has more depth, while the upper haze is barely lighter
- * to keep the transition smoky instead of reading as a hard dark band.
+ * No darkening, lightening, accent mixing or artificially "smoky" hue:
+ * every extra lerp created a visible grey ring on white/neutral artwork.
+ * Fade opacity may vary with image texture, but its sRGB colour may not.
  */
-internal fun immersiveSeamColor(edge: Color, floor: Color): Color =
-    lerp(edge, floor, 0.45f)
+internal fun immersiveSeamColor(edge: Color, floor: Color): Color = edge
 
-internal fun immersiveUpperHazeColor(edge: Color): Color =
-    lerp(edge, Color.White, 0.055f)
+internal fun immersiveUpperHazeColor(edge: Color): Color = edge
+
+/** Dark ink is only applied to CONTROLS on light covers, never the artwork. */
+internal fun immersiveInkForFloor(defaultInk: Color, floor: Color): Color =
+    if (floor.luminance() > 0.58f) Color(0xFF141414) else defaultInk
 
 /** How much of the sheet the cover takes before it starts to go. */
 internal const val ImmersiveStatusBarHideProgress = 0.62f
@@ -584,8 +587,9 @@ internal fun CapsuleImmersiveContent(
          * Where the cover ends, as a fraction of the sheet. The page has to be exactly edge at
          * that line and nowhere else, so the stop is computed rather than guessed.
          */
-        val seam = (artworkHeight / maxHeight).coerceIn(0.05f, 0.95f)
-        val settled = (seam + 0.44f).coerceAtMost(1f)
+        // Exact colour continuation does not require another full-screen
+        // gradient shader. The cover is blended over a single opaque floor.
+        // Avoids a full-screen gradient fill at every frame on low-end GPUs.
 
         val frame = shownGradient
         // Same tone sampled for the Immersion background. VIDEO must not
@@ -597,14 +601,7 @@ internal fun CapsuleImmersiveContent(
             ?: artworkTone.accent.takeIf { artworkTone.ready }
             ?: IMMERSIVE_NEUTRAL_COLOR
         val seamColor = immersiveSeamColor(pageEdge, pageFloor)
-        val pageBackground = remember(seamColor, pageFloor, seam, settled) {
-            Brush.verticalGradient(
-                0f to seamColor,
-                seam to seamColor,
-                settled to pageFloor,
-                1f to pageFloor,
-            )
-        }
+        val immersiveInk = immersiveInkForFloor(textColor, pageFloor)
 
         // Preload the NEXT image invisibly. Coil must finish decoding this exact URL
         // before the frame is allowed to replace the old one. It is never rendered early.
@@ -628,7 +625,7 @@ internal fun CapsuleImmersiveContent(
         // One layer, one alpha: the old cover+scrim+page leave together, then the
         // new cover+scrim+page enter together. There is NO separately animated colour
         // layer that can lag behind the image.
-        Box(modifier = Modifier.fillMaxSize().background(pageBackground))
+        Box(modifier = Modifier.fillMaxSize().background(seamColor))
         // The page itself already paints this SAME gradient. Previously it was
         // painted a second time in a full-screen alpha layer on every transition
         // frame. That doubled overdraw, required an extra GPU layer and did not
@@ -694,8 +691,7 @@ internal fun CapsuleImmersiveContent(
                                         )
                                     val upperHaze =
                                         immersiveUpperHazeColor(frame.edge)
-                                    val middleTone =
-                                        lerp(frame.edge, seamColor, 0.22f)
+                                    val middleTone = frame.edge
                                     Brush.verticalGradient(
                                         0f to Color.Transparent,
                                         fade.start to Color.Transparent,
@@ -826,7 +822,7 @@ internal fun CapsuleImmersiveContent(
                                             CapsuleTrackTitle(
                                                 mediaId = mediaMetadata.id,
                                                 title = mediaMetadata.title,
-                                                color = textColor,
+                                                color = immersiveInk,
                                                 enabled = !immersiveEditEnabled,
                                                 modifier = Modifier.fillMaxWidth(),
                                             )
@@ -834,7 +830,7 @@ internal fun CapsuleImmersiveContent(
                                             Row(verticalAlignment = Alignment.CenterVertically) {
                                                 if (mediaMetadata.explicit) {
                                                     ExplicitBadge(
-                                                        color = textColor.copy(alpha = 0.62f),
+                                                        color = immersiveInk.copy(alpha = 0.62f),
                                                     )
                                                     Spacer(Modifier.width(5.dp))
                                                 }
@@ -842,7 +838,7 @@ internal fun CapsuleImmersiveContent(
                                                     text =
                                                         mediaMetadata.artists
                                                             .joinToString { it.name },
-                                                    color = textColor.copy(alpha = 0.62f),
+                                                    color = immersiveInk.copy(alpha = 0.62f),
                                                     fontSize = CapsulePlayerArtistFontSize,
                                                     lineHeight = CapsulePlayerArtistLineHeight,
                                                     fontWeight = FontWeight.Normal,
@@ -901,9 +897,9 @@ internal fun CapsuleImmersiveContent(
                                                 interactionSource = favoriteInteraction,
                                                 tint =
                                                     if (liked) {
-                                                        CapsuleFavoriteColors.selected(textColor)
+                                                        CapsuleFavoriteColors.selected(immersiveInk)
                                                     } else {
-                                                        textColor
+                                                        immersiveInk
                                                     },
                                                 modifier = Modifier.size(28.dp),
                                                 userActionToken = favoriteActionToken,
@@ -934,8 +930,8 @@ internal fun CapsuleImmersiveContent(
                                 enabled =
                                     safeDuration > 0L &&
                                         !immersiveEditEnabled,
-                                activeColor = textColor,
-                                inactiveColor = textColor.copy(alpha = 0.22f),
+                                activeColor = immersiveInk,
+                                inactiveColor = immersiveInk.copy(alpha = 0.22f),
                                 onValueChange = { onSeekPreview(it.toLong()) },
                                 onValueChangeFinished = onSeekFinished,
                                 modifier = Modifier.fillMaxWidth().height(22.dp),
@@ -952,7 +948,7 @@ internal fun CapsuleImmersiveContent(
                             ) {
                                 Text(
                                     makeTimeString(shownPosition),
-                                    color = textColor.copy(alpha = 0.55f),
+                                    color = immersiveInk.copy(alpha = 0.55f),
                                     fontSize = 13.sp,
                                 )
                                 Text(
@@ -961,7 +957,7 @@ internal fun CapsuleImmersiveContent(
                                     } else {
                                         ""
                                     },
-                                    color = textColor.copy(alpha = 0.55f),
+                                    color = immersiveInk.copy(alpha = 0.55f),
                                     fontSize = 13.sp,
                                 )
                             }
@@ -1021,7 +1017,7 @@ internal fun CapsuleImmersiveContent(
                                                 painterResource(R.drawable.shuffle),
                                                 stringResource(R.string.shuffle),
                                                 tint =
-                                                    textColor.copy(
+                                                    immersiveInk.copy(
                                                         alpha =
                                                             if (shuffleEnabled) {
                                                                 1f
@@ -1040,7 +1036,7 @@ internal fun CapsuleImmersiveContent(
                                         CapsuleAudioVideoToggle(
                                             lightStyle = true,
                                             state = videoPlaybackState,
-                                            textColor = textColor,
+                                            textColor = immersiveInk,
                                             enabled = !immersiveEditEnabled,
                                             onAudioClick = {
                                                 playerConnection.service.setCapsulePlaybackMode(
@@ -1092,7 +1088,7 @@ internal fun CapsuleImmersiveContent(
                                                 painterResource(R.drawable.bedtime),
                                                 stringResource(R.string.sleep_timer),
                                                 tint =
-                                                    textColor.copy(
+                                                    immersiveInk.copy(
                                                         alpha =
                                                             if (sleepTimerEnabled) {
                                                                 1f
@@ -1119,7 +1115,7 @@ internal fun CapsuleImmersiveContent(
                                     .padding(horizontal = 20.dp),
                         ) {
                             CapsuleLightControls(
-                                textColor = textColor,
+                                textColor = immersiveInk,
                                 shuffleEnabled = shuffleEnabled,
                                 repeatMode = repeatMode,
                                 enabled = true,
@@ -1143,7 +1139,7 @@ internal fun CapsuleImmersiveContent(
                                         isPlaying = isPlaying,
                                         isLoading = isLoading,
                                         visible = visible && controlsActive,
-                                        color = textColor,
+                                        color = immersiveInk,
                                         onClick = {
                                             playerConnection.player.togglePlayPause()
                                         },
@@ -1209,7 +1205,7 @@ internal fun CapsuleImmersiveContent(
                     Modifier
                         .size(width = ImmersiveQueueRailWidth, height = ImmersiveQueueRailHeight)
                         .clip(CircleShape)
-                        .background(textColor.copy(alpha = 0.32f)),
+                        .background(immersiveInk.copy(alpha = 0.32f)),
             )
         }
     }

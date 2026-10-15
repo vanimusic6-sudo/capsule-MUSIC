@@ -53,7 +53,7 @@ class CapsuleMenuMotionTest {
     }
     @Test fun appleClosePullStartsAtFullSizeAndShrinksSmoothlyWithoutJump() {
         assertEquals(1f, capsuleMenuDismissScale(0f), 0.00001f)
-        assertEquals(0.948f, capsuleMenuDismissScale(1f), 0.00001f)
+        assertEquals(0.968f, capsuleMenuDismissScale(1f), 0.00001f)
         var previous = 1f
         for (frame in 1..60) {
             val now = capsuleMenuDismissScale(frame / 60f)

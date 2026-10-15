@@ -22,6 +22,7 @@ on:
       - fix/predictive-back-and-lyrics-transition-20261015
       - polish/motion-sheet-lyrics-60hz-20261015
       - polish/lyrics-aperture-morph-20261015
+      - polish/lyrics-ink-immersion-true-edge-20261015
       - fix/video-timeline-morph-20261014
 
 permissions:

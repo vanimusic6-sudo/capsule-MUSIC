@@ -95,4 +95,28 @@ class CapsuleLyricsSpringMotionTest {
             assertTrue(kotlin.math.abs(capsuleLyricsEdgeRecoil(body/100f, edge/100f)) <= 0.18f)
         }
     }
+    @Test fun eachLyricsInkZoneEntersInAStableSmoothAndReversible60HzSequence() {
+        for (zone in LyricsInkZone.entries) {
+            assertEquals(0f, capsuleLyricsZoneOpacity(1f, zone), 0.00001f)
+            assertEquals(1f, capsuleLyricsZoneOpacity(0f, zone), 0.00001f)
+            assertEquals(0f, capsuleLyricsZoneFloatDp(0f, zone), 0.00001f)
+            var previous = 0f
+            for (frame in 0..120) {
+                val position = 1f - frame / 120f
+                val opacity = capsuleLyricsZoneOpacity(position, zone)
+                assertTrue("$zone decreases while opening", opacity >= previous - 0.00001f)
+                assertTrue("$zone has a bounded local float", capsuleLyricsZoneFloatDp(position, zone) in 0f..6f)
+                if (frame > 0) {
+                    assertTrue("$zone should never pop between 60Hz frames",
+                        opacity - previous < 0.075f)
+                }
+                previous = opacity
+            }
+        }
+        // Controls near the moving BOTTOM aperture must appear before the
+        // top bar; exactly one spring clock drives both reveals.
+        assertTrue(capsuleLyricsZoneOpacity(0.70f, LyricsInkZone.CONTROLS) >
+            capsuleLyricsZoneOpacity(0.70f, LyricsInkZone.HEADER))
+    }
+
 }

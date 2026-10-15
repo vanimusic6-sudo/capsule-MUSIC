@@ -44,3 +44,36 @@ internal fun capsuleLyricsTranslation(
     heightPx: Float,
     recoilBudgetPx: Float,
 ): Float = capsuleLyricsLandingTravel(body) * heightPx + recoil * recoilBudgetPx
+
+/**
+ * One low-cost optical "ink" handoff, with a natural small waterfall:
+ * transport (first visible near the bottom), timeline, live lyric lines,
+ * and the top bar (last visible once the aperture reaches the top).
+ * Unlike four independent Animatables, the whole choreography samples
+ * only the existing spring's position and can reverse in ONE frame.
+ */
+internal enum class LyricsInkZone { HEADER, LINES, TIMELINE, CONTROLS }
+
+internal fun capsuleLyricsZoneOpacity(
+    sheetPosition: Float,
+    zone: LyricsInkZone,
+): Float {
+    val (start, finish) = when (zone) {
+        LyricsInkZone.CONTROLS -> 0.90f to 0.47f
+        LyricsInkZone.TIMELINE -> 0.78f to 0.38f
+        LyricsInkZone.LINES -> 0.74f to 0.21f
+        LyricsInkZone.HEADER -> 0.35f to 0.025f
+    }
+    val t = ((start - sheetPosition.coerceIn(0f, 1f)) / (start - finish))
+        .coerceIn(0f, 1f)
+    return t * t * (3f - 2f * t)
+}
+
+/** Local 6dp float-in; never rescales glyphs or moves their layout bounds. */
+internal fun capsuleLyricsZoneFloatDp(
+    sheetPosition: Float,
+    zone: LyricsInkZone,
+): Float {
+    val a = capsuleLyricsZoneOpacity(sheetPosition, zone)
+    return 6f * (1f - a) * (1f - a)
+}
