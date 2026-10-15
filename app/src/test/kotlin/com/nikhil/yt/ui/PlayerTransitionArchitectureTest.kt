@@ -41,7 +41,6 @@ class PlayerTransitionArchitectureTest {
         assertTrue(player.contains("topStart = LyricsFrameCornerRadius"))
         assertTrue(player.contains(".height(14.dp)"))
         assertFalse(player.contains("val recoil = if (showLyrics)"))
-        assertTrue(player.contains("val recoil = if (showLyrics)"))
         assertFalse(player.contains("capsuleLyricsRetreat("))
         assertFalse(player.contains("foregroundOpacity.animateTo"))
         assertFalse(player.contains("LyricsForegroundOpenDelayMillis"))
