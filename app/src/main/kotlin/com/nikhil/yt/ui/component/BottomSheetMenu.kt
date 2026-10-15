@@ -8,6 +8,7 @@
 package com.nikhil.yt.ui.component
 
 import androidx.compose.foundation.background
+import androidx.activity.compose.PredictiveBackHandler
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.layout.Box
@@ -21,6 +22,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.ModalBottomSheetDefaults
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -40,6 +42,7 @@ import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.collect
 
 /** Preserve the original Material3 sheet's appearance and THREE swipe anchors. */
 enum class MenuPresentation { STANDARD, CAPSULE_PLAYER }
@@ -189,8 +192,30 @@ fun BottomSheetMenu(
                             .background(MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)),
                 )
             },
-            modifier = modifier.fillMaxHeight(),
+            // Material3's default predictive-back scales the entire sheet
+            // immediately on BACK-down/gesture-hold. Releasing then hands it
+            // to the hide animation, producing the reported "shrinks then
+            // jumps down" discontinuity. Opt out of ONLY that built-in
+            // transformation for player/Lyrics; native drag, partial/full
+            // expand, scrim and Material's dismissal remain untouched.
+            properties = ModalBottomSheetDefaults.properties(
+                shouldDismissOnBackPress = !physical,
+            ),
+            modifier = modifier.fillMaxHeight().graphicsLayer {
+                if (physical) {
+                    transformOrigin = TransformOrigin(0.5f, 1f)
+                    scaleX = capsuleMenuElasticX(gel.value)
+                    scaleY = capsuleMenuElasticY(gel.value)
+                }
+            },
         ) {
+            PredictiveBackHandler(enabled = physical && !state.dismissRequested) { progress ->
+                // Ignore progress (including prolonged holds). At the first
+                // committed BACK event animate the native sheet from its
+                // exact current anchor. A cancelled gesture moves nothing.
+                progress.collect { }
+                state.dismiss()
+            }
             CompositionLocalProvider(LocalCapsuleMenuPressGuard provides physical) {
                 Column(
                     modifier =
@@ -199,11 +224,8 @@ fun BottomSheetMenu(
                             // Only a tiny elastic response to opening, applied
                             // AFTER layout. No continuously repainted gradients,
                             // custom nested scroll or per-frame composition.
-                            .graphicsLayer {
-                                transformOrigin = TransformOrigin(0.5f, 1f)
-                                scaleX = if (physical) capsuleMenuElasticX(gel.value) else 1f
-                                scaleY = if (physical) capsuleMenuElasticY(gel.value) else 1f
-                            }
+                            // No second scale applied to child controls:
+                            // one outer GPU layer owns both the body and handle.
                             .padding(horizontal = 20.dp),
                 ) {
                     state.content(this)
