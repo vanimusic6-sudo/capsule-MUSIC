@@ -12,6 +12,7 @@ import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -68,9 +69,22 @@ fun NewActionButton(
         label = "content"
     )
 
+    // Only Capsule's More action buttons swallow long-press, which must
+    // never be mistaken for a request to move the whole sheet. The real
+    // ModalBottomSheet (including handle swipes and scroll) remains native.
+    val pressGuard = LocalCapsuleMenuPressGuard.current
+    val actionModifier =
+        if (pressGuard) {
+            modifier.combinedClickable(
+                enabled = enabled,
+                onClick = onClick,
+                onLongClick = {},
+            )
+        } else {
+            modifier.clickable(enabled = enabled, onClick = onClick)
+        }
     Card(
-        modifier = modifier
-            .clickable(enabled = enabled) { onClick() },
+        modifier = actionModifier,
         colors = CardDefaults.cardColors(
             containerColor = animatedBackground
         ),
@@ -249,9 +263,22 @@ fun NewIconButton(
         label = "content"
     )
 
+    // Only Capsule's More action buttons swallow long-press, which must
+    // never be mistaken for a request to move the whole sheet. The real
+    // ModalBottomSheet (including handle swipes and scroll) remains native.
+    val pressGuard = LocalCapsuleMenuPressGuard.current
+    val actionModifier =
+        if (pressGuard) {
+            modifier.combinedClickable(
+                enabled = enabled,
+                onClick = onClick,
+                onLongClick = {},
+            )
+        } else {
+            modifier.clickable(enabled = enabled, onClick = onClick)
+        }
     Card(
-        modifier = modifier
-            .clickable(enabled = enabled) { onClick() },
+        modifier = actionModifier,
         colors = CardDefaults.cardColors(
             containerColor = animatedBackground
         ),
