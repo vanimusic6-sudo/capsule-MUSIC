@@ -116,7 +116,11 @@ fun NewActionButton(
                 textAlign = TextAlign.Center,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.basicMarquee()
+                // Scrolling a sheet with 3–9 independently running marquee
+                // clocks causes frequent small re-layouts at 60Hz. The text
+                // already has a 2-line ellipsis, so do not run a marquee
+                // inside the player/Lyrics More menu.
+                modifier = if (pressGuard) Modifier else Modifier.basicMarquee(),
             )
         }
     }
