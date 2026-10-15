@@ -790,12 +790,17 @@ private fun CapsulePlayerLyricsHost(
                                 androidx.compose.ui.graphics.TransformOrigin(0.5f, 1f)
                             scaleX = 1f / (1f - retreat)
                             scaleY = 1f / (1f - retreat * 0.62f)
+                            // Translation of the inner layer is itself
+                            // scaled by the outer page. Divide by parent
+                            // scale to leave the *actual screen-space* gradient
+                            // still; otherwise the album shifts by a few
+                            // pixels in the middle of every 60Hz animation.
                             translationY = -capsuleLyricsTranslation(
                                 position,
                                 recoil,
                                 fullHeightPx,
                                 with(density) { 18.dp.toPx() },
-                            )
+                            ) / (1f - retreat * 0.62f)
                         },
                     ) {
                         CapsuleLyricsBackdropLayer(
