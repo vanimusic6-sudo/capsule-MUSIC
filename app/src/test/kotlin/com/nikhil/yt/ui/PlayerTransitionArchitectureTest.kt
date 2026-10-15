@@ -23,7 +23,7 @@ class PlayerTransitionArchitectureTest {
         assertTrue(menu.contains("PredictiveBackHandler("))
         assertTrue(menu.contains("shouldDismissOnBackPress = !physical"))
         assertTrue(menu.contains("progress.collect { }"))
-        assertFalse(menu.contains("\\n    Dialog("))
+        assertFalse(menu.contains("\n    Dialog("))
         assertFalse(menu.contains("rememberDraggableState"))
     }
 
