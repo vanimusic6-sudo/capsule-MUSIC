@@ -2,9 +2,6 @@
 package com.nikhil.yt.ui.player
 
 import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.tween
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -52,17 +49,28 @@ internal enum class CapsuleVideoArtworkMotion { SCULPTED, IMMERSIVE }
 internal enum class CapsuleVideoBlendStyle { LIGHT, COSMO, IMMERSION }
 
 internal data class CapsuleVideoBlendSpec(
-    val closeMs: Int,
-    val openMs: Int,
-    val openGate: Float,
+    /** Shared spring progress before the first visible VIDEO pixel. */
+    val fadeStart: Float,
+    /** Reversible handover distance in the same shared spring timeline. */
+    val fadeSpan: Float,
 )
 
 internal fun capsuleVideoBlendSpec(style: CapsuleVideoBlendStyle): CapsuleVideoBlendSpec =
     when (style) {
-        CapsuleVideoBlendStyle.LIGHT -> CapsuleVideoBlendSpec(closeMs = 105, openMs = 160, openGate = 0.51f)
-        CapsuleVideoBlendStyle.COSMO -> CapsuleVideoBlendSpec(closeMs = 130, openMs = 190, openGate = 0.47f)
-        CapsuleVideoBlendStyle.IMMERSION -> CapsuleVideoBlendSpec(closeMs = 210, openMs = 270, openGate = 0.30f)
+        CapsuleVideoBlendStyle.LIGHT -> CapsuleVideoBlendSpec(fadeStart = 0.46f, fadeSpan = 0.40f)
+        CapsuleVideoBlendStyle.COSMO -> CapsuleVideoBlendSpec(fadeStart = 0.46f, fadeSpan = 0.44f)
+        CapsuleVideoBlendStyle.IMMERSION -> CapsuleVideoBlendSpec(fadeStart = 0.32f, fadeSpan = 0.68f)
     }
+
+/**
+ * Blend both children from one physical timeline, with no separately retargeted
+ * alpha animations. Closing retraces opening exactly from the spring's current
+ * velocity, and a completed VIDEO can stay mounted without bleeding through.
+ */
+internal fun capsulePhotoOpacity(progress: Float, style: CapsuleVideoBlendStyle): Float {
+    val blend = capsuleVideoBlendSpec(style)
+    return 1f - smoothVideoStep((progress - blend.fadeStart) / blend.fadeSpan)
+}
 
 /**
  * All designs use the same 16:9 output and GPU-clipped shared silhouette.
@@ -107,7 +115,6 @@ internal fun CapsuleVideoArtworkTransition(
                 ?.isPowerSaveMode == true
     }
     val immersive = motion == CapsuleVideoArtworkMotion.IMMERSIVE
-    val blendSpec = capsuleVideoBlendSpec(blendStyle)
     val target = if (presentingVideo) 1f else 0f
     // Animatable exposes isRunning: a video surface cannot be destroyed for
     // one frame when an underdamped closing spring crosses zero and rebounds.
@@ -145,17 +152,9 @@ internal fun CapsuleVideoArtworkTransition(
             }
         }
     }
-    // The entire opaque backing + album photo fades as ONE graphics layer.
-    // Target-driven state is robust to rapid open/close reversals, avoiding
-    // the coroutine retargets previously missed in Robolectric pixel tests.
-    val photoOpacity by animateFloatAsState(
-        targetValue = if (presentingVideo) 0f else 1f,
-        animationSpec = tween(
-            durationMillis = if (presentingVideo) blendSpec.openMs else blendSpec.closeMs,
-            easing = FastOutSlowInEasing,
-        ),
-        label = "capsule-photo-video-dissolve",
-    )
+    // Optical reveal is derived directly from body.value inside GPU layers.
+    // No separate coroutine/frame-clock: this also makes the transitions
+    // reproducible by Robolectric and avoids photo/video state drift.
     // Render lease must not flicker during a negative spring overshoot.
     // Derived state only changes composition at the mount/unmount boundary.
     val surfaceActive by remember(needsSurface, body, lead) {
@@ -316,7 +315,7 @@ internal fun CapsuleVideoArtworkTransition(
                             // never bending its rectangular window or distorting
                             // the decoded 16:9 frame. Both axes scale together.
                             val dissolveStretch = if (immersive && !energySaver)
-                                capsuleImmersionVideoDissolveStretch(photoOpacity) else 0f
+                                capsuleImmersionVideoDissolveStretch(capsulePhotoOpacity(p, blendStyle)) else 0f
                             val total = fill * (1f + kotlin.math.abs(lag) * 0.012f + dissolveStretch)
                             scaleX = total
                             scaleY = total
@@ -325,7 +324,7 @@ internal fun CapsuleVideoArtworkTransition(
                             // outgoing photo. An actual zero-alpha renderer
                             // prevents stale VIDEO leaking through any corner
                             // even on devices with different RenderNode order.
-                            alpha = capsuleVideoRenderAlpha(photoOpacity, blendStyle)
+                            alpha = capsuleVideoRenderAlpha(capsulePhotoOpacity(p, blendStyle), blendStyle)
                             translationY = lag * with(density) { (if (immersive) 1.dp else 2.dp).toPx() }
                         }
                         .background(Color.Black),
@@ -348,7 +347,7 @@ internal fun CapsuleVideoArtworkTransition(
                     // VIDEO is retained while closing (needsSurface=true).
                     .zIndex(1f)
                     .requiredSize(frameWidthDp, frameHeightDp)
-                    .graphicsLayer { alpha = photoOpacity }
+                    .graphicsLayer { alpha = capsulePhotoOpacity(body.value, blendStyle) }
                     .background(artworkBackground.compositeOver(Color(0xFF141414))),
                 contentAlignment = Alignment.Center,
             ) {
