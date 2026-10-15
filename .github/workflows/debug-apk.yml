@@ -84,6 +84,7 @@ jobs:
             --tests 'com.nikhil.yt.ui.CapsuleFavoriteAnimationTest' \
             --tests 'com.nikhil.yt.ui.PlayerMenuGestureTest' \
             --tests 'com.nikhil.yt.ui.CapsuleMenuMotionTest' \
+            --tests 'com.nikhil.yt.ui.CapsuleMenuGestureTest' \
             --tests 'com.nikhil.yt.ui.player.CapsuleLyricsSpringMotionTest' \
             --tests 'com.nikhil.yt.ui.MiniPlayerSwipeMotionTest' \
             --tests 'com.nikhil.yt.ui.CapsuleBackgroundMotionTest' \
