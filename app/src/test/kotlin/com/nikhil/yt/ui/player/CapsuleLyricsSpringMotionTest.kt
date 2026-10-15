@@ -51,12 +51,11 @@ class CapsuleLyricsSpringMotionTest {
             val outerScale = 1f - retreat * 0.62f
             val inverseScale = 1f / outerScale
             for (sourceY in listOf(0f, 160f, 450f, height)) {
-                val afterInner = height + (sourceY - height) * inverseScale - travel
+                val afterInner = height + (sourceY - height) * inverseScale -
+                    travel / outerScale
                 val afterOuter = height + (afterInner - height) * outerScale + travel
-                // RenderNode translations are also subject to their parent
-                // scale, so the inner translation must compensate for that.
-                // (The analytic equality is handled in the production code.)
-                assertTrue(afterOuter.isFinite())
+                assertEquals("fixed gradient may not wander during spring motion",
+                    sourceY, afterOuter, 0.001f)
             }
         }
     }
