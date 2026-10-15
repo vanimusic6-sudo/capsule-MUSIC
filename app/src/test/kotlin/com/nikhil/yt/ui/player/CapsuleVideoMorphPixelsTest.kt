@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithTag
@@ -286,6 +287,56 @@ class CapsuleVideoMorphPixelsTest {
         compose.mainClock.autoAdvance = true
         compose.waitForIdle()
         assertEquals(AndroidColor.RED, centre("recovered"))
+    }
+
+    @Test fun immersionArtworkSeamStaysPinnedWhenVideoDissolvesAndWindowCloses() {
+        val presenting = mutableStateOf(true)
+        compose.setContent {
+            Box(Modifier.size(320.dp, 440.dp).background(Color.Blue).testTag("media-slot")) {
+                CapsuleVideoArtworkTransition(
+                    presentingVideo = presenting.value,
+                    needsSurface = true,
+                    fillArtworkSlot = true,
+                    fixedImmersiveArtwork = true,
+                    motion = CapsuleVideoArtworkMotion.IMMERSIVE,
+                    blendStyle = CapsuleVideoBlendStyle.IMMERSION,
+                    artworkCornerRadius = 0.dp,
+                    videoCornerRadius = 16.dp,
+                    artworkBackground = Color.Blue,
+                    video = { Box(Modifier.fillMaxSize().background(Color.Green)) },
+                    artwork = {
+                        Box(Modifier.fillMaxSize().background(
+                            Brush.verticalGradient(
+                                0f to Color.Red,
+                                0.85f to Color.Blue,
+                                1f to Color.Blue,
+                            )
+                        ))
+                    },
+                )
+            }
+        }
+        compose.mainClock.autoAdvance = false
+        compose.runOnIdle { presenting.value = false }
+        compose.mainClock.advanceTimeByFrame()
+        repeat(26) { step ->
+            compose.mainClock.advanceTimeByFrame()
+            compose.waitForIdle()
+            val bitmap = snapshot("pinned-seam-$step")
+            try {
+                // The album's last line and the stationary player floor have
+                // identical endpoint colour even while VIDEO is retained.
+                for (x in listOf(bitmap.width / 4, bitmap.width / 2, bitmap.width * 3 / 4)) {
+                    val bottom = bitmap.getPixel(x, bitmap.height - 3)
+                    assertTrue("Immersion seam flashed at frame $step, x=$x",
+                        AndroidColor.blue(bottom) > 245 &&
+                            AndroidColor.red(bottom) < 12 &&
+                            AndroidColor.green(bottom) < 12)
+                }
+            } finally { bitmap.recycle() }
+        }
+        compose.mainClock.autoAdvance = true
+        compose.waitForIdle()
     }
 
     private fun assertRectangularBlend(name: String) {
