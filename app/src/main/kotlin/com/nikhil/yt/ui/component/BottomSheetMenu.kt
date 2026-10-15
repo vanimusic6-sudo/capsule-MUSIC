@@ -219,7 +219,7 @@ private fun CapsulePhysicalMenuSheet(
             val window = (view.parent as? DialogWindowProvider)?.window
             val oldDim = window?.attributes?.dimAmount
             window?.setDimAmount(0f)
-            onDispose { if (oldDim != null) window.setDimAmount(oldDim) }
+            onDispose { if (oldDim != null) window?.setDimAmount(oldDim) }
         }
         val density = LocalDensity.current
         val inertTouch = remember { MutableInteractionSource() }
