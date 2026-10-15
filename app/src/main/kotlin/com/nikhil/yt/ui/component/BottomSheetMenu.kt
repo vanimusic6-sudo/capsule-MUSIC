@@ -8,6 +8,11 @@
 package com.nikhil.yt.ui.component
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.height
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalDensity
 import androidx.activity.compose.PredictiveBackHandler
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.spring
@@ -34,10 +39,10 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.coroutineScope
@@ -60,6 +65,25 @@ internal fun capsuleMenuElasticX(deformation: Float): Float =
 
 internal fun capsuleMenuElasticY(deformation: Float): Float =
     1f + deformation.coerceIn(-0.05f, 0.05f)
+
+/**
+ * Top tint follows the REAL sheet's drag offset, not an elapsed-time animator.
+ * The soft cubic endpoints mean expanding from the partial anchor never
+ * exposes a suddenly recoloured top edge, including on 60 Hz devices.
+ */
+internal fun capsuleMenuTopFill(offsetPx: Float, viewportPx: Float): Float {
+    if (!offsetPx.isFinite() || viewportPx <= 0f) return 0f
+    val expanded = (1f - offsetPx / viewportPx).coerceIn(0f, 1f)
+    val t = ((expanded - 0.24f) / 0.70f).coerceIn(0f, 1f)
+    return (t * t * (3f - 2f * t) * 0.30f)
+}
+
+/** A short, continuous Apple/HONOR-style retreat during committed close ONLY. */
+internal fun capsuleMenuDismissScale(close: Float): Float {
+    val p = close.coerceIn(0f, 1f)
+    val ease = p * p * (3f - 2f * p)
+    return 1f - 0.052f * ease
+}
 
 val LocalMenuState = compositionLocalOf { MenuState() }
 
@@ -135,17 +159,27 @@ fun BottomSheetMenu(
         val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = false)
         val physical = state.presentation == MenuPresentation.CAPSULE_PLAYER
         val gel = remember { Animatable(0f) }
+        val dismissPull = remember { Animatable(0f) }
+        val density = LocalDensity.current
+        val viewportPx = with(density) { LocalConfiguration.current.screenHeightDp.dp.toPx() }
+        val upperTint = MaterialTheme.colorScheme.surfaceContainerHighest
+        val haze = remember(upperTint) {
+            Brush.verticalGradient(
+                0f to upperTint.copy(alpha = 0.55f),
+                1f to upperTint.copy(alpha = 0f),
+            )
+        }
         LaunchedEffect(physical) {
             if (physical) {
-                // Slow enough to remain visible AFTER Material's initial
-                // partial entrance has started. This is a soft-body effect on
-                // pixels only, never a competing sheet translation/drag owner.
-                gel.snapTo(-0.034f)
+                // Short, controlled impulse. This does NOT own any touch,
+                // sheet height or anchor: the stock Material3 spring still
+                // handles partial/full expansion and scroll coordination.
+                gel.snapTo(-0.017f)
                 gel.animateTo(
                     0f,
                     spring(
-                        dampingRatio = 0.73f,
-                        stiffness = 128f,
+                        dampingRatio = 0.80f,
+                        stiffness = 270f,
                         visibilityThreshold = 0.0001f,
                     ),
                 )
@@ -167,12 +201,12 @@ fun BottomSheetMenu(
                     // Exit contraction and native sheet slide happen together.
                     // Starting either on pointer DOWN is expressly forbidden.
                     launch {
-                        gel.animateTo(
-                            0.023f,
+                        dismissPull.animateTo(
+                            1f,
                             spring(
-                                dampingRatio = 0.87f,
-                                stiffness = 360f,
-                                visibilityThreshold = 0.0001f,
+                                dampingRatio = 1.0f,
+                                stiffness = 390f,
+                                visibilityThreshold = 0.001f,
                             ),
                         )
                     }
@@ -188,16 +222,49 @@ fun BottomSheetMenu(
                 if (physical) state.dismiss() else state.isVisible = false
             },
             containerColor = background,
+            // Same 16dp softness as the VIDEO window; the previous 28dp
+            // sheet curvature looked ragged during vertical travel.
+            shape = if (physical) {
+                RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp)
+            } else MaterialTheme.shapes.extraLarge,
             contentColor = MaterialTheme.colorScheme.onSurface,
+            // The haze belongs to the TOP lip only, not a costly
+            // full-screen scrim. Its alpha follows the anchored offset in
+            // the draw phase; no fast scroll recomposes the menu to fill it.
             dragHandle = {
-                Box(
-                    modifier =
-                        Modifier
+                if (physical) {
+                    Box(
+                        modifier = Modifier.fillMaxWidth().height(28.dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Box(
+                            Modifier.fillMaxWidth().height(28.dp)
+                                .graphicsLayer {
+                                    alpha = capsuleMenuTopFill(
+                                        sheetState.requireOffset(), viewportPx,
+                                    )
+                                }
+                                .background(haze),
+                        )
+                        Box(
+                            Modifier.size(width = 40.dp, height = 4.dp)
+                                .clip(RoundedCornerShape(2.dp))
+                                .background(
+                                    MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
+                                ),
+                        )
+                    }
+                } else {
+                    Box(
+                        modifier = Modifier
                             .padding(vertical = 12.dp)
                             .size(width = 40.dp, height = 4.dp)
                             .clip(RoundedCornerShape(2.dp))
-                            .background(MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)),
-                )
+                            .background(
+                                MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
+                            ),
+                    )
+                }
             },
             // Material3's default predictive-back scales the entire sheet
             // immediately on BACK-down/gesture-hold. Releasing then hands it
@@ -211,8 +278,14 @@ fun BottomSheetMenu(
             modifier = modifier.fillMaxHeight().graphicsLayer {
                 if (physical) {
                     transformOrigin = TransformOrigin(0.5f, 1f)
-                    scaleX = capsuleMenuElasticX(gel.value)
-                    scaleY = capsuleMenuElasticY(gel.value)
+                    // Keep native sheet translation completely untouched.
+                    // A tiny launch recoil gives way to one committed-close
+                    // retreat: the bottom-anchored panel shrinks gently into
+                    // its downward exit without a separate snapping stage.
+                    val closeScale = capsuleMenuDismissScale(dismissPull.value)
+                    scaleX = capsuleMenuElasticX(gel.value) * closeScale
+                    scaleY = capsuleMenuElasticY(gel.value) * closeScale
+                    translationY = dismissPull.value * with(density) { 9.dp.toPx() }
                 }
             },
         ) {
