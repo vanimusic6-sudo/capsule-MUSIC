@@ -325,7 +325,7 @@ internal fun CapsuleVideoArtworkTransition(
                             // outgoing photo. An actual zero-alpha renderer
                             // prevents stale VIDEO leaking through any corner
                             // even on devices with different RenderNode order.
-                            alpha = capsuleVideoRenderAlpha(photoOpacity.value, blendStyle)
+                            alpha = capsuleVideoRenderAlpha(photoOpacity, blendStyle)
                             translationY = lag * with(density) { (if (immersive) 1.dp else 2.dp).toPx() }
                         }
                         .background(Color.Black),
