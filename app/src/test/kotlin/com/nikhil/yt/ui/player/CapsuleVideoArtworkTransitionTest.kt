@@ -176,6 +176,20 @@ class CapsuleVideoArtworkTransitionTest {
         assertTrue(cosmo.openGate < light.openGate)
     }
 
+    @Test fun retainedVideoBecomesFullyInvisibleUnderClosedAlbumInEveryStyle() {
+        for (style in CapsuleVideoBlendStyle.entries) {
+            assertEquals(1f, capsuleVideoRenderAlpha(0f, style), 0.0001f)
+            assertEquals(0f, capsuleVideoRenderAlpha(1f, style), 0.0001f)
+            assertEquals(0f, capsuleVideoRenderAlpha(0.99f, style), 0.0001f)
+            var previous = 1f
+            for (step in 0..20) {
+                val alpha = capsuleVideoRenderAlpha(step / 20f, style)
+                assertTrue("VIDEO fade must be monotonic when photo returns", alpha <= previous + 0.001f)
+                previous = alpha
+            }
+        }
+    }
+
     @Test fun immersiveVideoStretchIsOpticalNotADeformedWindow() {
         assertEquals(0f, capsuleImmersionVideoDissolveStretch(0f), 0.00001f)
         assertEquals(0f, capsuleImmersionVideoDissolveStretch(1f), 0.00001f)
