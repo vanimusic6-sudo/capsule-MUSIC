@@ -117,6 +117,66 @@ class CapsuleVideoMorphPixelsTest {
         assertEquals(AndroidColor.BLUE, centre("sculpted-cover-final"))
     }
 
+    @Test fun lightCloseNeverLeaksVideoPastTheElasticAlbumEdge() =
+        assertSolidCoverAtElasticEdges(CapsuleVideoBlendStyle.LIGHT, 220L)
+
+    @Test fun cosmoCloseNeverLeaksVideoPastTheElasticAlbumEdge() =
+        assertSolidCoverAtElasticEdges(CapsuleVideoBlendStyle.COSMO, 240L)
+
+    @Test fun immersionCloseDissolvesVideoWithoutRubberEdgeLeaks() =
+        assertSolidCoverAtElasticEdges(CapsuleVideoBlendStyle.IMMERSION, 325L)
+
+    private fun assertSolidCoverAtElasticEdges(style: CapsuleVideoBlendStyle, atMs: Long) {
+        val playing = mutableStateOf(true)
+        val immersive = style == CapsuleVideoBlendStyle.IMMERSION
+        compose.setContent {
+            Box(Modifier.size(320.dp, 440.dp).background(Color.Black).testTag("media-slot")) {
+                CapsuleVideoArtworkTransition(
+                    presentingVideo = playing.value,
+                    needsSurface = true, // Keep underlying red VIDEO in the tree.
+                    blendStyle = style,
+                    motion = if (immersive) CapsuleVideoArtworkMotion.IMMERSIVE
+                        else CapsuleVideoArtworkMotion.SCULPTED,
+                    artworkCornerRadius = if (immersive) 0.dp else 16.dp,
+                    videoCornerRadius = 16.dp,
+                    modifier = Modifier.fillMaxSize(),
+                    fillArtworkSlot = true,
+                    artworkBackground = Color.Blue,
+                    video = { Box(Modifier.fillMaxSize().background(Color.Red)) },
+                    artwork = { Box(Modifier.fillMaxSize().background(Color.Blue)) },
+                )
+            }
+        }
+        assertEquals(AndroidColor.RED, centre("before-$style"))
+        compose.mainClock.autoAdvance = false
+        compose.runOnIdle { playing.value = false }
+        compose.mainClock.advanceTimeByFrame()
+        compose.mainClock.advanceTimeBy(atMs)
+        val frame = snapshot("opaque-$style")
+        try {
+            val cx = frame.width / 2
+            val cy = frame.height / 2
+            val centre = frame.getPixel(cx, cy)
+            assertTrue("the same album must be visible at the centre in $style",
+                AndroidColor.blue(centre) > 225 && AndroidColor.red(centre) < 32)
+            // If the deforming silhouette outruns the image's smaller
+            // graphics layer, an exposed RED video wedge appears at its edge.
+            // Masked-out pixels are BLACK, and album/matte pixels are BLUE.
+            var leaks = 0
+            for (y in 3 until frame.height - 3 step 3) {
+                for (x in 3 until frame.width - 3 step 3) {
+                    val c = frame.getPixel(x, y)
+                    if (AndroidColor.red(c) > 68 &&
+                        AndroidColor.red(c) > AndroidColor.blue(c) * 1.5f
+                    ) leaks++
+                }
+            }
+            assertEquals("$style leaked underlying VIDEO near the stretched album edges", 0, leaks)
+        } finally {
+            frame.recycle()
+        }
+    }
+
     @Test fun regularMorphHasNoHardHorizontalVideoGuttersMidTransition() {
         val presenting = mutableStateOf(false)
         compose.setContent {
