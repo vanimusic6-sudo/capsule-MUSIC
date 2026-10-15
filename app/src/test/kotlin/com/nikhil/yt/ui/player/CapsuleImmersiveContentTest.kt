@@ -89,19 +89,19 @@ class CapsuleImmersiveContentTest {
     }
 
     @Test
-    fun `smoky seam darkens downward without changing sampled hue source`() {
-        val edge = Color(0.62f, 0.62f, 0.62f, 1f)
-        val floor = Color(0.50f, 0.50f, 0.50f, 1f)
+    fun `white paper flows directly into the controls floor with no colour contamination`() {
+        val paper = Color(0.96f, 0.96f, 0.96f, 1f)
+        val darkerFloor = Color(0.23f, 0.23f, 0.23f, 1f)
 
-        val seam = immersiveSeamColor(edge, floor)
-        val haze = immersiveUpperHazeColor(edge)
+        // Even if legacy track metadata supplies a darker floor, it can
+        // never pollute the sampled PHOTO colour at the seam.
+        assertEquals(paper, immersiveSeamColor(paper, darkerFloor))
+        assertEquals(paper, immersiveUpperHazeColor(paper))
+        assertEquals(Color(0xFF141414), immersiveInkForFloor(Color.White, paper))
 
-        assertTrue(seam.red < edge.red)
-        assertTrue(seam.red > floor.red)
-        assertTrue(haze.red > edge.red)
-        assertTrue(haze.red < 1f)
+        val midnight = Color(0.06f, 0.08f, 0.11f, 1f)
+        assertEquals(Color.White, immersiveInkForFloor(Color.White, midnight))
     }
-
 
     @Test
     fun `difficult artwork only boosts fade after threshold`() {
