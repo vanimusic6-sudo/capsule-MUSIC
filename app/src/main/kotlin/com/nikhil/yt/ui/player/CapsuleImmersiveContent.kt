@@ -211,13 +211,16 @@ internal fun immersiveSmokyFloorStops(
 ): Array<Pair<Float, Color>> {
     val join = seam.coerceIn(0f, 0.98f)
     val remaining = 1f - join
-    return arrayOf(
-        0f to edge,
-        join to edge,
-        (join + 0.28f * remaining) to lerp(edge, destination, 0.11f),
-        (join + 0.66f * remaining) to lerp(edge, destination, 0.59f),
-        1f to destination,
-    )
+    // Sample a cubic smoothstep at a handful of fixed fractions.
+    // Unlike two or three linear segments, this avoids visible slope
+    // changes/tonal bands on white and highly saturated album covers.
+    // The nine-stop shader is built ONCE per colour/viewport, not per frame.
+    val fractions = floatArrayOf(0f, 0.16f, 0.33f, 0.5f, 0.67f, 0.84f, 1f)
+    return arrayOf(0f to edge, join to edge) +
+        fractions.drop(1).map { t ->
+            val smooth = t * t * (3f - 2f * t)
+            (join + remaining * t) to lerp(edge, destination, smooth)
+        }.toTypedArray()
 }
 
 /** Dark ink is only applied to CONTROLS on light covers, never the artwork. */
