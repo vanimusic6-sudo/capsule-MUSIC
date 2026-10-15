@@ -18,6 +18,7 @@ on:
       - fix/video-dissolve-opaque-cover-20261015
       - polish/lyrics-menu-motion-20261015
       - polish/lyrics-jelly-menu-gestures-immersion-seam-20261015
+      - fix/original-more-jelly-smooth-lyrics-20261015
       - fix/video-timeline-morph-20261014
 
 permissions:
