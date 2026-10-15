@@ -520,8 +520,9 @@ private const val LyricsForegroundCloseFadeMillis = 172
 private val LyricsFrameCornerRadius = 32.dp
 
 /**
- * Keep the established page motion and unhurried reveal on opening. Closing reverses the travel
- * curve on its own shorter timeline; the UI starts dissolving immediately, ahead of the fast drop.
+ * Two nearly critically damped spring profiles share one physical frame and retain velocity
+ * on interruption. Closing is quicker and its controls dissolve before the final sheet travel;
+ * at 60 Hz neither geometry nor timing depends on a high-refresh frame count.
  */
 private val LyricsForegroundAcquireEasing = CubicBezierEasing(0.25f, 0.08f, 0.25f, 1f)
 // An early dissolve prevents bright text/slider streaks during the faster sheet exit.
