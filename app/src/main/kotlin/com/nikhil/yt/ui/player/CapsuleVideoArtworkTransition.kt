@@ -332,6 +332,12 @@ internal fun CapsuleVideoArtworkTransition(
                             val total = fill * (1f + kotlin.math.abs(lag) * 0.012f + dissolveStretch)
                             scaleX = total
                             scaleY = total
+                            // The native VIDEO can stay mounted for recovery
+                            // while becoming optically invisible under the
+                            // outgoing photo. An actual zero-alpha renderer
+                            // prevents stale VIDEO leaking through any corner
+                            // even on devices with different RenderNode order.
+                            alpha = capsuleVideoRenderAlpha(photoOpacity.value, blendStyle)
                             translationY = lag * with(density) { (if (immersive) 1.dp else 2.dp).toPx() }
                         }
                         .background(Color.Black),
@@ -500,4 +506,19 @@ internal fun capsuleCoverVideoHandover(body: Float, immersive: Boolean): Float {
 internal fun capsuleImmersionVideoDissolveStretch(photoAlpha: Float): Float {
     val p = photoAlpha.coerceIn(0f, 1f)
     return (0.047f * sin((PI * p).toFloat())).coerceIn(0f, 0.047f)
+}
+
+/**
+ * Fade the VIDEO renderer itself at the END of the photo handover. The opaque
+ * album matte already covers the whole outline; this second, short optical
+ * release ensures that a retained native VIDEO view cannot shine through
+ * its corners on devices that reorder video/compositing render nodes.
+ */
+internal fun capsuleVideoRenderAlpha(coverAlpha: Float, style: CapsuleVideoBlendStyle): Float {
+    val (start, width) = when (style) {
+        CapsuleVideoBlendStyle.LIGHT -> 0.58f to 0.32f
+        CapsuleVideoBlendStyle.COSMO -> 0.62f to 0.32f
+        CapsuleVideoBlendStyle.IMMERSION -> 0.70f to 0.28f
+    }
+    return 1f - smoothVideoStep((coverAlpha - start) / width)
 }
