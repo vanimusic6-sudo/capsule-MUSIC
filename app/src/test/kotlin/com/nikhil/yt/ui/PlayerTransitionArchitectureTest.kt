@@ -41,9 +41,19 @@ class PlayerTransitionArchitectureTest {
         assertTrue(player.contains("topStart = LyricsFrameCornerRadius"))
         assertTrue(player.contains("instantBackdrop = true"))
         assertFalse(player.contains("lipShade"))
+        assertTrue("Aperture itself must paint an opaque base, not expose old player",
+            player.contains(".then(lyricsFrame)") &&
+                player.contains(".background(Color(0xFF141414))"))
         val backdrop = source("com/nikhil/yt/ui/player/CapsuleLyricsContent.kt")
         assertTrue(backdrop.contains("if (instantBackdrop)"))
         assertTrue(backdrop.contains("renderBackdrop(lyricsBackdrop)"))
+        assertTrue("Freeze long palette tweens only while the aperture is moving",
+            backdrop.contains("instant = instantBackdrop"))
+        assertTrue("No animated procedural background underneath the moving mask",
+            backdrop.contains("animated = !instantBackdrop &&"))
+        assertTrue("Directly paint FINAL gradients on the first visible frame",
+            backdrop.contains("if (instant) {"))
+        assertTrue(backdrop.contains("Brush.verticalGradient(colorStops = stops)"))
         assertFalse(player.contains("val recoil = if (showLyrics)"))
         assertFalse(player.contains("capsuleLyricsRetreat("))
         assertFalse(player.contains("foregroundOpacity.animateTo"))

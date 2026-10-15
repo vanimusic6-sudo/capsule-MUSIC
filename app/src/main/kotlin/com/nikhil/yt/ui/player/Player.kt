@@ -802,7 +802,17 @@ private fun CapsulePlayerLyricsHost(
             }
 
             if (lyricsLayerMounted) {
-                Box(modifier = Modifier.fillMaxSize().then(lyricsFrame)) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .then(lyricsFrame)
+                        // Render an OPAQUE pixel behind both inverse-positioned
+                        // Lyrics subtrees, not the player underneath. Even if
+                        // a theme draws a translucent pixel for one transition
+                        // frame, the mask cannot show the outgoing player as
+                        // a milky ghost through the opening Lyrics page.
+                        .background(Color(0xFF141414)),
+                ) {
                     Box(
                         modifier = Modifier.fillMaxSize().graphicsLayer {
                             val displacement = capsuleLyricsTranslation(

@@ -209,12 +209,15 @@ internal fun CapsuleLyricsBackdropLayer(
                                 lyricsBackdrop == CapsuleLyricsBackdrop.ImmersiveColoring,
                             visibleArtworkAspectRatio = artworkAspectRatio,
                         )
-                        ImmersiveLyricsColoring(tone.edge)
+                        ImmersiveLyricsColoring(
+                            edge = tone.edge,
+                            instant = instantBackdrop,
+                        )
                     }
                     is CapsuleLyricsBackdrop.PlayerTheme -> PlayerBackground(
                         playerBackground = backdrop.style,
                         gradientColors = artworkColors,
-                        animated = isVisible && onScreen && isPlaying &&
+                        animated = !instantBackdrop && isVisible && onScreen && isPlaying &&
                             playbackState == Player.STATE_READY && backdrop == lyricsBackdrop,
                         sharedAnimationTime = backdropAnimationTime,
                     )
@@ -233,27 +236,43 @@ internal fun CapsuleLyricsBackdropLayer(
     }
 }
 
+/**
+ * The Lyrics aperture already has its own physical GPU mask. Never start a
+ * second 1.4-second colour interpolation when that mask opens: a previously
+ * cached/light animated palette could keep painting a pale intermediate wash
+ * across the new page even after the outer Crossfade was removed.
+ *
+ * During the aperture we use the FINAL backdrop stops, fully resolved on
+ * the first visible frame. Outside the aperture, the existing style/theme
+ * transition remains unchanged. No extra layer, blur or per-frame shader.
+ */
 @Composable
-private fun ImmersiveLyricsColoring(edge: Color) {
+private fun ImmersiveLyricsColoring(edge: Color, instant: Boolean = false) {
     val stops = remember(edge) {
         PlayerBackgroundColorUtils.buildImmersiveLyricsColoringStops(edge)
     }
-    // Build the colour policy once per cover, not once per animation frame. Read the animated
-    // colours in drawing so a background fade never recomposes the lyrics or player controls.
-    val colors = stops.mapIndexed { index, stop ->
-        animateColorAsState(
-            targetValue = stop.second,
-            animationSpec = tween(1400, easing = CapsuleStandardEasing),
-            label = "immersiveLyricsColor$index",
-        )
+    if (instant) {
+        Box(Modifier.fillMaxSize().drawWithCache {
+            val brush = Brush.verticalGradient(colorStops = stops)
+            onDrawBehind { drawRect(brush) }
+        })
+    } else {
+        val colors = stops.mapIndexed { index, stop ->
+            animateColorAsState(
+                targetValue = stop.second,
+                animationSpec = tween(1400, easing = CapsuleStandardEasing),
+                label = "immersiveLyricsColor$index",
+            )
+        }
+        Box(Modifier.fillMaxSize().drawWithCache {
+            val brush = Brush.verticalGradient(
+                colorStops = stops.mapIndexed { index, stop ->
+                    stop.first to colors[index].value
+                }.toTypedArray(),
+            )
+            onDrawBehind { drawRect(brush) }
+        })
     }
-    Box(Modifier.fillMaxSize().drawWithCache {
-        val brush = Brush.verticalGradient(
-            colorStops = stops.mapIndexed { index, stop -> stop.first to colors[index].value }
-                .toTypedArray(),
-        )
-        onDrawBehind { drawRect(brush) }
-    })
 }
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)

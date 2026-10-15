@@ -104,6 +104,17 @@ class CapsuleImmersiveContentTest {
     }
 
     @Test
+    fun `the graphite floor is deep dark neutral not washed grey`() {
+        // Prior #242529 was noticeably pale on OLED. Keep an intentional
+        // near-black graphite with a faint cool cast and zero translucency.
+        assertEquals(Color(0xFF15171A), ImmersiveSmokyGraphite)
+        assertEquals(1f, ImmersiveSmokyGraphite.alpha, 0.00001f)
+        assertTrue(ImmersiveSmokyGraphite.red < 0.10f)
+        assertTrue(ImmersiveSmokyGraphite.green < 0.11f)
+        assertTrue(ImmersiveSmokyGraphite.blue < 0.12f)
+    }
+
+    @Test
     fun `smoky graphite gradient stays exactly edge-coloured across the cover join`() {
         for (edge in listOf(
             Color.White, Color(0.96f, 0.96f, 0.96f, 1f),

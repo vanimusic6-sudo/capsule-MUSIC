@@ -26,6 +26,7 @@ on:
       - polish/lyrics-aperture-morph-20261015
       - polish/lyrics-ink-immersion-true-edge-20261015
       - fix/immersive-smoked-gradient-lyrics-fog-20261016
+      - fix/deep-graphite-no-lyrics-mist-20261016
       - fix/video-timeline-morph-20261014
 
 permissions:
