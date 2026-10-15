@@ -153,6 +153,13 @@ fun BottomSheetMenu(
         }
         LaunchedEffect(state.dismissRequested) {
             if (state.dismissRequested) {
+                // User swipe-down already finished Material's own hide. Do
+                // not run a SECOND full exit on an invisible sheet: that was
+                // leaving an empty modal window intercepting input.
+                if (!sheetState.isVisible) {
+                    state.completeAnimatedDismiss()
+                    return@LaunchedEffect
+                }
                 // Do not destroy the surface before Material completes its
                 // native gesture/programmatic close. Back, scrim and actions
                 // all leave from the visible position and keep sheet anchors.
