@@ -120,65 +120,32 @@ internal fun immersiveFadeProfile(
     landscape: Boolean,
 ): ImmersiveFadeProfile {
     val texture = bottomTexture.coerceIn(0f, 1f)
+    // A busy / high-contrast lower crop can begin to dissolve earlier, but
+    // never vanish suddenly: both profiles keep a long, soft physical ramp.
+    val boost = immersiveSmoothTonalStep(0.40f, 1f, texture)
 
-    // Keep the current calm profile EXACTLY as-is. Only genuinely difficult lower crops leave it.
-    // Above the threshold, smoothly approach the hard endpoint that worked well in a9ef7ff.
-    val rawBoost = ((texture - 0.45f) / 0.55f).coerceIn(0f, 1f)
-    val boost = rawBoost * rawBoost * (3f - 2f * rawBoost) // smoothstep: no visible kink at 0.45
+    fun between(calm: Float, detailed: Float): Float =
+        calm + (detailed - calm) * boost
 
     return if (landscape) {
-        val calmStart = 0.32f
-        val calmFirstStop = 0.52f
-        val calmFirstAlpha = 0.15f
-        val calmSecondStop = 0.70f
-        val calmSecondAlpha = 0.46f
-        val calmThirdStop = 0.87f
-        val calmThirdAlpha = 0.80f
-
-        // Exact texture=1 endpoint from a9ef7ff.
-        val hardStart = 0.12f
-        val hardFirstStop = 0.37f
-        val hardFirstAlpha = 0.44f
-        val hardSecondStop = 0.57f
-        val hardSecondAlpha = 0.85f
-        val hardThirdStop = 0.79f
-        val hardThirdAlpha = 1f
-
         ImmersiveFadeProfile(
-            start = calmStart + (hardStart - calmStart) * boost,
-            firstStop = calmFirstStop + (hardFirstStop - calmFirstStop) * boost,
-            firstAlpha = calmFirstAlpha + (hardFirstAlpha - calmFirstAlpha) * boost,
-            secondStop = calmSecondStop + (hardSecondStop - calmSecondStop) * boost,
-            secondAlpha = calmSecondAlpha + (hardSecondAlpha - calmSecondAlpha) * boost,
-            thirdStop = calmThirdStop + (hardThirdStop - calmThirdStop) * boost,
-            thirdAlpha = calmThirdAlpha + (hardThirdAlpha - calmThirdAlpha) * boost,
+            start = between(0.25f, 0.14f),
+            firstStop = between(0.47f, 0.39f),
+            firstAlpha = between(0.13f, 0.23f),
+            secondStop = between(0.73f, 0.67f),
+            secondAlpha = between(0.66f, 0.78f),
+            thirdStop = 0.90f,
+            thirdAlpha = between(0.93f, 0.98f),
         )
     } else {
-        val calmStart = 0.42f
-        val calmFirstStop = 0.60f
-        val calmFirstAlpha = 0.15f
-        val calmSecondStop = 0.74f
-        val calmSecondAlpha = 0.46f
-        val calmThirdStop = 0.89f
-        val calmThirdAlpha = 0.80f
-
-        // Exact texture=1 endpoint from a9ef7ff.
-        val hardStart = 0.11f
-        val hardFirstStop = 0.39f
-        val hardFirstAlpha = 0.50f
-        val hardSecondStop = 0.56f
-        val hardSecondAlpha = 0.90f
-        val hardThirdStop = 0.79f
-        val hardThirdAlpha = 1f
-
         ImmersiveFadeProfile(
-            start = calmStart + (hardStart - calmStart) * boost,
-            firstStop = calmFirstStop + (hardFirstStop - calmFirstStop) * boost,
-            firstAlpha = calmFirstAlpha + (hardFirstAlpha - calmFirstAlpha) * boost,
-            secondStop = calmSecondStop + (hardSecondStop - calmSecondStop) * boost,
-            secondAlpha = calmSecondAlpha + (hardSecondAlpha - calmSecondAlpha) * boost,
-            thirdStop = calmThirdStop + (hardThirdStop - calmThirdStop) * boost,
-            thirdAlpha = calmThirdAlpha + (hardThirdAlpha - calmThirdAlpha) * boost,
+            start = between(0.28f, 0.16f),
+            firstStop = between(0.48f, 0.40f),
+            firstAlpha = between(0.13f, 0.22f),
+            secondStop = between(0.72f, 0.68f),
+            secondAlpha = between(0.64f, 0.76f),
+            thirdStop = 0.90f,
+            thirdAlpha = between(0.92f, 0.97f),
         )
     }
 }
@@ -193,52 +160,81 @@ internal fun immersiveSeamColor(edge: Color, floor: Color): Color = edge
  */
 internal val ImmersiveControlInk = Color.White
 
-/** Two long, overlapping soft shoulders and a final dark tail, not hard bands. */
-private fun immersiveTonalEase(start: Float, end: Float, fraction: Float): Float {
-    val t = ((fraction - start) / (end - start)).coerceIn(0f, 1f)
-    return t * t * (3f - 2f * t)
+/**
+ * A lightweight quintic with zero slope and curvature at both ends.
+ * Unlike several short 3-point ramps, broad OVERLAPPING stages won't leave
+ * ridges or tonal shelves (especially obvious on nearly white album art).
+ */
+private fun immersiveSmoothTonalStep(start: Float, end: Float, position: Float): Float {
+    val t = ((position - start) / (end - start)).coerceIn(0f, 1f)
+    return t * t * t * (t * (t * 6f - 15f) + 10f)
 }
 
 /**
- * Sampled RGB is kept exactly at the top. The whole lower half then follows
- * three OVERLAPPING smooth stages of the same hue into its own deep tone.
- * No HSV brightness clipping, fixed graphite target or synthetic saturation.
+ * Reparameterize the full-screen gradient to put the same deep tone at the
+ * cover -> controls boundary on short, tall and landscape screens.
  *
- * The stages overlap, preventing an abrupt flat shelf where one step ends.
- * Multiply the RGB channels equally in sRGB to retain the cover's hue family.
+ * A smooth quadratic warp anchors 0, artworkBoundary -> 0.55, and 1.
+ * Unlike a piecewise stretch it has ONE derivative at the artwork boundary;
+ * a slope kink there would look like the very horizontal strip we're fixing.
  */
-internal fun immersiveStagedFloorColor(edge: Color, fraction: Float): Color {
-    val darkening =
-        0.18f * immersiveTonalEase(0.20f, 0.52f, fraction) +
-        0.55f * immersiveTonalEase(0.35f, 0.63f, fraction) +
-        0.15f * immersiveTonalEase(0.55f, 0.90f, fraction)
-    val brightness = 1f - darkening
+internal fun immersiveGradientPosition(position: Float, coverPageFraction: Float): Float {
+    val p = position.coerceIn(0f, 1f)
+    val boundary = coverPageFraction.coerceIn(0.35f, 0.72f)
+    val offset = (0.55f - boundary) / (boundary * (1f - boundary))
+    return (p + offset * p * (1f - p)).coerceIn(0f, 1f)
+}
+
+/**
+ * Preserve the photo's real sampled colour. Shade by three LOOOONG,
+ * interleaved tonal movements instead of abrupt bright -> gray -> black
+ * bands. 0.13..0.98 spans most of the viewport, with gentle shoulders
+ * on both sides of the artwork join. Only neutral scalar RGB darkening;
+ * no grayscale, no forced graphite, no extra hue, no HSV brightness clamp.
+ *
+ * End at 9% of the original RGB: on white this is roughly #171717,
+ * close to Capsule's dark shell without a second imposed background colour.
+ */
+internal fun immersiveStagedFloorColor(
+    edge: Color,
+    fraction: Float,
+    coverPageFraction: Float = 0.55f,
+): Color {
+    val position = immersiveGradientPosition(fraction, coverPageFraction)
+    val shade =
+        0.36f * immersiveSmoothTonalStep(0.13f, 0.62f, position) +
+        0.32f * immersiveSmoothTonalStep(0.28f, 0.73f, position) +
+        0.23f * immersiveSmoothTonalStep(0.48f, 0.98f, position)
+    val remaining = (1f - shade).coerceIn(0.09f, 1f)
     return Color(
-        red = edge.red * brightness,
-        green = edge.green * brightness,
-        blue = edge.blue * brightness,
+        red = edge.red * remaining,
+        green = edge.green * remaining,
+        blue = edge.blue * remaining,
         alpha = 1f,
     )
 }
 
-/** Build a single full-screen shader when the artwork changes, never per frame. */
-internal fun immersiveStagedFloorStops(edge: Color): Array<Pair<Float, Color>> =
-    Array(33) { index ->
-        val fraction = index / 32f
-        fraction to immersiveStagedFloorColor(edge, fraction)
+/** Sample the full-height shader ONCE per image/geometry, not per animation frame. */
+internal fun immersiveStagedFloorStops(
+    edge: Color,
+    coverPageFraction: Float = 0.55f,
+): Array<Pair<Float, Color>> =
+    Array(49) { index ->
+        val fraction = index / 48f
+        fraction to immersiveStagedFloorColor(edge, fraction, coverPageFraction)
     }
 
-/** Alpha of the original texture-sensitive image dissolve (one shared curve). */
+/** Continuous, non-accelerating optical fade; cover geometry never changes. */
 internal fun immersiveCoverFadeAlpha(profile: ImmersiveFadeProfile, fraction: Float): Float {
     val f = fraction.coerceIn(0f, 1f)
     fun interval(start: Float, end: Float, a: Float, b: Float): Float =
-        a + (b - a) * immersiveTonalEase(start, end, f)
+        a + (b - a) * immersiveSmoothTonalStep(start, end, f)
     return when {
         f <= profile.start -> 0f
         f <= profile.firstStop ->
-            interval(profile.start, profile.firstStop, 0f, profile.firstAlpha * 0.86f)
+            interval(profile.start, profile.firstStop, 0f, profile.firstAlpha)
         f <= profile.secondStop ->
-            interval(profile.firstStop, profile.secondStop, profile.firstAlpha * 0.86f, profile.secondAlpha)
+            interval(profile.firstStop, profile.secondStop, profile.firstAlpha, profile.secondAlpha)
         f <= profile.thirdStop ->
             interval(profile.secondStop, profile.thirdStop, profile.secondAlpha, profile.thirdAlpha)
         else -> interval(profile.thirdStop, 1f, profile.thirdAlpha, 1f)
@@ -246,22 +242,23 @@ internal fun immersiveCoverFadeAlpha(profile: ImmersiveFadeProfile, fraction: Fl
 }
 
 /**
- * This must match the ENTIRE page shader at the same physical Y, not use a
- * single flat RGB for the fading artwork. A mismatch here creates the
- * horizontal "dirty strip" on near-white covers.
- *
- * 48 cached cover stops interpolate the page tone and alpha together.
- * Last cover pixel is fully opaque and EXACTLY equals the page below it.
+ * Match the overlay to the page's actual RGB at EVERY physical Y.
+ * The cover's last point is fully opaque and matches the full-page gradient
+ * pixel-for-pixel. This prevents the dirty seam when the artwork is white.
  */
 internal fun immersiveStagedCoverFadeStops(
     edge: Color,
     coverPageFraction: Float,
     profile: ImmersiveFadeProfile,
 ): Array<Pair<Float, Color>> =
-    Array(49) { index ->
-        val coverFraction = index / 48f
+    Array(65) { index ->
+        val coverFraction = index / 64f
         val pageFraction = coverFraction * coverPageFraction.coerceIn(0f, 1f)
-        val backdrop = immersiveStagedFloorColor(edge, pageFraction)
+        val backdrop = immersiveStagedFloorColor(
+            edge = edge,
+            fraction = pageFraction,
+            coverPageFraction = coverPageFraction,
+        )
         coverFraction to backdrop.copy(alpha = immersiveCoverFadeAlpha(profile, coverFraction))
     }
 
@@ -661,9 +658,9 @@ internal fun CapsuleImmersiveContent(
         val density = LocalDensity.current
         val pageHeightPx = with(density) { maxHeight.toPx() }
         val coverHeightPx = with(density) { artworkHeight.toPx() }
-        val pageBackground = remember(seamColor, pageHeightPx) {
+        val pageBackground = remember(seamColor, artworkFraction, pageHeightPx) {
             Brush.verticalGradient(
-                colorStops = immersiveStagedFloorStops(seamColor),
+                colorStops = immersiveStagedFloorStops(seamColor, artworkFraction),
                 startY = 0f,
                 endY = pageHeightPx,
             )
@@ -713,7 +710,7 @@ internal fun CapsuleImmersiveContent(
             // the separate VIDEO mask grows/shrinks. The previous moving
             // album/matte exposed different edge pixels at the join on close.
             fixedImmersiveArtwork = true,
-            artworkBackground = immersiveStagedFloorColor(seamColor, artworkFraction),
+            artworkBackground = immersiveStagedFloorColor(seamColor, artworkFraction, artworkFraction),
             artworkClickable = !isVideo,
             onArtworkClick = onShowLyrics,
             video = { active -> CapsuleVideoSurface(playerConnection.service, Modifier.fillMaxSize(), active = active) },
