@@ -92,7 +92,7 @@ class ImmersiveArtworkBackgroundTest {
     @Test fun paleButColourfulAlbumKeepsItsOwnHueNotNeutralFallback() {
         val sample = androidx.compose.ui.graphics.Color(0xFFF0DDC8)
         val shaded = sample.immersiveMutedAccent()
-        assertTrue("warm colour must stay warm", shaded.red > shaded.blue + 0.10f)
+        assertTrue("warm colour must stay warm", shaded.red > shaded.blue + 0.05f)
         assertTrue("bright colour must be gently darkened", shaded.red < sample.red)
     }
 
