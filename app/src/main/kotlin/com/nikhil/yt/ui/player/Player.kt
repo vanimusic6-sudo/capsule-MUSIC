@@ -371,6 +371,7 @@ fun BottomSheetPlayer(
         collapsedHorizontalInset = if (capsuleDock) 10.dp else 12.dp,
         collapsedTopCornerRadius = if (capsuleDock) 24.dp else 14.dp,
         surfaceAlpha = ::playerHandoffSurfaceAlpha,
+        forceExpandedContentOpaque = showInlineLyrics || freezeBackdropAfterLyricsSettles,
         onDismiss = {
             playerConnection.service.stopAndClearPlayback()
         },
