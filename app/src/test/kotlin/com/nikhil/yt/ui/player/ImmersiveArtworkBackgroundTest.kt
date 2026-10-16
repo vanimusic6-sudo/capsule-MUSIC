@@ -61,6 +61,41 @@ class ImmersiveArtworkBackgroundTest {
         assertTrue("Off-screen green bars must not tint a white visible cover", hsv[1] < 0.10f)
         image.recycle()
     }
+    @Test fun mutedFloorPreservesColourfulExtractedHueInsteadOfBlack() {
+        val source = Bitmap.createBitmap(160, 120, Bitmap.Config.ARGB_8888)
+        source.eraseColor(AndroidColor.rgb(218, 39, 78))
+        val sampled = source.immersiveBottomBackground(0.95f)
+        val muted = sampled.immersiveMutedAccent()
+        val sourceHsv = FloatArray(3)
+        val mutedHsv = FloatArray(3)
+        AndroidColor.colorToHSV(sampled.toArgb(), sourceHsv)
+        AndroidColor.colorToHSV(muted.toArgb(), mutedHsv)
+        assertTrue("preserve original red hue", kotlin.math.abs(mutedHsv[0] - sourceHsv[0]) < 2f)
+        assertTrue("preserve saturation instead of fading into grey",
+            kotlin.math.abs(mutedHsv[1] - sourceHsv[1]) < 0.02f)
+        assertTrue("shade colour gently, not to black", mutedHsv[2] > 0.35f && mutedHsv[2] < 0.48f)
+        source.recycle()
+    }
+
+    @Test fun whiteMonochromeArtworkUsesMutedColourInsteadOfGreyBlackFloor() {
+        val source = Bitmap.createBitmap(160, 120, Bitmap.Config.ARGB_8888)
+        source.eraseColor(AndroidColor.WHITE)
+        val sampled = source.immersiveBottomBackground(0.95f)
+        val muted = sampled.immersiveMutedAccent()
+        assertEquals(AndroidColor.WHITE, sampled.toArgb())
+        assertTrue("truly monochrome has no sampled hue, so use quiet chromatic fallback",
+            muted.blue > muted.red + 0.10f && muted.green > muted.red + 0.04f)
+        assertTrue("floor should be a muted COLOUR, not near-black", muted.red > 0.25f)
+        source.recycle()
+    }
+
+    @Test fun paleButColourfulAlbumKeepsItsOwnHueNotNeutralFallback() {
+        val sample = androidx.compose.ui.graphics.Color(0xFFF0DDC8)
+        val shaded = sample.immersiveMutedAccent()
+        assertTrue("warm colour must stay warm", shaded.red > shaded.blue + 0.10f)
+        assertTrue("bright colour must be gently darkened", shaded.red < sample.red)
+    }
+
     @Test fun sampledNearWhiteAndPastelCoversStayBrightInsteadOfTurningGrey() {
         for (expected in listOf(
             AndroidColor.WHITE,
