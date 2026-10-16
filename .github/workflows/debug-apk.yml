@@ -85,6 +85,13 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
 
+      - name: Test TASK 02 Home and artwork regressions
+        run: |
+          gradle :app:testUniversalDebugUnitTest \
+            --tests 'com.nikhil.yt.ui.HomePerformanceRegressionTest' \
+            --tests 'com.nikhil.yt.ui.player.PlayerArtworkReliabilityTest' \
+            --stacktrace --no-daemon
+
       - name: Test player transition and energy regressions
         run: |
           gradle :app:testUniversalDebugUnitTest \

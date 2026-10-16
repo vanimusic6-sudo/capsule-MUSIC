@@ -30,6 +30,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.key
 import androidx.compose.runtime.getValue
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
@@ -612,6 +613,12 @@ internal fun CapsuleImmersiveContent(
         var coverImageReady by remember(mediaMetadata.id, artworkTone.displayUrl) {
             mutableStateOf(false)
         }
+        // A transient Coil error previously left the invisible preload mounted
+        // forever with no new request until the entire player was reconstructed.
+        // One retry is permitted per track/URL; a fresh track resets this budget.
+        var coverLoadRetry by remember(mediaMetadata.id, artworkTone.displayUrl) {
+            mutableIntStateOf(0)
+        }
         val coverAndGradientReady = canRevealImmersiveArtwork(artworkTone, coverImageReady)
         // The remembered frame contains the PREVIOUS song's actual image and all its
         // background colours. It remains intact during fade-out even if Media3 has already
@@ -744,17 +751,24 @@ internal fun CapsuleImmersiveContent(
         // preloader. Keeping it alive while VIDEO runs doubled retained image
         // nodes and graphics layers for no visual benefit.
         if (capsuleImmersiveNeedsArtworkPreload(coverImageReady, artworkTone.ready, artworkTone.displayUrl)) {
-            AsyncImage(
-                model = rememberImmersiveArtworkRequest(artworkTone.displayUrl),
-                contentDescription = null,
-                contentScale = ContentScale.Crop,
-                onSuccess = { coverImageReady = true },
-                onError = { coverImageReady = false },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(artworkHeight)
-                    .graphicsLayer(alpha = 0f),
-            )
+            // Restart the Coil painter only after a failed attempt, never each
+            // recomposition. The existing sampled URL and palette remain paired.
+            key(mediaMetadata.id, artworkTone.displayUrl, coverLoadRetry) {
+                AsyncImage(
+                    model = rememberImmersiveArtworkRequest(artworkTone.displayUrl),
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    onSuccess = { coverImageReady = true },
+                    onError = {
+                        coverImageReady = false
+                        if (coverLoadRetry < 1) coverLoadRetry++
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(artworkHeight)
+                        .graphicsLayer(alpha = 0f),
+                )
+            }
         }
 
         // Ordinary covers use the ORIGINAL page shader; only white uses

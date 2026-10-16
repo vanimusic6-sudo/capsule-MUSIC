@@ -174,7 +174,10 @@ fun BottomSheetPlayer(
     val enrichedMetadata =
         remember(mediaMetadata, currentSong) {
             val metadata = mediaMetadata ?: return@remember null
-            val localArtistCredits = currentSong?.toMediaMetadata()?.artists.orEmpty()
+            // Room's currentSong flow can lag one media item behind Media3.
+            // Never hydrate a new track with the old track's artwork or credits.
+            val currentSongForTrack = currentSong?.takeIf { it.id == metadata.id }
+            val localArtistCredits = currentSongForTrack?.toMediaMetadata()?.artists.orEmpty()
             val enrichedArtists =
                 mergeArtistCredits(
                     primary = metadata.artists,
@@ -183,22 +186,22 @@ fun BottomSheetPlayer(
 
             val album =
                 metadata.album
-                    ?: currentSong?.album?.let {
+                    ?: currentSongForTrack?.album?.let {
                         MediaMetadata.Album(
                             id = it.id,
                             title = it.title,
                         )
                     }
-                    ?: currentSong?.song?.albumId?.let { albumId ->
+                    ?: currentSongForTrack?.song?.albumId?.let { albumId ->
                         MediaMetadata.Album(
                             id = albumId,
-                            title = currentSong?.song?.albumName.orEmpty(),
+                            title = currentSongForTrack?.song?.albumName.orEmpty(),
                         )
                     }
 
             metadata.copy(
                 artists = enrichedArtists,
-                thumbnailUrl = metadata.thumbnailUrl ?: currentSong?.song?.thumbnailUrl,
+                thumbnailUrl = metadata.thumbnailUrl ?: currentSongForTrack?.song?.thumbnailUrl,
                 album = album,
             )
         }
@@ -283,6 +286,7 @@ fun BottomSheetPlayer(
         rememberCapsuleArtworkColors(
             mediaMetadata = enrichedMetadata,
             enabled = needsArtworkPalette,
+            refreshOnOpen = state.isExpandedOrExpanding,
         )
 
     val textColor =
@@ -660,7 +664,7 @@ private fun CapsulePlayerLyricsHost(
             if (design == CapsulePlayerDesign.IMMERSIVE) {
                 rememberImmersiveEdgeColor(
                     mediaMetadata = mediaMetadata,
-                    enabled = onScreen && !playerState.isDismissed,
+                    enabled = onScreen && playerState.isExpandedOrExpanding,
                     visibleArtworkAspectRatio =
                         maxWidth.value / immersiveArtworkHeight(maxHeight).value.coerceAtLeast(1f),
                 )

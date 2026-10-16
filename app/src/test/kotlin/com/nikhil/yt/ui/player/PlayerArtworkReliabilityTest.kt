@@ -1,0 +1,46 @@
+package com.nikhil.yt.ui.player
+
+import java.io.File
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
+import org.junit.Test
+
+/** Structural guards for stale-track artwork and bounded retry; not a pixel test. */
+class PlayerArtworkReliabilityTest {
+    private fun source(name: String): String {
+        val relative = "src/main/kotlin/com/nikhil/yt/ui/player/$name"
+        return listOf(File(relative), File("app/$relative")).firstOrNull { it.isFile }?.readText()
+            ?: error("Missing $name")
+    }
+
+    @Test fun staleRoomTrackCannotOverrideMedia3Artwork() {
+        val block = source("Player.kt")
+            .substringAfter("val enrichedMetadata =").substringBefore("val onScreen = appIsOnScreen()")
+        assertTrue(block.contains("currentSong?.takeIf { it.id == metadata.id }"))
+        assertTrue(block.contains("thumbnailUrl = metadata.thumbnailUrl ?: currentSongForTrack?.song?.thumbnailUrl"))
+        assertFalse(block.contains("thumbnailUrl = metadata.thumbnailUrl ?: currentSong?.song?.thumbnailUrl"))
+    }
+
+    @Test fun immersiveSamplerRetriesAfterSheetWasCollapsed() {
+        assertTrue(source("Player.kt").contains("enabled = onScreen && playerState.isExpandedOrExpanding"))
+        assertTrue(source("Player.kt").contains("refreshOnOpen = state.isExpandedOrExpanding"))
+        assertTrue(source("CapsuleArtworkPalette.kt").contains("refreshOnOpen,"))
+        assertTrue(source("CapsuleArtworkPalette.kt").contains("if (cacheKey == resolvedKey) return@LaunchedEffect"))
+        val immersive = source("CapsuleImmersiveContent.kt")
+        assertTrue(immersive.contains("coverLoadRetry by remember(mediaMetadata.id, artworkTone.displayUrl)"))
+        assertTrue(immersive.contains("key(mediaMetadata.id, artworkTone.displayUrl, coverLoadRetry)"))
+        assertTrue(immersive.contains("if (coverLoadRetry < 1) coverLoadRetry++"))
+        assertTrue(immersive.contains("onSuccess = { coverImageReady = true }"))
+    }
+
+    @Test fun lightAndCosmoKeepImageFallbackLocalToTheirOwnArtwork() {
+        val full = source("CapsulePlayerContent.kt")
+        assertTrue(full.contains("val originalArtworkUrl = mediaMetadata.thumbnailUrl"))
+        assertTrue(full.contains("model = if (useOriginalArtwork) originalArtworkUrl else highResArtworkUrl"))
+        assertTrue(full.contains("onError = {"))
+        assertTrue(full.contains("artworkFailed = true"))
+        assertTrue(full.contains("if (artworkFailed)"))
+        // The animation and gradient extraction algorithms must not be replaced.
+        assertTrue(full.contains("CapsuleVideoArtworkTransition("))
+    }
+}
