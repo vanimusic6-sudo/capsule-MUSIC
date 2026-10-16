@@ -3,6 +3,7 @@ package com.nikhil.yt.constants
 import androidx.datastore.preferences.core.emptyPreferences
 import androidx.datastore.preferences.core.toMutablePreferences
 import com.nikhil.yt.ui.theme.CapsuleThemeEnabledKey
+import com.nikhil.yt.ui.screens.settings.DarkMode
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
