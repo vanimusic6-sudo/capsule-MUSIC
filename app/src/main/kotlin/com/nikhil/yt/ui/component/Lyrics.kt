@@ -168,6 +168,7 @@ import com.nikhil.yt.constants.LyricsSyncOffsetKey
 import com.nikhil.yt.constants.LyricsTextPositionKey
 import com.nikhil.yt.constants.LyricsAnimationStyle
 import com.nikhil.yt.constants.LyricsAnimationStyleKey
+import com.nikhil.yt.constants.ReleaseAppearanceDefaults
 import com.nikhil.yt.constants.LyricsTextSizeKey
 import com.nikhil.yt.constants.LyricsUsePlayerThemeKey
 import com.nikhil.yt.constants.LyricsLineSpacingKey
@@ -650,7 +651,7 @@ fun Lyrics(
         configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
 
     val lyricsTextPosition by rememberEnumPreference(LyricsTextPositionKey, LyricsPosition.LEFT)
-    val lyricsAnimationStyle by rememberEnumPreference(LyricsAnimationStyleKey, LyricsAnimationStyle.APPLE)
+    val lyricsAnimationStyle by rememberEnumPreference(LyricsAnimationStyleKey, ReleaseAppearanceDefaults.lyricsAnimation)
     val lyricsTextSize by rememberPreference(LyricsTextSizeKey, 26f)
     val lyricsLineSpacing by rememberPreference(LyricsLineSpacingKey, 1.3f)
     val useSystemFont by rememberPreference(UseSystemFontKey, false)
@@ -673,15 +674,15 @@ fun Lyrics(
 
     val playerBackground by rememberEnumPreference(
         key = PlayerBackgroundStyleKey,
-        defaultValue = PlayerBackgroundStyle.CAPSULE_STAR
+        defaultValue = ReleaseAppearanceDefaults.playerBackground
     )
     val playerDesign by rememberEnumPreference(
         key = CapsulePlayerDesignKey,
-        defaultValue = CapsulePlayerDesign.SUPER,
+        defaultValue = ReleaseAppearanceDefaults.playerDesign,
     )
     val lyricsUsePlayerTheme by rememberPreference(
         LyricsUsePlayerThemeKey,
-        defaultValue = false,
+        defaultValue = ReleaseAppearanceDefaults.usePlayerThemeInLyrics,
     )
 
     val darkTheme by rememberEnumPreference(DarkModeKey, defaultValue = DarkMode.AUTO)
