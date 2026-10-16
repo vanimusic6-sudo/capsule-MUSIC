@@ -92,7 +92,7 @@ class CapsuleImmersiveContentTest {
     fun `photo preserves exact extracted colour and floor preserves its own hue`() {
         assertEquals(Color.White, ImmersiveControlInk)
         val pairs = listOf(
-            Color.White to Color(0xFF486078),
+            Color.White to Color(0xFFC7C7C7),
             Color(0xFFECCDB9) to Color(0xFFAB7358),
             Color(0xFFD13248) to Color(0xFF892030),
             Color(0xFF1549CA) to Color(0xFF12358E),
@@ -111,7 +111,7 @@ class CapsuleImmersiveContentTest {
         for (cover in listOf(0.35f, 0.48f, 0.55f, 0.69f)) {
             val extension = minOf(0.16f, (1f - cover) * 0.68f)
             for ((edge, muted) in listOf(
-                Color.White to Color(0xFF486078),
+                Color.White to Color(0xFFC7C7C7),
                 Color(0xFFE3D9C9) to Color(0xFF8D7768),
                 Color(0xFFAA193D) to Color(0xFF7A1230),
                 Color.Black to Color.Black,
@@ -152,7 +152,7 @@ class CapsuleImmersiveContentTest {
     fun `photo overlay and page share identical RGB at same physical Y`() {
         val tolerance = 1f / 255f + 0.0001f
         for ((edge, muted) in listOf(
-            Color.White to Color(0xFF486078),
+            Color.White to Color(0xFFC7C7C7),
             Color(0xFFEECCDD) to Color(0xFF914F70),
             Color(0xFFD62942) to Color(0xFF842039),
             Color.Black to Color.Black,
@@ -186,13 +186,13 @@ class CapsuleImmersiveContentTest {
     }
 
     @Test
-    fun `white screenshot blends into extracted chromatic shade not grey or black`() {
+    fun `white screenshot blends only to its neutral sampled muted colour`() {
         val screen = 1536f
         val photo = 800f
         val cover = photo / screen
-        val tail = 0.16f
+        val tail = 0.08f
         val edge = Color.White
-        val floor = Color(0xFF486078)
+        val floor = Color(0xFFC7C7C7)
         val fade = immersiveFadeProfile(0f, landscape = false)
         fun rendered(y: Float): Color {
             val backdrop = immersiveContinuousPageColor(edge, floor, y / screen, cover, tail)
@@ -208,9 +208,11 @@ class CapsuleImmersiveContentTest {
         assertTrue("preserve cover title", rendered(540f).red > 0.96f)
         assertTrue("retain bright album details", rendered(680f).red > 0.75f)
         val underText = rendered(860f)
-        assertTrue("album accent is still blue-tinted, not grey",
-            underText.blue > underText.red + 0.05f)
-        assertTrue("do not target black", rendered(1200f).red > 0.25f)
+        assertEquals("white artwork must never gain artificial blue",
+            underText.red, underText.blue, 1f / 255f + 0.0001f)
+        assertEquals("no green tint either",
+            underText.red, underText.green, 1f / 255f + 0.0001f)
+        assertTrue("do not target near-black", rendered(1200f).red > 0.74f)
         assertEquals(floor, rendered(1200f))
         assertTrue("no strip at artwork join",
             kotlin.math.abs(rendered(797f).red - rendered(803f).red) < 0.035f)
