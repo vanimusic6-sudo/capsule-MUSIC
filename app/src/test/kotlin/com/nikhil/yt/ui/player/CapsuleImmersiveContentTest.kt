@@ -89,38 +89,75 @@ class CapsuleImmersiveContentTest {
     }
 
     @Test
-    fun `white paper flows directly into the controls floor with no colour contamination`() {
-        val paper = Color(0.96f, 0.96f, 0.96f, 1f)
-        val darkerFloor = Color(0.23f, 0.23f, 0.23f, 1f)
-
-        // Even if legacy track metadata supplies a darker floor, it can
-        // never pollute the sampled PHOTO colour at the seam.
-        assertEquals(paper, immersiveSeamColor(paper, darkerFloor))
-        assertEquals(paper, immersiveUpperHazeColor(paper))
-        assertEquals(Color(0xFF141414), immersiveInkForFloor(Color.White, paper))
-
-        val midnight = Color(0.06f, 0.08f, 0.11f, 1f)
-        assertEquals(Color.White, immersiveInkForFloor(Color.White, midnight))
-
-        // Bright and pastel art keeps its natural colour; the player ink
-        // must switch rather than tinting or dimming the sampled page.
-        assertEquals(Color(0xFF141414), immersiveInkForFloor(Color.White, Color.White))
-        assertEquals(Color(0xFF141414), immersiveInkForFloor(Color.White, Color(0xFFCADFF3)))
-        assertEquals(Color.White, immersiveInkForFloor(Color(0xFF141414), midnight))
+    fun `stage starts at true album colour and produces deep same-hue floor`() {
+        assertEquals(Color.White, ImmersiveControlInk)
+        for (edge in listOf(
+            Color.White, Color(0.96f, 0.96f, 0.96f, 1f),
+            Color(0.85f, 0.13f, 0.24f, 1f), Color(0.12f, 0.62f, 0.84f, 1f),
+            Color.Black,
+        )) {
+            val floor = immersiveStagedFloorStops(edge)
+            assertEquals(33, floor.size)
+            assertEquals(edge, floor.first().second)
+            assertEquals(edge, immersiveStagedFloorColor(edge, 0f))
+            assertEquals(edge, immersiveStagedFloorColor(edge, 0.20f))
+            assertEquals(edge, immersiveSeamColor(edge, Color(0xFF242529)))
+            assertEquals(1f, floor.last().first, 0.00001f)
+            assertEquals(1f, floor.last().second.alpha, 0.00001f)
+            var prior = edge
+            for (stop in floor) {
+                val current = stop.second
+                assertTrue(current.red <= prior.red + 0.00001f)
+                assertTrue(current.green <= prior.green + 0.00001f)
+                assertTrue(current.blue <= prior.blue + 0.00001f)
+                prior = current
+            }
+            val bottom = floor.last().second
+            assertEquals(edge.red * 0.12f, bottom.red, 0.0001f)
+            assertEquals(edge.green * 0.12f, bottom.green, 0.0001f)
+            assertEquals(edge.blue * 0.12f, bottom.blue, 0.0001f)
+        }
     }
 
     @Test
-    fun `immersion background remains the sampled colour regardless of lower floor`() {
-        for (edge in listOf(
-            Color.White, Color(0.96f, 0.96f, 0.96f, 1f),
-            Color(0.85f, 0.13f, 0.24f, 1f), Color.Black,
-        )) {
-            val legacyFloor = Color(0xFF242529)
-            assertEquals(
-                "the full page must keep the edge colour, not fade into graphite",
-                edge,
-                immersiveSeamColor(edge, legacyFloor),
-            )
+    fun `white art is already dark behind fixed white metadata and controls`() {
+        assertEquals(Color.White, ImmersiveControlInk)
+        val underTitle = immersiveStagedFloorColor(Color.White, 0.60f)
+        val lower = immersiveStagedFloorColor(Color.White, 0.80f)
+        assertTrue("title should not sit on overexposed white", underTitle.red < 0.35f)
+        assertTrue("lower controls should sit over deep grey", lower.red < 0.20f)
+        assertTrue("no accidental tint on neutral cover",
+            kotlin.math.abs(underTitle.red - underTitle.green) < 0.0001f)
+        assertTrue("no accidental tint on neutral cover",
+            kotlin.math.abs(underTitle.green - underTitle.blue) < 0.0001f)
+    }
+
+    @Test
+    fun `full-screen tonal shading and fading album join with exact RGB`() {
+        for (edge in listOf(Color.White, Color(0xFFE5DECF), Color(0xFF9F1530), Color.Black)) {
+            for (coverFraction in listOf(0.39f, 0.55f, 0.68f)) {
+                for (texture in listOf(0f, 0.6f, 1f)) {
+                    val fade = immersiveFadeProfile(texture, landscape = false)
+                    val coverStops = immersiveStagedCoverFadeStops(edge, coverFraction, fade)
+                    assertEquals(49, coverStops.size)
+                    assertEquals(0f, coverStops.first().first, 0.00001f)
+                    assertEquals(0f, coverStops.first().second.alpha, 0.00001f)
+                    val last = coverStops.last()
+                    assertEquals(1f, last.first, 0.00001f)
+                    assertEquals(1f, last.second.alpha, 0.00001f)
+                    assertEquals(immersiveStagedFloorColor(edge, coverFraction), last.second)
+                    var priorAlpha = 0f
+                    for (stop in coverStops) {
+                        assertTrue("cover alpha must never reverse", stop.second.alpha + 0.0001f >= priorAlpha)
+                        priorAlpha = stop.second.alpha
+                        val correspondingPageTone =
+                            immersiveStagedFloorColor(edge, stop.first * coverFraction)
+                        assertEquals(correspondingPageTone.red, stop.second.red, 0.0001f)
+                        assertEquals(correspondingPageTone.green, stop.second.green, 0.0001f)
+                        assertEquals(correspondingPageTone.blue, stop.second.blue, 0.0001f)
+                    }
+                }
+            }
         }
     }
 
