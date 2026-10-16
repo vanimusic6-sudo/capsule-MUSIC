@@ -140,8 +140,11 @@ internal fun immersiveContinuousPageColor(
     tailFraction: Float,
 ): Color {
     val cover = coverFraction.coerceIn(0.05f, 0.95f)
-    val start = cover * 0.54f
-    val end = (cover + tailFraction.coerceAtLeast(0.025f)).coerceAtMost(0.995f)
+    // Leave the actual image untouched until its lower edge. The blending
+    // continues only briefly below that edge, then remains a constant
+    // softened version of the sampled artwork tone.
+    val start = cover * 0.78f
+    val end = (cover + tailFraction.coerceAtLeast(0.02f)).coerceAtMost(0.86f)
     val shade = immersiveSmooth5(start, end, pageFraction.coerceIn(0f, 1f))
     return Color(
         red = edge.red + (muted.red - edge.red) * shade,
@@ -601,12 +604,12 @@ internal fun CapsuleImmersiveContent(
         val coverHeightPx = with(density) { artworkHeight.toPx() }
         val coverFraction = (coverHeightPx / pageHeightPx.coerceAtLeast(1f))
             .coerceIn(0.05f, 0.95f)
-        // Finish the gentle photo-to-sampled-colour blend about 115dp below the photo. On short
-        // devices this budget shrinks with the remaining viewport.
-        val extensionPx = with(density) { 115.dp.toPx() }
-            .coerceAtMost((pageHeightPx - coverHeightPx).coerceAtLeast(1f) * 0.68f)
+        // Finish shortly below the physical artwork boundary; the rest of
+        // the sheet remains the very same sampled, softly dimmed colour.
+        val extensionPx = with(density) { 72.dp.toPx() }
+            .coerceAtMost((pageHeightPx - coverHeightPx).coerceAtLeast(1f) * 0.38f)
         val tailFraction = (extensionPx / pageHeightPx.coerceAtLeast(1f))
-            .coerceAtLeast(0.025f)
+            .coerceIn(0.02f, 0.08f)
         val pageBackground = remember(seamColor, pageFloor, coverFraction, tailFraction, pageHeightPx) {
             Brush.verticalGradient(
                 colorStops = immersiveContinuousPageStops(
