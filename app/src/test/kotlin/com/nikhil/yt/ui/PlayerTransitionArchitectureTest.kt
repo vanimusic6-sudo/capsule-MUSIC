@@ -44,7 +44,9 @@ class PlayerTransitionArchitectureTest {
         assertFalse(immersive.contains(".background(seamColor)"))
 
         val floor = source("com/nikhil/yt/ui/player/CapsuleImmersiveFloor.kt")
-        assertTrue(floor.contains("val background = image.immersiveBottomBackground(artworkAspect)"))
+        assertTrue(floor.contains("val background = image.immersiveArtworkBackground(artworkAspect)"))
+        assertTrue(floor.contains("fun Bitmap.immersiveArtworkBackground(artworkAspect: Float)"))
+        assertFalse(floor.contains("immersiveBottomBackground("))
         assertTrue(floor.contains("accent = background.immersiveMutedAccent()"))
         assertTrue(floor.contains("fun Color.immersiveMutedAccent()"))
         assertFalse(floor.contains("comfortableImmersiveColor"))
