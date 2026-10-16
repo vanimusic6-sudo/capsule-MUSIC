@@ -106,25 +106,24 @@ private data class ImmersiveGradientFrame(
 )
 
 /**
- * The photo itself is the bright half. The only darkening is ONE optical
- * handoff inside the photo's lower half to a solid, matching deep backdrop.
+ * Immersion: one continuous colour field, one optical image fade.
  *
- * Why a single operation: two cascaded alpha/brightness ramps multiply and
- * produce a broad washed-out gray shelf followed by a rapid dark stripe.
- * A full-screen brightness gradient then compounds that fog below the art.
- * Both caused the repeated "dirty gradient" screenshots.
+ * A white cover cannot reach a dark player without intermediate greys. The
+ * failure in the screenshots was WHERE those greys appeared: previous versions
+ * either washed the photo from its middle or dragged a grey veil all the way
+ * through the buttons. Keep the upper photo genuinely untouched and use a
+ * shared physical Y coordinate for both shaders, finishing the darkening
+ * shortly below the artwork instead of at the bottom of the whole display.
+ *
+ * Do not reintroduce: full-screen graphite stops, per-track light/dark ink
+ * switching, a second artwork brightness transform, multiple unrelated fades.
  */
-internal data class ImmersiveFadeProfile(val start: Float)
-
 internal val ImmersiveControlInk = Color.White
 
-/** Retain the ACTUAL centre-cropped edge RGB, never force a second hue. */
+/** The source colour is the actual sampled lower crop. Never recolour its seam. */
 internal fun immersiveSeamColor(edge: Color, floor: Color): Color = edge
 
-/**
- * Keep the album hue even at the bottom. White -> near #161616;
- * saturated red -> deep red, etc. No universal graphite destination.
- */
+/** Dark destination retains the source hue; pure white becomes #161616. */
 internal fun immersiveDeepTone(edge: Color): Color = Color(
     red = edge.red * 0.085f,
     green = edge.green * 0.085f,
@@ -138,36 +137,83 @@ private fun immersiveSmooth5(start: Float, end: Float, value: Float): Float {
 }
 
 /**
- * Avoid exposing the artwork's lower edge when its texture is very busy:
- * shift the soft fade start up a little, with no discontinuous threshold.
+ * Begin shading behind the lower image at 54% of its height. Reach the true
+ * dark ink just after the image, BEFORE the seekbar or transport controls.
+ * Both ends have zero first and second derivative (no visible horizontal
+ * line at the cover join or at the eventual flat floor).
+ *
+ * tailFraction is measured relative to the full screen, not artwork pixels.
+ * The caller caps it to preserve enough space on small/landscape devices.
  */
+internal fun immersiveContinuousPageColor(
+    edge: Color,
+    pageFraction: Float,
+    coverFraction: Float,
+    tailFraction: Float,
+): Color {
+    val cover = coverFraction.coerceIn(0.05f, 0.95f)
+    val start = cover * 0.54f
+    val end = (cover + tailFraction.coerceAtLeast(0.025f)).coerceAtMost(0.995f)
+    val shade = immersiveSmooth5(start, end, pageFraction.coerceIn(0f, 1f))
+    val deep = immersiveDeepTone(edge)
+    return Color(
+        red = edge.red + (deep.red - edge.red) * shade,
+        green = edge.green + (deep.green - edge.green) * shade,
+        blue = edge.blue + (deep.blue - edge.blue) * shade,
+        alpha = 1f,
+    )
+}
+
+/** 49 immutable GPU stops across the entire viewport; one cached brush. */
+internal fun immersiveContinuousPageStops(
+    edge: Color,
+    coverFraction: Float,
+    tailFraction: Float,
+): Array<Pair<Float, Color>> =
+    Array(49) { index ->
+        val position = index / 48f
+        position to immersiveContinuousPageColor(edge, position, coverFraction, tailFraction)
+    }
+
+/**
+ * Separate WHAT the photo reveals (page RGB) from HOW it reveals it (alpha).
+ * Upper two-thirds of the cover remain truly unaltered. Busy art receives
+ * a small extra lead so dense credits don't form a dark line at the seam.
+ */
+internal data class ImmersiveFadeProfile(val start: Float)
+
 internal fun immersiveFadeProfile(
     bottomTexture: Float,
     landscape: Boolean,
 ): ImmersiveFadeProfile {
-    val detail = immersiveSmooth5(0.40f, 1f, bottomTexture.coerceIn(0f, 1f))
+    val texture = immersiveSmooth5(0.40f, 1f, bottomTexture.coerceIn(0f, 1f))
     return ImmersiveFadeProfile(
-        start = 0.42f - detail * 0.065f - if (landscape) 0.015f else 0f,
+        start = 0.68f - texture * 0.055f - if (landscape) 0.012f else 0f,
     )
 }
 
-/** Exactly ONE slow, continuous dissolve: no colour-dependent control ink. */
+/** One quintic image dissolve; no independently darkening photo shader. */
 internal fun immersiveCoverFadeAlpha(profile: ImmersiveFadeProfile, fraction: Float): Float =
     immersiveSmooth5(profile.start, 1f, fraction.coerceIn(0f, 1f))
 
 /**
- * An opaque dark floor under the entire player plus ONE cheap overlay over
- * the PHOTO (not over the title/buttons). The overlay reaches precisely the
- * floor RGB and 100% opacity at the physical bottom edge of the artwork.
- * 33 cached stops keep the easing smooth without offscreen masks or blur.
+ * The photo's shader samples the page RGB at the IDENTICAL screen Y for each
+ * cover stop. Its last stop is opaque and equals the page exactly, regardless
+ * of album height, source brightness, or texture.
  */
-internal fun immersiveCoverOverlayStops(
-    deep: Color,
+internal fun immersiveContinuousCoverStops(
+    edge: Color,
+    coverFraction: Float,
+    tailFraction: Float,
     profile: ImmersiveFadeProfile,
 ): Array<Pair<Float, Color>> =
-    Array(33) { index ->
-        val photoFraction = index / 32f
-        photoFraction to deep.copy(alpha = immersiveCoverFadeAlpha(profile, photoFraction))
+    Array(49) { index ->
+        val photoFraction = index / 48f
+        val pageFraction = photoFraction * coverFraction
+        val tone = immersiveContinuousPageColor(
+            edge, pageFraction, coverFraction, tailFraction,
+        )
+        photoFraction to tone.copy(alpha = immersiveCoverFadeAlpha(profile, photoFraction))
     }
 
 /** How much of the sheet the cover takes before it starts to go. */
@@ -555,16 +601,32 @@ internal fun CapsuleImmersiveContent(
                 hasShownGradient = true
             }
         }
-        // The outgoing album keeps its own sampled colour until its frame
-        // retires. Below the art the surface is ONE stable opaque dark tone.
-        // No gray gradient running through the title or transport controls.
+        // Both shaders consume the outgoing frame's sampled RGB while that
+        // image is displayed. No palette change before its fade completes.
         val frame = shownGradient
         val pageEdge = frame?.edge ?: IMMERSIVE_NEUTRAL_COLOR
         val pageFloor = frame?.floor ?: pageEdge
         val seamColor = immersiveSeamColor(pageEdge, pageFloor)
-        val pageBackground = remember(seamColor) { immersiveDeepTone(seamColor) }
         val density = LocalDensity.current
+        val pageHeightPx = with(density) { maxHeight.toPx() }
         val coverHeightPx = with(density) { artworkHeight.toPx() }
+        val coverFraction = (coverHeightPx / pageHeightPx.coerceAtLeast(1f))
+            .coerceIn(0.05f, 0.95f)
+        // Finish the page gradient about 115dp below the photo. On short
+        // devices this budget shrinks with the remaining viewport.
+        val extensionPx = with(density) { 115.dp.toPx() }
+            .coerceAtMost((pageHeightPx - coverHeightPx).coerceAtLeast(1f) * 0.68f)
+        val tailFraction = (extensionPx / pageHeightPx.coerceAtLeast(1f))
+            .coerceAtLeast(0.025f)
+        val pageBackground = remember(seamColor, coverFraction, tailFraction, pageHeightPx) {
+            Brush.verticalGradient(
+                colorStops = immersiveContinuousPageStops(
+                    seamColor, coverFraction, tailFraction,
+                ),
+                startY = 0f,
+                endY = pageHeightPx,
+            )
+        }
         val immersiveInk = ImmersiveControlInk
 
         // Preload the NEXT image invisibly. Coil must finish decoding this exact URL
@@ -586,7 +648,8 @@ internal fun CapsuleImmersiveContent(
             )
         }
 
-        // Single solid sheet. Only the album itself contains a gradient.
+        // One photo-aligned page gradient: continuous through the physical
+        // image bottom, already deep behind the seekbar and buttons.
         Box(modifier = Modifier.fillMaxSize().background(pageBackground))
 
         CapsuleVideoArtworkTransition(
@@ -609,7 +672,9 @@ internal fun CapsuleImmersiveContent(
             // the separate VIDEO mask grows/shrinks. The previous moving
             // album/matte exposed different edge pixels at the join on close.
             fixedImmersiveArtwork = true,
-            artworkBackground = pageBackground,
+            artworkBackground = immersiveContinuousPageColor(
+                seamColor, coverFraction, coverFraction, tailFraction,
+            ),
             artworkClickable = !isVideo,
             onArtworkClick = onShowLyrics,
             video = { active -> CapsuleVideoSurface(playerConnection.service, Modifier.fillMaxSize(), active = active) },
@@ -642,7 +707,9 @@ internal fun CapsuleImmersiveContent(
                             .fillMaxSize()
                             .background(
                                 remember(
-                                    pageBackground,
+                                    seamColor,
+                                    coverFraction,
+                                    tailFraction,
                                     frame.bottomTexture,
                                     frame.landscape,
                                     coverHeightPx,
@@ -652,8 +719,10 @@ internal fun CapsuleImmersiveContent(
                                         landscape = frame.landscape,
                                     )
                                     Brush.verticalGradient(
-                                        colorStops = immersiveCoverOverlayStops(
-                                            deep = pageBackground,
+                                        colorStops = immersiveContinuousCoverStops(
+                                            edge = seamColor,
+                                            coverFraction = coverFraction,
+                                            tailFraction = tailFraction,
                                             profile = fade,
                                         ),
                                         startY = 0f,
