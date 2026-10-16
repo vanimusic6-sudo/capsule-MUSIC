@@ -32,7 +32,9 @@ class PlayerTransitionArchitectureTest {
         assertTrue(immersive.contains(".background(pageBackground)"))
         assertTrue(immersive.contains("immersiveContinuousPageStops("))
         assertTrue(immersive.contains("immersiveContinuousCoverStops("))
+        assertTrue(immersive.contains("muted = pageFloor"))
         assertTrue(immersive.contains("val immersiveInk = ImmersiveControlInk"))
+        assertFalse(immersive.contains("immersiveDeepTone("))
         assertTrue(immersive.contains("endY = pageHeightPx"))
         assertTrue(immersive.contains("endY = coverHeightPx"))
         assertFalse(immersive.contains("immersiveStagedFloorStops("))
@@ -43,7 +45,8 @@ class PlayerTransitionArchitectureTest {
 
         val floor = source("com/nikhil/yt/ui/player/CapsuleImmersiveFloor.kt")
         assertTrue(floor.contains("val background = image.immersiveBottomBackground(artworkAspect)"))
-        assertTrue(floor.contains("accent = background"))
+        assertTrue(floor.contains("accent = background.immersiveMutedAccent()"))
+        assertTrue(floor.contains("fun Color.immersiveMutedAccent()"))
         assertFalse(floor.contains("comfortableImmersiveColor"))
         assertFalse(floor.contains("0.44f"))
 
