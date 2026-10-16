@@ -24,6 +24,33 @@ class CapsuleLightPaletteTest {
         assertTrue(contrast(scheme.onPrimary, scheme.primary) >= 7f)
     }
 
+    @Test fun capsuleToggleChangesLightThemeInsteadOfReusingTheBaseLightPalette() {
+        val original = lightColorScheme()
+        val capsuleOn = resolveCapsuleColorScheme(
+            original, capsuleThemeEnabled = true, isDark = false, pureBlack = false,
+        )
+        val capsuleOff = resolveCapsuleColorScheme(
+            original, capsuleThemeEnabled = false, isDark = false, pureBlack = false,
+        )
+        assertTrue("Capsule Light must have its OWN page surface", capsuleOn.background != capsuleOff.background)
+        assertTrue("Capsule Light must have its OWN panel depth",
+            capsuleOn.surfaceContainer != capsuleOff.surfaceContainer)
+        assertEquals(original.background, capsuleOff.background)
+    }
+
+    @Test fun capsuleLightDockAndCompactPlayerUseTheSameSemanticMaterials() {
+        val colors = lightColorScheme().capsuleLight()
+        val dock = capsuleLightCompactTokens(colors)
+        assertEquals(colors.surfaceContainerLow, dock.surfaceStart)
+        assertEquals(colors.surfaceContainerHigh, dock.surfaceEnd)
+        assertEquals(colors.outlineVariant, dock.outline)
+        assertEquals(colors.primaryContainer, dock.indicator)
+        assertEquals(colors.onPrimaryContainer, dock.selectedContent)
+        assertEquals(colors.onSurfaceVariant, dock.mutedContent)
+        assertTrue(contrast(dock.selectedContent, dock.indicator) >= 4.5f)
+        assertTrue(contrast(dock.mutedContent, dock.surfaceStart) >= 4.5f)
+    }
+
     @Test fun applyingLightSchemeCannotMutateDarkCapsuleValues() {
         val darkBase = darkColorScheme()
         val before = darkBase.capsule(pureBlack = false)

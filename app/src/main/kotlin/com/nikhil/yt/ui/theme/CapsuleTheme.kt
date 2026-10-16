@@ -89,6 +89,33 @@ fun ColorScheme.capsuleLight(): ColorScheme = copy(
     surfaceContainerHighest = Color(0xFFDCE0DC),
 )
 
+/**
+ * Semantic colors for Capsule's own compact chrome in LIGHT mode.
+ *
+ * Both the Capsule dock and the THEME mini-player background were previously
+ * drawing the dark Capsule material even while the root correctly resolved
+ * the new Capsule Light scheme. This is derived from the already-selected
+ * ColorScheme, never from the separate full-screen Light player design.
+ */
+internal data class CapsuleLightCompactTokens(
+    val surfaceStart: Color,
+    val surfaceEnd: Color,
+    val outline: Color,
+    val indicator: Color,
+    val selectedContent: Color,
+    val mutedContent: Color,
+)
+
+internal fun capsuleLightCompactTokens(scheme: ColorScheme): CapsuleLightCompactTokens =
+    CapsuleLightCompactTokens(
+        surfaceStart = scheme.surfaceContainerLow,
+        surfaceEnd = scheme.surfaceContainerHigh,
+        outline = scheme.outlineVariant,
+        indicator = scheme.primaryContainer,
+        selectedContent = scheme.onPrimaryContainer,
+        mutedContent = scheme.onSurfaceVariant,
+    )
+
 private val CapsuleBackground = Color(0xFF141414)
 private val CapsuleSurface = Color(0xFF141414)
 private val CapsuleSurfaceDim = Color(0xFF0C0C0C)

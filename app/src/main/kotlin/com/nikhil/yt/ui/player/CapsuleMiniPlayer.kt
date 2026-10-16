@@ -99,6 +99,8 @@ import com.nikhil.yt.models.artistCreditLine
 import com.nikhil.yt.together.TogetherRole
 import com.nikhil.yt.together.TogetherSessionState
 import com.nikhil.yt.ui.screens.settings.DiscordPresenceManager
+import com.nikhil.yt.ui.theme.LocalCapsuleLightTheme
+import com.nikhil.yt.ui.theme.capsuleLightCompactTokens
 import com.nikhil.yt.utils.rememberEnumPreference
 import com.nikhil.yt.utils.rememberPreference
 import kotlinx.coroutines.Job
@@ -581,12 +583,16 @@ fun CapsuleMiniPlayer(
                     .border(
                         width = if (standardStyle) 0.dp else 1.dp,
                         color = if (standardStyle) Color.Transparent else
-                            capsuleSurfaceOutline(
-                                miniArtworkColors,
-                                glass =
-                                    miniPlayerBackground ==
-                                        MiniPlayerBackgroundStyle.GLASS,
-                            ),
+                            if (LocalCapsuleLightTheme.current &&
+                                miniPlayerBackground == MiniPlayerBackgroundStyle.THEME
+                            ) {
+                                capsuleLightCompactTokens(MaterialTheme.colorScheme).outline
+                            } else {
+                                capsuleSurfaceOutline(
+                                    miniArtworkColors,
+                                    glass = miniPlayerBackground == MiniPlayerBackgroundStyle.GLASS,
+                                )
+                            },
                         shape =
                             miniPlayerShape,
                     ),
@@ -740,6 +746,11 @@ internal fun CapsuleCompactSurfaceBackground(
                                     Color.Black,
                                 ),
                             )
+                        } else if (LocalCapsuleLightTheme.current) {
+                            // Capsule Light material: use its own surface depth
+                            // instead of the old 30% black gradient.
+                            val tones = capsuleLightCompactTokens(MaterialTheme.colorScheme)
+                            Brush.linearGradient(listOf(tones.surfaceStart, tones.surfaceEnd))
                         } else {
                             Brush.linearGradient(
                                 listOf(

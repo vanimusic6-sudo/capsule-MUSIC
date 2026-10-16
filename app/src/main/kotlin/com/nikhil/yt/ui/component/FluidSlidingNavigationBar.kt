@@ -58,6 +58,8 @@ import com.nikhil.yt.ui.player.capsuleDockIndicatorColor
 import com.nikhil.yt.ui.player.capsuleSurfaceOutline
 import com.nikhil.yt.ui.player.rememberCapsuleArtworkColors
 import com.nikhil.yt.ui.theme.CapsuleBottomBarEnabledKey
+import com.nikhil.yt.ui.theme.LocalCapsuleLightTheme
+import com.nikhil.yt.ui.theme.capsuleLightCompactTokens
 import com.nikhil.yt.utils.rememberEnumPreference
 import com.nikhil.yt.utils.rememberPreference
 
@@ -218,10 +220,15 @@ private fun CapsuleNavigationBar(
                     MiniPlayerBackgroundStyle.THEME,
         )
     val glassDock = dockBackground == MiniPlayerBackgroundStyle.GLASS
-    val dockOutline = capsuleSurfaceOutline(artworkColors, glass = glassDock)
-    val dockIndicator = capsuleDockIndicatorColor(artworkColors, glass = glassDock)
+    // Only the THEME material follows the application's Capsule Light palette.
+    // Artwork-led gradients/glass, their animations and dark Capsule stay untouched.
+    val lightDock = if (LocalCapsuleLightTheme.current &&
+        dockBackground == MiniPlayerBackgroundStyle.THEME
+    ) capsuleLightCompactTokens(MaterialTheme.colorScheme) else null
+    val dockOutline = lightDock?.outline ?: capsuleSurfaceOutline(artworkColors, glass = glassDock)
+    val dockIndicator = lightDock?.indicator ?: capsuleDockIndicatorColor(artworkColors, glass = glassDock)
     val dockMutedContent =
-        lerp(
+        lightDock?.mutedContent ?: lerp(
             Color(0xFFA2A1AA),
             artworkColors.firstOrNull() ?: Color(0xFFA2A1AA),
             0.08f,
@@ -394,7 +401,7 @@ private fun CapsuleNavigationBar(
                         animateColorAsState(
                             targetValue =
                                 if (isSelected) {
-                                    Color(0xFF121219)
+                                    lightDock?.selectedContent ?: Color(0xFF121219)
                                 } else {
                                     dockMutedContent
                                 },
