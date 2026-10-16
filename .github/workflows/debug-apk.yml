@@ -93,6 +93,16 @@ jobs:
             --tests 'com.nikhil.yt.utils.PreferenceInitialValueTest' \
             --stacktrace --no-daemon
 
+      - name: Test TASK 05 home clock, guest icon, scroll header and Capsule Light
+        run: |
+          gradle :app:testUniversalDebugUnitTest \
+            --tests 'com.nikhil.yt.ui.component.HomeDayPeriodTest' \
+            --tests 'com.nikhil.yt.ui.component.HomeGuestIconTest' \
+            --tests 'com.nikhil.yt.ui.HomeScrollableHeaderTest' \
+            --tests 'com.nikhil.yt.ui.theme.CapsuleLightPaletteTest' \
+            --tests 'com.nikhil.yt.ui.theme.CapsuleThemeModeTest' \
+            --stacktrace --no-daemon
+
       - name: Test TASK 02 Home and artwork regressions
         run: |
           gradle :app:testUniversalDebugUnitTest \

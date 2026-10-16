@@ -35,15 +35,26 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
 import com.nikhil.yt.R
+import com.nikhil.yt.ui.theme.LocalCapsuleLightTheme
 
 /** Neutral chrome for the standard layout, independent of Capsule Dock artwork. */
 object StandardChrome {
     val isDark: Boolean @Composable get() = MaterialTheme.colorScheme.surface.luminance() < 0.5f
-    val background: Color @Composable get() = if (isDark) Color(0xFF141414) else Color(0xFFFAFAFA)
-    val panel: Color @Composable get() = if (isDark) Color(0xFF1C1C1C) else Color(0xFFF0F0F0)
-    val selected: Color @Composable get() = if (isDark) Color(0xFF272727) else Color(0xFFDEDEDE)
-    val text: Color @Composable get() = if (isDark) Color(0xFFF3F3F3) else Color(0xFF171717)
-    val muted: Color @Composable get() = if (isDark) Color(0xFF969696) else Color(0xFF626262)
+    val background: Color @Composable get() =
+        if (LocalCapsuleLightTheme.current) MaterialTheme.colorScheme.background
+        else if (isDark) Color(0xFF141414) else Color(0xFFFAFAFA)
+    val panel: Color @Composable get() =
+        if (LocalCapsuleLightTheme.current) MaterialTheme.colorScheme.surfaceContainer
+        else if (isDark) Color(0xFF1C1C1C) else Color(0xFFF0F0F0)
+    val selected: Color @Composable get() =
+        if (LocalCapsuleLightTheme.current) MaterialTheme.colorScheme.surfaceContainerHighest
+        else if (isDark) Color(0xFF272727) else Color(0xFFDEDEDE)
+    val text: Color @Composable get() =
+        if (LocalCapsuleLightTheme.current) MaterialTheme.colorScheme.onSurface
+        else if (isDark) Color(0xFFF3F3F3) else Color(0xFF171717)
+    val muted: Color @Composable get() =
+        if (LocalCapsuleLightTheme.current) MaterialTheme.colorScheme.onSurfaceVariant
+        else if (isDark) Color(0xFF969696) else Color(0xFF626262)
     val favorite: Color @Composable get() = CapsuleFavoriteColors.selected(text)
 }
 

@@ -26,9 +26,11 @@ class CapsuleThemeModeTest {
             isDark = false,
             pureBlack = true, // stored preference must be ignored in light mode
         )
-        assertSame("Capsule must reuse the existing light scheme, without recoloring", light, actual)
-        assertEquals(light.background, actual.background)
-        assertEquals(light.onBackground, actual.onBackground)
+        assertEquals(Color(0xFFF7F7F4), actual.background)
+        assertEquals(Color(0xFF222529), actual.onBackground)
+        assertEquals(Color(0xFFEAEBE7), actual.surfaceContainer)
+        assertEquals(Color(0xFF585F64), actual.onSurfaceVariant)
+        assertEquals(light.capsuleLight().primary, actual.primary)
     }
 
     @Test fun capsuleDarkModeUsesTheUnmodifiedExistingDarkPalette() {
@@ -59,7 +61,7 @@ class CapsuleThemeModeTest {
 
     @Test fun standardThemeAndAutomaticLightDoNotGainCapsuleOverride() {
         val baseDark = darkColorScheme()
-        assertSame(light, resolveCapsuleColorScheme(light, true, false, false))
+        assertEquals(light.capsuleLight().background, resolveCapsuleColorScheme(light, true, false, false).background)
         assertSame(light, resolveCapsuleColorScheme(light, false, false, false))
         assertSame(baseDark, resolveCapsuleColorScheme(baseDark, false, true, false))
         assertEquals(Color.Black, resolveCapsuleColorScheme(baseDark, false, true, true).background)
@@ -69,9 +71,9 @@ class CapsuleThemeModeTest {
         val initial = resolveCapsuleColorScheme(light, capsuleThemeEnabled = true, isDark = false, pureBlack = false)
         val dark = resolveCapsuleColorScheme(darkColorScheme(), capsuleThemeEnabled = true, isDark = true, pureBlack = false)
         val finalLight = resolveCapsuleColorScheme(light, capsuleThemeEnabled = true, isDark = false, pureBlack = false)
-        assertSame(light, initial)
+        assertEquals(Color(0xFFF7F7F4), initial.background)
         assertEquals(Color(0xFF141414), dark.background)
-        assertSame(light, finalLight)
+        assertEquals(Color(0xFFF7F7F4), finalLight.background)
     }
 
     @Test fun activityPassesStoredExplicitOrSystemModeToRootTheme() {

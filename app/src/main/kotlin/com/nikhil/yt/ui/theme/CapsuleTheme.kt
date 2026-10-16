@@ -8,6 +8,7 @@ package com.nikhil.yt.ui.theme
 
 import androidx.compose.material3.ColorScheme
 import androidx.compose.ui.graphics.Color
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.datastore.preferences.core.booleanPreferencesKey
 
 /**
@@ -30,6 +31,63 @@ val CapsuleThemeEnabledKey =
  */
 val CapsuleBottomBarEnabledKey =
     booleanPreferencesKey("capsuleBottomBarEnabled")
+
+/**
+ * One scoped marker for generic chrome (Home, tabs, list rows).
+ * Player designs can retain their own intentional, artwork-led colors.
+ */
+val LocalCapsuleLightTheme = staticCompositionLocalOf { false }
+
+/**
+ * Capsule Light: quiet, warm-neutral surfaces and graphite foreground.
+ * Never modifies the existing Capsule dark palette. Never derives colors
+ * from track artwork or starts a new animation.
+ */
+fun ColorScheme.capsuleLight(): ColorScheme = copy(
+    primary = Color(0xFF30343A),
+    onPrimary = Color(0xFFFFFFFF),
+    primaryContainer = Color(0xFFE5E6E2),
+    onPrimaryContainer = Color(0xFF24272C),
+    inversePrimary = Color(0xFFDADCE0),
+
+    secondary = Color(0xFF555D62),
+    onSecondary = Color.White,
+    secondaryContainer = Color(0xFFE4E9E8),
+    onSecondaryContainer = Color(0xFF263133),
+
+    tertiary = Color(0xFF61625A),
+    onTertiary = Color.White,
+    tertiaryContainer = Color(0xFFEAE8DC),
+    onTertiaryContainer = Color(0xFF34352C),
+
+    background = Color(0xFFF7F7F4),
+    onBackground = Color(0xFF222529),
+    surface = Color(0xFFF7F7F4),
+    onSurface = Color(0xFF222529),
+    surfaceVariant = Color(0xFFE6E8E5),
+    onSurfaceVariant = Color(0xFF585F64),
+
+    surfaceTint = Color.Transparent,
+    inverseSurface = Color(0xFF303439),
+    inverseOnSurface = Color(0xFFF7F7F4),
+
+    error = Color(0xFFB3261E),
+    onError = Color.White,
+    errorContainer = Color(0xFFF9DFDA),
+    onErrorContainer = Color(0xFF68130E),
+
+    outline = Color(0xFF858D92),
+    outlineVariant = Color(0xFFD4D9D6),
+    scrim = Color.Black,
+
+    surfaceBright = Color(0xFFFFFFFF),
+    surfaceDim = Color(0xFFE0E2DF),
+    surfaceContainerLowest = Color(0xFFFFFFFF),
+    surfaceContainerLow = Color(0xFFF1F2EE),
+    surfaceContainer = Color(0xFFEAEBE7),
+    surfaceContainerHigh = Color(0xFFE4E6E2),
+    surfaceContainerHighest = Color(0xFFDCE0DC),
+)
 
 private val CapsuleBackground = Color(0xFF141414)
 private val CapsuleSurface = Color(0xFF141414)

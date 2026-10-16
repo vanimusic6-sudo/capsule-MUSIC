@@ -22,6 +22,7 @@ import androidx.compose.material3.MaterialExpressiveTheme
 import androidx.compose.material3.dynamicDarkColorScheme
 import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -83,10 +84,8 @@ fun VeluneTheme(
     )
 
     /*
-     * Capsule has an existing DARK palette but no Capsule-specific LIGHT palette.
-     * Keep that dark palette exactly as authored. In light mode, reuse the
-     * application's existing generated light ColorScheme instead of forcing
-     * the old dark-only override (and without inventing Capsule light colors).
+     * Capsule Dark and Light are separate ColorScheme overrides.
+     * Never let the Capsule enable toggle override the user-selected brightness.
      */
     val capsulePureBlack by rememberPreference(
         PureBlackKey,
@@ -181,17 +180,18 @@ fun VeluneTheme(
     val animatedColorScheme =
         animateColorScheme(colorScheme)
 
-    MaterialExpressiveTheme(
-        colorScheme = animatedColorScheme,
-        typography = typography,
-        content = content,
-    )
+    CompositionLocalProvider(LocalCapsuleLightTheme provides (capsuleThemeEnabled && !effectiveDarkTheme)) {
+        MaterialExpressiveTheme(
+            colorScheme = animatedColorScheme,
+            typography = typography,
+            content = content,
+        )
+    }
 }
 
 /**
- * Apply Capsule's existing DARK-only override only in Dark Mode. When users
- * explicitly select Light (or Auto resolves light), keep the already-generated
- * light scheme: no invented palette, no changing Capsule's dark color values.
+ * Resolve Capsule Dark to its untouched original palette and Capsule Light to
+ * its own scoped palette. Non-Capsule themes still use the original schemes.
  *
  * Stateless: fast theme toggles cannot leave a stale override cached here.
  */
@@ -203,6 +203,7 @@ internal fun resolveCapsuleColorScheme(
 ): ColorScheme =
     when {
         capsuleThemeEnabled && isDark -> baseColorScheme.capsule(pureBlack = pureBlack)
+        capsuleThemeEnabled && !isDark -> baseColorScheme.capsuleLight()
         isDark && pureBlack -> baseColorScheme.pureBlack(true)
         else -> baseColorScheme
     }
