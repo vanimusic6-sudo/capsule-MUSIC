@@ -1474,6 +1474,7 @@ class MainActivity : ComponentActivity() {
                                                             accountName = headerAccountName,
                                                             accountImageUrl = headerAccountImage,
                                                             onAccountClick = { navController.navigate("settings/account") },
+                                                            showHomeGreeting = currentRoute == Screens.Home.route,
                                                         )
                                                     } else {
                                                         Row(verticalAlignment = Alignment.CenterVertically) {

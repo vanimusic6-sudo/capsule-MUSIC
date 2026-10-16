@@ -41,8 +41,18 @@ object StandardChrome {
 }
 
 @Composable
-fun StandardHeaderTitle(accountName: String?, accountImageUrl: String?, onAccountClick: () -> Unit) {
+fun StandardHeaderTitle(
+    accountName: String?,
+    accountImageUrl: String?,
+    onAccountClick: () -> Unit,
+    showHomeGreeting: Boolean = false,
+) {
     val accountLabel = stringResource(R.string.account)
+    val title = if (showHomeGreeting) {
+        stringResource(rememberHomeDayPeriod().greetingId)
+    } else {
+        stringResource(R.string.app_name)
+    }
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         Box(
             contentAlignment = Alignment.Center,
@@ -56,7 +66,7 @@ fun StandardHeaderTitle(accountName: String?, accountImageUrl: String?, onAccoun
             }
         }
         Text(
-            text = stringResource(R.string.app_name),
+            text = title,
             color = StandardChrome.text,
             fontSize = 27.sp,
             fontWeight = FontWeight.Bold,

@@ -951,4 +951,8 @@ Velune will only extract your token, and everything else is stored locally.</str
     <string name="video_timeout_description">Clear the local pause and retry delay. Tap video in the player to try again. YouTube may apply a new limit.</string>
     <string name="video_timeout_reset">Reset video timeout</string>
     <string name="video_timeout_reset_done">Video timeout reset</string>
+    <string name="home_greeting_morning">Good morning</string>
+    <string name="home_greeting_afternoon">Good afternoon</string>
+    <string name="home_greeting_evening">Good evening</string>
+    <string name="home_greeting_night">Good night</string>
 </resources>
