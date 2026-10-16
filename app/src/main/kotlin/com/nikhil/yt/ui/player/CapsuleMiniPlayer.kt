@@ -91,6 +91,7 @@ import com.nikhil.yt.R
 import com.nikhil.yt.constants.MiniPlayerHeight
 import com.nikhil.yt.constants.MiniPlayerBackgroundStyle
 import com.nikhil.yt.constants.MiniPlayerBackgroundStyleKey
+import com.nikhil.yt.constants.ReleaseAppearanceDefaults
 import com.nikhil.yt.constants.SwipeSensitivityKey
 import com.nikhil.yt.constants.SwipeThumbnailKey
 import com.nikhil.yt.db.entities.ArtistEntity
@@ -154,7 +155,7 @@ fun CapsuleMiniPlayer(
     val miniPlayerBackground by
         rememberEnumPreference(
             MiniPlayerBackgroundStyleKey,
-            defaultValue = MiniPlayerBackgroundStyle.CAPSULE_STAR,
+            defaultValue = ReleaseAppearanceDefaults.miniPlayerBackground,
         )
 
     val miniArtworkColors =

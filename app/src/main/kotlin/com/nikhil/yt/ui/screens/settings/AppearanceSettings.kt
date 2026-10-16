@@ -45,6 +45,7 @@ import com.nikhil.yt.LocalPlayerAwareWindowInsets
 import com.nikhil.yt.R
 import com.nikhil.yt.constants.CapsuleLightLyricLineKey
 import com.nikhil.yt.constants.CapsulePlayerDesign
+import com.nikhil.yt.constants.ReleaseAppearanceDefaults
 import com.nikhil.yt.constants.CapsulePlayerDesignKey
 import com.nikhil.yt.constants.ChipSortTypeKey
 import com.nikhil.yt.constants.CropThumbnailToSquareKey
@@ -102,13 +103,13 @@ fun AppearanceSettings(
 ) {
     val (playerDesign, onPlayerDesignChange) = rememberEnumPreference(
         CapsulePlayerDesignKey,
-        defaultValue = CapsulePlayerDesign.SUPER,
+        defaultValue = ReleaseAppearanceDefaults.playerDesign,
     )
 
     val (lyricLineEnabled, onLyricLineEnabledChange) =
         rememberPreference(
             CapsuleLightLyricLineKey,
-            defaultValue = true,
+            defaultValue = ReleaseAppearanceDefaults.lightLyricLine,
         )
 
     /*
@@ -123,7 +124,7 @@ fun AppearanceSettings(
     ) =
         rememberPreference(
             CapsuleThemeEnabledKey,
-            defaultValue = false,
+            defaultValue = ReleaseAppearanceDefaults.capsuleTheme,
         )
 
     val (
@@ -147,7 +148,7 @@ fun AppearanceSettings(
     ) =
         rememberPreference(
             DynamicThemeKey,
-            defaultValue = true,
+            defaultValue = ReleaseAppearanceDefaults.dynamicTheme,
         )
 
     val (
@@ -194,7 +195,7 @@ fun AppearanceSettings(
     ) =
         rememberPreference(
             CropThumbnailToSquareKey,
-            defaultValue = false,
+            defaultValue = ReleaseAppearanceDefaults.cropThumbnail,
         )
 
     val (
@@ -204,7 +205,7 @@ fun AppearanceSettings(
         rememberEnumPreference(
             PlayerBackgroundStyleKey,
             defaultValue =
-                PlayerBackgroundStyle.CAPSULE_STAR,
+                ReleaseAppearanceDefaults.playerBackground,
         )
 
     val (
@@ -213,7 +214,7 @@ fun AppearanceSettings(
     ) =
         rememberEnumPreference(
             MiniPlayerBackgroundStyleKey,
-            defaultValue = MiniPlayerBackgroundStyle.CAPSULE_STAR,
+            defaultValue = ReleaseAppearanceDefaults.miniPlayerBackground,
         )
 
     val (
@@ -222,7 +223,7 @@ fun AppearanceSettings(
     ) =
         rememberPreference(
             PureBlackKey,
-            defaultValue = true,
+            defaultValue = ReleaseAppearanceDefaults.pureBlack,
         )
 
     val (
@@ -231,7 +232,7 @@ fun AppearanceSettings(
     ) =
         rememberPreference(
             DisableBlurKey,
-            defaultValue = true,
+            defaultValue = ReleaseAppearanceDefaults.disableBlur,
         )
 
     val (
@@ -267,7 +268,7 @@ fun AppearanceSettings(
     ) =
         rememberPreference(
             LyricsUsePlayerThemeKey,
-            defaultValue = false,
+            defaultValue = ReleaseAppearanceDefaults.usePlayerThemeInLyrics,
         )
 
     val (
@@ -277,7 +278,7 @@ fun AppearanceSettings(
         rememberEnumPreference<LyricsAnimationStyle>(
             key = LyricsAnimationStyleKey,
             defaultValue =
-                LyricsAnimationStyle.APPLE,
+                ReleaseAppearanceDefaults.lyricsAnimation,
         )
 
     val (

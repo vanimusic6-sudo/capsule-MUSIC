@@ -40,6 +40,7 @@ import com.kyant.m3color.scheme.SchemeMonochrome
 import com.kyant.m3color.scheme.SchemeNeutral
 import com.kyant.m3color.scheme.SchemeTonalSpot
 import com.nikhil.yt.constants.PureBlackKey
+import com.nikhil.yt.constants.ReleaseAppearanceDefaults
 import com.nikhil.yt.utils.rememberPreference
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
@@ -80,7 +81,7 @@ fun VeluneTheme(
      */
     val capsuleThemeEnabled by rememberPreference(
         CapsuleThemeEnabledKey,
-        defaultValue = false,
+        defaultValue = ReleaseAppearanceDefaults.capsuleTheme,
     )
 
     /*
@@ -89,7 +90,7 @@ fun VeluneTheme(
      */
     val capsulePureBlack by rememberPreference(
         PureBlackKey,
-        defaultValue = true,
+        defaultValue = ReleaseAppearanceDefaults.pureBlack,
     )
 
     // The explicit Dark Mode / Follow System selection owns the brightness.

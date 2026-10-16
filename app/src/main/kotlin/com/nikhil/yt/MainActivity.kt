@@ -166,6 +166,7 @@ import com.nikhil.yt.constants.DarkModeKey
 import com.nikhil.yt.constants.DefaultOpenTabKey
 import com.nikhil.yt.constants.DisableScreenshotKey
 import com.nikhil.yt.constants.DynamicThemeKey
+import com.nikhil.yt.constants.ReleaseAppearanceDefaults
 import com.nikhil.yt.constants.HasPressedStarKey
 import com.nikhil.yt.constants.LaunchCountKey
 import com.nikhil.yt.constants.MiniPlayerBottomSpacing
@@ -584,7 +585,7 @@ class MainActivity : ComponentActivity() {
             // }
 
 
-            val enableDynamicTheme by rememberPreference(DynamicThemeKey, defaultValue = true)
+            val enableDynamicTheme by rememberPreference(DynamicThemeKey, defaultValue = ReleaseAppearanceDefaults.dynamicTheme)
             val customThemeColorValue by rememberPreference(CustomThemeColorKey, defaultValue = "default")
             val darkTheme by rememberEnumPreference(DarkModeKey, defaultValue = DarkMode.ON)
             val useSystemFont by rememberPreference(UseSystemFontKey, defaultValue = false)
@@ -596,7 +597,7 @@ class MainActivity : ComponentActivity() {
             LaunchedEffect(useDarkTheme) {
                 setSystemBarAppearance(useDarkTheme)
             }
-            val pureBlackEnabled by rememberPreference(PureBlackKey, defaultValue = true)
+            val pureBlackEnabled by rememberPreference(PureBlackKey, defaultValue = ReleaseAppearanceDefaults.pureBlack)
             val pureBlack = pureBlackEnabled && useDarkTheme
 
             val customThemeSeedPalette = remember(customThemeColorValue) {
@@ -880,13 +881,13 @@ class MainActivity : ComponentActivity() {
                     val miniPlayerBackground by
                         rememberEnumPreference(
                             MiniPlayerBackgroundStyleKey,
-                            MiniPlayerBackgroundStyle.CAPSULE_STAR,
+                            ReleaseAppearanceDefaults.miniPlayerBackground,
                         )
 
                     val playerBackground by
                         rememberEnumPreference(
                             PlayerBackgroundStyleKey,
-                            PlayerBackgroundStyle.CAPSULE_STAR,
+                            ReleaseAppearanceDefaults.playerBackground,
                         )
 
                     /*

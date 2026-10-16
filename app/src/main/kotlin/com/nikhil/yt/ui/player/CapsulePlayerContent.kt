@@ -90,6 +90,7 @@ import androidx.media3.ui.PlayerView
 import coil3.compose.AsyncImage
 import com.nikhil.yt.R
 import com.nikhil.yt.constants.CapsuleLightLyricLineKey
+import com.nikhil.yt.constants.ReleaseAppearanceDefaults
 import com.nikhil.yt.constants.CapsuleLightEditEnabledKey
 import com.nikhil.yt.constants.CapsuleLightEditSessionActiveKey
 import com.nikhil.yt.constants.CapsuleLightLayoutOrderKey
@@ -414,7 +415,7 @@ fun CapsulePlayerContent(
     val showLyricLine by
         rememberPreference(
             CapsuleLightLyricLineKey,
-            defaultValue = true,
+            defaultValue = ReleaseAppearanceDefaults.lightLyricLine,
         )
 
     /*

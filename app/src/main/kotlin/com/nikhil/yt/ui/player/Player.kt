@@ -61,6 +61,7 @@ import com.kyant.backdrop.Backdrop
 import com.nikhil.yt.LocalPlayerConnection
 import com.nikhil.yt.constants.CapsulePlayerDesign
 import com.nikhil.yt.constants.CapsulePlayerDesignKey
+import com.nikhil.yt.constants.ReleaseAppearanceDefaults
 import com.nikhil.yt.constants.DarkModeKey
 import com.nikhil.yt.constants.MiniPlayerHeight
 import com.nikhil.yt.constants.MiniPlayerBackgroundStyle
@@ -121,7 +122,7 @@ fun BottomSheetPlayer(
         mutableStateOf(false)
     }
 
-    val playerDesign by rememberEnumPreference(CapsulePlayerDesignKey, CapsulePlayerDesign.SUPER)
+    val playerDesign by rememberEnumPreference(CapsulePlayerDesignKey, ReleaseAppearanceDefaults.playerDesign)
     val capsuleDock by rememberPreference(CapsuleBottomBarEnabledKey, false)
     val configuration = LocalConfiguration.current
     val isLandscape =
@@ -139,12 +140,12 @@ fun BottomSheetPlayer(
     val playerBackground by
         rememberEnumPreference(
             key = PlayerBackgroundStyleKey,
-            defaultValue = PlayerBackgroundStyle.CAPSULE_STAR,
+            defaultValue = ReleaseAppearanceDefaults.playerBackground,
         )
     val miniPlayerBackground by
         rememberEnumPreference(
             MiniPlayerBackgroundStyleKey,
-            MiniPlayerBackgroundStyle.CAPSULE_STAR,
+            ReleaseAppearanceDefaults.miniPlayerBackground,
         )
 
     val systemDark = isSystemInDarkTheme()
