@@ -371,6 +371,7 @@ fun BottomSheetPlayer(
         collapsedHorizontalInset = if (capsuleDock) 10.dp else 12.dp,
         collapsedTopCornerRadius = if (capsuleDock) 24.dp else 14.dp,
         surfaceAlpha = ::playerHandoffSurfaceAlpha,
+        forceExpandedContentOpaque = showInlineLyrics || freezeBackdropAfterLyricsSettles,
         onDismiss = {
             playerConnection.service.stopAndClearPlayback()
         },
@@ -771,6 +772,16 @@ private fun CapsulePlayerLyricsHost(
             val safeTopPx = systemBars.getTop(density).toFloat()
             val safeBottomPx = systemBars.getBottom(density).toFloat()
             val lipBudgetPx = with(density) { 18.dp.toPx() }
+            // This is a discrete state transition, NOT a 60Hz recomposition:
+            // the full-screen backdrop's bright star/glow and long colour
+            // interpolation pause while the Lyrics aperture is in flight.
+            // Playback/video surface remain untouched.
+            val freezeLyricsBackdrop by remember {
+                derivedStateOf {
+                    sheetOffset.isRunning || sheetEdge.isRunning ||
+                        sheetOffset.value > 0.002f || sheetEdge.value > 0.002f
+                }
+            }
             // One GPU clip = the revealed portion of Lyrics. The entire page
             // is NOT translated visually: both children counter-translate by
             // the exact aperture displacement. The moving rounded top edge
@@ -823,6 +834,7 @@ private fun CapsulePlayerLyricsHost(
                             backdropAnimationTime = backdropAnimationTime,
                             isVisible = showLyrics,
                             instantBackdrop = true,
+                            freezeBackdropMotion = freezeLyricsBackdrop,
                             modifier = Modifier.fillMaxSize(),
                         )
                     }

@@ -257,6 +257,7 @@ fun BottomSheet(
     collapsedHorizontalInset: Dp = 0.dp,
     collapsedTopCornerRadius: Dp = PlayerFrameCornerRadius,
     surfaceAlpha: (Float) -> Float = ::playerContainerAlpha,
+    forceExpandedContentOpaque: Boolean = false,
     collapsedContent: @Composable BoxScope.() -> Unit,
     backgroundContent: @Composable BoxScope.() -> Unit = {},
     content: @Composable BoxScope.() -> Unit,
@@ -409,7 +410,21 @@ fun BottomSheet(
                             Modifier
                                 .fillMaxSize()
                                 .graphicsLayer {
-                                    alpha = fullPlayerContentAlpha(state.visualProgress)
+                                    // When the Lyrics aperture opens while the
+                                    // Player's own expansion is still finishing,
+                                    // this outer crossfade used to alpha-blend
+                                    // the ENTIRE dark Lyrics canvas with the
+                                    // pale player backdrop underneath. It
+                                    // looks exactly like a translucent white
+                                    // veil moving over the opening panel.
+                                    // Lyrics is a fully opaque child screen,
+                                    // so skip the unrelated MINI→Player fade
+                                    // for its complete open/close lifecycle.
+                                    alpha = if (forceExpandedContentOpaque) {
+                                        1f
+                                    } else {
+                                        fullPlayerContentAlpha(state.visualProgress)
+                                    }
                                 },
                     ) {
                         content()
