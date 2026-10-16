@@ -203,17 +203,9 @@ class App : Application(), SingletonImageLoader.Factory {
                  */
                 YouTube.webClientPoTokenEnabled = prefs[WebClientPoTokenEnabledKey] ?: false
 
-                /*
-                 * Hardware audio offload lets supported devices keep decoding
-                 * and playback out of the main CPU path while the screen is
-                 * off. Respect an explicit user choice, but make the efficient
-                 * path the default for installs that never chose a value.
-                 */
-                if (prefs[AudioOffload] == null) {
-                    dataStore.edit { settings ->
-                        settings[AudioOffload] = true
-                    }
-                }
+                // Do not auto-enable Media3 audio offload here. Before a selected
+                // audio format and route exist, support is UNKNOWN. Offload stays
+                // disabled for unset preferences; an explicit user choice survives.
 
                 if (prefs[ProxyEnabledKey] == true) {
                     try {
