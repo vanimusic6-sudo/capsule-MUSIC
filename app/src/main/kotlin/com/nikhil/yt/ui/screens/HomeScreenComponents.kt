@@ -16,6 +16,7 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.gestures.snapping.rememberSnapFlingBehavior
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
@@ -396,6 +397,7 @@ private fun KeepListeningRow(
         song = song,
         isActive = isActive,
         isPlaying = isPlaying,
+        showActiveBackground = false,
         // Keep horizontal gestures owned by the pager, not SwipeToSongBox.
         isSwipeable = false,
         trailingContent = {
@@ -411,6 +413,8 @@ private fun KeepListeningRow(
             .fillMaxWidth()
             .padding(horizontal = 4.dp)
             .combinedClickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
                 onClick = {
                     if (isActive) {
                         playerConnection.player.togglePlayPause()

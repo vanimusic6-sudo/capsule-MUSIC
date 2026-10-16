@@ -309,6 +309,7 @@ fun SongListItem(
     isSwipeable: Boolean = true,
     showSourceIcon: Boolean = false,
     trailingContent: @Composable RowScope.() -> Unit = {},
+    showActiveBackground: Boolean = true,
 ) {
     val swipeEnabled by rememberPreference(SwipeToSongKey, defaultValue = false)
     val visuals = LocalSongListVisuals.current
@@ -335,7 +336,7 @@ fun SongListItem(
             },
             trailingContent = trailingContent,
             modifier = modifier,
-            isActive = isActive,
+            isActive = isActive && showActiveBackground,
             itemHeight = visuals.rowHeight,
         )
     }

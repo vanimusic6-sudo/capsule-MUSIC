@@ -32,6 +32,8 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
@@ -63,7 +65,7 @@ import com.nikhil.yt.models.toMediaMetadata
 import com.nikhil.yt.playback.queues.LocalAlbumRadio
 import com.nikhil.yt.playback.queues.YouTubeAlbumRadio
 import com.nikhil.yt.playback.queues.YouTubeQueue
-import com.nikhil.yt.ui.component.HideOnScrollFAB
+import com.nikhil.yt.ui.component.ScrollActionButton
 import com.nikhil.yt.ui.component.LocalBottomSheetPageState
 import com.nikhil.yt.ui.component.LocalMenuState
 import com.nikhil.yt.ui.component.NavigationTitle
@@ -75,6 +77,15 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlin.random.Random
 
+
+/** Immutable scroll sample, collected outside Compose's measure/draw passes. */
+private data class HomeScrollSnapshot(
+    val scrolling: Boolean,
+    val index: Int,
+    val offset: Int,
+    val lastVisible: Int?,
+    val totalItems: Int,
+)
 
 @OptIn(ExperimentalFoundationApi::class, ExperimentalMaterial3Api::class)
 @Composable
@@ -102,6 +113,7 @@ fun HomeScreen(
     val allYtItems by viewModel.allYtItems.collectAsState()
 
     val isLoading: Boolean by viewModel.isLoading.collectAsState()
+    val isLoadingMore by viewModel.isLoadingMore.collectAsState()
     val homeFeedError by viewModel.homeFeedError.collectAsState()
     val isMoodAndGenresLoading = isLoading && explorePage?.moodAndGenres == null
     val isRefreshing by viewModel.isRefreshing.collectAsState()
@@ -111,6 +123,7 @@ fun HomeScreen(
 
     val scope = rememberCoroutineScope()
     val lazylistState = rememberLazyListState()
+    var scrollingUp by remember(lazylistState) { mutableStateOf(true) }
     // This screen's own entry: it cannot be destroyed while this composition is alive,
     // and observing it does not recompose the screen on unrelated navigation.
     val backStackEntry = LocalNavBackStackEntry.current
@@ -124,27 +137,45 @@ fun HomeScreen(
         }
     }
 
-    LaunchedEffect(homePage?.continuation) {
-        // Don't paginate merely because a horizontally-scrolling carousel is near the bottom.
+    LaunchedEffect(lazylistState, homePage?.continuation) {
+        var previousIndex = -1
+        var previousOffset = 0
+        // One event-driven scroll observer serves pagination and the floating button.
+        // Unlike ScrollUtils.isScrollingUp(), this never writes inside derivedStateOf.
         snapshotFlow {
-            Triple(
-                lazylistState.isScrollInProgress,
-                lazylistState.layoutInfo.visibleItemsInfo.lastOrNull()?.index,
-                lazylistState.layoutInfo.totalItemsCount,
+            HomeScrollSnapshot(
+                scrolling = lazylistState.isScrollInProgress,
+                index = lazylistState.firstVisibleItemIndex,
+                offset = lazylistState.firstVisibleItemScrollOffset,
+                lastVisible = lazylistState.layoutInfo.visibleItemsInfo.lastOrNull()?.index,
+                totalItems = lazylistState.layoutInfo.totalItemsCount,
             )
-        }.collect { (verticallyScrolling, lastVisibleIndex, totalItems) ->
-            if (verticallyScrolling &&
-                lastVisibleIndex != null &&
-                lastVisibleIndex >= totalItems - 3
-            ) {
-                viewModel.loadMoreYouTubeItems(homePage?.continuation)
+        }.collect { frame ->
+            if (frame.scrolling) {
+                if (previousIndex >= 0) {
+                    val movingUp = when {
+                        frame.index < previousIndex -> true
+                        frame.index > previousIndex -> false
+                        frame.offset < previousOffset -> true
+                        frame.offset > previousOffset -> false
+                        else -> scrollingUp
+                    }
+                    if (scrollingUp != movingUp) scrollingUp = movingUp
+                }
+                previousIndex = frame.index
+                previousOffset = frame.offset
+                if (frame.lastVisible != null &&
+                    frame.totalItems > 0 &&
+                    frame.lastVisible >= frame.totalItems - 3
+                ) {
+                    viewModel.loadMoreYouTubeItems(homePage?.continuation)
+                }
+            } else {
+                previousIndex = -1
             }
         }
     }
-
-    LaunchedEffect(forgottenFavorites) {
-        forgottenFavoritesLazyGridState.scrollToItem(0)
-    }
+    // Database emissions must not forcibly reset the nested favorites grid.
 
 
     val tonalStart = MaterialTheme.colorScheme.primaryContainer
@@ -190,7 +221,7 @@ fun HomeScreen(
         ) {
             val horizontalLazyGridItemWidthFactor = if (maxWidth * 0.475f >= 320.dp) 0.475f else 0.9f
             val horizontalLazyGridItemWidth = maxWidth * horizontalLazyGridItemWidthFactor
-            val forgottenFavoritesSnapLayoutInfoProvider = remember(forgottenFavoritesLazyGridState) {
+            val forgottenFavoritesSnapLayoutInfoProvider = remember(forgottenFavoritesLazyGridState, horizontalLazyGridItemWidthFactor) {
                 SnapLayoutInfoProvider(
                     lazyGridState = forgottenFavoritesLazyGridState,
                     positionInLayout = { layoutSize, itemSize ->
@@ -294,8 +325,9 @@ fun HomeScreen(
                 }
             }
 
-            homePage?.sections?.forEachIndexed { index, section ->
-                val sectionKey = "home:yt:$index:${section.endpoint?.browseId.orEmpty()}:${section.title}"
+            homePage?.sections?.forEach { section ->
+                val sectionKey =
+                    "home:yt:${section.endpoint?.browseId.orEmpty()}:${section.title}:${section.items.firstOrNull()?.id.orEmpty()}"
                 val isPlaylistCarousel =
                     section.items.isNotEmpty() &&
                         section.items.all { it is com.nikhil.yt.innertube.models.PlaylistItem }
@@ -351,8 +383,7 @@ fun HomeScreen(
             }
 
             if (
-                isLoading ||
-                (homePage?.continuation != null && homePage?.sections?.isNotEmpty() == true)
+                isLoading || isLoadingMore
             ) {
                 item(key = "home:loading") {
                     HomeLoadingShimmer()
@@ -381,9 +412,8 @@ fun HomeScreen(
                 }
             }
 
-            HideOnScrollFAB(
-                visible = allLocalItems.isNotEmpty() || allYtItems.isNotEmpty(),
-                lazyListState = lazylistState,
+            ScrollActionButton(
+                visible = (allLocalItems.isNotEmpty() || allYtItems.isNotEmpty()) && scrollingUp,
                 icon = R.drawable.shuffle,
                 onClick = {
                     val local = when {
