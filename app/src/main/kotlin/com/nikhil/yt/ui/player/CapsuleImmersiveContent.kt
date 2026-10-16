@@ -710,6 +710,21 @@ internal fun CapsuleImmersiveContent(
                                             middleTone.copy(alpha = fade.secondAlpha),
                                         fade.thirdStop to
                                             seamColor.copy(alpha = fade.thirdAlpha),
+                                        // The old straight .80 -> 1.00 tail met a
+                                        // completely flat page with a visible
+                                        // slope break ("stripe"). Bring the last
+                                        // 20% of opacity to rest progressively,
+                                        // keeping its hue EXACTLY seamColor.
+                                        (fade.thirdStop + (1f - fade.thirdStop) * 0.50f) to
+                                            seamColor.copy(
+                                                alpha = fade.thirdAlpha +
+                                                    (1f - fade.thirdAlpha) * 0.70f,
+                                            ),
+                                        (fade.thirdStop + (1f - fade.thirdStop) * 0.84f) to
+                                            seamColor.copy(
+                                                alpha = fade.thirdAlpha +
+                                                    (1f - fade.thirdAlpha) * 0.98f,
+                                            ),
                                         1f to seamColor,
                                     )
                                 },
