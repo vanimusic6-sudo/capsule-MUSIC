@@ -27,6 +27,19 @@ class PlayerTransitionArchitectureTest {
         assertFalse(menu.contains("rememberDraggableState"))
     }
 
+    @Test fun immersiveArtworkHasNoGraphiteTargetOrPressedWhiteOverlay() {
+        val immersive = source("com/nikhil/yt/ui/player/CapsuleImmersiveContent.kt")
+        assertTrue(immersive.contains(".background(seamColor)"))
+        assertTrue(immersive.contains("immersiveInkForFloor(textColor, seamColor)"))
+        assertFalse(immersive.contains("ImmersiveSmokyGraphite"))
+        assertFalse(immersive.contains("immersiveSmokyFloorStops("))
+
+        val videoArtwork = source("com/nikhil/yt/ui/player/CapsuleVideoArtworkTransition.kt")
+        assertTrue(videoArtwork.contains("interactionSource = artworkTapInteraction"))
+        assertTrue(videoArtwork.contains("indication = null"))
+        assertTrue(videoArtwork.contains("onClick = onArtworkClick"))
+    }
+
     @Test fun lyricsMovesOneContiguousCanvasAndOpticsFollowPosition() {
         val player = source("com/nikhil/yt/ui/player/Player.kt")
         assertEquals(1, Regex("then\\(lyricsFrame\\)").findAll(player).count())
