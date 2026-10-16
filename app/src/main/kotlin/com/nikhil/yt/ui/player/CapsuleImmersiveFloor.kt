@@ -13,6 +13,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
 import coil3.imageLoader
@@ -36,6 +37,9 @@ internal data class ImmersiveArtworkTone(
     val landscape: Boolean = false,
     val accent: Color = IMMERSIVE_NEUTRAL_COLOR,
     val bottomTexture: Float = 0f,
+    // Only genuinely near-white, nearly neutral covers need the new soft
+    // seam treatment. Every other album gets the ORIGINAL palette and fade.
+    val nearWhiteBackground: Boolean = false,
     val displayUrl: String? = null,
     // A thumbnail URL alone does not imply the dimensions and background are prepared.
     // The player must not render the raw 16:9 preview while this is false.
@@ -131,21 +135,30 @@ internal fun rememberImmersiveEdgeColor(
             if (isYtimg && index < 2 && (!landscape || image.width < 200)) continue
 
             resultTone = withContext(Dispatchers.Default) {
-                // Identify the actual BACKGROUND of the entire visible crop,
-                // not the average/mode of its lower strip. Foreground artwork,
-                // lyrics, credits and black video letterbox bars must not tint
-                // the page. Sample a small spatial grid off-thread, favour the
-                // recurring colour along several sides, then mute that SAME
-                // extracted tone for the existing page gradient.
-                val background = image.immersiveArtworkBackground(artworkAspect)
+                // ORIGINAL Immersion colour extraction: the modal background
+                // in the lower visible centre crop, not a full-artwork palette.
+                // Only near-white, low-saturation covers bypass the original
+                // brightness clamp so the isolated softer fade can eliminate
+                // the noticeable white->grey edge.
+                val rawEdge = image.immersiveBottomBackground(artworkAspect)
+                val nearWhite = rawEdge.isNearWhiteImmersiveBackground()
+                val background = if (nearWhite) {
+                    rawEdge
+                } else {
+                    rawEdge.comfortableImmersiveColor()
+                }
                 val bottomTexture = image.immersiveBottomTexture(artworkAspect)
                 ImmersiveArtworkTone(
                     edge = background,
-                    // Keep the TRUE edge for the photo and store a SEPARATE
-                    // modestly shaded version of the SAME extracted colour.
-                    // Never dim the edge itself or treat black as the goal.
-                    accent = background.immersiveMutedAccent(),
+                    // Restore the original modest 10% darker floor exactly.
+                    // The modern softened colour is used ONLY for white covers.
+                    accent = if (nearWhite) {
+                        rawEdge.immersiveMutedAccent()
+                    } else {
+                        lerp(background, Color.Black, 0.10f)
+                    },
                     bottomTexture = bottomTexture,
+                    nearWhiteBackground = nearWhite,
                     landscape = landscape,
                     displayUrl = url,
                     ready = true,
@@ -185,6 +198,13 @@ internal fun rememberImmersiveEdgeColor(
     )
 }
 
+/** Only near-white, nearly neutral backgrounds receive the slightly wider fade. */
+internal fun Color.isNearWhiteImmersiveBackground(): Boolean {
+    val hsv = FloatArray(3)
+    android.graphics.Color.colorToHSV(toArgb(), hsv)
+    return hsv[1] <= 0.12f && hsv[2] >= 0.88f
+}
+
 /**
  * Darken the colour actually extracted from the lower visible artwork crop.
  * Preserve its own hue; never inject a synthetic blue/slate/graphite tint.
@@ -201,21 +221,17 @@ internal fun Color.immersiveMutedAccent(): Color {
 }
 
 /**
- * Extract the *background of the visible album cover*, not a mixture of the
- * final rows. Credits/logos/subjects near the bottom are FOREGROUND.
+ * Determine the backdrop directly behind the fade, not the picture's vibrant foreground.
  *
- * 1. Sample a fixed 48x48 grid over the exact ContentScale.Crop rectangle.
- * 2. Ignore solid black top/bottom letterbox bars when the actual image
- *    interior is nonblack (otherwise a black album stays black).
- * 3. Vote for recurring RGB families with extra weight around the perimeter:
- *    true backgrounds usually appear behind objects along many image edges.
- * 4. Smooth votes over adjacent 5-bit RGB bins so mild texture/JPEG variation
- *    does not split one background colour. Average only that winning family.
+ * This samples the same centre crop shown by ContentScale.Crop at the provided viewport
+ * aspect. Only the bottom portion before the fade is considered. The modal colour block
+ * (not an average of unrelated objects) is used so sparse green lettering on white paper
+ * cannot recolour the entire player green. Edge pixels get a small weight: they tend to
+ * describe the image's background rather than its foreground subject.
  *
- * Nothing on the composition/frame clock: the 256px decoded art is analysed
- * on Dispatchers.Default and the resulting colour is cached per crop.
+ * Internal for small synthetic-bitmap regression tests.
  */
-internal fun Bitmap.immersiveArtworkBackground(artworkAspect: Float): Color {
+internal fun Bitmap.immersiveBottomBackground(artworkAspect: Float): Color {
     if (width <= 0 || height <= 0) return IMMERSIVE_NEUTRAL_COLOR
     val targetAspect = artworkAspect.coerceIn(0.55f, 2.2f)
     val naturalAspect = width.toFloat() / height
@@ -225,105 +241,44 @@ internal fun Bitmap.immersiveArtworkBackground(artworkAspect: Float): Color {
     val y0 = ((height - visibleHeight) / 2).coerceAtLeast(0)
     val w = visibleWidth.coerceAtLeast(1)
     val h = visibleHeight.coerceAtLeast(1)
-
-    val grid = 48
-    val pixels = IntArray(grid * grid)
-    val blackByRow = IntArray(grid)
-    for (gy in 0 until grid) {
-        val y = (y0 + ((gy * 2 + 1) * h) / (grid * 2)).coerceIn(0, height - 1)
-        for (gx in 0 until grid) {
-            val x = (x0 + ((gx * 2 + 1) * w) / (grid * 2)).coerceIn(0, width - 1)
-            val rgb = getPixel(x, y)
-            pixels[gy * grid + gx] = rgb
-            if ((rgb ushr 24 and 0xFF) >= 128 &&
-                maxOf((rgb shr 16 and 255), (rgb shr 8 and 255), (rgb and 255)) < 20
-            ) blackByRow[gy]++
-        }
-    }
-
-    // Full-width black bands are often baked into 16:9 YouTube thumbnails.
-    // Ignore them only when the centre has real picture information.
-    var nonBlackMiddle = 0
-    for (gy in 12 until 36) nonBlackMiddle += grid - blackByRow[gy]
-    val trimLetterbox = nonBlackMiddle > grid * 24 / 5
-    var top = 0
-    var bottom = grid
-    if (trimLetterbox) {
-        while (top < 12 && blackByRow[top] >= 45) top++
-        while (bottom > grid - 12 && blackByRow[bottom - 1] >= 45) bottom--
-    }
-
-    val votes = IntArray(512)
+    // Analyse the lower part of the *image* before our overlay hides it. The very last
+    // rows of a YouTube thumbnail may be baked-in black letterboxing or a logo.
+    val top = (y0 + h * 0.72f).toInt().coerceIn(0, height - 1)
+    val bottom = (y0 + h * 0.95f).toInt().coerceIn(top + 1, height)
+    val stepX = (w / 112).coerceAtLeast(1)
+    val stepY = ((bottom - top) / 52).coerceAtLeast(1)
+    // Small quantised bins group a textured background without combining distinct hues.
     val counts = IntArray(512)
-    val redSums = LongArray(512)
-    val greenSums = LongArray(512)
-    val blueSums = LongArray(512)
-    var total = 0
-    for (gy in top until bottom) {
-        for (gx in 0 until grid) {
-            val argb = pixels[gy * grid + gx]
-            if ((argb ushr 24 and 255) < 128) continue
-            val red = argb shr 16 and 255
-            val green = argb shr 8 and 255
-            val blue = argb and 255
-            val cell = ((red shr 5) shl 6) or ((green shr 5) shl 3) or (blue shr 5)
-            val distanceToSide = minOf(gx, grid - 1 - gx, gy - top, bottom - 1 - gy)
-            val weight = when {
-                distanceToSide < 8 -> 4
-                distanceToSide < 15 -> 2
-                else -> 1
-            }
-            votes[cell] += weight
-            counts[cell] += weight
-            redSums[cell] += (red * weight).toLong()
-            greenSums[cell] += (green * weight).toLong()
-            blueSums[cell] += (blue * weight).toLong()
-            total += weight
+    val rSums = LongArray(512)
+    val gSums = LongArray(512)
+    val bSums = LongArray(512)
+    var samples = 0
+    for (y in top until bottom step stepY) {
+        for (x in x0 until (x0 + w).coerceAtMost(width) step stepX) {
+            val argb = getPixel(x, y)
+            if ((argb ushr 24 and 0xFF) < 128) continue
+            val r = argb shr 16 and 0xFF
+            val g = argb shr 8 and 0xFF
+            val b = argb and 0xFF
+            // Ignore letterbox and fine black linework unless the entire artwork is dark.
+            if (maxOf(r, g, b) < 24) continue
+            val bucket = ((r shr 5) shl 6) or ((g shr 5) shl 3) or (b shr 5)
+            val relativeX = (x - x0).toFloat() / w
+            val weight = if (relativeX < 0.22f || relativeX > 0.78f) 2 else 1
+            counts[bucket] += weight
+            rSums[bucket] += (r * weight).toLong()
+            gSums[bucket] += (g * weight).toLong()
+            bSums[bucket] += (b * weight).toLong()
+            samples += weight
         }
     }
-    if (total == 0) return IMMERSIVE_NEUTRAL_COLOR
-
-    // A 5-bit bucket has 32 levels of tolerance per component. Consider
-    // direct neighbours (not distant hues) for textured backdrops.
-    fun neighbours(cell: Int, action: (Int) -> Unit) {
-        val r = (cell shr 6) and 7
-        val g = (cell shr 3) and 7
-        val b = cell and 7
-        action(cell)
-        if (r > 0) action(cell - 64)
-        if (r < 7) action(cell + 64)
-        if (g > 0) action(cell - 8)
-        if (g < 7) action(cell + 8)
-        if (b > 0) action(cell - 1)
-        if (b < 7) action(cell + 1)
-    }
-
-    var best = 0
-    var bestScore = -1
-    for (cell in votes.indices) {
-        if (votes[cell] == 0) continue
-        var score = votes[cell] * 2
-        neighbours(cell) { candidate -> score += votes[candidate] }
-        if (score > bestScore) {
-            best = cell
-            bestScore = score
-        }
-    }
-    var matched = 0
-    var red = 0L
-    var green = 0L
-    var blue = 0L
-    neighbours(best) { cell ->
-        matched += counts[cell]
-        red += redSums[cell]
-        green += greenSums[cell]
-        blue += blueSums[cell]
-    }
-    if (matched == 0) return IMMERSIVE_NEUTRAL_COLOR
+    if (samples == 0) return Color(0xFF1D1D1D)
+    val dominant = counts.indices.maxByOrNull { counts[it] } ?: return IMMERSIVE_NEUTRAL_COLOR
+    val n = counts[dominant].coerceAtLeast(1)
     return Color(
-        red = (red / matched).toInt(),
-        green = (green / matched).toInt(),
-        blue = (blue / matched).toInt(),
+        red = (rSums[dominant] / n).toInt(),
+        green = (gSums[dominant] / n).toInt(),
+        blue = (bSums[dominant] / n).toInt(),
     )
 }
 
@@ -403,3 +358,14 @@ internal fun Bitmap.immersiveBottomTexture(artworkAspect: Float): Float {
         .coerceIn(0f, 1f)
 }
 
+
+
+/** Keep greys grey: increasing the saturation of a neutral background tinted white art. */
+internal fun Color.comfortableImmersiveColor(): Color {
+    val hsv = FloatArray(3)
+    android.graphics.Color.colorToHSV(toArgb(), hsv)
+    // Preserve background hue AND saturation; only limit luminance for white controls.
+    // In particular, do not manufacture 32% saturation for greyscale artwork.
+    hsv[2] = hsv[2].coerceIn(0.17f, 0.44f)
+    return Color(android.graphics.Color.HSVToColor(hsv))
+}
