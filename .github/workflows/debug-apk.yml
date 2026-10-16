@@ -85,6 +85,14 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
 
+      - name: Test TASK 04 existing theme modes and preference persistence
+        run: |
+          gradle :app:testUniversalDebugUnitTest \
+            --tests 'com.nikhil.yt.ui.theme.CapsuleThemeModeTest' \
+            --tests 'com.nikhil.yt.ui.theme.CapsuleThemeBackgroundTest' \
+            --tests 'com.nikhil.yt.utils.PreferenceInitialValueTest' \
+            --stacktrace --no-daemon
+
       - name: Test TASK 02 Home and artwork regressions
         run: |
           gradle :app:testUniversalDebugUnitTest \

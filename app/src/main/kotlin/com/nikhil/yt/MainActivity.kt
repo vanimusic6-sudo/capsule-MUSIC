@@ -635,7 +635,10 @@ class MainActivity : ComponentActivity() {
                 mutableStateOf(DefaultThemeColor)
             }
 
-            LaunchedEffect(playerConnection, enableDynamicTheme, isSystemInDarkTheme, customThemeColor) {
+            // The system's current brightness is resolved above. It does not
+            // alter artwork color extraction, so do not restart image decoding
+            // solely because Android switched Light/Dark.
+            LaunchedEffect(playerConnection, enableDynamicTheme, customThemeColor) {
                 val playerConnection = playerConnection
                 if (!enableDynamicTheme || playerConnection == null) {
                     themeColor = if (!enableDynamicTheme) customThemeColor else DefaultThemeColor

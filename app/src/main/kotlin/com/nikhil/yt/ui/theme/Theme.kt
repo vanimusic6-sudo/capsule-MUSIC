@@ -83,31 +83,29 @@ fun VeluneTheme(
     )
 
     /*
-     * MainActivity normally disables Pure Black while Velune is in
-     * light mode. Capsule itself is dark-only, so when Capsule is enabled
-     * we read the actual stored PureBlack preference.
+     * Capsule has an existing DARK palette but no Capsule-specific LIGHT palette.
+     * Keep that dark palette exactly as authored. In light mode, reuse the
+     * application's existing generated light ColorScheme instead of forcing
+     * the old dark-only override (and without inventing Capsule light colors).
      */
     val capsulePureBlack by rememberPreference(
         PureBlackKey,
         defaultValue = true,
     )
 
-    val effectiveDarkTheme =
-        capsuleThemeEnabled || darkTheme
+    // The explicit Dark Mode / Follow System selection owns the brightness.
+    // Capsule toggles the visual family; it must not override that selection.
+    val effectiveDarkTheme = darkTheme
 
     val effectivePureBlack =
-        if (capsuleThemeEnabled) {
+        if (effectiveDarkTheme && capsuleThemeEnabled) {
             capsulePureBlack
         } else {
             pureBlack
         }
 
-    /*
-     * Keep Android status/navigation bar icon contrast correct even when
-     * the user had Light Mode selected before enabling Capsule.
-     *
-     * The saved DarkMode preference itself is not changed.
-     */
+    // System bar icon contrast must match the *applied* mode, not Capsule's
+    // enabled flag; the saved DarkMode preference itself is never rewritten.
     SideEffect {
         context.findActivity()?.window?.let { window ->
             WindowCompat
@@ -172,18 +170,12 @@ fun VeluneTheme(
             effectiveDarkTheme,
             capsuleThemeEnabled,
         ) {
-            when {
-                capsuleThemeEnabled ->
-                    baseColorScheme.capsule(
-                        pureBlack = effectivePureBlack,
-                    )
-
-                effectiveDarkTheme && effectivePureBlack ->
-                    baseColorScheme.pureBlack(true)
-
-                else ->
-                    baseColorScheme
-            }
+            resolveCapsuleColorScheme(
+                baseColorScheme = baseColorScheme,
+                capsuleThemeEnabled = capsuleThemeEnabled,
+                isDark = effectiveDarkTheme,
+                pureBlack = effectivePureBlack,
+            )
         }
 
     val animatedColorScheme =
@@ -195,6 +187,25 @@ fun VeluneTheme(
         content = content,
     )
 }
+
+/**
+ * Apply Capsule's existing DARK-only override only in Dark Mode. When users
+ * explicitly select Light (or Auto resolves light), keep the already-generated
+ * light scheme: no invented palette, no changing Capsule's dark color values.
+ *
+ * Stateless: fast theme toggles cannot leave a stale override cached here.
+ */
+internal fun resolveCapsuleColorScheme(
+    baseColorScheme: ColorScheme,
+    capsuleThemeEnabled: Boolean,
+    isDark: Boolean,
+    pureBlack: Boolean,
+): ColorScheme =
+    when {
+        capsuleThemeEnabled && isDark -> baseColorScheme.capsule(pureBlack = pureBlack)
+        isDark && pureBlack -> baseColorScheme.pureBlack(true)
+        else -> baseColorScheme
+    }
 
 private tailrec fun Context.findActivity(): Activity? =
     when (this) {
