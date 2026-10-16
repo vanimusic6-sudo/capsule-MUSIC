@@ -71,21 +71,23 @@ class ImmersiveArtworkBackgroundTest {
         AndroidColor.colorToHSV(sampled.toArgb(), sourceHsv)
         AndroidColor.colorToHSV(muted.toArgb(), mutedHsv)
         assertTrue("preserve original red hue", kotlin.math.abs(mutedHsv[0] - sourceHsv[0]) < 2f)
-        assertTrue("preserve saturation instead of fading into grey",
-            kotlin.math.abs(mutedHsv[1] - sourceHsv[1]) < 0.02f)
-        assertTrue("shade colour gently, not to black", mutedHsv[2] > 0.35f && mutedHsv[2] < 0.48f)
+        assertTrue("preserve actual saturation with slight softening",
+            kotlin.math.abs(mutedHsv[1] - sourceHsv[1] * 0.92f) < 0.025f)
+        assertTrue("soften brightness rather than clamp to a dark destination",
+            mutedHsv[2] > 0.64f && mutedHsv[2] < 0.70f)
         source.recycle()
     }
 
-    @Test fun whiteMonochromeArtworkUsesMutedColourInsteadOfGreyBlackFloor() {
+    @Test fun whiteMonochromeArtworkStaysNeutralWithoutInventedBlue() {
         val source = Bitmap.createBitmap(160, 120, Bitmap.Config.ARGB_8888)
         source.eraseColor(AndroidColor.WHITE)
         val sampled = source.immersiveBottomBackground(0.95f)
         val muted = sampled.immersiveMutedAccent()
         assertEquals(AndroidColor.WHITE, sampled.toArgb())
-        assertTrue("truly monochrome has no sampled hue, so use quiet chromatic fallback",
-            muted.blue > muted.red + 0.10f && muted.green > muted.red + 0.04f)
-        assertTrue("floor should be a muted COLOUR, not near-black", muted.red > 0.25f)
+        assertEquals("white has no hue to extract: do not invent blue",
+            muted.red, muted.blue, 1f / 255f + 0.0001f)
+        assertEquals("white stays neutral", muted.red, muted.green, 1f / 255f + 0.0001f)
+        assertTrue("floor stays softly shaded, not near black", muted.red in 0.75f..0.81f)
         source.recycle()
     }
 
