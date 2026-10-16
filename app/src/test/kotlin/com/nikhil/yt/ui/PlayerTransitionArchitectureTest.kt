@@ -31,7 +31,7 @@ class PlayerTransitionArchitectureTest {
         val immersive = source("com/nikhil/yt/ui/player/CapsuleImmersiveContent.kt")
         assertTrue(immersive.contains(".background(pageBackground)"))
         assertTrue(immersive.contains("val immersiveInk = ImmersiveControlInk"))
-        assertTrue(immersive.contains("immersiveStagedFloorStops(seamColor)"))
+        assertTrue(immersive.contains("immersiveStagedFloorStops(seamColor, artworkFraction)"))
         assertTrue(immersive.contains("immersiveStagedCoverFadeStops("))
         assertTrue(immersive.contains("endY = pageHeightPx"))
         assertTrue(immersive.contains("endY = coverHeightPx"))
