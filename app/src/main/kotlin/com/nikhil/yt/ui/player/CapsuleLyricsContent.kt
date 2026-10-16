@@ -128,6 +128,7 @@ internal fun CapsuleLyricsBackdropLayer(
     backdropAnimationTime: State<Long>? = null,
     isVisible: Boolean = true,
     instantBackdrop: Boolean = false,
+    freezeBackdropMotion: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
     val playerConnection = LocalPlayerConnection.current ?: return
@@ -209,12 +210,20 @@ internal fun CapsuleLyricsBackdropLayer(
                                 lyricsBackdrop == CapsuleLyricsBackdrop.ImmersiveColoring,
                             visibleArtworkAspectRatio = artworkAspectRatio,
                         )
-                        ImmersiveLyricsColoring(tone.edge)
+                        ImmersiveLyricsColoring(
+                            edge = tone.edge,
+                            immediate = freezeBackdropMotion,
+                        )
                     }
                     is CapsuleLyricsBackdrop.PlayerTheme -> PlayerBackground(
                         playerBackground = backdrop.style,
                         gradientColors = artworkColors,
-                        animated = isVisible && onScreen && isPlaying &&
+                        // Frozen during aperture travel so white glow/star
+                        // shaders cannot sweep over the moving dark Lyrics
+                        // panel and resemble a transparent white veil.
+                        // Once fully open, restore the normal renderer.
+                        animated = isVisible && !freezeBackdropMotion &&
+                            onScreen && isPlaying &&
                             playbackState == Player.STATE_READY && backdrop == lyricsBackdrop,
                         sharedAnimationTime = backdropAnimationTime,
                     )
@@ -234,7 +243,7 @@ internal fun CapsuleLyricsBackdropLayer(
 }
 
 @Composable
-private fun ImmersiveLyricsColoring(edge: Color) {
+private fun ImmersiveLyricsColoring(edge: Color, immediate: Boolean = false) {
     val stops = remember(edge) {
         PlayerBackgroundColorUtils.buildImmersiveLyricsColoringStops(edge)
     }
@@ -243,7 +252,13 @@ private fun ImmersiveLyricsColoring(edge: Color) {
     val colors = stops.mapIndexed { index, stop ->
         animateColorAsState(
             targetValue = stop.second,
-            animationSpec = tween(1400, easing = CapsuleStandardEasing),
+            // During the moving aperture, colour follows the already decoded
+            // artwork immediately. Avoid a second independent 1.4-second
+            // full-screen wash that looks like translucent white fog.
+            animationSpec = tween(
+                if (immediate) 0 else 1400,
+                easing = CapsuleStandardEasing,
+            ),
             label = "immersiveLyricsColor$index",
         )
     }
