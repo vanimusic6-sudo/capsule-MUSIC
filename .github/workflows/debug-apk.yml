@@ -30,6 +30,7 @@ on:
       - fix/immersion-clean-photo-to-ink-20261016
       - fix/immersion-continuous-photo-to-floor-20261016
       - fix/immersion-return-sampled-muted-colour-20261016
+      - fix/immersion-restore-original-white-soft-only-20261016
       - fix/video-timeline-morph-20261014
 
 permissions:
