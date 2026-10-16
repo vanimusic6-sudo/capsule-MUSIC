@@ -45,12 +45,8 @@ val EnableLyricsPlusKey = booleanPreferencesKey("enableLyricsPlus")
 val EnableNetEaseKey = booleanPreferencesKey("enableNetEase")
 
 /**
- * Off by default, deliberately.
- *
- * Paxsenix relays Apple Music's lyrics, and reaching their catalogue means using the anonymous
- * token their own web player mints for itself. Nobody's account is involved and nothing is
- * decrypted, but it is an API meant for their client rather than ours, so it is something to turn
- * on knowingly rather than something that is simply on.
+ * Enabled for new installations by release preference. Existing users keep
+ * their saved choice; relay and retrieval logic are unchanged.
  */
 val EnablePaxsenixAppleMusicKey = booleanPreferencesKey("enablePaxsenixAppleMusic")
 val HideExplicitKey = booleanPreferencesKey("hideExplicit")

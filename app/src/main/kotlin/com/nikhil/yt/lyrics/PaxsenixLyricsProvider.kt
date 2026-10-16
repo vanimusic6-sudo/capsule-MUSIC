@@ -142,7 +142,7 @@ object PaxsenixLyricsProvider : LyricsProvider {
     private var cachedToken: String? = null
 
     override fun isEnabled(context: Context): Boolean =
-        context.dataStore[EnablePaxsenixAppleMusicKey] ?: false
+        context.dataStore[EnablePaxsenixAppleMusicKey] ?: true
 
     override suspend fun getLyrics(
         id: String,
