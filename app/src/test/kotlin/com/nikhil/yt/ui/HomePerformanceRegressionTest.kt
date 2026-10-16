@@ -14,7 +14,10 @@ class HomePerformanceRegressionTest {
     @Test fun keepListeningPressKeepsSemanticsButHasNoRowOverlay() {
         val row = source("ui/screens/HomeScreenComponents.kt")
             .substringAfter("private fun KeepListeningRow(").substringBefore("fun ForgottenFavoritesSection(")
-        assertTrue(row.contains("showActiveBackground = false"))
+        // Active tracks must retain the SongListItem selection background.
+        // The unwanted PRESS ripple remains separately disabled.
+        assertFalse(row.contains("showActiveBackground = false"))
+        assertTrue(row.contains("isActive = isActive"))
         assertTrue(row.contains("indication = null"))
         assertTrue(row.contains("interactionSource = remember { MutableInteractionSource() }"))
         assertTrue(row.contains("onLongClick = showSongMenu"))

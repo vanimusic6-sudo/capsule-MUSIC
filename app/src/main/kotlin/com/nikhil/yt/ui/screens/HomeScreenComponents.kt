@@ -397,7 +397,6 @@ private fun KeepListeningRow(
         song = song,
         isActive = isActive,
         isPlaying = isPlaying,
-        showActiveBackground = false,
         // Keep horizontal gestures owned by the pager, not SwipeToSongBox.
         isSwipeable = false,
         trailingContent = {
