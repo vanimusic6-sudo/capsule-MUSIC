@@ -89,6 +89,7 @@ import com.nikhil.yt.MainActivity
 import com.nikhil.yt.R
 import com.nikhil.yt.constants.AudioClientOrder
 import com.nikhil.yt.constants.AudioClientOrderKey
+import com.nikhil.yt.constants.ReleasePlaybackDefaults
 import com.nikhil.yt.constants.AudioCrossfadeDurationKey
 import com.nikhil.yt.constants.AudioNormalizationKey
 import com.nikhil.yt.constants.AudioOffload
@@ -556,14 +557,14 @@ class MusicService :
     private val isNetworkConnected = MutableStateFlow(false)
 
     @Volatile
-    private var audioQuality = AudioQuality.AUTO
+    private var audioQuality = ReleasePlaybackDefaults.audioQuality
 
     @Volatile
     private var audioStreamPolicy = AudioStreamPolicy.VISIONOS
 
     @Volatile
     private var audioClientOrder: List<String> =
-        AudioClientOrder.legacyOrder(AudioStreamPolicy.VISIONOS)
+        AudioClientOrder.releaseDefaultOrder
     private val capsuleVideoQuality by enumPreference(
         this,
         CapsuleVideoQualityKey,
@@ -1799,7 +1800,7 @@ class MusicService :
         super.onCreate()
         audioQuality =
             dataStore[AudioQualityKey]
-                .toEnum(AudioQuality.AUTO)
+                .toEnum(ReleasePlaybackDefaults.audioQuality)
                 .normalizedPlaybackQuality()
         audioStreamPolicy = dataStore[AudioStreamPolicyKey].toEnum(AudioStreamPolicy.VISIONOS).normalizedForPlayback()
         connectivityManager = requireNotNull(getSystemService()) { "ConnectivityManager is unavailable" }
@@ -1811,6 +1812,7 @@ class MusicService :
             AudioClientOrder.resolve(
                 raw = dataStore[AudioClientOrderKey],
                 legacyPolicy = audioStreamPolicy,
+                legacyPreferenceExplicit = dataStore[AudioStreamPolicyKey] != null,
             )
 
         try {
@@ -1929,12 +1931,13 @@ class MusicService :
                         .normalizedForPlayback()
                 val quality =
                     prefs[AudioQualityKey]
-                        .toEnum(AudioQuality.AUTO)
+                        .toEnum(ReleasePlaybackDefaults.audioQuality)
                         .normalizedPlaybackQuality()
                 val clientOrder =
                     AudioClientOrder.resolve(
                         raw = prefs[AudioClientOrderKey],
                         legacyPolicy = policy,
+                        legacyPreferenceExplicit = prefs[AudioStreamPolicyKey] != null,
                     )
                 Triple(policy, quality, clientOrder)
             }
@@ -2038,7 +2041,7 @@ class MusicService :
             }
 
         dataStore.data
-            .map { it[PauseOnDeviceMuteKey] ?: false }
+            .map { it[PauseOnDeviceMuteKey] ?: ReleasePlaybackDefaults.pauseOnMute }
             .distinctUntilChanged()
             .collectLatest(scope) { enabled ->
                 pauseOnDeviceMuteEnabled = enabled
@@ -2137,7 +2140,7 @@ class MusicService :
             currentFormat,
             freshlyResolvedLoudnessVersion,
             dataStore.data
-                .map { it[AudioNormalizationKey] ?: true }
+                .map { it[AudioNormalizationKey] ?: ReleasePlaybackDefaults.normalization }
                 .distinctUntilChanged(),
         ) { metadata, format, _, normalizeAudio ->
             val fresh = metadata?.id?.let(freshlyResolvedLoudness::get)
@@ -2422,7 +2425,7 @@ class MusicService :
                 autoSkipEnabled =
                     (autoSkipAfterCdnExhaustion && isNetworkConnected.value &&
                         player.playWhenReady) ||
-                        dataStore.get(AutoSkipNextOnErrorKey, false),
+                        dataStore.get(AutoSkipNextOnErrorKey, ReleasePlaybackDefaults.autoSkipOnError),
             )
 
         if (decision.circuitOpenedNow) {
