@@ -102,6 +102,7 @@ jobs:
             --tests 'com.nikhil.yt.ui.UiEnergyRegressionTest' \
             --tests 'com.nikhil.yt.ui.player.CapsuleVideoArtworkTransitionTest' \
             --tests 'com.nikhil.yt.ui.player.CapsuleImmersiveContentTest' \
+            --tests 'com.nikhil.yt.ui.player.ImmersiveArtworkBackgroundTest' \
             --tests 'com.nikhil.yt.ui.player.CapsuleVideoMorphPixelsTest' \
             --tests 'com.nikhil.yt.ui.player.CapsuleVideoViewportTest' \
             --tests 'com.nikhil.yt.playback.video.CapsuleVideoPlayerLifecycleTest' \
