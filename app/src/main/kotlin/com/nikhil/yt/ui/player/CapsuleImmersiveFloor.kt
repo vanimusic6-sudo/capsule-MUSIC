@@ -190,27 +190,17 @@ internal fun rememberImmersiveEdgeColor(
 }
 
 /**
- * The original Immersion palette made its lower canvas from the extracted
- * album background. Restore that idea: KEEP hue and saturation and cap only
- * brightness, rather than fading every cover to 8.5% RGB / near-black.
+ * Darken the colour actually extracted from the lower visible artwork crop.
+ * Preserve its own hue; never inject a synthetic blue/slate/graphite tint.
+ * For achromatic artwork saturation remains zero.
  *
- * A virtually monochrome image has no reliable hue to preserve.
- * For that edge case, add the same subtle cool, muted chroma to a fallback
- * instead of generating an enormous neutral grey band. Coloured artwork
- * NEVER receives this fallback and retains its real extracted hue.
- *
- * Called only on the cached, off-main-thread thumbnail analysis path.
+ * Only called when decoding/sampling the artwork off the UI thread.
  */
 internal fun Color.immersiveMutedAccent(): Color {
     val hsv = FloatArray(3)
     android.graphics.Color.colorToHSV(toArgb(), hsv)
-    if (hsv[1] < 0.018f) {
-        // Colourless covers need a deliberate, subdued hue to avoid a
-        // monochrome white->grey strip. #496079 for pure-white artwork.
-        hsv[0] = 211f
-        hsv[1] = 0.40f
-    }
-    hsv[2] = minOf(hsv[2] * 0.84f, 0.47f)
+    hsv[1] = (hsv[1] * 0.92f).coerceIn(0f, 1f)
+    hsv[2] = (hsv[2] * 0.78f).coerceIn(0.22f, 0.82f)
     return Color(android.graphics.Color.HSVToColor(hsv))
 }
 
