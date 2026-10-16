@@ -197,7 +197,7 @@ internal fun immersiveUpperHazeColor(edge: Color): Color = edge
 /** Smoky graphite used ONLY as the far-bottom destination, never as the
  * cover's seam. Its cool neutral RGB has no synthetic saturation spike.
  */
-internal val ImmersiveSmokyGraphite = Color(0xFF242529)
+internal val ImmersiveSmokyGraphite = Color(0xFF111216)
 
 /** Strict sRGB-channel interpolation. Compose's Color.lerp can interpolate
  * through a perceptual colour space, which subtly bends the tint (and caused
@@ -230,11 +230,13 @@ internal fun immersiveSmokyFloorStops(
     // Sample a cubic smoothstep at a handful of fixed fractions.
     // Unlike two or three linear segments, this avoids visible slope
     // changes/tonal bands on white and highly saturated album covers.
-    // The nine-stop shader is built ONCE per colour/viewport, not per frame.
-    val fractions = floatArrayOf(0f, 0.14f, 0.29f, 0.43f, 0.57f, 0.71f, 0.86f, 1f)
+    // Darkens decisively before the controls footer, then holds deep graphite.
+    // The eleven-stop shader is built ONCE per colour/viewport, not per frame.
+    val fractions = floatArrayOf(0f, 0.12f, 0.24f, 0.36f, 0.48f, 0.60f, 0.72f, 0.84f, 1f)
     return arrayOf(0f to edge, join to edge) +
         fractions.drop(1).map { t ->
-            val smooth = t * t * (3f - 2f * t)
+            val m = (t / 0.84f).coerceIn(0f, 1f)
+            val smooth = m * m * (3f - 2f * m)
             (join + remaining * t) to immersiveSmokeRgbMix(edge, destination, smooth)
         }.toTypedArray()
 }
