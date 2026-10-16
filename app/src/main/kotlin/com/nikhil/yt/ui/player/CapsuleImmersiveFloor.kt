@@ -13,6 +13,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
 import coil3.imageLoader
 import coil3.request.ImageRequest
@@ -144,9 +145,10 @@ internal fun rememberImmersiveEdgeColor(
                 val bottomTexture = image.immersiveBottomTexture(artworkAspect)
                 ImmersiveArtworkTone(
                     edge = background,
-                    // No invisible 10% darkening: the photo fade and the
-                    // entire page now share exactly this single sampled colour.
-                    accent = background,
+                    // Keep the TRUE edge for the photo and store a SEPARATE
+                    // modestly shaded version of the SAME extracted colour.
+                    // Never dim the edge itself or treat black as the goal.
+                    accent = background.immersiveMutedAccent(),
                     bottomTexture = bottomTexture,
                     landscape = landscape,
                     displayUrl = url,
@@ -185,6 +187,31 @@ internal fun rememberImmersiveEdgeColor(
         displayUrl = if (readyForCurrentTrack) target.displayUrl else null,
         ready = readyForCurrentTrack,
     )
+}
+
+/**
+ * The original Immersion palette made its lower canvas from the extracted
+ * album background. Restore that idea: KEEP hue and saturation and cap only
+ * brightness, rather than fading every cover to 8.5% RGB / near-black.
+ *
+ * A purely monochrome image has no hue to preserve (saturation = 0).
+ * For that edge case, add the same subtle cool, muted chroma to a fallback
+ * instead of generating an enormous neutral grey band. Coloured artwork
+ * NEVER receives this fallback and retains its real extracted hue.
+ *
+ * Called only on the cached, off-main-thread thumbnail analysis path.
+ */
+internal fun Color.immersiveMutedAccent(): Color {
+    val hsv = FloatArray(3)
+    android.graphics.Color.colorToHSV(toArgb(), hsv)
+    if (hsv[1] < 0.08f) {
+        // Colourless covers need a deliberate, subdued hue to avoid a
+        // monochrome white->grey strip. #496079 for pure-white artwork.
+        hsv[0] = 211f
+        hsv[1] = 0.40f
+    }
+    hsv[2] = minOf(hsv[2] * 0.84f, 0.47f)
+    return Color(android.graphics.Color.HSVToColor(hsv))
 }
 
 /**
