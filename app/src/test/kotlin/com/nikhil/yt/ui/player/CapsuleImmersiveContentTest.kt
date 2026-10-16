@@ -101,6 +101,12 @@ class CapsuleImmersiveContentTest {
 
         val midnight = Color(0.06f, 0.08f, 0.11f, 1f)
         assertEquals(Color.White, immersiveInkForFloor(Color.White, midnight))
+
+        // Bright and pastel art keeps its natural colour; the player ink
+        // must switch rather than tinting or dimming the sampled page.
+        assertEquals(Color(0xFF141414), immersiveInkForFloor(Color.White, Color.White))
+        assertEquals(Color(0xFF141414), immersiveInkForFloor(Color.White, Color(0xFFCADFF3)))
+        assertEquals(Color.White, immersiveInkForFloor(Color(0xFF141414), midnight))
     }
 
     @Test
