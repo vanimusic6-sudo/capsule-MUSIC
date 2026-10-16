@@ -1,6 +1,7 @@
 package com.nikhil.yt.ui.player
 
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import org.junit.Assert.assertEquals
@@ -111,13 +112,19 @@ class CapsuleImmersiveContentTest {
         )) {
             for (seam in listOf(0.21f, 0.55f, 0.91f)) {
                 val stops = immersiveSmokyFloorStops(edge, seam)
-                assertEquals(9, stops.size)
+                assertEquals(10, stops.size)
                 assertEquals(0f, stops.first().first, 0.00001f)
                 assertEquals(edge, stops.first().second)
                 assertEquals(seam, stops[1].first, 0.00001f)
                 assertEquals("cover seam must not differ by even one channel", edge, stops[1].second)
                 assertEquals(1f, stops.last().first, 0.00001f)
                 assertEquals(ImmersiveSmokyGraphite, stops.last().second)
+                assertEquals(Color(0xFF111216), ImmersiveSmokyGraphite)
+                assertTrue("the deep graphite must have very low luminance",
+                    ImmersiveSmokyGraphite.luminance() < 0.01f)
+                // Bottom 16% is solid graphite, not a washed-out grey
+                // tail that made the playback controls look milky.
+                assertEquals(ImmersiveSmokyGraphite, stops[stops.lastIndex - 1].second)
                 for (i in 1 until stops.size) {
                     assertTrue("gradient stop coordinates must be strictly ordered",
                         stops[i].first > stops[i-1].first)
