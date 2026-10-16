@@ -231,7 +231,7 @@ internal fun immersiveSmokyFloorStops(
     // Unlike two or three linear segments, this avoids visible slope
     // changes/tonal bands on white and highly saturated album covers.
     // Darkens decisively before the controls footer, then holds deep graphite.
-    // The eleven-stop shader is built ONCE per colour/viewport, not per frame.
+    // The ten-stop shader is built ONCE per colour/viewport, not per frame.
     val fractions = floatArrayOf(0f, 0.12f, 0.24f, 0.36f, 0.48f, 0.60f, 0.72f, 0.84f, 1f)
     return arrayOf(0f to edge, join to edge) +
         fractions.drop(1).map { t ->
