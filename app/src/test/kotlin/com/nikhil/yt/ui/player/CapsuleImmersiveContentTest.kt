@@ -186,6 +186,32 @@ class CapsuleImmersiveContentTest {
     }
 
     @Test
+    fun `original Immersion fade profile and seam stay unchanged for coloured artwork`() {
+        val calm = immersiveOriginalFadeProfile(0f, landscape = false)
+        assertEquals(0.42f, calm.start, 0.00001f)
+        assertEquals(0.60f, calm.firstStop, 0.00001f)
+        assertEquals(0.15f, calm.firstAlpha, 0.00001f)
+        assertEquals(0.74f, calm.secondStop, 0.00001f)
+        assertEquals(0.46f, calm.secondAlpha, 0.00001f)
+        assertEquals(0.89f, calm.thirdStop, 0.00001f)
+        assertEquals(0.80f, calm.thirdAlpha, 0.00001f)
+
+        val busy = immersiveOriginalFadeProfile(1f, landscape = false)
+        assertEquals(0.11f, busy.start, 0.00001f)
+        assertEquals(0.39f, busy.firstStop, 0.00001f)
+        assertEquals(1f, busy.thirdAlpha, 0.00001f)
+
+        val edge = Color(0xFF6F314C)
+        val floor = Color(0xFF632C44)
+        val originalSeam = androidx.compose.ui.graphics.lerp(edge, floor, 0.45f)
+        assertEquals(originalSeam, immersiveOriginalSeamColor(edge, floor))
+        assertEquals(
+            androidx.compose.ui.graphics.lerp(edge, Color.White, 0.055f),
+            immersiveUpperHazeColor(edge),
+        )
+    }
+
+    @Test
     fun `white screenshot blends only to its neutral sampled muted colour`() {
         val screen = 1536f
         val photo = 800f
@@ -222,8 +248,8 @@ class CapsuleImmersiveContentTest {
     fun `artwork texture adjusts only the fade start and never control ink`() {
         val calm = immersiveFadeProfile(0f, landscape = false)
         val dense = immersiveFadeProfile(1f, landscape = false)
-        assertEquals(0.68f, calm.start, 0.00001f)
-        assertEquals(0.625f, dense.start, 0.00001f)
+        assertEquals(0.67f, calm.start, 0.00001f)
+        assertEquals(0.615f, dense.start, 0.00001f)
         assertTrue(dense.start < calm.start)
         assertTrue(immersiveFadeProfile(0.4f, landscape = true).start < calm.start)
         for (p in listOf(calm, dense)) {
