@@ -89,121 +89,131 @@ class CapsuleImmersiveContentTest {
     }
 
     @Test
-    fun `white and colourful covers keep their real sampled RGB and static white controls`() {
+    fun `photo preserves exact extracted colour and floor preserves its own hue`() {
         assertEquals(Color.White, ImmersiveControlInk)
-        for (edge in listOf(Color.White, Color(0xFFF3F3F3),
-            Color(0xFFF3DECA), Color(0xFFCE1435), Color(0xFF1266D0), Color.Black)) {
-            assertEquals(edge, immersiveSeamColor(edge, Color(0xFF242529)))
-            val dark = immersiveDeepTone(edge)
-            val tolerance = 1f / 255f + 0.0001f
-            assertEquals(edge.red * 0.085f, dark.red, tolerance)
-            assertEquals(edge.green * 0.085f, dark.green, tolerance)
-            assertEquals(edge.blue * 0.085f, dark.blue, tolerance)
-            assertEquals(Color.White, ImmersiveControlInk)
+        val pairs = listOf(
+            Color.White to Color(0xFF486078),
+            Color(0xFFECCDB9) to Color(0xFFAB7358),
+            Color(0xFFD13248) to Color(0xFF892030),
+            Color(0xFF1549CA) to Color(0xFF12358E),
+            Color.Black to Color.Black,
+        )
+        for ((edge, muted) in pairs) {
+            assertEquals(edge, immersiveSeamColor(edge, muted))
+            assertEquals(edge, immersiveContinuousPageColor(edge, muted, 0f, 0.55f, 0.15f))
+            assertEquals(muted, immersiveContinuousPageColor(edge, muted, 1f, 0.55f, 0.15f))
         }
     }
 
     @Test
-    fun `single page gradient spans cover join without a plateau or strip`() {
+    fun `single page gradient reaches the sampled muted colour smoothly past the artwork`() {
         val tolerance = 1f / 255f + 0.0001f
         for (cover in listOf(0.35f, 0.48f, 0.55f, 0.69f)) {
             val extension = minOf(0.16f, (1f - cover) * 0.68f)
-            for (edge in listOf(Color.White, Color(0xFFE3D9C9),
-                Color(0xFFAA193D), Color.Black)) {
-                val stops = immersiveContinuousPageStops(edge, cover, extension)
+            for ((edge, muted) in listOf(
+                Color.White to Color(0xFF486078),
+                Color(0xFFE3D9C9) to Color(0xFF8D7768),
+                Color(0xFFAA193D) to Color(0xFF7A1230),
+                Color.Black to Color.Black,
+            )) {
+                val stops = immersiveContinuousPageStops(edge, muted, cover, extension)
                 assertEquals(49, stops.size)
                 assertEquals(edge, stops.first().second)
                 assertEquals(0f, stops.first().first, 0f)
                 assertEquals(1f, stops.last().first, 0f)
                 assertEquals(1f, stops.last().second.alpha, 0f)
-                assertEquals(edge, immersiveContinuousPageColor(edge, 0.40f * cover, cover, extension))
+                assertEquals(edge,
+                    immersiveContinuousPageColor(edge, muted, 0.40f * cover, cover, extension))
                 val end = cover + extension
-                val fullDark = immersiveDeepTone(edge)
-                assertEquals(fullDark, immersiveContinuousPageColor(edge, end, cover, extension))
-                assertEquals(fullDark, immersiveContinuousPageColor(edge, 1f, cover, extension))
-                var prev = edge
+                assertEquals(muted, immersiveContinuousPageColor(edge, muted, end, cover, extension))
+                assertEquals(muted, immersiveContinuousPageColor(edge, muted, 1f, cover, extension))
+                // Between the original and accent hues, no extra black/grey stage.
                 for (stop in stops) {
-                    val next = stop.second
-                    assertTrue(next.red <= prev.red + tolerance)
-                    assertTrue(next.green <= prev.green + tolerance)
-                    assertTrue(next.blue <= prev.blue + tolerance)
-                    prev = next
-                }
-                // The slope is smooth crossing the photo boundary. The real
-                // colour is never reset by another independent floor shader.
-                val step = 0.001f
-                val left = immersiveContinuousPageColor(edge, cover - step, cover, extension)
-                val mid = immersiveContinuousPageColor(edge, cover, cover, extension)
-                val right = immersiveContinuousPageColor(edge, cover + step, cover, extension)
-                assertTrue(kotlin.math.abs(
-                    (mid.red - left.red) - (right.red - mid.red)
-                ) < 0.015f)
-            }
-        }
-    }
-
-    @Test
-    fun `photo stays untouched above its credits and reaches the page at its exact end`() {
-        val tolerance = 1f / 255f + 0.0001f
-        for (edge in listOf(Color.White, Color(0xFFEDE6DD),
-            Color(0xFFD62942), Color.Black)) {
-            for (cover in listOf(0.35f, 0.55f, 0.69f)) {
-                val tail = minOf(0.15f, (1f - cover) * 0.68f)
-                for (texture in listOf(0f, 0.5f, 1f)) {
-                    val profile = immersiveFadeProfile(texture, landscape = false)
-                    val overlay = immersiveContinuousCoverStops(edge, cover, tail, profile)
-                    assertEquals(49, overlay.size)
-                    assertEquals(0f, overlay.first().second.alpha, 0f)
-                    assertEquals(1f, overlay.last().first, 0f)
-                    assertEquals(1f, overlay.last().second.alpha, 0f)
-                    assertEquals(
-                        immersiveContinuousPageColor(edge, cover, cover, tail),
-                        overlay.last().second,
-                    )
-                    assertEquals(0f, immersiveCoverFadeAlpha(profile, 0.55f), 0f)
-                    var lastAlpha = 0f
-                    for (stop in overlay) {
-                        val expected = immersiveContinuousPageColor(
-                            edge, stop.first * cover, cover, tail,
-                        )
-                        assertEquals(expected.red, stop.second.red, tolerance)
-                        assertEquals(expected.green, stop.second.green, tolerance)
-                        assertEquals(expected.blue, stop.second.blue, tolerance)
-                        assertTrue("fade alpha cannot reverse", stop.second.alpha + tolerance >= lastAlpha)
-                        lastAlpha = stop.second.alpha
+                    val c = stop.second
+                    for ((v, a, b) in listOf(
+                        Triple(c.red, edge.red, muted.red),
+                        Triple(c.green, edge.green, muted.green),
+                        Triple(c.blue, edge.blue, muted.blue),
+                    )) {
+                        assertTrue(v >= minOf(a, b) - tolerance && v <= maxOf(a, b) + tolerance)
                     }
                 }
+                val step = 0.001f
+                val left = immersiveContinuousPageColor(edge, muted, cover - step, cover, extension)
+                val mid = immersiveContinuousPageColor(edge, muted, cover, cover, extension)
+                val right = immersiveContinuousPageColor(edge, muted, cover + step, cover, extension)
+                assertTrue("no photo-boundary stripe",
+                    kotlin.math.abs((mid.red - left.red) - (right.red - mid.red)) < 0.015f)
             }
         }
     }
 
     @Test
-    fun `screenshot 153415 regression white title stays clean and controls become dark`() {
-        // Concrete geometry of the supplied 712x1536 screenshot: physical
-        // photo join near Y=800, with the first white metadata near Y=860.
-        // The rejected implementations began a grey fog around Y=420 or
-        // cut straight to black at Y=800. These anchors capture BOTH errors.
+    fun `photo overlay and page share identical RGB at same physical Y`() {
+        val tolerance = 1f / 255f + 0.0001f
+        for ((edge, muted) in listOf(
+            Color.White to Color(0xFF486078),
+            Color(0xFFEECCDD) to Color(0xFF914F70),
+            Color(0xFFD62942) to Color(0xFF842039),
+            Color.Black to Color.Black,
+        )) for (cover in listOf(0.35f, 0.55f, 0.69f)) {
+            val tail = minOf(0.15f, (1f - cover) * 0.68f)
+            for (texture in listOf(0f, 0.5f, 1f)) {
+                val profile = immersiveFadeProfile(texture, landscape = false)
+                val overlay = immersiveContinuousCoverStops(edge, muted, cover, tail, profile)
+                assertEquals(49, overlay.size)
+                assertEquals(0f, overlay.first().second.alpha, 0f)
+                assertEquals(1f, overlay.last().first, 0f)
+                assertEquals(1f, overlay.last().second.alpha, 0f)
+                assertEquals(
+                    immersiveContinuousPageColor(edge, muted, cover, cover, tail),
+                    overlay.last().second,
+                )
+                assertEquals(0f, immersiveCoverFadeAlpha(profile, 0.55f), 0f)
+                var lastAlpha = 0f
+                for (stop in overlay) {
+                    val expected = immersiveContinuousPageColor(
+                        edge, muted, stop.first * cover, cover, tail,
+                    )
+                    assertEquals(expected.red, stop.second.red, tolerance)
+                    assertEquals(expected.green, stop.second.green, tolerance)
+                    assertEquals(expected.blue, stop.second.blue, tolerance)
+                    assertTrue("alpha must not reverse", stop.second.alpha + tolerance >= lastAlpha)
+                    lastAlpha = stop.second.alpha
+                }
+            }
+        }
+    }
+
+    @Test
+    fun `white screenshot blends into extracted chromatic shade not grey or black`() {
         val screen = 1536f
         val photo = 800f
         val cover = photo / screen
         val tail = 0.16f
-        val profile = immersiveFadeProfile(0f, landscape = false)
-        fun whiteLevel(y: Float): Float {
-            val page = immersiveContinuousPageColor(Color.White, y / screen, cover, tail).red
-            if (y >= photo) return page
-            val alpha = immersiveCoverFadeAlpha(profile, y / photo)
-            return 1f * (1f - alpha) + page * alpha
+        val edge = Color.White
+        val floor = Color(0xFF486078)
+        val fade = immersiveFadeProfile(0f, landscape = false)
+        fun rendered(y: Float): Color {
+            val backdrop = immersiveContinuousPageColor(edge, floor, y / screen, cover, tail)
+            if (y >= photo) return backdrop
+            val alpha = immersiveCoverFadeAlpha(fade, y / photo)
+            return Color(
+                red = 1f + (backdrop.red - 1f) * alpha,
+                green = 1f + (backdrop.green - 1f) * alpha,
+                blue = 1f + (backdrop.blue - 1f) * alpha,
+                alpha = 1f,
+            )
         }
-        assertTrue("Do not lay a grey veil over the actual I GOT LOVE title",
-            whiteLevel(540f) > 0.97f)
-        assertTrue("Keep the artwork mostly bright into the lower details",
-            whiteLevel(680f) > 0.76f)
-        assertTrue("White title must be readable against the darkening floor",
-            whiteLevel(860f) < 0.33f)
-        assertTrue("Seekbar must no longer sit in full-screen grey fog",
-            whiteLevel(1010f) < 0.14f)
-        assertTrue("No sharp dark strip at the actual artwork join",
-            kotlin.math.abs(whiteLevel(797f) - whiteLevel(803f)) < 0.035f)
+        assertTrue("preserve cover title", rendered(540f).red > 0.96f)
+        assertTrue("retain bright album details", rendered(680f).red > 0.75f)
+        val underText = rendered(860f)
+        assertTrue("album accent is still blue-tinted, not grey",
+            underText.blue > underText.red + 0.05f)
+        assertTrue("do not target black", rendered(1200f).red > 0.25f)
+        assertEquals(floor, rendered(1200f))
+        assertTrue("no strip at artwork join",
+            kotlin.math.abs(rendered(797f).red - rendered(803f).red) < 0.035f)
     }
 
     @Test
