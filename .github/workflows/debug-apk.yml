@@ -103,6 +103,14 @@ jobs:
             --tests 'com.nikhil.yt.ui.theme.CapsuleThemeModeTest' \
             --stacktrace --no-daemon
 
+      - name: Test TASK 06 release defaults and saved preference priority
+        run: |
+          gradle :app:testUniversalDebugUnitTest \
+            --tests 'com.nikhil.yt.constants.ReleaseDefaultsTest' \
+            --tests 'com.nikhil.yt.constants.AudioClientOrderTest' \
+            --tests 'com.nikhil.yt.ui.LyricsProviderOrderTest' \
+            --stacktrace --no-daemon
+
       - name: Test TASK 02 Home and artwork regressions
         run: |
           gradle :app:testUniversalDebugUnitTest \
