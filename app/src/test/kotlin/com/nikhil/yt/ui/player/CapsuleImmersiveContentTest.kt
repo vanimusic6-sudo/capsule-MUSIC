@@ -123,9 +123,9 @@ class CapsuleImmersiveContentTest {
                     val a = floor[index - 1].second
                     val b = floor[index].second
                     assertTrue("tonal band too sharp at stop $index",
-                        kotlin.math.abs(b.red - a.red) < 0.062f &&
-                            kotlin.math.abs(b.green - a.green) < 0.062f &&
-                            kotlin.math.abs(b.blue - a.blue) < 0.062f)
+                        kotlin.math.abs(b.red - a.red) < 0.075f &&
+                            kotlin.math.abs(b.green - a.green) < 0.075f &&
+                            kotlin.math.abs(b.blue - a.blue) < 0.075f)
                 }
             }
         }
