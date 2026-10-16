@@ -283,6 +283,7 @@ fun KeepListeningSection(
             state = pagerState,
             contentPadding = PaddingValues(horizontal = 12.dp),
             pageSpacing = 8.dp,
+            verticalAlignment = Alignment.Top,
             flingBehavior = androidx.compose.foundation.pager.PagerDefaults.flingBehavior(
                 state = pagerState,
                 snapAnimationSpec = spring(

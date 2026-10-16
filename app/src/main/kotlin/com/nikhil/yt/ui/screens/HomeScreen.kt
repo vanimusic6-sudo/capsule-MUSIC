@@ -43,6 +43,8 @@ import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.navigation.NavController
 import com.nikhil.yt.innertube.models.AlbumItem
@@ -100,6 +102,7 @@ fun HomeScreen(
     val allYtItems by viewModel.allYtItems.collectAsState()
 
     val isLoading: Boolean by viewModel.isLoading.collectAsState()
+    val homeFeedError by viewModel.homeFeedError.collectAsState()
     val isMoodAndGenresLoading = isLoading && explorePage?.moodAndGenres == null
     val isRefreshing by viewModel.isRefreshing.collectAsState()
     val pullRefreshState = rememberPullToRefreshState()
@@ -325,6 +328,23 @@ fun HomeScreen(
                                 haptic = haptic,
                                 scope = scope,
                             )
+                        }
+                    }
+                }
+            }
+
+            if (homeFeedError && homePage?.sections.isNullOrEmpty() && !isLoading) {
+                item(key = "home:feed-error") {
+                    Column(
+                        modifier = Modifier.fillMaxWidth().padding(16.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                    ) {
+                        Text(
+                            text = stringResource(R.string.error_network_problem_description),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        TextButton(onClick = viewModel::refresh) {
+                            Text(stringResource(R.string.retry))
                         }
                     }
                 }

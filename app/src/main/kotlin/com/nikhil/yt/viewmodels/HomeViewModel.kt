@@ -42,7 +42,6 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.supervisorScope
@@ -58,6 +57,7 @@ class HomeViewModel @Inject constructor(
 ) : ViewModel() {
     val isRefreshing = MutableStateFlow(false)
     val isLoading = MutableStateFlow(false)
+    val homeFeedError = MutableStateFlow(false)
     private val isInitialLoadComplete = MutableStateFlow(false)
     val forYouSuggestions = MutableStateFlow<List<com.nikhil.yt.innertube.models.SongItem>?>(null)
 
@@ -96,6 +96,7 @@ class HomeViewModel @Inject constructor(
     private enum class HomeSectionKind {
         NEW_RELEASES,
         HITS,
+        TRENDING,
         COMMUNITY_PLAYLISTS,
         LONG_LISTEN,
         PERSONALIZED,
@@ -201,6 +202,10 @@ class HomeViewModel @Inject constructor(
 
         if (isHitSection) return HomeSectionKind.HITS
 
+        if (listOf("trending", "трендовое", "в тренде", "популярное").any(title::contains)) {
+            return HomeSectionKind.TRENDING
+        }
+
         val isLongListen =
             listOf(
                 "long listen",
@@ -283,6 +288,7 @@ class HomeViewModel @Inject constructor(
                     when (kind) {
                         HomeSectionKind.COMMUNITY_PLAYLISTS -> item is PlaylistItem
                         HomeSectionKind.PERSONALIZED,
+                        HomeSectionKind.TRENDING,
                         HomeSectionKind.LONG_LISTEN ->
                             item is SongItem || item is AlbumItem || item is PlaylistItem
                         else -> item is SongItem || item is AlbumItem
@@ -325,11 +331,17 @@ class HomeViewModel @Inject constructor(
         exploreJob?.cancel()
 
         isLoading.value = true
-        
+        homeFeedError.value = false
+
         try {
             supervisorScope {
-                val hideExplicit = context.dataStore.get(HideExplicitKey, false)
-                val hideVideo = context.dataStore.get(HideVideoKey, false)
+                // Use one preference snapshot before the first network request, rather
+                // than racing the cookie observer and occasionally requesting a guest feed.
+                val preferences = context.dataStore.data.first()
+                val hideExplicit = preferences[HideExplicitKey] ?: false
+                val hideVideo = preferences[HideVideoKey] ?: false
+                val startupCookie = preferences[InnerTubeCookieKey]
+                if (YouTube.cookie != startupCookie) YouTube.cookie = startupCookie
                 val fromTimeStamp = System.currentTimeMillis() - 86400000 * 7 * 2
 
                 launch { getQuickPicks() }
@@ -341,14 +353,40 @@ class HomeViewModel @Inject constructor(
 
                 launch {
                     YouTube.home().onSuccess { page ->
-                        val cleaned =
-                            cleanYouTubeHomePage(
-                                page = page,
+                        var cleaned = cleanYouTubeHomePage(page, hideExplicit, hideVideo)
+                        // Some provider pages contain no usable shelves but do have a
+                        // continuation. Advance only then, with a strict request budget.
+                        // A populated first page incurs no additional requests.
+                        var checkedContinuations = 0
+                        while (cleaned.sections.isEmpty() &&
+                            cleaned.continuation != null &&
+                            checkedContinuations < 2
+                        ) {
+                            val token = cleaned.continuation ?: break
+                            val nextResult = YouTube.home(continuation = token)
+                            if (nextResult.isFailure) {
+                                homeFeedError.value = true
+                                nextResult.exceptionOrNull()?.let(::reportException)
+                                break
+                            }
+                            val next = nextResult.getOrThrow()
+                            val repeatedToken = next.continuation == token
+                            cleaned = cleanYouTubeHomePage(
+                                page = cleaned.copy(
+                                    sections = cleaned.sections + next.sections,
+                                    continuation = next.continuation,
+                                ),
                                 hideExplicit = hideExplicit,
                                 hideVideo = hideVideo,
                             )
+                            checkedContinuations++
+                            if (repeatedToken) break
+                        }
                         homePage.value = cleaned
-                    }.onFailure { reportException(it) }
+                    }.onFailure {
+                        homeFeedError.value = true
+                        reportException(it)
+                    }
                 }
 
             }
@@ -360,7 +398,6 @@ class HomeViewModel @Inject constructor(
             // MetroList's initial Home only waits for cheap DB data and the primary feed.
             // Recommendations (up to several "related" requests) and Explore are non-critical.
             tasteRecommendationsJob = viewModelScope.launch(Dispatchers.IO) {
-                delay(8_000L)
                 try {
                     val hideExplicit = context.dataStore.get(HideExplicitKey, false)
                     val hideVideo = context.dataStore.get(HideVideoKey, false)
@@ -374,7 +411,6 @@ class HomeViewModel @Inject constructor(
             }
 
             exploreJob = viewModelScope.launch(Dispatchers.IO) {
-                delay(2_000L)
                 try {
                     val hideExplicit = context.dataStore.get(HideExplicitKey, false)
                 YouTube.explore().onSuccess { page ->
@@ -414,10 +450,11 @@ class HomeViewModel @Inject constructor(
 
             refreshAllYouTubeItems()
                     
-            isInitialLoadComplete.value = true
         } catch (e: Exception) {
+            if (homePage.value == null) homeFeedError.value = true
             reportException(e)
         } finally {
+            isInitialLoadComplete.value = true
             isLoading.value = false
         }
     }
