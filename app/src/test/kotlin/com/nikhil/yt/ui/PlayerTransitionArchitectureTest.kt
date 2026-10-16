@@ -48,5 +48,12 @@ class PlayerTransitionArchitectureTest {
         assertFalse(player.contains("capsuleLyricsRetreat("))
         assertFalse(player.contains("foregroundOpacity.animateTo"))
         assertFalse(player.contains("LyricsForegroundOpenDelayMillis"))
+        assertTrue(player.contains("forceExpandedContentOpaque = showInlineLyrics || freezeBackdropAfterLyricsSettles"))
+        val sheet = source("com/nikhil/yt/ui/component/BottomSheet.kt")
+        assertTrue(sheet.contains("forceExpandedContentOpaque: Boolean = false"))
+        assertTrue(sheet.contains("alpha = if (forceExpandedContentOpaque)"))
+        // Crossfade is valid during Mini-Player→Player transition, never
+        // while Lyrics is being opened atop that player.
+        assertTrue(sheet.contains("fullPlayerContentAlpha(state.visualProgress)"))
     }
 }
