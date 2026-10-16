@@ -33,6 +33,20 @@ class PlayerTransitionArchitectureTest {
         assertTrue(immersive.contains("immersiveInkForFloor(textColor, seamColor)"))
         assertFalse(immersive.contains("ImmersiveSmokyGraphite"))
         assertFalse(immersive.contains("immersiveSmokyFloorStops("))
+        assertTrue(
+            "the image itself must end EXACTLY on the page's sampled RGB",
+            immersive.contains("1f to seamColor"),
+        )
+        assertTrue(
+            "flatten the fading image before it reaches the solid page",
+            immersive.contains("(1f - fade.thirdStop) * 0.84f"),
+        )
+
+        val floor = source("com/nikhil/yt/ui/player/CapsuleImmersiveFloor.kt")
+        assertTrue(floor.contains("val background = image.immersiveBottomBackground(artworkAspect)"))
+        assertTrue(floor.contains("accent = background"))
+        assertFalse(floor.contains("comfortableImmersiveColor"))
+        assertFalse(floor.contains("0.44f"))
 
         val videoArtwork = source("com/nikhil/yt/ui/player/CapsuleVideoArtworkTransition.kt")
         assertTrue(videoArtwork.contains("interactionSource = artworkTapInteraction"))
