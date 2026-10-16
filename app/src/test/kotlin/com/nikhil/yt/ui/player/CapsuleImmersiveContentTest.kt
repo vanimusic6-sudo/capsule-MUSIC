@@ -104,37 +104,17 @@ class CapsuleImmersiveContentTest {
     }
 
     @Test
-    fun `smoky graphite gradient stays exactly edge-coloured across the cover join`() {
+    fun `immersion background remains the sampled colour regardless of lower floor`() {
         for (edge in listOf(
             Color.White, Color(0.96f, 0.96f, 0.96f, 1f),
             Color(0.85f, 0.13f, 0.24f, 1f), Color.Black,
         )) {
-            for (seam in listOf(0.21f, 0.55f, 0.91f)) {
-                val stops = immersiveSmokyFloorStops(edge, seam)
-                assertEquals(9, stops.size)
-                assertEquals(0f, stops.first().first, 0.00001f)
-                assertEquals(edge, stops.first().second)
-                assertEquals(seam, stops[1].first, 0.00001f)
-                assertEquals("cover seam must not differ by even one channel", edge, stops[1].second)
-                assertEquals(1f, stops.last().first, 0.00001f)
-                assertEquals(ImmersiveSmokyGraphite, stops.last().second)
-                for (i in 1 until stops.size) {
-                    assertTrue("gradient stop coordinates must be strictly ordered",
-                        stops[i].first > stops[i-1].first)
-                }
-                val maxDistance = kotlin.math.abs(edge.red - ImmersiveSmokyGraphite.red) +
-                    kotlin.math.abs(edge.green - ImmersiveSmokyGraphite.green) +
-                    kotlin.math.abs(edge.blue - ImmersiveSmokyGraphite.blue)
-                for (i in 2 until stops.size) {
-                    val prev = stops[i-1].second
-                    val curr = stops[i].second
-                    val d = kotlin.math.abs(prev.red-curr.red) +
-                        kotlin.math.abs(prev.green-curr.green) +
-                        kotlin.math.abs(prev.blue-curr.blue)
-                    assertTrue("no single hard tonal strip between neighbouring stops",
-                        d <= maxDistance * 0.25f + 0.0001f)
-                }
-            }
+            val legacyFloor = Color(0xFF242529)
+            assertEquals(
+                "the full page must keep the edge colour, not fade into graphite",
+                edge,
+                immersiveSeamColor(edge, legacyFloor),
+            )
         }
     }
 
