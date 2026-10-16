@@ -178,6 +178,35 @@ class CapsuleImmersiveContentTest {
     }
 
     @Test
+    fun `screenshot 153415 regression white title stays clean and controls become dark`() {
+        // Concrete geometry of the supplied 712x1536 screenshot: physical
+        // photo join near Y=800, with the first white metadata near Y=860.
+        // The rejected implementations began a grey fog around Y=420 or
+        // cut straight to black at Y=800. These anchors capture BOTH errors.
+        val screen = 1536f
+        val photo = 800f
+        val cover = photo / screen
+        val tail = 0.16f
+        val profile = immersiveFadeProfile(0f, landscape = false)
+        fun whiteLevel(y: Float): Float {
+            val page = immersiveContinuousPageColor(Color.White, y / screen, cover, tail).red
+            if (y >= photo) return page
+            val alpha = immersiveCoverFadeAlpha(profile, y / photo)
+            return 1f * (1f - alpha) + page * alpha
+        }
+        assertTrue("Do not lay a grey veil over the actual I GOT LOVE title",
+            whiteLevel(540f) > 0.97f)
+        assertTrue("Keep the artwork mostly bright into the lower details",
+            whiteLevel(680f) > 0.76f)
+        assertTrue("White title must be readable against the darkening floor",
+            whiteLevel(860f) < 0.33f)
+        assertTrue("Seekbar must no longer sit in full-screen grey fog",
+            whiteLevel(1010f) < 0.14f)
+        assertTrue("No sharp dark strip at the actual artwork join",
+            kotlin.math.abs(whiteLevel(797f) - whiteLevel(803f)) < 0.035f)
+    }
+
+    @Test
     fun `artwork texture adjusts only the fade start and never control ink`() {
         val calm = immersiveFadeProfile(0f, landscape = false)
         val dense = immersiveFadeProfile(1f, landscape = false)
