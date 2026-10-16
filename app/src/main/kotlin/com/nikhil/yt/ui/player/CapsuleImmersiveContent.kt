@@ -807,7 +807,13 @@ internal fun CapsuleImmersiveContent(
             video = { active -> CapsuleVideoSurface(playerConnection.service, Modifier.fillMaxSize(), active = active) },
         ) {
             if (frame != null) {
-                Box(Modifier.fillMaxSize().graphicsLayer {
+                // Wide (16:9) video thumbnails use a 1.06x GPU overscan below.
+                // Without a parent clip, those pixels escape the artwork slot,
+                // continuing UNDER the page's independently sized fade and
+                // forming a sharp horizontal band below the image in AUDIO mode.
+                // Clip the PHOTO and its existing overlay together: do not
+                // change the source crop, sampled colors or gradient stops.
+                Box(Modifier.fillMaxSize().clipToBounds().graphicsLayer {
                     // Keep the current song's artwork fully opaque once VIDEO
                     // has owned it. Only the *shared* container crossfade can
                     // reveal it; the unrelated song gradient cannot punch holes
