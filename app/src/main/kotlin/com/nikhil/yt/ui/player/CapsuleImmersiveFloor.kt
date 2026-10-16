@@ -194,7 +194,7 @@ internal fun rememberImmersiveEdgeColor(
  * album background. Restore that idea: KEEP hue and saturation and cap only
  * brightness, rather than fading every cover to 8.5% RGB / near-black.
  *
- * A purely monochrome image has no hue to preserve (saturation = 0).
+ * A virtually monochrome image has no reliable hue to preserve.
  * For that edge case, add the same subtle cool, muted chroma to a fallback
  * instead of generating an enormous neutral grey band. Coloured artwork
  * NEVER receives this fallback and retains its real extracted hue.
@@ -204,7 +204,7 @@ internal fun rememberImmersiveEdgeColor(
 internal fun Color.immersiveMutedAccent(): Color {
     val hsv = FloatArray(3)
     android.graphics.Color.colorToHSV(toArgb(), hsv)
-    if (hsv[1] < 0.08f) {
+    if (hsv[1] < 0.018f) {
         // Colourless covers need a deliberate, subdued hue to avoid a
         // monochrome white->grey strip. #496079 for pure-white artwork.
         hsv[0] = 211f
