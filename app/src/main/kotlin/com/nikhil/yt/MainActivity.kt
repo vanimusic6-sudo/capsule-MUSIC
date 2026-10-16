@@ -1420,7 +1420,7 @@ class MainActivity : ComponentActivity() {
 
                             Scaffold(
                                 topBar = {
-                                    if (shouldShowTopBar) {
+                                    if (shouldShowTopBar && currentRoute != Screens.Home.route) {
                                         val isTransparentTopBarScreen = navBackStackEntry?.destination?.route in listOf(
                                             Screens.Home.route,
                                             Screens.Library.route,
@@ -1796,7 +1796,10 @@ class MainActivity : ComponentActivity() {
                                 },
                                 modifier = Modifier
                                     .fillMaxSize()
-                                    .nestedScroll(searchBarScrollBehavior.nestedScrollConnection)
+                                    .then(
+                                        if (currentRoute == Screens.Home.route) Modifier
+                                        else Modifier.nestedScroll(searchBarScrollBehavior.nestedScrollConnection)
+                                    )
                             ) {
                                 /*
                                  * Record one stable full-size source for liquid glass instead of
@@ -1847,15 +1850,15 @@ class MainActivity : ComponentActivity() {
                                     modifier =
                                         Modifier
                                             .clipToBounds()
-                                            .nestedScroll(
-                                        if (navigationItems.fastAny { it.route == navBackStackEntry?.destination?.route } ||
-                                            navBackStackEntry?.destination?.route?.startsWith("search/") == true
-                                        ) {
-                                            searchBarScrollBehavior.nestedScrollConnection
-                                        } else {
-                                            topAppBarScrollBehavior.nestedScrollConnection
-                                        }
-                                    )
+                                            .then(
+                                                if (currentRoute == Screens.Home.route) Modifier
+                                                else Modifier.nestedScroll(
+                                                    if (navigationItems.fastAny { it.route == currentRoute } ||
+                                                        currentRoute?.startsWith("search/") == true
+                                                    ) searchBarScrollBehavior.nestedScrollConnection
+                                                    else topAppBarScrollBehavior.nestedScrollConnection
+                                                )
+                                            )
                                 ) {
                                     navigationBuilder(
                                         navController,

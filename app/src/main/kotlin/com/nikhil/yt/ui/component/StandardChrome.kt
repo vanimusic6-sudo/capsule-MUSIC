@@ -62,11 +62,11 @@ fun StandardHeaderTitle(
     val signedIn = remember(cookie) {
         runCatching { "SAPISID" in parseCookieString(cookie) }.getOrDefault(false)
     }
-    val guestIcon = if (showHomeGreeting) {
-        homeGuestIcon(signedIn = signedIn, period = rememberHomeDayPeriod())
-    } else null
-    val title = if (showHomeGreeting) {
-        stringResource(rememberHomeDayPeriod().greetingId)
+    // One lifecycle receiver and one scheduled boundary for both header elements.
+    val dayPeriod = if (showHomeGreeting) rememberHomeDayPeriod() else null
+    val guestIcon = dayPeriod?.let { homeGuestIcon(signedIn = signedIn, period = it) }
+    val title = if (dayPeriod != null) {
+        stringResource(dayPeriod.greetingId)
     } else {
         stringResource(R.string.app_name)
     }

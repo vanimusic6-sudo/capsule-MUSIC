@@ -14,6 +14,11 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.calculateStartPadding
+import androidx.compose.foundation.layout.calculateEndPadding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
@@ -24,6 +29,10 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.pulltorefresh.pullToRefresh
 import androidx.compose.material3.pulltorefresh.PullToRefreshDefaults.Indicator
 import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
@@ -42,6 +51,8 @@ import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.material3.MaterialTheme
@@ -57,6 +68,8 @@ import com.nikhil.yt.LocalDatabase
 import com.nikhil.yt.LocalPlayerAwareWindowInsets
 import com.nikhil.yt.LocalPlayerConnection
 import com.nikhil.yt.R
+import com.nikhil.yt.constants.AppBarHeight
+import com.nikhil.yt.ui.component.StandardHeaderTitle
 import com.nikhil.yt.db.entities.Album
 import com.nikhil.yt.db.entities.Artist
 import com.nikhil.yt.db.entities.Playlist
@@ -97,6 +110,8 @@ fun HomeScreen(
     val bottomSheetPageState = LocalBottomSheetPageState.current
     val database = LocalDatabase.current
     val playerConnection = LocalPlayerConnection.current ?: return
+    val headerAccountName by viewModel.accountName.collectAsState()
+    val headerAccountImage by viewModel.accountImageUrl.collectAsState()
     val haptic = LocalHapticFeedback.current
 
     val isPlaying by playerConnection.isPlaying.collectAsState()
@@ -230,10 +245,48 @@ fun HomeScreen(
                 )
             }
 
+            // MainActivity no longer draws a second, floating Home app bar. The
+            // shared insets still reserve its old height for other destinations;
+            // subtract that reserve here and give the scrollable header that slot.
+            val oldContentPadding = LocalPlayerAwareWindowInsets.current.asPaddingValues()
+            val direction = LocalLayoutDirection.current
+            val homeContentPadding = PaddingValues(
+                start = oldContentPadding.calculateStartPadding(direction),
+                top = (oldContentPadding.calculateTopPadding() - AppBarHeight).coerceAtLeast(0.dp),
+                end = oldContentPadding.calculateEndPadding(direction),
+                bottom = oldContentPadding.calculateBottomPadding(),
+            )
             LazyColumn(
                 state = lazylistState,
-                contentPadding = LocalPlayerAwareWindowInsets.current.asPaddingValues()
+                contentPadding = homeContentPadding,
             ) {
+                item(key = "home:header", contentType = "home-header") {
+                    TopAppBar(
+                        windowInsets = WindowInsets(0, 0, 0, 0),
+                        title = {
+                            StandardHeaderTitle(
+                                accountName = headerAccountName,
+                                accountImageUrl = headerAccountImage,
+                                onAccountClick = { navController.navigate("settings/account") },
+                                showHomeGreeting = true,
+                            )
+                        },
+                        actions = {
+                            IconButton(onClick = { navController.navigate("settings") }) {
+                                Icon(
+                                    painter = painterResource(R.drawable.settings),
+                                    contentDescription = stringResource(R.string.settings),
+                                    modifier = Modifier.size(24.dp),
+                                )
+                            }
+                        },
+                        colors = TopAppBarDefaults.topAppBarColors(
+                            containerColor = Color.Transparent,
+                            scrolledContainerColor = Color.Transparent,
+                            titleContentColor = MaterialTheme.colorScheme.onSurface,
+                        ),
+                    )
+                }
                     quickPicks?.takeIf { it.isNotEmpty() }?.let { picks ->
             /*
                 item {
