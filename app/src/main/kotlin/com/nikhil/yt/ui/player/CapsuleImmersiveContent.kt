@@ -47,7 +47,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.lerp
-import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import coil3.request.ImageRequest
@@ -183,30 +183,86 @@ internal fun immersiveFadeProfile(
     }
 }
 
-/**
- * TRUE EDGE CONTINUATION: the photo, overlay and page share ONE colour.
- *
- * No darkening, lightening, accent mixing or artificially "smoky" hue:
- * every extra lerp created a visible grey ring on white/neutral artwork.
- * Fade opacity may vary with image texture, but its sRGB colour may not.
- */
+/** Keep the sampled lower cover tone unchanged: no graphite at the join. */
 internal fun immersiveSeamColor(edge: Color, floor: Color): Color = edge
 
-internal fun immersiveUpperHazeColor(edge: Color): Color = edge
+/**
+ * Immersion's controls remain WHITE regardless of the song or palette.
+ * Their background gets comfortably dark before reaching the metadata.
+ * Never switch button/slider colours halfway through listening to a track.
+ */
+internal val ImmersiveControlInk = Color.White
+
+/** Two long, overlapping soft shoulders and a final dark tail, not hard bands. */
+private fun immersiveTonalEase(start: Float, end: Float, fraction: Float): Float {
+    val t = ((fraction - start) / (end - start)).coerceIn(0f, 1f)
+    return t * t * (3f - 2f * t)
+}
 
 /**
- * Immersion can now have genuinely bright / pastel backgrounds. Keep readable
- * player controls without darkening the artwork just to force white icons.
- * 0.20 linear luminance is near the light-vs-dark ink contrast crossover;
- * the previous 0.58 test failed for most pastel colours.
+ * Sampled RGB is kept exactly at the top. The whole lower half then follows
+ * three OVERLAPPING smooth stages of the same hue into its own deep tone.
+ * No HSV brightness clipping, fixed graphite target or synthetic saturation.
+ *
+ * The stages overlap, preventing an abrupt flat shelf where one step ends.
+ * Multiply the RGB channels equally in sRGB to retain the cover's hue family.
  */
-internal fun immersiveInkForFloor(defaultInk: Color, floor: Color): Color =
-    if (floor.luminance() >= 0.20f) {
-        Color(0xFF141414)
-    } else {
-        // DEFAULT player theme can provide dark onBackground text. The page is
-        // still a dark sampled artwork colour, so guarantee light ink.
-        if (defaultInk.luminance() > 0.70f) defaultInk else Color.White
+internal fun immersiveStagedFloorColor(edge: Color, fraction: Float): Color {
+    val darkening =
+        0.18f * immersiveTonalEase(0.20f, 0.52f, fraction) +
+        0.55f * immersiveTonalEase(0.35f, 0.63f, fraction) +
+        0.15f * immersiveTonalEase(0.55f, 0.90f, fraction)
+    val brightness = 1f - darkening
+    return Color(
+        red = edge.red * brightness,
+        green = edge.green * brightness,
+        blue = edge.blue * brightness,
+        alpha = 1f,
+    )
+}
+
+/** Build a single full-screen shader when the artwork changes, never per frame. */
+internal fun immersiveStagedFloorStops(edge: Color): Array<Pair<Float, Color>> =
+    Array(33) { index ->
+        val fraction = index / 32f
+        fraction to immersiveStagedFloorColor(edge, fraction)
+    }
+
+/** Alpha of the original texture-sensitive image dissolve (one shared curve). */
+internal fun immersiveCoverFadeAlpha(profile: ImmersiveFadeProfile, fraction: Float): Float {
+    val f = fraction.coerceIn(0f, 1f)
+    fun interval(start: Float, end: Float, a: Float, b: Float): Float =
+        a + (b - a) * immersiveTonalEase(start, end, f)
+    return when {
+        f <= profile.start -> 0f
+        f <= profile.firstStop ->
+            interval(profile.start, profile.firstStop, 0f, profile.firstAlpha * 0.86f)
+        f <= profile.secondStop ->
+            interval(profile.firstStop, profile.secondStop, profile.firstAlpha * 0.86f, profile.secondAlpha)
+        f <= profile.thirdStop ->
+            interval(profile.secondStop, profile.thirdStop, profile.secondAlpha, profile.thirdAlpha)
+        else -> interval(profile.thirdStop, 1f, profile.thirdAlpha, 1f)
+    }
+}
+
+/**
+ * This must match the ENTIRE page shader at the same physical Y, not use a
+ * single flat RGB for the fading artwork. A mismatch here creates the
+ * horizontal "dirty strip" on near-white covers.
+ *
+ * 48 cached cover stops interpolate the page tone and alpha together.
+ * Last cover pixel is fully opaque and EXACTLY equals the page below it.
+ */
+internal fun immersiveStagedCoverFadeStops(
+    edge: Color,
+    coverPageFraction: Float,
+    profile: ImmersiveFadeProfile,
+): Array<Pair<Float, Color>> =
+    Array(49) { index ->
+        val coverFraction = index / 48f
+        val pageFraction = coverFraction * coverPageFraction.coerceIn(0f, 1f)
+        val backdrop = immersiveStagedFloorColor(edge, pageFraction)
+        coverFraction to backdrop.copy(alpha = immersiveCoverFadeAlpha(profile, coverFraction))
     }
 
 /** How much of the sheet the cover takes before it starts to go. */
@@ -594,23 +650,25 @@ internal fun CapsuleImmersiveContent(
                 hasShownGradient = true
             }
         }
-        /*
-         * Under the image fade, the entire page uses the same sampled edge colour.
-         * The join cannot show a graphite/white stripe because there is no second tone.
-         */
-        // The album's fade reaches the sampled edge, and the whole remaining
-        // page stays THAT exact colour. No artificial graphite destination.
+        // Paint both the photo fade and the controls backdrop from ONE
+        // cached colour model. Keep the outgoing photo's palette on its page
+        // until that frame has actually finished fading out.
         val frame = shownGradient
-        // Same tone sampled for the Immersion background. VIDEO must not
-        // suddenly become hardcoded grey when its first frame arrives.
-        val pageEdge = frame?.takeIf { it.key == visualKey }?.edge
-            ?: artworkTone.edge.takeIf { artworkTone.ready }
-            ?: IMMERSIVE_NEUTRAL_COLOR
-        val pageFloor = frame?.takeIf { it.key == visualKey }?.floor
-            ?: artworkTone.accent.takeIf { artworkTone.ready }
-            ?: IMMERSIVE_NEUTRAL_COLOR
+        val pageEdge = frame?.edge ?: IMMERSIVE_NEUTRAL_COLOR
+        val pageFloor = frame?.floor ?: pageEdge
         val seamColor = immersiveSeamColor(pageEdge, pageFloor)
-        val immersiveInk = immersiveInkForFloor(textColor, seamColor)
+        val artworkFraction = (artworkHeight / maxHeight).coerceIn(0f, 1f)
+        val density = LocalDensity.current
+        val pageHeightPx = with(density) { maxHeight.toPx() }
+        val coverHeightPx = with(density) { artworkHeight.toPx() }
+        val pageBackground = remember(seamColor, pageHeightPx) {
+            Brush.verticalGradient(
+                colorStops = immersiveStagedFloorStops(seamColor),
+                startY = 0f,
+                endY = pageHeightPx,
+            )
+        }
+        val immersiveInk = ImmersiveControlInk
 
         // Preload the NEXT image invisibly. Coil must finish decoding this exact URL
         // before the frame is allowed to replace the old one. It is never rendered early.
@@ -631,11 +689,9 @@ internal fun CapsuleImmersiveContent(
             )
         }
 
-        // A single opaque backdrop and the cover's own fade: no second
-        // animated page shader or layer that can lag behind the album image.
-        Box(modifier = Modifier.fillMaxSize().background(seamColor))
-        // Exactly one solid, opaque page colour under the album's own fade.
-        // No extra layer, white wash, or tone boundary at the cover join.
+        // One page-wide shader. The cover fade samples these exact RGB stages
+        // at matching physical Y to prevent a horizontal transition stripe.
+        Box(modifier = Modifier.fillMaxSize().background(pageBackground))
 
         CapsuleVideoArtworkTransition(
             presentingVideo = isVideo,
@@ -657,7 +713,7 @@ internal fun CapsuleImmersiveContent(
             // the separate VIDEO mask grows/shrinks. The previous moving
             // album/matte exposed different edge pixels at the join on close.
             fixedImmersiveArtwork = true,
-            artworkBackground = seamColor,
+            artworkBackground = immersiveStagedFloorColor(seamColor, artworkFraction),
             artworkClickable = !isVideo,
             onArtworkClick = onShowLyrics,
             video = { active -> CapsuleVideoSurface(playerConnection.service, Modifier.fillMaxSize(), active = active) },
@@ -689,43 +745,25 @@ internal fun CapsuleImmersiveContent(
                         modifier = Modifier
                             .fillMaxSize()
                             .background(
-                                remember(frame.edge, frame.bottomTexture, frame.landscape, seamColor) {
-                                    val fade =
-                                        immersiveFadeProfile(
-                                            bottomTexture = frame.bottomTexture,
-                                            landscape = frame.landscape,
-                                        )
-                                    val upperHaze =
-                                        immersiveUpperHazeColor(frame.edge)
-                                    val middleTone = frame.edge
+                                remember(
+                                    frame.edge,
+                                    frame.bottomTexture,
+                                    frame.landscape,
+                                    artworkFraction,
+                                    coverHeightPx,
+                                ) {
+                                    val fade = immersiveFadeProfile(
+                                        bottomTexture = frame.bottomTexture,
+                                        landscape = frame.landscape,
+                                    )
                                     Brush.verticalGradient(
-                                        0f to Color.Transparent,
-                                        fade.start to Color.Transparent,
-                                        fade.firstStop to
-                                            upperHaze.copy(
-                                                alpha = (fade.firstAlpha * 0.86f)
-                                                    .coerceIn(0f, 1f),
-                                            ),
-                                        fade.secondStop to
-                                            middleTone.copy(alpha = fade.secondAlpha),
-                                        fade.thirdStop to
-                                            seamColor.copy(alpha = fade.thirdAlpha),
-                                        // The old straight .80 -> 1.00 tail met a
-                                        // completely flat page with a visible
-                                        // slope break ("stripe"). Bring the last
-                                        // 20% of opacity to rest progressively,
-                                        // keeping its hue EXACTLY seamColor.
-                                        (fade.thirdStop + (1f - fade.thirdStop) * 0.50f) to
-                                            seamColor.copy(
-                                                alpha = fade.thirdAlpha +
-                                                    (1f - fade.thirdAlpha) * 0.70f,
-                                            ),
-                                        (fade.thirdStop + (1f - fade.thirdStop) * 0.84f) to
-                                            seamColor.copy(
-                                                alpha = fade.thirdAlpha +
-                                                    (1f - fade.thirdAlpha) * 0.98f,
-                                            ),
-                                        1f to seamColor,
+                                        colorStops = immersiveStagedCoverFadeStops(
+                                            edge = frame.edge,
+                                            coverPageFraction = artworkFraction,
+                                            profile = fade,
+                                        ),
+                                        startY = 0f,
+                                        endY = coverHeightPx,
                                     )
                                 },
                             ),
