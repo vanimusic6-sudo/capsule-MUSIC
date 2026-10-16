@@ -10,6 +10,13 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Icon
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
+import androidx.compose.ui.res.painterResource
+import com.nikhil.yt.constants.InnerTubeCookieKey
+import com.nikhil.yt.innertube.utils.parseCookieString
+import com.nikhil.yt.utils.rememberPreference
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -44,10 +51,20 @@ object StandardChrome {
 fun StandardHeaderTitle(
     accountName: String?,
     accountImageUrl: String?,
-    onAccountClick: () -> Unit,
     showHomeGreeting: Boolean = false,
+    onAccountClick: () -> Unit,
 ) {
     val accountLabel = stringResource(R.string.account)
+    // The preference snapshot is primed before Compose. A returning signed-in
+    // user keeps their account placeholder until the real portrait loads;
+    // they never flash a guest sun/moon while accountInfo() is in flight.
+    val cookie by rememberPreference(InnerTubeCookieKey, defaultValue = "")
+    val signedIn = remember(cookie) {
+        runCatching { "SAPISID" in parseCookieString(cookie) }.getOrDefault(false)
+    }
+    val guestIcon = if (showHomeGreeting) {
+        homeGuestIcon(signedIn = signedIn, period = rememberHomeDayPeriod())
+    } else null
     val title = if (showHomeGreeting) {
         stringResource(rememberHomeDayPeriod().greetingId)
     } else {
@@ -61,8 +78,27 @@ fun StandardHeaderTitle(
                 .semantics { contentDescription = accountLabel },
         ) {
             Box(Modifier.size(30.dp).clip(CircleShape).background(Color(0xFFBC3606)), contentAlignment = Alignment.Center) {
-                Text(accountName?.trim()?.firstOrNull()?.uppercase() ?: "C", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
-                AsyncImage(model = accountImageUrl, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.size(30.dp).clip(CircleShape))
+                if (guestIcon != null) {
+                    Icon(
+                        painter = painterResource(guestIcon),
+                        contentDescription = null,
+                        tint = Color.White,
+                        modifier = Modifier.size(22.dp),
+                    )
+                } else {
+                    Text(
+                        accountName?.takeUnless { it == "Guest" }?.trim()?.firstOrNull()?.uppercase() ?: "C",
+                        color = Color.White,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                    AsyncImage(
+                        model = if (signedIn || !showHomeGreeting) accountImageUrl else null,
+                        contentDescription = null,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.size(30.dp).clip(CircleShape),
+                    )
+                }
             }
         }
         Text(
