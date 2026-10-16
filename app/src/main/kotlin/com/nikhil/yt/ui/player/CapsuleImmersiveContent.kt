@@ -103,6 +103,7 @@ private data class ImmersiveGradientFrame(
     val imageUrl: String,
     val landscape: Boolean,
     val bottomTexture: Float,
+    val nearWhiteBackground: Boolean,
 )
 
 /**
@@ -142,7 +143,7 @@ internal fun immersiveContinuousPageColor(
     val cover = coverFraction.coerceIn(0.05f, 0.95f)
     // Preserve the album through its upper 78%, then blend briefly
     // beyond the artwork boundary into the sampled muted backdrop.
-    val start = cover * 0.78f
+    val start = cover * 0.77f
     val end = (cover + tailFraction.coerceAtLeast(0.02f)).coerceAtMost(0.86f)
     val shade = immersiveSmooth5(start, end, pageFraction.coerceIn(0f, 1f))
     return Color(
@@ -178,7 +179,7 @@ internal fun immersiveFadeProfile(
 ): ImmersiveFadeProfile {
     val texture = immersiveSmooth5(0.40f, 1f, bottomTexture.coerceIn(0f, 1f))
     return ImmersiveFadeProfile(
-        start = 0.68f - texture * 0.055f - if (landscape) 0.012f else 0f,
+        start = 0.67f - texture * 0.055f - if (landscape) 0.012f else 0f,
     )
 }
 
@@ -206,6 +207,103 @@ internal fun immersiveContinuousCoverStops(
         )
         photoFraction to tone.copy(alpha = immersiveCoverFadeAlpha(profile, photoFraction))
     }
+
+/**
+ * Identical original (pre-October-gradient-experiments) Immersion curves.
+ * Used for EVERY normal/coloured album. Only unusually pale artwork uses
+ * the guarded, slightly longer continuation path.
+ */
+internal data class OriginalImmersiveFadeProfile(
+    val start: Float,
+    val firstStop: Float,
+    val firstAlpha: Float,
+    val secondStop: Float,
+    val secondAlpha: Float,
+    val thirdStop: Float,
+    val thirdAlpha: Float,
+)
+
+internal fun immersiveOriginalFadeProfile(
+    bottomTexture: Float,
+    landscape: Boolean,
+): OriginalImmersiveFadeProfile {
+    val texture = bottomTexture.coerceIn(0f, 1f)
+
+    // Keep the current calm profile EXACTLY as-is. Only genuinely difficult lower crops leave it.
+    // Above the threshold, smoothly approach the hard endpoint that worked well in a9ef7ff.
+    val rawBoost = ((texture - 0.45f) / 0.55f).coerceIn(0f, 1f)
+    val boost = rawBoost * rawBoost * (3f - 2f * rawBoost) // smoothstep: no visible kink at 0.45
+
+    return if (landscape) {
+        val calmStart = 0.32f
+        val calmFirstStop = 0.52f
+        val calmFirstAlpha = 0.15f
+        val calmSecondStop = 0.70f
+        val calmSecondAlpha = 0.46f
+        val calmThirdStop = 0.87f
+        val calmThirdAlpha = 0.80f
+
+        // Exact texture=1 endpoint from a9ef7ff.
+        val hardStart = 0.12f
+        val hardFirstStop = 0.37f
+        val hardFirstAlpha = 0.44f
+        val hardSecondStop = 0.57f
+        val hardSecondAlpha = 0.85f
+        val hardThirdStop = 0.79f
+        val hardThirdAlpha = 1f
+
+        OriginalImmersiveFadeProfile(
+            start = calmStart + (hardStart - calmStart) * boost,
+            firstStop = calmFirstStop + (hardFirstStop - calmFirstStop) * boost,
+            firstAlpha = calmFirstAlpha + (hardFirstAlpha - calmFirstAlpha) * boost,
+            secondStop = calmSecondStop + (hardSecondStop - calmSecondStop) * boost,
+            secondAlpha = calmSecondAlpha + (hardSecondAlpha - calmSecondAlpha) * boost,
+            thirdStop = calmThirdStop + (hardThirdStop - calmThirdStop) * boost,
+            thirdAlpha = calmThirdAlpha + (hardThirdAlpha - calmThirdAlpha) * boost,
+        )
+    } else {
+        val calmStart = 0.42f
+        val calmFirstStop = 0.60f
+        val calmFirstAlpha = 0.15f
+        val calmSecondStop = 0.74f
+        val calmSecondAlpha = 0.46f
+        val calmThirdStop = 0.89f
+        val calmThirdAlpha = 0.80f
+
+        // Exact texture=1 endpoint from a9ef7ff.
+        val hardStart = 0.11f
+        val hardFirstStop = 0.39f
+        val hardFirstAlpha = 0.50f
+        val hardSecondStop = 0.56f
+        val hardSecondAlpha = 0.90f
+        val hardThirdStop = 0.79f
+        val hardThirdAlpha = 1f
+
+        OriginalImmersiveFadeProfile(
+            start = calmStart + (hardStart - calmStart) * boost,
+            firstStop = calmFirstStop + (hardFirstStop - calmFirstStop) * boost,
+            firstAlpha = calmFirstAlpha + (hardFirstAlpha - calmFirstAlpha) * boost,
+            secondStop = calmSecondStop + (hardSecondStop - calmSecondStop) * boost,
+            secondAlpha = calmSecondAlpha + (hardSecondAlpha - calmSecondAlpha) * boost,
+            thirdStop = calmThirdStop + (hardThirdStop - calmThirdStop) * boost,
+            thirdAlpha = calmThirdAlpha + (hardThirdAlpha - calmThirdAlpha) * boost,
+        )
+    }
+}
+
+/**
+ * Display-only shaping for the cover -> player dissolve.
+ *
+ * The sampled artwork colour is left untouched. The seam is only nudged toward the already
+ * existing darker floor so the lower fade has more depth, while the upper haze is barely lighter
+ * to keep the transition smoky instead of reading as a hard dark band.
+ */
+internal fun immersiveOriginalSeamColor(edge: Color, floor: Color): Color =
+    lerp(edge, floor, 0.45f)
+
+internal fun immersiveUpperHazeColor(edge: Color): Color =
+    lerp(edge, Color.White, 0.055f)
+
 
 /** How much of the sheet the cover takes before it starts to go. */
 internal const val ImmersiveStatusBarHideProgress = 0.62f
@@ -571,6 +669,7 @@ internal fun CapsuleImmersiveContent(
                     imageUrl = readyUrl,
                     landscape = artworkTone.landscape,
                     bottomTexture = artworkTone.bottomTexture,
+                    nearWhiteBackground = artworkTone.nearWhiteBackground,
                 )
             }
             // Also handles reopening the sheet while its previous fade-out was being
@@ -592,31 +691,50 @@ internal fun CapsuleImmersiveContent(
                 hasShownGradient = true
             }
         }
-        // Both shaders consume the outgoing frame's sampled RGB while that
-        // image is displayed. No palette change before its fade completes.
+        // Keep the original background interpolation for normal artwork.
+        // Only near-white, low-saturation covers use the slightly more
+        // diffuse current technique to avoid a harsh white/grey seam.
         val frame = shownGradient
+        val nearWhite = frame?.nearWhiteBackground == true
         val pageEdge = frame?.edge ?: IMMERSIVE_NEUTRAL_COLOR
         val pageFloor = frame?.floor ?: IMMERSIVE_NEUTRAL_COLOR
-        val seamColor = immersiveSeamColor(pageEdge, pageFloor)
+        val seamColor = if (nearWhite) {
+            immersiveSeamColor(pageEdge, pageFloor)
+        } else {
+            immersiveOriginalSeamColor(pageEdge, pageFloor)
+        }
         val density = LocalDensity.current
         val pageHeightPx = with(density) { maxHeight.toPx() }
         val coverHeightPx = with(density) { artworkHeight.toPx() }
         val coverFraction = (coverHeightPx / pageHeightPx.coerceAtLeast(1f))
             .coerceIn(0.05f, 0.95f)
-        // Finish shortly below the physical artwork boundary; the rest of
-        // the sheet remains the very same sampled, softly dimmed colour.
-        val extensionPx = with(density) { 72.dp.toPx() }
+        // Exception ONLY for almost-white art: 72dp -> 80dp, with a
+        // one-percentage-point earlier soft curve. Other covers are untouched.
+        val extensionPx = with(density) { 80.dp.toPx() }
             .coerceAtMost((pageHeightPx - coverHeightPx).coerceAtLeast(1f) * 0.38f)
         val tailFraction = (extensionPx / pageHeightPx.coerceAtLeast(1f))
             .coerceIn(0.02f, 0.08f)
-        val pageBackground = remember(seamColor, pageFloor, coverFraction, tailFraction, pageHeightPx) {
-            Brush.verticalGradient(
-                colorStops = immersiveContinuousPageStops(
-                    seamColor, pageFloor, coverFraction, tailFraction,
-                ),
-                startY = 0f,
-                endY = pageHeightPx,
-            )
+        val pageBackground = remember(
+            seamColor, pageFloor, coverFraction, tailFraction, pageHeightPx, nearWhite,
+        ) {
+            if (nearWhite) {
+                Brush.verticalGradient(
+                    colorStops = immersiveContinuousPageStops(
+                        seamColor, pageFloor, coverFraction, tailFraction,
+                    ),
+                    startY = 0f,
+                    endY = pageHeightPx,
+                )
+            } else {
+                // ORIGINAL page gradient stops, not a new dark/tonal engine.
+                val settled = (coverFraction + 0.44f).coerceAtMost(1f)
+                Brush.verticalGradient(
+                    0f to seamColor,
+                    coverFraction to seamColor,
+                    settled to pageFloor,
+                    1f to pageFloor,
+                )
+            }
         }
         val immersiveInk = ImmersiveControlInk
 
@@ -639,9 +757,8 @@ internal fun CapsuleImmersiveContent(
             )
         }
 
-        // One photo-aligned page gradient: continuous through the physical
-        // image bottom and settled on the album's muted extracted colour
-        // behind the seekbar and buttons. No forced near-black destination.
+        // Ordinary covers use the ORIGINAL page shader; only white uses
+        // the guarded, slightly longer seamless page+photo interpolation.
         Box(modifier = Modifier.fillMaxSize().background(pageBackground))
 
         CapsuleVideoArtworkTransition(
@@ -664,9 +781,13 @@ internal fun CapsuleImmersiveContent(
             // the separate VIDEO mask grows/shrinks. The previous moving
             // album/matte exposed different edge pixels at the join on close.
             fixedImmersiveArtwork = true,
-            artworkBackground = immersiveContinuousPageColor(
-                seamColor, pageFloor, coverFraction, coverFraction, tailFraction,
-            ),
+            artworkBackground = if (nearWhite) {
+                immersiveContinuousPageColor(
+                    seamColor, pageFloor, coverFraction, coverFraction, tailFraction,
+                )
+            } else {
+                seamColor
+            },
             artworkClickable = !isVideo,
             onArtworkClick = onShowLyrics,
             video = { active -> CapsuleVideoSurface(playerConnection.service, Modifier.fillMaxSize(), active = active) },
@@ -706,22 +827,48 @@ internal fun CapsuleImmersiveContent(
                                     frame.bottomTexture,
                                     frame.landscape,
                                     coverHeightPx,
+                                    nearWhite,
                                 ) {
-                                    val fade = immersiveFadeProfile(
-                                        bottomTexture = frame.bottomTexture,
-                                        landscape = frame.landscape,
-                                    )
-                                    Brush.verticalGradient(
-                                        colorStops = immersiveContinuousCoverStops(
-                                            edge = seamColor,
-                                            muted = pageFloor,
-                                            coverFraction = coverFraction,
-                                            tailFraction = tailFraction,
-                                            profile = fade,
-                                        ),
-                                        startY = 0f,
-                                        endY = coverHeightPx,
-                                    )
+                                    if (nearWhite) {
+                                        val fade = immersiveFadeProfile(
+                                            bottomTexture = frame.bottomTexture,
+                                            landscape = frame.landscape,
+                                        )
+                                        Brush.verticalGradient(
+                                            colorStops = immersiveContinuousCoverStops(
+                                                edge = seamColor,
+                                                muted = pageFloor,
+                                                coverFraction = coverFraction,
+                                                tailFraction = tailFraction,
+                                                profile = fade,
+                                            ),
+                                            startY = 0f,
+                                            endY = coverHeightPx,
+                                        )
+                                    } else {
+                                        // ORIGINAL cover opacity and tone stops,
+                                        // including the texture-dependent profile.
+                                        val fade = immersiveOriginalFadeProfile(
+                                            bottomTexture = frame.bottomTexture,
+                                            landscape = frame.landscape,
+                                        )
+                                        val upperHaze = immersiveUpperHazeColor(frame.edge)
+                                        val middleTone = lerp(frame.edge, seamColor, 0.22f)
+                                        Brush.verticalGradient(
+                                            0f to Color.Transparent,
+                                            fade.start to Color.Transparent,
+                                            fade.firstStop to upperHaze.copy(
+                                                alpha = (fade.firstAlpha * 0.86f).coerceIn(0f, 1f),
+                                            ),
+                                            fade.secondStop to middleTone.copy(
+                                                alpha = fade.secondAlpha,
+                                            ),
+                                            fade.thirdStop to seamColor.copy(
+                                                alpha = fade.thirdAlpha,
+                                            ),
+                                            1f to seamColor,
+                                        )
+                                    }
                                 },
                             ),
                     )
