@@ -29,18 +29,16 @@ class PlayerTransitionArchitectureTest {
 
     @Test fun immersiveArtworkHasNoGraphiteTargetOrPressedWhiteOverlay() {
         val immersive = source("com/nikhil/yt/ui/player/CapsuleImmersiveContent.kt")
-        assertTrue(immersive.contains(".background(seamColor)"))
-        assertTrue(immersive.contains("immersiveInkForFloor(textColor, seamColor)"))
+        assertTrue(immersive.contains(".background(pageBackground)"))
+        assertTrue(immersive.contains("val immersiveInk = ImmersiveControlInk"))
+        assertTrue(immersive.contains("immersiveStagedFloorStops(seamColor)"))
+        assertTrue(immersive.contains("immersiveStagedCoverFadeStops("))
+        assertTrue(immersive.contains("endY = pageHeightPx"))
+        assertTrue(immersive.contains("endY = coverHeightPx"))
         assertFalse(immersive.contains("ImmersiveSmokyGraphite"))
+        assertFalse(immersive.contains("immersiveInkForFloor("))
         assertFalse(immersive.contains("immersiveSmokyFloorStops("))
-        assertTrue(
-            "the image itself must end EXACTLY on the page's sampled RGB",
-            immersive.contains("1f to seamColor"),
-        )
-        assertTrue(
-            "flatten the fading image before it reaches the solid page",
-            immersive.contains("(1f - fade.thirdStop) * 0.84f"),
-        )
+        assertFalse(immersive.contains(".background(seamColor)"))
 
         val floor = source("com/nikhil/yt/ui/player/CapsuleImmersiveFloor.kt")
         assertTrue(floor.contains("val background = image.immersiveBottomBackground(artworkAspect)"))
