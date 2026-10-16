@@ -194,9 +194,20 @@ internal fun immersiveSeamColor(edge: Color, floor: Color): Color = edge
 
 internal fun immersiveUpperHazeColor(edge: Color): Color = edge
 
-/** Dark ink is only applied to CONTROLS on light covers, never the artwork. */
+/**
+ * Immersion can now have genuinely bright / pastel backgrounds. Keep readable
+ * player controls without darkening the artwork just to force white icons.
+ * 0.20 linear luminance is near the light-vs-dark ink contrast crossover;
+ * the previous 0.58 test failed for most pastel colours.
+ */
 internal fun immersiveInkForFloor(defaultInk: Color, floor: Color): Color =
-    if (floor.luminance() > 0.58f) Color(0xFF141414) else defaultInk
+    if (floor.luminance() >= 0.20f) {
+        Color(0xFF141414)
+    } else {
+        // DEFAULT player theme can provide dark onBackground text. The page is
+        // still a dark sampled artwork colour, so guarantee light ink.
+        if (defaultInk.luminance() > 0.70f) defaultInk else Color.White
+    }
 
 /** How much of the sheet the cover takes before it starts to go. */
 internal const val ImmersiveStatusBarHideProgress = 0.62f
