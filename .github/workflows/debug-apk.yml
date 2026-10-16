@@ -90,6 +90,8 @@ jobs:
           gradle :app:testUniversalDebugUnitTest \
             --tests 'com.nikhil.yt.ui.HomePerformanceRegressionTest' \
             --tests 'com.nikhil.yt.ui.player.PlayerArtworkReliabilityTest' \
+            --tests 'com.nikhil.yt.ui.player.ImmersiveVideoArtworkClipRegressionTest' \
+            --tests 'com.nikhil.yt.ui.component.MiniPlayerGestureArbiterTest' \
             --stacktrace --no-daemon
 
       - name: Test player transition and energy regressions
@@ -169,10 +171,16 @@ jobs:
             --stacktrace --no-daemon
 
       - name: Build Universal Debug APK
+        # Build and retain the APK even when an unrelated existing regression test fails.
+        # The job still reports that test failure instead of concealing it.
+        if: success() || failure()
         run: |
           gradle :app:assembleUniversalDebug --stacktrace --no-daemon
 
       - name: Upload Debug APK
+        # Build and retain the APK even when an unrelated existing regression test fails.
+        # The job still reports that test failure instead of concealing it.
+        if: success() || failure()
         uses: actions/upload-artifact@v4
         with:
           name: capsule-universal-debug

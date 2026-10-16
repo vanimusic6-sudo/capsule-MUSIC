@@ -26,6 +26,8 @@ import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -55,8 +57,6 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableFloatStateOf
-import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -71,6 +71,8 @@ import androidx.compose.ui.graphics.Shape
 import com.kyant.backdrop.Backdrop
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
@@ -82,6 +84,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.media3.common.Player
 import coil3.compose.AsyncImage
+import com.nikhil.yt.ui.component.LocalMiniPlayerGestureArbiter
 import com.nikhil.yt.LocalDatabase
 import com.nikhil.yt.LocalPlayerConnection
 import com.nikhil.yt.R
@@ -228,6 +231,7 @@ fun CapsuleMiniPlayer(
 
     val layoutDirection =
         LocalLayoutDirection.current
+    val miniGestureArbiter = LocalMiniPlayerGestureArbiter.current
 
     val coroutineScope =
         rememberCoroutineScope()
@@ -235,16 +239,6 @@ fun CapsuleMiniPlayer(
     val offsetXAnimatable =
         remember {
             Animatable(0f)
-        }
-
-    var dragStartTime by
-        remember {
-            mutableLongStateOf(0L)
-        }
-
-    var totalDragDistance by
-        remember {
-            mutableFloatStateOf(0f)
         }
 
     val animationSpec = MiniPlayerSwipeSpring
@@ -335,13 +329,42 @@ fun CapsuleMiniPlayer(
                 .padding(horizontal = if (standardStyle) 12.dp else 10.dp)
                 .let { baseModifier ->
                     if (swipeThumbnail && visualsActive) {
-                        baseModifier.pointerInput(
-                            mediaMetadata?.id,
-                            swipeDistanceThresholdPx,
-                            swipeVelocityThresholdPxPerMs,
-                            layoutDirection,
-                        ) {
+                        baseModifier
+                            .pointerInput(miniGestureArbiter) {
+                                if (miniGestureArbiter == null) return@pointerInput
+                                awaitEachGesture {
+                                    val down = awaitFirstDown(
+                                        requireUnconsumed = false,
+                                        pass = PointerEventPass.Initial,
+                                    )
+                                    miniGestureArbiter.begin()
+                                    try {
+                                        while (true) {
+                                            val event = awaitPointerEvent(PointerEventPass.Initial)
+                                            val change = event.changes.firstOrNull { it.id == down.id }
+                                                ?: break
+                                            if (!change.pressed) break
+                                            val movement = change.positionChange()
+                                            miniGestureArbiter.record(
+                                                movement.x, movement.y, viewConfiguration.touchSlop,
+                                            )
+                                        }
+                                    } finally {
+                                        miniGestureArbiter.finish()
+                                    }
+                                }
+                            }
+                            .pointerInput(
+                                mediaMetadata?.id,
+                                swipeDistanceThresholdPx,
+                                swipeVelocityThresholdPxPerMs,
+                                layoutDirection,
+                            ) {
                             var dragTargetOffset = offsetXAnimatable.value
+                            // Gesture accounting is pointer-local, never Compose
+                            // state written on every frame of a track swipe.
+                            var dragStartTime = 0L
+                            var totalDragDistance = 0f
                             var motionJob: Job? = null
 
                             detectHorizontalDragGestures(
