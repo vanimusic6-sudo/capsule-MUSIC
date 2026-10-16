@@ -124,13 +124,13 @@ private fun immersiveSmooth5(start: Float, end: Float, value: Float): Float {
 }
 
 /**
- * Begin shading behind the lower image at 54% of its height. Reach the true
- * dark ink just after the image, BEFORE the seekbar or transport controls.
- * Both ends have zero first and second derivative (no visible horizontal
- * line at the cover join or at the eventual flat floor).
+ * Blend from the real album edge into the same image's subtly muted tone.
+ * The transition begins at 78% of artwork height, settles shortly below it,
+ * and stays at that exact extracted colour for the remaining player page.
+ * No fabricated blue, fixed graphite or forced dark-ink destination.
  *
- * tailFraction is measured relative to the full screen, not artwork pixels.
- * The caller caps it to preserve enough space on small/landscape devices.
+ * Quintic easing gives zero first/second derivatives at both endpoints.
+ * tailFraction is a fraction of the physical viewport, not artwork pixels.
  */
 internal fun immersiveContinuousPageColor(
     edge: Color,
@@ -140,9 +140,8 @@ internal fun immersiveContinuousPageColor(
     tailFraction: Float,
 ): Color {
     val cover = coverFraction.coerceIn(0.05f, 0.95f)
-    // Leave the actual image untouched until its lower edge. The blending
-    // continues only briefly below that edge, then remains a constant
-    // softened version of the sampled artwork tone.
+    // Preserve the album through its upper 78%, then blend briefly
+    // beyond the artwork boundary into the sampled muted backdrop.
     val start = cover * 0.78f
     val end = (cover + tailFraction.coerceAtLeast(0.02f)).coerceAtMost(0.86f)
     val shade = immersiveSmooth5(start, end, pageFraction.coerceIn(0f, 1f))
