@@ -10,7 +10,6 @@ import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.offset
-import androidx.compose.foundation.layout.align
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.TopAppBar
@@ -114,7 +113,10 @@ internal fun NavGraphBuilder.routeComposable(
             }
         }
     }
-    val snappedHeaderPx by animateFloatAsState(
+    // Keep the animated state read in the placement lambda, not composition.
+    // Scrolling may update the target every frame; no route recomposition
+    // should be triggered just to move its standalone chrome.
+    val snappedHeaderPx = animateFloatAsState(
         targetValue = headerOffsetPx,
         animationSpec = tween(230, easing = CapsuleStandardEasing),
         label = "capsuleStandaloneHeaderScroll",
@@ -137,7 +139,7 @@ internal fun NavGraphBuilder.routeComposable(
                     CapsuleStandaloneHeader(
                         modifier = Modifier
                             .align(Alignment.TopCenter)
-                            .offset { IntOffset(0, snappedHeaderPx.toInt()) },
+                             .offset { IntOffset(0, snappedHeaderPx.value.toInt()) },
                         onAccountClick = { navController?.navigate("settings/account") },
                         onSettingsClick = { navController?.navigate("settings") },
                     )
