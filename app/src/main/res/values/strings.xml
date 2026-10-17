@@ -950,6 +950,7 @@ Velune will only extract your token, and everything else is stored locally.</str
     <string name="home_greeting_afternoon">Good afternoon</string>
     <string name="home_greeting_evening">Good evening</string>
     <string name="home_greeting_night">Good night</string>
+    <string name="capsule_settings_mode_toggle">Switch settings mode</string>
     <string name="capsule_settings_mode_user">User</string>
     <string name="capsule_settings_mode_advanced">Advanced</string>
 </resources>

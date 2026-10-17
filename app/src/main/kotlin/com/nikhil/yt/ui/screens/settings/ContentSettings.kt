@@ -166,7 +166,6 @@ fun ContentSettings(
         )
 
 
-        if (advancedSettings) {
         PreferenceGroupTitle(title = stringResource(R.string.app_language))
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             PreferenceEntry(
@@ -205,7 +204,9 @@ fun ContentSettings(
             )
         }
 
-        PreferenceGroupTitle(title = stringResource(R.string.proxy))
+        if (advancedSettings) {
+            PreferenceGroupTitle(title = stringResource(R.string.proxy))
+        }
         if (advancedSettings) {
         SwitchPreference(
             title = { Text(stringResource(R.string.enable_proxy)) },
@@ -213,7 +214,6 @@ fun ContentSettings(
             checked = proxyEnabled,
             onCheckedChange = onProxyEnabledChange,
         )
-        }
         }
         if (advancedSettings && proxyEnabled) {
             Column {
@@ -243,7 +243,8 @@ fun ContentSettings(
         }
 
         if (advancedSettings) {
-        PreferenceGroupTitle(title = stringResource(R.string.lyrics))
+            PreferenceGroupTitle(title = stringResource(R.string.lyrics))
+        }
         if (advancedSettings) {
         SwitchPreference(
             title = { Text(stringResource(R.string.enable_betterlyrics)) },
@@ -251,7 +252,6 @@ fun ContentSettings(
             checked = enableBetterLyrics,
             onCheckedChange = onEnableBetterLyricsChange,
         )
-        }
         }
         if (advancedSettings) {
         SwitchPreference(
@@ -339,7 +339,8 @@ fun ContentSettings(
         }
 
         if (advancedSettings) {
-        PreferenceGroupTitle(title = stringResource(R.string.misc))
+            PreferenceGroupTitle(title = stringResource(R.string.misc))
+        }
         if (advancedSettings) {
         EditTextPreference(
             title = { Text(stringResource(R.string.top_length)) },
@@ -348,7 +349,6 @@ fun ContentSettings(
             isInputValid = { it.toIntOrNull()?.let { num -> num > 0 } == true },
             onValueChange = onLengthTopChange,
         )
-        }
         }
         if (advancedSettings) {
         ListPreference(

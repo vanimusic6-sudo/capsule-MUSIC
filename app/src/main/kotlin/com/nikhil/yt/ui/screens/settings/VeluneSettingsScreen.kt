@@ -37,6 +37,7 @@ import com.nikhil.yt.constants.InnerTubeCookieKey
 import com.nikhil.yt.constants.SettingsAdvancedModeKey
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.stateDescription
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -53,6 +54,8 @@ fun VeluneSettingsScreen(
     val (advancedSettings, onAdvancedSettingsChange) =
         rememberPreference(SettingsAdvancedModeKey, false)
     val listState = rememberLazyListState()
+    // Switching modes changes list keys; return to its first visible section.
+    LaunchedEffect(advancedSettings) { listState.scrollToItem(0) }
     val playerAwareInsets = LocalPlayerAwareWindowInsets.current
     val playerAwareBottomPadding = playerAwareInsets.asPaddingValues().calculateBottomPadding()
 
@@ -92,11 +95,13 @@ fun VeluneSettingsScreen(
                             maxLines = 1,
                         )
                         Spacer(Modifier.width(6.dp))
+                        val toggleModeDescription = stringResource(R.string.capsule_settings_mode_toggle)
                         Switch(
                             checked = advancedSettings,
                             onCheckedChange = onAdvancedSettingsChange,
                             modifier = Modifier.semantics {
-                                contentDescription = currentMode
+                                contentDescription = toggleModeDescription
+                                stateDescription = currentMode
                             },
                         )
                     }
