@@ -44,9 +44,9 @@ class ReleaseDefaultsTest {
                 AudioClientOrder.WEB_REMIX,
                 AudioClientOrder.VISIONOS,
                 AudioClientOrder.VISIONOS_0_1,
+                AudioClientOrder.TVHTML5_SIMPLY,
                 AudioClientOrder.WEB_EMBEDDED,
                 AudioClientOrder.WEB_CREATOR,
-                AudioClientOrder.TVHTML5_SIMPLY,
             ),
             AudioClientOrder.resolve(null, AudioStreamPolicy.VISIONOS),
         )
