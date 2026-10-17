@@ -91,6 +91,15 @@ class SettingsModeRegressionTest {
             "com/nikhil/yt/MainActivity.kt",
             "com/nikhil/yt/App.kt",
             "com/nikhil/yt/playback/MusicService.kt",
+            "com/nikhil/yt/viewmodels/ExploreViewModel.kt",
+            "com/nikhil/yt/viewmodels/HomeViewModel.kt",
+            "com/nikhil/yt/viewmodels/LibraryViewModels.kt",
+            "com/nikhil/yt/viewmodels/LocalPlaylistViewModel.kt",
+            "com/nikhil/yt/viewmodels/NewReleaseViewModel.kt",
+            "com/nikhil/yt/viewmodels/OnlineSearchSuggestionViewModel.kt",
+            "com/nikhil/yt/viewmodels/OnlineSearchViewModel.kt",
+            "com/nikhil/yt/viewmodels/YouTubeBrowseViewModel.kt",
+            "com/nikhil/yt/utils/ForYouSuggestionEngine.kt",
         )
         files.forEach { file ->
             val text = source(file)

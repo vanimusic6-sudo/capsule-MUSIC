@@ -18,13 +18,11 @@ import com.nikhil.yt.innertube.models.PlaylistItem
 import com.nikhil.yt.innertube.models.SongItem
 import com.nikhil.yt.innertube.models.YTItem
 import com.nikhil.yt.innertube.models.filterExplicit
-import com.nikhil.yt.innertube.models.filterVideo
 import com.nikhil.yt.innertube.pages.ExplorePage
 import com.nikhil.yt.innertube.pages.HomePage
 import com.nikhil.yt.innertube.utils.completed
 import com.nikhil.yt.innertube.utils.parseCookieString
 import com.nikhil.yt.constants.HideExplicitKey
-import com.nikhil.yt.constants.HideVideoKey
 import com.nikhil.yt.constants.InnerTubeCookieKey
 import com.nikhil.yt.constants.QuickPicks
 import com.nikhil.yt.constants.QuickPicksKey
@@ -273,7 +271,6 @@ class HomeViewModel @Inject constructor(
     private fun cleanYouTubeHomePage(
         page: HomePage,
         hideExplicit: Boolean,
-        hideVideo: Boolean,
     ): HomePage {
         val sections = page.sections.mapNotNull { section ->
             val kind = classifyYouTubeHomeSection(section)
@@ -283,7 +280,6 @@ class HomeViewModel @Inject constructor(
 
             val items = section.items
                 .filterExplicit(hideExplicit)
-                .filterVideo(hideVideo)
                 .filter { item ->
                     when (kind) {
                         HomeSectionKind.COMMUNITY_PLAYLISTS -> item is PlaylistItem
@@ -339,7 +335,6 @@ class HomeViewModel @Inject constructor(
                 // than racing the cookie observer and occasionally requesting a guest feed.
                 val preferences = context.dataStore.data.first()
                 val hideExplicit = preferences[HideExplicitKey] ?: false
-                val hideVideo = preferences[HideVideoKey] ?: false
                 val startupCookie = preferences[InnerTubeCookieKey]
                 if (YouTube.cookie != startupCookie) YouTube.cookie = startupCookie
                 val fromTimeStamp = System.currentTimeMillis() - 86400000 * 7 * 2
@@ -353,7 +348,7 @@ class HomeViewModel @Inject constructor(
 
                 launch {
                     YouTube.home().onSuccess { page ->
-                        var cleaned = cleanYouTubeHomePage(page, hideExplicit, hideVideo)
+                        var cleaned = cleanYouTubeHomePage(page, hideExplicit)
                         // Some provider pages contain no usable shelves but do have a
                         // continuation. Advance only then, with a strict request budget.
                         // A populated first page incurs no additional requests.
@@ -377,7 +372,6 @@ class HomeViewModel @Inject constructor(
                                     continuation = next.continuation,
                                 ),
                                 hideExplicit = hideExplicit,
-                                hideVideo = hideVideo,
                             )
                             checkedContinuations++
                             if (repeatedToken) break
@@ -400,8 +394,7 @@ class HomeViewModel @Inject constructor(
             tasteRecommendationsJob = viewModelScope.launch(Dispatchers.IO) {
                 try {
                     val hideExplicit = context.dataStore.get(HideExplicitKey, false)
-                    val hideVideo = context.dataStore.get(HideVideoKey, false)
-                    forYouSuggestions.value = forYouEngine.getSuggestions(hideExplicit, hideVideo)
+                        forYouSuggestions.value = forYouEngine.getSuggestions(hideExplicit)
                     refreshAllYouTubeItems()
                 } catch (cancelled: CancellationException) {
                     throw cancelled
@@ -478,7 +471,6 @@ class HomeViewModel @Inject constructor(
         loadMoreJob = viewModelScope.launch(Dispatchers.IO) {
             try {
                 val hideExplicit = context.dataStore.get(HideExplicitKey, false)
-                val hideVideo = context.dataStore.get(HideVideoKey, false)
                 val next = YouTube.home(continuation = continuation).getOrNull()
                     ?: return@launch
                 val current = homePage.value
@@ -491,7 +483,6 @@ class HomeViewModel @Inject constructor(
                 homePage.value = cleanYouTubeHomePage(
                     page = merged,
                     hideExplicit = hideExplicit,
-                    hideVideo = hideVideo,
                 )
                 refreshAllYouTubeItems()
             } catch (cancelled: CancellationException) {

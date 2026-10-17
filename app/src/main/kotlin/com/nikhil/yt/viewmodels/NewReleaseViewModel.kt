@@ -15,9 +15,7 @@ import kotlinx.coroutines.Dispatchers
 import com.nikhil.yt.innertube.YouTube
 import com.nikhil.yt.innertube.models.AlbumItem
 import com.nikhil.yt.innertube.models.filterExplicit
-import com.nikhil.yt.innertube.models.filterVideo
 import com.nikhil.yt.constants.HideExplicitKey
-import com.nikhil.yt.constants.HideVideoKey
 import com.nikhil.yt.db.MusicDatabase
 import com.nikhil.yt.utils.dataStore
 import com.nikhil.yt.utils.get
@@ -89,7 +87,6 @@ constructor(
                             firstArtistKey
                         }
                         .filterExplicit(context.dataStore.get(HideExplicitKey, false))
-                        .filterVideo(context.dataStore.get(HideVideoKey, false))
                 _newReleaseAlbums.value = filtered
                 _uiState.value =
                     if (filtered.isEmpty()) NewReleaseUiState.Empty

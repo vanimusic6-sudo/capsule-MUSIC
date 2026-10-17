@@ -11,7 +11,6 @@ import com.nikhil.yt.db.entities.SongSkipEntity
 import com.nikhil.yt.innertube.YouTube
 import com.nikhil.yt.innertube.models.WatchEndpoint
 import com.nikhil.yt.innertube.models.filterExplicit
-import com.nikhil.yt.innertube.models.filterVideo
 import com.nikhil.yt.innertube.models.SongItem
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.CancellationException
@@ -107,7 +106,6 @@ class ForYouSuggestionEngine @Inject constructor(
      */
     suspend fun getSuggestions(
         hideExplicit: Boolean = false,
-        hideVideo: Boolean = false,
     ): List<SongItem> {
         val fromTimeStamp = System.currentTimeMillis() - 86400000L * 30
         val timeOfDay = getTimeOfDay()
@@ -173,7 +171,6 @@ class ForYouSuggestionEngine @Inject constructor(
                 val bucket =
                     related.songs
                         .filterExplicit(hideExplicit)
-                        .filterVideo(hideVideo)
                         .filter { it.id !in seedIds }
                         .distinctBy { it.id }
                         .take(10)
