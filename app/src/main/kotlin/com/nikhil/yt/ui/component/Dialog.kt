@@ -30,6 +30,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.lazy.LazyColumn
@@ -272,17 +273,39 @@ fun ListDialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(usePlatformDefaultWidth = false),
     ) {
-        Surface(
-            modifier = Modifier.padding(24.dp).capsuleDialogEntrance(),
-            shape = AlertDialogDefaults.shape,
-            color = AlertDialogDefaults.containerColor,
-            tonalElevation = AlertDialogDefaults.TonalElevation,
+        // Long lists must scroll INSIDE the dialog. Previously a large list
+        // could consume the entire viewport and hide its own last options.
+        // Keep the surface at a stable size while only the render layer grows.
+        BoxWithConstraints(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 24.dp, vertical = 32.dp)
+                .navigationBarsPadding(),
+            contentAlignment = Alignment.Center,
         ) {
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
-                modifier = modifier.padding(vertical = 24.dp),
+            // Capture the BoxWithConstraints receiver here. ColumnScope and
+            // LazyListScope are also layout receivers and cannot implicitly
+            // access maxHeight from their nested DSL-marked lambdas.
+            val listMaxHeight = (maxHeight - 24.dp).coerceAtLeast(0.dp)
+            Surface(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .widthIn(max = 560.dp)
+                    .heightIn(max = maxHeight)
+                    .capsuleDialogEntrance(),
+                shape = AlertDialogDefaults.shape,
+                color = AlertDialogDefaults.containerColor,
+                tonalElevation = AlertDialogDefaults.TonalElevation,
             ) {
-                LazyColumn(content = content)
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = modifier.padding(vertical = 12.dp),
+                ) {
+                    LazyColumn(
+                        modifier = Modifier.heightIn(max = listMaxHeight),
+                        content = content,
+                    )
+                }
             }
         }
     }

@@ -85,7 +85,9 @@ class MotionEnergyStructuralRegressionTest {
         val onMove = source.substringAfter("rememberReorderableLazyListState(lazyListState) { from, to ->")
             .substringBefore("Dialog(onDismissRequest")
         assertFalse("Do not write DataStore once per crossing", onMove.contains("onOrderChange(reordered)"))
-        assertTrue(source.contains("shadowElevation = lift"))
+        assertTrue(source.contains("shadowElevation = lift.value.toPx()"))
+        assertTrue(source.contains("shadowElevation = 0.dp"))
+        assertFalse(source.contains("val lift by animateDpAsState("))
     }
 
     @Test
@@ -108,10 +110,12 @@ class MotionEnergyStructuralRegressionTest {
     fun settingsNavigationIsFullWidthPushWithoutNestedScaleOrFade() {
         val routes = source("screens/ScreenTransitions.kt")
         assertTrue(routes.contains("SettingsRouteMotion.NESTED"))
-        assertTrue(routes.contains("initialOffsetX = { -it }"))
-        assertTrue(routes.contains("initialOffsetX = { it }"))
-        assertTrue(routes.contains("targetOffsetX = { -it }"))
-        assertTrue(routes.contains("targetOffsetX = { it }"))
+        assertTrue(routes.contains("initialOffsetX = { if (isPop) -it else it }"))
+        assertTrue(routes.contains("targetOffsetX = { if (isPop) it else -it }"))
+        assertTrue(routes.contains("initialOffset = ::settingsRootOffset"))
+        assertTrue(routes.contains("targetOffset = ::settingsRootOffset"))
+        assertTrue(routes.contains("y = -(size.height * 0.27f).toInt()"))
+        assertTrue(routes.contains("SettingsTopRight = TransformOrigin(1f, 0f)"))
         val nested = routes.substringAfter("SettingsRouteMotion.NESTED ->")
             .substringBefore("SettingsRouteMotion.ROOT ->")
         assertFalse("nested route must not squeeze glyphs", nested.contains("scaleIn("))
@@ -122,8 +126,11 @@ class MotionEnergyStructuralRegressionTest {
     fun sharedSettingsDialogsUseFiniteEntranceOnly() {
         val helper = source("motion/SettingsDialogEntrance.kt")
         val dialog = source("component/Dialog.kt")
-        assertTrue(helper.contains("LaunchedEffect(Unit)"))
-        assertTrue(helper.contains("scale.animateTo("))
+        assertTrue(helper.contains("LaunchedEffect(arrival)"))
+        assertTrue(helper.contains("arrival.animateTo("))
+        assertTrue(helper.contains("translationY = remaining * 16.dp.toPx()"))
+        assertTrue(helper.contains("scaleX = sizeFactor"))
+        assertTrue(helper.contains("dampingRatio = 0.93f"))
         assertFalse(helper.contains("rememberInfiniteTransition"))
         assertTrue(dialog.contains(".capsuleDialogEntrance()"))
     }

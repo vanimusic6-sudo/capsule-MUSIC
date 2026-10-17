@@ -62,7 +62,6 @@ object StandardChrome {
 fun StandardHeaderTitle(
     accountName: String?,
     accountImageUrl: String?,
-    showHomeGreeting: Boolean = false,
     onAccountClick: () -> Unit,
 ) {
     val accountLabel = stringResource(R.string.account)
@@ -73,14 +72,13 @@ fun StandardHeaderTitle(
     val signedIn = remember(cookie) {
         runCatching { "SAPISID" in parseCookieString(cookie) }.getOrDefault(false)
     }
-    // One lifecycle receiver and one scheduled boundary for both header elements.
-    val dayPeriod = if (showHomeGreeting) rememberHomeDayPeriod() else null
-    val guestIcon = dayPeriod?.let { homeGuestIcon(signedIn = signedIn, period = it) }
-    val title = if (dayPeriod != null) {
-        stringResource(dayPeriod.greetingId)
-    } else {
-        stringResource(R.string.app_name)
-    }
+    // The greeting is the ONLY app chrome title, on Home and all tabs.
+    // The former route-gated title branch exposed the retired wordmark
+    // and a plain "C" avatar during Library/Search/Settings navigation.
+    // One receiver schedules the next period boundary, not a polling loop.
+    val dayPeriod = rememberHomeDayPeriod()
+    val guestIcon = homeGuestIcon(signedIn = signedIn, period = dayPeriod)
+    val title = stringResource(dayPeriod.greetingId)
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         Box(
             contentAlignment = Alignment.Center,
@@ -97,14 +95,26 @@ fun StandardHeaderTitle(
                         modifier = Modifier.size(22.dp),
                     )
                 } else {
-                    Text(
-                        accountName?.takeUnless { it == "Guest" }?.trim()?.firstOrNull()?.uppercase() ?: "C",
-                        color = Color.White,
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.SemiBold,
-                    )
+                    val initial = accountName?.takeUnless { it == "Guest" }
+                        ?.trim()?.firstOrNull()?.uppercase()
+                    if (initial != null) {
+                        Text(
+                            text = initial,
+                            color = Color.White,
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                    } else {
+                        // No legacy "C" placeholder while the account loads.
+                        Icon(
+                            painter = painterResource(R.drawable.person),
+                            contentDescription = null,
+                            tint = Color.White,
+                            modifier = Modifier.size(19.dp),
+                        )
+                    }
                     AsyncImage(
-                        model = if (signedIn || !showHomeGreeting) accountImageUrl else null,
+                        model = if (signedIn) accountImageUrl else null,
                         contentDescription = null,
                         contentScale = ContentScale.Crop,
                         modifier = Modifier.size(30.dp).clip(CircleShape),

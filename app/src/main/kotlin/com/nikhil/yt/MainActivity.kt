@@ -1219,12 +1219,12 @@ class MainActivity : ComponentActivity() {
                         }
                     }
 
-                    var shouldShowTopBar by rememberSaveable { mutableStateOf(false) }
-
-                    LaunchedEffect(navBackStackEntry) {
-                        shouldShowTopBar =
-                            !active && navBackStackEntry?.destination?.route in topLevelScreens && navBackStackEntry?.destination?.route != "settings"
-                    }
+                    // Derive the shell header from the same current route as NavHost.
+                    // The previous LaunchedEffect left a stale state for a visible frame
+                    // during Library/Search -> Settings and exposed the old brand.
+                    val shouldShowTopBar =
+                        !active && currentRoute in topLevelScreens &&
+                            currentRoute != Screens.Home.route
 
                     val coroutineScope = rememberCoroutineScope()
                     var sharedSong: SongItem? by remember {
@@ -1455,7 +1455,6 @@ class MainActivity : ComponentActivity() {
                                                             accountName = headerAccountName,
                                                             accountImageUrl = headerAccountImage,
                                                             onAccountClick = { navController.navigate("settings/account") },
-                                                            showHomeGreeting = currentRoute == Screens.Home.route,
                                                         )
                                                 },
 

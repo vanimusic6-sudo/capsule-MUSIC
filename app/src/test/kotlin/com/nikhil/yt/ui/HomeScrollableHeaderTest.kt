@@ -26,4 +26,23 @@ class HomeScrollableHeaderTest {
         assertTrue(activity.contains("if (currentRoute == Screens.Home.route) Modifier"))
         assertTrue(activity.contains("else Modifier.nestedScroll(searchBarScrollBehavior.nestedScrollConnection)"))
     }
+
+    @Test fun everyMainRouteUsesOneGreetingAndNoDelayedLegacyHeader() {
+        val activity = source("MainActivity.kt")
+        val chrome = source("ui/component/StandardChrome.kt")
+        val home = source("ui/screens/HomeScreen.kt")
+        assertTrue(activity.contains("val shouldShowTopBar ="))
+        assertTrue(activity.contains("!active && currentRoute in topLevelScreens"))
+        assertFalse(activity.contains("var shouldShowTopBar by rememberSaveable"))
+        assertFalse(activity.contains("LaunchedEffect(navBackStackEntry)"))
+        assertFalse(activity.contains("showHomeGreeting = false"))
+        assertFalse(activity.contains("showHomeGreeting = currentRoute"))
+        assertTrue(home.contains("StandardHeaderTitle("))
+        assertTrue(activity.contains("StandardHeaderTitle("))
+        assertTrue(chrome.contains("val dayPeriod = rememberHomeDayPeriod()"))
+        assertTrue(chrome.contains("val title = stringResource(dayPeriod.greetingId)"))
+        assertTrue(chrome.contains("val guestIcon = homeGuestIcon("))
+        assertFalse(chrome.contains("stringResource(R.string.app_name)"))
+        assertFalse(chrome.contains("showHomeGreeting"))
+    }
 }
