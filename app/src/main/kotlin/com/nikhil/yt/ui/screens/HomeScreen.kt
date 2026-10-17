@@ -268,7 +268,6 @@ fun HomeScreen(
                                 accountName = headerAccountName,
                                 accountImageUrl = headerAccountImage,
                                 onAccountClick = { navController.navigate("settings/account") },
-                                showHomeGreeting = true,
                             )
                         },
                         actions = {
