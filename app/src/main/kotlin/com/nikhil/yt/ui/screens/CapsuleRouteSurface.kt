@@ -208,16 +208,12 @@ private fun RouteWithScrollAwayHeader(
                         // Unconsumed positive drag means we are at the actual
                         // top; one short animation returns the header gently.
                         revealJob[0] = scope.launch {
-                            try {
-                                animate(
-                                    initialValue = headerOffsetPx,
-                                    targetValue = 0f,
-                                    animationSpec = tween(220, easing = CapsuleStandardEasing),
-                                ) { value, _ ->
-                                    headerOffsetPx = value
-                                }
-                            } finally {
-                                revealJob[0] = null
+                            animate(
+                                initialValue = headerOffsetPx,
+                                targetValue = 0f,
+                                animationSpec = tween(220, easing = CapsuleStandardEasing),
+                            ) { value, _ ->
+                                headerOffsetPx = value
                             }
                         }
                     }
