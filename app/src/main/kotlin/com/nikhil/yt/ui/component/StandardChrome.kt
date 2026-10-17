@@ -73,7 +73,7 @@ fun StandardHeaderTitle(
         runCatching { "SAPISID" in parseCookieString(cookie) }.getOrDefault(false)
     }
     // The greeting is the ONLY app chrome title, on Home and all tabs.
-    // The former showHomeGreeting=false branch exposed the retired wordmark
+    // The former route-gated title branch exposed the retired wordmark
     // and a plain "C" avatar during Library/Search/Settings navigation.
     // One receiver schedules the next period boundary, not a polling loop.
     val dayPeriod = rememberHomeDayPeriod()
