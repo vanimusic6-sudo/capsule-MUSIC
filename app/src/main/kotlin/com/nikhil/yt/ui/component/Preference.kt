@@ -214,6 +214,7 @@ inline fun <reified T : Enum<T>> EnumListPreference(
     )
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SwitchPreference(
     modifier: Modifier = Modifier,
