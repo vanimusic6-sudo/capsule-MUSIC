@@ -245,7 +245,7 @@ private fun PriorityRow(
 ) {
     // The lifted item remains attached to the finger; its neighbours move
     // with one non-bouncy placement spring instead of snapping or leapfrogging.
-    val lift by animateDpAsState(
+    val lift = animateDpAsState(
         targetValue = if (isDragging) 8.dp else 0.dp,
         animationSpec = spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = Spring.StiffnessMedium),
         label = "priorityRowLift",
@@ -259,12 +259,17 @@ private fun PriorityRow(
         modifier = Modifier
             .fillMaxWidth()
             .graphicsLayer {
+                // Draw-phase only. The previous "shadowElevation = lift" on
+                // Surface recomposed the whole card every animated frame and
+                // caused work while neighbours were also being re-placed.
                 scaleX = scale.value
                 scaleY = scale.value
+                shadowElevation = lift.value.toPx()
+                shape = RoundedCornerShape(16.dp)
             },
         shape = RoundedCornerShape(16.dp),
         color = MaterialTheme.colorScheme.surfaceVariant,
-        shadowElevation = lift,
+        shadowElevation = 0.dp,
     ) {
         Row(
             modifier = Modifier
