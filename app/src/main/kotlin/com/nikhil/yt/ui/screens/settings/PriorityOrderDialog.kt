@@ -44,6 +44,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import com.nikhil.yt.R
+import com.nikhil.yt.ui.motion.capsuleDialogEntrance
 import sh.calvin.reorderable.ReorderableItem
 import sh.calvin.reorderable.rememberReorderableLazyListState
 
@@ -115,7 +116,8 @@ internal fun PriorityOrderDialog(
             modifier =
                 Modifier
                     .fillMaxWidth()
-                    .widthIn(max = 560.dp),
+                    .widthIn(max = 560.dp)
+                    .capsuleDialogEntrance(),
             shape = RoundedCornerShape(24.dp),
             tonalElevation = 6.dp,
         ) {
