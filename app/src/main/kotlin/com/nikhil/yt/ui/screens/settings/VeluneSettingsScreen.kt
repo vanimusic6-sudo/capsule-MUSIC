@@ -12,12 +12,14 @@ import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
@@ -53,6 +55,7 @@ import com.nikhil.yt.App.Companion.forgetAccount
 import com.nikhil.yt.utils.rememberPreference
 import com.nikhil.yt.constants.InnerTubeCookieKey
 import com.nikhil.yt.constants.SettingsAdvancedModeKey
+import com.nikhil.yt.constants.SettingsAdvancedWarningSeenKey
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -68,9 +71,22 @@ fun VeluneSettingsScreen(
     val (innerTubeCookie, onInnerTubeCookieChange) = rememberPreference(InnerTubeCookieKey, "")
     val (advancedSettings, onAdvancedSettingsChange) =
         rememberPreference(SettingsAdvancedModeKey, false)
+    val (advancedWarningSeen, onAdvancedWarningSeenChange) =
+        rememberPreference(SettingsAdvancedWarningSeenKey, false)
+    var showAdvancedWarning by rememberSaveable { mutableStateOf(false) }
     val listState = rememberLazyListState()
-    // Switching modes changes list keys; return to its first visible section.
-    LaunchedEffect(advancedSettings) { listState.scrollToItem(0) }
+
+    // Preserve scroll restoration on first composition. Only a real mode
+    // change repositions the viewport, and it scrolls rather than jumping.
+    var previousSettingsMode by remember { mutableStateOf(advancedSettings) }
+    LaunchedEffect(advancedSettings) {
+        if (previousSettingsMode != advancedSettings) {
+            previousSettingsMode = advancedSettings
+            if (listState.firstVisibleItemIndex > 0) {
+                listState.animateScrollToItem(0)
+            }
+        }
+    }
     val playerAwareInsets = LocalPlayerAwareWindowInsets.current
     val playerAwareBottomPadding = playerAwareInsets.asPaddingValues().calculateBottomPadding()
 
@@ -107,7 +123,18 @@ fun VeluneSettingsScreen(
                     val compactHeader = LocalConfiguration.current.screenWidthDp < 350
                     SettingsModeSegmentedToggle(
                         advancedSettings = advancedSettings,
-                        onModeChange = onAdvancedSettingsChange,
+                        onModeChange = { requestedAdvanced ->
+                            if (
+                                shouldShowAdvancedModeWarning(
+                                    wasAdvanced = advancedSettings,
+                                    requestedAdvanced = requestedAdvanced,
+                                    warningSeen = advancedWarningSeen,
+                                )
+                            ) {
+                                showAdvancedWarning = true
+                            }
+                            onAdvancedSettingsChange(requestedAdvanced)
+                        },
                         compactLabels = compactHeader,
                         modifier = Modifier.padding(end = if (compactHeader) 8.dp else 10.dp),
                         width = if (compactHeader) 154.dp else 174.dp,
@@ -130,23 +157,63 @@ fun VeluneSettingsScreen(
             contentPadding = PaddingValues(bottom = playerAwareBottomPadding + 32.dp),
         ) {
             item(key = "appearance") {
+                Box(
+                    modifier = Modifier
+                    .fillMaxWidth()
+                    .animateItem(
+                        fadeInSpec = tween(durationMillis = 260),
+                        fadeOutSpec = tween(durationMillis = 160),
+                        placementSpec = spring(
+                            dampingRatio = 0.88f,
+                            stiffness = Spring.StiffnessMediumLow,
+                        ),
+                    ),
+                ) {
                 SettingsItemScreenshotStyle(
                     icon = painterResource(R.drawable.palette),
                     title = stringResource(R.string.capsule_settings_appearance),
                     onClick = { navController.navigate("settings/appearance") }
                 )
+            
+                }
             }
 
             item(key = "capsule_customize") {
+                Box(
+                    modifier = Modifier
+                    .fillMaxWidth()
+                    .animateItem(
+                        fadeInSpec = tween(durationMillis = 260),
+                        fadeOutSpec = tween(durationMillis = 160),
+                        placementSpec = spring(
+                            dampingRatio = 0.88f,
+                            stiffness = Spring.StiffnessMediumLow,
+                        ),
+                    ),
+                ) {
                 SettingsItemScreenshotStyle(
                     icon = painterResource(R.drawable.edit),
                     title = stringResource(R.string.capsule_customize_title),
                     onClick = { navController.navigate("settings/capsule_customize") }
                 )
+            
+                }
             }
 
             if (advancedSettings) {
             item(key = "account") {
+                Box(
+                    modifier = Modifier
+                    .fillMaxWidth()
+                    .animateItem(
+                        fadeInSpec = tween(durationMillis = 260),
+                        fadeOutSpec = tween(durationMillis = 160),
+                        placementSpec = spring(
+                            dampingRatio = 0.88f,
+                            stiffness = Spring.StiffnessMediumLow,
+                        ),
+                    ),
+                ) {
                 if (isLoggedIn) {
                     SettingsItemAccountStyle(
                         model = accountImageUrl,
@@ -161,83 +228,211 @@ fun VeluneSettingsScreen(
                         onClick = { navController.navigate("settings/account") }
                     )
                 }
+            
+                }
             }
 
             item(key = "listen_together") {
+                Box(
+                    modifier = Modifier
+                    .fillMaxWidth()
+                    .animateItem(
+                        fadeInSpec = tween(durationMillis = 260),
+                        fadeOutSpec = tween(durationMillis = 160),
+                        placementSpec = spring(
+                            dampingRatio = 0.88f,
+                            stiffness = Spring.StiffnessMediumLow,
+                        ),
+                    ),
+                ) {
                 SettingsItemScreenshotStyle(
                     icon = painterResource(R.drawable.multi_user),
                     title = stringResource(R.string.capsule_settings_listen_together),
                     onClick = { navController.navigate("settings/music_together") }
                 )
+            
+                }
             }
             }
 
             item(key = "player") {
+                Box(
+                    modifier = Modifier
+                    .fillMaxWidth()
+                    .animateItem(
+                        fadeInSpec = tween(durationMillis = 260),
+                        fadeOutSpec = tween(durationMillis = 160),
+                        placementSpec = spring(
+                            dampingRatio = 0.88f,
+                            stiffness = Spring.StiffnessMediumLow,
+                        ),
+                    ),
+                ) {
                 SettingsItemScreenshotStyle(
                     icon = painterResource(R.drawable.play),
                     title = stringResource(R.string.capsule_settings_player),
                     onClick = { navController.navigate("settings/player") }
                 )
+            
+                }
             }
 
             if (advancedSettings) {
             item(key = "video") {
+                Box(
+                    modifier = Modifier
+                    .fillMaxWidth()
+                    .animateItem(
+                        fadeInSpec = tween(durationMillis = 260),
+                        fadeOutSpec = tween(durationMillis = 160),
+                        placementSpec = spring(
+                            dampingRatio = 0.88f,
+                            stiffness = Spring.StiffnessMediumLow,
+                        ),
+                    ),
+                ) {
                 SettingsItemScreenshotStyle(
                     icon = painterResource(R.drawable.play),
                     title = stringResource(R.string.capsule_settings_video),
                     onClick = { navController.navigate("settings/video_playback") }
                 )
+            
+                }
             }
             }
 
             item(key = "content") {
+                Box(
+                    modifier = Modifier
+                    .fillMaxWidth()
+                    .animateItem(
+                        fadeInSpec = tween(durationMillis = 260),
+                        fadeOutSpec = tween(durationMillis = 160),
+                        placementSpec = spring(
+                            dampingRatio = 0.88f,
+                            stiffness = Spring.StiffnessMediumLow,
+                        ),
+                    ),
+                ) {
                 SettingsItemScreenshotStyle(
                     icon = painterResource(R.drawable.language),
                     title = stringResource(R.string.capsule_settings_content),
                     onClick = { navController.navigate("settings/content") }
                 )
+            
+                }
             }
 
             if (advancedSettings) {
             item(key = "discord") {
+                Box(
+                    modifier = Modifier
+                    .fillMaxWidth()
+                    .animateItem(
+                        fadeInSpec = tween(durationMillis = 260),
+                        fadeOutSpec = tween(durationMillis = 160),
+                        placementSpec = spring(
+                            dampingRatio = 0.88f,
+                            stiffness = Spring.StiffnessMediumLow,
+                        ),
+                    ),
+                ) {
                 SettingsItemScreenshotStyle(
                     icon = painterResource(R.drawable.discord),
                     title = stringResource(R.string.capsule_settings_discord),
                     onClick = { navController.navigate("settings/discord") }
                 )
+            
+                }
             }
 
             item(key = "integration") {
+                Box(
+                    modifier = Modifier
+                    .fillMaxWidth()
+                    .animateItem(
+                        fadeInSpec = tween(durationMillis = 260),
+                        fadeOutSpec = tween(durationMillis = 160),
+                        placementSpec = spring(
+                            dampingRatio = 0.88f,
+                            stiffness = Spring.StiffnessMediumLow,
+                        ),
+                    ),
+                ) {
                 SettingsItemScreenshotStyle(
                     icon = painterResource(R.drawable.integration),
                     title = stringResource(R.string.capsule_settings_integration),
                     onClick = { navController.navigate("settings/integration") }
                 )
+            
+                }
             }
             }
 
             item(key = "privacy") {
+                Box(
+                    modifier = Modifier
+                    .fillMaxWidth()
+                    .animateItem(
+                        fadeInSpec = tween(durationMillis = 260),
+                        fadeOutSpec = tween(durationMillis = 160),
+                        placementSpec = spring(
+                            dampingRatio = 0.88f,
+                            stiffness = Spring.StiffnessMediumLow,
+                        ),
+                    ),
+                ) {
                 SettingsItemScreenshotStyle(
                     icon = painterResource(R.drawable.security),
                     title = stringResource(R.string.capsule_settings_privacy),
                     onClick = { navController.navigate("settings/privacy") }
                 )
+            
+                }
             }
 
             item(key = "storage") {
+                Box(
+                    modifier = Modifier
+                    .fillMaxWidth()
+                    .animateItem(
+                        fadeInSpec = tween(durationMillis = 260),
+                        fadeOutSpec = tween(durationMillis = 160),
+                        placementSpec = spring(
+                            dampingRatio = 0.88f,
+                            stiffness = Spring.StiffnessMediumLow,
+                        ),
+                    ),
+                ) {
                 SettingsItemScreenshotStyle(
                     icon = painterResource(R.drawable.storage),
                     title = stringResource(R.string.capsule_settings_storage),
                     onClick = { navController.navigate("settings/storage") }
                 )
+            
+                }
             }
 
             item(key = "backup") {
+                Box(
+                    modifier = Modifier
+                    .fillMaxWidth()
+                    .animateItem(
+                        fadeInSpec = tween(durationMillis = 260),
+                        fadeOutSpec = tween(durationMillis = 160),
+                        placementSpec = spring(
+                            dampingRatio = 0.88f,
+                            stiffness = Spring.StiffnessMediumLow,
+                        ),
+                    ),
+                ) {
                 SettingsItemScreenshotStyle(
                     icon = painterResource(R.drawable.backup),
                     title = stringResource(R.string.capsule_settings_backup),
                     onClick = { navController.navigate("settings/backup_restore") }
                 )
+            
+                }
             }
 
             /*
@@ -246,22 +441,71 @@ fun VeluneSettingsScreen(
              */
             if (advancedSettings) {
             item(key = "developer") {
+                Box(
+                    modifier = Modifier
+                    .fillMaxWidth()
+                    .animateItem(
+                        fadeInSpec = tween(durationMillis = 260),
+                        fadeOutSpec = tween(durationMillis = 160),
+                        placementSpec = spring(
+                            dampingRatio = 0.88f,
+                            stiffness = Spring.StiffnessMediumLow,
+                        ),
+                    ),
+                ) {
                 SettingsItemScreenshotStyle(
                     icon = painterResource(R.drawable.experiment),
                     title = stringResource(R.string.capsule_settings_developer),
                     onClick = { navController.navigate("settings/misc") }
                 )
+            
+                }
             }
 
             item(key = "about") {
+                Box(
+                    modifier = Modifier
+                    .fillMaxWidth()
+                    .animateItem(
+                        fadeInSpec = tween(durationMillis = 260),
+                        fadeOutSpec = tween(durationMillis = 160),
+                        placementSpec = spring(
+                            dampingRatio = 0.88f,
+                            stiffness = Spring.StiffnessMediumLow,
+                        ),
+                    ),
+                ) {
                 SettingsItemScreenshotStyle(
                     icon = painterResource(R.drawable.info),
                     title = stringResource(R.string.capsule_settings_about),
                     onClick = { navController.navigate("settings/about") }
                 )
+            
+                }
             }
             }
 
+        }
+
+        if (showAdvancedWarning) {
+            AlertDialog(
+                onDismissRequest = {
+                    showAdvancedWarning = false
+                    onAdvancedWarningSeenChange(true)
+                },
+                title = { Text(stringResource(R.string.capsule_advanced_mode_warning_title)) },
+                text = { Text(stringResource(R.string.capsule_advanced_mode_warning_body)) },
+                confirmButton = {
+                    TextButton(
+                        onClick = {
+                            showAdvancedWarning = false
+                            onAdvancedWarningSeenChange(true)
+                        },
+                    ) {
+                        Text(stringResource(R.string.capsule_advanced_mode_warning_confirm))
+                    }
+                },
+            )
         }
 
         if (showLogoutDialog) {
@@ -288,6 +532,16 @@ fun VeluneSettingsScreen(
     }
 }
 
+
+/**
+ * First entry into developer mode is the only warning trigger. This must be
+ * independent of subsequent DataStore-driven recompositions or app restarts.
+ */
+internal fun shouldShowAdvancedModeWarning(
+    wasAdvanced: Boolean,
+    requestedAdvanced: Boolean,
+    warningSeen: Boolean,
+): Boolean = !wasAdvanced && requestedAdvanced && !warningSeen
 
 /**
  * Basic / Developer selector. Uses the same low-damping physical roll as the

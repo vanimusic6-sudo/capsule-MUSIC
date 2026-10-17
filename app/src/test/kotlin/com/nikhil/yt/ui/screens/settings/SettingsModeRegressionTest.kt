@@ -4,6 +4,7 @@ import androidx.datastore.preferences.core.emptyPreferences
 import com.nikhil.yt.constants.AudioClientOrderKey
 import com.nikhil.yt.constants.DarkModeKey
 import com.nikhil.yt.constants.SettingsAdvancedModeKey
+import com.nikhil.yt.constants.SettingsAdvancedWarningSeenKey
 import com.nikhil.yt.constants.CropThumbnailToSquareKey
 import java.io.File
 import org.junit.Assert.assertEquals
@@ -28,6 +29,17 @@ class SettingsModeRegressionTest {
         assertTrue(settings[SettingsAdvancedModeKey] ?: false)
         settings[SettingsAdvancedModeKey] = false
         assertFalse(settings[SettingsAdvancedModeKey] ?: true)
+    }
+
+    @Test fun warningOnlyAppearsOnFirstEntryIntoDeveloperMode() {
+        assertTrue(shouldShowAdvancedModeWarning(false, true, false))
+        assertFalse(shouldShowAdvancedModeWarning(true, true, false))
+        assertFalse(shouldShowAdvancedModeWarning(false, false, false))
+        assertFalse(shouldShowAdvancedModeWarning(false, true, true))
+        val settings = emptyPreferences().toMutablePreferences()
+        assertFalse(settings[SettingsAdvancedWarningSeenKey] ?: false)
+        settings[SettingsAdvancedWarningSeenKey] = true
+        assertFalse(shouldShowAdvancedModeWarning(false, true, settings[SettingsAdvancedWarningSeenKey] ?: false))
     }
 
     @Test fun switchingModesNeverRewritesPersistedFunctionalPreferences() {
@@ -85,6 +97,12 @@ class SettingsModeRegressionTest {
         assertTrue(home.contains("overflow = TextOverflow.Ellipsis"))
         assertTrue(home.contains(".selectableGroup()"))
         assertTrue(home.contains("role = Role.Tab"))
+        assertTrue(home.contains("SettingsAdvancedWarningSeenKey"))
+        assertTrue(home.contains("shouldShowAdvancedModeWarning("))
+        assertTrue(home.contains("showAdvancedWarning"))
+        assertEquals(14, Regex("""\\.animateItem\\(""").findAll(home).count())
+        assertTrue(home.contains("placementSpec = spring("))
+        assertTrue(home.contains("listState.animateScrollToItem(0)"))
         assertFalse(home.contains("Switch("))
         assertEquals(
             listOf(
