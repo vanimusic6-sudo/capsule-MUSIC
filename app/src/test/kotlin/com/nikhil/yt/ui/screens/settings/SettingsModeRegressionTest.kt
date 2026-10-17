@@ -48,31 +48,30 @@ class SettingsModeRegressionTest {
         val home = source("com/nikhil/yt/ui/screens/settings/VeluneSettingsScreen.kt")
         val rows = Regex("""item\(key = "([^"]+)"\)""")
             .findAll(home).map { it.groupValues[1] }.toList()
-        assertEquals("settings_mode", rows.first())
-        // The mode switch sits above the first destination, inside the same
-        // LazyColumn. There is no longer an app-bar action for it.
-        assertTrue(
-            home.substringAfter("item(key = \"settings_mode\")")
-                .substringBefore("item(key = \"appearance\")")
-                .contains("onModeChange = onAdvancedSettingsChange")
-        )
-        assertFalse(home.substringBefore("        LazyColumn(").contains("actions = {"))
-        val switchRow = home.substringAfter("item(key = \"settings_mode\")")
-            .substringBefore("item(key = \"appearance\")")
-        assertTrue(switchRow.contains(".fillMaxWidth()"))
-        assertTrue(switchRow.contains("SettingsModeSegmentedToggle("))
-        assertTrue(home.contains("horizontalArrangement = Arrangement.End"))
+        // Mode selector must sit alongside the title, never as a separate
+        // list row (which would push every category lower on the screen).
+        val topBar = home.substringAfter("topBar = {").substringBefore("containerColor =")
+        assertTrue(topBar.contains("actions = {"))
+        assertTrue(topBar.contains("SettingsModeSegmentedToggle("))
+        assertTrue(topBar.contains("onModeChange = onAdvancedSettingsChange"))
+        assertFalse(home.contains("item(key = \"settings_mode\")"))
+        assertEquals("appearance", rows.first())
+        assertTrue(home.contains(".width(width)"))
+        assertTrue(home.contains(".height(22.dp)"))
+        assertTrue(home.contains(".height(44.dp)"))
+        assertTrue(home.contains("Modifier.weight(0.39f)"))
+        assertTrue(home.contains("Modifier.weight(0.61f)"))
+        assertTrue(home.contains("overflow = TextOverflow.Ellipsis"))
         assertTrue(home.contains(".selectableGroup()"))
         assertTrue(home.contains("role = Role.Tab"))
-        assertFalse(switchRow.contains("Switch("))
-        val destinations = rows.drop(1)
+        assertFalse(home.contains("Switch("))
         assertEquals(
             listOf(
                 "appearance", "capsule_customize", "account", "listen_together",
                 "player", "video", "content", "discord", "integration", "privacy",
                 "storage", "backup", "developer", "about",
             ),
-            destinations,
+            rows,
         )
         val advancedOnly = setOf(
             "account", "listen_together", "video", "discord", "integration",
@@ -81,7 +80,7 @@ class SettingsModeRegressionTest {
         assertEquals(
             listOf("appearance", "capsule_customize", "player", "content",
                    "privacy", "storage", "backup"),
-            destinations.filterNot { it in advancedOnly },
+            rows.filterNot { it in advancedOnly },
         )
         assertEquals(4, Regex("""(?m)^            if \(advancedSettings\) \{""").findAll(home).count())
         assertTrue(home.contains("SettingsAdvancedModeKey, false"))

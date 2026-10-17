@@ -22,10 +22,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -70,7 +73,14 @@ fun VeluneSettingsScreen(
                 .only(WindowInsetsSides.Horizontal),
         topBar = {
             TopAppBar(
-                title = { Text(stringResource(R.string.capsule_settings_title), fontSize = 20.sp) },
+                title = {
+                    Text(
+                        text = stringResource(R.string.capsule_settings_title),
+                        fontSize = 20.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                },
                 navigationIcon = {
                     IconButton(onClick = { navController.popBackStack() }) {
                         Icon(
@@ -79,6 +89,17 @@ fun VeluneSettingsScreen(
                             modifier = Modifier.size(24.dp)
                         )
                     }
+                },
+                actions = {
+                    val compactHeader = LocalConfiguration.current.screenWidthDp < 350
+                    SettingsModeSegmentedToggle(
+                        advancedSettings = advancedSettings,
+                        onModeChange = onAdvancedSettingsChange,
+                        modifier = Modifier.padding(
+                            end = if (compactHeader) 12.dp else 28.dp,
+                        ),
+                        width = if (compactHeader) 142.dp else 156.dp,
+                    )
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.background
@@ -96,18 +117,6 @@ fun VeluneSettingsScreen(
                 .padding(horizontal = 16.dp),
             contentPadding = PaddingValues(bottom = playerAwareBottomPadding + 32.dp),
         ) {
-            // The mode control belongs to the scrollable Settings list, not
-            // to the title bar. It uses the same horizontal content bounds.
-            item(key = "settings_mode") {
-                SettingsModeSegmentedToggle(
-                    advancedSettings = advancedSettings,
-                    onModeChange = onAdvancedSettingsChange,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 4.dp, vertical = 12.dp),
-                )
-            }
-
             item(key = "appearance") {
                 SettingsItemScreenshotStyle(
                     icon = painterResource(R.drawable.palette),
@@ -269,32 +278,39 @@ fun VeluneSettingsScreen(
 
 
 /**
- * Compact two-state selector in the settings list, above the first category.
- * Its only side effect is updating the already-existing SettingsAdvancedModeKey.
- * The app-bar title, category rows and settings screen navigation are unchanged.
+ * Compact mode selector beside the Settings title, matching the sketch.
+ *
+ * A 44dp invisible touch region surrounds the 22dp visual capsule so its
+ * small proportions do not make the two options hard to tap. The control
+ * only writes the existing mode preference; it does not change settings.
  */
 @Composable
 private fun SettingsModeSegmentedToggle(
     advancedSettings: Boolean,
     onModeChange: (Boolean) -> Unit,
+    width: Dp,
     modifier: Modifier = Modifier,
 ) {
     val colors = MaterialTheme.colorScheme
-    val backgroundColor = colors.onSurface.copy(alpha = 0.38f)
-    val selectedBackground = colors.surface.copy(alpha = 0.24f)
+    val backgroundColor = colors.onSurface.copy(alpha = 0.52f)
+    val selectedBackground = colors.background.copy(alpha = 0.30f)
 
-    Row(
-        modifier = modifier,
-        horizontalArrangement = Arrangement.End,
-        verticalAlignment = Alignment.CenterVertically,
+    Box(
+        modifier = modifier
+            .width(width)
+            .height(44.dp),
+        contentAlignment = Alignment.Center,
     ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(22.dp)
+                .clip(RoundedCornerShape(4.dp))
+                .background(backgroundColor),
+        )
         Row(
             modifier = Modifier
-                .width(230.dp)
-                .height(28.dp)
-                .clip(RoundedCornerShape(8.dp))
-                .background(backgroundColor)
-                .padding(2.dp)
+                .fillMaxSize()
                 .selectableGroup(),
             verticalAlignment = Alignment.CenterVertically,
         ) {
@@ -304,8 +320,8 @@ private fun SettingsModeSegmentedToggle(
                 onClick = { onModeChange(false) },
                 selectedBackground = selectedBackground,
                 selectedTextColor = colors.onSurface,
-                unselectedTextColor = colors.onSurface.copy(alpha = 0.78f),
-                modifier = Modifier.weight(1f),
+                unselectedTextColor = colors.onSurface.copy(alpha = 0.85f),
+                modifier = Modifier.weight(0.39f),
             )
             SettingsModeSegment(
                 title = stringResource(R.string.capsule_settings_mode_advanced),
@@ -313,8 +329,8 @@ private fun SettingsModeSegmentedToggle(
                 onClick = { onModeChange(true) },
                 selectedBackground = selectedBackground,
                 selectedTextColor = colors.onSurface,
-                unselectedTextColor = colors.onSurface.copy(alpha = 0.78f),
-                modifier = Modifier.weight(1f),
+                unselectedTextColor = colors.onSurface.copy(alpha = 0.85f),
+                modifier = Modifier.weight(0.61f),
             )
         }
     }
@@ -333,8 +349,6 @@ private fun SettingsModeSegment(
     Box(
         modifier = modifier
             .fillMaxHeight()
-            .clip(RoundedCornerShape(6.dp))
-            .background(if (selected) selectedBackground else Color.Transparent)
             .selectable(
                 selected = selected,
                 role = Role.Tab,
@@ -342,14 +356,25 @@ private fun SettingsModeSegment(
             ),
         contentAlignment = Alignment.Center,
     ) {
-        Text(
-            text = title,
-            fontSize = 11.sp,
-            maxLines = 1,
-            softWrap = false,
-            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
-            color = if (selected) selectedTextColor else unselectedTextColor,
-        )
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(20.dp)
+                .padding(horizontal = 1.dp, vertical = 1.dp)
+                .clip(RoundedCornerShape(3.dp))
+                .background(if (selected) selectedBackground else Color.Transparent),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(
+                text = title,
+                fontSize = 9.sp,
+                fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
+                color = if (selected) selectedTextColor else unselectedTextColor,
+                maxLines = 1,
+                softWrap = false,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
     }
 }
 
