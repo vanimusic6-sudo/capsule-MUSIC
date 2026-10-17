@@ -95,12 +95,24 @@ fun StandardHeaderTitle(
                         modifier = Modifier.size(22.dp),
                     )
                 } else {
-                    Text(
-                        accountName?.takeUnless { it == "Guest" }?.trim()?.firstOrNull()?.uppercase() ?: "C",
-                        color = Color.White,
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.SemiBold,
-                    )
+                    val initial = accountName?.takeUnless { it == "Guest" }
+                        ?.trim()?.firstOrNull()?.uppercase()
+                    if (initial != null) {
+                        Text(
+                            text = initial,
+                            color = Color.White,
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                    } else {
+                        // No legacy "C" placeholder while the account loads.
+                        Icon(
+                            painter = painterResource(R.drawable.person),
+                            contentDescription = null,
+                            tint = Color.White,
+                            modifier = Modifier.size(19.dp),
+                        )
+                    }
                     AsyncImage(
                         model = if (signedIn) accountImageUrl else null,
                         contentDescription = null,
