@@ -6,6 +6,10 @@
 
 package com.nikhil.yt.ui.screens.settings
 
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -30,13 +34,27 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import com.nikhil.yt.R
+import com.nikhil.yt.ui.motion.capsuleDialogEntrance
 import sh.calvin.reorderable.ReorderableItem
 import sh.calvin.reorderable.rememberReorderableLazyListState
+
+private val PriorityMoveSpec = spring<IntOffset>(
+    dampingRatio = Spring.DampingRatioNoBouncy,
+    stiffness = Spring.StiffnessMediumLow,
+)
+private val PriorityLiftSpec = spring<Float>(
+    dampingRatio = Spring.DampingRatioNoBouncy,
+    stiffness = Spring.StiffnessMedium,
+)
 
 /**
  * Drag a list of ids into the order they should be tried in.
@@ -61,6 +79,14 @@ internal fun PriorityOrderDialog(
     // Keep the in-dialog list stable while DataStore publishes live updates back to the parent.
     // Re-keying this state from currentOrder would interrupt an active drag on every persisted move.
     var orderedIds by remember { mutableStateOf(currentOrder) }
+    var pendingOrderChange by remember { mutableStateOf(false) }
+    val haptics = LocalHapticFeedback.current
+    fun saveSettledOrder() {
+        if (pendingOrderChange) {
+            pendingOrderChange = false
+            onOrderChange(orderedIds)
+        }
+    }
     val lazyListState = rememberLazyListState()
     val reorderableState =
         rememberReorderableLazyListState(lazyListState) { from, to ->
@@ -71,19 +97,26 @@ internal fun PriorityOrderDialog(
                     orderedIds.toMutableList().apply {
                         add(toIndex, removeAt(fromIndex))
                     }
-                // The reorder library requires the backing list to change synchronously.
-                // Persist only after that local move so the dragged row never flickers or jumps.
+                // The library needs a synchronous, locally keyed list change to keep the
+                // item under the finger. Do NOT publish to DataStore on every crossed row:
+                // it feeds snapshots back mid-gesture, creating jumpy rearrangements.
                 orderedIds = reordered
-                onOrderChange(reordered)
+                pendingOrderChange = true
+                haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
             }
         }
 
-    Dialog(onDismissRequest = onDismiss) {
+    val dismissAfterSave = {
+        saveSettledOrder()
+        onDismiss()
+    }
+    Dialog(onDismissRequest = dismissAfterSave) {
         Surface(
             modifier =
                 Modifier
                     .fillMaxWidth()
-                    .widthIn(max = 560.dp),
+                    .widthIn(max = 560.dp)
+                    .capsuleDialogEntrance(),
             shape = RoundedCornerShape(24.dp),
             tonalElevation = 6.dp,
         ) {
@@ -106,7 +139,15 @@ internal fun PriorityOrderDialog(
                         items = orderedIds,
                         key = { _, id -> id },
                     ) { index, id ->
-                        ReorderableItem(state = reorderableState, key = id) { isDragging ->
+                        ReorderableItem(
+                            state = reorderableState,
+                            key = id,
+                            animateItemModifier = Modifier.animateItem(
+                                fadeInSpec = null,
+                                fadeOutSpec = null,
+                                placementSpec = PriorityMoveSpec,
+                            ),
+                        ) { isDragging ->
                             PriorityRow(
                                 position = index + 1,
                                 id = id,
@@ -114,7 +155,14 @@ internal fun PriorityOrderDialog(
                                 sublabel = sublabel(id),
                                 showRawId = showRawId,
                                 isDragging = isDragging,
-                                dragHandleModifier = Modifier.draggableHandle(),
+                                dragHandleModifier = Modifier.draggableHandle(
+                                    onDragStarted = {
+                                        haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                                    },
+                                    onDragStopped = {
+                                        saveSettledOrder()
+                                    },
+                                ),
                             )
                         }
                     }
@@ -138,12 +186,13 @@ internal fun PriorityOrderDialog(
                         onClick = {
                             val reset = onReset()
                             orderedIds = reset
+                            pendingOrderChange = false
                             onOrderChange(reset)
                         },
                     ) {
                         Text(stringResource(R.string.audio_client_priority_reset))
                     }
-                    TextButton(onClick = onDismiss) {
+                    TextButton(onClick = dismissAfterSave) {
                         Text(stringResource(R.string.audio_client_priority_done))
                     }
                 }
@@ -161,12 +210,29 @@ private fun PriorityRow(
     showRawId: Boolean,
     isDragging: Boolean,
     dragHandleModifier: Modifier,
-) {
+ ) {
+    // The lifted item remains attached to the finger; its neighbours move
+    // with one non-bouncy placement spring instead of snapping or leapfrogging.
+    val lift by animateDpAsState(
+        targetValue = if (isDragging) 8.dp else 0.dp,
+        animationSpec = spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = Spring.StiffnessMedium),
+        label = "priorityRowLift",
+    )
+    val scale by animateFloatAsState(
+        targetValue = if (isDragging) 1.016f else 1f,
+        animationSpec = PriorityLiftSpec,
+        label = "priorityRowPressedScale",
+    )
     Surface(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .graphicsLayer {
+                scaleX = scale
+                scaleY = scale
+            },
         shape = RoundedCornerShape(16.dp),
         color = MaterialTheme.colorScheme.surfaceVariant,
-        shadowElevation = if (isDragging) 8.dp else 0.dp,
+        shadowElevation = lift,
     ) {
         Row(
             modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 12.dp),

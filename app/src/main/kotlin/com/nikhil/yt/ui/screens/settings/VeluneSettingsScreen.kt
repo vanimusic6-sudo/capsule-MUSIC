@@ -8,6 +8,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.animation.core.Spring
@@ -662,6 +663,33 @@ private fun SettingsModeSegment(
     }
 }
 
+/**
+ * The tap belongs to the row, not to its icon or text separately.
+ *
+ * Material gestures stay accessible; only the visual ripple is replaced by
+ * a restrained scale under the finger. The spring reads through graphicsLayer
+ * (draw phase), so holding a settings category does not remeasure the LazyColumn.
+ */
+@Composable
+private fun Modifier.settingsRowPress(onClick: () -> Unit): Modifier {
+    val source = remember { MutableInteractionSource() }
+    val pressed by source.collectIsPressedAsState()
+    val scale by animateFloatAsState(
+        targetValue = if (pressed) 0.984f else 1f,
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioNoBouncy,
+            stiffness = Spring.StiffnessMedium,
+        ),
+        label = "settingsCategoryPress",
+    )
+    return this
+        .graphicsLayer {
+            scaleX = scale
+            scaleY = scale
+        }
+        .clickable(interactionSource = source, indication = null, onClick = onClick)
+}
+
 @Composable
 private fun SettingsItemScreenshotStyle(
     icon: Painter,
@@ -671,7 +699,7 @@ private fun SettingsItemScreenshotStyle(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(onClick = onClick)
+            .settingsRowPress(onClick)
             .padding(vertical = 30.dp, horizontal = 4.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -708,7 +736,7 @@ private fun SettingsItemAccountStyle(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(onClick = onClick)
+            .settingsRowPress(onClick)
             .padding(vertical = 22.dp, horizontal = 4.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {

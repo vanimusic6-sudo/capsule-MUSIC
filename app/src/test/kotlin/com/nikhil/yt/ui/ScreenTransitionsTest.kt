@@ -14,21 +14,9 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * Route changes must stay instant, in both directions.
- *
- * This is not a style preference to be relaxed later. A timed route transition keeps both
- * destinations composed for its whole duration, and that window is what let a popped destination
- * recompose after its NavBackStackEntry was destroyed — the ViewModel IllegalStateException seen on
- * device under rapid tab switching. It is also what made switching hitch and made each tab feel like
- * it moved at a different speed.
- *
- * And an exit transition is, by construction, one screen drawn over another: a fade means the screen
- * behind shows through the one leaving, and a slide means they occupy the screen together. That is
- * the single effect this app does not want anywhere, so no route pairing gets one — not even leaving
- * settings, which used to be the one exception.
- *
- * What leaving settings gets instead is direction: the page you return to arrives from the edge you
- * left by. One screen moves, one screen is on display.
+ * Non-settings navigation remains instant for lifecycle and performance safety.
+ * Settings is the one opted-in animated route, with the real previous screen
+ * visible below it while returning from Back.
  */
 class ScreenTransitionsTest {
     private val routes = listOf(
@@ -37,23 +25,38 @@ class ScreenTransitionsTest {
         "artist/abc", "album/xyz", "search/query",
     )
 
-    @Test fun `no route pairing ever produces a transition in either direction`() {
+    @Test fun `only settings receives real spatial NavHost transitions`() {
+        // Tab switches (and every non-settings destination) are still instant.
+        // That is the core safety guard against the old destroyed-entry crash.
         routes.forEach { from ->
             routes.forEach { to ->
-                listOf(false, true).forEach { isPop ->
-                    assertEquals(
-                        "enter $from -> $to (isPop=$isPop) would keep two destinations composed",
-                        EnterTransition.None,
-                        ScreenTransitions.enter(from, to, isPop),
-                    )
-                    assertEquals(
-                        "exit $from -> $to (isPop=$isPop) would draw one screen over another",
-                        ExitTransition.None,
-                        ScreenTransitions.exit(from, to, isPop),
-                    )
+                listOf(false, true).forEach { pop ->
+                    val fromSettings = from == "settings" || from?.startsWith("settings/") == true
+                    val toSettings = to == "settings" || to?.startsWith("settings/") == true
+                    val enter = ScreenTransitions.enter(from, to, pop)
+                    val exit = ScreenTransitions.exit(from, to, pop)
+                    if (!pop && toSettings) {
+                        assertTrue("settings $to should enter from right", enter != EnterTransition.None)
+                    } else {
+                        assertEquals("no incoming animation for $from -> $to pop=$pop", EnterTransition.None, enter)
+                    }
+                    if (pop && fromSettings) {
+                        assertTrue("settings $from should return to right", exit != ExitTransition.None)
+                    } else {
+                        assertEquals("no outgoing animation for $from -> $to pop=$pop", ExitTransition.None, exit)
+                    }
                 }
             }
         }
+    }
+
+    @Test fun `settings motion belongs to NavHost and cannot also apply inside the route`() {
+        val file = listOf(
+            java.io.File("src/main/kotlin/com/nikhil/yt/ui/screens/CapsuleRouteSurface.kt"),
+            java.io.File("app/src/main/kotlin/com/nikhil/yt/ui/screens/CapsuleRouteSurface.kt"),
+        ).first { it.isFile }.readText()
+        assertTrue(file.contains("if (settingsNavigation) Modifier else"))
+        assertTrue(file.contains("arrival.from == \"settings\""))
     }
 
     @Test fun `stepping back out of settings arrives from the leading edge`() {

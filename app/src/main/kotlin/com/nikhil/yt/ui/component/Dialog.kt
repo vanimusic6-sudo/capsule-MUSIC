@@ -86,6 +86,7 @@ import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.window.Popup
 import androidx.navigation.NavController
 import com.nikhil.yt.R
+import com.nikhil.yt.ui.motion.capsuleDialogEntrance
 
 import kotlinx.coroutines.delay
 import androidx.compose.ui.platform.LocalContext
@@ -114,7 +115,7 @@ fun DefaultDialog(
             contentAlignment = Alignment.Center,
         ) {
             Surface(
-                modifier = Modifier.heightIn(max = maxHeight),
+                modifier = Modifier.heightIn(max = maxHeight).capsuleDialogEntrance(),
                 shape = AlertDialogDefaults.shape,
                 color = AlertDialogDefaults.containerColor,
                 tonalElevation = AlertDialogDefaults.TonalElevation,
@@ -201,7 +202,7 @@ fun ActionPromptDialog(
         properties = DialogProperties(usePlatformDefaultWidth = false),
     ) {
         Surface(
-            modifier = Modifier.padding(24.dp),
+            modifier = Modifier.padding(24.dp).capsuleDialogEntrance(),
             shape = AlertDialogDefaults.shape,
             color = AlertDialogDefaults.containerColor,
             tonalElevation = AlertDialogDefaults.TonalElevation,
@@ -272,7 +273,7 @@ fun ListDialog(
         properties = DialogProperties(usePlatformDefaultWidth = false),
     ) {
         Surface(
-            modifier = Modifier.padding(24.dp),
+            modifier = Modifier.padding(24.dp).capsuleDialogEntrance(),
             shape = AlertDialogDefaults.shape,
             color = AlertDialogDefaults.containerColor,
             tonalElevation = AlertDialogDefaults.TonalElevation,

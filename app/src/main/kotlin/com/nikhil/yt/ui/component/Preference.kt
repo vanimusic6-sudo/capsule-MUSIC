@@ -9,6 +9,11 @@
 package com.nikhil.yt.ui.component
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -24,6 +29,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.LocalRippleConfiguration
 import androidx.compose.material3.ProvideTextStyle
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Slider
@@ -33,6 +39,7 @@ import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -41,6 +48,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
@@ -63,14 +71,32 @@ fun PreferenceEntry(
     trailingContent: (@Composable () -> Unit)? = null,
     onClick: (() -> Unit)? = null,
     isEnabled: Boolean = true,
-) {
+ ) {
+    // Press feedback is a tiny physical compression, not a bright overlay.
+    // Reading the spring in graphicsLayer avoids relaying out all preference children every frame.
+    val pressInteractions = remember { MutableInteractionSource() }
+    val isPressed by pressInteractions.collectIsPressedAsState()
+    val pressScale by animateFloatAsState(
+        targetValue = if (isPressed && isEnabled && onClick != null) 0.985f else 1f,
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioNoBouncy,
+            stiffness = Spring.StiffnessMedium,
+        ),
+        label = "preferenceRowPress",
+    )
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier =
         modifier
             .fillMaxWidth()
+            .graphicsLayer {
+                scaleX = pressScale
+                scaleY = pressScale
+            }
             .clickable(
                 enabled = isEnabled && onClick != null,
+                interactionSource = pressInteractions,
+                indication = null,
                 onClick = onClick ?: {},
             ).alpha(if (isEnabled) 1f else 0.5f)
             .padding(horizontal = 16.dp, vertical = 16.dp),
@@ -188,6 +214,7 @@ inline fun <reified T : Enum<T>> EnumListPreference(
     )
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SwitchPreference(
     modifier: Modifier = Modifier,
@@ -204,20 +231,27 @@ fun SwitchPreference(
         description = description,
         icon = icon,
         trailingContent = {
-            Switch(
-                checked = checked,
-                onCheckedChange = onCheckedChange,
-                enabled = isEnabled,
-                thumbContent = {
-                    Icon(
-                        painter = painterResource(
-                            id = if (checked) R.drawable.check else R.drawable.close
-                        ),
-                        contentDescription = null,
-                        modifier = Modifier.size(SwitchDefaults.IconSize),
-                    )
-                }
-            )
+            // Material 3 supplies the correct native unselected->selected thumb size spring,
+            // but ONLY if the unchecked thumb has no icon content. The old "X" made both
+            // states equally large. Suppress the separate circular ripple/halo on press.
+            CompositionLocalProvider(LocalRippleConfiguration provides null) {
+                Switch(
+                    checked = checked,
+                    onCheckedChange = onCheckedChange,
+                    enabled = isEnabled,
+                    thumbContent = if (checked) {
+                        {
+                            Icon(
+                                painter = painterResource(R.drawable.check),
+                                contentDescription = null,
+                                modifier = Modifier.size(SwitchDefaults.IconSize),
+                            )
+                        }
+                    } else {
+                        null
+                    },
+                )
+            }
         },
         onClick = { onCheckedChange(!checked) },
         isEnabled = isEnabled
