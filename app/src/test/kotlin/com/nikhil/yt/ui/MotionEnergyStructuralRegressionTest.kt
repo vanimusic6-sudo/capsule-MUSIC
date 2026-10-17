@@ -89,6 +89,36 @@ class MotionEnergyStructuralRegressionTest {
     }
 
     @Test
+    fun priorityReorderNeverPublishesDuringDragAndKeepsActionsVisible() {
+        val source = source("screens/settings/PriorityOrderDialog.kt")
+        assertTrue(source.contains("var isReordering by remember"))
+        assertTrue(source.contains("LaunchedEffect(isReordering, pendingOrderChange)"))
+        assertTrue(source.contains("if (!isReordering && pendingOrderChange)"))
+        assertTrue(source.contains("delay(320)"))
+        assertFalse("no immediate DataStore write on finger-up", source.contains("onDragStopped = {\n                                        saveSettledOrder()"))
+        assertTrue(source.contains(".heightIn(max = maxHeight - 24.dp)"))
+        assertTrue(source.contains(".weight(1f, fill = false)"))
+        assertTrue(source.contains(".size(48.dp)"))
+        assertTrue(source.contains(".heightIn(min = 104.dp)"))
+        assertTrue(source.contains("maxLines = 2"))
+        assertTrue(source.contains("scaleX = scale.value"))
+    }
+
+    @Test
+    fun settingsNavigationIsFullWidthPushWithoutNestedScaleOrFade() {
+        val routes = source("screens/ScreenTransitions.kt")
+        assertTrue(routes.contains("SettingsRouteMotion.NESTED"))
+        assertTrue(routes.contains("initialOffsetX = { -it }"))
+        assertTrue(routes.contains("initialOffsetX = { it }"))
+        assertTrue(routes.contains("targetOffsetX = { -it }"))
+        assertTrue(routes.contains("targetOffsetX = { it }"))
+        val nested = routes.substringAfter("SettingsRouteMotion.NESTED ->")
+            .substringBefore("SettingsRouteMotion.ROOT ->")
+        assertFalse("nested route must not squeeze glyphs", nested.contains("scaleIn("))
+        assertFalse("nested route must not fade and overlap", nested.contains("fadeIn("))
+    }
+
+    @Test
     fun sharedSettingsDialogsUseFiniteEntranceOnly() {
         val helper = source("motion/SettingsDialogEntrance.kt")
         val dialog = source("component/Dialog.kt")
