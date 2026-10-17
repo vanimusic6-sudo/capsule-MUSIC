@@ -9,6 +9,7 @@ package com.nikhil.yt.ui.component
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.MutableTransitionState
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
@@ -35,6 +36,7 @@ import androidx.compose.material3.ShapeDefaults
 import androidx.compose.material3.surfaceColorAtElevation
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
@@ -76,10 +78,14 @@ fun BottomSheetPage(
     background: Color = MaterialTheme.colorScheme.surfaceColorAtElevation(NavigationBarDefaults.Elevation),
 ) {
     val focusManager = LocalFocusManager.current
+    val visibility = remember { MutableTransitionState(false) }
+    visibility.targetState = state.isVisible
 
-    // The outside area is only a dismissal hit target. It never dims or blends the page below.
-    if (state.isVisible) {
-        BackHandler {
+    // Keep the outside hit target for the *entire* slide-out. Removing it on the first
+    // dismissal frame allows taps to fall through while a still-visible page is leaving.
+    // Once the exit finishes currentState becomes false and no invisible blocker remains.
+    if (visibility.currentState || visibility.targetState) {
+        BackHandler(enabled = state.isVisible) {
             state.dismiss()
         }
 
@@ -101,13 +107,13 @@ fun BottomSheetPage(
      * translate with a bounce bolted onto the end.
      */
     AnimatedVisibility(
-        visible = state.isVisible,
+        visibleState = visibility,
         enter =
             slideInVertically(
                 initialOffsetY = { it },
                 animationSpec =
                     spring(
-                        dampingRatio = 0.80f,
+                        dampingRatio = 0.92f,
                         stiffness = 165f,
                     ),
             ),
@@ -116,7 +122,7 @@ fun BottomSheetPage(
                 targetOffsetY = { it },
                 animationSpec =
                     spring(
-                        dampingRatio = 0.84f,
+                        dampingRatio = 0.96f,
                         stiffness = 195f,
                     ),
             ),

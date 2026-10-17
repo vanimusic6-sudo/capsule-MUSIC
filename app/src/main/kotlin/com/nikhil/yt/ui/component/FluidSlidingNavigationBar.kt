@@ -37,6 +37,7 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.sp
 import com.nikhil.yt.ui.screens.Screens
 
@@ -152,13 +153,23 @@ internal fun StandardNavigationBar(
         val compact = maxHeight < 72.dp
         val tabWidth = maxWidth / items.size
         val pillWidth = 54.dp
-        val indicatorOffset by animateDpAsState(
+        val indicatorOffset = animateDpAsState(
             targetValue = tabWidth * selectedIndex + (tabWidth - pillWidth) / 2,
             animationSpec = spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = Spring.StiffnessLow),
             label = "standardNavigationIndicator",
         )
+        // Observe each spring frame during placement, not composition. The pill is decorative:
+        // moving it must not recompose the icon/text row on every 60/90/120 Hz frame.
+        // offset {} also preserves the existing pill geometry and avoids an extra GPU layer.
         Box(
-            Modifier.offset(x = indicatorOffset, y = if (compact) 8.dp else 12.dp).size(pillWidth, if (compact) 32.dp else 36.dp)
+            Modifier
+                .offset {
+                    IntOffset(
+                        x = indicatorOffset.value.roundToPx(),
+                        y = (if (compact) 8.dp else 12.dp).roundToPx(),
+                    )
+                }
+                .size(pillWidth, if (compact) 32.dp else 36.dp)
                 .background(StandardChrome.selected, CircleShape),
         )
         Row(Modifier.fillMaxSize()) {

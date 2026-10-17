@@ -14,6 +14,8 @@ import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.core.spring
+import com.nikhil.yt.ui.motion.CapsuleEnterEasing
+import com.nikhil.yt.ui.motion.CapsuleExitEasing
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.*
@@ -40,6 +42,7 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlin.math.PI
@@ -56,6 +59,22 @@ import com.nikhil.yt.utils.rememberPreference
 import com.nikhil.yt.constants.InnerTubeCookieKey
 import com.nikhil.yt.constants.SettingsAdvancedModeKey
 import com.nikhil.yt.constants.SettingsAdvancedWarningSeenKey
+
+/**
+ * Only mode-dependent settings rows animate: their insertion/removal is deliberately calm.
+ * Share immutable specs instead of allocating three animation specs for each of 14 rows during
+ * mode toggles. A critically damped placement spring reaches the new slot without a bounce that
+ * can look like the upper rows are hopping after the user changes modes.
+ *
+ * Keep the entrance/exit independent: fading out clears promptly, while the placement spring
+ * remains interruptible if the user switches modes again before it settles.
+ */
+private val SettingsRowFadeIn = tween<Float>(durationMillis = 260, easing = CapsuleEnterEasing)
+private val SettingsRowFadeOut = tween<Float>(durationMillis = 180, easing = CapsuleExitEasing)
+private val SettingsRowPlacement = spring<IntOffset>(
+    dampingRatio = Spring.DampingRatioNoBouncy,
+    stiffness = Spring.StiffnessMediumLow,
+)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -161,12 +180,9 @@ fun VeluneSettingsScreen(
                     modifier = Modifier
                     .fillMaxWidth()
                     .animateItem(
-                        fadeInSpec = tween(durationMillis = 260),
-                        fadeOutSpec = tween(durationMillis = 160),
-                        placementSpec = spring(
-                            dampingRatio = 0.88f,
-                            stiffness = Spring.StiffnessMediumLow,
-                        ),
+                        fadeInSpec = SettingsRowFadeIn,
+                        fadeOutSpec = SettingsRowFadeOut,
+                        placementSpec = SettingsRowPlacement,
                     ),
                 ) {
                 SettingsItemScreenshotStyle(
@@ -183,12 +199,9 @@ fun VeluneSettingsScreen(
                     modifier = Modifier
                     .fillMaxWidth()
                     .animateItem(
-                        fadeInSpec = tween(durationMillis = 260),
-                        fadeOutSpec = tween(durationMillis = 160),
-                        placementSpec = spring(
-                            dampingRatio = 0.88f,
-                            stiffness = Spring.StiffnessMediumLow,
-                        ),
+                        fadeInSpec = SettingsRowFadeIn,
+                        fadeOutSpec = SettingsRowFadeOut,
+                        placementSpec = SettingsRowPlacement,
                     ),
                 ) {
                 SettingsItemScreenshotStyle(
@@ -205,12 +218,9 @@ fun VeluneSettingsScreen(
                     modifier = Modifier
                     .fillMaxWidth()
                     .animateItem(
-                        fadeInSpec = tween(durationMillis = 260),
-                        fadeOutSpec = tween(durationMillis = 160),
-                        placementSpec = spring(
-                            dampingRatio = 0.88f,
-                            stiffness = Spring.StiffnessMediumLow,
-                        ),
+                        fadeInSpec = SettingsRowFadeIn,
+                        fadeOutSpec = SettingsRowFadeOut,
+                        placementSpec = SettingsRowPlacement,
                     ),
                 ) {
                 if (isLoggedIn) {
@@ -236,12 +246,9 @@ fun VeluneSettingsScreen(
                     modifier = Modifier
                     .fillMaxWidth()
                     .animateItem(
-                        fadeInSpec = tween(durationMillis = 260),
-                        fadeOutSpec = tween(durationMillis = 160),
-                        placementSpec = spring(
-                            dampingRatio = 0.88f,
-                            stiffness = Spring.StiffnessMediumLow,
-                        ),
+                        fadeInSpec = SettingsRowFadeIn,
+                        fadeOutSpec = SettingsRowFadeOut,
+                        placementSpec = SettingsRowPlacement,
                     ),
                 ) {
                 SettingsItemScreenshotStyle(
@@ -258,12 +265,9 @@ fun VeluneSettingsScreen(
                     modifier = Modifier
                     .fillMaxWidth()
                     .animateItem(
-                        fadeInSpec = tween(durationMillis = 260),
-                        fadeOutSpec = tween(durationMillis = 160),
-                        placementSpec = spring(
-                            dampingRatio = 0.88f,
-                            stiffness = Spring.StiffnessMediumLow,
-                        ),
+                        fadeInSpec = SettingsRowFadeIn,
+                        fadeOutSpec = SettingsRowFadeOut,
+                        placementSpec = SettingsRowPlacement,
                     ),
                 ) {
                 SettingsItemScreenshotStyle(
@@ -281,12 +285,9 @@ fun VeluneSettingsScreen(
                     modifier = Modifier
                     .fillMaxWidth()
                     .animateItem(
-                        fadeInSpec = tween(durationMillis = 260),
-                        fadeOutSpec = tween(durationMillis = 160),
-                        placementSpec = spring(
-                            dampingRatio = 0.88f,
-                            stiffness = Spring.StiffnessMediumLow,
-                        ),
+                        fadeInSpec = SettingsRowFadeIn,
+                        fadeOutSpec = SettingsRowFadeOut,
+                        placementSpec = SettingsRowPlacement,
                     ),
                 ) {
                 SettingsItemScreenshotStyle(
@@ -304,12 +305,9 @@ fun VeluneSettingsScreen(
                     modifier = Modifier
                     .fillMaxWidth()
                     .animateItem(
-                        fadeInSpec = tween(durationMillis = 260),
-                        fadeOutSpec = tween(durationMillis = 160),
-                        placementSpec = spring(
-                            dampingRatio = 0.88f,
-                            stiffness = Spring.StiffnessMediumLow,
-                        ),
+                        fadeInSpec = SettingsRowFadeIn,
+                        fadeOutSpec = SettingsRowFadeOut,
+                        placementSpec = SettingsRowPlacement,
                     ),
                 ) {
                 SettingsItemScreenshotStyle(
@@ -327,12 +325,9 @@ fun VeluneSettingsScreen(
                     modifier = Modifier
                     .fillMaxWidth()
                     .animateItem(
-                        fadeInSpec = tween(durationMillis = 260),
-                        fadeOutSpec = tween(durationMillis = 160),
-                        placementSpec = spring(
-                            dampingRatio = 0.88f,
-                            stiffness = Spring.StiffnessMediumLow,
-                        ),
+                        fadeInSpec = SettingsRowFadeIn,
+                        fadeOutSpec = SettingsRowFadeOut,
+                        placementSpec = SettingsRowPlacement,
                     ),
                 ) {
                 SettingsItemScreenshotStyle(
@@ -349,12 +344,9 @@ fun VeluneSettingsScreen(
                     modifier = Modifier
                     .fillMaxWidth()
                     .animateItem(
-                        fadeInSpec = tween(durationMillis = 260),
-                        fadeOutSpec = tween(durationMillis = 160),
-                        placementSpec = spring(
-                            dampingRatio = 0.88f,
-                            stiffness = Spring.StiffnessMediumLow,
-                        ),
+                        fadeInSpec = SettingsRowFadeIn,
+                        fadeOutSpec = SettingsRowFadeOut,
+                        placementSpec = SettingsRowPlacement,
                     ),
                 ) {
                 SettingsItemScreenshotStyle(
@@ -372,12 +364,9 @@ fun VeluneSettingsScreen(
                     modifier = Modifier
                     .fillMaxWidth()
                     .animateItem(
-                        fadeInSpec = tween(durationMillis = 260),
-                        fadeOutSpec = tween(durationMillis = 160),
-                        placementSpec = spring(
-                            dampingRatio = 0.88f,
-                            stiffness = Spring.StiffnessMediumLow,
-                        ),
+                        fadeInSpec = SettingsRowFadeIn,
+                        fadeOutSpec = SettingsRowFadeOut,
+                        placementSpec = SettingsRowPlacement,
                     ),
                 ) {
                 SettingsItemScreenshotStyle(
@@ -394,12 +383,9 @@ fun VeluneSettingsScreen(
                     modifier = Modifier
                     .fillMaxWidth()
                     .animateItem(
-                        fadeInSpec = tween(durationMillis = 260),
-                        fadeOutSpec = tween(durationMillis = 160),
-                        placementSpec = spring(
-                            dampingRatio = 0.88f,
-                            stiffness = Spring.StiffnessMediumLow,
-                        ),
+                        fadeInSpec = SettingsRowFadeIn,
+                        fadeOutSpec = SettingsRowFadeOut,
+                        placementSpec = SettingsRowPlacement,
                     ),
                 ) {
                 SettingsItemScreenshotStyle(
@@ -416,12 +402,9 @@ fun VeluneSettingsScreen(
                     modifier = Modifier
                     .fillMaxWidth()
                     .animateItem(
-                        fadeInSpec = tween(durationMillis = 260),
-                        fadeOutSpec = tween(durationMillis = 160),
-                        placementSpec = spring(
-                            dampingRatio = 0.88f,
-                            stiffness = Spring.StiffnessMediumLow,
-                        ),
+                        fadeInSpec = SettingsRowFadeIn,
+                        fadeOutSpec = SettingsRowFadeOut,
+                        placementSpec = SettingsRowPlacement,
                     ),
                 ) {
                 SettingsItemScreenshotStyle(
@@ -443,12 +426,9 @@ fun VeluneSettingsScreen(
                     modifier = Modifier
                     .fillMaxWidth()
                     .animateItem(
-                        fadeInSpec = tween(durationMillis = 260),
-                        fadeOutSpec = tween(durationMillis = 160),
-                        placementSpec = spring(
-                            dampingRatio = 0.88f,
-                            stiffness = Spring.StiffnessMediumLow,
-                        ),
+                        fadeInSpec = SettingsRowFadeIn,
+                        fadeOutSpec = SettingsRowFadeOut,
+                        placementSpec = SettingsRowPlacement,
                     ),
                 ) {
                 SettingsItemScreenshotStyle(
@@ -466,12 +446,9 @@ fun VeluneSettingsScreen(
                     modifier = Modifier
                     .fillMaxWidth()
                     .animateItem(
-                        fadeInSpec = tween(durationMillis = 260),
-                        fadeOutSpec = tween(durationMillis = 160),
-                        placementSpec = spring(
-                            dampingRatio = 0.88f,
-                            stiffness = Spring.StiffnessMediumLow,
-                        ),
+                        fadeInSpec = SettingsRowFadeIn,
+                        fadeOutSpec = SettingsRowFadeOut,
+                        placementSpec = SettingsRowPlacement,
                     ),
                 ) {
                 SettingsItemScreenshotStyle(

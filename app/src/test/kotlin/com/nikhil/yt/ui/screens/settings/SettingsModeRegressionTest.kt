@@ -103,7 +103,14 @@ class SettingsModeRegressionTest {
         assertTrue(home.contains("shouldShowAdvancedModeWarning("))
         assertTrue(home.contains("showAdvancedWarning"))
         assertEquals(14, home.split(".animateItem(").size - 1)
-        assertTrue(home.contains("placementSpec = spring("))
+        // All rows share one critically damped placement spring. A mode change must not
+        // reallocate a spring for each item or bounce rows past their new positions.
+        assertTrue(home.contains("placementSpec = SettingsRowPlacement"))
+        assertTrue(home.contains("private val SettingsRowPlacement = spring<IntOffset>("))
+        assertTrue(home.contains("dampingRatio = Spring.DampingRatioNoBouncy"))
+        assertEquals(1, home.split("spring<IntOffset>(").size - 1)
+        assertEquals(14, home.split("fadeInSpec = SettingsRowFadeIn").size - 1)
+        assertEquals(14, home.split("fadeOutSpec = SettingsRowFadeOut").size - 1)
         assertTrue(home.contains("listState.animateScrollToItem(0)"))
         assertFalse(home.contains("Switch("))
         assertEquals(
