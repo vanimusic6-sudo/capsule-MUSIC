@@ -111,6 +111,12 @@ jobs:
             --tests 'com.nikhil.yt.ui.LyricsProviderOrderTest' \
             --stacktrace --no-daemon
 
+      - name: Test TASK 07 settings cleanup, modes and saved preferences
+        run: |
+          gradle :app:testUniversalDebugUnitTest \
+            --tests 'com.nikhil.yt.ui.screens.settings.SettingsModeRegressionTest' \
+            --stacktrace --no-daemon
+
       - name: Test TASK 02 Home and artwork regressions
         run: |
           gradle :app:testUniversalDebugUnitTest \
