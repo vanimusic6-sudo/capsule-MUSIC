@@ -5,9 +5,13 @@
 package com.nikhil.yt.ui.screens.settings
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.*
@@ -91,14 +95,15 @@ fun VeluneSettingsScreen(
                     }
                 },
                 actions = {
+                    // Give the longer label its natural space without shifting
+                    // the Settings title. On narrow screens use a short label.
                     val compactHeader = LocalConfiguration.current.screenWidthDp < 350
                     SettingsModeSegmentedToggle(
                         advancedSettings = advancedSettings,
                         onModeChange = onAdvancedSettingsChange,
-                        modifier = Modifier.padding(
-                            end = if (compactHeader) 12.dp else 28.dp,
-                        ),
-                        width = if (compactHeader) 142.dp else 156.dp,
+                        compactLabels = compactHeader,
+                        modifier = Modifier.padding(end = if (compactHeader) 8.dp else 10.dp),
+                        width = if (compactHeader) 154.dp else 174.dp,
                     )
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
@@ -278,22 +283,35 @@ fun VeluneSettingsScreen(
 
 
 /**
- * Compact mode selector beside the Settings title, matching the sketch.
+ * Integrated two-segment setting mode picker.
  *
- * A 44dp invisible touch region surrounds the 22dp visual capsule so its
- * small proportions do not make the two options hard to tap. The control
- * only writes the existing mode preference; it does not change settings.
+ * Previous failures came from the big opaque grey slab, the tiny text, and
+ * an even split for labels of very different lengths. Keep the visible
+ * surface compact but the touch targets 44dp high, and animate only the
+ * selected thumb while leaving the Settings header/layout unchanged.
  */
 @Composable
 private fun SettingsModeSegmentedToggle(
     advancedSettings: Boolean,
     onModeChange: (Boolean) -> Unit,
     width: Dp,
+    compactLabels: Boolean,
     modifier: Modifier = Modifier,
 ) {
-    val colors = MaterialTheme.colorScheme
-    val backgroundColor = colors.onSurface.copy(alpha = 0.52f)
-    val selectedBackground = colors.background.copy(alpha = 0.30f)
+    val scheme = MaterialTheme.colorScheme
+    val trackShape = RoundedCornerShape(11.dp)
+    val thumbShape = RoundedCornerShape(9.dp)
+    val trackWidth = width - 4.dp // 2dp inset on either side
+    val basicWidth = trackWidth * 0.32f
+    val advancedWidth = trackWidth - basicWidth
+    val thumbOffset by animateDpAsState(
+        targetValue = if (advancedSettings) basicWidth else 0.dp,
+        animationSpec = spring(
+            dampingRatio = 0.92f,
+            stiffness = Spring.StiffnessMedium,
+        ),
+        label = "settingsModeThumb",
+    )
 
     Box(
         modifier = modifier
@@ -304,13 +322,27 @@ private fun SettingsModeSegmentedToggle(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(22.dp)
-                .clip(RoundedCornerShape(4.dp))
-                .background(backgroundColor),
-        )
+                .height(30.dp)
+                .clip(trackShape)
+                .background(scheme.onSurface.copy(alpha = 0.085f))
+                .border(0.8.dp, scheme.onSurface.copy(alpha = 0.13f), trackShape)
+                .padding(2.dp),
+        ) {
+            Box(
+                modifier = Modifier
+                    .offset(x = thumbOffset)
+                    .width(if (advancedSettings) advancedWidth else basicWidth)
+                    .fillMaxHeight()
+                    .clip(thumbShape)
+                    .background(scheme.onSurface.copy(alpha = 0.16f))
+                    .border(0.7.dp, scheme.onSurface.copy(alpha = 0.08f), thumbShape),
+            )
+        }
+
         Row(
             modifier = Modifier
                 .fillMaxSize()
+                .padding(horizontal = 2.dp)
                 .selectableGroup(),
             verticalAlignment = Alignment.CenterVertically,
         ) {
@@ -318,19 +350,21 @@ private fun SettingsModeSegmentedToggle(
                 title = stringResource(R.string.capsule_settings_mode_user),
                 selected = !advancedSettings,
                 onClick = { onModeChange(false) },
-                selectedBackground = selectedBackground,
-                selectedTextColor = colors.onSurface,
-                unselectedTextColor = colors.onSurface.copy(alpha = 0.85f),
-                modifier = Modifier.weight(0.39f),
+                selectedTextColor = scheme.onSurface,
+                unselectedTextColor = scheme.onSurface.copy(alpha = 0.78f),
+                modifier = Modifier.weight(0.32f),
             )
             SettingsModeSegment(
-                title = stringResource(R.string.capsule_settings_mode_advanced),
+                title = if (compactLabels) {
+                    stringResource(R.string.capsule_settings_mode_advanced_compact)
+                } else {
+                    stringResource(R.string.capsule_settings_mode_advanced)
+                },
                 selected = advancedSettings,
                 onClick = { onModeChange(true) },
-                selectedBackground = selectedBackground,
-                selectedTextColor = colors.onSurface,
-                unselectedTextColor = colors.onSurface.copy(alpha = 0.85f),
-                modifier = Modifier.weight(0.61f),
+                selectedTextColor = scheme.onSurface,
+                unselectedTextColor = scheme.onSurface.copy(alpha = 0.78f),
+                modifier = Modifier.weight(0.68f),
             )
         }
     }
@@ -341,7 +375,6 @@ private fun SettingsModeSegment(
     title: String,
     selected: Boolean,
     onClick: () -> Unit,
-    selectedBackground: Color,
     selectedTextColor: Color,
     unselectedTextColor: Color,
     modifier: Modifier = Modifier,
@@ -356,25 +389,16 @@ private fun SettingsModeSegment(
             ),
         contentAlignment = Alignment.Center,
     ) {
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(20.dp)
-                .padding(horizontal = 1.dp, vertical = 1.dp)
-                .clip(RoundedCornerShape(3.dp))
-                .background(if (selected) selectedBackground else Color.Transparent),
-            contentAlignment = Alignment.Center,
-        ) {
-            Text(
-                text = title,
-                fontSize = 9.sp,
-                fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
-                color = if (selected) selectedTextColor else unselectedTextColor,
-                maxLines = 1,
-                softWrap = false,
-                overflow = TextOverflow.Ellipsis,
-            )
-        }
+        Text(
+            text = title,
+            fontSize = 10.sp,
+            letterSpacing = (-0.15).sp,
+            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
+            color = if (selected) selectedTextColor else unselectedTextColor,
+            maxLines = 1,
+            softWrap = false,
+            overflow = TextOverflow.Ellipsis,
+        )
     }
 }
 

@@ -816,5 +816,6 @@
     <string name="taste_recommendations_subtitle">По тому, что вы дослушиваете, переслушиваете и скипаете</string>
     <string name="capsule_settings_mode_toggle">Переключить режим настроек</string>
     <string name="capsule_settings_mode_user">Базовые</string>
+    <string name="capsule_settings_mode_advanced_compact">Разработка</string>
     <string name="capsule_settings_mode_advanced">Для разработчиков</string>
 </resources>
