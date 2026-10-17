@@ -118,6 +118,7 @@ jobs:
             --tests 'com.nikhil.yt.ui.player.PlayerArtworkReliabilityTest' \
             --tests 'com.nikhil.yt.ui.player.ImmersiveVideoArtworkClipRegressionTest' \
             --tests 'com.nikhil.yt.ui.component.MiniPlayerGestureArbiterTest' \
+            --tests 'com.nikhil.yt.ui.component.SquareArtworkCropTest' \
             --stacktrace --no-daemon
 
       - name: Test player transition and energy regressions

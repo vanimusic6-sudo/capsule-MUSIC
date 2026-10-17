@@ -378,7 +378,7 @@ fun CapsulePlayerContent(
     val cropAlbumArt by
         rememberPreference(
             CropThumbnailToSquareKey,
-            defaultValue = false,
+            defaultValue = ReleaseAppearanceDefaults.cropThumbnail,
         )
 
     val isLoading =
