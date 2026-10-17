@@ -31,6 +31,7 @@ Scope: **only navigation/header/settings dialogs**. No playback, video extractio
 ### Energy analysis
 - All new continuously changing values are sampled in draw/placement layers. A finite spring runs only while a visible transition is active.
 - **No** blur shaders, independent per-row clocks, infinite transitions, frame delays or timer polling were added. The greeting's clock updates at day-part boundaries only.
+- Priority-order drag used to read its animated elevation as a value passed to Material Surface, recomposing the whole row on every shadow frame. Now both lift elevation and scale are sampled in one graphicsLayer, while Material Surface shadow is static zero. The keyed LazyColumn placement animation is still responsible for neighbours.
 - NavHost temporarily keeps **two settings pages** alive for nested transitions. The worst-case cost and measured dropped frames on a HONOR device remain **unverified**; performance needs a Perfetto/FrameTimeline recording under fast Back/re-entry and scrolling during page travel.
 - Avoid changing unrelated `Material3SettingsGroup.animateContentSize()` or playback animations based only on a guess.
 
