@@ -56,7 +56,7 @@ class SettingsModeRegressionTest {
         assertEquals("OFF", settings[DarkModeKey])
     }
 
-    @Test fun userModeHasExactlySevenIndependentDestinations() {
+    @Test fun basicModeIncludesAccountListenTogetherAndAbout() {
         val home = source("com/nikhil/yt/ui/screens/settings/VeluneSettingsScreen.kt")
         val rows = Regex("""item\(key = "([^"]+)"\)""")
             .findAll(home).map { it.groupValues[1] }.toList()
@@ -114,16 +114,18 @@ class SettingsModeRegressionTest {
             ),
             rows,
         )
+        // Account, Listen Together, and About are visible in both modes.
         val advancedOnly = setOf(
-            "account", "listen_together", "video", "discord", "integration",
-            "developer", "about",
+            "video", "discord", "integration", "developer",
         )
         assertEquals(
-            listOf("appearance", "capsule_customize", "player", "content",
-                   "privacy", "storage", "backup"),
+            listOf(
+                "appearance", "capsule_customize", "account", "listen_together",
+                "player", "content", "privacy", "storage", "backup", "about",
+            ),
             rows.filterNot { it in advancedOnly },
         )
-        assertEquals(4, Regex("""(?m)^            if \(advancedSettings\) \{""").findAll(home).count())
+        assertEquals(3, Regex("""(?m)^            if \(advancedSettings\) \{""").findAll(home).count())
         assertTrue(home.contains("SettingsAdvancedModeKey, false"))
     }
 

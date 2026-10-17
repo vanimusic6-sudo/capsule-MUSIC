@@ -200,7 +200,6 @@ fun VeluneSettingsScreen(
                 }
             }
 
-            if (advancedSettings) {
             item(key = "account") {
                 Box(
                     modifier = Modifier
@@ -252,7 +251,6 @@ fun VeluneSettingsScreen(
                 )
             
                 }
-            }
             }
 
             item(key = "player") {
@@ -461,6 +459,7 @@ fun VeluneSettingsScreen(
             
                 }
             }
+            }
 
             item(key = "about") {
                 Box(
@@ -482,7 +481,6 @@ fun VeluneSettingsScreen(
                 )
             
                 }
-            }
             }
 
         }
