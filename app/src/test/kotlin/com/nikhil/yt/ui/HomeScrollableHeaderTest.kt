@@ -40,7 +40,9 @@ class HomeScrollableHeaderTest {
         assertTrue(routes.contains(".nestedScroll(scrollAwayConnection)"))
         assertTrue(routes.contains("headerOffsetPx = (headerOffsetPx + consumed.y)"))
         assertTrue(routes.contains("available.y > 0f"))
-        assertTrue(routes.contains("snappedHeaderPx.value.toInt()"))
+        assertTrue(routes.contains("headerOffsetPx.toInt()"))
+        assertTrue(routes.contains("revealJob[0] = scope.launch"))
+        assertTrue(routes.contains("available.y > 0f && headerOffsetPx < 0f"))
         assertFalse(routes.contains("stickyHeader("))
     }
 
