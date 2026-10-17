@@ -47,6 +47,8 @@ val EnableNetEaseKey = booleanPreferencesKey("enableNetEase")
  * their saved choice; relay and retrieval logic are unchanged.
  */
 val EnablePaxsenixAppleMusicKey = booleanPreferencesKey("enablePaxsenixAppleMusic")
+/** UI-only choice: never changes playback or rewrites other preferences. */
+val SettingsAdvancedModeKey = booleanPreferencesKey("settingsAdvancedModeV1")
 val HideExplicitKey = booleanPreferencesKey("hideExplicit")
 /** Experimental SoundCloud source (keeps the old preference name on existing installs). */
 val SoundCloudWebPreviewEnabledKey = booleanPreferencesKey("soundcloudWebPreviewEnabled")

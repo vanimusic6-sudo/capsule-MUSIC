@@ -34,6 +34,9 @@ import androidx.compose.ui.platform.LocalContext
 import com.nikhil.yt.App.Companion.forgetAccount
 import com.nikhil.yt.utils.rememberPreference
 import com.nikhil.yt.constants.InnerTubeCookieKey
+import com.nikhil.yt.constants.SettingsAdvancedModeKey
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.contentDescription
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -47,6 +50,8 @@ fun VeluneSettingsScreen(
     val isLoggedIn = accountName != "Guest" && !accountName.isNullOrEmpty()
     var showLogoutDialog by remember { mutableStateOf(false) }
     val (innerTubeCookie, onInnerTubeCookieChange) = rememberPreference(InnerTubeCookieKey, "")
+    val (advancedSettings, onAdvancedSettingsChange) =
+        rememberPreference(SettingsAdvancedModeKey, false)
     val listState = rememberLazyListState()
     val playerAwareInsets = LocalPlayerAwareWindowInsets.current
     val playerAwareBottomPadding = playerAwareInsets.asPaddingValues().calculateBottomPadding()
@@ -68,6 +73,31 @@ fun VeluneSettingsScreen(
                             painter = painterResource(R.drawable.arrow_back),
                             contentDescription = stringResource(R.string.capsule_settings_back),
                             modifier = Modifier.size(24.dp)
+                        )
+                    }
+                },
+                actions = {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.padding(end = 8.dp),
+                    ) {
+                        val currentMode = if (advancedSettings) {
+                            stringResource(R.string.capsule_settings_mode_advanced)
+                        } else {
+                            stringResource(R.string.capsule_settings_mode_user)
+                        }
+                        Text(
+                            text = currentMode,
+                            style = MaterialTheme.typography.labelSmall,
+                            maxLines = 1,
+                        )
+                        Spacer(Modifier.width(6.dp))
+                        Switch(
+                            checked = advancedSettings,
+                            onCheckedChange = onAdvancedSettingsChange,
+                            modifier = Modifier.semantics {
+                                contentDescription = currentMode
+                            },
                         )
                     }
                 },
@@ -103,6 +133,7 @@ fun VeluneSettingsScreen(
                 )
             }
 
+            if (advancedSettings) {
             item(key = "account") {
                 if (isLoggedIn) {
                     SettingsItemAccountStyle(
@@ -127,6 +158,7 @@ fun VeluneSettingsScreen(
                     onClick = { navController.navigate("settings/music_together") }
                 )
             }
+            }
 
             item(key = "player") {
                 SettingsItemScreenshotStyle(
@@ -136,12 +168,14 @@ fun VeluneSettingsScreen(
                 )
             }
 
+            if (advancedSettings) {
             item(key = "video") {
                 SettingsItemScreenshotStyle(
                     icon = painterResource(R.drawable.play),
                     title = stringResource(R.string.capsule_settings_video),
                     onClick = { navController.navigate("settings/video_playback") }
                 )
+            }
             }
 
             item(key = "content") {
@@ -152,6 +186,7 @@ fun VeluneSettingsScreen(
                 )
             }
 
+            if (advancedSettings) {
             item(key = "discord") {
                 SettingsItemScreenshotStyle(
                     icon = painterResource(R.drawable.discord),
@@ -166,6 +201,7 @@ fun VeluneSettingsScreen(
                     title = stringResource(R.string.capsule_settings_integration),
                     onClick = { navController.navigate("settings/integration") }
                 )
+            }
             }
 
             item(key = "privacy") {
@@ -196,6 +232,7 @@ fun VeluneSettingsScreen(
              * The debug screen was registered on settings/misc but nothing
              * linked to it, so the log viewer was unreachable from the app.
              */
+            if (advancedSettings) {
             item(key = "developer") {
                 SettingsItemScreenshotStyle(
                     icon = painterResource(R.drawable.experiment),
@@ -210,6 +247,7 @@ fun VeluneSettingsScreen(
                     title = stringResource(R.string.capsule_settings_about),
                     onClick = { navController.navigate("settings/about") }
                 )
+            }
             }
 
         }

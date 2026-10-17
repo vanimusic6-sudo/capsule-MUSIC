@@ -814,4 +814,6 @@
     <string name="artist_release_metadata">Альбом • %1$d</string>
     <string name="taste_recommendations">Похоже на ваш вкус</string>
     <string name="taste_recommendations_subtitle">По тому, что вы дослушиваете, переслушиваете и скипаете</string>
+    <string name="capsule_settings_mode_user">Обычные</string>
+    <string name="capsule_settings_mode_advanced">Расшир.</string>
 </resources>
