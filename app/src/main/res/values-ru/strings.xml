@@ -872,6 +872,6 @@
     <string name="home_greeting_evening">Добрый вечер</string>
     <string name="home_greeting_night">Доброй ночи</string>
     <string name="capsule_settings_mode_toggle">Переключить режим настроек</string>
-    <string name="capsule_settings_mode_user">Обычные</string>
-    <string name="capsule_settings_mode_advanced">Расшир.</string>
+    <string name="capsule_settings_mode_user">Базовые</string>
+    <string name="capsule_settings_mode_advanced">Для разработчиков</string>
 </resources>

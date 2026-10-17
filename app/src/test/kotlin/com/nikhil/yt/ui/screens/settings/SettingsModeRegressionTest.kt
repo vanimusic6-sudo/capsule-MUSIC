@@ -54,13 +54,17 @@ class SettingsModeRegressionTest {
         assertTrue(
             home.substringAfter("item(key = \"settings_mode\")")
                 .substringBefore("item(key = \"appearance\")")
-                .contains("onCheckedChange = onAdvancedSettingsChange")
+                .contains("onModeChange = onAdvancedSettingsChange")
         )
         assertFalse(home.substringBefore("        LazyColumn(").contains("actions = {"))
         val switchRow = home.substringAfter("item(key = \"settings_mode\")")
             .substringBefore("item(key = \"appearance\")")
         assertTrue(switchRow.contains(".fillMaxWidth()"))
-        assertTrue(switchRow.contains("horizontalArrangement = Arrangement.End"))
+        assertTrue(switchRow.contains("SettingsModeSegmentedToggle("))
+        assertTrue(home.contains("horizontalArrangement = Arrangement.End"))
+        assertTrue(home.contains(".selectableGroup()"))
+        assertTrue(home.contains("role = Role.Tab"))
+        assertFalse(switchRow.contains("Switch("))
         val destinations = rows.drop(1)
         assertEquals(
             listOf(

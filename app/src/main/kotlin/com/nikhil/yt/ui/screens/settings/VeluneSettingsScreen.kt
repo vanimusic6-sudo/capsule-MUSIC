@@ -6,6 +6,8 @@ package com.nikhil.yt.ui.screens.settings
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.*
@@ -19,6 +21,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.painter.Painter
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
@@ -35,9 +39,6 @@ import com.nikhil.yt.App.Companion.forgetAccount
 import com.nikhil.yt.utils.rememberPreference
 import com.nikhil.yt.constants.InnerTubeCookieKey
 import com.nikhil.yt.constants.SettingsAdvancedModeKey
-import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.stateDescription
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -98,34 +99,13 @@ fun VeluneSettingsScreen(
             // The mode control belongs to the scrollable Settings list, not
             // to the title bar. It uses the same horizontal content bounds.
             item(key = "settings_mode") {
-                Row(
+                SettingsModeSegmentedToggle(
+                    advancedSettings = advancedSettings,
+                    onModeChange = onAdvancedSettingsChange,
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = 4.dp, vertical = 12.dp),
-                    horizontalArrangement = Arrangement.End,
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    val currentMode = if (advancedSettings) {
-                        stringResource(R.string.capsule_settings_mode_advanced)
-                    } else {
-                        stringResource(R.string.capsule_settings_mode_user)
-                    }
-                    Text(
-                        text = currentMode,
-                        style = MaterialTheme.typography.labelSmall,
-                        maxLines = 1,
-                    )
-                    Spacer(Modifier.width(6.dp))
-                    val toggleModeDescription = stringResource(R.string.capsule_settings_mode_toggle)
-                    Switch(
-                        checked = advancedSettings,
-                        onCheckedChange = onAdvancedSettingsChange,
-                        modifier = Modifier.semantics {
-                            contentDescription = toggleModeDescription
-                            stateDescription = currentMode
-                        },
-                    )
-                }
+                )
             }
 
             item(key = "appearance") {
@@ -284,6 +264,92 @@ fun VeluneSettingsScreen(
                 }
             )
         }
+    }
+}
+
+
+/**
+ * Compact two-state selector in the settings list, above the first category.
+ * Its only side effect is updating the already-existing SettingsAdvancedModeKey.
+ * The app-bar title, category rows and settings screen navigation are unchanged.
+ */
+@Composable
+private fun SettingsModeSegmentedToggle(
+    advancedSettings: Boolean,
+    onModeChange: (Boolean) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val colors = MaterialTheme.colorScheme
+    val backgroundColor = colors.onSurface.copy(alpha = 0.38f)
+    val selectedBackground = colors.surface.copy(alpha = 0.24f)
+
+    Row(
+        modifier = modifier,
+        horizontalArrangement = Arrangement.End,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Row(
+            modifier = Modifier
+                .width(230.dp)
+                .height(28.dp)
+                .clip(RoundedCornerShape(8.dp))
+                .background(backgroundColor)
+                .padding(2.dp)
+                .selectableGroup(),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            SettingsModeSegment(
+                title = stringResource(R.string.capsule_settings_mode_user),
+                selected = !advancedSettings,
+                onClick = { onModeChange(false) },
+                selectedBackground = selectedBackground,
+                selectedTextColor = colors.onSurface,
+                unselectedTextColor = colors.onSurface.copy(alpha = 0.78f),
+                modifier = Modifier.weight(1f),
+            )
+            SettingsModeSegment(
+                title = stringResource(R.string.capsule_settings_mode_advanced),
+                selected = advancedSettings,
+                onClick = { onModeChange(true) },
+                selectedBackground = selectedBackground,
+                selectedTextColor = colors.onSurface,
+                unselectedTextColor = colors.onSurface.copy(alpha = 0.78f),
+                modifier = Modifier.weight(1f),
+            )
+        }
+    }
+}
+
+@Composable
+private fun SettingsModeSegment(
+    title: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+    selectedBackground: Color,
+    selectedTextColor: Color,
+    unselectedTextColor: Color,
+    modifier: Modifier = Modifier,
+) {
+    Box(
+        modifier = modifier
+            .fillMaxHeight()
+            .clip(RoundedCornerShape(6.dp))
+            .background(if (selected) selectedBackground else Color.Transparent)
+            .selectable(
+                selected = selected,
+                role = Role.Tab,
+                onClick = { if (!selected) onClick() },
+            ),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            text = title,
+            fontSize = 11.sp,
+            maxLines = 1,
+            softWrap = false,
+            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
+            color = if (selected) selectedTextColor else unselectedTextColor,
+        )
     }
 }
 
