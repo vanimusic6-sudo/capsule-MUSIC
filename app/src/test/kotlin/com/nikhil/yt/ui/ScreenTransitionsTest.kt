@@ -25,29 +25,55 @@ class ScreenTransitionsTest {
         "artist/abc", "album/xyz", "search/query",
     )
 
-    @Test fun `only settings receives real spatial NavHost transitions`() {
-        // Tab switches (and every non-settings destination) are still instant.
-        // That is the core safety guard against the old destroyed-entry crash.
+    @Test fun `only settings have NavHost transitions and nested pages form a full push`() {
         routes.forEach { from ->
             routes.forEach { to ->
                 listOf(false, true).forEach { pop ->
-                    val fromSettings = from == "settings" || from?.startsWith("settings/") == true
+                    val nested = com.nikhil.yt.ui.screens.settingsRouteMotion(from, to) ==
+                        com.nikhil.yt.ui.screens.SettingsRouteMotion.NESTED
                     val toSettings = to == "settings" || to?.startsWith("settings/") == true
+                    val fromSettings = from == "settings" || from?.startsWith("settings/") == true
                     val enter = ScreenTransitions.enter(from, to, pop)
                     val exit = ScreenTransitions.exit(from, to, pop)
-                    if (!pop && toSettings) {
-                        assertTrue("settings $to should enter from right", enter != EnterTransition.None)
-                    } else {
-                        assertEquals("no incoming animation for $from -> $to pop=$pop", EnterTransition.None, enter)
-                    }
-                    if (pop && fromSettings) {
-                        assertTrue("settings $from should return to right", exit != ExitTransition.None)
-                    } else {
-                        assertEquals("no outgoing animation for $from -> $to pop=$pop", ExitTransition.None, exit)
+
+                    when {
+                        nested -> {
+                            assertTrue("both adjacent pages move; $from -> $to, pop=$pop", enter != EnterTransition.None)
+                            assertTrue("both adjacent pages move; $from -> $to, pop=$pop", exit != ExitTransition.None)
+                        }
+                        !pop && toSettings -> {
+                            assertTrue("root settings slides in", enter != EnterTransition.None)
+                            assertEquals("old Home is stationary", ExitTransition.None, exit)
+                        }
+                        pop && fromSettings -> {
+                            assertEquals("previous Home is stationary", EnterTransition.None, enter)
+                            assertTrue("root settings flies back", exit != ExitTransition.None)
+                        }
+                        else -> {
+                            assertEquals(EnterTransition.None, enter)
+                            assertEquals(ExitTransition.None, exit)
+                        }
                     }
                 }
             }
         }
+    }
+
+    @Test fun `inside settings travelling pages stay full size in both directions`() {
+        val root = com.nikhil.yt.ui.screens.settingsPageTravel("home")
+        val nested = com.nikhil.yt.ui.screens.settingsPageTravel("settings")
+        assertTrue(root.startScale < 1f)
+        assertTrue(root.startOffsetFraction < 1f)
+        assertEquals(1f, nested.startScale)
+        assertEquals(1f, nested.startOffsetFraction)
+        assertEquals(
+            com.nikhil.yt.ui.screens.SettingsRouteMotion.NESTED,
+            com.nikhil.yt.ui.screens.settingsRouteMotion("settings", "settings/appearance"),
+        )
+        assertEquals(
+            com.nikhil.yt.ui.screens.SettingsRouteMotion.NESTED,
+            com.nikhil.yt.ui.screens.settingsRouteMotion("settings/appearance", "settings"),
+        )
     }
 
     @Test fun `settings motion belongs to NavHost and cannot also apply inside the route`() {
@@ -57,16 +83,6 @@ class ScreenTransitionsTest {
         ).first { it.isFile }.readText()
         assertTrue(file.contains("if (settingsNavigation) Modifier else"))
         assertTrue(file.contains("arrival.from == \"settings\""))
-    }
-
-    @Test fun `root motion comes from the settings button corner rather than a generic shallow fade`() {
-        val root = com.nikhil.yt.ui.screens.settingsPageTravel("home")
-        val nested = com.nikhil.yt.ui.screens.settingsPageTravel("settings")
-        assertTrue("root opens from further away", root.startOffsetFraction > nested.startOffsetFraction)
-        assertTrue("root starts smaller", root.startScale < nested.startScale)
-        assertTrue("detail avoids excessive scaling", nested.startScale > 0.9f)
-        assertTrue("all geometry stays non-negative", root.startOffsetFraction in 0.5f..1f)
-        assertTrue("all geometry stays non-negative", nested.startOffsetFraction in 0.5f..1f)
     }
 
     @Test fun `stepping back out of settings arrives from the leading edge`() {
