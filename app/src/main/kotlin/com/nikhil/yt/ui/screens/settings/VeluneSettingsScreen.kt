@@ -674,18 +674,18 @@ private fun SettingsModeSegment(
 private fun Modifier.settingsRowPress(onClick: () -> Unit): Modifier {
     val source = remember { MutableInteractionSource() }
     val pressed by source.collectIsPressedAsState()
-    val scale by animateFloatAsState(
-        targetValue = if (pressed) 0.984f else 1f,
+    val scale = animateFloatAsState(
+        targetValue = if (pressed) 0.982f else 1f,
         animationSpec = spring(
-            dampingRatio = Spring.DampingRatioNoBouncy,
+            dampingRatio = 0.93f,
             stiffness = Spring.StiffnessMedium,
         ),
         label = "settingsCategoryPress",
     )
     return this
         .graphicsLayer {
-            scaleX = scale
-            scaleY = scale
+            scaleX = scale.value
+            scaleY = scale.value
         }
         .clickable(interactionSource = source, indication = null, onClick = onClick)
 }
