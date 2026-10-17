@@ -32,6 +32,7 @@ on:
       - audit/global-motion-physics-energy-20261017
       - feature/settings-motion-physics-20261017
       - feature/settings-motion-v2-20261017
+      - fix/settings-motion-recording-9467-20261017
       - fix/video-timeline-morph-20261014
 
 permissions:
